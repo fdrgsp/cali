@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import cast
 
 import numpy as np
-from cali.readers import TensorstoreZarrReader
+from cali._readers import TensorstoreZarrReader
 from tqdm import tqdm
 
 from cali._plate_viewer._util import GENOTYPE_MAP, TREATMENT_MAP, ROIData

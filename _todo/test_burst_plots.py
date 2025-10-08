@@ -37,7 +37,7 @@ def test_burst_parsing() -> None:
     """Test the burst activity CSV parsing function."""
     try:
         # Import the parsing function
-        from src.micromanager_gui._plate_viewer._plot_methods._multi_wells_plots._csv_bar_plot import (  # noqa: E501
+        from src.cali._plate_viewer._plot_methods._multi_wells_plots._csv_bar_plot import (  # noqa: E501
             _parse_csv_burst_activity_format,
         )
 
@@ -75,7 +75,7 @@ def test_burst_parsing() -> None:
 def test_main_plot_constants() -> None:
     """Test that the main plot constants include burst activity plots."""
     try:
-        from src.micromanager_gui._plate_viewer._plot_methods._main_plot import (
+        from src.cali._plate_viewer._plot_methods._main_plot import (
             CSV_BAR_PLOT_BURST_COUNT,
             CSV_BAR_PLOT_BURST_DURATION,
             CSV_BAR_PLOT_BURST_INTERVAL,
