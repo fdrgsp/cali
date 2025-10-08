@@ -8,7 +8,7 @@ import pandas as pd
 
 
 # Create a sample burst activity CSV file
-def create_test_burst_csv():
+def create_test_burst_csv() -> Path:
     """Create a test burst activity CSV file with sample data."""
     # Sample data for 2 conditions with burst metrics
     data = {

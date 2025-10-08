@@ -172,4 +172,4 @@ ignore = [
 ]
 
 [tool.typos.default] 
-extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?"]
+extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems"]
