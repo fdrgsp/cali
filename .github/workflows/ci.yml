@@ -51,7 +51,7 @@ jobs:
           if (Test-Path -Path "C:\Windows\system32\opengl32.dll" -PathType Leaf) {Exit 0} else {Exit 1}
 
       - name: Run Tests
-        run: uv run --no-sync coverage run -p -m pytest -v
+        run: uv run --no-sync coverage run -p -m pytest -v --color=yes
 
       - name: Coverage
         uses: codecov/codecov-action@v5
