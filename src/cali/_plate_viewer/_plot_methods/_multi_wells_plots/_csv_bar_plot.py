@@ -8,7 +8,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
-from micromanager_gui._plate_viewer._util import (
+from cali._plate_viewer._util import (
     EVK_NON_STIM,
     EVK_STIM,
     MEAN_SUFFIX,
@@ -19,7 +19,7 @@ from micromanager_gui._plate_viewer._util import (
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from micromanager_gui._plate_viewer._graph_widgets import _MultilWellGraphWidget
+    from cali._plate_viewer._graph_widgets import _MultilWellGraphWidget
 
 
 CONDITION = "condition"

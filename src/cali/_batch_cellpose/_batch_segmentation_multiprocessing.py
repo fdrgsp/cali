@@ -24,13 +24,9 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
-from micromanager_gui._plate_viewer._util import GREEN, RED, _BrowseWidget
-from micromanager_gui._widgets._mda_widget._save_widget import (
-    OME_ZARR,
-    WRITERS,
-    ZARR_TESNSORSTORE,
-)
-from micromanager_gui.readers import OMEZarrReader, TensorstoreZarrReader
+from cali._plate_viewer._util import GREEN, RED, _BrowseWidget
+from cali._readers import OMEZarrReader, TensorstoreZarrReader
+from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 
 if TYPE_CHECKING:
     from threading import Event
@@ -61,19 +57,20 @@ class _SelectModelPath(_BrowseWidget):
             self,
             f"Select the {self._label_text}.",
             "",
-            "",  # TODO: add model extension
+            "",
         )
         if path:
             self._path.setText(path)
 
 
-class CellposeBatchSegmentationMP(QDialog):
+class CellposeBatchSegmentation(QDialog):
     def __init__(
         self,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Batch Cellpose Segmentation")
+        self.resize(500, 100)
 
         self._run_worker: FunctionWorker | None = None
         self._futures: list[concurrent.futures.Future] = []

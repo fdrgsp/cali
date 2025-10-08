@@ -12,8 +12,8 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
-from micromanager_gui._plate_viewer._util import (
+from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._util import (
     MWCM,
     STIMULATION_MASK,
     _get_spikes_over_threshold,
@@ -23,10 +23,10 @@ from micromanager_gui._plate_viewer._util import (
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 DEFAULT_COLOR = "gray"
@@ -87,7 +87,7 @@ def _plot_stim_or_not_stim_peaks_amplitude(
             led_power_equation_str = roi_data.led_power_equation or ""
             led_power_equation = equation_from_str(led_power_equation_str)
 
-        from micromanager_gui._plate_viewer._util import (
+        from cali._plate_viewer._util import (
             get_stimulated_amplitudes_from_roi_data,
         )
 

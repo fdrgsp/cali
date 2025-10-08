@@ -6,8 +6,8 @@ from typing import cast
 import numpy as np
 from tqdm import tqdm
 
-from micromanager_gui._plate_viewer._util import GENOTYPE_MAP, TREATMENT_MAP, ROIData
-from micromanager_gui.readers import TensorstoreZarrReader
+from cali._plate_viewer._util import GENOTYPE_MAP, TREATMENT_MAP, ROIData
+from cali.readers import TensorstoreZarrReader
 
 
 def _filter_data(path_list: list[Path]) -> list[Path]:

@@ -7,8 +7,8 @@ import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
-from micromanager_gui._plate_viewer._util import (
+from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._util import (
     _get_spike_synchrony,
     _get_spike_synchrony_matrix,
     _get_spikes_over_threshold,
@@ -17,10 +17,10 @@ from micromanager_gui._plate_viewer._util import (
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 def _plot_spike_synchrony_data(
