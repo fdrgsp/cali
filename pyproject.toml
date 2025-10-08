@@ -3,10 +3,17 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# https://hatch.pypa.io/latest/config/metadata/
+[tool.hatch.version]
+source = "vcs"
+
+# [tool.hatch.metadata]
+# allow-direct-references = true
+
 # https://peps.python.org/pep-0621/
 [project]
-name = "micromanager-gui"
-description = "A Micro-Manager GUI based on pymmcore-widgets and pymmcore-plus."
+name = "cali"
+description = "A GUI to visualize, segment and analyze calcium imaging data."
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
 license = { text = "BSD 3-Clause License" }
@@ -26,9 +33,9 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "numpy<2.0.0; platform_system == 'Darwin'",  # Pin numpy to avoid compilation issues on macOS
-    "numpy; platform_system != 'Darwin'",  # No version constraint on other platforms
+    "numpy; platform_system != 'Darwin'",
     "oasis-deconv!=0.2.1",
-    "cvxpy",  # to not have the warning in oasis-deconv
+    # "cvxpy",  # to not have the warning in oasis-deconv
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
     "qtpy",
@@ -40,14 +47,10 @@ dependencies = [
     "cmap",
     "cellpose<4",
     "pyconify",
-    "slack_bolt",
-    "python-dotenv",
     "rich",
     "matplotlib",
     "mplcursors",
     "ndv[vispy]==0.0.4",
-    "qtconsole",
-    "pyfirmata2",
     "scikit-image",
     "PyQt6",
     # "tensorstore >=0.1.67,!=0.1.72",
@@ -57,9 +60,7 @@ dependencies = [
     "superqt[font-mi6]"
 ]
 
-# extras
-# https://peps.python.org/pep-0621/#dependencies-optional-dependencies
-[project.optional-dependencies]
+[dependency-groups]
 test = ["pytest>=6.0", "pytest-cov", "pytest-qt"]
 dev = [
     "black",
@@ -74,22 +75,14 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://github.com/fdrgsp/micromanager-gui"
-repository = "https://github.com/fdrgsp/micromanager-gui"
+homepage = "https://github.com/fdrgsp/cali"
+repository = "https://github.com/fdrgsp/cali"
 
-# same as console_scripts entry point
 [project.scripts]
-mmgui = "micromanager_gui.__main__:main"
-pv = "micromanager_gui.__main__:plate_viewer"
-bcp = "micromanager_gui.__main__:batch_cellpose"
+cali = "cali.__main__:main"
 
-
-# https://hatch.pypa.io/latest/config/metadata/
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.uv.sources]
+cali = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 only-include = ["src"]
@@ -103,11 +96,14 @@ src = ["src", "tests"]
 fix = true
 unsafe-fixes = true
 
+
+# https://docs.astral.sh/ruff/rules
 [tool.ruff.lint]
+pydocstyle = { convention = "numpy" }
 select = [
     "E",    # style errors
+    "W",    # style warnings
     "F",    # flakes
-    "W",    # warnings
     "D",    # pydocstyle
     "D417", # Missing argument descriptions in Docstrings
     "I",    # isort
@@ -115,17 +111,18 @@ select = [
     "C4",   # flake8-comprehensions
     "B",    # flake8-bugbear
     "A001", # flake8-builtins
+    "ANN",  # flake8-annotations
     "RUF",  # ruff-specific rules
-    "TID",  # tidy
-    "TCH",  # typecheck
-    # "SLF",  # private-access
+    "TC",   # flake8-type-checking
+    "TID",  # flake8-tidy-imports
 ]
 ignore = [
-    "D100", # Missing docstring in public module
-    "D401", # First line should be in imperative mood
+    "ANN401", # allow the use of Any type
+    "D401",   # First line should be in imperative mood (remove to opt in)
 ]
-pydocstyle.convention = "numpy"
-per-file-ignores."tests/*.py" = ["D", "SLF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D", "S"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -134,7 +131,10 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    "ignore:Failing to pass a value:DeprecationWarning"
+]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
 [tool.mypy]
@@ -144,7 +144,6 @@ disallow_any_generics = false
 disallow_subclassing_any = false
 show_error_codes = true
 pretty = true
-
 
 # https://coverage.readthedocs.io/en/6.4/config.html
 [tool.coverage.report]
@@ -156,17 +155,16 @@ exclude_lines = [
     "raise AssertionError",
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
+    "\\.\\.\\.",
 ]
 show_missing = true
 
 [tool.coverage.run]
-source = ["micromanager_gui"]
-omit = ["src/micromanager_gui/_slackbot/*"]
+source = ["cali"]
 
 # https://github.com/mgedmin/check-manifest#configuration
 [tool.check-manifest]
 ignore = [
-    ".github_changelog_generator",
     ".pre-commit-config.yaml",
     ".ruff_cache/**/*",
     "tests/**/*",
