@@ -1,0 +1,176 @@
+# https://peps.python.org/pep-0517/
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+# https://hatch.pypa.io/latest/config/metadata/
+[tool.hatch.version]
+source = "vcs"
+
+# [tool.hatch.metadata]
+# allow-direct-references = true
+
+# https://peps.python.org/pep-0621/
+[project]
+name = "cali"
+description = "A GUI to visualize, segment and analyze calcium imaging data."
+readme = "README.md"
+requires-python = ">=3.10, <3.13"
+license = { text = "BSD 3-Clause License" }
+authors = [
+    { email = "federico.gasparoli@gmail.com", name = "Federico Gasparoli" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+dependencies = [
+    "numpy<2.0.0; platform_system == 'Darwin'",  # Pin numpy to avoid compilation issues on macOS
+    "numpy; platform_system != 'Darwin'",
+    "oasis-deconv!=0.2.1",
+    "pymmcore-widgets >=0.8.0",
+    "pymmcore-plus >=0.16.0",
+    "qtpy",
+    "vispy",
+    "zarr==2.*",
+    "tifffile",
+    "tqdm",
+    "pyyaml",
+    "cmap",
+    "cellpose==3.1.1.2",
+    "pyconify",
+    "rich",
+    "matplotlib",
+    "mplcursors",
+    "ndv[vispy]==0.0.4",
+    "scikit-image",
+    "PyQt6",
+    "tensorstore >=0.1.67,!=0.1.72",
+    # "tensorstore == 0.1.75",
+    "pydantic<2.11.0",
+    "pandas",
+    "superqt[font-mi6]"
+]
+
+[dependency-groups]
+test = ["pytest>=6.0", "pytest-cov", "pytest-qt"]
+dev = [
+    "black",
+    "ipython",
+    "mypy",
+    "pdbpp",
+    "pre-commit",
+    "pytest-cov",
+    "pytest",
+    "rich",
+    "ruff",
+]
+
+[project.urls]
+homepage = "https://github.com/fdrgsp/cali"
+repository = "https://github.com/fdrgsp/cali"
+
+[project.scripts]
+cali = "cali.__main__:main"
+bcp = "cali.__main__:batch_cellpose"
+
+[tool.uv.sources]
+cali = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+# https://docs.astral.sh/ruff/configuration/
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+src = ["src", "tests"]
+fix = true
+unsafe-fixes = true
+exclude = ["_todo", "_todo/**"]
+
+
+# https://docs.astral.sh/ruff/rules
+[tool.ruff.lint]
+pydocstyle = { convention = "numpy" }
+select = [
+    "E",    # style errors
+    "W",    # style warnings
+    "F",    # flakes
+    "D",    # pydocstyle
+    "D417", # Missing argument descriptions in Docstrings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "A001", # flake8-builtins
+    "ANN",  # flake8-annotations
+    "RUF",  # ruff-specific rules
+    "TC",   # flake8-type-checking
+    "TID",  # flake8-tidy-imports
+]
+ignore = [
+    "ANN401", # allow the use of Any type
+    "D401",   # First line should be in imperative mood (remove to opt in)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D", "S"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# https://docs.pytest.org/en/6.2.x/customize.html
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    "ignore:Failing to pass a value:DeprecationWarning",
+    "ignore:Could not find cvxpy.*:UserWarning"
+]
+
+# https://mypy.readthedocs.io/en/stable/config_file.html
+[tool.mypy]
+files = "src/**/"
+strict = true
+disallow_any_generics = false
+disallow_subclassing_any = false
+show_error_codes = true
+pretty = true
+
+# https://coverage.readthedocs.io/en/6.4/config.html
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@overload",
+    "except ImportError",
+    "raise AssertionError",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
+show_missing = true
+
+[tool.coverage.run]
+source = ["cali"]
+
+# https://github.com/mgedmin/check-manifest#configuration
+[tool.check-manifest]
+ignore = [
+    ".pre-commit-config.yaml",
+    ".ruff_cache/**/*",
+    "tests/**/*",
+]
+
+[tool.typos.default] 
+extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems"]
