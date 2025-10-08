@@ -33,7 +33,7 @@ def create_test_burst_csv():
     return csv_path
 
 
-def test_burst_parsing():
+def test_burst_parsing() -> None:
     """Test the burst activity CSV parsing function."""
     try:
         # Import the parsing function
@@ -72,7 +72,7 @@ def test_burst_parsing():
         print(f"Error during testing: {e}")
 
 
-def test_main_plot_constants():
+def test_main_plot_constants() -> None:
     """Test that the main plot constants include burst activity plots."""
     try:
         from src.micromanager_gui._plate_viewer._plot_methods._main_plot import (

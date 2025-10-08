@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import cast
 
 import numpy as np
+from cali.readers import TensorstoreZarrReader
 from tqdm import tqdm
 
 from cali._plate_viewer._util import GENOTYPE_MAP, TREATMENT_MAP, ROIData
-from cali.readers import TensorstoreZarrReader
 
 
 def _filter_data(path_list: list[Path]) -> list[Path]:

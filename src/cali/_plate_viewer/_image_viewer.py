@@ -71,7 +71,7 @@ class _ImageViewer(QGroupBox):
 
     valueChanged = Signal(int)
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
 
         self._viewer = _ImageCanvas(parent=self)
@@ -305,7 +305,7 @@ class _ImageViewer(QGroupBox):
 class _ImageCanvas(QWidget):
     """A Widget that displays an image."""
 
-    def __init__(self, parent: _ImageViewer):
+    def __init__(self, parent: _ImageViewer) -> None:
         super().__init__(parent=parent)
         self._viewer = parent
         self._imcls = scene.visuals.Image
