@@ -269,14 +269,14 @@ class PlateViewer(QMainWindow):
 
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
-        # data = "tests/test_plate_viewer/data/evoked/evk.tensorstore.zarr"
-        # self._pv_labels_path = "tests/test_plate_viewer/data/evoked/evk_labels"
-        # self._pv_analysis_path = "tests/test_plate_viewer/data/evoked/evk_analysis"
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+        # self._pv_labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"  # noqa: E501
+        # self._pv_analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"   # noqa: E501
         # self.initialize_widget(data, self._pv_labels_path, self._pv_analysis_path)
 
-        # data = "tests/test_plate_viewer/data/spontaneous/spont.tensorstore.zarr"
-        # self._labels_path = "tests/test_plate_viewer/data/spontaneous/spont_labels"
-        # self._analysis_path = "tests/test_plate_viewer/data/spontaneous/spont_analysis" # noqa: E501
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"   # noqa: E501
+        # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"   # noqa: E501
+        # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis" # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
         # fmt: on
         # ____________________________________________________________________________
