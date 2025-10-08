@@ -74,6 +74,7 @@ DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
 TS = WRITERS[ZARR_TESNSORSTORE][0]
 ZR = WRITERS[OME_ZARR][0]
 
+
 class PlateViewer(QMainWindow):
     """A widget for displaying a plate preview."""
 
