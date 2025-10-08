@@ -8,10 +8,10 @@ import numpy as np
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 def _plot_iei_data(

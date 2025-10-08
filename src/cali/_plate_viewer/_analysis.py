@@ -95,7 +95,7 @@ if TYPE_CHECKING:
     from qtpy.QtGui import QCloseEvent
     from superqt.utils import GeneratorWorker
 
-    from micromanager_gui.readers import OMEZarrReader, TensorstoreZarrReader
+    from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
     from ._plate_map import PlateMapData
     from ._plate_viewer import PlateViewer

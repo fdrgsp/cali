@@ -9,14 +9,14 @@ import numpy as np
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
-from micromanager_gui._plate_viewer._util import _get_spikes_over_threshold
+from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._util import _get_spikes_over_threshold
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from micromanager_gui._plate_viewer._graph_widgets import _SingleWellGraphWidget
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._graph_widgets import _SingleWellGraphWidget
+    from cali._plate_viewer._util import ROIData
 
 
 def _generate_spike_raster_plot(

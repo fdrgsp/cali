@@ -35,7 +35,6 @@ dependencies = [
     "numpy<2.0.0; platform_system == 'Darwin'",  # Pin numpy to avoid compilation issues on macOS
     "numpy; platform_system != 'Darwin'",
     "oasis-deconv!=0.2.1",
-    # "cvxpy",  # to not have the warning in oasis-deconv
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
     "qtpy",
@@ -45,7 +44,7 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "cmap",
-    "cellpose<4",
+    "cellpose==3.1.1.2",
     "pyconify",
     "rich",
     "matplotlib",
@@ -80,6 +79,7 @@ repository = "https://github.com/fdrgsp/cali"
 
 [project.scripts]
 cali = "cali.__main__:main"
+bcp = "cali.__main__:batch_cellpose"
 
 [tool.uv.sources]
 cali = { workspace = true }
@@ -133,7 +133,8 @@ minversion = "6.0"
 testpaths = ["tests"]
 filterwarnings = [
     "error",
-    "ignore:Failing to pass a value:DeprecationWarning"
+    "ignore:Failing to pass a value:DeprecationWarning",
+    "ignore:Could not find cvxpy.*:UserWarning"
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html

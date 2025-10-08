@@ -5,18 +5,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
-from micromanager_gui._plate_viewer._util import (
+from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._util import (
     _get_spikes_over_threshold,
 )
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 def _plot_inferred_spike_burst_activity(

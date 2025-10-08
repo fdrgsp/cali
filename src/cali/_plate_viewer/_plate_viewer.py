@@ -34,12 +34,8 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
-from micromanager_gui._widgets._mda_widget._save_widget import (
-    OME_ZARR,
-    WRITERS,
-    ZARR_TESNSORSTORE,
-)
-from micromanager_gui.readers import OMEZarrReader, TensorstoreZarrReader
+from cali._readers import OMEZarrReader, TensorstoreZarrReader
+from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 
 from ._analysis import EVOKED, _AnalyseCalciumTraces
 from ._analysis_gui import AnalysisSettingsData, ExperimentTypeData
@@ -69,14 +65,14 @@ if TYPE_CHECKING:
 
 HCS = "hcs"
 UNSELECTABLE_COLOR = "#404040"
-TS = WRITERS[ZARR_TESNSORSTORE][0]
-ZR = WRITERS[OME_ZARR][0]
 DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("coverslip-18mm-square"),
     a1_center_xy=(0.0, 0.0),
     selected_wells=((0,), (0,)),
 )
 
+TS = WRITERS[ZARR_TESNSORSTORE][0]
+ZR = WRITERS[OME_ZARR][0]
 
 class PlateViewer(QMainWindow):
     """A widget for displaying a plate preview."""

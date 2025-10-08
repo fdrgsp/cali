@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 )
 from skimage import filters, morphology
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._logger._pv_logger import LOGGER
 
 if TYPE_CHECKING:
     from pathlib import Path

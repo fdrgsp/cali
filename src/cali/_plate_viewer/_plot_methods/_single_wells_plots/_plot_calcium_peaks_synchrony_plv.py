@@ -7,15 +7,15 @@
 # import mplcursors
 # import numpy as np
 
-# from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
+# from cali._plate_viewer._logger._pv_logger import LOGGER
 
 # if TYPE_CHECKING:
 #     from matplotlib.image import AxesImage
 
-#     from micromanager_gui._plate_viewer._graph_widgets import (
+#     from cali._plate_viewer._graph_widgets import (
 #         _SingleWellGraphWidget,
 #     )
-#     from micromanager_gui._plate_viewer._util import ROIData
+#     from cali._plate_viewer._util import ROIData
 
 
 # def _get_linear_phase(frames: int, peaks: np.ndarray) -> list[float]:

@@ -12,16 +12,16 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._logger._pv_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 def _calculate_cross_correlation(

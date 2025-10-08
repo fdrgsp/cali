@@ -6,19 +6,19 @@ import mplcursors
 import numpy as np
 from skimage import measure
 
-from micromanager_gui._plate_viewer._logger._pv_logger import LOGGER
-from micromanager_gui._plate_viewer._plot_methods._single_wells_plots._plot_calcium_peaks_correlation import (  # noqa: E501
+from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali._plate_viewer._plot_methods._single_wells_plots._plot_calcium_peaks_correlation import (  # noqa: E501
     _calculate_cross_correlation,
 )
-from micromanager_gui._plate_viewer._util import coordinates_to_mask
+from cali._plate_viewer._util import coordinates_to_mask
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage
 
-    from micromanager_gui._plate_viewer._graph_widgets import (
+    from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
-    from micromanager_gui._plate_viewer._util import ROIData
+    from cali._plate_viewer._util import ROIData
 
 
 def _plot_connectivity_network_data(
