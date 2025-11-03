@@ -289,10 +289,10 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
     rows = {}
     for well_fov, rois in data.items():
         for roi_key, roi_data in rois.items():
-            if roi_data.raw_trace is None:
+            if roi_data.corrected_trace is None:
                 continue
             row_name = f"{well_fov}_{roi_key}"
-            rows[row_name] = roi_data.raw_trace
+            rows[row_name] = roi_data.corrected_trace
 
     if not rows:
         return
