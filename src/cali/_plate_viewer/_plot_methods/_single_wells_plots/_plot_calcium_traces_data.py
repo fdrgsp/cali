@@ -23,6 +23,7 @@ def _plot_traces_data(
     widget: _SingleWellGraphWidget,
     data: dict[str, ROIData],
     rois: list[int] | None = None,
+    raw: bool = False,
     dff: bool = False,
     dec: bool = False,
     normalize: bool = False,
@@ -51,7 +52,7 @@ def _plot_traces_data(
                 except ValueError:
                     # Skip non-numeric ROI keys when rois filter is specified
                     continue
-            if trace := _get_trace(roi_data, dff, dec):
+            if trace := _get_trace(roi_data, dff, dec, raw):
                 all_values.extend(trace)
         if all_values:
             percentiles = np.percentile(all_values, [P1, P2])
@@ -64,7 +65,7 @@ def _plot_traces_data(
     last_trace: list[float] | None = None
 
     for roi_key, roi_data in data.items():
-        trace = _get_trace(roi_data, dff, dec)
+        trace = _get_trace(roi_data, dff, dec, raw)
 
         if rois is not None:
             try:
@@ -110,10 +111,19 @@ def _plot_traces_data(
     widget.canvas.draw()
 
 
-def _get_trace(roi_data: ROIData, dff: bool, dec: bool) -> list[float] | None:
+def _get_trace(
+    roi_data: ROIData, dff: bool, dec: bool, raw: bool
+) -> list[float] | None:
     """Get the appropriate trace based on the flags."""
     try:
-        data = roi_data.dff if dff else roi_data.dec_dff if dec else roi_data.raw_trace
+        if dff:
+            data = roi_data.dff
+        elif dec:
+            data = roi_data.dec_dff
+        elif raw:
+            data = roi_data.raw_trace
+        else:
+            data = roi_data.corrected_trace
         return data or None
     except AttributeError:
         # Handle case where roi_data is not a proper ROIData object

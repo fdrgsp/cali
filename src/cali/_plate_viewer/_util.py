@@ -66,6 +66,9 @@ SPIKES_SYNC_CROSS_CORR_MAX_LAG = "spikes_sync_cross_corr_lag"
 CALCIUM_PEAKS_SYNCHRONY_METHOD = "jitter_window"
 CALCIUM_SYNC_JITTER_WINDOW = "calcium_sync_jitter_window"
 CALCIUM_NETWORK_THRESHOLD = "calcium_network_threshold"
+NEUROPIL_INNER_RADIUS = "neuropil_inner_radius"
+NEUROPIL_MIN_PIXELS = "neuropil_min_pixels"
+NEUROPIL_CORRECTION_FACTOR = "neuropil_correction_factor"
 
 MAX_FRAMES_AFTER_STIMULATION = 5
 DEFAULT_BURST_THRESHOLD = 30.0
@@ -78,6 +81,9 @@ DEFAULT_SPIKE_THRESHOLD = 1
 DEFAULT_SPIKE_SYNCHRONY_MAX_LAG = 5
 DEFAULT_CALCIUM_SYNC_JITTER_WINDOW = 2
 DEFAULT_CALCIUM_NETWORK_THRESHOLD = 90.0
+DEFAULT_NEUROPIL_INNER_RADIUS = 2
+DEFAULT_NEUROPIL_MIN_PIXELS = 350
+DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
 
 
 @dataclass
@@ -92,10 +98,93 @@ class BaseClass:
 # fmt: off
 @dataclass
 class ROIData(BaseClass):
-    """NamedTuple to store ROI data."""
+    """Data container for ROI (Region of Interest) analysis results.
+
+    This dataclass stores comprehensive analysis data for a single ROI including
+    raw fluorescence traces, neuropil correction, calcium dynamics (dff, deconvolved),
+    peak detection, inferred spikes, and experimental metadata.
+
+    Parameters
+    ----------
+    well_fov_position : str
+        Position identifier (e.g., "B5_0000_p0" for well B5, fov0, position 0)
+    raw_trace : list[float] | None
+        Original raw fluorescence trace before any neuropil correction
+    corrected_trace : list[float] | None
+        Raw fluorescence trace after neuropil correction (if enabled),
+        otherwise same as raw_trace. This is used for all
+        downstream analysis.
+    neuropil_trace : list[float] | None
+        Fluorescence trace from the neuropil (donut-shaped region around ROI)
+    neuropil_correction_factor : float | None
+        Correction factor (typically 0.7) used for neuropil subtraction
+    dff : list[float] | None
+        ΔF/F (delta F over F) - normalized fluorescence change
+    dec_dff : list[float] | None
+        Deconvolved ΔF/F trace (using OASIS algorithm) for calcium event detection
+    peaks_dec_dff : list[float] | None
+        Indices of detected peaks in the deconvolved trace
+    peaks_amplitudes_dec_dff : list[float] | None
+        Amplitude values of detected peaks in deconvolved trace
+    peaks_prominence_dec_dff : float | None
+        Prominence threshold used for peak detection
+    peaks_height_dec_dff : float | None
+        Height threshold used for peak detection
+    inferred_spikes : list[float] | None
+        Inferred spike probabilities from deconvolution
+    inferred_spikes_threshold : float | None
+        Threshold for spike detection
+    dec_dff_frequency : float | None
+        Frequency of calcium events in Hz
+    condition_1 : str | None
+        First experimental condition (e.g., genotype)
+    condition_2 : str | None
+        Second experimental condition (e.g., treatment)
+    cell_size : float | None
+        ROI area in µm² or pixels
+    cell_size_units : str | None
+        Units for cell_size ("µm" or "pixel")
+    elapsed_time_list_ms : list[float] | None
+        Timestamp for each frame in milliseconds
+    total_recording_time_sec : float | None
+        Total recording duration in seconds
+    active : bool | None
+        Whether the ROI shows calcium activity (has detected peaks)
+    iei : list[float] | None
+        Inter-event intervals between calcium peaks (in seconds)
+    evoked_experiment : bool
+        Whether this is an optogenetic stimulation experiment
+    stimulated : bool
+        Whether this ROI overlaps with the stimulated area
+    stimulations_frames_and_powers : dict[str, int] | None
+        Frame numbers and LED powers for stimulation events
+    led_pulse_duration : str | None
+        Duration of LED pulse in stimulation experiments
+    led_power_equation : str | None
+        Equation to calculate LED power density (mW/cm²)
+    calcium_sync_jitter_window : int | None
+        Jitter window (frames) for calcium peak synchrony analysis
+    spikes_sync_cross_corr_lag : int | None
+        Maximum lag (frames) for spike cross-correlation synchrony
+    calcium_network_threshold : float | None
+        Percentile threshold (0-100) for network connectivity
+    spikes_burst_threshold : float | None
+        Threshold (%) for burst detection in spike trains
+    spikes_burst_min_duration : int | None
+        Minimum burst duration in seconds
+    spikes_burst_gaussian_sigma : float | None
+        Sigma for Gaussian smoothing in burst detection (seconds)
+    mask_coord_and_shape : tuple[tuple[list[int], list[int]], tuple[int, int]] | None
+        ROI mask stored as ((y_coords, x_coords), (height, width))
+    neuropil_mask_coord_and_shape : tuple | None
+        Neuropil mask: ((y_coords, x_coords), (height, width))
+    """
 
     well_fov_position: str = ""
     raw_trace: list[float] | None = None
+    corrected_trace: list[float] | None = None
+    neuropil_trace: list[float] | None = None
+    neuropil_correction_factor: float | None = None
     dff: list[float] | None = None
     dec_dff: list[float] | None = None  # deconvolved dff with oasis package
     peaks_dec_dff: list[float] | None = None
@@ -126,9 +215,8 @@ class ROIData(BaseClass):
     spikes_burst_gaussian_sigma: float | None = None  # in seconds
     # store ROI mask as coordinates (y_coords, x_coords) and shape (height, width)
     mask_coord_and_shape: tuple[tuple[list[int], list[int]], tuple[int, int]] | None = None  # noqa: E501
-    # neuropil correction
-    neuropil_trace: list[float] | None = None
-    neuropil_correction_factor: float | None = None
+    # store neuropil mask as coordinates (y_coords, x_coords) and shape (height, width)
+    neuropil_mask_coord_and_shape: tuple[tuple[list[int], list[int]], tuple[int, int]] | None = None  # noqa: E501
 # fmt: on
 
 
@@ -619,7 +707,7 @@ def _get_calcium_peaks_events_from_rois(
         except ValueError:
             continue
 
-        max_frames = len(roi_data.raw_trace) if roi_data.raw_trace else 0
+        max_frames = len(roi_data.corrected_trace) if roi_data.corrected_trace else 0
         if max_frames == 0:
             return None
 
@@ -1125,9 +1213,11 @@ def _extendROI(
     """
     for _ in range(niter):
         # Extend in 4 cardinal directions: same, right, left, up, down
-        yx = ((ypix, ypix, ypix, ypix - 1, ypix + 1),
-              (xpix, xpix + 1, xpix - 1, xpix, xpix))
-        yx = np.array(yx)
+        yx_tuple = (
+            (ypix, ypix, ypix, ypix - 1, ypix + 1),
+            (xpix, xpix + 1, xpix - 1, xpix, xpix),
+        )
+        yx = np.array(yx_tuple)
         yx = yx.reshape((2, -1))
         # Get unique pixels
         yu = np.unique(yx, axis=1)
@@ -1206,7 +1296,7 @@ def create_neuropil_from_dilation(
 
     # Valid pixels check: pixels are valid if not occupied by cells
     def valid_pixels(ypix: np.ndarray, xpix: np.ndarray) -> np.ndarray:
-        return cell_pix[ypix, xpix] < 0.5
+        return cell_pix[ypix, xpix] < 0.5  # type: ignore[no-any-return]
 
     # Extension step size (suite2p default: 5 pixels at a time)
     extend_by = 5
@@ -1235,8 +1325,7 @@ def create_neuropil_from_dilation(
         # iterations)
         while nreps < 100:
             # Extend the ROI
-            ypix1, xpix1 = _extendROI(ypix1, xpix1, height, width,
-                                      niter=extend_by)
+            ypix1, xpix1 = _extendROI(ypix1, xpix1, height, width, niter=extend_by)
 
             # Count valid pixels (not in cells, beyond forbidden zone)
             n_valid = int(np.sum(valid_pixels(ypix1, xpix1))) - int(nring)
@@ -1256,9 +1345,7 @@ def create_neuropil_from_dilation(
         neuropil_mask[ypix_forbidden, xpix_forbidden] = False
 
         # Step 4: Erode the original cell mask slightly for actual cell region
-        cell_mask_eroded = ndimage.binary_erosion(
-            cell_mask, iterations=1
-        ).astype(bool)
+        cell_mask_eroded = ndimage.binary_erosion(cell_mask, iterations=1).astype(bool)
 
         cell_masks_eroded.append(cell_mask_eroded)
         neuropil_masks.append(neuropil_mask)

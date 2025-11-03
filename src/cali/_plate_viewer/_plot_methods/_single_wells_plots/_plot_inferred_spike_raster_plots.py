@@ -74,8 +74,8 @@ def _generate_spike_raster_plot(
             rois_rec_time.append(roi_data.total_recording_time_sec)
 
         # assuming all traces have the same number of frames
-        if not total_frames and roi_data.raw_trace is not None:
-            total_frames = len(roi_data.raw_trace)
+        if not total_frames and roi_data.corrected_trace is not None:
+            total_frames = len(roi_data.corrected_trace)
 
         # store event data (spike times)
         event_data.append(spike_times)
@@ -110,8 +110,8 @@ def _generate_spike_raster_plot(
     # use any trace to get total number of frames (they should all be the same)
     sample_trace = None
     for roi_data in data.values():
-        if roi_data.raw_trace is not None:
-            sample_trace = roi_data.raw_trace
+        if roi_data.corrected_trace is not None:
+            sample_trace = roi_data.corrected_trace
             break
 
     _update_time_axis(ax, rois_rec_time, sample_trace)
