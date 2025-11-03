@@ -34,6 +34,9 @@ from ._util import (
     DEFAULT_DFF_WINDOW,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
+    DEFAULT_NEUROPIL_CORRECTION_FACTOR,
+    DEFAULT_NEUROPIL_INNER_RADIUS,
+    DEFAULT_NEUROPIL_MIN_PIXELS,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     _BrowseWidget,
@@ -344,7 +347,7 @@ class _NeuropilCorrectionWidget(QWidget):
             "• Correction Factor: Scaling applied to neuropil fluorescence before "
             " subtraction. Accounts for the fact that neuropil contamination may "
             " differ from\nthe actual neuropil fluorescence levels. Range: 0.0-1.0, "
-            " Default: 0.7 (suite2p default).\n\n"
+            " Default: 0.0 (suite2p default 0.70).\n\n"
             "Example with Inner Radius=2, Min Pixels=350:\n"
             "1. Cell boundary at position 0\n"
             "2. Forbidden zone: 0 to 2 pixels outward from cell edge (excluded)\n"
@@ -357,7 +360,7 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_inner_radius_lbl = QLabel("Inner Radius (pixels):")
         self._neuropil_inner_radius_spin = QSpinBox(self)
         self._neuropil_inner_radius_spin.setRange(0, 100)
-        self._neuropil_inner_radius_spin.setValue(0)
+        self._neuropil_inner_radius_spin.setValue(DEFAULT_NEUROPIL_INNER_RADIUS)
         np_radius_wdg = QWidget(self)
         np_radius_layout = QHBoxLayout(np_radius_wdg)
         np_radius_layout.setContentsMargins(0, 0, 0, 0)
@@ -368,7 +371,7 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_min_px_lbl = QLabel("Min Pixels:")
         self._neuropil_min_px_spin = QSpinBox(self)
         self._neuropil_min_px_spin.setRange(0, 2000)
-        self._neuropil_min_px_spin.setValue(0)
+        self._neuropil_min_px_spin.setValue(DEFAULT_NEUROPIL_MIN_PIXELS)
         np_min_pixels_wdg = QWidget(self)
         np_min_pixels_layout = QHBoxLayout(np_min_pixels_wdg)
         np_min_pixels_layout.setContentsMargins(0, 0, 0, 0)
@@ -380,7 +383,7 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_factor_spin = QDoubleSpinBox(self)
         self._neuropil_factor_spin.setRange(0.0, 1.0)
         self._neuropil_factor_spin.setSingleStep(0.1)
-        self._neuropil_factor_spin.setValue(0.7)
+        self._neuropil_factor_spin.setValue(DEFAULT_NEUROPIL_CORRECTION_FACTOR)
         np_factor_wdg = QWidget(self)
         np_factor_layout = QHBoxLayout(np_factor_wdg)
         np_factor_layout.setContentsMargins(0, 0, 0, 0)
