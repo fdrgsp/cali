@@ -219,17 +219,17 @@ class PlateViewer(QMainWindow):
         self._single_well_graph_wdg_1 = _SingleWellGraphWidget(self)
         self._single_well_graph_wdg_2 = _SingleWellGraphWidget(self)
         self._single_well_graph_wdg_3 = _SingleWellGraphWidget(self)
-        self._single_well_graph_wdg_4 = _SingleWellGraphWidget(self)
+        # self._single_well_graph_wdg_4 = _SingleWellGraphWidget(self)
         single_well_vis_layout.addWidget(self._single_well_graph_wdg_1, 0, 0)
         single_well_vis_layout.addWidget(self._single_well_graph_wdg_2, 0, 1)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_3, 1, 0)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_4, 1, 1)
+        single_well_vis_layout.addWidget(self._single_well_graph_wdg_3, 1, 0, 1, 2)
+        # single_well_vis_layout.addWidget(self._single_well_graph_wdg_4, 1, 1)
 
         self.SW_GRAPHS = [
             self._single_well_graph_wdg_1,
             self._single_well_graph_wdg_2,
             self._single_well_graph_wdg_3,
-            self._single_well_graph_wdg_4,
+            # self._single_well_graph_wdg_4,
         ]
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
@@ -274,10 +274,10 @@ class PlateViewer(QMainWindow):
         # self._pv_analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"   # noqa: E501
         # self.initialize_widget(data, self._pv_labels_path, self._pv_analysis_path)
 
-        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"   # noqa: E501
-        self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"   # noqa: E501
-        self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis" # noqa: E501
-        self.initialize_widget(data, self._labels_path, self._analysis_path)
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
+        # self._labels_path = ("/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels") # noqa: E501
+        # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
+        # self.initialize_widget(data, self._labels_path, self._analysis_path)
         # fmt: on
         # ____________________________________________________________________________
 
