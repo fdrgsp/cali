@@ -126,6 +126,9 @@ class ROIData(BaseClass):
     spikes_burst_gaussian_sigma: float | None = None  # in seconds
     # store ROI mask as coordinates (y_coords, x_coords) and shape (height, width)
     mask_coord_and_shape: tuple[tuple[list[int], list[int]], tuple[int, int]] | None = None  # noqa: E501
+    # neuropil correction
+    neuropil_trace: list[float] | None = None
+    neuropil_correction_factor: float | None = None
 # fmt: on
 
 
@@ -1086,3 +1089,92 @@ def coordinates_to_mask(
     y_coords, x_coords = coordinates
     mask[y_coords, x_coords] = True
     return mask
+
+
+def create_neuropil_from_dilation(
+    cell_masks: list[np.ndarray],
+    height: int,
+    width: int,
+    inner_neuropil_radius: int = 2,
+    min_neuropil_pixels: int = 350,
+    dilation_iterations: int = 5
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """
+    Create neuropil masks using dilation, similar to Suite2p's approach.
+
+    Parameters
+    ----------
+    cell_masks : list[np.ndarray]
+        List of binary masks, one per cell
+    height : int
+        Image height
+    width : int
+        Image width
+    inner_neuropil_radius : int
+        Pixels to dilate for inner boundary (forbidden zone)
+    min_neuropil_pixels : int
+        Minimum pixels needed in neuropil
+    dilation_iterations : int
+        How much to dilate outward initially
+
+    Returns
+    -------
+    cell_masks_eroded : list[np.ndarray]
+        List of eroded cell masks (actual cell regions)
+    neuropil_masks : list[np.ndarray]
+        List of binary masks for neuropil regions
+    """
+    from scipy import ndimage
+
+    # Ensure cell_masks are boolean
+    cell_masks = [mask.astype(bool) for mask in cell_masks]
+
+    # Create cell_pix array (pixels belonging to any cell)
+    cell_pix = np.zeros((height, width), dtype=bool)
+    for mask in cell_masks:
+        cell_pix |= mask
+
+    # Also create a labeled version for overlap checking
+    cell_labels = np.zeros((height, width), dtype=int)
+    for idx, mask in enumerate(cell_masks):
+        cell_labels[mask] = idx + 1  # label cells 1, 2, 3, etc.
+
+    cell_masks_eroded = []
+    neuropil_masks = []
+
+    for cell_mask in cell_masks:
+        # Step 1: Create inner boundary (forbidden zone) by dilating the cell
+        forbidden_zone = ndimage.binary_dilation(
+            cell_mask, iterations=inner_neuropil_radius
+        ).astype(bool)
+
+        # Step 2: Dilate further to create potential neuropil region
+        dilated = ndimage.binary_dilation(
+            cell_mask, iterations=inner_neuropil_radius + dilation_iterations
+        ).astype(bool)
+
+        # Step 3: Get the donut region (dilated minus original cell)
+        donut_region = dilated & ~cell_mask
+
+        # Step 4: Exclude pixels that belong to other cells
+        # Only keep pixels that are in donut_region AND not in any other cell
+        valid_neuropil = donut_region & ~forbidden_zone & (cell_labels == 0)
+
+        # Step 5: Ensure minimum pixel count by expanding if needed
+        current_pixels = np.sum(valid_neuropil)
+        if current_pixels < min_neuropil_pixels:
+            extra_iterations = 0
+            while current_pixels < min_neuropil_pixels and extra_iterations < 20:
+                extra_iterations += 1
+                dilated = ndimage.binary_dilation(dilated, iterations=1).astype(bool)
+                donut_region = dilated & ~cell_mask
+                valid_neuropil = donut_region & ~forbidden_zone & (cell_labels == 0)
+                current_pixels = np.sum(valid_neuropil)
+
+        # Step 6: Erode the original mask slightly for the actual cell region
+        cell_mask_eroded = ndimage.binary_erosion(cell_mask, iterations=1).astype(bool)
+
+        cell_masks_eroded.append(cell_mask_eroded)
+        neuropil_masks.append(valid_neuropil)
+
+    return cell_masks_eroded, neuropil_masks
