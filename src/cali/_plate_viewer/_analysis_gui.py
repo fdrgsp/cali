@@ -315,6 +315,7 @@ class _NeuropilCorrectionWidget(QWidget):
 
         self.setToolTip(
             "Neuropil Correction - Background Subtraction from Surrounding Area.\n\n"
+            "Disabled by default (Inner Radius=0 or Min Pixels=0).\n\n"
             "Removes contaminating fluorescence from out-of-focus neuropil "
             "(the area surrounding cells) to improve signal purity.\n"
             "Disable neuropil correction by setting EITHER Inner Radius OR "
@@ -333,14 +334,14 @@ class _NeuropilCorrectionWidget(QWidget):
             "  the cell and excluded from neuropil due to potential contamination "
             "  from optical blur/diffraction. The neuropil region starts BEYOND this "
             "  forbidden zone. Larger values = more conservative (neuropil further "
-            "  from cell). Default: 2 pixels (suite2p default).\n"
-            "  Set to 0 to disable neuropil correction.\n\n"
+            "  from cell). Set to 0 to disable neuropil correction. Default: 0 pixels "
+            "  (suite2p default 2 pixels).\n\n"
             "• Min Pixels: Minimum number of pixels required in the neuropil mask "
             "  for a reliable background measurement. The algorithm automatically "
             "  expands outward (5 pixels per iteration, up to 100 iterations) "
             "  until this threshold is reached. Ensures statistical reliability. "
-            "  Default: 350 pixels (suite2p default).\n"
-            "  Set to 0 to disable neuropil correction.\n\n"
+            "  Set to 0 to disable neuropil correction. Default: 0 pixels "
+            "  (suite2p default 350 pixels).\n\n"
             "• Correction Factor: Scaling applied to neuropil fluorescence before "
             "  subtraction. Accounts for the fact that neuropil contamination may "
             "  differ from the actual neuropil fluorescence levels. Range: 0.0-1.0, "
@@ -357,7 +358,7 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_inner_radius_lbl = QLabel("Inner Radius (pixels):")
         self._neuropil_inner_radius_spin = QSpinBox(self)
         self._neuropil_inner_radius_spin.setRange(0, 100)
-        self._neuropil_inner_radius_spin.setValue(2)
+        self._neuropil_inner_radius_spin.setValue(0)
         np_radius_wdg = QWidget(self)
         np_radius_layout = QHBoxLayout(np_radius_wdg)
         np_radius_layout.setContentsMargins(0, 0, 0, 0)
@@ -368,7 +369,7 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_min_px_lbl = QLabel("Min Pixels:")
         self._neuropil_min_px_spin = QSpinBox(self)
         self._neuropil_min_px_spin.setRange(0, 2000)
-        self._neuropil_min_px_spin.setValue(350)
+        self._neuropil_min_px_spin.setValue(0)
         np_min_pixels_wdg = QWidget(self)
         np_min_pixels_layout = QHBoxLayout(np_min_pixels_wdg)
         np_min_pixels_layout.setContentsMargins(0, 0, 0, 0)

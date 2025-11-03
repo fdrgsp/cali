@@ -81,8 +81,8 @@ DEFAULT_SPIKE_THRESHOLD = 1
 DEFAULT_SPIKE_SYNCHRONY_MAX_LAG = 5
 DEFAULT_CALCIUM_SYNC_JITTER_WINDOW = 2
 DEFAULT_CALCIUM_NETWORK_THRESHOLD = 90.0
-DEFAULT_NEUROPIL_INNER_RADIUS = 2
-DEFAULT_NEUROPIL_MIN_PIXELS = 350
+DEFAULT_NEUROPIL_INNER_RADIUS = 0
+DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
 
 
@@ -117,7 +117,7 @@ class ROIData(BaseClass):
     neuropil_trace : list[float] | None
         Fluorescence trace from the neuropil (donut-shaped region around ROI)
     neuropil_correction_factor : float | None
-        Correction factor (typically 0.7) used for neuropil subtraction
+        Correction factor used for neuropil subtraction
     dff : list[float] | None
         ΔF/F (delta F over F) - normalized fluorescence change
     dec_dff : list[float] | None
