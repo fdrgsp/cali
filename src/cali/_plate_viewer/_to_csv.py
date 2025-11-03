@@ -284,11 +284,6 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "raw_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -300,6 +295,11 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
 
     if not rows:
         return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "raw_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -318,11 +318,6 @@ def _export_corrected_data(
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "neuropil_corrected_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -334,6 +329,11 @@ def _export_corrected_data(
 
     if not rows:
         return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "neuropil_corrected_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -350,11 +350,6 @@ def _export_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "dff_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -363,6 +358,14 @@ def _export_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = roi_data.dff
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "dff_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -379,11 +382,6 @@ def _export_dec_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) 
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "dec_dff_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -392,6 +390,14 @@ def _export_dec_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) 
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = roi_data.dec_dff
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "dec_dff_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -410,11 +416,6 @@ def _export_inferred_spikes_data(
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "inferred_spikes_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -423,6 +424,14 @@ def _export_inferred_spikes_data(
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = spikes
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "inferred_spikes_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
