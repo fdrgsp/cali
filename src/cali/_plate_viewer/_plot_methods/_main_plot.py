@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 # TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
 # fmt: off
 RAW_TRACES = "Calcium Raw Traces"
-CORRECTED_TRACES = "Calcium Corrected Traces"
+CORRECTED_TRACES = "Calcium Neuropil Corrected Traces"
 NORMALIZED_TRACES = "Calcium Normalized Traces"
 DFF = "Calcium ΔF/F0 Traces"
 DFF_NORMALIZED = "Calcium ΔF/F0 Normalized  Traces "
