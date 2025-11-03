@@ -84,7 +84,6 @@ class NeuropilData:
 
     neuropil_inner_radius: int
     neuropil_min_pixels: int
-    neuropil_dilation_iterations: int
     neuropil_correction_factor: float
 
 
@@ -96,7 +95,6 @@ class TraceExtractionData:
     decay_constant: float
     neuropil_inner_radius: int
     neuropil_min_pixels: int
-    neuropil_dilation_iterations: int
     neuropil_correction_factor: float
 
 
@@ -321,12 +319,12 @@ class _NeuropilCorrectionWidget(QWidget):
             "(the area surrounding cells) to improve signal purity.\n"
             "Disable neuropil correction by setting EITHER Inner Radius OR "
             "Min Pixels to 0.\n\n"
-            "Algorithm Overview:\n"
+            "Algorithm Overview (Suite2p Implementation):\n"
             "Creates a 'donut-shaped' neuropil mask around each cell by:\n"
             "1. Defining an inner 'forbidden zone' extending outward from cell edge\n"
-            "2. Defining an outer boundary for the neuropil region\n"
+            "2. Iteratively expanding the ROI pixel-by-pixel (5 pixels at a time)\n"
             "3. Excluding pixels belonging to other cells\n"
-            "4. Ensuring sufficient pixels for robust measurement\n\n"
+            "4. Continuing expansion until minimum pixel count is reached\n\n"
             "Corrected Fluorescence = Cell Fluorescence - "
             "(Factor x Neuropil Fluorescence)\n\n"
             "Parameters:\n"
@@ -335,31 +333,25 @@ class _NeuropilCorrectionWidget(QWidget):
             "  the cell and excluded from neuropil due to potential contamination "
             "  from optical blur/diffraction. The neuropil region starts BEYOND this "
             "  forbidden zone. Larger values = more conservative (neuropil further "
-            "  from cell). Default: 2 pixels.\n"
+            "  from cell). Default: 2 pixels (suite2p default).\n"
             "  Set to 0 to disable neuropil correction.\n\n"
             "• Min Pixels: Minimum number of pixels required in the neuropil mask "
-            "  for a reliable background measurement. If the initial donut region "
-            "  contains fewer pixels, the algorithm automatically expands outward "
-            "  (1 pixel per iteration, up to 20 iterations) until this threshold "
-            "  is reached. Ensures statistical reliability of the measurement."
-            "  Default: 350 pixels. Set to 0 to disable neuropil correction.\n\n"
-            "• Dilation Iterations: Initial expansion steps beyond the forbidden "
-            "  zone to create the outer boundary of the neuropil region. "
-            "  Total neuropil radius = Inner Radius + Dilation Iterations. "
-            "  The neuropil donut extends from Inner Radius to (Inner Radius + "
-            "  Dilation Iterations) pixels from the cell edge. More iterations = "
-            "  larger neuropil region. Default: 5 iterations.\n\n"
+            "  for a reliable background measurement. The algorithm automatically "
+            "  expands outward (5 pixels per iteration, up to 100 iterations) "
+            "  until this threshold is reached. Ensures statistical reliability. "
+            "  Default: 350 pixels (suite2p default).\n"
+            "  Set to 0 to disable neuropil correction.\n\n"
             "• Correction Factor: Scaling applied to neuropil fluorescence before "
             "  subtraction. Accounts for the fact that neuropil contamination may "
             "  differ from the actual neuropil fluorescence levels. Range: 0.0-1.0, "
-            "  Default: 0.7.\n\n"
-            "Example with Inner Radius=2, Dilation=5, Min Pixels=350:\n"
+            "  Default: 0.7 (suite2p default).\n\n"
+            "Example with Inner Radius=2, Min Pixels=350:\n"
             "1. Cell boundary at position 0\n"
             "2. Forbidden zone: 0 to 2 pixels outward from cell edge (excluded)\n"
-            "3. Neuropil region: 3 to 7 pixels from cell edge (2+5)\n"
+            "3. Initial expansion: 5 pixels at a time from forbidden zone boundary\n"
             "4. Remove any pixels overlapping with other cells\n"
-            "5. If <350 pixels remain, expand outward until ≥350 pixels\n"
-            "6. Corrected signal = Cell - 0.7 x Neuropil\n\n"
+            "5. Continue expanding until ≥350 valid pixels (max 100 iterations)\n"
+            "6. Corrected signal = Cell - 0.7 x Neuropil"
         )
 
         self._neuropil_inner_radius_lbl = QLabel("Inner Radius (pixels):")
@@ -384,17 +376,6 @@ class _NeuropilCorrectionWidget(QWidget):
         np_min_pixels_layout.addWidget(self._neuropil_min_px_lbl)
         np_min_pixels_layout.addWidget(self._neuropil_min_px_spin)
 
-        self._neuropil_dilation_lbl = QLabel("Dilation Iterations:")
-        self._neuropil_dilation_spin = QSpinBox(self)
-        self._neuropil_dilation_spin.setRange(1, 20)
-        self._neuropil_dilation_spin.setValue(5)
-        np_dilation_wdg = QWidget(self)
-        np_dilation_layout = QHBoxLayout(np_dilation_wdg)
-        np_dilation_layout.setContentsMargins(0, 0, 0, 0)
-        np_dilation_layout.setSpacing(5)
-        np_dilation_layout.addWidget(self._neuropil_dilation_lbl)
-        np_dilation_layout.addWidget(self._neuropil_dilation_spin)
-
         self._neuropil_factor_lbl = QLabel("Correction Factor:")
         self._neuropil_factor_spin = QDoubleSpinBox(self)
         self._neuropil_factor_spin.setRange(0.0, 1.0)
@@ -412,7 +393,6 @@ class _NeuropilCorrectionWidget(QWidget):
         neuropil_layout.setSpacing(5)
         neuropil_layout.addWidget(np_radius_wdg)
         neuropil_layout.addWidget(np_min_pixels_wdg)
-        neuropil_layout.addWidget(np_dilation_wdg)
         neuropil_layout.addWidget(np_factor_wdg)
 
     def value(self) -> NeuropilData:
@@ -420,7 +400,6 @@ class _NeuropilCorrectionWidget(QWidget):
         return NeuropilData(
             self._neuropil_inner_radius_spin.value(),
             self._neuropil_min_px_spin.value(),
-            self._neuropil_dilation_spin.value(),
             self._neuropil_factor_spin.value(),
         )
 
@@ -428,14 +407,12 @@ class _NeuropilCorrectionWidget(QWidget):
         """Set the values of the widget."""
         self._neuropil_inner_radius_spin.setValue(value.neuropil_inner_radius)
         self._neuropil_min_px_spin.setValue(value.neuropil_min_pixels)
-        self._neuropil_dilation_spin.setValue(value.neuropil_dilation_iterations)
         self._neuropil_factor_spin.setValue(value.neuropil_correction_factor)
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
         self._neuropil_inner_radius_lbl.setFixedWidth(width)
         self._neuropil_min_px_lbl.setFixedWidth(width)
-        self._neuropil_dilation_lbl.setFixedWidth(width)
         self._neuropil_factor_lbl.setFixedWidth(width)
 
 
@@ -515,7 +492,6 @@ class _TraceExtractionWidget(QWidget):
             self._decay_constant_spin.value(),
             neuropil_data.neuropil_inner_radius,
             neuropil_data.neuropil_min_pixels,
-            neuropil_data.neuropil_dilation_iterations,
             neuropil_data.neuropil_correction_factor,
         )
 
@@ -1077,7 +1053,6 @@ class _CalciumAnalysisGUI(QGroupBox):
             neuropil_data = NeuropilData(
                 value.trace_extraction_data.neuropil_inner_radius,
                 value.trace_extraction_data.neuropil_min_pixels,
-                value.trace_extraction_data.neuropil_dilation_iterations,
                 value.trace_extraction_data.neuropil_correction_factor,
             )
             self._neuropil_wdg.setValue(neuropil_data)
