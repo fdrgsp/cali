@@ -647,7 +647,6 @@ class _AnalyseCalciumTraces(QWidget):
                 width,
                 inner_neuropil_radius=value.trace_extraction_data.neuropil_inner_radius,
                 min_neuropil_pixels=value.trace_extraction_data.neuropil_min_pixels,
-                dilation_iterations=value.trace_extraction_data.neuropil_dilation_iterations,
             )
             # Create dicts
             eroded_masks = dict(zip(sorted_labels, cell_masks_eroded))
@@ -1129,7 +1128,6 @@ class _AnalyseCalciumTraces(QWidget):
                 decay_constant=decay,
                 neuropil_inner_radius=0,
                 neuropil_min_pixels=0,
-                neuropil_dilation_iterations=5,
                 neuropil_correction_factor=0.7,
             ),
             calcium_peaks_data=CalciumPeaksData(
