@@ -94,6 +94,10 @@ def save_trace_data_to_csv(
     except Exception as e:
         LOGGER.error(f"Error exporting RAW DATA to CSV: {e}")
     try:
+        _export_corrected_data(path, analysis_data)
+    except Exception as e:
+        LOGGER.error(f"Error exporting CORRECTED DATA to CSV: {e}")
+    try:
         _export_dff_data(path, analysis_data)
     except Exception as e:
         LOGGER.error(f"Error exporting dFF DATA to CSV: {e}")
@@ -280,11 +284,6 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "raw_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -297,6 +296,11 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
     if not rows:
         return
 
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "raw_data"
+    folder.mkdir(parents=True, exist_ok=True)
+
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
 
@@ -307,16 +311,45 @@ def _export_raw_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
     df.to_csv(folder / f"{exp_name}_raw_data.csv", index=True)
 
 
+def _export_corrected_data(
+    path: Path | str, data: dict[str, dict[str, ROIData]]
+) -> None:
+    """Save the corrected data as CSV files.
+
+    Columns are frames and rows are ROIs.
+    """
+    # store traces by well_fov and roi_key
+    rows = {}
+    for well_fov, rois in data.items():
+        for roi_key, roi_data in rois.items():
+            if roi_data.corrected_trace is None:
+                continue
+            row_name = f"{well_fov}_{roi_key}"
+            rows[row_name] = roi_data.corrected_trace
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "neuropil_corrected_data"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    # convert to DataFrame (handles unequal lengths by filling with NaN)
+    df = pd.DataFrame.from_dict(rows, orient="index")
+
+    # give the columns t0, t1, t2, ... name
+    df.columns = [f"t{i}" for i in range(df.shape[1])]
+
+    # save to CSV
+    df.to_csv(folder / f"{exp_name}_neuropil_corrected_data.csv", index=True)
+
+
 def _export_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> None:
     """Save the dFF data as CSV files.
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "dff_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -325,6 +358,14 @@ def _export_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) -> N
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = roi_data.dff
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "dff_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -341,11 +382,6 @@ def _export_dec_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) 
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "dec_dff_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -354,6 +390,14 @@ def _export_dec_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) 
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = roi_data.dec_dff
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "dec_dff_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")
@@ -372,11 +416,6 @@ def _export_inferred_spikes_data(
 
     Columns are frames and rows are ROIs.
     """
-    path = Path(path)
-    exp_name = path.stem
-    folder = path / "inferred_spikes_data"
-    folder.mkdir(parents=True, exist_ok=True)
-
     # store traces by well_fov and roi_key
     rows = {}
     for well_fov, rois in data.items():
@@ -385,6 +424,14 @@ def _export_inferred_spikes_data(
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = spikes
+
+    if not rows:
+        return
+
+    path = Path(path)
+    exp_name = path.stem
+    folder = path / "inferred_spikes_data"
+    folder.mkdir(parents=True, exist_ok=True)
 
     # convert to DataFrame (handles unequal lengths by filling with NaN)
     df = pd.DataFrame.from_dict(rows, orient="index")

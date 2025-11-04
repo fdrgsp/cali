@@ -269,6 +269,7 @@ def _plot_stimulated_rois(
     label_name = f"{data[r].well_fov_position}.tif"
     if not label_name:
         return
+    # todo: maybe get it form ROIData.mask_coord_and_shape
     labels = tifffile.imread(Path(labels_image_path) / label_name)
 
     # create a color mapping for the labels

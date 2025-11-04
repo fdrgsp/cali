@@ -34,6 +34,9 @@ from ._util import (
     DEFAULT_DFF_WINDOW,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
+    DEFAULT_NEUROPIL_CORRECTION_FACTOR,
+    DEFAULT_NEUROPIL_INNER_RADIUS,
+    DEFAULT_NEUROPIL_MIN_PIXELS,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     _BrowseWidget,
@@ -79,11 +82,23 @@ class ExperimentTypeData:
 
 
 @dataclass(frozen=True)
+class NeuropilData:
+    """Data structure to hold the neuropil correction settings."""
+
+    neuropil_inner_radius: int
+    neuropil_min_pixels: int
+    neuropil_correction_factor: float
+
+
+@dataclass(frozen=True)
 class TraceExtractionData:
     """Data structure to hold the trace extraction settings."""
 
     dff_window_size: int
     decay_constant: float
+    neuropil_inner_radius: int
+    neuropil_min_pixels: int
+    neuropil_correction_factor: float
 
 
 @dataclass(frozen=True)
@@ -295,7 +310,116 @@ class _ExperimentTypeWidget(QWidget):
             self._led_power_wdg.hide()
 
 
-class _TraceExtarctionWidget(QWidget):
+class _NeuropilCorrectionWidget(QWidget):
+    """Widget to select the neuropil correction settings."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self.setToolTip(
+            "Neuropil Correction - Background Subtraction from Surrounding Area.\n\n"
+            "Removes contaminating fluorescence from out-of-focus neuropil "
+            "(the area surrounding cells) to improve signal purity.\n\n"
+            "Disabled by default (Inner Radius=0 or Min Pixels=0).\n"
+            "Disable neuropil correction by setting EITHER Inner Radius OR "
+            "Min Pixels to 0.\n\n"
+            "Algorithm Overview (Suite2p Implementation):\n"
+            "Creates a 'donut-shaped' neuropil mask around each cell by:\n"
+            "1. Defining an inner 'forbidden zone' extending outward from cell edge\n"
+            "2. Iteratively expanding the ROI pixel-by-pixel (5 pixels at a time)\n"
+            "3. Excluding pixels belonging to other cells\n"
+            "4. Continuing expansion until minimum pixel count is reached\n"
+            "5. Corrected Fluorescence = Cell Fluorescence - "
+            "(Factor x Neuropil Fluorescence)\n\n"
+            "Parameters:\n"
+            "• Inner Radius: Distance (in pixels) extending OUTWARD from the cell "
+            " boundary to define the 'forbidden zone'.\n  This region is too close to "
+            " the cell and excluded from neuropil due to potential contamination "
+            " from optical blur/diffraction.\n  The neuropil region starts BEYOND this "
+            " forbidden zone.\n  Larger values = more conservative (neuropil further "
+            " from cell). Set to 0 to disable neuropil correction. Default: 0 pixels "
+            " (suite2p default 2 pixels).\n"
+            "• Min Pixels: Minimum number of pixels required in the neuropil mask "
+            " for a reliable background measurement.\n  The algorithm automatically "
+            " expands outward (5 pixels per iteration, up to 100 iterations) "
+            " until this threshold is reached.\n  Set to 0 to disable neuropil "
+            "correction. Default: 0 pixels (suite2p default 350 pixels).\n"
+            "• Correction Factor: Scaling applied to neuropil fluorescence before "
+            " subtraction. Accounts for the fact that neuropil contamination may "
+            " differ from\n. the actual neuropil fluorescence levels. Range: 0.0-1.0, "
+            " Default: 0.0 (suite2p default 0.70).\n"
+            "Example with Inner Radius=2, Min Pixels=350:\n"
+            "1. Cell boundary at position 0\n"
+            "2. Forbidden zone: 0 to 2 pixels outward from cell edge (excluded)\n"
+            "3. Initial expansion: 5 pixels at a time from forbidden zone boundary\n"
+            "4. Remove any pixels overlapping with other cells\n"
+            "5. Continue expanding until ≥350 valid pixels (max 100 iterations)\n"
+            "6. Corrected signal = Cell - 0.7 x Neuropil"
+        )
+
+        self._neuropil_inner_radius_lbl = QLabel("Inner Radius (pixels):")
+        self._neuropil_inner_radius_spin = QSpinBox(self)
+        self._neuropil_inner_radius_spin.setRange(0, 100)
+        self._neuropil_inner_radius_spin.setValue(DEFAULT_NEUROPIL_INNER_RADIUS)
+        np_radius_wdg = QWidget(self)
+        np_radius_layout = QHBoxLayout(np_radius_wdg)
+        np_radius_layout.setContentsMargins(0, 0, 0, 0)
+        np_radius_layout.setSpacing(5)
+        np_radius_layout.addWidget(self._neuropil_inner_radius_lbl)
+        np_radius_layout.addWidget(self._neuropil_inner_radius_spin)
+
+        self._neuropil_min_px_lbl = QLabel("Min Pixels:")
+        self._neuropil_min_px_spin = QSpinBox(self)
+        self._neuropil_min_px_spin.setRange(0, 2000)
+        self._neuropil_min_px_spin.setValue(DEFAULT_NEUROPIL_MIN_PIXELS)
+        np_min_pixels_wdg = QWidget(self)
+        np_min_pixels_layout = QHBoxLayout(np_min_pixels_wdg)
+        np_min_pixels_layout.setContentsMargins(0, 0, 0, 0)
+        np_min_pixels_layout.setSpacing(5)
+        np_min_pixels_layout.addWidget(self._neuropil_min_px_lbl)
+        np_min_pixels_layout.addWidget(self._neuropil_min_px_spin)
+
+        self._neuropil_factor_lbl = QLabel("Correction Factor:")
+        self._neuropil_factor_spin = QDoubleSpinBox(self)
+        self._neuropil_factor_spin.setRange(0.0, 1.0)
+        self._neuropil_factor_spin.setSingleStep(0.1)
+        self._neuropil_factor_spin.setValue(DEFAULT_NEUROPIL_CORRECTION_FACTOR)
+        np_factor_wdg = QWidget(self)
+        np_factor_layout = QHBoxLayout(np_factor_wdg)
+        np_factor_layout.setContentsMargins(0, 0, 0, 0)
+        np_factor_layout.setSpacing(5)
+        np_factor_layout.addWidget(self._neuropil_factor_lbl)
+        np_factor_layout.addWidget(self._neuropil_factor_spin)
+
+        neuropil_layout = QVBoxLayout(self)
+        neuropil_layout.setContentsMargins(0, 0, 0, 0)
+        neuropil_layout.setSpacing(5)
+        neuropil_layout.addWidget(np_radius_wdg)
+        neuropil_layout.addWidget(np_min_pixels_wdg)
+        neuropil_layout.addWidget(np_factor_wdg)
+
+    def value(self) -> NeuropilData:
+        """Get the current values of the widget."""
+        return NeuropilData(
+            self._neuropil_inner_radius_spin.value(),
+            self._neuropil_min_px_spin.value(),
+            self._neuropil_factor_spin.value(),
+        )
+
+    def setValue(self, value: NeuropilData) -> None:
+        """Set the values of the widget."""
+        self._neuropil_inner_radius_spin.setValue(value.neuropil_inner_radius)
+        self._neuropil_min_px_spin.setValue(value.neuropil_min_pixels)
+        self._neuropil_factor_spin.setValue(value.neuropil_correction_factor)
+
+    def set_labels_width(self, width: int) -> None:
+        """Set the width of the labels."""
+        self._neuropil_inner_radius_lbl.setFixedWidth(width)
+        self._neuropil_min_px_lbl.setFixedWidth(width)
+        self._neuropil_factor_lbl.setFixedWidth(width)
+
+
+class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
@@ -340,11 +464,11 @@ class _TraceExtarctionWidget(QWidget):
         self._decay_const_lbl = QLabel("Decay Constant (s):")
         self._decay_const_lbl.setSizePolicy(*FIXED)
         self._decay_constant_spin = QDoubleSpinBox(self)
-        dec_wdg_layout = QHBoxLayout(self._dec_wdg)
         self._decay_constant_spin.setDecimals(2)
         self._decay_constant_spin.setRange(0.0, 10.0)
         self._decay_constant_spin.setSingleStep(0.1)
         self._decay_constant_spin.setSpecialValueText("Auto")
+        dec_wdg_layout = QHBoxLayout(self._dec_wdg)
         dec_wdg_layout.setContentsMargins(0, 0, 0, 0)
         dec_wdg_layout.setSpacing(5)
         dec_wdg_layout.addWidget(self._decay_const_lbl)
@@ -364,11 +488,14 @@ class _TraceExtarctionWidget(QWidget):
         self._dff_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
 
-    def value(self) -> TraceExtractionData:
+    def value(self, neuropil_data: NeuropilData) -> TraceExtractionData:
         """Get the current values of the widget."""
         return TraceExtractionData(
             self._dff_window_size_spin.value(),
             self._decay_constant_spin.value(),
+            neuropil_data.neuropil_inner_radius,
+            neuropil_data.neuropil_min_pixels,
+            neuropil_data.neuropil_correction_factor,
         )
 
     def setValue(self, value: TraceExtractionData) -> None:
@@ -869,7 +996,8 @@ class _CalciumAnalysisGUI(QGroupBox):
 
         self._plate_map_wdg = _PlateMapWidget(self)
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
-        self._trace_extraction_wdg = _TraceExtarctionWidget(self)
+        self._neuropil_wdg = _NeuropilCorrectionWidget(self)
+        self._trace_extraction_wdg = _TraceExtractionWidget(self)
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
         self._positions_wdg = _ChoosePositionsWidget(self)
@@ -881,6 +1009,8 @@ class _CalciumAnalysisGUI(QGroupBox):
         main_layout.addWidget(self._plate_map_wdg)
         main_layout.addWidget(create_divider_line("Type of Experiment"))
         main_layout.addWidget(self._experiment_type_wdg)
+        main_layout.addWidget(create_divider_line("Neuropil Settings"))
+        main_layout.addWidget(self._neuropil_wdg)
         main_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
         main_layout.addWidget(self._trace_extraction_wdg)
         main_layout.addWidget(create_divider_line("Calcium Peaks"))
@@ -894,6 +1024,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
         self._plate_map_wdg.set_labels_width(fix_width)
         self._experiment_type_wdg.set_labels_width(fix_width)
+        self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
@@ -903,10 +1034,11 @@ class _CalciumAnalysisGUI(QGroupBox):
 
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
+        neuropil_data = self._neuropil_wdg.value()
         return AnalysisSettingsData(
             self._plate_map_wdg.value(),
             self._experiment_type_wdg.value(),
-            self._trace_extraction_wdg.value(),
+            self._trace_extraction_wdg.value(neuropil_data),
             self._calcium_peaks_wdg.value(),
             self._spike_wdg.value(),
             self._positions_wdg.value(),
@@ -920,6 +1052,13 @@ class _CalciumAnalysisGUI(QGroupBox):
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         if value.trace_extraction_data is not None:
             self._trace_extraction_wdg.setValue(value.trace_extraction_data)
+            # Also set the neuropil widget from trace extraction data
+            neuropil_data = NeuropilData(
+                value.trace_extraction_data.neuropil_inner_radius,
+                value.trace_extraction_data.neuropil_min_pixels,
+                value.trace_extraction_data.neuropil_correction_factor,
+            )
+            self._neuropil_wdg.setValue(neuropil_data)
         if value.calcium_peaks_data is not None:
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
@@ -931,6 +1070,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         """Enable or disable the widget."""
         self._plate_map_wdg.setEnabled(enable)
         self._experiment_type_wdg.setEnabled(enable)
+        self._neuropil_wdg.setEnabled(enable)
         self._trace_extraction_wdg.setEnabled(enable)
         self._calcium_peaks_wdg.setEnabled(enable)
         self._spike_wdg.setEnabled(enable)

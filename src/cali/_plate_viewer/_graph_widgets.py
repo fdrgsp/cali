@@ -4,10 +4,12 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import numpy as np
+from fonticon_mdi6 import MDI6
+from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.figure import Figure
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QMouseEvent, QStandardItem, QStandardItemModel
+from qtpy.QtGui import QIcon, QMouseEvent, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
     QAction,
     QComboBox,
@@ -22,6 +24,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from superqt.fonticon import icon
 
 from ._plot_methods import plot_multi_well_data, plot_single_well_data
 from ._plot_methods._main_plot import (
@@ -30,12 +33,24 @@ from ._plot_methods._main_plot import (
 )
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     from ._fov_table import WellInfo
     from ._plate_viewer import PlateViewer
     from ._util import ROIData
 
 RED = "#C33"
 SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+class _CustomNavigationToolbar(NavigationToolbar2QT):
+    """Custom navigation toolbar that excludes the save button."""
+
+    # Override toolitems to exclude 'Save' since we have a custom save button
+    # that saves with higher resolution.
+    toolitems: ClassVar = [
+        item for item in NavigationToolbar2QT.toolitems if item[0] != "Save"
+    ]
 
 
 class _PersistentMenu(QMenu):
@@ -205,7 +220,8 @@ class _SingleWellGraphWidget(QWidget):
 
         self._combo.currentTextChanged.connect(self._on_combo_changed)
 
-        self._save_btn = QPushButton("Save", self)
+        self._save_btn = QPushButton("Save Image", self)
+        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
         self._save_btn.clicked.connect(self._on_save)
 
         top = QHBoxLayout()
@@ -220,11 +236,20 @@ class _SingleWellGraphWidget(QWidget):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
 
+        # Create navigation toolbar (hidden by default, shown only for specific plots)
+        self.toolbar = _CustomNavigationToolbar(self.canvas, self)
+        # Make the toolbar more compact
+        self.toolbar.setMaximumHeight(32)
+        self.toolbar.setIconSize(self.toolbar.iconSize() * 0.7)
+        # self.toolbar.hide()
+        self.toolbar.show()
+
         # Create a layout and add the canvas to it
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(top)
         layout.addWidget(self._choose_dysplayed_traces)
+        layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas)
 
         self.set_combo_text_red(True)
@@ -271,7 +296,10 @@ class _SingleWellGraphWidget(QWidget):
         # open a file dialog to select the save location
         name = self._combo.currentText().replace(" ", "_")
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Image", name, "PNG Image (*.png)"
+            self,
+            "Save Image",
+            name,
+            "PNG Image (*.png);;JPEG Image (*.jpg);;TIFF Image (*.tiff)",
         )
         if not filename:
             return
@@ -377,7 +405,10 @@ class _MultilWellGraphWidget(QWidget):
         # open a file dialog to select the save location
         name = self._combo.currentText().replace(" ", "_")
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Image", name, "PNG Image (*.png)"
+            self,
+            "Save Image",
+            name,
+            "PNG Image (*.png);;JPEG Image (*.jpg);;TIFF Image (*.tiff)",
         )
         if not filename:
             return
