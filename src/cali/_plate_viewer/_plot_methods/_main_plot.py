@@ -47,6 +47,10 @@ from ._single_wells_plots._plot_inferred_spikes import (
     _plot_inferred_spikes,
     _plot_inferred_spikes_normalized_with_bursts,
 )
+from ._single_wells_plots._plot_neuropil_traces import (
+    _plot_neuropil_traces,
+)
+from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
 
 if TYPE_CHECKING:
     from cali._plate_viewer._graph_widgets import (
@@ -58,6 +62,7 @@ if TYPE_CHECKING:
 # TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
 # fmt: off
 RAW_TRACES = "Calcium Raw Traces"
+CORRECTED_TRACES = "Calcium Neuropil Corrected Traces"
 NORMALIZED_TRACES = "Calcium Normalized Traces"
 DFF = "Calcium ΔF/F0 Traces"
 DFF_NORMALIZED = "Calcium ΔF/F0 Normalized  Traces "
@@ -107,11 +112,14 @@ STIMULATED_PEAKS_AMP = "Stim Calcium Peaks Amplitudes"
 NON_STIMULATED_PEAKS_AMP = "Non-Stim Calcium Peaks Amplitudes"
 STIMULATED_PEAKS_FREQ = "Stim Calcium Peaks Frequencies"
 NON_STIMULATED_PEAKS_FREQ = "Non-Stim Calcium Peaks Frequencies"
+NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
+NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
 
 # GROUPS OF PLOTTING OPTIONS (SEE `SINGLE_WELL_COMBO_OPTIONS_DICT` BELOW)
 CALCIUM_TRACES_GROUP = {
-    RAW_TRACES: {},
+    RAW_TRACES: {"raw": True},
+    CORRECTED_TRACES: {},
     NORMALIZED_TRACES: {"normalize": True},
     DFF: {"dff": True},
     DFF_NORMALIZED: {"dff": True, "normalize": True},
@@ -121,6 +129,11 @@ CALCIUM_TRACES_GROUP = {
     DEC_DFF_NORMALIZED: {"dec": True, "normalize": True},
     DEC_DFF_NORMALIZED_ACTIVE_ONLY: {"dec": True, "normalize": True, "active_only": True},  # noqa: E501
     DEC_DFF_NORMALIZED_WITH_PEAKS: {"dec": True, "normalize": True, "with_peaks": True},
+}
+
+NEUROPIL_GROUP = {  # type: ignore
+    NEUROPIL_ROI_MASKS: {},
+    NEUROPIL_TRACES: {},
 }
 
 INFERRED_SPIKES_GROUP = {
@@ -188,6 +201,7 @@ EVOKED_GROUP = {
 # The keys are sections that wont be selectable but are used as dividers
 SINGLE_WELL_COMBO_OPTIONS_DICT = {
     "----------Calcium Traces-----------------------------------": CALCIUM_TRACES_GROUP.keys(),  # noqa: E501
+    "----------Neuropil Correction------------------------------": NEUROPIL_GROUP.keys(),  # noqa: E501
     "----------Calcium Peaks Amplitude and Frequency---------": AMPLITUDE_AND_FREQUENCY_GROUP.keys(),  # noqa: E501
     "----------Calcium Peaks Interevent Interval----------------": INTEREVENT_INTERVAL_GROUP.keys(),  # noqa: E501
     "----------Inferred Spikes Traces---------------------------": INFERRED_SPIKES_GROUP.keys(),  # noqa: E501
@@ -212,6 +226,13 @@ def plot_single_well_data(
     # TRACES GROUP
     if text in CALCIUM_TRACES_GROUP:
         return _plot_traces_data(widget, data, rois, **CALCIUM_TRACES_GROUP[text])
+
+    # NEUROPIL GROUP
+    if text in NEUROPIL_GROUP:
+        if text == NEUROPIL_ROI_MASKS:
+            return _plot_neuropil_masks(widget, data, rois, **NEUROPIL_GROUP[text])
+        elif text == NEUROPIL_TRACES:
+            return _plot_neuropil_traces(widget, data, rois, **NEUROPIL_GROUP[text])
 
     # AMPLITUDE AND FREQUENCY GROUP
     if text in AMPLITUDE_AND_FREQUENCY_GROUP:

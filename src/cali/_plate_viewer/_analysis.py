@@ -57,6 +57,9 @@ from ._util import (
     DEFAULT_DFF_WINDOW,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
+    DEFAULT_NEUROPIL_CORRECTION_FACTOR,
+    DEFAULT_NEUROPIL_INNER_RADIUS,
+    DEFAULT_NEUROPIL_MIN_PIXELS,
     DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
@@ -65,6 +68,9 @@ from ._util import (
     GENOTYPE_MAP,
     GREEN,
     LED_POWER_EQUATION,
+    NEUROPIL_CORRECTION_FACTOR,
+    NEUROPIL_INNER_RADIUS,
+    NEUROPIL_MIN_PIXELS,
     PEAKS_DISTANCE,
     PEAKS_HEIGHT_MODE,
     PEAKS_HEIGHT_VALUE,
@@ -80,6 +86,7 @@ from ._util import (
     _ElapsedTimer,
     _WaitingProgressBarWidget,
     calculate_dff,
+    create_neuropil_from_dilation,
     create_stimulation_mask,
     get_iei,
     get_overlap_roi_with_stimulated_area,
@@ -627,6 +634,30 @@ class _AnalyseCalciumTraces(QWidget):
         if self._check_for_abort_requested():
             return
 
+        value = self._get_validated_settings()
+
+        # Prepare masks for neuropil correction if enabled
+        eroded_masks = labels_masks
+        neuropil_masks_dict = {}
+        if (
+            value.trace_extraction_data.neuropil_inner_radius > 0
+            and value.trace_extraction_data.neuropil_min_pixels > 0
+        ):
+            # Get list of masks in order
+            sorted_labels = sorted(labels_masks.keys())
+            cell_masks = [labels_masks[label] for label in sorted_labels]
+            height, width = data.shape[1], data.shape[2]  # assuming data is (t, y, x)
+            cell_masks_eroded, neuropil_masks = create_neuropil_from_dilation(
+                cell_masks,
+                height,
+                width,
+                inner_neuropil_radius=value.trace_extraction_data.neuropil_inner_radius,
+                min_neuropil_pixels=value.trace_extraction_data.neuropil_min_pixels,
+            )
+            # Create dicts
+            eroded_masks = dict(zip(sorted_labels, cell_masks_eroded))
+            neuropil_masks_dict = dict(zip(sorted_labels, neuropil_masks))
+
         # get the exposure time from the metadata
         exp_time = meta[0][event_key].get("exposure", 0.0)
         # get timepoints
@@ -651,7 +682,7 @@ class _AnalyseCalciumTraces(QWidget):
 
         msg = f"Extracting Traces Data from Well {fov_name}."
         LOGGER.info(msg)
-        for label_value, label_mask in tqdm(labels_masks.items(), desc=msg):
+        for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
             if self._check_for_abort_requested():
                 LOGGER.info(f"Cancellation requested during processing of {fov_name}")
                 break
@@ -663,10 +694,19 @@ class _AnalyseCalciumTraces(QWidget):
                 evoked_experiment_meta,
                 fov_name,
                 label_value,
-                label_mask,
+                eroded_masks[label_value],
                 tot_time_sec,
                 evoked_experiment,
                 elapsed_time_list,
+                neuropil_masks_dict.get(label_value),
+                (
+                    value.trace_extraction_data.neuropil_correction_factor
+                    if (
+                        value.trace_extraction_data.neuropil_inner_radius > 0
+                        and value.trace_extraction_data.neuropil_min_pixels > 0
+                    )
+                    else None
+                ),
             )
 
         # Only save and update progress if not cancelled
@@ -722,6 +762,8 @@ class _AnalyseCalciumTraces(QWidget):
         tot_time_sec: float,
         evoked_exp: bool,
         elapsed_time_list: list[float],
+        neuropil_mask: np.ndarray | None = None,
+        neuropil_correction_factor: float | None = None,
     ) -> None:
         """Process individual ROI traces."""
         # Early exit if cancellation is requested
@@ -758,14 +800,29 @@ class _AnalyseCalciumTraces(QWidget):
             )
 
         # compute the mean for each frame
-        roi_trace: np.ndarray = masked_data.mean(axis=1)
+        roi_trace_uncorrected: np.ndarray = masked_data.mean(axis=1)
         win = value.trace_extraction_data.dff_window_size
 
         # Check for cancellation before DFF calculation
         if self._check_for_abort_requested():
             return
 
+        # Apply neuropil correction if enabled
+        neuropil_trace = None
+        roi_trace = roi_trace_uncorrected.copy()  # Start with uncorrected trace
+        if neuropil_mask is not None and neuropil_correction_factor is not None:
+            neuropil_masked_data = data[:, neuropil_mask]
+            if neuropil_masked_data.shape[1] > 0:  # ensure there are pixels
+                neuropil_trace = neuropil_masked_data.mean(axis=1)
+                # Apply correction to roi_trace for downstream analysis
+                roi_trace = roi_trace - neuropil_correction_factor * neuropil_trace
+            else:
+                LOGGER.warning(
+                    f"No neuropil pixels found for ROI {label_value} in {fov_name}"
+                )
+
         # calculate the dff of the roi trace
+        # (using corrected trace if neuropil is enabled)
         dff = calculate_dff(roi_trace, window=win, plot=False)
 
         # Check for cancellation after DFF calculation
@@ -909,10 +966,24 @@ class _AnalyseCalciumTraces(QWidget):
         # get mask coords and shape for the ROI
         mask_coords, mask_shape = mask_to_coordinates(label_mask)
 
+        # get neuropil mask coords and shape if neuropil mask exists
+        neuropil_mask_coords = neuropil_mask_shape = None
+        if neuropil_mask is not None:
+            neuropil_mask_coords, neuropil_mask_shape = mask_to_coordinates(
+                neuropil_mask
+            )
+
         # store the data to the analysis dict as ROIData
         self._analysis_data[fov_name][str(label_value)] = ROIData(
             well_fov_position=fov_name,
-            raw_trace=cast("list[float]", roi_trace.tolist()),
+            raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
+            corrected_trace=cast("list[float]", roi_trace.tolist()),
+            neuropil_trace=(
+                cast("list[float]", neuropil_trace.tolist())
+                if neuropil_trace is not None
+                else None
+            ),
+            neuropil_correction_factor=neuropil_correction_factor,
             dff=cast("list[float]", dff.tolist()),
             dec_dff=dec_dff.tolist(),
             peaks_dec_dff=peaks_dec_dff.tolist(),
@@ -941,6 +1012,11 @@ class _AnalyseCalciumTraces(QWidget):
             spikes_burst_min_duration=value.spikes_data.burst_min_duration,
             spikes_burst_gaussian_sigma=value.spikes_data.burst_blur_sigma,
             mask_coord_and_shape=(mask_coords, mask_shape),
+            neuropil_mask_coord_and_shape=(
+                (neuropil_mask_coords, neuropil_mask_shape)
+                if neuropil_mask_coords is not None and neuropil_mask_shape is not None
+                else None
+            ),
         )
 
     def _get_conditions(self, pos_name: str) -> tuple[str | None, str | None]:
@@ -1048,6 +1124,10 @@ class _AnalyseCalciumTraces(QWidget):
         settings = cast("dict", json.load(f))
         # led power equation
         led_eq = cast("str", settings.get(LED_POWER_EQUATION, ""))
+        # neuropil correction data
+        neuropil_radius = cast("int", settings.get(NEUROPIL_INNER_RADIUS, DEFAULT_NEUROPIL_INNER_RADIUS))  # noqa: E501
+        neuropil_min_px = cast("int", settings.get(NEUROPIL_MIN_PIXELS, DEFAULT_NEUROPIL_MIN_PIXELS))  # noqa: E501
+        neuropil_factor = cast("float", settings.get(NEUROPIL_CORRECTION_FACTOR, DEFAULT_NEUROPIL_CORRECTION_FACTOR))  # noqa: E501
         # trace extraction data
         dff_window = cast("int", settings.get(DFF_WINDOW, DEFAULT_DFF_WINDOW))
         decay = cast("float", settings.get(DECAY_CONSTANT, 0.0))
@@ -1070,7 +1150,11 @@ class _AnalyseCalciumTraces(QWidget):
         value = AnalysisSettingsData(
             experiment_type_data=ExperimentTypeData(led_power_equation=led_eq),
             trace_extraction_data=TraceExtractionData(
-                dff_window_size=dff_window, decay_constant=decay
+                dff_window_size=dff_window,
+                decay_constant=decay,
+                neuropil_inner_radius=neuropil_radius,
+                neuropil_min_pixels=neuropil_min_px,
+                neuropil_correction_factor=neuropil_factor,
             ),
             calcium_peaks_data=CalciumPeaksData(
                 peaks_height=h_val,
@@ -1136,6 +1220,9 @@ class _AnalyseCalciumTraces(QWidget):
             values = self._get_validated_settings()
 
             # GUI always provides these values so we can safely access them
+            settings[NEUROPIL_INNER_RADIUS] = values.trace_extraction_data.neuropil_inner_radius  # noqa: E501
+            settings[NEUROPIL_MIN_PIXELS] = values.trace_extraction_data.neuropil_min_pixels  # noqa: E501
+            settings[NEUROPIL_CORRECTION_FACTOR] = values.trace_extraction_data.neuropil_correction_factor  # noqa: E501
             settings[DFF_WINDOW] = values.trace_extraction_data.dff_window_size
             settings[DECAY_CONSTANT] = values.trace_extraction_data.decay_constant
 
