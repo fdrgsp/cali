@@ -20,13 +20,16 @@ from typing import TYPE_CHECKING
 
 from models import (
     FOV,
+    ROI,
     AnalysisSettings,
     Condition,
+    DataAnalysis,
     Experiment,
+    Mask,
     Plate,
+    Traces,
     Well,
     create_db_and_tables,
-    roi_from_roi_data,
 )
 from sqlmodel import Session, create_engine
 
@@ -348,6 +351,135 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
                 continue
 
     return experiment
+
+
+def roi_from_roi_data(
+    roi_data: ROIData,
+    fov_id: int,
+    label_value: int,
+    settings_id: int | None = None,
+) -> tuple[ROI, Traces, DataAnalysis, Mask, Mask | None]:
+    """Convert ROIData dataclass to SQLModel entities.
+
+    This helper function converts the existing ROIData dataclass format
+    to the new normalized SQLModel format with separate tables for different
+    data types. The relationships between entities will be established
+    automatically via SQLModel after the ROI is added to the session.
+
+    Parameters
+    ----------
+    roi_data : ROIData
+        Original ROIData from analysis
+    fov_id : int
+        Parent FOV database ID
+    label_value : int
+        ROI label number
+    settings_id : int | None
+        Analysis settings ID to associate with this ROI
+
+    Returns
+    -------
+    tuple[ROI, Traces, DataAnalysis, Mask, Mask | None]
+        Tuple of SQLModel instances ready to be added to database:
+        (roi, trace, data_analysis, roi_mask, neuropil_mask)
+
+        Note: Add masks first to get their IDs, then set the foreign keys on ROI.
+
+    Example
+    -------
+    >>> from cali._plate_viewer._util import ROIData
+    >>> roi_data = ROIData(...)  # from existing analysis
+    >>> roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
+    ...     roi_data, fov_id=uuid.uuid4(), label_value=1
+    ... )
+    >>> # Add masks first to get their IDs
+    >>> session.add(roi_mask)
+    >>> if neuropil_mask:
+    ...     session.add(neuropil_mask)
+    >>> session.flush()
+    >>>
+    >>> # Set mask foreign keys on ROI
+    >>> roi.roi_mask_id = roi_mask.id
+    >>> if neuropil_mask:
+    ...     roi.neuropil_mask_id = neuropil_mask.id
+    >>>
+    >>> # Now add ROI and related entities
+    >>> session.add(roi)
+    >>> session.flush()
+    >>> trace.roi_id = roi.id
+    >>> data_analysis.roi_id = roi.id
+    >>> session.add_all([trace, data_analysis])
+    >>> session.commit()
+    """
+    # Create ROI core
+    roi = ROI(
+        fov_id=fov_id,
+        label_value=label_value,
+        analysis_settings_id=settings_id,
+        cell_size=roi_data.cell_size,
+        cell_size_units=roi_data.cell_size_units,
+        total_recording_time_sec=roi_data.total_recording_time_sec,
+        active=roi_data.active,
+        stimulated=roi_data.stimulated,
+    )
+
+    # Create Trace (roi_id will be set after ROI is added to session)
+    trace = Traces(
+        raw_trace=roi_data.raw_trace,
+        corrected_trace=roi_data.corrected_trace,
+        neuropil_trace=roi_data.neuropil_trace,
+        dff=roi_data.dff,
+        dec_dff=roi_data.dec_dff,
+        x_axis=roi_data.elapsed_time_list_ms,
+        roi=roi,  # Use relationship instead
+    )
+
+    # Create DataAnalysis
+    data_analysis = DataAnalysis(
+        peaks_dec_dff=roi_data.peaks_dec_dff,
+        peaks_amplitudes_dec_dff=roi_data.peaks_amplitudes_dec_dff,
+        dec_dff_frequency=roi_data.dec_dff_frequency,
+        iei=roi_data.iei,
+        inferred_spikes=roi_data.inferred_spikes,
+        roi=roi,  # Use relationship instead
+    )
+
+    # Handle ROI mask coordinate conversion
+    roi_mask_y, roi_mask_x, roi_mask_h, roi_mask_w = None, None, None, None
+    if roi_data.mask_coord_and_shape:
+        (y_coords, x_coords), (height, width) = roi_data.mask_coord_and_shape
+        roi_mask_y, roi_mask_x = y_coords, x_coords
+        roi_mask_h, roi_mask_w = height, width
+
+    # Handle neuropil mask coordinate conversion
+    neuropil_mask_y, neuropil_mask_x = None, None
+    neuropil_mask_h, neuropil_mask_w = None, None
+    if roi_data.neuropil_mask_coord_and_shape:
+        (y_coords, x_coords), (height, width) = roi_data.neuropil_mask_coord_and_shape
+        neuropil_mask_y, neuropil_mask_x = y_coords, x_coords
+        neuropil_mask_h, neuropil_mask_w = height, width
+
+    # Create ROI Mask
+    roi_mask = Mask(
+        coords_y=roi_mask_y,
+        coords_x=roi_mask_x,
+        height=roi_mask_h,
+        width=roi_mask_w,
+        mask_type="roi",
+    )
+
+    # Create Neuropil Mask (if data available)
+    neuropil_mask = None
+    if roi_data.neuropil_mask_coord_and_shape:
+        neuropil_mask = Mask(
+            coords_y=neuropil_mask_y,
+            coords_x=neuropil_mask_x,
+            height=neuropil_mask_h,
+            width=neuropil_mask_w,
+            mask_type="neuropil",
+        )
+
+    return (roi, trace, data_analysis, roi_mask, neuropil_mask)
 
 
 def save_experiment_to_db(
