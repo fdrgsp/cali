@@ -14,7 +14,7 @@ from models import (
     Experiment,
     Plate,
     Well,
-    create_tables,
+    create_db_and_tables,
 )
 from sqlmodel import Session, create_engine, select
 
@@ -23,7 +23,7 @@ def quick_example() -> None:
     """Quick example of creating and querying calcium imaging data."""
     # 1. Create database
     engine = create_engine("sqlite:///example.db")
-    create_tables(engine)
+    create_db_and_tables(engine)
 
     with Session(engine) as session:
         # 2. Create experiment hierarchy
