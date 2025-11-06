@@ -18,7 +18,11 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from models import (
+from sqlmodel import Session, create_engine
+
+from cali._plate_viewer._util import ROIData
+
+from ._models import (
     FOV,
     ROI,
     AnalysisSettings,
@@ -31,79 +35,9 @@ from models import (
     Well,
     create_db_and_tables,
 )
-from sqlmodel import Session, create_engine
-
-from cali._plate_viewer._util import ROIData
 
 if TYPE_CHECKING:
     from useq import WellPlate
-
-
-def parse_well_name(well_name: str) -> tuple[int, int]:
-    """Parse well name like 'B5' into (row, column) indices.
-
-    Parameters
-    ----------
-    well_name : str
-        Well name (e.g., 'B5', 'A1')
-
-    Returns
-    -------
-    tuple[int, int]
-        (row, column) - Zero-indexed row and column
-
-    Raises
-    ------
-    ValueError
-        If well_name is not in the expected format
-    """
-    if not well_name or len(well_name) < 2:
-        raise ValueError(
-            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1'"
-        )
-
-    if not well_name[0].isalpha():
-        raise ValueError(
-            f"Invalid well name: '{well_name}'. First character must be a letter"
-        )
-
-    if not well_name[1:].isdigit():
-        raise ValueError(
-            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1' "
-            f"(letter followed by number)"
-        )
-
-    row = ord(well_name[0].upper()) - ord("A")
-    col = int(well_name[1:]) - 1
-    return row, col
-
-
-def load_plate_map(path: Path) -> dict[str, dict[str, str]]:
-    """Load plate map from JSON file.
-
-    Parameters
-    ----------
-    path : Path
-        Path to plate map JSON file
-
-    Returns
-    -------
-    dict[str, dict[str, str]]
-        Dictionary mapping well names to condition info
-    """
-    if not path.exists():
-        return {}
-
-    with open(path) as f:
-        data = json.load(f)
-
-    plate_map = {}
-    for well_data in data:
-        well_name = well_data[0]
-        condition_name, color = well_data[2]
-        plate_map[well_name] = {"name": condition_name, "color": color}
-
-    return plate_map
 
 
 def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experiment:
@@ -327,7 +261,7 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
                 # Use roi_from_roi_data helper
                 roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
                     roi_data,
-                    fov_id=fov.id,  # Will be None until saved to DB
+                    fov_id=fov.id or 0,  # Placeholder, will be set via relationship
                     label_value=int(roi_label),
                     settings_id=(analysis_settings.id if analysis_settings else None),
                 )
@@ -353,9 +287,76 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
     return experiment
 
 
+def parse_well_name(well_name: str) -> tuple[int, int]:
+    """Parse well name like 'B5' into (row, column) indices.
+
+    Parameters
+    ----------
+    well_name : str
+        Well name (e.g., 'B5', 'A1')
+
+    Returns
+    -------
+    tuple[int, int]
+        (row, column) - Zero-indexed row and column
+
+    Raises
+    ------
+    ValueError
+        If well_name is not in the expected format
+    """
+    if not well_name or len(well_name) < 2:
+        raise ValueError(
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1'"
+        )
+
+    if not well_name[0].isalpha():
+        raise ValueError(
+            f"Invalid well name: '{well_name}'. First character must be a letter"
+        )
+
+    if not well_name[1:].isdigit():
+        raise ValueError(
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1' "
+            f"(letter followed by number)"
+        )
+
+    row = ord(well_name[0].upper()) - ord("A")
+    col = int(well_name[1:]) - 1
+    return row, col
+
+
+def load_plate_map(path: Path) -> dict[str, dict[str, str]]:
+    """Load plate map from JSON file.
+
+    Parameters
+    ----------
+    path : Path
+        Path to plate map JSON file
+
+    Returns
+    -------
+    dict[str, dict[str, str]]
+        Dictionary mapping well names to condition info
+    """
+    if not path.exists():
+        return {}
+
+    with open(path) as f:
+        data = json.load(f)
+
+    plate_map = {}
+    for well_data in data:
+        well_name = well_data[0]
+        condition_name, color = well_data[2]
+        plate_map[well_name] = {"name": condition_name, "color": color}
+
+    return plate_map
+
+
 def roi_from_roi_data(
     roi_data: ROIData,
-    fov_id: int,
+    fov_id: int | None,
     label_value: int,
     settings_id: int | None = None,
 ) -> tuple[ROI, Traces, DataAnalysis, Mask, Mask | None]:
@@ -370,8 +371,8 @@ def roi_from_roi_data(
     ----------
     roi_data : ROIData
         Original ROIData from analysis
-    fov_id : int
-        Parent FOV database ID
+    fov_id : int | None
+        Parent FOV database ID (can be None before saving to DB)
     label_value : int
         ROI label number
     settings_id : int | None
@@ -390,7 +391,7 @@ def roi_from_roi_data(
     >>> from cali._plate_viewer._util import ROIData
     >>> roi_data = ROIData(...)  # from existing analysis
     >>> roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
-    ...     roi_data, fov_id=uuid.uuid4(), label_value=1
+    ...     roi_data, fov_id=1, label_value=1
     ... )
     >>> # Add masks first to get their IDs
     >>> session.add(roi_mask)
@@ -411,14 +412,11 @@ def roi_from_roi_data(
     >>> session.add_all([trace, data_analysis])
     >>> session.commit()
     """
-    # Create ROI core
+    # Create ROI core (fov_id placeholder if None, will be set via relationship)
     roi = ROI(
-        fov_id=fov_id,
+        fov_id=fov_id if fov_id is not None else 0,
         label_value=label_value,
         analysis_settings_id=settings_id,
-        cell_size=roi_data.cell_size,
-        cell_size_units=roi_data.cell_size_units,
-        total_recording_time_sec=roi_data.total_recording_time_sec,
         active=roi_data.active,
         stimulated=roi_data.stimulated,
     )
@@ -436,6 +434,9 @@ def roi_from_roi_data(
 
     # Create DataAnalysis
     data_analysis = DataAnalysis(
+        cell_size=roi_data.cell_size,
+        cell_size_units=roi_data.cell_size_units,
+        total_recording_time_sec=roi_data.total_recording_time_sec,
         peaks_dec_dff=roi_data.peaks_dec_dff,
         peaks_amplitudes_dec_dff=roi_data.peaks_amplitudes_dec_dff,
         dec_dff_frequency=roi_data.dec_dff_frequency,

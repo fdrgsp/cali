@@ -34,8 +34,8 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
-from cali._readers import OMEZarrReader, TensorstoreZarrReader
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
+from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 from ._analysis import EVOKED, _AnalyseCalciumTraces
 from ._analysis_gui import AnalysisSettingsData, ExperimentTypeData

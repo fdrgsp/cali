@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Utility script to visualize SQLModel experiment hierarchies.
 
 Usage:
@@ -6,12 +5,13 @@ Usage:
     python visualize_experiment.py --list  # List all experiments
 """
 
-from models import Experiment
 from rich.console import Console
 from rich.tree import Tree
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 from typing_extensions import Literal
+
+from ._models import Experiment
 
 MaxTreeLevel = Literal["experiment", "plate", "well", "fov", "roi"]
 
