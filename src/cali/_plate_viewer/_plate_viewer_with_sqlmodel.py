@@ -296,7 +296,7 @@ class PlateViewer(QMainWindow):
 
         data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         self._labels_path = (
-            "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+            "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
         )
         self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         self.initialize_widget_from_directories(
