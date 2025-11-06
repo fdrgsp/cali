@@ -17,10 +17,24 @@ from typing import Any, Optional
 from sqlalchemy.engine import Engine
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
+from cali._plate_viewer._analysis_gui import MULTIPLIER
+from cali._plate_viewer._util import (
+    DEFAULT_BURST_GAUSS_SIGMA,
+    DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
+    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
+    DEFAULT_DFF_WINDOW,
+    DEFAULT_HEIGHT,
+    DEFAULT_MIN_BURST_DURATION,
+    DEFAULT_PEAKS_DISTANCE,
+    DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
+    DEFAULT_SPIKE_THRESHOLD,
+)
+
 # ==================== Core Models ====================
 
 
-class Experiment(SQLModel, table=True):
+class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     """Top-level experiment container.
 
     An experiment can contain a plate and tracks global metadata
@@ -28,7 +42,7 @@ class Experiment(SQLModel, table=True):
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
     name : str
         Unique experiment identifier
@@ -44,6 +58,8 @@ class Experiment(SQLModel, table=True):
         Path to analysis output directory
     plate : Plate
         Related plate (back-populated by SQLModel)
+    analysis_settings : list[AnalysisSettings]
+        Analysis settings used in this experiment
     """
 
     __tablename__ = "experiment"
@@ -63,7 +79,7 @@ class Experiment(SQLModel, table=True):
     )
 
 
-class AnalysisSettings(SQLModel, table=True):
+class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
 
     Stores the analysis parameters used for a specific analysis run.
@@ -73,16 +89,22 @@ class AnalysisSettings(SQLModel, table=True):
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
-    experiment_id : uuid.UUID
+    experiment_id : int
         Foreign key to parent experiment
     created_at : datetime
         When these settings were created
-    dff_window : int
-        Window size for ΔF/F baseline calculation
+    neuropil_inner_radius : int
+        Inner radius for neuropil mask (pixels)
+    neuropil_min_pixels : int
+        Minimum pixels required for neuropil mask
+    neuropil_correction_factor : float
+        Neuropil correction factor (0-1)
     decay_constant : float
         Decay constant for deconvolution
+    dff_window : int
+        Window size for ΔF/F baseline calculation
     peaks_height_value : float
         Peak height threshold value
     peaks_height_mode : str
@@ -91,6 +113,8 @@ class AnalysisSettings(SQLModel, table=True):
         Minimum distance between peaks (frames)
     peaks_prominence_multiplier : float
         Multiplier for peak prominence threshold
+    calcium_sync_jitter_window : int
+        Jitter window for calcium synchrony (frames)
     calcium_network_threshold : float
         Percentile threshold for network connectivity (0-100)
     spike_threshold_value : float
@@ -105,24 +129,16 @@ class AnalysisSettings(SQLModel, table=True):
         Gaussian sigma for burst smoothing (seconds)
     spikes_sync_cross_corr_lag : int
         Max lag for spike synchrony cross-correlation (frames)
-    calcium_sync_jitter_window : int
-        Jitter window for calcium synchrony (frames)
-    neuropil_inner_radius : int
-        Inner radius for neuropil mask (pixels)
-    neuropil_min_pixels : int
-        Minimum pixels required for neuropil mask
-    neuropil_correction_factor : float
-        Neuropil correction factor (0-1)
     led_power_equation : str | None
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
         Duration of LED pulse (evoked experiments)
     peaks_prominence_dec_dff : float | None
-        Peak prominence threshold for deconvolved ΔF/F
+        Peak prominence threshold for deconvolved ΔF/F (calculated)
     peaks_height_dec_dff : float | None
-        Peak height threshold for deconvolved ΔF/F
+        Peak height threshold for deconvolved ΔF/F (calculated)
     inferred_spikes_threshold : float | None
-        Threshold for spike inference from deconvolved trace
+        Threshold for spike inference from deconvolved trace (calculated)
     stimulations_frames_and_powers : dict | None
         Stimulation timing and power data (evoked experiments)
     experiment : Experiment
@@ -134,47 +150,53 @@ class AnalysisSettings(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
-    # Analysis parameters
-    dff_window: int = 30
-    decay_constant: float = 0.0
-    peaks_height_value: float = 3.0
-    peaks_height_mode: str = "multiplier"
-    peaks_distance: int = 2
-    peaks_prominence_multiplier: float = 1.0
-    calcium_network_threshold: float = 90.0
-    spike_threshold_value: float = 1.0
-    spike_threshold_mode: str = "multiplier"
-    burst_threshold: float = 30.0
-    burst_min_duration: int = 3
-    burst_gaussian_sigma: float = 2.0
-    spikes_sync_cross_corr_lag: int = 5
-    calcium_sync_jitter_window: int = 5
     neuropil_inner_radius: int = 0
     neuropil_min_pixels: int = 0
     neuropil_correction_factor: float = 0.0
+
+    decay_constant: float = 0.0
+    dff_window: int = DEFAULT_DFF_WINDOW
+
+    peaks_height_value: float = DEFAULT_HEIGHT
+    peaks_height_mode: str = MULTIPLIER
+    peaks_distance: int = DEFAULT_PEAKS_DISTANCE
+    peaks_prominence_multiplier: float = 1.0
+    calcium_sync_jitter_window: int = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
+
+    spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
+    spike_threshold_mode: str = MULTIPLIER
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: int = DEFAULT_MIN_BURST_DURATION
+    burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
+    spikes_sync_cross_corr_lag: int = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+
+    led_power_equation: str | None = None
+    led_pulse_duration: float | None = None
+
+    # not directly set by user, calculated in the analysis step
     peaks_prominence_dec_dff: float | None = None
     peaks_height_dec_dff: float | None = None
     inferred_spikes_threshold: float | None = None
-    led_power_equation: str | None = None
-    led_pulse_duration: float | None = None
     stimulations_frames_and_powers: dict | None = Field(
         default=None, sa_column=Column(JSON)
     )
 
+    # Foreign keys
     experiment_id: int = Field(foreign_key="experiment.id", index=True)
 
     # Relationships
     experiment: "Experiment" = Relationship(back_populates="analysis_settings")
 
 
-class Plate(SQLModel, table=True):
+class Plate(SQLModel, table=True):  # type: ignore[call-arg]
     """Plate container (e.g., 96-well plate).
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
-    experiment_id : uuid.UUID
+    experiment_id : int
         Foreign key to parent experiment
     name : str
         Plate name/identifier
@@ -193,18 +215,20 @@ class Plate(SQLModel, table=True):
     __tablename__ = "plate"
 
     id: int | None = Field(default=None, primary_key=True)
-    experiment_id: int = Field(foreign_key="experiment.id", index=True)
     name: str = Field(index=True)
     plate_type: str | None = None  # e.g., "96-well", "384-well"
     rows: int | None = None
     columns: int | None = None
+
+    # Foreign keys
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
 
     # Relationships
     experiment: "Experiment" = Relationship(back_populates="plate")
     wells: list["Well"] = Relationship(back_populates="plate")
 
 
-class Condition(SQLModel, table=True):
+class Condition(SQLModel, table=True):  # type: ignore[call-arg]
     """Experimental condition (e.g., genotype, treatment).
 
     Conditions can be reused across multiple wells. This allows for
@@ -212,7 +236,7 @@ class Condition(SQLModel, table=True):
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
     name : str
         Unique condition name (e.g., "WT", "KO", "Vehicle", "Drug_10uM")
@@ -233,16 +257,17 @@ class Condition(SQLModel, table=True):
     description: str | None = None
 
 
-class WellCondition(SQLModel, table=True):
+class WellCondition(SQLModel, table=True):  # type: ignore[call-arg]
     """Link table for Well-Condition many-to-many relationship."""
 
     __tablename__ = "well_condition_link"
 
+    # Foreign keys
     well_id: int = Field(foreign_key="well.id", primary_key=True)
     condition_id: int = Field(foreign_key="condition.id", primary_key=True)
 
 
-class Well(SQLModel, table=True):
+class Well(SQLModel, table=True):  # type: ignore[call-arg]
     """Well in a plate (e.g., "B5").
 
     A well can have multiple FOVs (imaging positions) and is associated
@@ -250,9 +275,9 @@ class Well(SQLModel, table=True):
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
-    plate_id : uuid.UUID
+    plate_id : int
         Foreign key to parent plate
     name : str
         Well name (e.g., "B5", "C3")
@@ -275,10 +300,12 @@ class Well(SQLModel, table=True):
     __tablename__ = "well"
 
     id: int | None = Field(default=None, primary_key=True)
-    plate_id: int = Field(foreign_key="plate.id", index=True)
     name: str = Field(index=True)
     row: int
     column: int
+
+    # Foreign keys
+    plate_id: int = Field(foreign_key="plate.id", index=True)
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="wells")
@@ -299,7 +326,7 @@ class Well(SQLModel, table=True):
         return self.conditions[1] if len(self.conditions) > 1 else None
 
 
-class FOV(SQLModel, table=True):
+class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     """Field of View (imaging position) within a well.
 
     Each FOV represents a single imaging position/site within a well.
@@ -307,19 +334,19 @@ class FOV(SQLModel, table=True):
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
-    well_id : uuid.UUID
+    well_id : int | None
         Foreign key to parent well
     name : str
         FOV name (e.g., "B5_0000_p0")
     position_index : int
-        Position index in acquisition order (e.g. if in an experiment we have 2 fovs per
-        well and this is the second well, second fov, this index would be 3 - the 4th
-        position)
+        Position index in acquisition order (e.g., if in an experiment we have 2 FOVs
+        per well and this is the second well, second FOV, this index would be 3 - the
+        4th position)
     fov_number : int
         The FOV number per well
-    metadata : dict | None
+    fov_metadata : dict | None
         Additional metadata from acquisition (stored as JSON)
     well : Well
         Parent well
@@ -342,33 +369,35 @@ class FOV(SQLModel, table=True):
     rois: list["ROI"] = Relationship(back_populates="fov")
 
 
-class ROI(SQLModel, table=True):
+class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     """Region of Interest (ROI) core metadata.
 
     Represents a single cell/neuron segmented from imaging data.
-    Related analysis data is stored in separate tables (Trace, PeakAnalysis, etc.)
+    Related analysis data is stored in separate tables (Traces, DataAnalysis, etc.)
 
     Attributes
     ----------
     id : int | None
         Primary key, auto-generated
-    fov_id : uuid.UUID
+    fov_id : int
         Foreign key to parent FOV
     label_value : int
         ROI label number from segmentation (e.g., 1, 2, 3...)
-    cell_size : float | None
-        ROI area (µm² or pixels)
-    cell_size_units : str | None
-        Units for cell_size
-    total_recording_time_sec : float | None
-        Total recording duration (seconds)
     active : bool | None
         Whether ROI shows calcium activity
+    stimulated : bool
+        Whether ROI was stimulated (for evoked experiments)
+    analysis_settings_id : int | None
+        Foreign key to analysis settings used
+    roi_mask_id : int | None
+        Foreign key to ROI mask
+    neuropil_mask_id : int | None
+        Foreign key to neuropil mask
     fov : FOV
         Parent FOV
     analysis_settings : AnalysisSettings | None
         Analysis settings used
-    trace : Trace | None
+    traces : Traces | None
         Fluorescence trace data
     data_analysis : DataAnalysis | None
         Data analysis results (peaks, spikes, etc.)
@@ -386,9 +415,9 @@ class ROI(SQLModel, table=True):
     active: bool | None = None
     stimulated: bool = False
 
-    cell_size: float | None = None
-    cell_size_units: str | None = None
-    total_recording_time_sec: float | None = None
+    # cell_size: float | None = None
+    # cell_size_units: str | None = None
+    # total_recording_time_sec: float | None = None
 
     fov_id: int = Field(foreign_key="fov.id", index=True)
     analysis_settings_id: int | None = Field(
@@ -418,7 +447,7 @@ class ROI(SQLModel, table=True):
     )
 
 
-class Traces(SQLModel, table=True):
+class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     """Fluorescence trace data for an ROI.
 
     Stores all time-series fluorescence measurements and derived traces.
@@ -427,7 +456,7 @@ class Traces(SQLModel, table=True):
     ----------
     id : int | None
         Primary key, auto-generated
-    roi_id : uuid.UUID | None
+    roi_id : int | None
         Foreign key to parent ROI
     raw_trace : list[float] | None
         Raw fluorescence trace
@@ -440,7 +469,7 @@ class Traces(SQLModel, table=True):
     dec_dff : list[float] | None
         Deconvolved ΔF/F trace
     x_axis : list[float] | None
-        Frames number or frame timestamps (milliseconds)
+        Frame numbers or frame timestamps (milliseconds)
     roi : ROI
         Parent ROI
     """
@@ -464,34 +493,34 @@ class Traces(SQLModel, table=True):
     roi: "ROI" = Relationship(back_populates="traces")
 
 
-class DataAnalysis(SQLModel, table=True):
-    """Container for different types of data analyses for an ROI.
+class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+    """Container for data analysis results for an ROI.
 
-    This class serves as a parent container for various analysis results
-    related to an ROI, such as peak detection and spike inference.
+    This class stores various analysis results related to an ROI,
+    such as peak detection, spike inference, and cell size measurements.
 
     Attributes
     ----------
     id : int | None
         Primary key, auto-generated
-    roi_id : int
+    roi_id : int | None
         Foreign key to parent ROI
+    cell_size : float | None
+        ROI area (µm² or pixels)
+    cell_size_units : str | None
+        Units for cell_size
+    total_recording_time_sec : float | None
+        Total recording duration (seconds)
+    dec_dff_frequency : float | None
+        Calcium event frequency (Hz)
     peaks_dec_dff : list[float] | None
         Peak indices in deconvolved trace
     peaks_amplitudes_dec_dff : list[float] | None
         Peak amplitudes
-    peaks_prominence_dec_dff : float | None
-        Peak prominence threshold used
-    peaks_height_dec_dff : float | None
-        Peak height threshold used
-    dec_dff_frequency : float | None
-        Calcium event frequency (Hz)
     iei : list[float] | None
         Inter-event intervals (seconds)
     inferred_spikes : list[float] | None
         Inferred spike probabilities
-    inferred_spikes_threshold : float | None
-        Spike detection threshold used
     roi : ROI
         Parent ROI
     """
@@ -502,6 +531,10 @@ class DataAnalysis(SQLModel, table=True):
     roi_id: int | None = Field(
         default=None, foreign_key="roi.id", index=True, unique=True
     )
+
+    cell_size: float | None = None
+    cell_size_units: str | None = None
+    total_recording_time_sec: float | None = None
 
     dec_dff_frequency: float | None = None
     peaks_dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
@@ -515,14 +548,14 @@ class DataAnalysis(SQLModel, table=True):
     roi: "ROI" = Relationship(back_populates="data_analysis")
 
 
-class Mask(SQLModel, table=True):
+class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     """Generic mask coordinate data.
 
     Stores spatial coordinates and dimensions for a mask (ROI or neuropil).
 
     Attributes
     ----------
-    id : uuid.UUID
+    id : int | None
         Primary key, auto-generated
     coords_y : list[int] | None
         Y-coordinates of mask pixels

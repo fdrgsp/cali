@@ -1,9 +1,13 @@
+"""Test script for sqlmodel database operations."""
+
 from __future__ import annotations
 
 import datetime
 import os
 
-from models import (
+from sqlmodel import Session, create_engine, select
+
+from cali.sqlmodel import (
     FOV,
     ROI,
     Condition,
@@ -12,9 +16,8 @@ from models import (
     Well,
     WellCondition,
     create_db_and_tables,
+    print_experiment_tree,
 )
-from sqlmodel import Session, create_engine, select
-from visualize_experiment import print_experiment_tree
 
 sqlite_file_name = f"database_{int(datetime.datetime.now().timestamp())}.db"
 

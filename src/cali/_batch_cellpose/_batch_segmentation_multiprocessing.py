@@ -25,8 +25,8 @@ from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._plate_viewer._util import GREEN, RED, _BrowseWidget
-from cali._readers import OMEZarrReader, TensorstoreZarrReader
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
+from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 if TYPE_CHECKING:
     from threading import Event
