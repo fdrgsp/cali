@@ -5,7 +5,7 @@ from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
 
-from sqlmodel import Field, SQLModel, select
+from sqlmodel import select
 from typing_extensions import TypeAlias
 
 from cali._plate_viewer._graph_widgets import _SingleWellGraphWidget
@@ -24,14 +24,6 @@ AnalysisCallable: TypeAlias = Callable[
 ]
 
 PRODUCTS: list[AnalysisProduct] = []
-
-
-class ROI(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    fov: str
-    well: str
-    plate: str
-    size: int | None = None
 
 
 @dataclass

@@ -4,7 +4,7 @@ import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -25,9 +25,25 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from scipy.signal import find_peaks
+from sqlmodel import Session, create_engine
 from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
+
+# Import SQLModel components
+from cali.sqlmodel import (
+    FOV,
+    ROI,
+    AnalysisSettings,
+    Condition,
+    DataAnalysis,
+    Experiment,
+    Mask,
+    Plate,
+    Traces,
+    Well,
+    create_db_and_tables,
+)
 
 from ._analysis_gui import (
     AnalysisSettingsData,
@@ -153,6 +169,18 @@ class _AnalyseCalciumTraces(QWidget):
         self._plate_map_data: dict[str, dict[str, str]] = {}
         self._stimulated_area_mask: np.ndarray | None = None
         self._labels_path: str | None = labels_path
+
+        # SQLModel database objects - the single source of truth
+        self._experiment: Experiment | None = None
+        self._db_path: Path | None = None
+
+        # Thread-safe collection of wells and FOVs during analysis
+        self._wells_lock = threading.Lock()
+        self._wells_map: dict[str, Well] = {}  # well_name -> Well object
+        # (condition_type, condition_name) -> Condition object
+        self._conditions_map: dict[tuple[str, str], Condition] = {}
+
+        # Legacy: kept for backward compatibility with plotting code
         self._analysis_data: dict[str, dict[str, ROIData]] = {}
 
         self._worker: GeneratorWorker | None = None
@@ -381,9 +409,94 @@ class _AnalyseCalciumTraces(QWidget):
         ):
             return None
 
+        # Initialize database and experiment
+        if not self._initialize_experiment_and_database(analysis_path):
+            LOGGER.error("Failed to initialize experiment and database!")
+            return None
+
         self._save_settings_as_json()
 
         return self._get_positions_to_analyze()
+
+    def _initialize_experiment_and_database(self, analysis_path: Path) -> bool:
+        """Initialize the Experiment object and database before analysis starts."""
+        try:
+            # Create database path
+            self._db_path = analysis_path / "cali.db"
+
+            # Create experiment
+            experiment_name = analysis_path.parent.name
+            self._experiment = Experiment(
+                name=experiment_name,
+                description=f"Calcium imaging analysis of {experiment_name}",
+                data_path=str(
+                    analysis_path.parent / f"{experiment_name}.tensorstore.zarr"
+                ),
+                labels_path=self._labels_path,
+                analysis_path=str(analysis_path),
+            )
+
+            # Create AnalysisSettings
+            value = self._get_validated_settings()
+            analysis_settings = AnalysisSettings(
+                experiment=self._experiment,
+                dff_window_size=value.trace_extraction_data.dff_window_size,
+                decay_constant=value.trace_extraction_data.decay_constant,
+                neuropil_inner_radius=value.trace_extraction_data.neuropil_inner_radius,
+                neuropil_min_pixels=value.trace_extraction_data.neuropil_min_pixels,
+                neuropil_correction_factor=value.trace_extraction_data.neuropil_correction_factor,
+                peaks_height_value=value.calcium_peaks_data.peaks_height,
+                peaks_height_mode=value.calcium_peaks_data.peaks_height_mode,
+                peaks_distance=value.calcium_peaks_data.peaks_distance,
+                peaks_prominence_multiplier=value.calcium_peaks_data.peaks_prominence_multiplier,
+                calcium_synchrony_jitter=value.calcium_peaks_data.calcium_synchrony_jitter,
+                calcium_network_threshold=value.calcium_peaks_data.calcium_network_threshold,
+                spike_threshold_value=value.spikes_data.spike_threshold,
+                spike_threshold_mode=value.spikes_data.spike_threshold_mode,
+                burst_threshold=value.spikes_data.burst_threshold,
+                burst_min_duration=value.spikes_data.burst_min_duration,
+                burst_blur_sigma=value.spikes_data.burst_blur_sigma,
+                synchrony_lag=value.spikes_data.synchrony_lag,
+                led_power_equation=value.experiment_type_data.led_power_equation,
+            )
+            self._experiment.analysis_settings = [analysis_settings]
+
+            # Get plate type from sequence
+            plate_type = None
+            if self._data and self._data.sequence:
+                # Try to get plate info from sequence
+                seq = self._data.sequence
+                if hasattr(seq, "stage_positions"):
+                    try:
+                        # useq.MDASequence.stage_positions can be a WellPlate
+                        # which has a name attribute
+                        stage_pos = seq.stage_positions
+                        if hasattr(stage_pos, "name"):
+                            plate_type = str(stage_pos.name)  # type: ignore
+                    except Exception:
+                        pass
+
+            # Create Plate
+            plate = Plate(
+                experiment=self._experiment,
+                name=plate_type or "unknown",
+                plate_type=plate_type,
+            )
+            self._experiment.plate = plate
+
+            # Create Conditions (they're standalone, linked through Wells)
+            _condition_1_plate_map, _condition_2_plate_map = value.plate_map_data
+            # We'll create conditions as needed when creating wells,
+            # but store unique conditions for later reference
+
+            msg = f"Initialized experiment '{experiment_name}' for database storage"
+            LOGGER.info(msg)
+            return True
+
+        except Exception as e:
+            msg = f"Failed to initialize experiment and database: {e}"
+            LOGGER.error(msg, exc_info=True)
+            return False
 
     def _validate_input_data(self) -> bool:
         """Check if required input data is available."""
@@ -563,22 +676,16 @@ class _AnalyseCalciumTraces(QWidget):
         )
 
     def _handle_plate_map(self) -> None:
+        """Store plate map data for well conditions."""
         if self._plate_viewer is None or not self._analysis_path:
             return
 
         value = self._get_validated_settings()
         condition_1_plate_map, condition_2_plate_map = value.plate_map_data
 
-        # Check for cancellation before plate map saving
+        # Check for cancellation before plate map processing
         if self._cancellation_event.is_set():
             return
-
-        # save plate map
-        LOGGER.info("Saving Plate Maps.")
-        path = Path(self._analysis_path) / GENOTYPE_MAP
-        self._save_plate_map(path, condition_1_plate_map)
-        path = Path(self._analysis_path) / TREATMENT_MAP
-        self._save_plate_map(path, condition_2_plate_map)
 
         # update the stored _plate_map_data dict so we have the condition for each well
         # name as the key. e.g.:
@@ -610,10 +717,6 @@ class _AnalyseCalciumTraces(QWidget):
 
         # get the fov_name name from metadata
         fov_name = self._get_fov_name(event_key, meta, p)
-
-        # create the dict for the fov if it does not exist
-        if fov_name not in self._analysis_data:
-            self._analysis_data[fov_name] = {}
 
         # get the labels file for the position
         labels_path = self._get_labels_file_for_position(fov_name, p)
@@ -711,11 +814,6 @@ class _AnalyseCalciumTraces(QWidget):
 
         # Only save and update progress if not cancelled
         if not self._check_for_abort_requested():
-            # Check for cancellation before saving
-            if self._check_for_abort_requested():
-                return
-            # save the analysis data for the well
-            self._save_analysis_data(fov_name)
             # update the progress bar
             self._pbar.updated.emit()
 
@@ -850,26 +948,6 @@ class _AnalyseCalciumTraces(QWidget):
         if self._check_for_abort_requested():
             return
 
-        # Use the spike threshold widget to get the spike detection threshold
-        spike_threshold_value = value.spikes_data.spike_threshold
-        spike_threshold_mode = value.spikes_data.spike_threshold_mode
-
-        if spike_threshold_mode == GLOBAL_SPIKE_THRESHOLD:
-            spike_detection_threshold = spike_threshold_value
-        else:  # MULTIPLIER
-            # for spike amp use percentile-based approach to determine noise level
-            non_zero_spikes = spikes[spikes > 0]
-            # need sufficient data for reliable percentile
-            if len(non_zero_spikes) > 5:
-                spike_noise_reference = float(np.percentile(non_zero_spikes, 5))
-            else:
-                LOGGER.warning(
-                    "Not enough data to determine spike noise reference "
-                    "(< 5 non-zero spikes), using fallback value of 0.01."
-                )
-                spike_noise_reference = 0.01  # fallback value if not enough data
-            spike_detection_threshold = spike_noise_reference * spike_threshold_value
-
         # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
         # -	Step 1: np.median(dff) -> The median of the dataset dff is computed. The
         # median is the “middle” value of the dataset when sorted, which is robust
@@ -936,25 +1014,12 @@ class _AnalyseCalciumTraces(QWidget):
         # check if the roi is stimulated
         is_roi_stimulated = roi_stimulation_overlap_ratio > STIMULATION_AREA_THRESHOLD
 
-        # if the experiment is evoked, store the stimulation metadata
-        stimulation_frames_and_powers: dict[str, int] | None = None
-        led_pulse_duration: str | None = None
-        if evoked_exp and evoked_meta is not None:
-            # get the stimulation info from the metadata (if any)
-            stimulation_frames_and_powers = cast(
-                "dict", evoked_meta.get("pulse_on_frame", {})
-            )
-            led_pulse_duration = evoked_meta.get("led_pulse_duration", "unknown")
-
         # calculate the frequency of the peaks in the dec_dff trace
         frequency = (
             len(peaks_dec_dff) / tot_time_sec
             if tot_time_sec and len(peaks_dec_dff) > 0
             else None
         )
-
-        # get the conditions for the well
-        condition_1, condition_2 = self._get_conditions(fov_name)
 
         # Check for cancellation before final data processing and storage
         if self._check_for_abort_requested():
@@ -973,9 +1038,101 @@ class _AnalyseCalciumTraces(QWidget):
                 neuropil_mask
             )
 
-        # store the data to the analysis dict as ROIData
-        self._analysis_data[fov_name][str(label_value)] = ROIData(
-            well_fov_position=fov_name,
+        # Build SQLModel objects instead of ROIData
+        # Get or create Well, FOV for this ROI
+        well_name = fov_name.split("_")[0]
+
+        with self._wells_lock:
+            # Get or create Well
+            if well_name not in self._wells_map:
+                # Parse well name to get row and column (e.g., "B5" -> row=1, col=4)
+                row = ord(well_name[0]) - ord("A")
+                col = int(well_name[1:]) - 1
+
+                well = Well(
+                    plate=self._experiment.plate if self._experiment else None,  # type: ignore[arg-type]
+                    name=well_name,
+                    row=row,
+                    column=col,
+                )
+
+                # Add conditions to well
+                cond1, cond2 = self._get_conditions(fov_name)
+                conditions_to_add = []
+                if cond1:
+                    key = (COND1, cond1)
+                    if key not in self._conditions_map:
+                        condition = Condition(
+                            name=cond1,
+                            condition_type=COND1,
+                        )
+                        self._conditions_map[key] = condition
+                    conditions_to_add.append(self._conditions_map[key])
+
+                if cond2:
+                    key = (COND2, cond2)
+                    if key not in self._conditions_map:
+                        condition = Condition(
+                            name=cond2,
+                            condition_type=COND2,
+                        )
+                        self._conditions_map[key] = condition
+                    conditions_to_add.append(self._conditions_map[key])
+
+                well.conditions = conditions_to_add
+                self._wells_map[well_name] = well
+
+            well = self._wells_map[well_name]
+
+        # Create FOV (assuming fov_name format like "B5_0000_p0")
+        pos_idx = int(fov_name.split("_p")[-1])
+        fov = FOV(
+            well=well,
+            name=fov_name,
+            position_index=pos_idx,
+            fov_number=pos_idx,
+        )
+
+        # Create Masks
+        roi_mask = Mask(
+            coords_y=mask_coords[0],
+            coords_x=mask_coords[1],
+            height=mask_shape[0],
+            width=mask_shape[1],
+            mask_type="roi",
+        )
+
+        neuropil_mask_obj = None
+        if neuropil_mask_coords is not None and neuropil_mask_shape is not None:
+            neuropil_mask_obj = Mask(
+                coords_y=neuropil_mask_coords[0],
+                coords_x=neuropil_mask_coords[1],
+                height=neuropil_mask_shape[0],
+                width=neuropil_mask_shape[1],
+                mask_type="neuropil",
+            )
+
+        # Get the analysis settings (first one in the list)
+        analysis_settings = (
+            self._experiment.analysis_settings[0]
+            if self._experiment and self._experiment.analysis_settings
+            else None
+        )
+
+        # Create ROI
+        roi = ROI(
+            fov=fov,
+            label_value=label_value,
+            active=len(peaks_dec_dff) > 0,
+            stimulated=is_roi_stimulated,
+            analysis_settings=analysis_settings,  # type: ignore[arg-type]
+            roi_mask=roi_mask,
+            neuropil_mask=neuropil_mask_obj,
+        )
+
+        # Create Traces
+        traces = Traces(
+            roi=roi,
             raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
             corrected_trace=cast("list[float]", roi_trace.tolist()),
             neuropil_trace=(
@@ -983,41 +1140,31 @@ class _AnalyseCalciumTraces(QWidget):
                 if neuropil_trace is not None
                 else None
             ),
-            neuropil_correction_factor=neuropil_correction_factor,
             dff=cast("list[float]", dff.tolist()),
             dec_dff=dec_dff.tolist(),
-            peaks_dec_dff=peaks_dec_dff.tolist(),
-            peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
-            peaks_prominence_dec_dff=peaks_prominence_dec_dff,
-            peaks_height_dec_dff=peaks_height_dec_dff,
-            dec_dff_frequency=frequency or None,
-            inferred_spikes=spikes.tolist(),
-            inferred_spikes_threshold=spike_detection_threshold,
+            x_axis=None,  # Can add elapsed_time_list if needed
+        )
+        roi.traces = traces
+
+        # Create DataAnalysis
+        data_analysis = DataAnalysis(
+            roi=roi,
             cell_size=roi_size,
             cell_size_units="µm" if px_size is not None else "pixel",
-            condition_1=condition_1,
-            condition_2=condition_2,
             total_recording_time_sec=tot_time_sec,
-            active=len(peaks_dec_dff) > 0,
+            dec_dff_frequency=frequency,
+            peaks_dec_dff=peaks_dec_dff.tolist(),
+            peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
             iei=iei,
-            evoked_experiment=evoked_exp,
-            stimulated=is_roi_stimulated,
-            stimulations_frames_and_powers=stimulation_frames_and_powers,
-            led_pulse_duration=led_pulse_duration,
-            led_power_equation=value.experiment_type_data.led_power_equation,
-            calcium_sync_jitter_window=value.calcium_peaks_data.calcium_synchrony_jitter,
-            spikes_sync_cross_corr_lag=value.spikes_data.synchrony_lag,
-            calcium_network_threshold=value.calcium_peaks_data.calcium_network_threshold,
-            spikes_burst_threshold=value.spikes_data.burst_threshold,
-            spikes_burst_min_duration=value.spikes_data.burst_min_duration,
-            spikes_burst_gaussian_sigma=value.spikes_data.burst_blur_sigma,
-            mask_coord_and_shape=(mask_coords, mask_shape),
-            neuropil_mask_coord_and_shape=(
-                (neuropil_mask_coords, neuropil_mask_shape)
-                if neuropil_mask_coords is not None and neuropil_mask_shape is not None
-                else None
-            ),
+            inferred_spikes=spikes.tolist(),
         )
+        roi.data_analysis = data_analysis
+
+        # Add the ROI to the FOV
+        fov.rois.append(roi)
+
+        # Add the FOV to the well
+        well.fovs.append(fov)
 
     def _get_conditions(self, pos_name: str) -> tuple[str | None, str | None]:
         """Get the conditions for the well if any."""
@@ -1030,6 +1177,236 @@ class _AnalyseCalciumTraces(QWidget):
             else:
                 condition_1 = condition_2 = None
         return condition_1, condition_2
+
+    def _build_experiment_model(self) -> Experiment:
+        """Build the complete Experiment SQLModel from analysis_data."""
+        if not self._analysis_path or not self._data:
+            msg = "Cannot build experiment: missing analysis path or data"
+            raise ValueError(msg)
+
+        analysis_dir = Path(self._analysis_path)
+        experiment_name = analysis_dir.parent.name
+
+        # Create Experiment
+        experiment = Experiment(
+            name=experiment_name,
+            description=f"Calcium imaging analysis of {experiment_name}",
+            data_path=str(analysis_dir.parent / f"{experiment_name}.tensorstore.zarr"),
+            labels_path=self._labels_path,
+            analysis_path=str(analysis_dir),
+        )
+
+        # Create AnalysisSettings
+        value = self._get_validated_settings()
+        analysis_settings = AnalysisSettings(
+            experiment=experiment,
+            dff_window_size=value.trace_extraction_data.dff_window_size,
+            decay_constant=value.trace_extraction_data.decay_constant,
+            neuropil_inner_radius=value.trace_extraction_data.neuropil_inner_radius,
+            neuropil_min_pixels=value.trace_extraction_data.neuropil_min_pixels,
+            neuropil_correction_factor=value.trace_extraction_data.neuropil_correction_factor,
+            peaks_height_value=value.calcium_peaks_data.peaks_height,
+            peaks_height_mode=value.calcium_peaks_data.peaks_height_mode,
+            peaks_distance=value.calcium_peaks_data.peaks_distance,
+            peaks_prominence_multiplier=value.calcium_peaks_data.peaks_prominence_multiplier,
+            calcium_synchrony_jitter=value.calcium_peaks_data.calcium_synchrony_jitter,
+            calcium_network_threshold=value.calcium_peaks_data.calcium_network_threshold,
+            spike_threshold_value=value.spikes_data.spike_threshold,
+            spike_threshold_mode=value.spikes_data.spike_threshold_mode,
+            burst_threshold=value.spikes_data.burst_threshold,
+            burst_min_duration=value.spikes_data.burst_min_duration,
+            burst_blur_sigma=value.spikes_data.burst_blur_sigma,
+            synchrony_lag=value.spikes_data.synchrony_lag,
+            led_power_equation=value.experiment_type_data.led_power_equation,
+        )
+        experiment.analysis_settings = analysis_settings
+
+        # Get plate type from sequence
+        plate_type = None
+        if self._data.sequence and hasattr(
+            self._data.sequence.stage_positions, "plate"
+        ):
+            plate_type = str(self._data.sequence.stage_positions.plate)
+
+        # Create Plate
+        plate = Plate(
+            experiment=experiment,
+            name=plate_type or "unknown",
+            plate_type=plate_type,
+        )
+
+        # Create Conditions
+        condition_map: dict[tuple[str, str], Condition] = {}
+        condition_1_plate_map, condition_2_plate_map = value.plate_map_data
+
+        # Collect all unique conditions
+        for plate_map_data in condition_1_plate_map:
+            cond_name = plate_map_data.condition[0]
+            key = (COND1, cond_name)
+            if key not in condition_map:
+                condition = Condition(
+                    name=cond_name, condition_type=COND1, experiment=experiment
+                )
+                condition_map[key] = condition
+                experiment.conditions.append(condition)
+
+        for plate_map_data in condition_2_plate_map:
+            cond_name = plate_map_data.condition[0]
+            key = (COND2, cond_name)
+            if key not in condition_map:
+                condition = Condition(
+                    name=cond_name, condition_type=COND2, experiment=experiment
+                )
+                condition_map[key] = condition
+                experiment.conditions.append(condition)
+
+        # Create Wells, FOVs, and ROIs with their data
+        well_map: dict[str, Well] = {}
+
+        for fov_name, roi_dict in self._analysis_data.items():
+            # Get well name from FOV name (e.g., "A1_0000_p0" -> "A1")
+            well_name = fov_name.split("_")[0]
+
+            # Create Well if it doesn't exist
+            if well_name not in well_map:
+                # Parse well name to get row and column
+                row = ord(well_name[0]) - ord("A")
+                col = int(well_name[1:]) - 1
+
+                well = Well(
+                    plate=plate,
+                    name=well_name,
+                    row=row,
+                    column=col,
+                )
+
+                # Add conditions to well
+                if well_name in self._plate_map_data:
+                    if cond1_name := self._plate_map_data[well_name].get(COND1):
+                        if (COND1, cond1_name) in condition_map:
+                            well.conditions.append(condition_map[(COND1, cond1_name)])
+                    if cond2_name := self._plate_map_data[well_name].get(COND2):
+                        if (COND2, cond2_name) in condition_map:
+                            well.conditions.append(condition_map[(COND2, cond2_name)])
+
+                well_map[well_name] = well
+                plate.wells.append(well)
+
+            well = well_map[well_name]
+
+            # Parse position index from FOV name
+            pos_idx = int(fov_name.split("_p")[-1])
+
+            # Create FOV
+            fov = FOV(
+                well=well,
+                name=fov_name,
+                position_index=pos_idx,
+                fov_number=pos_idx,
+            )
+            well.fovs.append(fov)
+
+            # Create ROIs for this FOV
+            for label_str, roi_data in roi_dict.items():
+                label_value = int(label_str)
+
+                # Create masks
+                roi_mask = None
+                neuropil_mask = None
+
+                if roi_data.mask_coord_and_shape:
+                    coords, shape = roi_data.mask_coord_and_shape
+                    roi_mask = Mask(
+                        coords_y=coords[0],
+                        coords_x=coords[1],
+                        height=shape[0],
+                        width=shape[1],
+                        mask_type="roi",
+                    )
+
+                if roi_data.neuropil_mask_coord_and_shape:
+                    coords, shape = roi_data.neuropil_mask_coord_and_shape
+                    neuropil_mask = Mask(
+                        coords_y=coords[0],
+                        coords_x=coords[1],
+                        height=shape[0],
+                        width=shape[1],
+                        mask_type="neuropil",
+                    )
+
+                # Create ROI
+                roi = ROI(
+                    fov=fov,
+                    label_value=label_value,
+                    active=roi_data.active,
+                    stimulated=roi_data.stimulated,
+                    analysis_settings=analysis_settings,
+                    roi_mask=roi_mask,
+                    neuropil_mask=neuropil_mask,
+                )
+                fov.rois.append(roi)
+
+                # Create Traces
+                trace = Traces(
+                    roi=roi,
+                    raw_trace=roi_data.raw_trace,
+                    corrected_trace=roi_data.corrected_trace,
+                    neuropil_trace=roi_data.neuropil_trace,
+                    dff=roi_data.dff,
+                    dec_dff=roi_data.dec_dff,
+                    x_axis=None,  # Can add if needed
+                )
+                roi.traces = trace
+
+                # Create DataAnalysis
+                data_analysis = DataAnalysis(
+                    roi=roi,
+                    cell_size=roi_data.cell_size,
+                    cell_size_units=roi_data.cell_size_units,
+                    total_recording_time_sec=roi_data.total_recording_time_sec,
+                    dec_dff_frequency=roi_data.dec_dff_frequency,
+                    peaks_dec_dff=roi_data.peaks_dec_dff,
+                    peaks_amplitudes_dec_dff=roi_data.peaks_amplitudes_dec_dff,
+                    iei=roi_data.iei,
+                    inferred_spikes=roi_data.inferred_spikes,
+                )
+                roi.data_analysis = data_analysis
+
+        return experiment
+
+    def _save_to_database(self) -> None:
+        """Save analysis data directly to SQLite database."""
+        if not self._analysis_path:
+            LOGGER.warning("No analysis path set, skipping database save")
+            return
+
+        try:
+            LOGGER.info("Building experiment model from analysis data...")
+            experiment = self._build_experiment_model()
+
+            LOGGER.info("Saving experiment to SQLite database...")
+            analysis_dir = Path(self._analysis_path)
+            db_path = analysis_dir / "cali.db"
+
+            # Create engine and tables
+            engine = create_engine(f"sqlite:///{db_path}")
+            create_db_and_tables(engine)
+
+            # Save experiment with all relationships
+            with Session(engine) as session:
+                session.add(experiment)
+                session.commit()
+                LOGGER.info(
+                    f"Successfully saved experiment '{experiment.name}' "
+                    f"to database: {db_path}"
+                )
+
+        except Exception as e:
+            LOGGER.error(f"Failed to save to database: {e}", exc_info=True)
+            self._show_and_log_error(
+                f"Warning: Failed to save to database:\n{e}\n\n"
+                f"CSV export may still be available if enabled."
+            )
 
     def _cleanup_after_completion(self) -> None:
         """Common cleanup operations after worker completion or error."""
@@ -1060,8 +1437,11 @@ class _AnalyseCalciumTraces(QWidget):
                     # Force refresh for already selected options
                     mgh._on_combo_changed(mgh._combo.currentText())
 
-        # save the analysis data to a JSON file
+        # Save to database (primary storage)
         if self._analysis_path:
+            self._save_to_database()
+
+            # Optional: Also save to CSV for spreadsheet analysis
             save_trace_data_to_csv(self._analysis_path, self._analysis_data)
             save_analysis_data_to_csv(self._analysis_path, self._analysis_data)
 
@@ -1077,25 +1457,6 @@ class _AnalyseCalciumTraces(QWidget):
         """Called when the worker encounters an error."""
         LOGGER.info("Extraction of traces terminated with an error.")
         self._cleanup_after_completion()
-
-    def _save_plate_map(self, path: Path, data: list[PlateMapData]) -> None:
-        """Save the plate map data to a JSON file."""
-        with path.open("w") as f:
-            json.dump(data, f, indent=2)
-
-    def _save_analysis_data(self, pos_name: str) -> None:
-        """Save analysis data to a JSON file."""
-        LOGGER.info("Saving JSON file for Well %s.", pos_name)
-        if not self._analysis_path:
-            return
-        path = Path(self._analysis_path) / f"{pos_name}.json"
-        with path.open("w") as f:
-            json.dump(
-                self._analysis_data[pos_name],
-                f,
-                default=lambda o: asdict(o) if isinstance(o, ROIData) else o,
-                indent=2,
-            )
 
     # WIDGET -----------------------------------------------------------------------
 

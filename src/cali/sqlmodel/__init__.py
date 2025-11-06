@@ -11,6 +11,7 @@ Main Components
 - Models: Experiment, Plate, Well, FOV, ROI, Condition, AnalysisSettings,
   Traces, DataAnalysis, Mask
 - Migration: load_analysis_from_json, save_experiment_to_db
+- Import: useq_plate_plan_to_plate
 - Export: experiment_to_useq_plate, experiment_to_useq_plate_plan
 - Visualization: print_experiment_tree, print_model_tree
 """
@@ -20,21 +21,30 @@ from ._json_to_db import load_analysis_from_json, save_experiment_to_db
 from ._models import (
     FOV,
     ROI,
+    AnalysisSettings,
     Condition,
+    DataAnalysis,
     Experiment,
+    Mask,
     Plate,
+    Traces,
     Well,
     WellCondition,
     create_db_and_tables,
 )
+from ._useq_plate_to_db import useq_plate_plan_to_plate
 from ._visualize_experiment import print_experiment_tree, print_model_tree
 
 __all__ = [
     "FOV",
     "ROI",
+    "AnalysisSettings",
     "Condition",
+    "DataAnalysis",
     "Experiment",
+    "Mask",
     "Plate",
+    "Traces",
     "Well",
     "WellCondition",
     "create_db_and_tables",
@@ -44,4 +54,5 @@ __all__ = [
     "print_experiment_tree",
     "print_model_tree",
     "save_experiment_to_db",
+    "useq_plate_plan_to_plate",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -30,15 +31,24 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlmodel import Session, create_engine, select
 from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.sqlmodel import (
+    Experiment,
+    save_experiment_to_db,
+    useq_plate_plan_to_plate,
+)
+from cali.sqlmodel._db_to_useq_plate import (
+    experiment_to_useq_plate_plan,
+)
 
-from ._analysis import EVOKED, _AnalyseCalciumTraces
 from ._analysis_gui import AnalysisSettingsData, ExperimentTypeData
+from ._analysis_with_sqlmodel import EVOKED, _AnalyseCalciumTraces
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
@@ -96,6 +106,8 @@ class PlateViewer(QMainWindow):
         self._central_widget_layout.setContentsMargins(10, 10, 10, 10)
         self.setCentralWidget(self._central_widget)
 
+        self._database_path: Path | None = None
+        self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         self._labels_path = labels_directory
         self._analysis_path = analysis_directory
@@ -270,14 +282,27 @@ class PlateViewer(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
-        # self._pv_labels_path = ("/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels")  # noqa: E501
-        # self._pv_analysis_path = ("/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis")  # noqa: E501
+        # self._pv_labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"  # noqa: E501
+        # self._pv_analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"  # noqa: E501
         # self.initialize_widget(data, self._pv_labels_path, self._pv_analysis_path)
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-        # self._labels_path = ("/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels") # noqa: E501
+        # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
+
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"
+        # self.initialize_widget_from_database(data)
+
+        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
+        self._labels_path = (
+            "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+        )
+        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        self.initialize_widget_from_directories(
+            data, self._analysis_path, self._labels_path
+        )
+
         # fmt: on
         # ____________________________________________________________________________
 
@@ -316,9 +341,86 @@ class PlateViewer(QMainWindow):
         self._analysis_data = value
 
     # PUBLIC METHODS-------------------------------------------------------------------
+    def load_experiment_from_database(
+        self, database_path: str | Path
+    ) -> Experiment | None:
+        """Load the experiment from the given database path."""
+        try:
+            engine = create_engine(f"sqlite:///{database_path}")
+            session = Session(engine)
+            result = session.exec(select(Experiment))
+            return result.first()
+        except Exception as e:
+            print(f"Error loading experiment: {e}")
+            return None
 
-    def initialize_widget(
-        self, datastore_path: str, labels_path: str = "", analysis_path: str = ""
+    def initialize_widget_from_database(self, database_path: str | Path) -> None:
+        """Initialize the widget with the given database path."""
+        self._database_path = Path(database_path)
+
+        # CLEARING---------------------------------------------------------------------
+
+        self._clear_widget_before_initialization()
+
+        # OPEN THE DATABASE -----------------------------------------------------------
+        LOGGER.info(f"💿 Loading experiment from database at {database_path}")
+        self._experiment = self.load_experiment_from_database(database_path)
+        if self._experiment is None:
+            msg = f"Could not load experiment from database at {database_path}!"
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
+
+        datastore_path = self._experiment.data_path
+
+        if datastore_path is None:
+            msg = "Datastore path not found in the database! Cannot initialize the "
+            "PlateViewer without a valid datastore path."
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
+
+        self._analysis_path = self._experiment.analysis_path
+        self._labels_path = self._experiment.labels_path
+
+        # DATA-------------------------------------------------------------------------
+
+        # select which reader to use for the datastore
+        if datastore_path.endswith(TS):
+            # read tensorstore
+            self._data = TensorstoreZarrReader(datastore_path)
+        elif datastore_path.endswith(ZR):
+            # read ome zarr
+            self._data = OMEZarrReader(datastore_path)
+        else:
+            self._data = None
+            msg = (
+                f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
+                f" {WRITERS[OME_ZARR][0]} are supported."
+            )
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
+
+        if self._data.sequence is None:
+            msg = (
+                "useq.MDASequence not found! Cannot use the  `PlateViewer` without "
+                "the useq.MDASequence in the datastore metadata!"
+            )
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
+
+        # PLATE------------------------------------------------------------------------
+        plate_plan = experiment_to_useq_plate_plan(self._experiment)
+        if plate_plan is not None:
+            self._draw_plate_with_selection(plate_plan)
+
+        # UPDATE WIDGETS---------------------------------------------------------------
+        self._set_widgets_data(plate_plan.plate if plate_plan is not None else None)
+
+    def initialize_widget_from_directories(
+        self, datastore_path: str, analysis_path: str, labels_path: str | None
     ) -> None:
         """Initialize the widget with given datastore, labels and analysis path."""
         # CLEARING---------------------------------------------------------------------
@@ -351,20 +453,36 @@ class PlateViewer(QMainWindow):
             )
             return
 
+        # CREATE THE DATABASE ---------------------------------------------------------
+        self._experiment = Experiment(
+            name="Experiment",
+            description="A test experiment.",
+            created_at=datetime.datetime.now(),
+            data_path=datastore_path,
+            labels_path=labels_path,
+            analysis_path=analysis_path,
+        )
+
         # LOAD ANALYSIS DATA-----------------------------------------------------------
 
         self._analysis_path = analysis_path
         self._labels_path = labels_path
 
-        # load analysis json file if the analysis path is set
-        if self._analysis_path:
-            self._load_and_set_analysis_data(self._analysis_path)
-
         # LOAD PLATE-------------------------------------------------------------------
-        plate = self._load_plate_plan(self._data.sequence.stage_positions)
+        plate_plan = self._load_plate_plan(self._data.sequence.stage_positions)
+        if plate_plan is not None:
+            self._experiment.plate = useq_plate_plan_to_plate(
+                plate_plan, self._experiment
+            )
 
-        # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-------------------------------------
-        self._set_widgets_data(plate)
+        # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
+        self._set_widgets_data(plate_plan.plate if plate_plan is not None else None)
+
+        # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
+        # TODO: ask the user to overwrite if the database already exists
+        self._database_path = Path(analysis_path) / "cali.db"
+        LOGGER.info(f"💾 Creating new database at {self._database_path}")
+        save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
 
     # WIDGET INITIALIZATION------------------------------------------------------------
 
@@ -389,12 +507,30 @@ class PlateViewer(QMainWindow):
             labels_path=self._labels_path,
             analysis_path=self._analysis_path,
         )
-        init_dialog.resize(600, init_dialog.sizeHint().height())
+        init_dialog.resize(700, init_dialog.sizeHint().height())
         if init_dialog.exec():
-            self.initialize_widget(*init_dialog.value())
+            value = init_dialog.value()
+            # input from database
+            if value.database_path is not None:
+                self.initialize_widget_from_database(value.database_path)
+            # input from directories
+            elif (data_path := value.data_path) is not None:
+                if value.analysis_path is None:
+                    msg = (
+                        "Analysis path must be provided to create the analysis "
+                        "database!"
+                    )
+                    show_error_dialog(self, msg)
+                    LOGGER.error(msg)
+                    return
+                self.initialize_widget_from_directories(
+                    data_path, value.analysis_path, value.labels_path
+                )
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
+        # clear experiment
+        self._experiment = None
         # clear the datastore
         self._data = None
         # clear fov table
@@ -570,7 +706,7 @@ class PlateViewer(QMainWindow):
 
     def _load_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
-    ) -> useq.WellPlate | None:
+    ) -> useq.WellPlatePlan | None:
         """Load the plate from the datastore."""
         if self._data is None or plate_plan is None:
             return None
@@ -593,9 +729,8 @@ class PlateViewer(QMainWindow):
         if final_plate_plan is None:
             return None
 
-        plate = final_plate_plan.plate
-        self._draw_plate_with_selection(plate, final_plate_plan)
-        return plate
+        self._draw_plate_with_selection(final_plate_plan)
+        return final_plate_plan
 
     def _resolve_plate_plan(self) -> useq.WellPlatePlan | None:
         """Resolve plate plan from various sources in order of preference."""
@@ -656,11 +791,9 @@ class PlateViewer(QMainWindow):
         except OSError as e:
             LOGGER.error(f"Failed to save plate plan: {e}")
 
-    def _draw_plate_with_selection(
-        self, plate: useq.WellPlate, plate_plan: useq.WellPlatePlan
-    ) -> None:
+    def _draw_plate_with_selection(self, plate_plan: useq.WellPlatePlan) -> None:
         """Draw the plate and disable non-selected wells."""
-        self._plate_view.drawPlate(plate)
+        self._plate_view.drawPlate(plate_plan.plate)
 
         wells = self._plate_view._well_items
         selected_indices = {

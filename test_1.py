@@ -12,13 +12,25 @@ from cali.sqlmodel import (
     save_experiment_to_db,
 )
 
-analysis_dir = Path(
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
-    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
-    # "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/..."
+data_path = (
+    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"
 )
+
+# labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
+labels_path = (
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
+)
+
+analysis_dir = Path(
+    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
+)
+
 plate = useq.WellPlate.from_str("96-well")
-experiment = load_analysis_from_json(analysis_dir, useq_plate=plate)
+experiment = load_analysis_from_json(
+    str(data_path), str(labels_path), str(analysis_dir), plate
+)
 experiment_name = experiment.name
 
 
