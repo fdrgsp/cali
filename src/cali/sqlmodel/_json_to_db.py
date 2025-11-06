@@ -6,9 +6,15 @@ from JSON format to the new SQLModel database format.
 Example
 -------
 >>> from pathlib import Path
->>> from migrate_json_to_db import load_analysis_from_json
+>>> from cali.sqlmodel import load_analysis_from_json
+>>> import useq
+>>> data_dir = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
+>>> labels_dir = Path("tests/test_data/spontaneous/spont_labels")
 >>> analysis_dir = Path("tests/test_data/spontaneous/spont_analysis")
->>> experiment = load_analysis_from_json(analysis_dir, experiment_name="Spontaneous")
+>>> plate = useq.WellPlate.from_str("96-well")
+>>> experiment = load_analysis_from_json(
+...     str(data_dir), str(labels_dir), str(analysis_dir), plate
+... )
 >>> print(f"Loaded {len(experiment.plate.wells)} wells")
 """
 
@@ -40,7 +46,9 @@ if TYPE_CHECKING:
     from useq import WellPlate
 
 
-def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experiment:
+def load_analysis_from_json(
+    data_path: str, labels_path: str, analysis_path: str, useq_plate: WellPlate
+) -> Experiment:
     """Load analysis data from JSON directory into SQLModel objects.
 
     This function reads all JSON files in the analysis directory and creates
@@ -52,8 +60,12 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
 
     Parameters
     ----------
-    analysis_dir : Path
-        Directory containing JSON analysis files (e.g., spont_analysis)
+    data_path : str
+        Path to the data directory (e.g. .tensorstore.zarr)
+    labels_path : str
+        Path to the labels directory
+    analysis_path : str
+        Path to the analysis directory
     useq_plate : WellPlate
         useq-schema WellPlate object defining the plate used
 
@@ -64,39 +76,38 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
 
     Example
     -------
-    >>> from pathlib import Path
     >>> from sqlmodel import Session, create_engine
     >>> from models import create_tables
     >>> import useq
     >>>
     >>> # Load from JSON
-    >>> analysis_dir = Path("tests/test_data/spontaneous/spont_analysis")
+    >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+    >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
+    >>> labels_dir = "tests/test_data/spontaneous/spont_labels"
     >>> plate = useq.WellPlate.from_str("96-well")
-    >>> experiment = load_analysis_from_json(analysis_dir, useq_plate=plate)
+    >>> experiment = load_analysis_from_json(
+    ...     data_dir, labels_dir, analysis_dir, useq_plate=plate
+    ... )
     >>>
     >>> # Save to database
     >>> engine = create_engine("sqlite:///test.db")
-    >>> create_tables(engine)
+    >>> create_db_and_tables(engine)
     >>> with Session(engine) as session:
     ...     session.add(experiment)
     ...     session.commit()
     """
-    experiment_name = analysis_dir.parent.name
-
     # 1. Create experiment
     experiment = Experiment(
-        name=experiment_name,
-        description=f"Imported from {analysis_dir}",
-        data_path=str(
-            analysis_dir.parent / f"{analysis_dir.parent.name}.tensorstore.zarr"
-        ),
-        labels_path=str(analysis_dir.parent / f"{analysis_dir.parent.name}_labels"),
-        analysis_path=str(analysis_dir),
+        name=Path(analysis_path).parent.name,
+        description=f"Imported from {analysis_path}",
+        data_path=data_path,
+        labels_path=labels_path,
+        analysis_path=analysis_path,
     )
 
     # 2. Create plate
     plate = Plate(
-        experiment_id=experiment.id,
+        experiment_id=0,  # Placeholder, will be set when saved
         experiment=experiment,
         name=useq_plate.name,
         plate_type=useq_plate.name,
@@ -105,8 +116,8 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
     )
 
     # 3. Load and create conditions
-    genotype_map_path = analysis_dir / "genotype_plate_map.json"
-    treatment_map_path = analysis_dir / "treatment_plate_map.json"
+    genotype_map_path = Path(analysis_path) / "genotype_plate_map.json"
+    treatment_map_path = Path(analysis_path) / "treatment_plate_map.json"
 
     genotype_map = load_plate_map(genotype_map_path)
     treatment_map = load_plate_map(treatment_map_path)
@@ -136,7 +147,7 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
             conditions[name] = cond
 
     # 4. Load analysis settings
-    settings_path = analysis_dir / "settings.json"
+    settings_path = Path(analysis_path) / "settings.json"
     analysis_settings = None
 
     if settings_path.exists():
@@ -144,7 +155,7 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
             settings_data = json.load(f)
 
         analysis_settings = AnalysisSettings(
-            experiment_id=experiment.id,
+            experiment_id=0,  # Placeholder, will be set when saved
             experiment=experiment,
             dff_window=settings_data.get("dff_window", 30),
             decay_constant=settings_data.get("decay constant", 0.0),
@@ -181,7 +192,7 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
     # 5. Process JSON files
     json_files = [
         f
-        for f in analysis_dir.glob("*.json")
+        for f in Path(analysis_path).glob("*.json")
         if f.name
         not in [
             "settings.json",
@@ -205,7 +216,7 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
 
             # Create well with conditions
             well = Well(
-                plate_id=plate.id,
+                plate_id=0,  # Placeholder, will be set when saved
                 plate=plate,  # Use relationship
                 name=well_name,
                 row=row,
@@ -287,13 +298,50 @@ def load_analysis_from_json(analysis_dir: Path, useq_plate: WellPlate) -> Experi
     return experiment
 
 
+def _label_to_row_index(label: str) -> int:
+    """Convert well row label to zero-indexed row number.
+
+    Supports single and multi-letter labels using base-26 alphabet.
+    A=0, B=1, ..., Z=25, AA=26, AB=27, ..., AZ=51, BA=52, etc.
+
+    Parameters
+    ----------
+    label : str
+        Row label (e.g., 'A', 'Z', 'AA', 'AE')
+
+    Returns
+    -------
+    int
+        Zero-indexed row number
+
+    Examples
+    --------
+    >>> _label_to_row_index("A")
+    0
+    >>> _label_to_row_index("Z")
+    25
+    >>> _label_to_row_index("AA")
+    26
+    >>> _label_to_row_index("AE")
+    30
+    """
+    label = label.upper()
+    result = 0
+    for char in label:
+        result = result * 26 + (ord(char) - ord("A") + 1)
+    return result - 1
+
+
 def parse_well_name(well_name: str) -> tuple[int, int]:
-    """Parse well name like 'B5' into (row, column) indices.
+    """Parse well name like 'B5' or 'AE19' into (row, column) indices.
+
+    Supports both single-letter (A-Z) and multi-letter (AA, AB, ...) row names
+    for plates with more than 26 rows.
 
     Parameters
     ----------
     well_name : str
-        Well name (e.g., 'B5', 'A1')
+        Well name (e.g., 'B5', 'A1', 'AE19')
 
     Returns
     -------
@@ -307,22 +355,26 @@ def parse_well_name(well_name: str) -> tuple[int, int]:
     """
     if not well_name or len(well_name) < 2:
         raise ValueError(
-            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1'"
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'AE19'"
         )
 
-    if not well_name[0].isalpha():
+    # Split into letter prefix and number suffix
+    i = 0
+    while i < len(well_name) and well_name[i].isalpha():
+        i += 1
+
+    if i == 0:
+        raise ValueError(f"Invalid well name: '{well_name}'. Must start with letter(s)")
+
+    if i == len(well_name) or not well_name[i:].isdigit():
         raise ValueError(
-            f"Invalid well name: '{well_name}'. First character must be a letter"
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'AE19' "
+            f"(letter(s) followed by number)"
         )
 
-    if not well_name[1:].isdigit():
-        raise ValueError(
-            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'A1' "
-            f"(letter followed by number)"
-        )
-
-    row = ord(well_name[0].upper()) - ord("A")
-    col = int(well_name[1:]) - 1
+    row_label = well_name[:i]
+    row = _label_to_row_index(row_label)
+    col = int(well_name[i:]) - 1
     return row, col
 
 

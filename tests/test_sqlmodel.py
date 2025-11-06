@@ -32,6 +32,7 @@ from cali.sqlmodel import (
     experiment_to_useq_plate_plan,
     load_analysis_from_json,
     save_experiment_to_db,
+    useq_plate_plan_to_plate,
 )
 from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
 from cali.sqlmodel._models import (
@@ -269,10 +270,20 @@ def test_cascade_deletion(simple_experiment: Experiment, temp_db: TempDB) -> Non
 
 def test_parse_well_name_valid() -> None:
     """Test parsing valid well names."""
+    # Single letter rows
     assert parse_well_name("A1") == (0, 0)
     assert parse_well_name("B5") == (1, 4)
     assert parse_well_name("H12") == (7, 11)
     assert parse_well_name("a1") == (0, 0)  # lowercase
+    assert parse_well_name("Z1") == (25, 0)
+
+    # Multi-letter rows (for plates with >26 rows)
+    assert parse_well_name("AA1") == (26, 0)
+    assert parse_well_name("AB5") == (27, 4)
+    assert parse_well_name("AE19") == (30, 18)
+    assert parse_well_name("ae19") == (30, 18)  # lowercase
+    assert parse_well_name("BA1") == (52, 0)
+    assert parse_well_name("ZZ1") == (701, 0)
 
 
 def test_parse_well_name_invalid() -> None:
@@ -363,13 +374,18 @@ def test_check_analysis_settings_inconsistent(temp_db: TempDB) -> None:
 
 def test_load_analysis_from_json() -> None:
     """Test loading analysis from JSON directory."""
-    analysis_dir = Path(__file__).parent / "test_data" / "evoked" / "evk_analysis"
+    test_data_dir = Path(__file__).parent / "test_data" / "evoked"
+    data_path = test_data_dir / "evk.tensorstore.zarr"
+    labels_path = test_data_dir / "evk_labels"
+    analysis_path = test_data_dir / "evk_analysis"
 
-    if not analysis_dir.exists():
+    if not analysis_path.exists():
         pytest.skip("Test data not available")
 
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(analysis_dir, plate)
+    experiment = load_analysis_from_json(
+        str(data_path), str(labels_path), str(analysis_path), plate
+    )
 
     assert experiment.name == "evoked"
     assert experiment.plate is not None
@@ -525,6 +541,101 @@ def test_experiment_to_useq_plate_plan_no_wells(temp_db: TempDB) -> None:
         assert plate_plan is None
 
 
+def test_useq_plate_plan_to_plate(temp_db: TempDB) -> None:
+    """Test converting useq.WellPlatePlan to cali.sqlmodel.Plate."""
+    engine, _ = temp_db
+
+    # Create experiment
+    exp = Experiment(name="test_useq_import", description="Import from useq")
+
+    from useq import register_well_plates
+
+    # Register 1536-well plate
+    register_well_plates(
+        {
+            "1536-well": {
+                "rows": 32,
+                "columns": 48,
+                "well_spacing": 2.25,
+                "well_size": 1.55,
+            }
+        }
+    )
+
+    # Create useq plate plan
+    plate_plan = useq.WellPlatePlan(
+        plate=useq.WellPlate.from_str("1536-well"),
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((1, 2, 30), (4, 5, 18)),  # Wells B5, C6, AE19 (paired)
+    )
+
+    # Convert to database objects
+    plate = useq_plate_plan_to_plate(plate_plan, exp)
+
+    # Verify plate properties
+    assert plate.name == "1536-well"
+    assert plate.plate_type == "1536-well"
+    assert plate.rows == 32
+    assert plate.columns == 48
+
+    # Verify wells were created (3 wells from paired indices)
+    assert len(plate.wells) == 3
+    well_names = sorted([w.name for w in plate.wells])
+    assert well_names == sorted(plate_plan.selected_well_names)
+
+    # Verify well properties
+    for well in plate.wells:
+        assert well.plate == plate
+        if well.name == "B5":
+            assert well.row == 1
+            assert well.column == 4
+        elif well.name == "C6":
+            assert well.row == 2
+            assert well.column == 5
+        elif well.name == "AE19":
+            assert well.row == 30  # AE = row 30 (A=0, Z=25, AA=26, AE=30)
+            assert well.column == 18
+
+    # Save to database and verify persistence
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        assert exp.plate.name == "1536-well"
+        assert len(exp.plate.wells) == 3
+
+
+def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
+    """Test round-trip conversion: useq → database → useq."""
+    engine, _ = temp_db
+
+    # Create experiment with useq plate plan
+    exp = Experiment(name="roundtrip_test", description="Test round-trip")
+    plate_plan_orig = useq.WellPlatePlan(
+        plate=useq.WellPlate.from_str("96-well"),
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((0, 1, 2), (3, 4, 5)),  # A4-A6, B4-B6, C4-C6
+    )
+
+    # Convert to database
+    _ = useq_plate_plan_to_plate(plate_plan_orig, exp)
+
+    # Save to database
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Convert back to useq
+        plate_plan_new = experiment_to_useq_plate_plan(exp)
+
+        # Verify round-trip
+        assert plate_plan_new is not None
+        assert plate_plan_new.plate.name == plate_plan_orig.plate.name
+        assert plate_plan_new.selected_wells == plate_plan_orig.selected_wells
+
+
 # ==================== ROI Data Conversion Tests ====================
 
 
@@ -649,14 +760,19 @@ def test_large_trace_data(temp_db: TempDB) -> None:
 
 def test_full_workflow(tmp_path: Path) -> None:
     """Test complete workflow from JSON to database to export."""
-    analysis_dir = Path(__file__).parent / "test_data" / "evoked" / "evk_analysis"
+    test_data_dir = Path(__file__).parent / "test_data" / "evoked"
+    data_path = test_data_dir / "evk.tensorstore.zarr"
+    labels_path = test_data_dir / "evk_labels"
+    analysis_path = test_data_dir / "evk_analysis"
 
-    if not analysis_dir.exists():
+    if not analysis_path.exists():
         pytest.skip("Test data not available")
 
     # 1. Load from JSON
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(analysis_dir, plate)
+    experiment = load_analysis_from_json(
+        str(data_path), str(labels_path), str(analysis_path), plate
+    )
 
     # 2. Save to database
     db_path = tmp_path / "test.db"
