@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from superqt.utils import GeneratorWorker
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
+    from cali.sqlmodel._models import Experiment
 
     from ._plate_viewer import PlateViewer
 
@@ -212,6 +213,14 @@ class _CellposeSegmentation(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(self.groupbox)
         main_layout.addStretch(1)
+
+    @property
+    def experiment(self) -> Experiment | None:
+        return self._experiment
+
+    @experiment.setter
+    def experiment(self, experiment: Experiment | None) -> None:
+        self._experiment = experiment
 
     @property
     def data(

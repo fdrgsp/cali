@@ -44,6 +44,8 @@ from cali.sqlmodel import (
     Well,
     create_db_and_tables,
 )
+from cali.sqlmodel._db_to_plate_map import experiment_to_plate_map_data
+from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 
 from ._analysis_gui import (
     AnalysisSettingsData,
@@ -62,26 +64,11 @@ from ._util import (
     BURST_MIN_DURATION,
     BURST_THRESHOLD,
     CALCIUM_NETWORK_THRESHOLD,
-    CALCIUM_SYNC_JITTER_WINDOW,
     COND1,
     COND2,
     DECAY_CONSTANT,
-    DEFAULT_BURST_GAUSS_SIGMA,
-    DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
-    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
-    DEFAULT_DFF_WINDOW,
-    DEFAULT_HEIGHT,
-    DEFAULT_MIN_BURST_DURATION,
-    DEFAULT_NEUROPIL_CORRECTION_FACTOR,
-    DEFAULT_NEUROPIL_INNER_RADIUS,
-    DEFAULT_NEUROPIL_MIN_PIXELS,
-    DEFAULT_PEAKS_DISTANCE,
-    DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
-    DEFAULT_SPIKE_THRESHOLD,
     DFF_WINDOW,
     EVENT_KEY,
-    GENOTYPE_MAP,
     GREEN,
     LED_POWER_EQUATION,
     NEUROPIL_CORRECTION_FACTOR,
@@ -97,7 +84,6 @@ from ._util import (
     SPIKE_THRESHOLD_VALUE,
     SPIKES_SYNC_CROSS_CORR_MAX_LAG,
     STIMULATION_MASK,
-    TREATMENT_MAP,
     ROIData,
     _ElapsedTimer,
     _WaitingProgressBarWidget,
@@ -160,6 +146,8 @@ class _AnalyseCalciumTraces(QWidget):
         labels_path: str | None = None,
     ) -> None:
         super().__init__(parent)
+
+        self._experiment: Experiment | None = None
 
         self._plate_viewer: PlateViewer | None = parent
 
@@ -265,6 +253,14 @@ class _AnalyseCalciumTraces(QWidget):
         self._cancel_btn.clicked.connect(self.cancel)
 
     @property
+    def experiment(self) -> Experiment | None:
+        return self._experiment
+
+    @experiment.setter
+    def experiment(self, experiment: Experiment | None) -> None:
+        self._experiment = experiment
+
+    @property
     def data(
         self,
     ) -> TensorstoreZarrReader | OMEZarrReader | None:
@@ -362,24 +358,15 @@ class _AnalyseCalciumTraces(QWidget):
         self._elapsed_timer.stop()
         self._cancel_waiting_bar.start()
 
-    def update_widget_form_settings(self) -> None:
+    def update_widget_form_settings(self, settings: AnalysisSettings | None) -> None:
         """Update the widget form from the JSON settings."""
-        if not self._analysis_path:
-            return None
-
-        settings_json_file = Path(self._analysis_path) / SETTINGS_PATH
-        if not settings_json_file.exists():
-            LOGGER.warning(f"Settings file {settings_json_file} not found")
-            return None
-
+        if settings is None:
+            return
         try:
-            with open(settings_json_file) as f:
-                self._update_form_settings(f)
+            self._update_form_settings(settings)
         except Exception as e:
-            self._show_and_log_error(
-                f"Failed to load settings from {settings_json_file}: {e}"
-            )
-            return None
+            self._show_and_log_error(f"Failed to load settings: {e}")
+            return
 
     # PRIVATE METHODS --------------------------------------------------------------
 
@@ -1478,34 +1465,32 @@ class _AnalyseCalciumTraces(QWidget):
         self._plate_viewer._tab.setTabEnabled(1, enable)
         self._plate_viewer._tab.setTabEnabled(2, enable)
 
-    def _update_form_settings(self, f: Any) -> None:
-        """Update the widget form from the JSON settings file."""
+    def _update_form_settings(self, settings: AnalysisSettings) -> None:
+        """Update the widget form from the AnalysisSettings."""
         # fmt: off
-        # load the settings from the JSON file
-        settings = cast("dict", json.load(f))
         # led power equation
-        led_eq = cast("str", settings.get(LED_POWER_EQUATION, ""))
+        led_eq = settings.led_power_equation
         # neuropil correction data
-        neuropil_radius = cast("int", settings.get(NEUROPIL_INNER_RADIUS, DEFAULT_NEUROPIL_INNER_RADIUS))  # noqa: E501
-        neuropil_min_px = cast("int", settings.get(NEUROPIL_MIN_PIXELS, DEFAULT_NEUROPIL_MIN_PIXELS))  # noqa: E501
-        neuropil_factor = cast("float", settings.get(NEUROPIL_CORRECTION_FACTOR, DEFAULT_NEUROPIL_CORRECTION_FACTOR))  # noqa: E501
+        neuropil_radius = settings.neuropil_inner_radius
+        neuropil_min_px = settings.neuropil_min_pixels
+        neuropil_factor = settings.neuropil_correction_factor
         # trace extraction data
-        dff_window = cast("int", settings.get(DFF_WINDOW, DEFAULT_DFF_WINDOW))
-        decay = cast("float", settings.get(DECAY_CONSTANT, 0.0))
+        dff_window = settings.dff_window
+        decay = settings.decay_constant
         # calcium peaks data
-        h_val = cast("float", settings.get(PEAKS_HEIGHT_VALUE, DEFAULT_HEIGHT))
-        h_mode = cast("str", settings.get(PEAKS_HEIGHT_MODE, MULTIPLIER))
-        dist = cast("int", settings.get(PEAKS_DISTANCE, DEFAULT_PEAKS_DISTANCE))
-        prom_mult = cast("float", settings.get(PEAKS_PROMINENCE_MULTIPLIER, 1.0))
-        jit = cast("int",settings.get(CALCIUM_SYNC_JITTER_WINDOW, DEFAULT_CALCIUM_SYNC_JITTER_WINDOW))  # noqa: E501
-        network_threshold = cast("float",settings.get(CALCIUM_NETWORK_THRESHOLD, DEFAULT_CALCIUM_NETWORK_THRESHOLD))  # noqa: E501
+        h_val = settings.peaks_height_value
+        h_mode = settings.peaks_height_mode
+        dist = settings.peaks_distance
+        prom_mult = settings.peaks_prominence_multiplier
+        jit = settings.calcium_sync_jitter_window
+        network_threshold = settings.calcium_network_threshold
         # spikes data
-        spike_thresh_val = cast("float", settings.get(SPIKE_THRESHOLD_VALUE, DEFAULT_SPIKE_THRESHOLD))  # noqa: E501
-        spike_thresh_mode = cast("str", settings.get(SPIKE_THRESHOLD_MODE, MULTIPLIER))
-        burst_the = cast("float", settings.get(BURST_THRESHOLD, DEFAULT_BURST_THRESHOLD))  # noqa: E501
-        burst_d = cast("int", settings.get(BURST_MIN_DURATION, DEFAULT_MIN_BURST_DURATION))  # noqa: E501
-        burst_g = cast("float", settings.get(BURST_GAUSSIAN_SIGMA, DEFAULT_BURST_GAUSS_SIGMA))  # noqa: E501
-        lag = cast("int",settings.get(SPIKES_SYNC_CROSS_CORR_MAX_LAG, DEFAULT_SPIKE_SYNCHRONY_MAX_LAG))  # noqa: E501
+        spike_thresh_val = settings.spike_threshold_value
+        spike_thresh_mode = settings.spike_threshold_mode
+        burst_the = settings.burst_threshold
+        burst_d = settings.burst_min_duration
+        burst_g = settings.burst_gaussian_sigma
+        lag = settings.spikes_sync_cross_corr_lag
         # fmt: on
 
         value = AnalysisSettingsData(
@@ -1631,21 +1616,18 @@ class _AnalyseCalciumTraces(QWidget):
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
         return msg_box.exec()
 
-    def _load_plate_map(self, plate: useq.WellPlate | None) -> None:
+    def _load_plate_map(self) -> None:
         """Load the plate map from the given file."""
-        if plate is None:
+        if self._experiment is None:
             return
         plate_map_wdg = self._analysis_settings_gui._plate_map_wdg
         # clear the plate map data
         plate_map_wdg.clear()
         # set the plate type
+        plate = experiment_to_useq_plate(self._experiment)
+        if plate is None:
+            return
         plate_map_wdg.setPlate(plate)
         # load plate map if exists
-        if not self._analysis_path:
-            return
-        gen_path = Path(self._analysis_path) / GENOTYPE_MAP
-        treat_path = Path(self._analysis_path) / TREATMENT_MAP
-        plate_map_wdg.setValue(
-            gen_path if gen_path.exists() else [],
-            treat_path if treat_path.exists() else [],
-        )
+        gen, treat = experiment_to_plate_map_data(self._experiment)
+        plate_map_wdg.setValue(gen, treat)
