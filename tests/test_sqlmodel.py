@@ -28,6 +28,7 @@ from cali.sqlmodel import (
     Experiment,
     Plate,
     Well,
+    experiment_to_plate_map_data,
     experiment_to_useq_plate,
     experiment_to_useq_plate_plan,
     load_analysis_from_json,
@@ -390,6 +391,17 @@ def test_load_analysis_from_json() -> None:
     assert experiment.name == "evoked"
     assert experiment.plate is not None
     assert len(experiment.plate.wells) > 0
+
+    # Check that stimulation mask was loaded (evoked data should have one)
+    if experiment.analysis_settings:
+        analysis_settings = experiment.analysis_settings[0]
+        # The evoked test data has a stimulation_mask.tif file
+        assert analysis_settings.stimulation_mask_path is not None
+        assert "stimulation_mask.tif" in analysis_settings.stimulation_mask_path
+        assert analysis_settings.stimulation_mask is not None
+        assert analysis_settings.stimulation_mask.mask_type == "stimulation"
+        assert analysis_settings.stimulation_mask.coords_y is not None
+        assert analysis_settings.stimulation_mask.coords_x is not None
 
 
 def test_save_experiment_to_db(tmp_path: Path) -> None:
@@ -1010,3 +1022,194 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
         assert result.neuropil_mask is not None
         assert result.roi_mask.mask_type == "roi"
         assert result.neuropil_mask.mask_type == "neuropil"
+
+
+def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
+    """Test AnalysisSettings with stimulation mask."""
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment
+        exp = Experiment(name="stim_mask_test")
+
+        # Create stimulation mask
+        stim_mask = Mask(
+            coords_y=[10, 11, 12],
+            coords_x=[20, 21, 22],
+            height=100,
+            width=100,
+            mask_type="stimulation",
+        )
+
+        # Create analysis settings with stimulation mask
+        AnalysisSettings(
+            experiment_id=0,  # placeholder, will be set by relationship
+            experiment=exp,
+            stimulation_mask_path="/path/to/stimulation_mask.tif",
+            stimulation_mask=stim_mask,
+        )
+
+        session.add(exp)
+        session.commit()
+
+        # Retrieve and verify
+        result = session.exec(select(AnalysisSettings)).first()
+        assert result is not None
+        assert result.stimulation_mask_path == "/path/to/stimulation_mask.tif"
+        assert result.stimulation_mask is not None
+        assert result.stimulation_mask.mask_type == "stimulation"
+        assert result.stimulation_mask.coords_y == [10, 11, 12]
+        assert result.stimulation_mask.coords_x == [20, 21, 22]
+        assert result.stimulation_mask.height == 100
+        assert result.stimulation_mask.width == 100
+
+
+def test_analysis_settings_without_stimulation_mask(temp_db: TempDB) -> None:
+    """Test AnalysisSettings without stimulation mask (optional field)."""
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment without stimulation mask
+        exp = Experiment(name="no_stim_mask_test")
+        AnalysisSettings(experiment=exp)
+
+        session.add(exp)
+        session.commit()
+
+        # Retrieve and verify
+        result = session.exec(select(AnalysisSettings)).first()
+        assert result is not None
+        assert result.stimulation_mask_path is None
+        assert result.stimulation_mask is None
+        assert result.stimulation_mask_id is None
+
+
+def test_experiment_to_plate_map_data(
+    simple_experiment: Experiment, temp_db: TempDB
+) -> None:
+    """Test conversion of experiment to plate map data format."""
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        session.add(simple_experiment)
+        session.commit()
+        session.refresh(simple_experiment)
+
+        # Convert to plate map format
+        cond1_data, cond2_data = experiment_to_plate_map_data(simple_experiment)
+
+        # Verify condition_1 (genotype)
+        assert len(cond1_data) == 1
+        assert cond1_data[0].name == "B5"
+        assert cond1_data[0].row_col == (1, 4)
+        assert cond1_data[0].condition == ("WT", "blue")
+
+        # Verify condition_2 (treatment)
+        assert len(cond2_data) == 1
+        assert cond2_data[0].name == "B5"
+        assert cond2_data[0].row_col == (1, 4)
+        assert cond2_data[0].condition == ("Control", "gray")
+
+
+def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
+    """Test plate map conversion with multiple wells.
+
+    Note: The order of conditions in a well's condition list is not guaranteed
+    by SQLModel/SQLAlchemy when using many-to-many relationships. This test
+    verifies that the conversion function works correctly regardless of order.
+    """
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment with multiple wells
+        exp = Experiment(name="multi_well_test")
+        plate = Plate(experiment=exp, name="24-well")
+
+        # Create conditions
+        wt = Condition(name="WT", condition_type="genotype", color="blue")
+        ko = Condition(name="KO", condition_type="genotype", color="red")
+        drug = Condition(name="Drug", condition_type="treatment", color="green")
+        vehicle = Condition(name="Vehicle", condition_type="treatment", color="gray")
+
+        # Create wells with different condition combinations
+        Well(plate=plate, name="A1", row=0, column=0, conditions=[wt, vehicle])
+        Well(plate=plate, name="A2", row=0, column=1, conditions=[wt, drug])
+        Well(plate=plate, name="B1", row=1, column=0, conditions=[ko, vehicle])
+        Well(plate=plate, name="B2", row=1, column=1, conditions=[ko, drug])
+
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Convert to plate map format
+        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+
+        # Verify we have 4 wells total
+        assert len(cond1_data) == 4
+        assert len(cond2_data) == 4
+
+        # Check that all wells are present
+        well_names_1 = {data.name for data in cond1_data}
+        well_names_2 = {data.name for data in cond2_data}
+        assert well_names_1 == {"A1", "A2", "B1", "B2"}
+        assert well_names_2 == {"A1", "A2", "B1", "B2"}
+
+        # Verify that each well has two conditions (one in each list)
+        for well_name in ["A1", "A2", "B1", "B2"]:
+            cond1_entry = next(d for d in cond1_data if d.name == well_name)
+            cond2_entry = next(d for d in cond2_data if d.name == well_name)
+
+            # Each condition should be one of our defined conditions
+            assert cond1_entry.condition[0] in ["WT", "KO", "Drug", "Vehicle"]
+            assert cond2_entry.condition[0] in ["WT", "KO", "Drug", "Vehicle"]
+
+            # The two conditions for each well should be different
+            assert cond1_entry.condition[0] != cond2_entry.condition[0]
+
+            # Colors should match condition names
+            color_map = {"WT": "blue", "KO": "red", "Drug": "green", "Vehicle": "gray"}
+            assert cond1_entry.condition[1] == color_map[cond1_entry.condition[0]]
+            assert cond2_entry.condition[1] == color_map[cond2_entry.condition[0]]
+
+
+def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
+    """Test plate map conversion with wells that have no conditions."""
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment with wells but no conditions
+        exp = Experiment(name="no_conditions_test")
+        plate = Plate(experiment=exp, name="24-well")
+        Well(plate=plate, name="A1", row=0, column=0)
+        Well(plate=plate, name="A2", row=0, column=1)
+
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Convert to plate map format
+        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+
+        # Should return empty lists when wells have no conditions
+        assert len(cond1_data) == 0
+        assert len(cond2_data) == 0
+
+
+def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
+    """Test plate map conversion with experiment that has no plate."""
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment without plate
+        exp = Experiment(name="no_plate_test")
+
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Convert to plate map format
+        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+
+        # Should return empty lists when there's no plate
+        assert len(cond1_data) == 0
+        assert len(cond2_data) == 0

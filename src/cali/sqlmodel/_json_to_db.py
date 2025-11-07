@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Session, create_engine
 
-from cali._plate_viewer._util import ROIData
+from cali._plate_viewer._util import ROIData, mask_to_coordinates
 
 from ._models import (
     FOV,
@@ -154,6 +154,35 @@ def load_analysis_from_json(
         with open(settings_path) as f:
             settings_data = json.load(f)
 
+        # Check for stimulation mask
+        stimulation_mask = None
+        stimulation_mask_path = None
+        stim_mask_file = Path(analysis_path) / "stimulation_mask.tif"
+
+        if stim_mask_file.exists():
+            try:
+                # Load the stimulation mask
+                import tifffile
+
+                stim_mask_array = tifffile.imread(str(stim_mask_file))
+
+                # Convert to coordinates for storage
+                coords, shape = mask_to_coordinates(stim_mask_array.astype(bool))
+
+                # Create Mask object
+                stimulation_mask = Mask(
+                    coords_y=coords[0],
+                    coords_x=coords[1],
+                    height=shape[0],
+                    width=shape[1],
+                    mask_type="stimulation",
+                )
+
+                stimulation_mask_path = str(stim_mask_file)
+            except Exception as e:
+                # If loading fails, just skip it (optional field)
+                print(f"Warning: Could not load stimulation mask: {e}")
+
         analysis_settings = AnalysisSettings(
             experiment_id=0,  # Placeholder, will be set when saved
             experiment=experiment,
@@ -187,6 +216,8 @@ def load_analysis_from_json(
                 "neuropil_correction_factor", 0.0
             ),
             led_power_equation=settings_data.get("led_power_equation") or None,
+            stimulation_mask=stimulation_mask,
+            stimulation_mask_path=stimulation_mask_path,
         )
 
     # 5. Process JSON files
@@ -561,6 +592,10 @@ def save_experiment_to_db(
     >>> save_experiment_to_db(exp, "analysis.db")
     """
     db_path = Path(db_path)
+
+    # Ensure parent directory exists
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
     if overwrite and db_path.exists():
         db_path.unlink()
 
@@ -576,3 +611,76 @@ def save_experiment_to_db(
         session = None
 
     return session
+
+
+def load_experiment_from_db(
+    db_path: Path | str,
+    experiment_name: str | None = None,
+) -> Experiment | None:
+    """Load an experiment from SQLite database with all relationships.
+
+    This function properly handles SQLAlchemy session management and eagerly
+    loads all relationships so the returned Experiment object can be used
+    outside the session context.
+
+    Parameters
+    ----------
+    db_path : Path | str
+        Path to SQLite database file
+    experiment_name : str | None, optional
+        Name of specific experiment to load. If None, loads the first experiment.
+
+    Returns
+    -------
+    Experiment | None
+        Loaded experiment with all relationships, or None if not found
+
+    Example
+    -------
+    >>> from pathlib import Path
+    >>> exp = load_experiment_from_db("analysis.db", "my_experiment")
+    >>> if exp:
+    ...     print(f"Loaded {len(exp.plate.wells)} wells")
+    """
+    from sqlmodel import select
+
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with Session(engine) as session:
+        # Query for experiment
+        if experiment_name:
+            statement = select(Experiment).where(Experiment.name == experiment_name)
+        else:
+            statement = select(Experiment)
+
+        experiment = session.exec(statement).first()
+
+        if not experiment:
+            return None
+
+        # Eagerly load all relationships while session is open
+        session.refresh(experiment)
+
+        # Access all relationships to trigger loading
+        _ = experiment.plate
+        _ = experiment.analysis_settings
+
+        if experiment.plate:
+            _ = experiment.plate.wells
+            for well in experiment.plate.wells:
+                _ = well.conditions
+                _ = well.fovs
+                for fov in well.fovs:
+                    _ = fov.rois
+                    for roi in fov.rois:
+                        _ = roi.traces
+                        _ = roi.data_analysis
+                        _ = roi.roi_mask
+                        _ = roi.neuropil_mask
+                        _ = roi.analysis_settings
+
+        if experiment.analysis_settings:
+            for settings in experiment.analysis_settings:
+                _ = settings.stimulation_mask
+
+        return experiment

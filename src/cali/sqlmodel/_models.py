@@ -133,6 +133,12 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
         Duration of LED pulse (evoked experiments)
+    stimulation_mask_path : str | None
+        Path to stimulation mask file (for GUI/reference)
+    stimulation_mask_id : int | None
+        Foreign key to stimulation mask data
+    stimulation_mask : Mask | None
+        Stimulation mask data (spatial pattern of stimulation)
     peaks_prominence_dec_dff : float | None
         Peak prominence threshold for deconvolved ΔF/F (calculated)
     peaks_height_dec_dff : float | None
@@ -173,6 +179,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     led_power_equation: str | None = None
     led_pulse_duration: float | None = None
+    stimulation_mask_path: str | None = None
 
     # not directly set by user, calculated in the analysis step
     peaks_prominence_dec_dff: float | None = None
@@ -184,9 +191,18 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Foreign keys
     experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    stimulation_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
 
     # Relationships
     experiment: "Experiment" = Relationship(back_populates="analysis_settings")
+    stimulation_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
+            "lazy": "selectin",
+        }
+    )
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
@@ -566,7 +582,7 @@ class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     width : int | None
         Mask width
     mask_type : str
-        Type of mask ("roi" or "neuropil")
+        Type of mask ("roi", "neuropil", or "stimulation")
     """
 
     __tablename__ = "mask"
@@ -577,7 +593,7 @@ class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     coords_x: list[int] | None = Field(default=None, sa_column=Column(JSON))
     height: int | None = None
     width: int | None = None
-    mask_type: str = Field(index=True)  # "roi" or "neuropil"
+    mask_type: str = Field(index=True)  # "roi", "neuropil", or "stimulation"
 
 
 # ==================== Helper Functions ====================

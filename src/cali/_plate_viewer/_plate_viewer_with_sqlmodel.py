@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -61,10 +60,8 @@ from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
     EVENT_KEY,
-    GENOTYPE_MAP,
     PLATE_PLAN,
     SETTINGS_PATH,
-    TREATMENT_MAP,
     ROIData,
     _ProgressBarWidget,
     show_error_dialog,
@@ -72,6 +69,8 @@ from ._util import (
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+    from cali.sqlmodel._models import AnalysisSettings
 
 HCS = "hcs"
 UNSELECTABLE_COLOR = "#404040"
@@ -307,6 +306,14 @@ class PlateViewer(QMainWindow):
         # ____________________________________________________________________________
 
     @property
+    def experiment(self) -> Experiment | None:
+        return self._experiment
+
+    @experiment.setter
+    def experiment(self, experiment: Experiment | None) -> None:
+        self._experiment = experiment
+
+    @property
     def data(self) -> TensorstoreZarrReader | OMEZarrReader | None:
         return self._data
 
@@ -328,7 +335,7 @@ class PlateViewer(QMainWindow):
     def analysis_path(self, value: str) -> None:
         self._analysis_path = value
         self._analysis_wdg.analysis_path = value
-        self._load_and_set_analysis_data(value)
+        # self._load_and_set_analysis_data(value)
 
     @property
     def analysis_data(self) -> dict[str, dict[str, ROIData]]:
@@ -371,11 +378,11 @@ class PlateViewer(QMainWindow):
             LOGGER.error(msg)
             return
 
-        datastore_path = self._experiment.data_path
+        data_path = self._experiment.data_path
 
-        if datastore_path is None:
-            msg = "Datastore path not found in the database! Cannot initialize the "
-            "PlateViewer without a valid datastore path."
+        if data_path is None:
+            msg = "Data path not found in the database! Cannot initialize the "
+            "PlateViewer without a valid data path."
             show_error_dialog(self, msg)
             LOGGER.error(msg)
             return
@@ -386,12 +393,12 @@ class PlateViewer(QMainWindow):
         # DATA-------------------------------------------------------------------------
 
         # select which reader to use for the datastore
-        if datastore_path.endswith(TS):
+        if data_path.endswith(TS):
             # read tensorstore
-            self._data = TensorstoreZarrReader(datastore_path)
-        elif datastore_path.endswith(ZR):
+            self._data = TensorstoreZarrReader(data_path)
+        elif data_path.endswith(ZR):
             # read ome zarr
-            self._data = OMEZarrReader(datastore_path)
+            self._data = OMEZarrReader(data_path)
         else:
             self._data = None
             msg = (
@@ -416,8 +423,14 @@ class PlateViewer(QMainWindow):
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
 
+        # ANALYSIS SETTINGS------------------------------------------------------------
+        # TODO: currently always getting the first analysis settings
+        settings: AnalysisSettings | None = None
+        if settings_list := self._experiment.analysis_settings:
+            settings = settings_list[0]
+
         # UPDATE WIDGETS---------------------------------------------------------------
-        self._set_widgets_data(plate_plan.plate if plate_plan is not None else None)
+        self._set_widgets_data(settings)
 
     def initialize_widget_from_directories(
         self, datastore_path: str, analysis_path: str, labels_path: str | None
@@ -476,7 +489,7 @@ class PlateViewer(QMainWindow):
             )
 
         # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
-        self._set_widgets_data(plate_plan.plate if plate_plan is not None else None)
+        self._set_widgets_data(None)
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
@@ -540,11 +553,13 @@ class PlateViewer(QMainWindow):
         # clear the image viewer cache
         self._image_viewer._viewer._contour_cache.clear()
         # clear the analysis data
-        self._analysis_data.clear()
+        # self._analysis_data.clear()
         # clear the segmentation widget
+        self._segmentation_wdg.experiment = None
         self._segmentation_wdg.data = None
         self._segmentation_wdg.labels_path = None
         # clear the analysis widget data
+        self._analysis_wdg.experiment = None
         self._analysis_wdg.data = None
         self._analysis_wdg.analysis_data.clear()
         self._analysis_wdg.analysis_path = None
@@ -554,155 +569,155 @@ class PlateViewer(QMainWindow):
         # no plate flag
         self._default_plate_plan = False
 
-    def _load_and_set_analysis_data(self, path: str | Path) -> None:
-        """Load the analysis data from the given JSON file."""
-        if isinstance(path, str):
-            path = Path(path)
+    # def _load_and_set_analysis_data(self, path: str | Path) -> None:
+    #     """Load the analysis data from the given JSON file."""
+    #     if isinstance(path, str):
+    #         path = Path(path)
 
-        if not path.exists():
-            show_error_dialog(
-                self, f"Error while loading the file. Path {path} does not exist!"
-            )
-            return
-        if not path.is_dir():
-            show_error_dialog(
-                self, f"Error while loading the file. Path {path} is not a directory!"
-            )
-            return
+    #     if not path.exists():
+    #         show_error_dialog(
+    #             self, f"Error while loading the file. Path {path} does not exist!"
+    #         )
+    #         return
+    #     if not path.is_dir():
+    #         show_error_dialog(
+    #             self, f"Error while loading the file. Path {path} is not a directory!"
+    #         )
+    #         return
 
-        # start the waiting progress bar
-        self._init_loading_bar("Loading Analysis Data...")
+    #     # start the waiting progress bar
+    #     self._init_loading_bar("Loading Analysis Data...")
 
-        create_worker(
-            self._load_and_set_data_from_json,
-            path=path,
-            _start_thread=True,
-            _connect={
-                "yielded": self._update_progress,
-                "finished": self._on_loading_finished,
-                "errored": self._on_loading_finished,
-            },
-        )
+    #     create_worker(
+    #         self._load_and_set_data_from_json,
+    #         path=path,
+    #         _start_thread=True,
+    #         _connect={
+    #             "yielded": self._update_progress,
+    #             "finished": self._on_loading_finished,
+    #             "errored": self._on_loading_finished,
+    #         },
+    #     )
 
     def _on_loading_finished(self) -> None:
         """Called when the loading of the analysis data is finished."""
         self._loading_bar.hide()
 
-    def _load_and_set_data_from_json(
-        self, path: Path
-    ) -> Generator[int | str, None, None]:
-        """Load the analysis data from the given JSON file."""
-        json_files = self._filter_data(list(path.glob("*.json")))
-        self._loading_bar.setRange(0, len(json_files))
-        try:
-            # loop over the files in the directory
-            for idx, f in enumerate(tqdm(json_files, desc="Loading Analysis Data")):
-                LOGGER.debug(f"Loading file: {f}")
-                yield idx + 1
-                # get the name of the file without the extensions
-                well = f.name.removesuffix(f.suffix)
-                # create the dict for the well
-                self._analysis_data[well] = {}
-                # open the data for the well
-                with open(f) as file:
-                    data = {}
-                    try:
-                        data = cast("dict", json.load(file))
-                    except json.JSONDecodeError as e:
-                        msg = f"Error reading the analysis data: {e}"
-                        LOGGER.error(msg)
-                        yield msg  # for showing the error dialog
-                        self._analysis_data = data
-                    # if the data is empty, continue
-                    if not data:
-                        continue
-                    # loop over the rois
-                    for roi in data.keys():
-                        if not roi.isdigit():
-                            # this is the case of global data
-                            # (e.g. cubic or linear global connectivity)
-                            self._analysis_data[roi] = data[roi]
-                            continue
-                        # get the data for the roi
-                        fov_data = cast("dict", data[roi])
-                        # remove any key that is not in ROIData
-                        for key in list(fov_data.keys()):
-                            if key not in ROIData.__annotations__:
-                                fov_data.pop(key)
-                        # convert to a ROIData object and add store it in _analysis_data
-                        self._analysis_data[well][roi] = ROIData(**fov_data)
-        except Exception as e:
-            msg = f"Error loading the analysis data: {e}"
-            LOGGER.error(msg)
-            yield msg  # for showing the error dialog
-            self._analysis_data.clear()
+    # def _load_and_set_data_from_json(
+    #     self, path: Path
+    # ) -> Generator[int | str, None, None]:
+    #     """Load the analysis data from the given JSON file."""
+    #     json_files = self._filter_data(list(path.glob("*.json")))
+    #     self._loading_bar.setRange(0, len(json_files))
+    #     try:
+    #         # loop over the files in the directory
+    #         for idx, f in enumerate(tqdm(json_files, desc="Loading Analysis Data")):
+    #             LOGGER.debug(f"Loading file: {f}")
+    #             yield idx + 1
+    #             # get the name of the file without the extensions
+    #             well = f.name.removesuffix(f.suffix)
+    #             # create the dict for the well
+    #             self._analysis_data[well] = {}
+    #             # open the data for the well
+    #             with open(f) as file:
+    #                 data = {}
+    #                 try:
+    #                     data = cast("dict", json.load(file))
+    #                 except json.JSONDecodeError as e:
+    #                     msg = f"Error reading the analysis data: {e}"
+    #                     LOGGER.error(msg)
+    #                     yield msg  # for showing the error dialog
+    #                     self._analysis_data = data
+    #                 # if the data is empty, continue
+    #                 if not data:
+    #                     continue
+    #                 # loop over the rois
+    #                 for roi in data.keys():
+    #                     if not roi.isdigit():
+    #                         # this is the case of global data
+    #                         # (e.g. cubic or linear global connectivity)
+    #                         self._analysis_data[roi] = data[roi]
+    #                         continue
+    #                     # get the data for the roi
+    #                     fov_data = cast("dict", data[roi])
+    #                     # remove any key that is not in ROIData
+    #                     for key in list(fov_data.keys()):
+    #                         if key not in ROIData.__annotations__:
+    #                             fov_data.pop(key)
+    #                     # convert to a ROIData object and add store it in _analysis_data
+    #                     self._analysis_data[well][roi] = ROIData(**fov_data)
+    #     except Exception as e:
+    #         msg = f"Error loading the analysis data: {e}"
+    #         LOGGER.error(msg)
+    #         yield msg  # for showing the error dialog
+    #         self._analysis_data.clear()
 
-    def _filter_data(self, path_list: list[Path]) -> list[Path]:
-        filtered_paths: list[Path] = []
+    # def _filter_data(self, path_list: list[Path]) -> list[Path]:
+    #     filtered_paths: list[Path] = []
 
-        # the json file names should be in the form A1_0000.json
-        for f in path_list:
-            if f.name in {
-                GENOTYPE_MAP,
-                TREATMENT_MAP,
-                SETTINGS_PATH,
-                f"{PLATE_PLAN}.json",  # for compatibility with old versions
-            }:
-                continue
-            # skip hidden files
-            if f.name.startswith("."):
-                continue
+    #     # the json file names should be in the form A1_0000.json
+    #     for f in path_list:
+    #         if f.name in {
+    #             GENOTYPE_MAP,
+    #             TREATMENT_MAP,
+    #             SETTINGS_PATH,
+    #             f"{PLATE_PLAN}.json",  # for compatibility with old versions
+    #         }:
+    #             continue
+    #         # skip hidden files
+    #         if f.name.startswith("."):
+    #             continue
 
-            name_no_suffix = f.name.removesuffix(f.suffix)  # A1_0000 or A1_0000_p0
-            split_name = name_no_suffix.split("_")  # ["A1","0000"]or["A1","0000","p0"]
+    #         name_no_suffix = f.name.removesuffix(f.suffix)  # A1_0000 or A1_0000_p0
+    #         split_name = name_no_suffix.split("_")  # ["A1","0000"]or["A1","0000","p0"]
 
-            if len(split_name) == 2:
-                well, fov = split_name
-            elif len(split_name) == 3:
-                well, fov, pos = split_name
-            else:
-                continue
+    #         if len(split_name) == 2:
+    #             well, fov = split_name
+    #         elif len(split_name) == 3:
+    #             well, fov, pos = split_name
+    #         else:
+    #             continue
 
-            # validate well format, only letters and numbers
-            if not re.match(r"^[a-zA-Z0-9]+$", well):
-                continue
+    #         # validate well format, only letters and numbers
+    #         if not re.match(r"^[a-zA-Z0-9]+$", well):
+    #             continue
 
-            # validate fov format, only numbers
-            if len(split_name) == 3:
-                if not fov.isdigit():
-                    continue
-                if not pos[1:].isdigit():
-                    continue
+    #         # validate fov format, only numbers
+    #         if len(split_name) == 3:
+    #             if not fov.isdigit():
+    #                 continue
+    #             if not pos[1:].isdigit():
+    #                 continue
 
-            filtered_paths.append(f)
+    #         filtered_paths.append(f)
 
-        return filtered_paths
+    #     return filtered_paths
 
-    def _set_widgets_data(self, plate: useq.WellPlate | None) -> None:
+    def _set_widgets_data(self, settings: AnalysisSettings | None) -> None:
         """Update the segmentation and analysis widgets data."""
         # set the segmentation widget data
         self._segmentation_wdg.data = self._data
         self._segmentation_wdg.labels_path = self._labels_path
         # set the analysis widget data
         self._analysis_wdg.data = self._data
-        self._analysis_wdg.analysis_data = self._analysis_data
+        # self._analysis_wdg.analysis_data = self._analysis_data
         self._analysis_wdg.analysis_path = self._analysis_path
         self._analysis_wdg.labels_path = self._labels_path
-        self._analysis_wdg.update_widget_form_settings()
+        self._analysis_wdg.update_widget_form_settings(settings)
         # set the plate map
-        self._analysis_wdg._load_plate_map(plate)
+        self._analysis_wdg._load_plate_map()
         # set the stimulation mask if it exists
-        if self._analysis_wdg.analysis_path:
-            # if a file namend "stimulation_mask.tif" exists in the analysis path
-            stim_mask = Path(self._analysis_wdg.analysis_path) / "stimulation_mask.tif"
-            if stim_mask.exists():
-                self._analysis_wdg._analysis_settings_gui.setValue(
-                    AnalysisSettingsData(
-                        experiment_type_data=ExperimentTypeData(
-                            experiment_type=EVOKED, stimulation_area_path=str(stim_mask)
-                        )
+        if self._experiment is None or settings is None:
+            return
+        stim_mask = settings.stimulation_mask_path
+        if (stim_mask := settings.stimulation_mask_path) is not None:
+            self._analysis_wdg._analysis_settings_gui.setValue(
+                AnalysisSettingsData(
+                    experiment_type_data=ExperimentTypeData(
+                        experiment_type=EVOKED, stimulation_area_path=str(stim_mask)
                     )
                 )
+            )
 
     def _load_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
