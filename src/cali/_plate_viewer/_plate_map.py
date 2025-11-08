@@ -339,20 +339,13 @@ class PlateMapWidget(QWidget):
             if well.data(DATA_COLOR)
         ]
 
-    def setValue(
-        self, value: list[PlateMapData | PlateMapDataOld] | list | Path | str
-    ) -> None:
+    def setValue(self, value: list[PlateMapData | PlateMapDataOld]) -> None:
         """Set the value of the widget."""
         # clear the selection and the conditions of the plate
         self._plate_view.clearSelection()
         self.clear()
 
         try:
-            if isinstance(value, (Path, str)):
-                with open(value) as pmap:
-                    data = json.load(pmap)
-                value = cast("list", data)
-
             add_to_conditions_list = set()
             for data in value:
                 # convert the data to a PlateMapData object if it is a list of strings

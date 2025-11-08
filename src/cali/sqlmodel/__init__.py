@@ -35,9 +35,13 @@ from ._models import (
     Traces,
     Well,
     WellCondition,
-    create_db_and_tables,
 )
-from ._useq_plate_to_db import useq_plate_plan_to_plate
+from ._useq_plate_to_db import useq_plate_plan_to_plate, useq_plate_to_db_plate
+from ._util import (
+    check_analysis_settings_consistency,
+    create_db_and_tables,
+    load_experiment_from_database,
+)
 from ._visualize_experiment import print_experiment_tree, print_model_tree
 
 __all__ = [
@@ -52,14 +56,17 @@ __all__ = [
     "Traces",
     "Well",
     "WellCondition",
+    "check_analysis_settings_consistency",
     "create_db_and_tables",
     "experiment_to_plate_map_data",
     "experiment_to_useq_plate",
     "experiment_to_useq_plate_plan",
     "load_analysis_from_json",
+    "load_experiment_from_database",
     "load_experiment_from_db",
     "print_experiment_tree",
     "print_model_tree",
     "save_experiment_to_db",
     "useq_plate_plan_to_plate",
+    "useq_plate_to_db_plate",
 ]

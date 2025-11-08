@@ -216,20 +216,20 @@ class PlateViewer(QMainWindow):
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
 
-        self._single_well_graph_wdg_1 = _SingleWellGraphWidget(self)
-        self._single_well_graph_wdg_2 = _SingleWellGraphWidget(self)
-        self._single_well_graph_wdg_3 = _SingleWellGraphWidget(self)
-        # self._single_well_graph_wdg_4 = _SingleWellGraphWidget(self)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_1, 0, 0)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_2, 0, 1)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_3, 1, 0, 1, 2)
-        # single_well_vis_layout.addWidget(self._single_well_graph_wdg_4, 1, 1)
+        self._single_well_graph_1 = _SingleWellGraphWidget(self)
+        self._single_well_graph_2 = _SingleWellGraphWidget(self)
+        self._single_well_graph_3 = _SingleWellGraphWidget(self)
+        # self._single_well_graph_4 = _SingleWellGraphWidget(self)
+        single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
+        single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
+        single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
+        # single_well_vis_layout.addWidget(self._single_well_graph_4, 1, 1)
 
         self.SW_GRAPHS = [
-            self._single_well_graph_wdg_1,
-            self._single_well_graph_wdg_2,
-            self._single_well_graph_wdg_3,
-            # self._single_well_graph_wdg_4,
+            self._single_well_graph_1,
+            self._single_well_graph_2,
+            self._single_well_graph_3,
+            # self._single_well_graph_4,
         ]
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
@@ -244,10 +244,10 @@ class PlateViewer(QMainWindow):
         multi_well_layout.setContentsMargins(5, 5, 5, 5)
         multi_well_layout.setSpacing(5)
 
-        self._multi_well_graph_wdg_1 = _MultilWellGraphWidget(self)
-        multi_well_layout.addWidget(self._multi_well_graph_wdg_1, 0, 0)
+        self._multi_well_graph_1 = _MultilWellGraphWidget(self)
+        multi_well_layout.addWidget(self._multi_well_graph_1, 0, 0)
 
-        self.MW_GRAPHS = [self._multi_well_graph_wdg_1]
+        self.MW_GRAPHS = [self._multi_well_graph_1]
 
         # splitter between the plate map/fov table/image viewer and the graphs
         self.main_splitter = QSplitter(self)
