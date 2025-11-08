@@ -53,8 +53,8 @@ from ._analysis_gui import (
     ExperimentTypeData,
     SpikeData,
     TraceExtractionData,
-    _AnalysisProgressBarWidget,
     _CalciumAnalysisGUI,
+    _RunAnalysisWidget,
 )
 from ._logger import LOGGER
 from ._plate_map import PlateMapData
@@ -186,7 +186,7 @@ class _AnalyseCalciumTraces(QWidget):
         self._analysis_settings_gui = _CalciumAnalysisGUI(self)
 
         # PROGRESS BAR RUN/CANCEL BUTTONS AND CPUs --------------------------------
-        self._progress_bar_wdg = _AnalysisProgressBarWidget(self)
+        self._progress_bar_wdg = _RunAnalysisWidget(self)
         self._pbar = self._progress_bar_wdg  # for easier access in the GUI
 
         self._run_btn = QPushButton("Run")
@@ -248,7 +248,7 @@ class _AnalyseCalciumTraces(QWidget):
         )
 
         # CONNECTIONS --------------------------------------------------------------
-        self._progress_bar_wdg.updated.connect(self._progress_bar_wdg.auto_update)
+        self._progress_bar_wdg.updated.connect(self._progress_bar_wdg.update_progress_bar_plus_one)
         self._run_btn.clicked.connect(self.run)
         self._cancel_btn.clicked.connect(self.cancel)
 
@@ -322,9 +322,9 @@ class _AnalyseCalciumTraces(QWidget):
 
         LOGGER.info("Number of positions: %s", len(pos))
 
-        self._pbar.reset()
-        self._pbar.set_range(0, len(pos))
-        self._pbar.set_time_label(f"[0/{self._pbar.maximum()}]")
+        self._pbar.reset_progress_bar()
+        self._pbar.set_progress_bar_range(0, len(pos))
+        self._pbar.set_time_label(f"[0/{self._pbar.progress_bar_maximum()}]")
 
         # start elapsed timer
         self._elapsed_timer.start()
@@ -346,7 +346,7 @@ class _AnalyseCalciumTraces(QWidget):
 
     def cancel(self) -> None:
         """Cancel the current run."""
-        self._pbar.reset()
+        self._pbar.reset_progress_bar()
         self._enable(True)
 
         if self._worker is None or not self._worker.is_running:
@@ -446,7 +446,7 @@ class _AnalyseCalciumTraces(QWidget):
                 synchrony_lag=value.spikes_data.synchrony_lag,
                 led_power_equation=value.experiment_type_data.led_power_equation,
             )
-            self._experiment.analysis_settings = [analysis_settings]
+            self._experiment.analysis_settings = analysis_settings
 
             # Get plate type from sequence
             plate_type = None
@@ -1099,9 +1099,9 @@ class _AnalyseCalciumTraces(QWidget):
                 mask_type="neuropil",
             )
 
-        # Get the analysis settings (first one in the list)
+        # Get the analysis settings
         analysis_settings = (
-            self._experiment.analysis_settings[0]
+            self._experiment.analysis_settings
             if self._experiment and self._experiment.analysis_settings
             else None
         )

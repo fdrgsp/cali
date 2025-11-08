@@ -39,8 +39,8 @@ from ._models import (
     Plate,
     Traces,
     Well,
-    create_db_and_tables,
 )
+from ._util import create_db_and_tables
 
 if TYPE_CHECKING:
     from useq import WellPlate

@@ -13,18 +13,18 @@ from cali.sqlmodel import (
 )
 
 data_path = (
-    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
+    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"
 )
 
-# labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
+labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
 labels_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
+    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
 )
 
 analysis_dir = Path(
-    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
+    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
 )
 
 plate = useq.WellPlate.from_str("96-well")

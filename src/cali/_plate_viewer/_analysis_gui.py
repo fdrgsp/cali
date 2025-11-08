@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Signal
+from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
@@ -39,6 +41,8 @@ from ._util import (
     DEFAULT_NEUROPIL_MIN_PIXELS,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
+    GREEN,
+    RED,
     _BrowseWidget,
     create_divider_line,
 )
@@ -64,7 +68,9 @@ MULTIPLIER = "multiplier"
 class AnalysisSettingsData:
     """Data structure to hold the analysis settings."""
 
-    plate_map_data: tuple[list[PlateMapData], list[PlateMapData]] | None = None
+    plate_map_data: (
+        tuple[useq.WellPlate, list[PlateMapData], list[PlateMapData]] | None
+    ) = None
     experiment_type_data: ExperimentTypeData | None = None
     trace_extraction_data: TraceExtractionData | None = None
     calcium_peaks_data: CalciumPeaksData | None = None
@@ -166,10 +172,12 @@ class _PlateMapWidget(QWidget):
 
     def setValue(
         self,
-        genotype_map: list[PlateMapData | PlateMapDataOld] | list | Path | str,
-        treatment_map: list[PlateMapData | PlateMapDataOld] | list | Path | str,
+        plate: useq.WellPlate,
+        genotype_map: list[PlateMapData | PlateMapDataOld],
+        treatment_map: list[PlateMapData | PlateMapDataOld],
     ) -> None:
         """Set the plate map data."""
+        self.setPlate(plate)
         self._plate_map_genotype.setValue(genotype_map)
         self._plate_map_treatment.setValue(treatment_map)
 
@@ -298,6 +306,12 @@ class _ExperimentTypeWidget(QWidget):
             # update visibility based on experiment type
             self._on_activity_changed(value.experiment_type)
 
+    def reset(self) -> None:
+        """Clear the widget values."""
+        self._experiment_type_combo.setCurrentText(SPONTANEOUS)
+        self._led_power_equation_le.clear()
+        self._stimulation_area_path_dialog.clear()
+
     # PRIVATE METHODS ------------------------------------------------------------
 
     def _on_activity_changed(self, text: str) -> None:
@@ -412,6 +426,12 @@ class _NeuropilCorrectionWidget(QWidget):
         self._neuropil_min_px_spin.setValue(value.neuropil_min_pixels)
         self._neuropil_factor_spin.setValue(value.neuropil_correction_factor)
 
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._neuropil_inner_radius_spin.setValue(DEFAULT_NEUROPIL_INNER_RADIUS)
+        self._neuropil_min_px_spin.setValue(DEFAULT_NEUROPIL_MIN_PIXELS)
+        self._neuropil_factor_spin.setValue(DEFAULT_NEUROPIL_CORRECTION_FACTOR)
+
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
         self._neuropil_inner_radius_lbl.setFixedWidth(width)
@@ -502,6 +522,11 @@ class _TraceExtractionWidget(QWidget):
         """Set the values of the widget."""
         self._dff_window_size_spin.setValue(value.dff_window_size)
         self._decay_constant_spin.setValue(value.decay_constant)
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
+        self._decay_constant_spin.setValue(0.0)
 
 
 class _PeaksHeightWidget(QWidget):
@@ -716,6 +741,14 @@ class _CalciumPeaksWidget(QWidget):
         )
         self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
         self._calcium_network_threshold_spin.setValue(value.calcium_network_threshold)
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._peaks_height.setValue((DEFAULT_HEIGHT, MULTIPLIER))
+        self._peaks_distance_spin.setValue(2)
+        self._peaks_prominence_multiplier_spin.setValue(1)
+        self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
+        self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
 
 
 class _SpikeThresholdWidget(QWidget):
@@ -945,6 +978,18 @@ class _SpikeWidget(QWidget):
         self._burst_wdg.setValue(bst)
         self._spikes_sync_cross_corr_max_lag.setValue(value.synchrony_lag)
 
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._spike_threshold_wdg.setValue((DEFAULT_SPIKE_THRESHOLD, MULTIPLIER))
+        self._burst_wdg.setValue(
+            (
+                DEFAULT_BURST_THRESHOLD,
+                DEFAULT_MIN_BURST_DURATION,
+                DEFAULT_BURST_GAUSS_SIGMA,
+            )
+        )
+        self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
+
 
 class _ChoosePositionsWidget(QWidget):
     """Widget to select the positions to analyze."""
@@ -986,6 +1031,104 @@ class _ChoosePositionsWidget(QWidget):
         self._pos_le.setText(value)
 
 
+class _RunAnalysisWidget(QWidget):
+    """Widget to display the progress of the analysis."""
+
+    updated = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # progress bar
+        self._progress_bar = QProgressBar(self)
+        self._progress_pos_label = QLabel()
+        self._elapsed_time_label = QLabel("00:00:00")
+
+        # buttons
+        self._run_btn = QPushButton("Run")
+        self._run_btn.setSizePolicy(*FIXED)
+        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setSizePolicy(*FIXED)
+        self._cancel_btn.setIcon(QIcon(icon(MDI6.stop, color=RED)))
+
+        # threads selector
+        cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
+        threads_wdg = QWidget()
+        threads_wdg.setToolTip(
+            "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
+            "By default, the value is set to the number of CPUs - 2 "
+            f"(in your system: {cpu_to_use}).\n\n"
+            "Using the number of CPUs as reference because:\n"
+            "• This analysis is CPU-intensive (math calculations, image processing)\n"
+            "• More threads beyond CPU count creates context switching overhead\n"
+            "• Each thread processes memory-intensive data\n"
+            "• Optimal performance occurs when threads match available CPU cores.\n"
+            "By default using CPU count - 2 to reserves 2 CPUs for the operating "
+            "system and GUI responsiveness.\n"
+            "If your system becomes unresponsive, consider reducing this number."
+        )
+        threads_lbl = QLabel("Threads:")
+        threads_lbl.setSizePolicy(*FIXED)
+        self._threads = QSpinBox()
+        self._threads.setFixedWidth(60)
+        self._threads.setRange(1, 100)
+        self._threads.setValue(cpu_to_use)
+        threads_layout = QHBoxLayout(threads_wdg)
+        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.setSpacing(5)
+        threads_layout.addWidget(threads_lbl)
+        threads_layout.addWidget(self._threads)
+
+        # main layout
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(5)
+        main_layout.addWidget(self._run_btn)
+        main_layout.addWidget(self._cancel_btn)
+        main_layout.addWidget(threads_wdg)
+        main_layout.addWidget(self._progress_bar)
+        main_layout.addWidget(self._progress_pos_label)
+        main_layout.addWidget(self._elapsed_time_label)
+
+    def progress_bar_maximum(self) -> int:
+        """Return the maximum value of the progress bar."""
+        return cast("int", self._progress_bar.maximum())
+
+    def set_progress_bar_label(self, text: str) -> None:
+        """Update the progress label with elapsed time."""
+        self._progress_pos_label.setText(text)
+
+    def set_progress_bar_range(self, minimum: int, maximum: int) -> None:
+        """Set the range of the progress bar."""
+        self._progress_bar.setRange(minimum, maximum)
+
+    def reset_progress_bar(self) -> None:
+        """Reset the progress bar and elapsed time label."""
+        self._progress_bar.reset()
+        self._progress_bar.setValue(0)
+        self._progress_pos_label.setText("[0/0]")
+        self._elapsed_time_label.setText("00:00:00")
+
+    def set_time_label(self, elapsed_time: str) -> None:
+        """Update the elapsed time label."""
+        self._elapsed_time_label.setText(elapsed_time)
+
+    def update_progress_bar_plus_one(self) -> None:
+        """Automatically update the progress bar value and label.
+
+        The value is incremented by 1 each time this method is called.
+        """
+        value = self._progress_bar.value() + 1
+        self._progress_bar.setValue(value)
+        self._progress_pos_label.setText(f"[{value}/{self._progress_bar.maximum()}]")
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self.reset_progress_bar()
+        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+
+
 class _CalciumAnalysisGUI(QGroupBox):
     progress_bar_updated = Signal()
 
@@ -1001,6 +1144,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
         self._positions_wdg = _ChoosePositionsWidget(self)
+        self._run_analysis_wdg = _RunAnalysisWidget(self)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
@@ -1019,6 +1163,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         main_layout.addWidget(self._spike_wdg)
         main_layout.addWidget(create_divider_line("Positions to Analyze"))
         main_layout.addWidget(self._positions_wdg)
+        main_layout.addWidget(self._run_analysis_wdg)
 
         # STYLING ------------------------------------------------------------
         fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
@@ -1047,7 +1192,8 @@ class _CalciumAnalysisGUI(QGroupBox):
     def setValue(self, value: AnalysisSettingsData) -> None:
         """Set the values of the widget."""
         if value.plate_map_data is not None:
-            self._plate_map_wdg.setValue(*value.plate_map_data)
+            plate, genotype_map, treatment_map = value.plate_map_data
+            self._plate_map_wdg.setValue(plate, genotype_map, treatment_map)
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         if value.trace_extraction_data is not None:
@@ -1076,55 +1222,13 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._spike_wdg.setEnabled(enable)
         self._positions_wdg.setEnabled(enable)
 
-
-class _AnalysisProgressBarWidget(QWidget):
-    """Widget to display the progress of the analysis."""
-
-    updated = Signal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # progress bar
-        self._progress_bar = QProgressBar(self)
-        self._progress_pos_label = QLabel()
-        self._elapsed_time_label = QLabel("00:00:00")
-
-        # main layout
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(self._progress_bar)
-        main_layout.addWidget(self._progress_pos_label)
-        main_layout.addWidget(self._elapsed_time_label)
-
-    def maximum(self) -> int:
-        """Return the maximum value of the progress bar."""
-        return cast("int", self._progress_bar.maximum())
-
-    def set_progress_bar_label(self, text: str) -> None:
-        """Update the progress label with elapsed time."""
-        self._progress_pos_label.setText(text)
-
-    def set_time_label(self, elapsed_time: str) -> None:
-        """Update the elapsed time label."""
-        self._elapsed_time_label.setText(elapsed_time)
-
-    def set_range(self, minimum: int, maximum: int) -> None:
-        """Set the range of the progress bar."""
-        self._progress_bar.setRange(minimum, maximum)
-
     def reset(self) -> None:
-        """Reset the progress bar and elapsed time label."""
-        self._progress_bar.reset()
-        self._progress_bar.setValue(0)
-        self._progress_pos_label.setText("[0/0]")
-        self._elapsed_time_label.setText("00:00:00")
-
-    def auto_update(self) -> None:
-        """Automatically update the progress bar value and label.
-
-        The value is incremented by 1 each time this method is called.
-        """
-        value = self._progress_bar.value() + 1
-        self._progress_bar.setValue(value)
-        self._progress_pos_label.setText(f"[{value}/{self._progress_bar.maximum()}]")
+        """Reset the widget to default values."""
+        self._plate_map_wdg.clear()
+        self._experiment_type_wdg.reset()
+        self._neuropil_wdg.reset()
+        self._trace_extraction_wdg.reset()
+        self._calcium_peaks_wdg.reset()
+        self._spike_wdg.reset()
+        self._positions_wdg.setValue("")
+        self._run_analysis_wdg.reset()

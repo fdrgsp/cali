@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ._models import Plate
+
 if TYPE_CHECKING:
     import useq
 
-    from ._models import Experiment, Plate
+    from ._models import Experiment
 
 
 def _row_index_to_label(row: int) -> str:
@@ -46,6 +48,52 @@ def _row_index_to_label(row: int) -> str:
         label = chr(ord("A") + (row % 26)) + label
         row //= 26
     return label
+
+
+def useq_plate_to_db_plate(
+    useq_plate: useq.WellPlate,
+    experiment: Experiment,
+) -> Plate:
+    """Convert useq.WellPlate to cali.sqlmodel Plate (without Wells).
+
+    This creates a Plate object with basic plate metadata but no Wells.
+    Use this when you want to create a plate structure and add wells later,
+    or use `useq_plate_plan_to_plate` to create both plate and wells together.
+
+    Parameters
+    ----------
+    useq_plate : useq.WellPlate
+        useq-schema WellPlate containing plate definition
+    experiment : Experiment
+        Parent experiment object to associate with the plate
+
+    Returns
+    -------
+    Plate
+        Plate object without Wells
+
+    Example
+    -------
+    >>> import useq
+    >>> from cali.sqlmodel import Experiment, useq_plate_to_db_plate
+    >>>
+    >>> # Create experiment
+    >>> exp = Experiment(name="my_experiment", description="Test")
+    >>>
+    >>> # Create plate
+    >>> useq_plate = useq.WellPlate.from_str("96-well")
+    >>> plate = useq_plate_to_db_plate(useq_plate, exp)
+    >>> print(f"Created plate '{plate.name}' with {plate.rows}x{plate.columns} layout")
+    Created plate '96-well' with 8x12 layout
+    """
+    return Plate(
+        experiment_id=0,  # Placeholder, will be set when saved to DB
+        experiment=experiment,
+        name=useq_plate.name,
+        plate_type=useq_plate.name,
+        rows=useq_plate.rows,
+        columns=useq_plate.columns,
+    )
 
 
 def useq_plate_plan_to_plate(
@@ -89,19 +137,12 @@ def useq_plate_plan_to_plate(
     >>> print(f"Created plate '{plate.name}' with {len(plate.wells)} wells")
     Created plate '96-well' with 2 wells
     """
-    from ._models import Plate, Well
+    from ._models import Well
 
     useq_plate = plate_plan.plate
 
-    # Create the Plate object
-    plate = Plate(
-        experiment_id=0,  # Placeholder, will be set when saved to DB
-        experiment=experiment,
-        name=useq_plate.name,
-        plate_type=useq_plate.name,
-        rows=useq_plate.rows,
-        columns=useq_plate.columns,
-    )
+    # Create the Plate object using the helper function
+    plate = useq_plate_to_db_plate(useq_plate, experiment)
 
     # Create Wells for selected wells
     if plate_plan.selected_wells:

@@ -14,7 +14,6 @@ The schema enables:
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy.engine import Engine
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 from cali._plate_viewer._analysis_gui import MULTIPLIER
@@ -29,6 +28,8 @@ from cali._plate_viewer._util import (
     DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
+    EVOKED,
+    SPONTANEOUS,
 )
 
 # ==================== Core Models ====================
@@ -56,9 +57,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Path to segmentation labels directory
     analysis_path : str | None
         Path to analysis output directory
+    experiment_type : str
+        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     plate : Plate
         Related plate (back-populated by SQLModel)
-    analysis_settings : list[AnalysisSettings]
+    analysis_settings : AnalysisSettings | None
         Analysis settings used in this experiment
     """
 
@@ -71,10 +74,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     data_path: str | None = None
     labels_path: str | None = None
     analysis_path: str | None = None
+    experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
-    analysis_settings: list["AnalysisSettings"] = Relationship(
+    analysis_settings: Optional["AnalysisSettings"] = Relationship(
         back_populates="experiment"
     )
 
@@ -595,86 +599,3 @@ class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     width: int | None = None
     mask_type: str = Field(index=True)  # "roi", "neuropil", or "stimulation"
 
-
-# ==================== Helper Functions ====================
-
-
-def create_db_and_tables(engine: Engine) -> None:
-    """Create all database tables.
-
-    Parameters
-    ----------
-    engine : sqlalchemy.engine.Engine
-        Database engine
-
-    Example
-    -------
-    >>> from sqlmodel import create_engine
-    >>> engine = create_engine("sqlite:///calcium_analysis.db")
-    >>> create_tables(engine)
-    """
-    SQLModel.metadata.create_all(engine)
-
-
-def check_analysis_settings_consistency(experiment: Experiment) -> dict[str, Any]:
-    """Check if all ROIs in an experiment were analyzed with the same settings.
-
-    This helper function checks whether all ROIs across all FOVs in an experiment
-    were analyzed using the same AnalysisSettings. This is useful for detecting
-    partial re-analyses with different parameters.
-
-    Parameters
-    ----------
-    experiment : Experiment
-        The experiment to check
-
-    Returns
-    -------
-    dict[str, Any]
-        Dictionary containing:
-        - 'consistent': bool - True if all ROIs use same settings
-        - 'settings_count': int - Number of different AnalysisSettings used
-        - 'settings_ids': set[int] - Set of unique AnalysisSettings IDs
-        - 'fovs_by_settings': dict[int, list[str]] - FOV names grouped by settings
-        - 'warning': str | None - Warning message if inconsistent
-
-    Example
-    -------
-    >>> result = check_analysis_settings_consistency(experiment)
-    >>> if not result["consistent"]:
-    ...     print(result["warning"])
-    ...     print(f"FOVs with different settings: {result['fovs_by_settings']}")
-    """
-    from collections import defaultdict
-
-    settings_ids: set[int] = set()
-    fovs_by_settings: dict[int | None, list[str]] = defaultdict(list)
-
-    # Iterate through all FOVs and their ROIs
-    for well in experiment.plate.wells:
-        for fov in well.fovs:
-            # Get the settings ID from the first ROI (all ROIs in FOV should have same)
-            if fov.rois:
-                settings_id = fov.rois[0].analysis_settings_id
-                if settings_id:
-                    settings_ids.add(settings_id)
-                fovs_by_settings[settings_id].append(fov.name)
-
-    settings_count = len(settings_ids)
-    consistent = settings_count <= 1
-
-    warning = None
-    if not consistent:
-        warning = (
-            f"⚠️  Inconsistent analysis settings detected! "
-            f"{settings_count} different settings used across FOVs. "
-            f"This may affect comparability of results."
-        )
-
-    return {
-        "consistent": consistent,
-        "settings_count": settings_count,
-        "settings_ids": settings_ids,
-        "fovs_by_settings": dict(fovs_by_settings),
-        "warning": warning,
-    }

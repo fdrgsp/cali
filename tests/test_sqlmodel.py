@@ -41,6 +41,8 @@ from cali.sqlmodel._models import (
     DataAnalysis,
     Mask,
     Traces,
+)
+from cali.sqlmodel._util import (
     check_analysis_settings_consistency,
     create_db_and_tables,
 )
@@ -394,7 +396,7 @@ def test_load_analysis_from_json() -> None:
 
     # Check that stimulation mask was loaded (evoked data should have one)
     if experiment.analysis_settings:
-        analysis_settings = experiment.analysis_settings[0]
+        analysis_settings = experiment.analysis_settings
         # The evoked test data has a stimulation_mask.tif file
         assert analysis_settings.stimulation_mask_path is not None
         assert "stimulation_mask.tif" in analysis_settings.stimulation_mask_path

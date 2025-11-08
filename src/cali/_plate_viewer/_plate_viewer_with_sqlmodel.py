@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -10,8 +9,6 @@ import tifffile
 import useq
 from fonticon_mdi6 import MDI6
 from ndv import NDViewer
-from pydantic import ValidationError
-from pymmcore_widgets.useq_widgets._mda_sequence import PYMMCW_METADATA_KEY
 from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
     WellPlateView,
@@ -30,7 +27,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlmodel import Session, create_engine, select
 from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
@@ -39,29 +35,34 @@ from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel import (
     Experiment,
+    load_experiment_from_database,
     save_experiment_to_db,
     useq_plate_plan_to_plate,
 )
+from cali.sqlmodel._db_to_plate_map import experiment_to_plate_map_data
 from cali.sqlmodel._db_to_useq_plate import (
     experiment_to_useq_plate_plan,
 )
 
-from ._analysis_gui import AnalysisSettingsData, ExperimentTypeData
-from ._analysis_with_sqlmodel import EVOKED, _AnalyseCalciumTraces
+from ._analysis_gui import (
+    AnalysisSettingsData,
+    CalciumPeaksData,
+    ExperimentTypeData,
+    SpikeData,
+    TraceExtractionData,
+    _CalciumAnalysisGUI,
+)
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._logger import LOGGER
-from ._old_plate_model import OldPlate
 from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
     EVENT_KEY,
-    PLATE_PLAN,
-    SETTINGS_PATH,
     ROIData,
     _ProgressBarWidget,
     show_error_dialog,
@@ -70,7 +71,6 @@ from ._util import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from cali.sqlmodel._models import AnalysisSettings
 
 HCS = "hcs"
 UNSELECTABLE_COLOR = "#404040"
@@ -90,34 +90,24 @@ class PlateViewer(QMainWindow):
     def __init__(
         self,
         parent: QWidget | None = None,
-        *,
-        labels_directory: str | None = None,
-        analysis_directory: str | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.setWindowTitle("Plate Viewer")
         self.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
 
-        # add central widget
-        self._central_widget = QWidget(self)
-        self._central_widget_layout = QVBoxLayout(self._central_widget)
-        self._central_widget_layout.setContentsMargins(10, 10, 10, 10)
-        self.setCentralWidget(self._central_widget)
-
+        # INTERNAL VARIABLES ---------------------------------------------------------
         self._database_path: Path | None = None
+        self._labels_path: str | None = None
+        self._analysis_path: str | None = None
         self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
-        self._labels_path = labels_directory
-        self._analysis_path = analysis_directory
-
         self._analysis_data: dict[str, dict[str, ROIData]] = {}
 
-        self._plate_plan_wizard = PlatePlanWizard(self)
-        self._plate_plan_wizard.hide()
-        self._default_plate_plan: bool = False
+        # PROGRESS BAR WIDGET --------------------------------------------------------
+        self._loading_bar = _ProgressBarWidget(self)
 
-        # add menu bar
+        # MENU BAR -------------------------------------------------------------------
         self.menu_bar = QMenuBar(self)
         self.file_menu = self.menu_bar.addMenu("File")
         open_action = QAction("Load Data and Set Directories...", self)
@@ -134,31 +124,30 @@ class PlateViewer(QMainWindow):
         self.file_menu.addAction(save_as_csv_action)
         self.setMenuBar(self.menu_bar)
 
-        # scene and view for the plate map
+        # PLATE PLAN WIZARD -----------------------------------------------------------
+        self._plate_plan_wizard = PlatePlanWizard(self)
+        self._plate_plan_wizard.hide()
+        self._default_plate_plan: bool = False
+
+        # PLATE VIEW ------------------------------------------------------------------
         self._plate_view = WellPlateView()
         self._plate_view.setDragMode(WellPlateView.DragMode.NoDrag)
         self._plate_view.setSelectionMode(WellPlateView.SelectionMode.SingleSelection)
 
-        # table for the fields of view
+        # TABLE FOR THE FIELDS OF VIEW ------------------------------------------------
         self._fov_table = _FOVTable(self)
         self._fov_table.itemSelectionChanged.connect(
             self._on_fov_table_selection_changed
         )
         self._fov_table.doubleClicked.connect(self._on_fov_double_click)
 
-        # image viewer
+        # IMAGE VIEWER ----------------------------------------------------------------
         self._image_viewer = _ImageViewer(self)
         self._image_viewer.valueChanged.connect(self._update_graphs_with_roi)
 
-        # left widgets -------------------------------------------------
-        left_group = QGroupBox()
-        left_layout = QVBoxLayout(left_group)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-        left_layout.setSpacing(5)
-        left_layout.addWidget(self._plate_view)
-        left_layout.addWidget(self._fov_table)
+        # LEFT WIDGETS ----------------------------------------------------------------
 
-        # splitter for the plate map and the fov table
+        # SPLITTER FOR THE PLATE MAP AND THE FOV TABLE --------------------------------
         self.splitter_top_left = QSplitter(
             parent=self, orientation=Qt.Orientation.Vertical
         )
@@ -171,7 +160,7 @@ class PlateViewer(QMainWindow):
         top_left_layout.setContentsMargins(10, 10, 10, 10)
         top_left_layout.addWidget(self.splitter_top_left)
 
-        # splitter for the plate map/fov table and the image viewer
+        # SPLITTER FOR THE PLATE MAP/FOV TABLE AND THE IMAGE VIEWER -------------------
         self.splitter_bottom_left = QSplitter(
             parent=self, orientation=Qt.Orientation.Vertical
         )
@@ -180,86 +169,74 @@ class PlateViewer(QMainWindow):
         self.splitter_bottom_left.addWidget(top_left_group)
         self.splitter_bottom_left.addWidget(self._image_viewer)
 
-        # right widgets --------------------------------------------------
+        # RIGHT WIDGETS ---------------------------------------------------------------
 
-        # tab widget
+        # TABS FOR ANALYSIS AND VISUALIZATION -----------------------------------------
         self._tab = QTabWidget(self)
         self._tab.currentChanged.connect(self._on_tab_changed)
 
-        # analysis tab
+        # ANALYSIS TAB ----------------------------------------------------------------
         self._analysis_tab = QWidget()
         self._tab.addTab(self._analysis_tab, "Analysis Tab")
+        analysis_tab_layout = QVBoxLayout(self._analysis_tab)
+        analysis_tab_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create a scroll area for the analysis tab
+        # ANALYSIS TAB SCROLL AREA ----------------------------------------------------
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        # Create a widget to hold the analysis content
-        analysis_content_widget = QWidget()
-        scroll_area.setWidget(analysis_content_widget)
-
-        # Set up the main layout for the analysis tab
-        analysis_tab_layout = QVBoxLayout(self._analysis_tab)
-        analysis_tab_layout.setContentsMargins(0, 0, 0, 0)
-        analysis_tab_layout.addWidget(scroll_area)
-
+        # SEGMENTATION AND ANALYSIS WIDGETS -------------------------------------------
         self._segmentation_wdg = _CellposeSegmentation(self)
-        self._segmentation_wdg.segmentationFinished.connect(
-            self._on_fov_table_selection_changed
-        )
+        self._analysis_wdg = _CalciumAnalysisGUI(self)
 
-        self._analysis_wdg = _AnalyseCalciumTraces(self)
-
-        # Layout for the scrollable content
+        # ADD WIDGETS TO THE SCROLL AREA ----------------------------------------------
+        analysis_content_widget = QWidget()
         analysis_layout = QVBoxLayout(analysis_content_widget)
         analysis_layout.setContentsMargins(10, 10, 10, 10)
         analysis_layout.setSpacing(15)
         analysis_layout.addWidget(self._segmentation_wdg)
         analysis_layout.addWidget(self._analysis_wdg)
         analysis_layout.addStretch(1)
+        scroll_area.setWidget(analysis_content_widget)
+        analysis_tab_layout.addWidget(scroll_area)
 
-        # single wells visualization tab
+        # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
         self._tab.addTab(self._single_well_vis_tab, "Single Wells Visualization Tab")
         single_well_vis_layout = QGridLayout(self._single_well_vis_tab)
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
 
-        self._single_well_graph_wdg_1 = _SingleWellGraphWidget(self)
-        self._single_well_graph_wdg_2 = _SingleWellGraphWidget(self)
-        self._single_well_graph_wdg_3 = _SingleWellGraphWidget(self)
-        # self._single_well_graph_wdg_4 = _SingleWellGraphWidget(self)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_1, 0, 0)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_2, 0, 1)
-        single_well_vis_layout.addWidget(self._single_well_graph_wdg_3, 1, 0, 1, 2)
-        # single_well_vis_layout.addWidget(self._single_well_graph_wdg_4, 1, 1)
-
+        self._single_well_graph_1 = _SingleWellGraphWidget(self)
+        self._single_well_graph_2 = _SingleWellGraphWidget(self)
+        self._single_well_graph_3 = _SingleWellGraphWidget(self)
+        # self._single_well_graph_4 = _SingleWellGraphWidget(self)
+        single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
+        single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
+        single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
+        # single_well_vis_layout.addWidget(self._single_well_graph_4, 1, 1)
         self.SW_GRAPHS = [
-            self._single_well_graph_wdg_1,
-            self._single_well_graph_wdg_2,
-            self._single_well_graph_wdg_3,
-            # self._single_well_graph_wdg_4,
+            self._single_well_graph_1,
+            self._single_well_graph_2,
+            self._single_well_graph_3,
+            # self._single_well_graph_4,
         ]
 
-        # connect the roiSelected signal from the graphs to the image viewer so we can
-        # highlight the roi in the image viewer when a roi is selected in the graph
-        for graph in self.SW_GRAPHS:
-            graph.roiSelected.connect(self._highlight_roi)
-
-        # multi wells visualization tab
+        # MULTI WELL VISUALIZATION TAB ------------------------------------------------
         self._multi_well_vis_tab = QWidget()
         self._tab.addTab(self._multi_well_vis_tab, "Multi Wells Visualization Tab")
         multi_well_layout = QGridLayout(self._multi_well_vis_tab)
         multi_well_layout.setContentsMargins(5, 5, 5, 5)
         multi_well_layout.setSpacing(5)
 
-        self._multi_well_graph_wdg_1 = _MultilWellGraphWidget(self)
-        multi_well_layout.addWidget(self._multi_well_graph_wdg_1, 0, 0)
+        self._multi_well_graph_1 = _MultilWellGraphWidget(self)
+        multi_well_layout.addWidget(self._multi_well_graph_1, 0, 0)
 
-        self.MW_GRAPHS = [self._multi_well_graph_wdg_1]
+        self.MW_GRAPHS = [self._multi_well_graph_1]
 
+        # MAIN SPLITTER-------------------------------------------------------------
         # splitter between the plate map/fov table/image viewer and the graphs
         self.main_splitter = QSplitter(self)
         self.main_splitter.setContentsMargins(0, 0, 0, 0)
@@ -267,15 +244,25 @@ class PlateViewer(QMainWindow):
         self.main_splitter.addWidget(self.splitter_bottom_left)
         self.main_splitter.addWidget(self._tab)
 
-        # add widgets to central widget
+        # CENTRAL WIDGET -------------------------------------------------------------
+        self._central_widget = QWidget(self)
+        self._central_widget_layout = QVBoxLayout(self._central_widget)
+        self._central_widget_layout.setContentsMargins(10, 10, 10, 10)
         self._central_widget_layout.addWidget(self.main_splitter)
+        self.setCentralWidget(self._central_widget)
 
+        # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
+        self._segmentation_wdg.segmentationFinished.connect(
+            self._on_fov_table_selection_changed
+        )
+        # connect the roiSelected signal from the graphs to the image viewer so we can
+        # highlight the roi in the image viewer when a roi is selected in the graph
+        for graph in self.SW_GRAPHS:
+            graph.roiSelected.connect(self._highlight_roi)
 
-        self._loading_bar = _ProgressBarWidget(self)
-
+        # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
-
         self._set_splitter_sizes()
 
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
@@ -290,17 +277,13 @@ class PlateViewer(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
 
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"
-        # self.initialize_widget_from_database(data)
+        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
+        self.initialize_widget_from_database(data)
 
-        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-        self._labels_path = (
-            "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
-        )
-        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        self.initialize_widget_from_directories(
-            data, self._analysis_path, self._labels_path
-        )
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
+        # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
         # fmt: on
         # ____________________________________________________________________________
@@ -318,14 +301,26 @@ class PlateViewer(QMainWindow):
         return self._data
 
     @property
-    def pv_labels_path(self) -> str | None:
+    def database_path(self) -> Path | None:
+        return self._database_path
+
+    @database_path.setter
+    def database_path(self, value: Path | None) -> None:
+        self._database_path = value
+        # reset the widget with new database
+        if value is not None:
+            self.initialize_widget_from_database(value)
+
+    @property
+    def labels_path(self) -> str | None:
         return self._labels_path
 
-    @pv_labels_path.setter
-    def pv_labels_path(self, value: str | None) -> None:
+    @labels_path.setter
+    def labels_path(self, value: str | None) -> None:
         self._labels_path = value
-        self._segmentation_wdg.labels_path = value
         self._on_fov_table_selection_changed()
+        # segmentation widget - TO REMOVE or FIX
+        self._segmentation_wdg.labels_path = value
 
     @property
     def analysis_path(self) -> str | None:
@@ -334,52 +329,26 @@ class PlateViewer(QMainWindow):
     @analysis_path.setter
     def analysis_path(self, value: str) -> None:
         self._analysis_path = value
-        self._analysis_wdg.analysis_path = value
-        # self._load_and_set_analysis_data(value)
-
-    @property
-    def analysis_data(self) -> dict[str, dict[str, ROIData]]:
-        """Return the analysis data."""
-        return self._analysis_data
-
-    @analysis_data.setter
-    def analysis_data(self, value: dict[str, dict[str, ROIData]]) -> None:
-        """Set the analysis data."""
-        self._analysis_data = value
+        # TODO: update the database and load analysis data if any.
 
     # PUBLIC METHODS-------------------------------------------------------------------
-    def load_experiment_from_database(
-        self, database_path: str | Path
-    ) -> Experiment | None:
-        """Load the experiment from the given database path."""
-        try:
-            engine = create_engine(f"sqlite:///{database_path}")
-            session = Session(engine)
-            result = session.exec(select(Experiment))
-            return result.first()
-        except Exception as e:
-            print(f"Error loading experiment: {e}")
-            return None
-
     def initialize_widget_from_database(self, database_path: str | Path) -> None:
         """Initialize the widget with the given database path."""
-        self._database_path = Path(database_path)
-
         # CLEARING---------------------------------------------------------------------
-
         self._clear_widget_before_initialization()
 
         # OPEN THE DATABASE -----------------------------------------------------------
         LOGGER.info(f"💿 Loading experiment from database at {database_path}")
-        self._experiment = self.load_experiment_from_database(database_path)
+        self._experiment = load_experiment_from_database(database_path)
         if self._experiment is None:
             msg = f"Could not load experiment from database at {database_path}!"
             show_error_dialog(self, msg)
             LOGGER.error(msg)
             return
 
-        data_path = self._experiment.data_path
+        self._database_path = Path(database_path)
 
+        data_path = self._experiment.data_path
         if data_path is None:
             msg = "Data path not found in the database! Cannot initialize the "
             "PlateViewer without a valid data path."
@@ -423,14 +392,8 @@ class PlateViewer(QMainWindow):
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
 
-        # ANALYSIS SETTINGS------------------------------------------------------------
-        # TODO: currently always getting the first analysis settings
-        settings: AnalysisSettings | None = None
-        if settings_list := self._experiment.analysis_settings:
-            settings = settings_list[0]
-
         # UPDATE WIDGETS---------------------------------------------------------------
-        self._set_widgets_data(settings)
+        self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
     def initialize_widget_from_directories(
         self, datastore_path: str, analysis_path: str, labels_path: str | None
@@ -477,7 +440,6 @@ class PlateViewer(QMainWindow):
         )
 
         # LOAD ANALYSIS DATA-----------------------------------------------------------
-
         self._analysis_path = analysis_path
         self._labels_path = labels_path
 
@@ -489,26 +451,13 @@ class PlateViewer(QMainWindow):
             )
 
         # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
-        self._set_widgets_data(None)
+        self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
         save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
-
-    # WIDGET INITIALIZATION------------------------------------------------------------
-
-    def _set_splitter_sizes(self) -> None:
-        """Set the initial sizes for the splitters."""
-        splitter_and_sizes = (
-            (self.splitter_top_left, [0.73, 0.27]),
-            (self.splitter_bottom_left, [0.50, 0.50]),
-            (self.main_splitter, [0.30, 0.70]),
-        )
-        for splitter, sizes in splitter_and_sizes:
-            total_size = splitter.size().width()
-            splitter.setSizes([int(size * total_size) for size in sizes])
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
@@ -542,6 +491,10 @@ class PlateViewer(QMainWindow):
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
+        # clear paths
+        self._database_path = None
+        self._analysis_path = None
+        self._labels_path = None
         # clear experiment
         self._experiment = None
         # clear the datastore
@@ -552,172 +505,15 @@ class PlateViewer(QMainWindow):
         self._plate_view.clear()
         # clear the image viewer cache
         self._image_viewer._viewer._contour_cache.clear()
-        # clear the analysis data
-        # self._analysis_data.clear()
-        # clear the segmentation widget
+        # no plate flag
+        self._default_plate_plan = False
+        # reset analysis widget gui
+        self._analysis_wdg.reset()
+
+        # clear the segmentation widget - TO REMOVE
         self._segmentation_wdg.experiment = None
         self._segmentation_wdg.data = None
         self._segmentation_wdg.labels_path = None
-        # clear the analysis widget data
-        self._analysis_wdg.experiment = None
-        self._analysis_wdg.data = None
-        self._analysis_wdg.analysis_data.clear()
-        self._analysis_wdg.analysis_path = None
-        self._analysis_wdg.stimulation_area_path = None
-        # clear the plate map
-        self._analysis_wdg._analysis_settings_gui._plate_map_wdg.clear()
-        # no plate flag
-        self._default_plate_plan = False
-
-    # def _load_and_set_analysis_data(self, path: str | Path) -> None:
-    #     """Load the analysis data from the given JSON file."""
-    #     if isinstance(path, str):
-    #         path = Path(path)
-
-    #     if not path.exists():
-    #         show_error_dialog(
-    #             self, f"Error while loading the file. Path {path} does not exist!"
-    #         )
-    #         return
-    #     if not path.is_dir():
-    #         show_error_dialog(
-    #             self, f"Error while loading the file. Path {path} is not a directory!"
-    #         )
-    #         return
-
-    #     # start the waiting progress bar
-    #     self._init_loading_bar("Loading Analysis Data...")
-
-    #     create_worker(
-    #         self._load_and_set_data_from_json,
-    #         path=path,
-    #         _start_thread=True,
-    #         _connect={
-    #             "yielded": self._update_progress,
-    #             "finished": self._on_loading_finished,
-    #             "errored": self._on_loading_finished,
-    #         },
-    #     )
-
-    def _on_loading_finished(self) -> None:
-        """Called when the loading of the analysis data is finished."""
-        self._loading_bar.hide()
-
-    # def _load_and_set_data_from_json(
-    #     self, path: Path
-    # ) -> Generator[int | str, None, None]:
-    #     """Load the analysis data from the given JSON file."""
-    #     json_files = self._filter_data(list(path.glob("*.json")))
-    #     self._loading_bar.setRange(0, len(json_files))
-    #     try:
-    #         # loop over the files in the directory
-    #         for idx, f in enumerate(tqdm(json_files, desc="Loading Analysis Data")):
-    #             LOGGER.debug(f"Loading file: {f}")
-    #             yield idx + 1
-    #             # get the name of the file without the extensions
-    #             well = f.name.removesuffix(f.suffix)
-    #             # create the dict for the well
-    #             self._analysis_data[well] = {}
-    #             # open the data for the well
-    #             with open(f) as file:
-    #                 data = {}
-    #                 try:
-    #                     data = cast("dict", json.load(file))
-    #                 except json.JSONDecodeError as e:
-    #                     msg = f"Error reading the analysis data: {e}"
-    #                     LOGGER.error(msg)
-    #                     yield msg  # for showing the error dialog
-    #                     self._analysis_data = data
-    #                 # if the data is empty, continue
-    #                 if not data:
-    #                     continue
-    #                 # loop over the rois
-    #                 for roi in data.keys():
-    #                     if not roi.isdigit():
-    #                         # this is the case of global data
-    #                         # (e.g. cubic or linear global connectivity)
-    #                         self._analysis_data[roi] = data[roi]
-    #                         continue
-    #                     # get the data for the roi
-    #                     fov_data = cast("dict", data[roi])
-    #                     # remove any key that is not in ROIData
-    #                     for key in list(fov_data.keys()):
-    #                         if key not in ROIData.__annotations__:
-    #                             fov_data.pop(key)
-    #                     # convert to a ROIData object and add store it in _analysis_data
-    #                     self._analysis_data[well][roi] = ROIData(**fov_data)
-    #     except Exception as e:
-    #         msg = f"Error loading the analysis data: {e}"
-    #         LOGGER.error(msg)
-    #         yield msg  # for showing the error dialog
-    #         self._analysis_data.clear()
-
-    # def _filter_data(self, path_list: list[Path]) -> list[Path]:
-    #     filtered_paths: list[Path] = []
-
-    #     # the json file names should be in the form A1_0000.json
-    #     for f in path_list:
-    #         if f.name in {
-    #             GENOTYPE_MAP,
-    #             TREATMENT_MAP,
-    #             SETTINGS_PATH,
-    #             f"{PLATE_PLAN}.json",  # for compatibility with old versions
-    #         }:
-    #             continue
-    #         # skip hidden files
-    #         if f.name.startswith("."):
-    #             continue
-
-    #         name_no_suffix = f.name.removesuffix(f.suffix)  # A1_0000 or A1_0000_p0
-    #         split_name = name_no_suffix.split("_")  # ["A1","0000"]or["A1","0000","p0"]
-
-    #         if len(split_name) == 2:
-    #             well, fov = split_name
-    #         elif len(split_name) == 3:
-    #             well, fov, pos = split_name
-    #         else:
-    #             continue
-
-    #         # validate well format, only letters and numbers
-    #         if not re.match(r"^[a-zA-Z0-9]+$", well):
-    #             continue
-
-    #         # validate fov format, only numbers
-    #         if len(split_name) == 3:
-    #             if not fov.isdigit():
-    #                 continue
-    #             if not pos[1:].isdigit():
-    #                 continue
-
-    #         filtered_paths.append(f)
-
-    #     return filtered_paths
-
-    def _set_widgets_data(self, settings: AnalysisSettings | None) -> None:
-        """Update the segmentation and analysis widgets data."""
-        # set the segmentation widget data
-        self._segmentation_wdg.data = self._data
-        self._segmentation_wdg.labels_path = self._labels_path
-        # set the analysis widget data
-        self._analysis_wdg.data = self._data
-        # self._analysis_wdg.analysis_data = self._analysis_data
-        self._analysis_wdg.analysis_path = self._analysis_path
-        self._analysis_wdg.labels_path = self._labels_path
-        self._analysis_wdg.update_widget_form_settings(settings)
-        # set the plate map
-        self._analysis_wdg._load_plate_map()
-        # set the stimulation mask if it exists
-        if self._experiment is None or settings is None:
-            return
-        stim_mask = settings.stimulation_mask_path
-        if (stim_mask := settings.stimulation_mask_path) is not None:
-            self._analysis_wdg._analysis_settings_gui.setValue(
-                AnalysisSettingsData(
-                    experiment_type_data=ExperimentTypeData(
-                        experiment_type=EVOKED, stimulation_area_path=str(stim_mask)
-                    )
-                )
-            )
 
     def _load_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
@@ -727,19 +523,16 @@ class PlateViewer(QMainWindow):
             return None
 
         final_plate_plan: useq.WellPlatePlan | None = None
+
         # if already a WellPlatePlan, use it directly
         if isinstance(plate_plan, useq.WellPlatePlan):
             final_plate_plan = plate_plan
         else:
-            # try to load from various sources
+            # try to use the plate plan wizard
             final_plate_plan = self._resolve_plate_plan()
             # if is the default plate plan, set the no_plate flag
             if final_plate_plan == DEFAULT_PLATE_PLAN:
                 self._default_plate_plan = True
-
-            # save the resolved plate plan if we have an analysis path
-            if final_plate_plan and self._analysis_path:
-                self._save_plate_plan_json_settings(final_plate_plan)
 
         if final_plate_plan is None:
             return None
@@ -749,62 +542,12 @@ class PlateViewer(QMainWindow):
 
     def _resolve_plate_plan(self) -> useq.WellPlatePlan | None:
         """Resolve plate plan from various sources in order of preference."""
-        # try loading from JSON file
-        if plate_plan := self._load_plate_plan_from_json_settings():
-            return plate_plan
-
-        # try loading from old metadata
-        if plate_plan := self._retrieve_plate_plan_from_old_metadata():
-            return plate_plan
-
         # try using the wizard
         if self._plate_plan_wizard.exec():
             return self._plate_plan_wizard.value()
-
         # if no HCSWizard was used but single position list was created,
         # fallback to a default square coverslip plate plan
-        self._default_plate_plan = True
         return DEFAULT_PLATE_PLAN
-
-    def _load_plate_plan_from_json_settings(self) -> useq.WellPlatePlan | None:
-        """Load plate plan from JSON file if it exists."""
-        if not self._analysis_path:
-            return None
-
-        settings_json_file = Path(self._analysis_path) / SETTINGS_PATH
-        if not settings_json_file.exists():
-            return None
-
-        try:
-            with open(settings_json_file) as f:
-                settings = cast("dict", json.load(f))
-                pp = settings.get(PLATE_PLAN)
-                return useq.WellPlatePlan.model_validate(pp) if pp else None
-        except (json.JSONDecodeError, ValidationError) as e:
-            LOGGER.warning(f"Failed to load plate plan from {settings_json_file}: {e}")
-            return None
-
-    def _save_plate_plan_json_settings(self, plate_plan: useq.WellPlatePlan) -> None:
-        """Save plate plan to JSON file."""
-        if not self._analysis_path:
-            return
-        try:
-            settings_json_file = Path(self._analysis_path) / SETTINGS_PATH
-
-            # Read existing settings if file exists
-            settings = {}
-            if settings_json_file.exists():
-                with open(settings_json_file) as f:
-                    settings = json.load(f)
-
-            # Update the plate plan
-            settings[PLATE_PLAN] = plate_plan.model_dump()
-
-            # Write back the complete settings
-            with open(settings_json_file, "w") as f:
-                json.dump(settings, f, indent=4)
-        except OSError as e:
-            LOGGER.error(f"Failed to save plate plan: {e}")
 
     def _draw_plate_with_selection(self, plate_plan: useq.WellPlatePlan) -> None:
         """Draw the plate and disable non-selected wells."""
@@ -820,80 +563,78 @@ class PlateViewer(QMainWindow):
             if (r, c) not in selected_indices:
                 self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)
 
-    def _retrieve_plate_plan_from_old_metadata(self) -> useq.WellPlatePlan | None:
-        """Retrieve the plate plan from the old metadata version."""
-        if self._data is None:
-            return None
+    def _update_gui(self, plate: useq.WellPlate | None = None) -> None:
+        """Update the segmentation and analysis widgets gui."""
+        # analysis widget
+        self._update_analysis_gui_settings(plate)
 
-        if self._data.sequence is None:
-            return None
+        # segmentation widget - TO REMOVE
+        self._segmentation_wdg.data = self._data
+        self._segmentation_wdg.labels_path = self._labels_path
 
-        meta = cast("dict", self._data.sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
+    def _update_analysis_gui_settings(
+        self, plate: useq.WellPlate | None = None
+    ) -> None:
+        """Update the analysis widgets settings."""
+        if self._experiment is None:
+            self._analysis_wdg.reset()
+            return
 
-        plate_plan: useq.WellPlatePlan | None = None
+        settings = self._experiment.analysis_settings
+        if settings is None:
+            self._analysis_wdg.reset()
+            return
 
-        try:
-            # in the old version the HCS metadata was in the root of the metadata
-            if old_hcs_meta := meta.get(HCS, {}):
-                old_plate = old_hcs_meta.get("plate")
-                if not old_plate:
-                    return None
+        plate_map_data = None
+        if plate is not None:
+            plate_map_data = (plate, *experiment_to_plate_map_data(self._experiment))
 
-                old_plate = (
-                    old_plate
-                    if isinstance(old_plate, OldPlate)
-                    else OldPlate(**old_plate)
-                )
-
-                # old plate to new useq.WellPlate
-                plate = useq.WellPlate(
-                    name=old_plate.id,
-                    rows=old_plate.rows,
-                    columns=old_plate.columns,
-                    well_spacing=(old_plate.well_spacing_x, old_plate.well_spacing_y),
-                    well_size=(old_plate.well_size_x, old_plate.well_size_y),
-                    circular_wells=old_plate.circular,
-                )
-
-                # old_meta should be like this:
-                # plate: OldPlate] = None
-                # wells: list[Well] = None
-                # name: str
-                # row: int
-                # column: int
-                # calibration: CalibrationData = None
-                # plate: OldPlatePlate] = None
-                # well_A1_center: tuple[float, float] = None
-                # rotation_matrix: list[list[float]] = None
-                # calibration_positions_a1: list[tuple[float, float]] = None
-                # calibration_positions_an: list[tuple[float, float]] = None
-                # positions: list[Position] = None
-
-                # group the selected wells by row and column
-                selected_wells = tuple(
-                    zip(
-                        *(
-                            (well["row"], well["column"])
-                            for well in old_hcs_meta.get("wells", [])
-                        )
-                    )
-                )
-                # create useq plate plan
-                plate_plan = useq.WellPlatePlan(
-                    plate=plate,
-                    a1_center_xy=old_hcs_meta["calibration"]["well_A1_center"],
-                    selected_wells=cast(
-                        "tuple[tuple[int, int], tuple[int, int]]", selected_wells
-                    ),
-                )
-            return plate_plan
-
-        except Exception as e:
-            show_error_dialog(self, "Cannot find the plate plan in the metadata!")
-            LOGGER.error(f"Error retrieving the plate plan: {e}")
-            return None
+        value = AnalysisSettingsData(
+            plate_map_data=plate_map_data,
+            experiment_type_data=ExperimentTypeData(
+                experiment_type=self._experiment.experiment_type,
+                led_power_equation=settings.led_power_equation,
+                stimulation_area_path=settings.stimulation_mask_path,
+            ),
+            trace_extraction_data=TraceExtractionData(
+                dff_window_size=settings.dff_window,
+                decay_constant=settings.decay_constant,
+                neuropil_inner_radius=settings.neuropil_inner_radius,
+                neuropil_min_pixels=settings.neuropil_min_pixels,
+                neuropil_correction_factor=settings.neuropil_correction_factor,
+            ),
+            calcium_peaks_data=CalciumPeaksData(
+                peaks_height=settings.peaks_height_value,
+                peaks_height_mode=settings.peaks_height_mode,
+                peaks_distance=settings.peaks_distance,
+                peaks_prominence_multiplier=settings.peaks_prominence_multiplier,
+                calcium_synchrony_jitter=settings.calcium_sync_jitter_window,
+                calcium_network_threshold=settings.calcium_network_threshold,
+            ),
+            spikes_data=SpikeData(
+                spike_threshold=settings.spike_threshold_value,
+                spike_threshold_mode=settings.spike_threshold_mode,
+                burst_threshold=settings.burst_threshold,
+                burst_min_duration=settings.burst_min_duration,
+                burst_blur_sigma=settings.burst_gaussian_sigma,
+                synchrony_lag=settings.spikes_sync_cross_corr_lag,
+            ),
+        )
+        self._analysis_wdg.setValue(value)
+        self._analysis_wdg._run_analysis_wdg.reset()
 
     # ---------------------WIDGETS------------------------------------
+
+    def _set_splitter_sizes(self) -> None:
+        """Set the initial sizes for the splitters."""
+        splitter_and_sizes = (
+            (self.splitter_top_left, [0.73, 0.27]),
+            (self.splitter_bottom_left, [0.50, 0.50]),
+            (self.main_splitter, [0.30, 0.70]),
+        )
+        for splitter, sizes in splitter_and_sizes:
+            total_size = splitter.size().width()
+            splitter.setSizes([int(size * total_size) for size in sizes])
 
     def _init_loading_bar(self, text: str) -> None:
         """Reset the loading bar."""
@@ -946,91 +687,6 @@ class PlateViewer(QMainWindow):
             roi = ",".join(roi)
         self._image_viewer._roi_number_le.setText(roi)
         self._image_viewer._highlight_rois()
-
-    def _show_save_as_tiff_dialog(self) -> None:
-        """Show the save as tiff dialog."""
-        if self._data is None or (sequence := self._data.sequence) is None:
-            show_error_dialog(
-                self,
-                "No data to save or useq.MDASequence not found! Cannot save the data.",
-            )
-            return
-
-        dialog = _SaveAsTiff(self)
-
-        if dialog.exec():
-            path, positions = dialog.value()
-
-            if not Path(path).is_dir():
-                show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
-                )
-                return
-
-            # start the waiting progress bar
-            self._init_loading_bar("Saving as tiff...")
-            self._loading_bar.setRange(0, len(positions))
-
-            create_worker(
-                self._save_as_tiff,
-                path=path,
-                positions=positions,
-                sequence=sequence,
-                _start_thread=True,
-                _connect={
-                    "yielded": self._update_progress,
-                    "finished": self._on_loading_finished,
-                },
-            )
-
-    def _save_as_tiff(
-        self, path: str, positions: list[int], sequence: useq.MDASequence
-    ) -> Generator[int, None, None]:
-        """Save the selected positions as tiff files."""
-        # TODO: multithreading or multiprocessing
-        # TODO: also save metadata
-        if not self._data:
-            return
-        if not positions:
-            positions = list(range(len(sequence.stage_positions)))
-        for pos in tqdm(positions, desc="Saving as tiff"):
-            data, meta = self._data.isel(p=pos, metadata=True)
-            # the "Event" key was used in the old metadata format
-            event_key = EVENT_KEY if EVENT_KEY in meta[0] else "Event"
-            # get the well name from metadata
-            pos_name = (
-                meta[0].get(event_key, {}).get("pos_name", f"pos_{str(pos).zfill(4)}")
-            )
-            # save the data as tiff
-            tifffile.imwrite(Path(path) / f"{pos_name}.tiff", data)
-            yield pos + 1
-
-    def _show_save_as_csv_dialog(self) -> None:
-        """Show the save as csv dialog."""
-        if not self._analysis_data:
-            show_error_dialog(self, "No data to save! Run or load analysis data first.")
-            return
-
-        dialog = _SaveAsCSV(self)
-        dialog.resize(500, dialog.sizeHint().height())
-
-        if dialog.exec():
-            path = dialog.value()
-            if not Path(path).is_dir():
-                show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
-                )
-                return
-
-            save_trace_data_to_csv(path, self._analysis_data)
-            save_analysis_data_to_csv(path, self._analysis_data)
-
-    def _update_progress(self, value: int | str) -> None:
-        """Update the progress bar value."""
-        if isinstance(value, str):
-            show_error_dialog(self, value)
-        else:
-            self._loading_bar.setValue(value)
 
     def _on_scene_well_changed(self) -> None:
         """Update the FOV table when a well is selected."""
@@ -1165,3 +821,94 @@ class PlateViewer(QMainWindow):
     def _update_multi_wells_graphs_combo(self) -> None:
         for mw_graph in self.MW_GRAPHS:
             mw_graph.set_combo_text_red(not self._analysis_data)
+
+    # MENU SAVE ACTIONS----------------------------------------------------------------
+
+    def _show_save_as_tiff_dialog(self) -> None:
+        """Show the save as tiff dialog."""
+        if self._data is None or (sequence := self._data.sequence) is None:
+            show_error_dialog(
+                self,
+                "No data to save or useq.MDASequence not found! Cannot save the data.",
+            )
+            return
+
+        dialog = _SaveAsTiff(self)
+
+        if dialog.exec():
+            path, positions = dialog.value()
+
+            if not Path(path).is_dir():
+                show_error_dialog(
+                    self, f"The path {path} is not a directory! Cannot save the data."
+                )
+                return
+
+            # start the waiting progress bar
+            self._init_loading_bar("Saving as tiff...")
+            self._loading_bar.setRange(0, len(positions))
+
+            create_worker(
+                self._save_as_tiff,
+                path=path,
+                positions=positions,
+                sequence=sequence,
+                _start_thread=True,
+                _connect={
+                    "yielded": self._update_progress,
+                    "finished": self._on_loading_finished,
+                },
+            )
+
+    def _update_progress(self, value: int | str) -> None:
+        """Update the progress bar value."""
+        if isinstance(value, str):
+            show_error_dialog(self, value)
+        else:
+            self._loading_bar.setValue(value)
+
+    def _on_loading_finished(self) -> None:
+        """Called when the loading of the analysis data is finished."""
+        self._loading_bar.hide()
+
+    def _save_as_tiff(
+        self, path: str, positions: list[int], sequence: useq.MDASequence
+    ) -> Generator[int, None, None]:
+        """Save the selected positions as tiff files."""
+        # TODO: multithreading or multiprocessing
+        # TODO: also save metadata
+        if not self._data:
+            return
+        if not positions:
+            positions = list(range(len(sequence.stage_positions)))
+        for pos in tqdm(positions, desc="Saving as tiff"):
+            data, meta = self._data.isel(p=pos, metadata=True)
+            # the "Event" key was used in the old metadata format
+            event_key = EVENT_KEY if EVENT_KEY in meta[0] else "Event"
+            # get the well name from metadata
+            pos_name = (
+                meta[0].get(event_key, {}).get("pos_name", f"pos_{str(pos).zfill(4)}")
+            )
+            # save the data as tiff
+            tifffile.imwrite(Path(path) / f"{pos_name}.tiff", data)
+            yield pos + 1
+
+    def _show_save_as_csv_dialog(self) -> None:
+        """Show the save as csv dialog."""
+        if not self._analysis_data:
+            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            return
+
+        dialog = _SaveAsCSV(self)
+        dialog.resize(500, dialog.sizeHint().height())
+
+        if dialog.exec():
+            path = dialog.value()
+            if not Path(path).is_dir():
+                show_error_dialog(
+                    self, f"The path {path} is not a directory! Cannot save the data."
+                )
+                return
+
+            save_trace_data_to_csv(path, self._analysis_data)
+            save_analysis_data_to_csv(path, self._analysis_data)

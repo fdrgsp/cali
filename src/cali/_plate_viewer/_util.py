@@ -37,6 +37,8 @@ RED = "#C33"
 GREEN = "#00FF00"
 GENOTYPE_MAP = "genotype_plate_map.json"
 TREATMENT_MAP = "treatment_plate_map.json"
+SPONTANEOUS = "Spontaneous Activity"
+EVOKED = "Evoked Activity"
 COND1 = "condition_1"
 COND2 = "condition_2"
 STIMULATION_MASK = "stimulation_mask.tif"
@@ -275,6 +277,10 @@ class _BrowseWidget(QWidget):
 
     def setValue(self, path: str | Path) -> None:
         self._path.setText(str(path))
+
+    def clear(self) -> None:
+        self._path.clear()
+        self._current_path = ""
 
     def _on_browse(self) -> None:
         if self._is_dir:

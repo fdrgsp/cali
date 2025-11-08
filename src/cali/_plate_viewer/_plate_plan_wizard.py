@@ -14,6 +14,13 @@ class PlatePlanWizard(QWizard):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        # TODO: I want to have a way to create a plate and plate plan from scratch
+        # if people provide for example a list of (tiff) files, each representing a
+        # fov/position). In this case we slould also find a way to open the data
+        # maybe as zarr so we can easily then handle the data without open all the files
+        # in memory at once.
+
         self.setWindowTitle("Plate Plan Wizard")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
 
