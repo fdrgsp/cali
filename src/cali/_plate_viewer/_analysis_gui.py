@@ -48,8 +48,6 @@ from ._util import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import useq
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
