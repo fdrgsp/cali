@@ -35,8 +35,8 @@ from ._analysis_gui import (
     ExperimentTypeData,
     SpikeData,
     TraceExtractionData,
-    _RunAnalysisWidget,
     _CalciumAnalysisGUI,
+    _RunAnalysisWidget,
 )
 from ._logger import LOGGER
 from ._plate_map import PlateMapData
@@ -232,7 +232,9 @@ class _AnalyseCalciumTraces(QWidget):
         )
 
         # CONNECTIONS --------------------------------------------------------------
-        self._progress_bar_wdg.updated.connect(self._progress_bar_wdg.update_progress_bar_plus_one)
+        self._progress_bar_wdg.updated.connect(
+            self._progress_bar_wdg.update_progress_bar_plus_one
+        )
         self._run_btn.clicked.connect(self.run)
         self._cancel_btn.clicked.connect(self.cancel)
 

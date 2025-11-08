@@ -28,7 +28,6 @@ from cali._plate_viewer._util import (
     DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
-    EVOKED,
     SPONTANEOUS,
 )
 
@@ -598,4 +597,3 @@ class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     height: int | None = None
     width: int | None = None
     mask_type: str = Field(index=True)  # "roi", "neuropil", or "stimulation"
-
