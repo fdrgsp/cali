@@ -52,7 +52,7 @@ GLOBAL_SPIKE_THRESHOLD = "global"
 
 
 class AnalysisRunner:
-    analysisInfo: Signal = Signal(str)
+    analysisInfo: Signal = Signal(str, str) # message, type
 
     def __init__(self) -> None:
         super().__init__()
@@ -114,7 +114,7 @@ class AnalysisRunner:
             LOGGER.warning(msg)
         elif type == "debug":
             LOGGER.debug(msg)
-        self.analysisInfo.emit(msg)
+        self.analysisInfo.emit(msg, type)
 
     def _on_analysis_finished(self) -> None:
         """Save the experiment to database and log completion."""
@@ -137,7 +137,7 @@ class AnalysisRunner:
                 "The following labels were not found during the analysis:\n\n"
                 + "\n".join(self._failed_labels)
             )
-            self._log_and_emit(msg, "warning")
+            self._log_and_emit(msg, "error")
 
     def _extract_traces_data(self) -> None:
         """Extract the roi traces in multiple threads."""
@@ -173,7 +173,7 @@ class AnalysisRunner:
         LOGGER.info(f"Number of threads for analysis: {threads}")
 
         positions = self._experiment.positions_analyzed
-        print(f"Positions to analyze: {positions}")
+        LOGGER.info(f"Positions to analyze: {positions}")
         try:
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Check for cancellation before submitting futures
@@ -187,6 +187,7 @@ class AnalysisRunner:
                 ]
 
                 for idx, future in enumerate(as_completed(futures)):
+
                     # Check for cancellation at the start of each iteration
                     if self._cancellation_event.is_set():
                         LOGGER.info("Cancellation requested, shutting down executor...")
@@ -195,13 +196,16 @@ class AnalysisRunner:
                             f.cancel()
                         executor.shutdown(wait=False, cancel_futures=True)
                         break
+
                     try:
                         future.result()
                         self._log_and_emit(f"Position {positions[idx]} completed.")
+
                         # Check for cancellation after each completed position
                         if self._cancellation_event.is_set():
                             LOGGER.info("Cancellation requested after position")
                             break
+
                     except Exception as e:
                         self._log_and_emit(
                             f"An error occurred in a position: {e}", "error"
@@ -325,6 +329,223 @@ class AnalysisRunner:
                     else None
                 ),
             )
+
+    def _ensure_list_loaded(self, obj: object, attr_name: str) -> list:
+        """Safely ensure a relationship list is loaded and initialized.
+
+        Parameters
+        ----------
+        obj : object
+            The SQLModel object containing the relationship
+        attr_name : str
+            The name of the relationship attribute
+
+        Returns
+        -------
+        list
+            The loaded list (may be empty if lazy load failed)
+        """
+        try:
+            attr_list = getattr(obj, attr_name)
+            if attr_list is None:
+                setattr(obj, attr_name, [])
+                attr_list = getattr(obj, attr_name)
+        except Exception:
+            # Lazy load failed, initialize empty list
+            setattr(obj, attr_name, [])
+            attr_list = getattr(obj, attr_name)
+        return attr_list
+
+    def _get_or_create_well(self, well_name: str) -> Well:
+        """Get existing well or create new one.
+
+        Parameters
+        ----------
+        well_name : str
+            Well name (e.g., "B5")
+
+        Returns
+        -------
+        Well
+            Existing or newly created Well object
+        """
+        if self._experiment is None or self._experiment.plate is None:
+            raise ValueError("Experiment or plate not initialized")
+
+        wells_list = self._ensure_list_loaded(self._experiment.plate, 'wells')
+
+        # Find existing well
+        for well in wells_list:
+            if well.name == well_name:
+                return well
+
+        # Create new well
+        row = ord(well_name[0]) - ord("A")
+        col = int(well_name[1:]) - 1
+        well = Well(
+            plate_id=0,  # Placeholder, will be set via relationship
+            name=well_name,
+            row=row,
+            column=col,
+            fovs=[],
+        )
+        well.plate = self._experiment.plate
+        wells_list.append(well)
+        return well
+
+    def _get_or_create_fov(self, well: Well, fov_name: str, pos_idx: int) -> FOV:
+        """Get existing FOV or create new one.
+
+        Parameters
+        ----------
+        well : Well
+            Parent well
+        fov_name : str
+            FOV name (e.g., "B5_0000_p0")
+        pos_idx : int
+            Position index
+
+        Returns
+        -------
+        FOV
+            Existing or newly created FOV object
+        """
+        fovs_list = self._ensure_list_loaded(well, 'fovs')
+
+        # Find existing FOV
+        for fov in fovs_list:
+            if fov.name == fov_name:
+                return fov
+
+        # Create new FOV
+        fov = FOV(
+            name=fov_name,
+            position_index=pos_idx,
+            fov_number=pos_idx,
+            rois=[],
+        )
+        fov.well = well
+        fovs_list.append(fov)
+        return fov
+
+    def _get_or_create_roi(
+        self,
+        fov: FOV,
+        label_value: int,
+        settings: AnalysisSettings,
+        is_active: bool,
+        is_stimulated: bool,
+        mask_coords: tuple[list[int], list[int]],
+        mask_shape: tuple[int, int],
+        neuropil_mask_coords: tuple[list[int], list[int]] | None,
+        neuropil_mask_shape: tuple[int, int] | None,
+    ) -> ROI:
+        """Get existing ROI or create new one with masks.
+
+        Parameters
+        ----------
+        fov : FOV
+            Parent FOV
+        label_value : int
+            ROI label value
+        settings : AnalysisSettings
+            Analysis settings to associate with ROI
+        is_active : bool
+            Whether ROI has detected peaks
+        is_stimulated : bool
+            Whether ROI overlaps with stimulation area
+        mask_coords : tuple[list[int], list[int]]
+            ROI mask coordinates (y, x)
+        mask_shape : tuple[int, int]
+            ROI mask shape (height, width)
+        neuropil_mask_coords : tuple[list[int], list[int]] | None
+            Neuropil mask coordinates (y, x) or None
+        neuropil_mask_shape : tuple[int, int] | None
+            Neuropil mask shape (height, width) or None
+
+        Returns
+        -------
+        ROI
+            Existing or newly created ROI object
+        """
+        rois_list = self._ensure_list_loaded(fov, 'rois')
+
+        # Find existing ROI
+        for roi in rois_list:
+            if roi.label_value == label_value:
+                # Update existing ROI
+                roi.sqlmodel_update({
+                    'active': is_active,
+                    'stimulated': is_stimulated,
+                    'analysis_settings': settings,
+                })
+
+                # Update masks
+                if roi.roi_mask:
+                    roi.roi_mask.sqlmodel_update({
+                        'coords_y': mask_coords[0],
+                        'coords_x': mask_coords[1],
+                        'height': mask_shape[0],
+                        'width': mask_shape[1],
+                    })
+                else:
+                    roi.roi_mask = Mask(
+                        coords_y=mask_coords[0],
+                        coords_x=mask_coords[1],
+                        height=mask_shape[0],
+                        width=mask_shape[1],
+                        mask_type="roi",
+                    )
+
+                if neuropil_mask_coords and neuropil_mask_shape:
+                    if roi.neuropil_mask:
+                        roi.neuropil_mask.sqlmodel_update({
+                            'coords_y': neuropil_mask_coords[0],
+                            'coords_x': neuropil_mask_coords[1],
+                            'height': neuropil_mask_shape[0],
+                            'width': neuropil_mask_shape[1],
+                        })
+                    else:
+                        roi.neuropil_mask = Mask(
+                            coords_y=neuropil_mask_coords[0],
+                            coords_x=neuropil_mask_coords[1],
+                            height=neuropil_mask_shape[0],
+                            width=neuropil_mask_shape[1],
+                            mask_type="neuropil",
+                        )
+
+                return roi
+
+        # Create new ROI with masks
+        roi_mask = Mask(
+            coords_y=mask_coords[0],
+            coords_x=mask_coords[1],
+            height=mask_shape[0],
+            width=mask_shape[1],
+            mask_type="roi",
+        )
+
+        neuropil_mask_obj = None
+        if neuropil_mask_coords and neuropil_mask_shape:
+            neuropil_mask_obj = Mask(
+                coords_y=neuropil_mask_coords[0],
+                coords_x=neuropil_mask_coords[1],
+                height=neuropil_mask_shape[0],
+                width=neuropil_mask_shape[1],
+                mask_type="neuropil",
+            )
+
+        roi = ROI(
+            fov_id=0,  # Placeholder, will be set via relationship
+            label_value=label_value,
+            active=is_active,
+            stimulated=is_stimulated,
+            roi_mask=roi_mask,
+            neuropil_mask=neuropil_mask_obj,
+        )
+        roi.fov = fov
+        roi.analysis_settings = settings
+        return roi
 
     def _process_roi_trace(
         self,
@@ -521,171 +742,22 @@ class AnalysisRunner:
         # Build SQLModel objects to update the experiment
         # Get or create Well, FOV for this ROI
         well_name = fov_name.split("_")[0]
-
-        # Find or create well in experiment's plate
-        well = None
-        wells_list = []
-        if self._experiment.plate:
-            # Try to access wells list, initialize if lazy load fails
-            try:
-                wells_list = self._experiment.plate.wells
-                if wells_list is None:
-                    self._experiment.plate.wells = []
-                    wells_list = self._experiment.plate.wells
-            except Exception:
-                # Lazy load failed, initialize empty list
-                self._experiment.plate.wells = []
-                wells_list = self._experiment.plate.wells
-
-            for w in wells_list:
-                if w.name == well_name:
-                    well = w
-                    break
-
-        if well is None:
-            # Create new well
-            row = ord(well_name[0]) - ord("A")
-            col = int(well_name[1:]) - 1
-            well = Well(
-                plate_id=0,  # Placeholder, will be set via relationship
-                name=well_name,
-                row=row,
-                column=col,
-                fovs=[],  # Initialize fovs list to avoid lazy loading issues
-            )
-            well.plate = self._experiment.plate
-            if self._experiment.plate and wells_list is not None:
-                wells_list.append(well)
-
-        # Try to access fovs list, initialize if lazy load fails
-        try:
-            fovs_list = well.fovs
-            if fovs_list is None:
-                well.fovs = []
-                fovs_list = well.fovs
-        except Exception:
-            # Lazy load failed, initialize empty list
-            well.fovs = []
-            fovs_list = well.fovs
-
-        # Create FOV (assuming fov_name format like "B5_0000_p0")
         pos_idx = int(fov_name.split("_p")[-1])
 
-        # Check if FOV already exists in well
-        fov = None
-        for f in fovs_list:
-            if f.name == fov_name:
-                fov = f
-                break
-
-        if fov is None:
-            fov = FOV(
-                name=fov_name,
-                position_index=pos_idx,
-                fov_number=pos_idx,
-                rois=[],  # Initialize rois list to avoid lazy loading issues
-            )
-            fov.well = well
-            fovs_list.append(fov)
-
-        # Try to access rois list, initialize if lazy load fails
-        try:
-            rois_list = fov.rois
-            if rois_list is None:
-                fov.rois = []
-                rois_list = fov.rois
-        except Exception:
-            # Lazy load failed, initialize empty list
-            fov.rois = []
-            rois_list = fov.rois
-
-        # Check if ROI with this label_value already exists in the FOV
-        roi = None
-        for existing_roi in rois_list:
-            if existing_roi.label_value == label_value:
-                roi = existing_roi
-                break
-
-        # Create or update masks
-        if roi is None:
-            # Create new masks
-            roi_mask = Mask(
-                coords_y=mask_coords[0],
-                coords_x=mask_coords[1],
-                height=mask_shape[0],
-                width=mask_shape[1],
-                mask_type="roi",
-            )
-
-            neuropil_mask_obj = None
-            if neuropil_mask_coords is not None and neuropil_mask_shape is not None:
-                neuropil_mask_obj = Mask(
-                    coords_y=neuropil_mask_coords[0],
-                    coords_x=neuropil_mask_coords[1],
-                    height=neuropil_mask_shape[0],
-                    width=neuropil_mask_shape[1],
-                    mask_type="neuropil",
-                )
-
-            # Create new ROI
-            roi = ROI(
-                fov_id=0,  # Placeholder, will be set via relationship
-                label_value=label_value,
-                active=len(peaks_dec_dff) > 0,
-                stimulated=is_roi_stimulated,
-                roi_mask=roi_mask,
-                neuropil_mask=neuropil_mask_obj,
-            )
-            roi.fov = fov  # This automatically adds roi to fov.rois via back_populates
-            roi.analysis_settings = settings
-            # Note: No need to append to rois_list - back_populates handles it
-        else:
-            # Update existing ROI
-            roi.sqlmodel_update(
-                {
-                    "active": len(peaks_dec_dff) > 0,
-                    "stimulated": is_roi_stimulated,
-                    "analysis_settings": settings,
-                }
-            )
-
-            # Update existing masks
-            if roi.roi_mask:
-                roi.roi_mask.sqlmodel_update(
-                    {
-                        "coords_y": mask_coords[0],
-                        "coords_x": mask_coords[1],
-                        "height": mask_shape[0],
-                        "width": mask_shape[1],
-                    }
-                )
-            else:
-                roi.roi_mask = Mask(
-                    coords_y=mask_coords[0],
-                    coords_x=mask_coords[1],
-                    height=mask_shape[0],
-                    width=mask_shape[1],
-                    mask_type="roi",
-                )
-
-            if neuropil_mask_coords is not None and neuropil_mask_shape is not None:
-                if roi.neuropil_mask:
-                    roi.neuropil_mask.sqlmodel_update(
-                        {
-                            "coords_y": neuropil_mask_coords[0],
-                            "coords_x": neuropil_mask_coords[1],
-                            "height": neuropil_mask_shape[0],
-                            "width": neuropil_mask_shape[1],
-                        }
-                    )
-                else:
-                    roi.neuropil_mask = Mask(
-                        coords_y=neuropil_mask_coords[0],
-                        coords_x=neuropil_mask_coords[1],
-                        height=neuropil_mask_shape[0],
-                        width=neuropil_mask_shape[1],
-                        mask_type="neuropil",
-                    )
+        # Use helper methods to get or create hierarchy objects
+        well = self._get_or_create_well(well_name)
+        fov = self._get_or_create_fov(well, fov_name, pos_idx)
+        roi = self._get_or_create_roi(
+            fov,
+            label_value,
+            settings,
+            is_active=len(peaks_dec_dff) > 0,
+            is_stimulated=is_roi_stimulated,
+            mask_coords=mask_coords,
+            mask_shape=mask_shape,
+            neuropil_mask_coords=neuropil_mask_coords,
+            neuropil_mask_shape=neuropil_mask_shape,
+        )
 
         # Create or update Traces
         if roi.traces is None:
@@ -739,17 +811,19 @@ class AnalysisRunner:
             roi.data_analysis = data_analysis
         else:
             # Update existing data analysis
-            roi.data_analysis.cell_size = roi_size
-            roi.data_analysis.cell_size_units = "µm" if px_size is not None else "pixel"
-            roi.data_analysis.total_recording_time_sec = tot_time_sec
-            roi.data_analysis.dec_dff_frequency = frequency
-            roi.data_analysis.peaks_dec_dff = peaks_dec_dff.tolist()
-            roi.data_analysis.peaks_amplitudes_dec_dff = peaks_amplitudes_dec_dff
-            roi.data_analysis.iei = iei
-            roi.data_analysis.inferred_spikes = spikes.tolist()
-            roi.data_analysis.peaks_prominence_dec_dff = peaks_prominence_dec_dff
-            roi.data_analysis.peaks_height_dec_dff = peaks_height_dec_dff
-            roi.data_analysis.inferred_spikes_threshold = spike_detection_threshold
+            roi.data_analysis.sqlmodel_update({
+                'cell_size': roi_size,
+                'cell_size_units': "µm" if px_size is not None else "pixel",
+                'total_recording_time_sec': tot_time_sec,
+                'dec_dff_frequency': frequency,
+                'peaks_dec_dff': peaks_dec_dff.tolist(),
+                'peaks_amplitudes_dec_dff': peaks_amplitudes_dec_dff,
+                'iei': iei,
+                'inferred_spikes': spikes.tolist(),
+                'peaks_prominence_dec_dff': peaks_prominence_dec_dff,
+                'peaks_height_dec_dff': peaks_height_dec_dff,
+                'inferred_spikes_threshold': spike_detection_threshold,
+            })
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""

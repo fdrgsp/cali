@@ -302,6 +302,8 @@ class PlateViewer(QMainWindow):
         self._analysis_wdg._experiment_type_wdg._from_meta_btn.clicked.connect(
             self._on_led_info_from_meta_clicked
         )
+        # connect analysis runner signal
+        self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
         # connect the run analysis button
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
             self._on_run_analysis_clicked
@@ -554,11 +556,17 @@ class PlateViewer(QMainWindow):
         create_worker(
             self._analysis_runner.run,
             _start_thread=True,
-            # _connect={
-            # "finished": self._on_worker_finished,
-            # "errored": self._on_worker_errored,
-            # },
+            _connect={"errored": self._on_worker_errored},
         )
+
+    def _on_worker_errored(self) -> None:
+        LOGGER.error("Analysis runner encountered an error during execution.")
+
+    def _on_analysis_info(self, msg: str, type: str) -> None:
+        """Handle analysis info messages from the analysis runner."""
+        print(f"ANALYSIS INFO: {msg}")
+        if type == "error":
+            show_error_dialog(self, msg)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
