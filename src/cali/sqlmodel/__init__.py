@@ -42,7 +42,10 @@ from ._util import (
     create_db_and_tables,
     load_experiment_from_database,
 )
-from ._visualize_experiment import print_experiment_tree_from_engine, print_experiment_tree
+from ._visualize_experiment import (
+    print_experiment_tree,
+    print_experiment_tree_from_engine,
+)
 
 __all__ = [
     "FOV",
@@ -64,8 +67,8 @@ __all__ = [
     "load_analysis_from_json",
     "load_experiment_from_database",
     "load_experiment_from_db",
-    "print_experiment_tree_from_engine",
     "print_experiment_tree",
+    "print_experiment_tree_from_engine",
     "save_experiment_to_db",
     "useq_plate_plan_to_db",
     "useq_plate_to_db",

@@ -104,7 +104,7 @@ def useq_plate_to_db(
         plate_type=useq_plate.name,
         rows=useq_plate.rows,
         columns=useq_plate.columns,
-        plate_maps=plate_maps
+        plate_maps=plate_maps,
     )
 
     return plate

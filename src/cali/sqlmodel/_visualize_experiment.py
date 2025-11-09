@@ -47,7 +47,9 @@ def print_experiment_tree_from_engine(
     session.close()
 
 
-def print_experiment_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi") -> None:
+def print_experiment_tree(
+    experiment: Experiment, max_level: MaxTreeLevel = "roi"
+) -> None:
     """Print the full hierarchical model tree for an experiment.
 
     Parameters
@@ -100,9 +102,7 @@ def print_experiment_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi
         else:
             condition_str = ""
 
-        well_node = plate_node.add(
-            f"🧫 [yellow]{well.name}[/yellow]{condition_str}"
-        )
+        well_node = plate_node.add(f"🧫 [yellow]{well.name}[/yellow]{condition_str}")
 
         if max_level == "well":
             continue  # Skip FOVs and ROIs

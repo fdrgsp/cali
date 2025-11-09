@@ -76,9 +76,10 @@ runner.set_data(data)
 runner.set_experiment(new_exp)
 
 
-
 def _p(msg: str) -> None:
     print("ANALYSIS INFO:", msg)
+
+
 runner.analysisInfo.connect(_p)
 
 runner.run()

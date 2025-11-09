@@ -2,14 +2,12 @@
 
 from pathlib import Path
 
-from cv2 import exp
 import useq
 from rich import print
 
 from cali.sqlmodel import (
     experiment_to_useq_plate_plan,
     load_analysis_from_json,
-    print_experiment_tree,
     save_experiment_to_db,
 )
 
@@ -20,7 +18,7 @@ data_path = (
 
 labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
 # labels_path = (
-    # "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
+# "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
 # )
 
 analysis_dir = Path(
@@ -36,7 +34,6 @@ experiment = load_analysis_from_json(
 db_path = analysis_dir / "cali.db"
 experiment.database_path = str(db_path)
 
-from rich import print
 print(experiment)
 print(experiment.plate)
 print(experiment.analysis_settings)
