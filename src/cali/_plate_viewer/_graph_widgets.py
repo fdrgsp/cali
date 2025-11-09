@@ -99,13 +99,13 @@ def _get_fov_data(
         Dictionary mapping ROI label to ROI data
     """
     # Try to get data from database if experiment is provided
-    if experiment is not None and hasattr(experiment, 'plate'):
+    if experiment is not None and hasattr(experiment, "plate"):
         try:
             # Navigate: Experiment -> Plate -> Wells -> FOVs
             plate = experiment.plate
-            if plate and hasattr(plate, 'wells'):
+            if plate and hasattr(plate, "wells"):
                 # Get well name from the position object
-                well_name = getattr(table_data.fov, 'well', None)
+                well_name = getattr(table_data.fov, "well", None)
                 if well_name:
                     for well in plate.wells:
                         if well.name == well_name:
@@ -179,7 +179,7 @@ class _DisplaySingleWellTraces(QGroupBox):
         data = _get_fov_data(
             table_data,
             self._graph._plate_viewer._analysis_data,
-            getattr(self._graph._plate_viewer, '_experiment', None),
+            getattr(self._graph._plate_viewer, "_experiment", None),
         )
         if data is not None:
             rois = self._get_rois(data, self._graph._combo.currentText())
@@ -333,7 +333,7 @@ class _SingleWellGraphWidget(QWidget):
         data = _get_fov_data(
             table_data,
             self._plate_viewer._analysis_data,
-            getattr(self._plate_viewer, '_experiment', None),
+            getattr(self._plate_viewer, "_experiment", None),
         )
         if data is not None:
             plot_single_well_data(self, data, text, rois=None)
