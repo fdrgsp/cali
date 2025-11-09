@@ -13,7 +13,6 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
     WellPlateView,
 )
-from superqt.utils import create_worker
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QIcon
 from qtpy.QtWidgets import (
@@ -66,7 +65,6 @@ from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
     EVENT_KEY,
-    EVOKED,
     SPONTANEOUS,
     ROIData,
     _ProgressBarWidget,

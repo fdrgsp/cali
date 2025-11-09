@@ -370,7 +370,7 @@ class AnalysisRunner:
 
         # check if the roi is stimulated
         roi_stimulation_overlap_ratio = 0.0
-        if evoked_exp and  self._stimulated_area_mask is not None:
+        if evoked_exp and self._stimulated_area_mask is not None:
             roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
                 self._stimulated_area_mask, label_mask
             )
@@ -772,8 +772,7 @@ class AnalysisRunner:
         labels_range = np.unique(labels[labels != 0])
         # Convert numpy int to Python int to avoid bytes serialization issues
         return {
-            int(label_value): (labels == label_value)
-            for label_value in labels_range
+            int(label_value): (labels == label_value) for label_value in labels_range
         }
 
     def get_elapsed_time_list(self, meta: list[dict]) -> list[float]:

@@ -13,7 +13,9 @@ from cali.sqlmodel._visualize_experiment import print_experiment_tree
 
 # recreate the experiment from json files
 print("Loading experiment from JSON...")
-data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+data_path = (
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+)
 labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
 analysis_dir = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
 plate = useq.WellPlate.from_str("96-well")
@@ -58,17 +60,6 @@ print("Loading experiment from database after analysis...")
 exp = load_experiment_from_db(database_path)
 assert exp is not None
 print_experiment_tree(exp)
-
-
-
-
-
-
-
-
-
-
-
 
 
 # database_path = (
