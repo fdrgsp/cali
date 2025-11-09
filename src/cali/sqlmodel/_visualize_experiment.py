@@ -16,7 +16,7 @@ from ._models import Experiment
 MaxTreeLevel = Literal["experiment", "plate", "well", "fov", "roi"]
 
 
-def print_experiment_tree(
+def print_experiment_tree_from_engine(
     experiment_name: str, engine: Engine, max_level: MaxTreeLevel = "roi"
 ) -> None:
     """Print the model tree for a specific experiment by name.
@@ -43,11 +43,11 @@ def print_experiment_tree(
         print(f"❌ Experiment '{experiment_name}' not found")
         return
 
-    print_model_tree(experiment, max_level=max_level)
+    print_experiment_tree(experiment, max_level=max_level)
     session.close()
 
 
-def print_model_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi") -> None:
+def print_experiment_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi") -> None:
     """Print the full hierarchical model tree for an experiment.
 
     Parameters
@@ -63,7 +63,7 @@ def print_model_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi") ->
         "roi": Show complete tree including ROIs (default)
     """
     console = Console()
-    tree = Tree(f"🧪 [bold blue]{experiment.name}[/bold blue]", guide_style="blue")
+    tree = Tree(f"🧪 [bold cyan]{experiment.name}[/bold cyan]", guide_style="cyan")
 
     if experiment.description:
         tree.add(f"[dim]{experiment.description}[/dim]")
@@ -93,10 +93,15 @@ def print_model_tree(experiment: Experiment, max_level: MaxTreeLevel = "roi") ->
             well_conditions.append(f"{well.condition_1.name}")
         if well.condition_2:
             well_conditions.append(f"{well.condition_2.name}")
-        condition_str = f"{', '.join(well_conditions)}" if well_conditions else ""
+
+        if well_conditions:
+            conditions_text = ", ".join(well_conditions)
+            condition_str = f" - 🧪 [green]Conditions: {conditions_text}[/green]"
+        else:
+            condition_str = ""
+
         well_node = plate_node.add(
-            f"🧫 [yellow]{well.name}[/yellow] - "
-            f"🧪 [green]Conditions: {condition_str}[/green]"
+            f"🧫 [yellow]{well.name}[/yellow]{condition_str}"
         )
 
         if max_level == "well":

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
-from qtpy.QtCore import Signal
+from qtpy.QtCore import QSize, Signal
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QComboBox,
@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
 from superqt.fonticon import icon
 
 # from ._plate_map import PlateMapWidget
-from ._plate_map import PlateMapData, PlateMapDataOld, PlateMapWidget
+from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
@@ -39,6 +39,7 @@ from ._util import (
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
+    DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     GREEN,
@@ -49,6 +50,8 @@ from ._util import (
 
 if TYPE_CHECKING:
     import useq
+
+    from cali.sqlmodel import AnalysisSettings
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -67,7 +70,7 @@ class AnalysisSettingsData:
     """Data structure to hold the analysis settings."""
 
     plate_map_data: (
-        tuple[useq.WellPlate, list[PlateMapData], list[PlateMapData]] | None
+        tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]] | None
     ) = None
     experiment_type_data: ExperimentTypeData | None = None
     trace_extraction_data: TraceExtractionData | None = None
@@ -82,6 +85,9 @@ class ExperimentTypeData:
 
     experiment_type: str | None = None
     led_power_equation: str | None = None
+    led_pulse_duration: float | None = None
+    led_pulse_powers: list[float] | None = None
+    led_pulse_on_frames: list[int] | None = None
     stimulation_area_path: str | None = None
 
 
@@ -135,6 +141,8 @@ class _PlateMapWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        self._plate: useq.WellPlate | None = None
+
         # label
         self._plate_map_lbl = QLabel("Set/Edit Plate Map:")
         self._plate_map_lbl.setSizePolicy(*FIXED)
@@ -164,15 +172,21 @@ class _PlateMapWidget(QWidget):
 
     # PUBLIC METHODS -------------------------------------------------------------
 
-    def value(self) -> tuple[list[PlateMapData], list[PlateMapData]]:
+    def value(
+        self,
+    ) -> tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]]:
         """Get the plate map data."""
-        return (self._plate_map_genotype.value(), self._plate_map_treatment.value())
+        return (
+            self._plate,
+            self._plate_map_genotype.value(),
+            self._plate_map_treatment.value(),
+        )
 
     def setValue(
         self,
-        plate: useq.WellPlate,
-        genotype_map: list[PlateMapData | PlateMapDataOld],
-        treatment_map: list[PlateMapData | PlateMapDataOld],
+        plate: useq.WellPlate | None,
+        genotype_map: list[PlateMapData],
+        treatment_map: list[PlateMapData],
     ) -> None:
         """Set the plate map data."""
         self.setPlate(plate)
@@ -183,8 +197,12 @@ class _PlateMapWidget(QWidget):
         """Set the width of the labels."""
         self._plate_map_lbl.setFixedWidth(width)
 
-    def setPlate(self, plate: useq.WellPlate) -> None:
+    def setPlate(self, plate: useq.WellPlate | None) -> None:
         """Set the plate for the plate maps."""
+        self._plate = plate
+        if plate is None:
+            self.clear()
+            return
         self._plate_map_genotype.setPlate(plate)
         self._plate_map_treatment.setPlate(plate)
 
@@ -205,6 +223,18 @@ class _PlateMapWidget(QWidget):
         self._plate_map_dialog.activateWindow()
         # force focus on the dialog
         self._plate_map_dialog.setFocus()
+
+
+class FromMetaButton(QPushButton):
+    """Button to load values from metadata."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("Load From\nMetadata", parent)
+        # self.setIcon(icon(MDI6.database_search))
+        # self.setIconSize(QSize(24, 24))
+        self.setToolTip("Try to load values from acquisition metadata.")
+
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
 
 class _ExperimentTypeWidget(QWidget):
@@ -245,8 +275,8 @@ class _ExperimentTypeWidget(QWidget):
         self._stimulation_area_path_dialog.hide()
 
         # LED power equation widget
-        self._led_power_wdg = QWidget(self)
-        self._led_power_wdg.setToolTip(
+        self._led_power_eq = QWidget(self)
+        self._led_power_eq.setToolTip(
             "Insert an equation to convert the LED power to mW.\n"
             "Supported formats:\n"
             "• Linear: y = m*x + q (e.g. y = 2*x + 3)\n"
@@ -256,18 +286,91 @@ class _ExperimentTypeWidget(QWidget):
             "• Logarithmic: y = a*log(x) + b (e.g. y = 2*log(x) + 1)\n"
             "Leave empty to use values from the acquisition metadata (%)."
         )
-        self._led_lbl = QLabel("LED Power Equation:")
-        self._led_lbl.setSizePolicy(*FIXED)
+        self._led_eq_lbl = QLabel("LED Power Equation:")
+        self._led_eq_lbl.setSizePolicy(*FIXED)
         self._led_power_equation_le = QLineEdit(self)
         self._led_power_equation_le.setPlaceholderText(
             "e.g. y = 2*x + 3 (Leave empty to use values from acquisition metadata)"
         )
-        led_layout = QHBoxLayout(self._led_power_wdg)
+        led_layout = QHBoxLayout(self._led_power_eq)
         led_layout.setContentsMargins(0, 0, 0, 0)
         led_layout.setSpacing(5)
-        led_layout.addWidget(self._led_lbl)
+        led_layout.addWidget(self._led_eq_lbl)
         led_layout.addWidget(self._led_power_equation_le)
-        self._led_power_wdg.hide()
+        self._led_power_eq.hide()
+
+        # LED pulse duration widget
+        self._led_pulse_duration_wdg = QWidget(self)
+        self._led_pulse_duration_wdg.setToolTip(
+            "Duration of each LED pulse in milliseconds."
+        )
+        self._led_pulse_duration_lbl = QLabel("LED Pulse Duration (ms):")
+        self._led_pulse_duration_lbl.setSizePolicy(*FIXED)
+        self._led_pulse_duration_spin = QDoubleSpinBox(self)
+        self._led_pulse_duration_spin.setRange(0.0, 10000.0)
+        led_pulse_layout = QHBoxLayout(self._led_pulse_duration_wdg)
+        led_pulse_layout.setContentsMargins(0, 0, 0, 0)
+        led_pulse_layout.setSpacing(5)
+        led_pulse_layout.addWidget(self._led_pulse_duration_lbl)
+        led_pulse_layout.addWidget(self._led_pulse_duration_spin)
+        self._led_power_eq.hide()
+
+        # LED pulse powers widget
+        self._led_powers_wdg = QWidget(self)
+        self._led_powers_wdg.setToolTip(
+            "List of LED pulse powers corresponding to each stimulation frame.\n"
+            "Values should be in percentage (%), separated by commas "
+            "(e.g. 20, 40, 60, 80).\n"
+            "The length of this list should match the length of the 'Stimulation "
+            "Frames' list."
+        )
+        self._led_powers_lbl = QLabel("LED Pulse Powers (%):")
+        self._led_powers_lbl.setSizePolicy(*FIXED)
+        self._led_powers_le = QLineEdit(self)
+        self._led_powers_le.setPlaceholderText("e.g. 20, 40, 60, 80")
+        led_powers_layout = QHBoxLayout(self._led_powers_wdg)
+        led_powers_layout.setContentsMargins(0, 0, 0, 0)
+        led_powers_layout.setSpacing(5)
+        led_powers_layout.addWidget(self._led_powers_lbl)
+        led_powers_layout.addWidget(self._led_powers_le)
+        self._led_powers_wdg.hide()
+
+        # LED pulse on frames widget
+        self._led_pulse_on_frames_wdg = QWidget(self)
+        self._led_pulse_on_frames_wdg.setToolTip(
+            "List of frames where the LED was ON during the experiment.\n"
+            "Values should be integers separated by commas (e.g. 1, 5, 10, 15).\n"
+            "The length of this list should match the length of the 'LED Pulse Powers' "
+            "list."
+        )
+        self.led_pulse_on_frames_lbl = QLabel("Stimulation Frames:")
+        self.led_pulse_on_frames_lbl.setSizePolicy(*FIXED)
+        self._led_pulse_on_frames_le = QLineEdit(self)
+        self._led_pulse_on_frames_le.setPlaceholderText("e.g. 1, 5, 10, 15")
+        led_pulse_on_frames_layout = QHBoxLayout(self._led_pulse_on_frames_wdg)
+        led_pulse_on_frames_layout.setContentsMargins(0, 0, 0, 0)
+        led_pulse_on_frames_layout.setSpacing(5)
+        led_pulse_on_frames_layout.addWidget(self.led_pulse_on_frames_lbl)
+        led_pulse_on_frames_layout.addWidget(self._led_pulse_on_frames_le)
+        self._led_pulse_on_frames_wdg.hide()
+
+        # led settings left
+        left_setting_layout = QVBoxLayout()
+        left_setting_layout.setContentsMargins(0, 0, 0, 0)
+        left_setting_layout.setSpacing(7)
+        left_setting_layout.addWidget(self._led_pulse_duration_wdg)
+        left_setting_layout.addWidget(self._led_powers_wdg)
+        left_setting_layout.addWidget(self._led_pulse_on_frames_wdg)
+        # led from meta button right
+        self._from_meta_btn = FromMetaButton(self)
+        self._from_meta_btn.hide()
+
+        # left/right widget
+        left_right_layout = QHBoxLayout()
+        left_right_layout.setContentsMargins(0, 0, 0, 0)
+        left_right_layout.setSpacing(5)
+        left_right_layout.addLayout(left_setting_layout)
+        left_right_layout.addWidget(self._from_meta_btn)
 
         # main layout
         layout = QVBoxLayout(self)
@@ -275,7 +378,9 @@ class _ExperimentTypeWidget(QWidget):
         layout.setSpacing(5)
         layout.addLayout(experiment_type_layout)
         layout.addWidget(self._stimulation_area_path_dialog)
-        layout.addWidget(self._led_power_wdg)
+        layout.addWidget(self._led_power_eq)
+        layout.addLayout(left_right_layout)
+
 
     # PUBLIC METHODS ------------------------------------------------------------
 
@@ -283,13 +388,19 @@ class _ExperimentTypeWidget(QWidget):
         """Set the width of the labels."""
         self._experiment_type_lbl.setFixedWidth(width)
         self._stimulation_area_path_dialog._label.setFixedWidth(width)
-        self._led_lbl.setFixedWidth(width)
+        self._led_eq_lbl.setFixedWidth(width)
+        self._led_pulse_duration_lbl.setFixedWidth(width)
+        self._led_powers_lbl.setFixedWidth(width)
+        self.led_pulse_on_frames_lbl.setFixedWidth(width)
 
     def value(self) -> ExperimentTypeData:
         """Get the current values of the widget."""
         return ExperimentTypeData(
             self._experiment_type_combo.currentText(),
             self._led_power_equation_le.text(),
+            self._led_pulse_duration_spin.value(),
+            self._parse_to_list(self._led_powers_le.text()),
+            self._parse_to_list(self._led_pulse_on_frames_le.text()),  # type: ignore
             self._stimulation_area_path_dialog.value(),
         )
 
@@ -299,6 +410,16 @@ class _ExperimentTypeWidget(QWidget):
             self._led_power_equation_le.setText(value.led_power_equation)
         if value.stimulation_area_path is not None:
             self._stimulation_area_path_dialog.setValue(value.stimulation_area_path)
+        if value.led_pulse_duration is not None:
+            self._led_pulse_duration_spin.setValue(value.led_pulse_duration)
+        if value.led_pulse_powers is not None:
+            self._led_powers_le.setText(
+                ", ".join(str(power) for power in value.led_pulse_powers)
+            )
+        if value.led_pulse_on_frames is not None:
+            self._led_pulse_on_frames_le.setText(
+                ", ".join(str(frame) for frame in value.led_pulse_on_frames)
+            )
         if value.experiment_type is not None:
             self._experiment_type_combo.setCurrentText(value.experiment_type)
             # update visibility based on experiment type
@@ -309,18 +430,40 @@ class _ExperimentTypeWidget(QWidget):
         self._experiment_type_combo.setCurrentText(SPONTANEOUS)
         self._led_power_equation_le.clear()
         self._stimulation_area_path_dialog.clear()
+        self._led_pulse_duration_spin.setValue(0.0)
+        self._led_powers_le.clear()
+        self._led_pulse_on_frames_le.clear()
 
     # PRIVATE METHODS ------------------------------------------------------------
+
+    def _parse_to_list(self, text: str) -> list[int | float]:
+        """Parse a comma-separated string into a list of floats."""
+        parsed: list[float | int] = []
+        for val in text.split(","):
+            val = val.strip()
+            try:
+                power = float(val)
+                parsed.append(power)
+            except ValueError:
+                continue
+        return parsed
 
     def _on_activity_changed(self, text: str) -> None:
         """Show or hide the stimulation area path and LED power widgets."""
         if text == EVOKED:
             self._stimulation_area_path_dialog.show()
-            self._led_power_wdg.show()
+            self._led_power_eq.show()
+            self._led_pulse_duration_wdg.show()
+            self._led_powers_wdg.show()
+            self._led_pulse_on_frames_wdg.show()
+            self._from_meta_btn.show()
         else:
             self._stimulation_area_path_dialog.hide()
-            self._led_power_wdg.hide()
-
+            self._led_power_eq.hide()
+            self._led_pulse_duration_wdg.hide()
+            self._led_powers_wdg.hide()
+            self._led_pulse_on_frames_wdg.hide()
+            self._from_meta_btn.hide()
 
 class _NeuropilCorrectionWidget(QWidget):
     """Widget to select the neuropil correction settings."""
@@ -1177,11 +1320,10 @@ class _CalciumAnalysisGUI(QGroupBox):
 
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
-        neuropil_data = self._neuropil_wdg.value()
         return AnalysisSettingsData(
             self._plate_map_wdg.value(),
             self._experiment_type_wdg.value(),
-            self._trace_extraction_wdg.value(neuropil_data),
+            self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
             self._calcium_peaks_wdg.value(),
             self._spike_wdg.value(),
             self._positions_wdg.value(),
@@ -1230,3 +1372,100 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._spike_wdg.reset()
         self._positions_wdg.setValue("")
         self._run_analysis_wdg.reset()
+
+    def to_model_settings(self, experiment_id: int) -> AnalysisSettings:
+        """Convert current GUI settings to AnalysisSettings model.
+
+        Parameters
+        ----------
+        experiment_id : int
+            The experiment ID to associate with these settings
+
+        Returns
+        -------
+        AnalysisSettings
+            Database model with current GUI values
+        """
+        from datetime import datetime
+
+        from cali.sqlmodel import AnalysisSettings
+
+        settings = self.value()
+
+        # Extract nested data with defaults
+        trace_data = settings.trace_extraction_data
+        peaks_data = settings.calcium_peaks_data
+        spikes_data = settings.spikes_data
+        exp_type_data = settings.experiment_type_data
+
+        return AnalysisSettings(
+            experiment_id=experiment_id,
+            created_at=datetime.now(),
+            neuropil_inner_radius=(
+                trace_data.neuropil_inner_radius if trace_data else 0
+            ),
+            neuropil_min_pixels=trace_data.neuropil_min_pixels if trace_data else 0,
+            neuropil_correction_factor=(
+                trace_data.neuropil_correction_factor if trace_data else 0.0
+            ),
+            decay_constant=trace_data.decay_constant if trace_data else 0.0,
+            dff_window=(
+                trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
+            ),
+            peaks_height_value=(
+                peaks_data.peaks_height if peaks_data else DEFAULT_HEIGHT
+            ),
+            peaks_height_mode=(
+                peaks_data.peaks_height_mode if peaks_data else MULTIPLIER
+            ),
+            peaks_distance=(
+                peaks_data.peaks_distance if peaks_data else DEFAULT_PEAKS_DISTANCE
+            ),
+            peaks_prominence_multiplier=(
+                peaks_data.peaks_prominence_multiplier if peaks_data else 1.0
+            ),
+            calcium_sync_jitter_window=(
+                peaks_data.calcium_synchrony_jitter
+                if peaks_data
+                else DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+            ),
+            calcium_network_threshold=(
+                peaks_data.calcium_network_threshold
+                if peaks_data
+                else DEFAULT_CALCIUM_NETWORK_THRESHOLD
+            ),
+            spike_threshold_value=(
+                spikes_data.spike_threshold
+                if spikes_data
+                else DEFAULT_SPIKE_THRESHOLD
+            ),
+            spike_threshold_mode=(
+                spikes_data.spike_threshold_mode if spikes_data else MULTIPLIER
+            ),
+            burst_threshold=(
+                spikes_data.burst_threshold
+                if spikes_data
+                else DEFAULT_BURST_THRESHOLD
+            ),
+            burst_min_duration=(
+                spikes_data.burst_min_duration
+                if spikes_data
+                else DEFAULT_MIN_BURST_DURATION
+            ),
+            burst_gaussian_sigma=(
+                spikes_data.burst_blur_sigma
+                if spikes_data
+                else DEFAULT_BURST_GAUSS_SIGMA
+            ),
+            spikes_sync_cross_corr_lag=(
+                spikes_data.synchrony_lag
+                if spikes_data
+                else DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+            ),
+            led_power_equation=(
+                exp_type_data.led_power_equation if exp_type_data else None
+            ),
+            stimulation_mask_path=(
+                exp_type_data.stimulation_area_path if exp_type_data else None
+            ),
+        )

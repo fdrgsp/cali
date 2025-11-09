@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Session, create_engine
 
-from cali._plate_viewer._util import ROIData, mask_to_coordinates
+from cali._plate_viewer._util import EVOKED, SPONTANEOUS, ROIData, mask_to_coordinates
 
 from ._models import (
     FOV,
@@ -55,6 +55,9 @@ def load_analysis_from_json(
     a complete Experiment object with all related entities (Plate, Wells,
     FOVs, ROIs, Conditions, AnalysisSettings, Masks, Traces, DataAnalysis).
 
+    If 'genotype_plate_map.json' and/or 'treatment_plate_map.json' files exist
+    in the analysis directory, they will be loaded and stored in plate.plate_maps.
+
     The function does NOT save to a database - it returns an in-memory object
     tree that can be added to a SQLModel session.
 
@@ -65,14 +68,18 @@ def load_analysis_from_json(
     labels_path : str
         Path to the labels directory
     analysis_path : str
-        Path to the analysis directory
+        Path to the analysis directory. May contain optional plate map files:
+        - genotype_plate_map.json
+        - treatment_plate_map.json
     useq_plate : WellPlate
         useq-schema WellPlate object defining the plate used
 
     Returns
     -------
     Experiment
-        Complete experiment object with all relationships populated
+        Complete experiment object with all relationships populated.
+        The plate.plate_maps field will be populated if plate map JSON files
+        were found.
 
     Example
     -------
@@ -88,6 +95,9 @@ def load_analysis_from_json(
     >>> experiment = load_analysis_from_json(
     ...     data_dir, labels_dir, analysis_dir, useq_plate=plate
     ... )
+    >>> # Check if plate maps were loaded
+    >>> if experiment.plate.plate_maps:
+    ...     print(f"Loaded plate maps: {list(experiment.plate.plate_maps.keys())}")
     >>>
     >>> # Save to database
     >>> engine = create_engine("sqlite:///test.db")
@@ -121,6 +131,23 @@ def load_analysis_from_json(
 
     genotype_map = load_plate_map(genotype_map_path)
     treatment_map = load_plate_map(treatment_map_path)
+
+    # Build plate_maps from loaded JSON files
+    plate_maps: dict[str, dict[str, str]] = {}
+    if genotype_map:
+        plate_maps["genotype"] = {
+            well_name: well_data["name"]
+            for well_name, well_data in genotype_map.items()
+        }
+    if treatment_map:
+        plate_maps["treatment"] = {
+            well_name: well_data["name"]
+            for well_name, well_data in treatment_map.items()
+        }
+
+    # Set plate_maps on plate if any were found
+    if plate_maps:
+        plate.plate_maps = plate_maps
 
     conditions: dict[str, Condition] = {}
 
@@ -159,7 +186,10 @@ def load_analysis_from_json(
         stimulation_mask_path = None
         stim_mask_file = Path(analysis_path) / "stimulation_mask.tif"
 
+        experiment.experiment_type = EVOKED if stim_mask_file.exists() else SPONTANEOUS
+
         if stim_mask_file.exists():
+
             try:
                 # Load the stimulation mask
                 import tifffile
@@ -235,6 +265,12 @@ def load_analysis_from_json(
 
     wells_created: dict[str, Well] = {}
     total_rois = 0
+    positions_analyzed: set[int] = set()  # Track all unique position indices
+
+    # Variables to collect LED stimulation info from ROI data
+    led_pulse_duration_from_roi: float | None = None
+    led_pulse_powers_from_roi: list[float] | None = None
+    led_pulse_on_frames_from_roi: list[int] | None = None
 
     for json_file in json_files:
         # Parse FOV name
@@ -274,6 +310,9 @@ def load_analysis_from_json(
         else:
             position_index = 0
 
+        # Track this position as analyzed
+        positions_analyzed.add(position_index)
+
         # Extract fov_number
         parts = fov_name.split("_")
         if len(parts) >= 2:
@@ -300,6 +339,23 @@ def load_analysis_from_json(
             try:
                 roi_data = ROIData(**roi_data_dict)
 
+                # Extract LED stimulation info from first ROI that has it
+                if led_pulse_duration_from_roi is None and roi_data.led_pulse_duration:
+                    led_pulse_duration_from_roi = float(roi_data.led_pulse_duration)
+
+                if roi_data.stimulations_frames_and_powers is not None:
+                    # Extract powers and frames from dict
+                    # Format: {frame: power, ...}
+                    stim_dict = roi_data.stimulations_frames_and_powers
+                    if led_pulse_powers_from_roi is None:
+                        led_pulse_powers_from_roi = [
+                            float(v) for v in stim_dict.values()
+                        ]
+                    if led_pulse_on_frames_from_roi is None:
+                        led_pulse_on_frames_from_roi = [
+                            int(k) for k in stim_dict.keys()
+                        ]
+
                 # Use roi_from_roi_data helper
                 roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
                     roi_data,
@@ -325,6 +381,18 @@ def load_analysis_from_json(
                 print(f"  ⚠ Error importing ROI {roi_label} from ")
                 print(f"    {json_file.name}: {e}")
                 continue
+
+    # Set the positions that were analyzed
+    experiment.positions_analyzed = sorted(positions_analyzed)
+
+    # Update AnalysisSettings with LED info collected from ROI data (if available)
+    if analysis_settings and experiment.experiment_type == EVOKED:
+        if led_pulse_duration_from_roi is not None:
+            analysis_settings.led_pulse_duration = led_pulse_duration_from_roi
+        if led_pulse_powers_from_roi is not None:
+            analysis_settings.led_pulse_powers = led_pulse_powers_from_roi
+        if led_pulse_on_frames_from_roi is not None:
+            analysis_settings.led_pulse_on_frames = led_pulse_on_frames_from_roi
 
     return experiment
 
@@ -525,6 +593,10 @@ def roi_from_roi_data(
         dec_dff_frequency=roi_data.dec_dff_frequency,
         iei=roi_data.iei,
         inferred_spikes=roi_data.inferred_spikes,
+        # ROI-specific thresholds calculated during analysis
+        peaks_prominence_dec_dff=roi_data.peaks_prominence_dec_dff,
+        peaks_height_dec_dff=roi_data.peaks_height_dec_dff,
+        inferred_spikes_threshold=roi_data.inferred_spikes_threshold,
         roi=roi,  # Use relationship instead
     )
 
@@ -592,6 +664,7 @@ def save_experiment_to_db(
     >>> save_experiment_to_db(exp, "analysis.db")
     """
     db_path = Path(db_path)
+    experiment.database_path = str(db_path)
 
     # Ensure parent directory exists
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -644,7 +717,9 @@ def load_experiment_from_db(
     """
     from sqlmodel import select
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    # Convert to string for consistency
+    db_path_str = str(db_path)
+    engine = create_engine(f"sqlite:///{db_path_str}")
 
     with Session(engine) as session:
         # Query for experiment
@@ -657,6 +732,8 @@ def load_experiment_from_db(
 
         if not experiment:
             return None
+
+        experiment.database_path = db_path_str
 
         # Eagerly load all relationships while session is open
         session.refresh(experiment)
@@ -680,7 +757,6 @@ def load_experiment_from_db(
                         _ = roi.analysis_settings
 
         if experiment.analysis_settings:
-            for settings in experiment.analysis_settings:
-                _ = settings.stimulation_mask
+            _ = experiment.analysis_settings.stimulation_mask
 
         return experiment

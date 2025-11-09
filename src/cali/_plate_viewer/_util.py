@@ -293,8 +293,6 @@ class _BrowseWidget(QWidget):
             path, _ = QFileDialog.getOpenFileName(
                 self,
                 f"Select the {self._label_text}.",
-                "",
-                "JSON (*.json); IMAGES (*.tif *.tiff)",
             )
             if path:
                 self._path.setText(path)

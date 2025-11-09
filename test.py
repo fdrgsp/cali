@@ -16,7 +16,7 @@ from cali.sqlmodel import (
     Well,
     WellCondition,
     create_db_and_tables,
-    print_experiment_tree,
+    print_experiment_tree_from_engine,
 )
 
 sqlite_file_name = f"database_{int(datetime.datetime.now().timestamp())}.db"
@@ -185,7 +185,7 @@ def create_data() -> None:
 # Create, populate, and show experiment
 create_db_and_tables(engine)
 create_data()
-print_experiment_tree("Experiment", engine)
+print_experiment_tree_from_engine("Experiment", engine)
 
 # # Verify that the condition accessors work
 # print("\n" + "=" * 50)

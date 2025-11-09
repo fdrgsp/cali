@@ -33,7 +33,7 @@ from cali.sqlmodel import (
     experiment_to_useq_plate_plan,
     load_analysis_from_json,
     save_experiment_to_db,
-    useq_plate_plan_to_plate,
+    useq_plate_plan_to_db,
 )
 from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
 from cali.sqlmodel._models import (
@@ -584,7 +584,7 @@ def test_useq_plate_plan_to_plate(temp_db: TempDB) -> None:
     )
 
     # Convert to database objects
-    plate = useq_plate_plan_to_plate(plate_plan, exp)
+    plate = useq_plate_plan_to_db(plate_plan, exp)
 
     # Verify plate properties
     assert plate.name == "1536-well"
@@ -633,7 +633,7 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
     )
 
     # Convert to database
-    _ = useq_plate_plan_to_plate(plate_plan_orig, exp)
+    _ = useq_plate_plan_to_db(plate_plan_orig, exp)
 
     # Save to database
     with Session(engine) as session:

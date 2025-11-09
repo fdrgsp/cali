@@ -22,6 +22,7 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMenuBar,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -37,7 +38,7 @@ from cali.sqlmodel import (
     Experiment,
     load_experiment_from_database,
     save_experiment_to_db,
-    useq_plate_plan_to_plate,
+    useq_plate_plan_to_db,
 )
 from cali.sqlmodel._db_to_plate_map import experiment_to_plate_map_data
 from cali.sqlmodel._db_to_useq_plate import (
@@ -79,7 +80,7 @@ DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     a1_center_xy=(0.0, 0.0),
     selected_wells=((0,), (0,)),
 )
-
+PYMMCW_METADATA_KEY = "pymmcore_widgets"
 TS = WRITERS[ZARR_TESNSORSTORE][0]
 ZR = WRITERS[OME_ZARR][0]
 
@@ -175,6 +176,35 @@ class PlateViewer(QMainWindow):
         self._tab = QTabWidget(self)
         self._tab.currentChanged.connect(self._on_tab_changed)
 
+        # SEGMENTATION TAB ------------------------------------------------------------
+        self._segmentation_tab = QWidget()
+        self._tab.addTab(self._segmentation_tab, "Segmentation Tab")
+        segmentation_tab_layout = QVBoxLayout(self._segmentation_tab)
+        segmentation_tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        # SEGMENTATION TAB SCROLL AREA ------------------------------------------------
+        segmentation_scroll_area = QScrollArea()
+        segmentation_scroll_area.setWidgetResizable(True)
+        segmentation_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        segmentation_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        # SEGMENTATION WIDGET ---------------------------------------------------------
+        self._segmentation_wdg = _CellposeSegmentation(self)
+
+        # ADD SEGMENTATION WIDGET TO SCROLL AREA --------------------------------------
+        segmentation_content_widget = QWidget()
+        segmentation_layout = QVBoxLayout(segmentation_content_widget)
+        segmentation_layout.setContentsMargins(10, 10, 10, 10)
+        segmentation_layout.setSpacing(15)
+        segmentation_layout.addWidget(self._segmentation_wdg)
+        segmentation_layout.addStretch(1)
+        segmentation_scroll_area.setWidget(segmentation_content_widget)
+        segmentation_tab_layout.addWidget(segmentation_scroll_area)
+
         # ANALYSIS TAB ----------------------------------------------------------------
         self._analysis_tab = QWidget()
         self._tab.addTab(self._analysis_tab, "Analysis Tab")
@@ -187,16 +217,14 @@ class PlateViewer(QMainWindow):
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        # SEGMENTATION AND ANALYSIS WIDGETS -------------------------------------------
-        self._segmentation_wdg = _CellposeSegmentation(self)
+        # ANALYSIS WIDGET -------------------------------------------------------------
         self._analysis_wdg = _CalciumAnalysisGUI(self)
 
-        # ADD WIDGETS TO THE SCROLL AREA ----------------------------------------------
+        # ADD ANALYSIS WIDGET TO SCROLL AREA ------------------------------------------
         analysis_content_widget = QWidget()
         analysis_layout = QVBoxLayout(analysis_content_widget)
         analysis_layout.setContentsMargins(10, 10, 10, 10)
         analysis_layout.setSpacing(15)
-        analysis_layout.addWidget(self._segmentation_wdg)
         analysis_layout.addWidget(self._analysis_wdg)
         analysis_layout.addStretch(1)
         scroll_area.setWidget(analysis_content_widget)
@@ -213,6 +241,7 @@ class PlateViewer(QMainWindow):
         self._single_well_graph_2 = _SingleWellGraphWidget(self)
         self._single_well_graph_3 = _SingleWellGraphWidget(self)
         # self._single_well_graph_4 = _SingleWellGraphWidget(self)
+
         single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
         single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
         single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
@@ -232,6 +261,10 @@ class PlateViewer(QMainWindow):
         multi_well_layout.setSpacing(5)
 
         self._multi_well_graph_1 = _MultilWellGraphWidget(self)
+        self._multi_well_graph_1.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self._multi_well_graph_1.setMinimumSize(200, 150)
         multi_well_layout.addWidget(self._multi_well_graph_1, 0, 0)
 
         self.MW_GRAPHS = [self._multi_well_graph_1]
@@ -261,6 +294,16 @@ class PlateViewer(QMainWindow):
         for graph in self.SW_GRAPHS:
             graph.roiSelected.connect(self._highlight_roi)
 
+        # connect meta button
+        self._analysis_wdg._experiment_type_wdg._from_meta_btn.clicked.connect(
+            self._on_load_from_meta_clicked
+        )
+
+        # connect the run analysis button
+        self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
+            self._on_run_analysis_clicked
+        )
+
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
         self._set_splitter_sizes()
@@ -277,8 +320,8 @@ class PlateViewer(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
 
-        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
-        self.initialize_widget_from_database(data)
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
+        # self.initialize_widget_from_database(data)
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
@@ -446,9 +489,7 @@ class PlateViewer(QMainWindow):
         # LOAD PLATE-------------------------------------------------------------------
         plate_plan = self._load_plate_plan(self._data.sequence.stage_positions)
         if plate_plan is not None:
-            self._experiment.plate = useq_plate_plan_to_plate(
-                plate_plan, self._experiment
-            )
+            self._experiment.plate = useq_plate_plan_to_db(plate_plan, self._experiment)
 
         # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
         self._update_gui(plate_plan.plate if plate_plan is not None else None)
@@ -458,6 +499,39 @@ class PlateViewer(QMainWindow):
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
         save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
+
+    def get_analysis_settings(self) -> AnalysisSettingsData | None:
+        """Get the current analysis settings from the analysis widget."""
+        return self._analysis_wdg.value()
+
+    def set_analysis_settings(self, value: AnalysisSettingsData) -> None:
+        """Set the current analysis settings in the analysis widget."""
+        self._analysis_wdg.setValue(value)
+        self._analysis_wdg._run_analysis_wdg.reset()
+
+    # RUNNING THE ANALYSIS-------------------------------------------------------------
+    def _on_run_analysis_clicked(self) -> None:
+        if self._experiment is None:
+            return
+        # update the experiment analysis settings
+        self._update_experiment_analysis_settings()
+
+    def _update_experiment_analysis_settings(self) -> None:
+        if self._experiment is None:
+            return
+
+        # Ensure experiment has an ID (should be set if loaded from DB)
+        if self._experiment.id is None:
+            LOGGER.warning("Experiment has no ID, cannot update analysis settings")
+            return
+
+        # Update or set the experiment's analysis settings
+        analysis_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
+        self._experiment.analysis_settings = analysis_settings
+
+        # Save the updated experiment back to the database
+        if self._database_path is not None:
+            save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
@@ -595,6 +669,9 @@ class PlateViewer(QMainWindow):
                 experiment_type=self._experiment.experiment_type,
                 led_power_equation=settings.led_power_equation,
                 stimulation_area_path=settings.stimulation_mask_path,
+                led_pulse_duration=settings.led_pulse_duration,
+                led_pulse_powers=settings.led_pulse_powers,
+                led_pulse_on_frames=settings.led_pulse_on_frames,
             ),
             trace_extraction_data=TraceExtractionData(
                 dff_window_size=settings.dff_window,
@@ -620,8 +697,7 @@ class PlateViewer(QMainWindow):
                 synchrony_lag=settings.spikes_sync_cross_corr_lag,
             ),
         )
-        self._analysis_wdg.setValue(value)
-        self._analysis_wdg._run_analysis_wdg.reset()
+        self.set_analysis_settings(value)
 
     # ---------------------WIDGETS------------------------------------
 
@@ -635,6 +711,57 @@ class PlateViewer(QMainWindow):
         for splitter, sizes in splitter_and_sizes:
             total_size = splitter.size().width()
             splitter.setSizes([int(size * total_size) for size in sizes])
+
+    def _on_load_from_meta_clicked(self) -> None:
+        if self._data is None:
+            show_error_dialog(
+                self, "Data not loaded! Cannot load metadata from datastore!"
+            )
+            return
+
+        try:
+            sequence = self._data.sequence
+
+            if sequence is None:
+                msg = "useq.MDASequence not found! Cannot retrieve metadata!"
+                show_error_dialog(self, msg)
+                LOGGER.error(msg)
+                return
+
+            meta = sequence.metadata.get(PYMMCW_METADATA_KEY, {})
+            led_meta = cast("dict", meta.get("stimulation", {}))
+            if led_meta:
+                wdg = self._analysis_wdg._experiment_type_wdg
+
+                # pulse duration
+                if led_duration := led_meta.get("led_pulse_duration", None):
+                    wdg._led_pulse_duration_spin.setValue(led_duration)
+
+                # led powers and frames
+                if pulse_on_frame := led_meta.get("pulse_on_frame", None):
+                    wdg._led_powers_le.setText(
+                        ", ".join(
+                            str(pulse_on_frame[str(frame)])
+                            for frame in sorted(int(k) for k in pulse_on_frame.keys())
+                        )
+                    )
+                    wdg._led_pulse_on_frames_le.setText(
+                        ", ".join(
+                            str(frame)
+                            for frame in sorted(int(k) for k in pulse_on_frame.keys())
+                        )
+                    )
+
+            else:
+                msg = "No stimulation metadata found in the datastore!"
+                show_error_dialog(self, msg)
+                LOGGER.warning(msg)
+
+        except Exception as e:
+            msg = f"Failed to load metadata from datastore!\n\nError: {e}"
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
 
     def _init_loading_bar(self, text: str) -> None:
         """Reset the loading bar."""
@@ -652,7 +779,7 @@ class PlateViewer(QMainWindow):
         """
         # get the current tab index
         idx = self._tab.currentIndex()
-        if idx == 0:
+        if idx == 0 or idx == 1:
             return
         for graph in self.SW_GRAPHS:
             if graph._combo.currentText() == "None":
@@ -663,12 +790,12 @@ class PlateViewer(QMainWindow):
 
     def _on_tab_changed(self, idx: int) -> None:
         """Update the graph combo boxes when the tab is changed."""
-        # skip if the tab is the analysis tab
-        if idx == 0:
+        # skip if the tab is the segmentation tab or analysis tab
+        if idx == 0 or idx == 1:
             return
 
         # if single wells tab is selected
-        if idx == 1:
+        if idx == 2:
             # get the current fov
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
@@ -678,7 +805,7 @@ class PlateViewer(QMainWindow):
             self._update_single_wells_graphs_combo(combo_red=(fov_data is None))
 
         # if multi wells tab is selected
-        elif idx == 2:
+        elif idx == 3:
             self._update_multi_wells_graphs_combo()
 
     def _highlight_roi(self, roi: str | list[str]) -> None:

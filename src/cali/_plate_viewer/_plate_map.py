@@ -205,16 +205,6 @@ class PlateMapData(NamedTuple):
     condition: tuple[str, str]  # condition name, color name
 
 
-class PlateMapDataOld(NamedTuple):
-    """Old data structure for the plate map."""
-
-    name: str
-    row: int
-    column: int
-    condition: str
-    color: str
-
-
 class PlateMapWidget(QWidget):
     """A widget to create a plate map."""
 
@@ -338,7 +328,7 @@ class PlateMapWidget(QWidget):
             if well.data(DATA_COLOR)
         ]
 
-    def setValue(self, value: list[PlateMapData | PlateMapDataOld]) -> None:
+    def setValue(self, value: list[PlateMapData]) -> None:
         """Set the value of the widget."""
         # clear the selection and the conditions of the plate
         self._plate_view.clearSelection()
@@ -347,21 +337,6 @@ class PlateMapWidget(QWidget):
         try:
             add_to_conditions_list = set()
             for data in value:
-                # convert the data to a PlateMapData object if it is a list of strings
-                if not isinstance(data, PlateMapData):
-                    # convert the old data to the new data
-                    if isinstance(data, PlateMapDataOld):
-                        data = PlateMapData(
-                            data.name,
-                            (data.row, data.column),
-                            (data.condition, data.color),
-                        )
-                    # convert old list of strings to new PlateMapData
-                    elif len(data) == 5:  # from PlateMapDataOld
-                        name, r, c, condition, color = data
-                        data = PlateMapData(name, (r, c), (condition, color))
-                    else:
-                        data = PlateMapData(*tuple(data))
                 # store the data in a list to update the condition table
                 add_to_conditions_list.add(tuple(data.condition))
                 # update the color and data of the wells with the assigned conditions
