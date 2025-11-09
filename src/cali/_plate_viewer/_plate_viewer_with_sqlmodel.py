@@ -13,6 +13,7 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
     WellPlateView,
 )
+from superqt.utils import create_worker
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QIcon
 from qtpy.QtWidgets import (
@@ -65,6 +66,8 @@ from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
     EVENT_KEY,
+    EVOKED,
+    SPONTANEOUS,
     ROIData,
     _ProgressBarWidget,
     show_error_dialog,
@@ -503,7 +506,9 @@ class PlateViewer(QMainWindow):
         # TODO: ask the user to overwrite if the database already exists
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
+        save_experiment_to_db(
+            self._experiment, self._database_path, overwrite=True, keep_session=True
+        )
 
     def get_analysis_settings(self) -> AnalysisSettingsData | None:
         """Get the current analysis settings from the analysis widget."""
@@ -530,18 +535,32 @@ class PlateViewer(QMainWindow):
             LOGGER.warning("Experiment has no ID, cannot update analysis settings")
             return
 
+        # Update or set the experiment's type based on gui state
+        exp_type = self._analysis_wdg._experiment_type_wdg.value()
+        self._experiment.experiment_type = exp_type.experiment_type or SPONTANEOUS
+
         # Update or set the experiment's analysis settings
         analysis_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
         self._experiment.analysis_settings = analysis_settings
 
         # Save the updated experiment back to the database
         if self._database_path is not None:
-            save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
+            save_experiment_to_db(
+                self._experiment, self._database_path, overwrite=True, keep_session=True
+            )
 
         # Update the analysis runner with the current data and experiment
         self._analysis_runner.set_data(self._data)
         self._analysis_runner.set_experiment(self._experiment)
-        self._analysis_runner.run()
+
+        create_worker(
+            self._analysis_runner.run,
+            _start_thread=True,
+            _connect={
+                # "finished": self._on_worker_finished,
+                # "errored": self._on_worker_errored,
+            },
+        )
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
