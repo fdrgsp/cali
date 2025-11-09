@@ -238,11 +238,8 @@ class AnalysisRunner:
         # get the data and metadata for the position
         data, meta = self._data.isel(p=p, metadata=True)
 
-        # the "Event" key was used in the old metadata format
-        event_key = EVENT_KEY if EVENT_KEY in meta[0] else "Event"
-
         # get the fov_name name from metadata
-        fov_name = self._get_fov_name(event_key, meta, p)
+        fov_name = self._get_fov_name(EVENT_KEY, meta, p)
 
         # get the labels file for the position
         labels_path = self._get_labels_file_for_position(fov_name, p)

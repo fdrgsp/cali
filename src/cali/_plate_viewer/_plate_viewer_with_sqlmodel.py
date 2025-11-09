@@ -877,9 +877,7 @@ class PlateViewer(QMainWindow):
 
         # add the fov per position to the table
         for idx, pos in enumerate(self._data.sequence.stage_positions):
-            if self._default_plate_plan:
-                self._fov_table.add_position(WellInfo(idx, pos))
-            elif pos.name and well_name in pos.name:
+            if self._default_plate_plan or (pos.name and well_name in pos.name):
                 self._fov_table.add_position(WellInfo(idx, pos))
 
         if self._fov_table.rowCount() > 0:
@@ -947,7 +945,7 @@ class PlateViewer(QMainWindow):
             )
             return None
         # the labels tif file should have the same name as the position
-        # and should end with _on where n is the position number (e.g. C3_0000_p0.tif)
+        # and should end with _pn where n is the position number (e.g. C3_0000_p0.tif)
         pos_idx = f"p{value.pos_idx}"
         pos_name = value.fov.name
         for f in Path(self._labels_path).iterdir():
