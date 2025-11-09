@@ -562,18 +562,15 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     cell_size: float | None = None
     cell_size_units: str | None = None
     total_recording_time_sec: float | None = None
-
     dec_dff_frequency: float | None = None
     peaks_dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    peaks_prominence_dec_dff: float | None = None
+    peaks_height_dec_dff: float | None = None
     peaks_amplitudes_dec_dff: list[float] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
-
-    # ROI-specific calculated thresholds and parameters
-    peaks_prominence_dec_dff: float | None = None
-    peaks_height_dec_dff: float | None = None
     inferred_spikes_threshold: float | None = None
 
     # Relationships

@@ -296,8 +296,11 @@ class PlateViewer(QMainWindow):
 
         # connect meta button
         self._analysis_wdg._experiment_type_wdg._from_meta_btn.clicked.connect(
-            self._on_load_from_meta_clicked
+            self._on_led_info_from_meta_clicked
         )
+        # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
+        #     self._on_frame_rate_info_from_meta_clicked
+        # )
 
         # connect the run analysis button
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
@@ -320,8 +323,8 @@ class PlateViewer(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
 
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
-        # self.initialize_widget_from_database(data)
+        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
+        self.initialize_widget_from_database(data)
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
@@ -712,7 +715,7 @@ class PlateViewer(QMainWindow):
             total_size = splitter.size().width()
             splitter.setSizes([int(size * total_size) for size in sizes])
 
-    def _on_load_from_meta_clicked(self) -> None:
+    def _on_led_info_from_meta_clicked(self) -> None:
         if self._data is None:
             show_error_dialog(
                 self, "Data not loaded! Cannot load metadata from datastore!"
@@ -720,9 +723,7 @@ class PlateViewer(QMainWindow):
             return
 
         try:
-            sequence = self._data.sequence
-
-            if sequence is None:
+            if (sequence := self._data.sequence) is None:
                 msg = "useq.MDASequence not found! Cannot retrieve metadata!"
                 show_error_dialog(self, msg)
                 LOGGER.error(msg)
@@ -751,6 +752,12 @@ class PlateViewer(QMainWindow):
                             for frame in sorted(int(k) for k in pulse_on_frame.keys())
                         )
                     )
+                    LOGGER.info(
+                        f"Loaded stimulation metadata from datastore: "
+                        f"led_pulse_duration={led_duration}"
+                        f"led_powers={wdg._led_powers_le.text()}, "
+                        f"led_pulse_on_frames={wdg._led_pulse_on_frames_le.text()}"
+                        )
 
             else:
                 msg = "No stimulation metadata found in the datastore!"
@@ -1039,3 +1046,51 @@ class PlateViewer(QMainWindow):
 
             save_trace_data_to_csv(path, self._analysis_data)
             save_analysis_data_to_csv(path, self._analysis_data)
+
+    # def _on_frame_rate_info_from_meta_clicked(self) -> None:
+    #     if self._data is None:
+    #         show_error_dialog(
+    #             self, "Data not loaded! Cannot load metadata from datastore!"
+    #         )
+    #         return
+
+    #     try:
+    #         # Get metadata directly from the data reader
+    #         if not (meta := cast("list[dict]", self._data.metadata)):
+    #             msg = "No metadata found in the datastore!"
+    #             show_error_dialog(self, msg)
+    #             LOGGER.error(msg)
+    #             return
+
+    #         if (sequence := self._data.sequence) is None:
+    #             msg = "useq.MDASequence not found! Cannot retrieve metadata!"
+    #             show_error_dialog(self, msg)
+    #             LOGGER.error(msg)
+    #             return
+
+    #         # Get exposure time from metadata (first frame)
+    #         exp_time = meta[0].get("mda_event", {}).get("exposure", 0.0)
+    #         if exp_time <= 0:
+    #             msg = "Invalid exposure time found in metadata!"
+    #             show_error_dialog(self, msg)
+    #             LOGGER.error(msg)
+    #             return
+
+    #         # Get timepoints
+    #         timepoints = sequence.sizes.get("t", 0)
+    #         if timepoints == 0:
+    #             msg = "No timepoints found in the sequence!"
+    #             show_error_dialog(self, msg)
+    #             LOGGER.error(msg)
+    #             return
+
+    #         frame_rate = (timepoints - 1) / ((timepoints * exp_time) / 1000)
+    #         self._analysis_wdg._frame_rate_wdg._frame_rate_spin.setValue(frame_rate)
+
+    #         LOGGER.info(f"Frame rate set to: {frame_rate:.2f} fps.")
+
+    #     except Exception as e:
+    #         msg = f"Failed to load frame rate from datastore!\n\nError: {e}"
+    #         show_error_dialog(self, msg)
+    #         LOGGER.error(msg)
+    #         return
