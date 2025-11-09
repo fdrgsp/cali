@@ -36,7 +36,6 @@ from ._util import (
 )
 
 if TYPE_CHECKING:
-
     import useq
     from superqt.utils import FunctionWorker
 
@@ -54,7 +53,6 @@ GLOBAL_SPIKE_THRESHOLD = "global"
 
 
 class AnalysisRunner:
-
     analysisInfo: Signal = Signal(str)
 
     def __init__(self) -> None:
@@ -87,7 +85,6 @@ class AnalysisRunner:
         return self._experiment.analysis_settings
 
     def run(self) -> None:
-
         LOGGER.info("Starting Analysis...")
 
         if self._experiment is None:

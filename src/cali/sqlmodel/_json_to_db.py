@@ -189,7 +189,6 @@ def load_analysis_from_json(
         experiment.experiment_type = EVOKED if stim_mask_file.exists() else SPONTANEOUS
 
         if stim_mask_file.exists():
-
             try:
                 # Load the stimulation mask
                 import tifffile

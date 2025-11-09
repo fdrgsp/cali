@@ -34,7 +34,6 @@ from tqdm import tqdm
 from cali.sqlmodel import (
     FOV,
     ROI,
-    AnalysisSettings,
     Condition,
     DataAnalysis,
     Experiment,
@@ -360,7 +359,9 @@ class _AnalyseCalciumTraces(QWidget):
         self._elapsed_timer.stop()
         self._cancel_waiting_bar.start()
 
-    def update_widget_form_settings(self, settings: AnalysisSettingsData | None) -> None:
+    def update_widget_form_settings(
+        self, settings: AnalysisSettingsData | None
+    ) -> None:
         """Update the widget form from the JSON settings."""
         if settings is None:
             return

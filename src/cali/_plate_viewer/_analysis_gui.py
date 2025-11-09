@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
-from qtpy.QtCore import QSize, Signal
+from qtpy.QtCore import Signal
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QComboBox,
@@ -381,7 +381,6 @@ class _ExperimentTypeWidget(QWidget):
         layout.addWidget(self._led_power_eq)
         layout.addLayout(left_right_layout)
 
-
     # PUBLIC METHODS ------------------------------------------------------------
 
     def set_labels_width(self, width: int) -> None:
@@ -464,6 +463,7 @@ class _ExperimentTypeWidget(QWidget):
             self._led_powers_wdg.hide()
             self._led_pulse_on_frames_wdg.hide()
             self._from_meta_btn.hide()
+
 
 class _NeuropilCorrectionWidget(QWidget):
     """Widget to select the neuropil correction settings."""
@@ -1435,17 +1435,13 @@ class _CalciumAnalysisGUI(QGroupBox):
                 else DEFAULT_CALCIUM_NETWORK_THRESHOLD
             ),
             spike_threshold_value=(
-                spikes_data.spike_threshold
-                if spikes_data
-                else DEFAULT_SPIKE_THRESHOLD
+                spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD
             ),
             spike_threshold_mode=(
                 spikes_data.spike_threshold_mode if spikes_data else MULTIPLIER
             ),
             burst_threshold=(
-                spikes_data.burst_threshold
-                if spikes_data
-                else DEFAULT_BURST_THRESHOLD
+                spikes_data.burst_threshold if spikes_data else DEFAULT_BURST_THRESHOLD
             ),
             burst_min_duration=(
                 spikes_data.burst_min_duration
