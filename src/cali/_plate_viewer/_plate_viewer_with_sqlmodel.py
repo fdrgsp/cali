@@ -541,7 +541,7 @@ class PlateViewer(QMainWindow):
         # Update existing settings or create new one
         if self._experiment.analysis_settings is not None:
             self._experiment.analysis_settings.sqlmodel_update(
-                new_settings.model_dump(exclude={'id'})
+                new_settings.model_dump(exclude={"id"})
             )
         else:
             # Create new settings
@@ -555,8 +555,8 @@ class PlateViewer(QMainWindow):
             self._analysis_runner.run,
             _start_thread=True,
             # _connect={
-                # "finished": self._on_worker_finished,
-                # "errored": self._on_worker_errored,
+            # "finished": self._on_worker_finished,
+            # "errored": self._on_worker_errored,
             # },
         )
 
