@@ -2,7 +2,7 @@ from pathlib import Path
 
 import useq
 
-from cali._plate_viewer._analysis_new import AnalysisRunner
+from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel._json_to_db import (
     load_analysis_from_json,

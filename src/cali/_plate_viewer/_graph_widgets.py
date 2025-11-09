@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from fonticon_mdi6 import MDI6
@@ -27,9 +27,10 @@ from qtpy.QtWidgets import (
 from superqt.fonticon import icon
 
 from ._plot_methods import plot_multi_well_data, plot_single_well_data
-from ._plot_methods._main_plot import (
+from ._plot_methods._main_plot_with_sqlmodel import (
     MULTI_WELL_COMBO_OPTIONS_DICT,
     SINGLE_WELL_COMBO_OPTIONS_DICT,
+    get_fov_data_from_db,
 )
 
 if TYPE_CHECKING:
@@ -75,9 +76,47 @@ class _PersistentMenu(QMenu):
 
 
 def _get_fov_data(
-    table_data: WellInfo, analysis_data: dict[str, dict[str, ROIData]]
+    table_data: WellInfo,
+    analysis_data: dict[str, dict[str, ROIData]],
+    experiment: Any | None = None,
 ) -> dict[str, ROIData] | None:
-    """Return the analysis data for the current FOV."""
+    """Return the analysis data for the current FOV.
+
+    Tries database first (if Experiment is provided), falls back to dict-based data.
+
+    Parameters
+    ----------
+    table_data : WellInfo
+        Well and FOV information from the table
+    analysis_data : dict
+        Legacy dict-based analysis data
+    experiment : Experiment | None
+        Database experiment object, if available
+
+    Returns
+    -------
+    dict[str, ROIData] | None
+        Dictionary mapping ROI label to ROI data
+    """
+    # Try to get data from database if experiment is provided
+    if experiment is not None and hasattr(experiment, 'plate'):
+        try:
+            # Navigate: Experiment -> Plate -> Wells -> FOVs
+            plate = experiment.plate
+            if plate and hasattr(plate, 'wells'):
+                # Get well name from the position object
+                well_name = getattr(table_data.fov, 'well', None)
+                if well_name:
+                    for well in plate.wells:
+                        if well.name == well_name:
+                            for fov in well.fovs:
+                                if fov.name == table_data.fov.name:
+                                    return get_fov_data_from_db(fov)
+        except Exception:
+            # Fall back to dict-based approach if database navigation fails
+            pass
+
+    # Legacy dict-based approach
     fov_name = f"{table_data.fov.name}_p{table_data.pos_idx}"
     # if the well is not in the analysis data, use the old name we used to store
     # the data (without the position index. e.g. "_p0")
@@ -137,7 +176,11 @@ class _DisplaySingleWellTraces(QGroupBox):
         table_data = self._graph._plate_viewer._fov_table.value()
         if table_data is None:
             return
-        data = _get_fov_data(table_data, self._graph._plate_viewer._analysis_data)
+        data = _get_fov_data(
+            table_data,
+            self._graph._plate_viewer._analysis_data,
+            getattr(self._graph._plate_viewer, '_experiment', None),
+        )
         if data is not None:
             rois = self._get_rois(data, self._graph._combo.currentText())
             if rois is None:
@@ -287,7 +330,11 @@ class _SingleWellGraphWidget(QWidget):
         table_data = self._plate_viewer._fov_table.value()
         if table_data is None:
             return
-        data = _get_fov_data(table_data, self._plate_viewer._analysis_data)
+        data = _get_fov_data(
+            table_data,
+            self._plate_viewer._analysis_data,
+            getattr(self._plate_viewer, '_experiment', None),
+        )
         if data is not None:
             plot_single_well_data(self, data, text, rois=None)
             if self._choose_dysplayed_traces.isChecked():

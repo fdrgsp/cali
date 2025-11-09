@@ -550,7 +550,7 @@ class _AnalyseCalciumTraces(QWidget):
                             LOGGER.info("Cancellation requested after position")
                             break
                     except Exception as e:
-                        yield f"An error occurred in a position: {e}"
+                        yield f"An error occurred: {e}"
                         break
 
             LOGGER.info("All positions processed.")
@@ -607,11 +607,8 @@ class _AnalyseCalciumTraces(QWidget):
         # get the data and metadata for the position
         data, meta = self._data.isel(p=p, metadata=True)
 
-        # the "Event" key was used in the old metadata format
-        event_key = EVENT_KEY if EVENT_KEY in meta[0] else "Event"
-
         # get the fov_name name from metadata
-        fov_name = self._get_fov_name(event_key, meta, p)
+        fov_name = self._get_fov_name(EVENT_KEY, meta, p)
 
         # create the dict for the fov if it does not exist
         if fov_name not in self._analysis_data:
@@ -661,7 +658,7 @@ class _AnalyseCalciumTraces(QWidget):
             neuropil_masks_dict = dict(zip(sorted_labels, neuropil_masks))
 
         # get the exposure time from the metadata
-        exp_time = meta[0][event_key].get("exposure", 0.0)
+        exp_time = meta[0][EVENT_KEY].get("exposure", 0.0)
         # get timepoints
         timepoints = sequence.sizes["t"]
         # get the elapsed time from the metadata to calculate the total time in seconds

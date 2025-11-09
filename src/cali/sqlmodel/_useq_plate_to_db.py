@@ -97,11 +97,20 @@ def useq_plate_to_db(
     if experiment.id is None:
         raise ValueError("Experiment must have an ID before creating a Plate.")
 
+    # this is because the 18 and 22 mm coverslips name are different from the name that
+    # useq uses to create the plate and in cali we use the plate.plate_type to
+    # eventually reconstruct the useq plate.
+    if useq_plate.name == "18mm coverslip":
+        plate_type = "coverslip-18mm-square"
+    elif useq_plate.name == "22mm coverslip":
+        plate_type = "coverslip-22mm-square"
+    else:
+        plate_type = useq_plate.name
     plate = Plate(
         experiment_id=experiment.id,
         experiment=experiment,
         name=useq_plate.name,
-        plate_type=useq_plate.name,
+        plate_type=plate_type,
         rows=useq_plate.rows,
         columns=useq_plate.columns,
         plate_maps=plate_maps,
