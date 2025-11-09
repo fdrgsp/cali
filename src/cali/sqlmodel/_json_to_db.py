@@ -675,7 +675,7 @@ def save_experiment_to_db(
     create_db_and_tables(engine)
 
     session = Session(engine)
-    session.add(experiment)
+    session.merge(experiment)
     session.commit()
 
     if not keep_session:
