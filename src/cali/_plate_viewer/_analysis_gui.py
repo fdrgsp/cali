@@ -47,6 +47,7 @@ from ._util import (
     RED,
     _BrowseWidget,
     create_divider_line,
+    parse_lineedit_text,
 )
 
 if TYPE_CHECKING:
@@ -1440,7 +1441,9 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._positions_wdg.setValue("")
         self._run_analysis_wdg.reset()
 
-    def to_model_settings(self, experiment_id: int) -> AnalysisSettings:
+    def to_model_settings(
+        self, experiment_id: int
+    ) -> tuple[list[int], AnalysisSettings]:
         """Convert current GUI settings to AnalysisSettings model.
 
         Parameters
@@ -1450,8 +1453,9 @@ class _CalciumAnalysisGUI(QGroupBox):
 
         Returns
         -------
-        AnalysisSettings
-            Database model with current GUI values
+        tuple[list[int], AnalysisSettings]
+            A tuple containing the list of positions to analyze and the
+            AnalysisSettings model instance.
         """
         from datetime import datetime
 
@@ -1465,7 +1469,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         spikes_data = settings.spikes_data
         exp_type_data = settings.experiment_type_data
 
-        return AnalysisSettings(
+        settings = AnalysisSettings(
             experiment_id=experiment_id,
             created_at=datetime.now(),
             neuropil_inner_radius=(
@@ -1533,3 +1537,8 @@ class _CalciumAnalysisGUI(QGroupBox):
             ),
             # frame_rate=self._frame_rate_wdg.value(),
         )
+
+        # Parse positions
+        positions = parse_lineedit_text(self._positions_wdg.value())
+
+        return positions, settings

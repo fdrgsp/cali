@@ -13,6 +13,7 @@ from cali._plate_viewer._graph_widgets import _SingleWellGraphWidget
 if TYPE_CHECKING:
     from sqlmodel.sql import Select
 
+from cali.sqlmodel._models import ROI
 
 class AnalysisGroup(Enum):
     SINGLE_WELL = "single_well"

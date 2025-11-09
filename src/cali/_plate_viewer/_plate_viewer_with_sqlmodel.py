@@ -32,7 +32,7 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
-from cali._plate_viewer._analysis_new import AnalysisRunner
+from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel import (
@@ -328,13 +328,18 @@ class PlateViewer(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
         # self.initialize_widget(data, self._labels_path, self._analysis_path)
 
-        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
-        self.initialize_widget_from_database(data)
+        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
+        # self.initialize_widget_from_database(data)
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
+
+        data = "/Users/fdrgsp/Desktop/t/multip.tensorstore.zarr"
+        self._labels_path = "/Users/fdrgsp/Desktop/t/multip_labels"
+        self._analysis_path = "/Users/fdrgsp/Desktop/t/multip_analysis"
+        self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
         # fmt: on
         # ____________________________________________________________________________
@@ -482,6 +487,8 @@ class PlateViewer(QMainWindow):
 
         # CREATE THE DATABASE ---------------------------------------------------------
         self._experiment = Experiment(
+            # temporary ID, will be updated when saved to db. Needed for relationships.
+            id=0,
             name="Experiment",
             description="A test experiment.",
             created_at=datetime.datetime.now(),
@@ -537,8 +544,21 @@ class PlateViewer(QMainWindow):
         exp_type = self._analysis_wdg._experiment_type_wdg.value()
         self._experiment.experiment_type = exp_type.experiment_type or SPONTANEOUS
 
-        # Get new settings from GUI
-        new_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
+        # Get positions to analyze and new settings from GUI
+        pos, new_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
+
+        # Update positions to analyze based on selected wells in the plate view
+        # If no position selected, analyze all positions from the data
+        if len(pos) == 0:
+            if self._data.sequence is None:
+                show_error_dialog(
+                    self,
+                    "No MDASequence found in the datastore! Cannot determine "
+                    "positions to analyze.",
+                )
+                return
+            pos = list(range(len(self._data.sequence.stage_positions)))
+        self._experiment.positions_analyzed = pos
 
         # Update existing settings or create new one
         if self._experiment.analysis_settings is not None:
@@ -565,8 +585,9 @@ class PlateViewer(QMainWindow):
     def _on_analysis_info(self, msg: str, type: str) -> None:
         """Handle analysis info messages from the analysis runner."""
         print(f"ANALYSIS INFO: {msg}")
-        if type == "error":
-            show_error_dialog(self, msg)
+        # cannot do that...I need to accumulate and show whan the work is done!
+        # if type == "error":
+        #     show_error_dialog(self, msg)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
@@ -637,9 +658,11 @@ class PlateViewer(QMainWindow):
         if isinstance(plate_plan, useq.WellPlatePlan):
             final_plate_plan = plate_plan
         else:
-            # try to use the plate plan wizard
+            # plate_plan is a tuple of positions - need to create a plate plan
+            # try to use the plate plan wizard first
             final_plate_plan = self._resolve_plate_plan()
-            # if is the default plate plan, set the no_plate flag
+
+            # set the flag if using default plate plan
             if final_plate_plan == DEFAULT_PLATE_PLAN:
                 self._default_plate_plan = True
 
@@ -1047,11 +1070,9 @@ class PlateViewer(QMainWindow):
             positions = list(range(len(sequence.stage_positions)))
         for pos in tqdm(positions, desc="Saving as tiff"):
             data, meta = self._data.isel(p=pos, metadata=True)
-            # the "Event" key was used in the old metadata format
-            event_key = EVENT_KEY if EVENT_KEY in meta[0] else "Event"
             # get the well name from metadata
             pos_name = (
-                meta[0].get(event_key, {}).get("pos_name", f"pos_{str(pos).zfill(4)}")
+                meta[0].get(EVENT_KEY, {}).get("pos_name", f"pos_{str(pos).zfill(4)}")
             )
             # save the data as tiff
             tifffile.imwrite(Path(path) / f"{pos_name}.tiff", data)
