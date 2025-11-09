@@ -52,7 +52,7 @@ GLOBAL_SPIKE_THRESHOLD = "global"
 
 
 class AnalysisRunner:
-    analysisInfo: Signal = Signal(str, str) # message, type
+    analysisInfo: Signal = Signal(str, str)  # message, type
 
     def __init__(self) -> None:
         super().__init__()
@@ -187,7 +187,6 @@ class AnalysisRunner:
                 ]
 
                 for idx, future in enumerate(as_completed(futures)):
-
                     # Check for cancellation at the start of each iteration
                     if self._cancellation_event.is_set():
                         LOGGER.info("Cancellation requested, shutting down executor...")
@@ -372,7 +371,7 @@ class AnalysisRunner:
         if self._experiment is None or self._experiment.plate is None:
             raise ValueError("Experiment or plate not initialized")
 
-        wells_list = self._ensure_list_loaded(self._experiment.plate, 'wells')
+        wells_list = self._ensure_list_loaded(self._experiment.plate, "wells")
 
         # Find existing well
         for well in wells_list:
@@ -410,7 +409,7 @@ class AnalysisRunner:
         FOV
             Existing or newly created FOV object
         """
-        fovs_list = self._ensure_list_loaded(well, 'fovs')
+        fovs_list = self._ensure_list_loaded(well, "fovs")
 
         # Find existing FOV
         for fov in fovs_list:
@@ -468,26 +467,30 @@ class AnalysisRunner:
         ROI
             Existing or newly created ROI object
         """
-        rois_list = self._ensure_list_loaded(fov, 'rois')
+        rois_list = self._ensure_list_loaded(fov, "rois")
 
         # Find existing ROI
         for roi in rois_list:
             if roi.label_value == label_value:
                 # Update existing ROI
-                roi.sqlmodel_update({
-                    'active': is_active,
-                    'stimulated': is_stimulated,
-                    'analysis_settings': settings,
-                })
+                roi.sqlmodel_update(
+                    {
+                        "active": is_active,
+                        "stimulated": is_stimulated,
+                        "analysis_settings": settings,
+                    }
+                )
 
                 # Update masks
                 if roi.roi_mask:
-                    roi.roi_mask.sqlmodel_update({
-                        'coords_y': mask_coords[0],
-                        'coords_x': mask_coords[1],
-                        'height': mask_shape[0],
-                        'width': mask_shape[1],
-                    })
+                    roi.roi_mask.sqlmodel_update(
+                        {
+                            "coords_y": mask_coords[0],
+                            "coords_x": mask_coords[1],
+                            "height": mask_shape[0],
+                            "width": mask_shape[1],
+                        }
+                    )
                 else:
                     roi.roi_mask = Mask(
                         coords_y=mask_coords[0],
@@ -499,12 +502,14 @@ class AnalysisRunner:
 
                 if neuropil_mask_coords and neuropil_mask_shape:
                     if roi.neuropil_mask:
-                        roi.neuropil_mask.sqlmodel_update({
-                            'coords_y': neuropil_mask_coords[0],
-                            'coords_x': neuropil_mask_coords[1],
-                            'height': neuropil_mask_shape[0],
-                            'width': neuropil_mask_shape[1],
-                        })
+                        roi.neuropil_mask.sqlmodel_update(
+                            {
+                                "coords_y": neuropil_mask_coords[0],
+                                "coords_x": neuropil_mask_coords[1],
+                                "height": neuropil_mask_shape[0],
+                                "width": neuropil_mask_shape[1],
+                            }
+                        )
                     else:
                         roi.neuropil_mask = Mask(
                             coords_y=neuropil_mask_coords[0],
@@ -811,19 +816,21 @@ class AnalysisRunner:
             roi.data_analysis = data_analysis
         else:
             # Update existing data analysis
-            roi.data_analysis.sqlmodel_update({
-                'cell_size': roi_size,
-                'cell_size_units': "µm" if px_size is not None else "pixel",
-                'total_recording_time_sec': tot_time_sec,
-                'dec_dff_frequency': frequency,
-                'peaks_dec_dff': peaks_dec_dff.tolist(),
-                'peaks_amplitudes_dec_dff': peaks_amplitudes_dec_dff,
-                'iei': iei,
-                'inferred_spikes': spikes.tolist(),
-                'peaks_prominence_dec_dff': peaks_prominence_dec_dff,
-                'peaks_height_dec_dff': peaks_height_dec_dff,
-                'inferred_spikes_threshold': spike_detection_threshold,
-            })
+            roi.data_analysis.sqlmodel_update(
+                {
+                    "cell_size": roi_size,
+                    "cell_size_units": "µm" if px_size is not None else "pixel",
+                    "total_recording_time_sec": tot_time_sec,
+                    "dec_dff_frequency": frequency,
+                    "peaks_dec_dff": peaks_dec_dff.tolist(),
+                    "peaks_amplitudes_dec_dff": peaks_amplitudes_dec_dff,
+                    "iei": iei,
+                    "inferred_spikes": spikes.tolist(),
+                    "peaks_prominence_dec_dff": peaks_prominence_dec_dff,
+                    "peaks_height_dec_dff": peaks_height_dec_dff,
+                    "inferred_spikes_threshold": spike_detection_threshold,
+                }
+            )
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
