@@ -641,16 +641,20 @@ class AnalysisRunner:
             # Note: No need to append to rois_list - back_populates handles it
         else:
             # Update existing ROI
-            roi.active = len(peaks_dec_dff) > 0
-            roi.stimulated = is_roi_stimulated
-            roi.analysis_settings = settings
+            roi.sqlmodel_update({
+                'active': len(peaks_dec_dff) > 0,
+                'stimulated': is_roi_stimulated,
+                'analysis_settings': settings,
+            })
 
             # Update existing masks
             if roi.roi_mask:
-                roi.roi_mask.coords_y = mask_coords[0]
-                roi.roi_mask.coords_x = mask_coords[1]
-                roi.roi_mask.height = mask_shape[0]
-                roi.roi_mask.width = mask_shape[1]
+                roi.roi_mask.sqlmodel_update({
+                    'coords_y': mask_coords[0],
+                    'coords_x': mask_coords[1],
+                    'height': mask_shape[0],
+                    'width': mask_shape[1],
+                })
             else:
                 roi.roi_mask = Mask(
                     coords_y=mask_coords[0],
@@ -662,10 +666,12 @@ class AnalysisRunner:
 
             if neuropil_mask_coords is not None and neuropil_mask_shape is not None:
                 if roi.neuropil_mask:
-                    roi.neuropil_mask.coords_y = neuropil_mask_coords[0]
-                    roi.neuropil_mask.coords_x = neuropil_mask_coords[1]
-                    roi.neuropil_mask.height = neuropil_mask_shape[0]
-                    roi.neuropil_mask.width = neuropil_mask_shape[1]
+                    roi.neuropil_mask.sqlmodel_update({
+                        'coords_y': neuropil_mask_coords[0],
+                        'coords_x': neuropil_mask_coords[1],
+                        'height': neuropil_mask_shape[0],
+                        'width': neuropil_mask_shape[1],
+                    })
                 else:
                     roi.neuropil_mask = Mask(
                         coords_y=neuropil_mask_coords[0],
@@ -693,16 +699,18 @@ class AnalysisRunner:
             roi.traces = traces
         else:
             # Update existing traces
-            roi.traces.raw_trace = cast("list[float]", roi_trace_uncorrected.tolist())
-            roi.traces.corrected_trace = cast("list[float]", roi_trace.tolist())
-            roi.traces.neuropil_trace = (
-                cast("list[float]", neuropil_trace.tolist())
-                if neuropil_trace is not None
-                else None
-            )
-            roi.traces.dff = cast("list[float]", dff.tolist())
-            roi.traces.dec_dff = dec_dff.tolist()
-            roi.traces.x_axis = elapsed_time_list
+            roi.traces.sqlmodel_update({
+                'raw_trace': cast("list[float]", roi_trace_uncorrected.tolist()),
+                'corrected_trace': cast("list[float]", roi_trace.tolist()),
+                'neuropil_trace': (
+                    cast("list[float]", neuropil_trace.tolist())
+                    if neuropil_trace is not None
+                    else None
+                ),
+                'dff': cast("list[float]", dff.tolist()),
+                'dec_dff': dec_dff.tolist(),
+                'x_axis': elapsed_time_list,
+            })
 
         # Create or update DataAnalysis with ROI-specific thresholds
         if roi.data_analysis is None:

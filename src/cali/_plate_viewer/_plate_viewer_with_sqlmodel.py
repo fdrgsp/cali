@@ -504,9 +504,7 @@ class PlateViewer(QMainWindow):
         # TODO: ask the user to overwrite if the database already exists
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_db(
-            self._experiment, self._database_path, overwrite=True, keep_session=True
-        )
+        save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
 
     def get_analysis_settings(self) -> AnalysisSettingsData | None:
         """Get the current analysis settings from the analysis widget."""
@@ -537,15 +535,17 @@ class PlateViewer(QMainWindow):
         exp_type = self._analysis_wdg._experiment_type_wdg.value()
         self._experiment.experiment_type = exp_type.experiment_type or SPONTANEOUS
 
-        # Update or set the experiment's analysis settings
-        analysis_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
-        self._experiment.analysis_settings = analysis_settings
+        # Get new settings from GUI
+        new_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
 
-        # Save the updated experiment back to the database
-        if self._database_path is not None:
-            save_experiment_to_db(
-                self._experiment, self._database_path, overwrite=True, keep_session=True
+        # Update existing settings or create new one
+        if self._experiment.analysis_settings is not None:
+            self._experiment.analysis_settings.sqlmodel_update(
+                new_settings.model_dump(exclude={'id'})
             )
+        else:
+            # Create new settings
+            self._experiment.analysis_settings = new_settings
 
         # Update the analysis runner with the current data and experiment
         self._analysis_runner.set_data(self._data)
@@ -554,10 +554,10 @@ class PlateViewer(QMainWindow):
         create_worker(
             self._analysis_runner.run,
             _start_thread=True,
-            _connect={
+            # _connect={
                 # "finished": self._on_worker_finished,
                 # "errored": self._on_worker_errored,
-            },
+            # },
         )
 
     # DATA INITIALIZATION--------------------------------------------------------------
