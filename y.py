@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from cali.sqlmodel._models import ROI
 
+
 class AnalysisGroup(Enum):
     SINGLE_WELL = "single_well"
     MULTI_WELL = "multi_well"

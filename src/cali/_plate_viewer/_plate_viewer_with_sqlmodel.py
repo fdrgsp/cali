@@ -339,7 +339,9 @@ class PlateViewer(QMainWindow):
         data = "/Users/fdrgsp/Desktop/t/multip.tensorstore.zarr"
         self._labels_path = "/Users/fdrgsp/Desktop/t/multip_labels"
         self._analysis_path = "/Users/fdrgsp/Desktop/t/multip_analysis"
-        self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
+        self.initialize_widget_from_directories(
+            data, self._analysis_path, self._labels_path
+        )  # noqa: E501
 
         # fmt: on
         # ____________________________________________________________________________

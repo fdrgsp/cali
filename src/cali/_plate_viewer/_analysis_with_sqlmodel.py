@@ -206,9 +206,7 @@ class AnalysisRunner:
                             break
 
                     except Exception as e:
-                        self._log_and_emit(
-                            f"An error occurred: {e}", "error"
-                        )
+                        self._log_and_emit(f"An error occurred: {e}", "error")
                         break
 
             # Check if cancelled before finishing
