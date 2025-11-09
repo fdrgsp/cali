@@ -32,6 +32,7 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
+from cali._plate_viewer._analysis_new import AnalysisRunner
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel import (
@@ -104,6 +105,9 @@ class PlateViewer(QMainWindow):
         self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         self._analysis_data: dict[str, dict[str, ROIData]] = {}
+
+        # RUNNER ---------------------------------------------------------------------
+        self._analysis_runner: AnalysisRunner = AnalysisRunner()
 
         # PROGRESS BAR WIDGET --------------------------------------------------------
         self._loading_bar = _ProgressBarWidget(self)
@@ -293,19 +297,17 @@ class PlateViewer(QMainWindow):
         # highlight the roi in the image viewer when a roi is selected in the graph
         for graph in self.SW_GRAPHS:
             graph.roiSelected.connect(self._highlight_roi)
-
         # connect meta button
         self._analysis_wdg._experiment_type_wdg._from_meta_btn.clicked.connect(
             self._on_led_info_from_meta_clicked
         )
-        # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
-        #     self._on_frame_rate_info_from_meta_clicked
-        # )
-
         # connect the run analysis button
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
             self._on_run_analysis_clicked
         )
+        # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
+        #     self._on_frame_rate_info_from_meta_clicked
+        # )
 
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
@@ -520,7 +522,7 @@ class PlateViewer(QMainWindow):
         self._update_experiment_analysis_settings()
 
     def _update_experiment_analysis_settings(self) -> None:
-        if self._experiment is None:
+        if self._experiment is None or self._data is None:
             return
 
         # Ensure experiment has an ID (should be set if loaded from DB)
@@ -535,6 +537,11 @@ class PlateViewer(QMainWindow):
         # Save the updated experiment back to the database
         if self._database_path is not None:
             save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
+
+        # Update the analysis runner with the current data and experiment
+        self._analysis_runner.set_data(self._data)
+        self._analysis_runner.set_experiment(self._experiment)
+        self._analysis_runner.run()
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
