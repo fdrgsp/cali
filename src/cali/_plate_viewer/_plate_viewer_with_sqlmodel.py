@@ -757,7 +757,7 @@ class PlateViewer(QMainWindow):
                         f"led_pulse_duration={led_duration}"
                         f"led_powers={wdg._led_powers_le.text()}, "
                         f"led_pulse_on_frames={wdg._led_pulse_on_frames_le.text()}"
-                        )
+                    )
 
             else:
                 msg = "No stimulation metadata found in the datastore!"
