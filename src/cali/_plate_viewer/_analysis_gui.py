@@ -1468,7 +1468,6 @@ class _CalciumAnalysisGUI(QGroupBox):
         return AnalysisSettings(
             experiment_id=experiment_id,
             created_at=datetime.now(),
-            frame_rate=self._frame_rate_wdg.value(),
             neuropil_inner_radius=(
                 trace_data.neuropil_inner_radius if trace_data else 0
             ),
@@ -1532,4 +1531,5 @@ class _CalciumAnalysisGUI(QGroupBox):
             stimulation_mask_path=(
                 exp_type_data.stimulation_area_path if exp_type_data else None
             ),
+            # frame_rate=self._frame_rate_wdg.value(),
         )
