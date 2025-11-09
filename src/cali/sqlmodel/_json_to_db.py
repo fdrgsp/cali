@@ -364,15 +364,14 @@ def load_analysis_from_json(
                 )
 
                 # Since we're not in DB session, manually set relationships
-                roi.fov = fov
+                roi.fov = fov  # This automatically adds roi to fov.rois
                 roi.analysis_settings = analysis_settings
                 roi.roi_mask = roi_mask
                 roi.neuropil_mask = neuropil_mask
                 roi.traces = trace
                 roi.data_analysis = data_analysis
 
-                # Add ROI to FOV
-                fov.rois.append(roi)
+                # Note: No need to append to fov.rois - back_populates handles it
 
                 roi_count += 1
                 total_rois += 1
@@ -641,8 +640,7 @@ def save_experiment_to_db(
     experiment: Experiment,
     db_path: Path | str,
     overwrite: bool = False,
-    keep_session: bool = False,
-) -> Session | None:
+) -> None:
     """Save an experiment object tree to a SQLite database.
 
     Parameters
@@ -653,8 +651,6 @@ def save_experiment_to_db(
         Path to SQLite database file
     overwrite : bool, optional
         Whether to overwrite existing database file, by default False
-    keep_session : bool, optional
-        Whether to return an open Session after saving, by default False
 
     Example
     -------
@@ -674,15 +670,10 @@ def save_experiment_to_db(
     engine = create_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
 
-    session = Session(engine)
-    session.merge(experiment)
-    session.commit()
-
-    if not keep_session:
-        session.close()
-        session = None
-
-    return session
+    with Session(engine) as session:
+        session.merge(experiment)
+        session.commit()
+    # Session automatically closed here
 
 
 def load_experiment_from_db(
@@ -720,6 +711,7 @@ def load_experiment_from_db(
     db_path_str = str(db_path)
     engine = create_engine(f"sqlite:///{db_path_str}")
 
+    # Use context manager to ensure session is properly closed
     with Session(engine) as session:
         # Query for experiment
         if experiment_name:
@@ -737,7 +729,7 @@ def load_experiment_from_db(
         # Eagerly load all relationships while session is open
         session.refresh(experiment)
 
-        # Access all relationships to trigger loading
+        # Access all relationships to trigger loading before session closes
         _ = experiment.plate
         _ = experiment.analysis_settings
 
@@ -758,4 +750,5 @@ def load_experiment_from_db(
         if experiment.analysis_settings:
             _ = experiment.analysis_settings.stimulation_mask
 
-        return experiment
+    # Session automatically closed here
+    return experiment

@@ -10,9 +10,9 @@ import tifffile
 from oasis.functions import deconvolve
 from psygnal import Signal
 from scipy.signal import find_peaks
-from superqt.utils import create_worker
 from tqdm import tqdm
 
+from cali._plate_viewer._util import coordinates_to_mask
 from cali.sqlmodel import (
     FOV,
     ROI,
@@ -37,7 +37,6 @@ from ._util import (
 
 if TYPE_CHECKING:
     import useq
-    from superqt.utils import FunctionWorker
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
     from cali.sqlmodel import (
@@ -61,9 +60,7 @@ class AnalysisRunner:
         self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
-        self._worker: FunctionWorker | None = None
-
-        # Use threading.Event for better cancellation control
+        # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
 
         # list to store the failed labels if they will not be found during the
@@ -85,6 +82,7 @@ class AnalysisRunner:
         return self._experiment.analysis_settings
 
     def run(self) -> None:
+        """Run the analysis."""
         LOGGER.info("Starting Analysis...")
 
         if self._experiment is None:
@@ -94,14 +92,15 @@ class AnalysisRunner:
             LOGGER.error("No Data set for analysis.")
             return
 
-        self._worker = create_worker(
-            self._extract_traces_data,
-            _start_thread=True,
-            _connect={
-                "finished": self._on_worker_finished,
-                "errored": self._on_worker_errored,
-            },
-        )
+        # Reset cancellation event
+        self._cancellation_event.clear()
+
+        self._extract_traces_data()
+
+    def cancel(self) -> None:
+        """Cancel the running analysis."""
+        LOGGER.info("Cancellation requested...")
+        self._cancellation_event.set()
 
     # PRIVATE METHODS ----------------------------------------------------------------
 
@@ -117,14 +116,20 @@ class AnalysisRunner:
             LOGGER.debug(msg)
         self.analysisInfo.emit(msg)
 
-    def _on_worker_finished(self) -> None:
+    def _on_analysis_finished(self) -> None:
         """Save the experiment to database and log completion."""
         LOGGER.info("Analysis Finished.")
-        assert self._experiment is not None
-        assert self._experiment.database_path is not None
+
+        LOGGER.info("Saving results to database...")
+
+        if self._experiment is None or self._experiment.database_path is None:
+            LOGGER.error("Cannot save results: No Experiment or database path found.")
+            return
+
         save_experiment_to_db(
             self._experiment, self._experiment.database_path, overwrite=True
         )
+        LOGGER.info(f"Results saved to database '{self._experiment.database_path}'.")
 
         # show a message box if there are failed labels
         if self._failed_labels:
@@ -134,9 +139,6 @@ class AnalysisRunner:
             )
             self._log_and_emit(msg, "warning")
 
-    def _on_worker_errored(self, exc: Exception) -> None:
-        LOGGER.info("Analysis Errored: %s", exc)
-
     def _extract_traces_data(self) -> None:
         """Extract the roi traces in multiple threads."""
         LOGGER.info("Starting traces analysis...")
@@ -145,12 +147,33 @@ class AnalysisRunner:
             self._log_and_emit("No Experiment or AnalysisSettings found.", "error")
             return
 
+        # Load stimulation mask if available for evoked experiments
+        settings = self._experiment.analysis_settings
+        if (
+            self._experiment.experiment_type == EVOKED
+            and settings.stimulation_mask is not None
+        ):
+            stim_mask = settings.stimulation_mask
+            if (
+                stim_mask.coords_y is not None
+                and stim_mask.coords_x is not None
+                and stim_mask.height is not None
+                and stim_mask.width is not None
+            ):
+                self._stimulated_area_mask = coordinates_to_mask(
+                    (stim_mask.coords_y, stim_mask.coords_x),
+                    (stim_mask.height, stim_mask.width),
+                )
+        else:
+            # Ensure attribute exists even if no stimulation mask
+            self._stimulated_area_mask = None
+
         # set number of threads to use
-        # threads = self._experiment.analysis_settings.threads
-        threads = 5
-        LOGGER.info("Threads: %s", threads)
+        threads = settings.threads
+        LOGGER.info(f"Number of threads for analysis: {threads}")
 
         positions = self._experiment.positions_analyzed
+        print(f"Positions to analyze: {positions}")
         try:
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Check for cancellation before submitting futures
@@ -175,7 +198,6 @@ class AnalysisRunner:
                     try:
                         future.result()
                         self._log_and_emit(f"Position {positions[idx]} completed.")
-
                         # Check for cancellation after each completed position
                         if self._cancellation_event.is_set():
                             LOGGER.info("Cancellation requested after position")
@@ -186,7 +208,12 @@ class AnalysisRunner:
                         )
                         break
 
-            LOGGER.info("All positions processed.")
+            # Check if cancelled before finishing
+            if self._cancellation_event.is_set():
+                LOGGER.info("Run Cancelled")
+                return
+
+            self._on_analysis_finished()
 
         except Exception as e:
             LOGGER.error(f"An error occurred: {e}")
@@ -343,12 +370,10 @@ class AnalysisRunner:
 
         # check if the roi is stimulated
         roi_stimulation_overlap_ratio = 0.0
-        if evoked_exp and hasattr(self, "_stimulated_area_mask"):
-            stimulated_mask = getattr(self, "_stimulated_area_mask", None)
-            if stimulated_mask is not None:
-                roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                    stimulated_mask, label_mask
-                )
+        if evoked_exp and  self._stimulated_area_mask is not None:
+            roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
+                self._stimulated_area_mask, label_mask
+            )
 
         # compute the mean for each frame
         roi_trace_uncorrected: np.ndarray = masked_data.mean(axis=1)
@@ -499,8 +524,20 @@ class AnalysisRunner:
 
         # Find or create well in experiment's plate
         well = None
+        wells_list = []
         if self._experiment.plate:
-            for w in self._experiment.plate.wells:
+            # Try to access wells list, initialize if lazy load fails
+            try:
+                wells_list = self._experiment.plate.wells
+                if wells_list is None:
+                    self._experiment.plate.wells = []
+                    wells_list = self._experiment.plate.wells
+            except Exception:
+                # Lazy load failed, initialize empty list
+                self._experiment.plate.wells = []
+                wells_list = self._experiment.plate.wells
+
+            for w in wells_list:
                 if w.name == well_name:
                     well = w
                     break
@@ -514,17 +551,29 @@ class AnalysisRunner:
                 name=well_name,
                 row=row,
                 column=col,
+                fovs=[],  # Initialize fovs list to avoid lazy loading issues
             )
             well.plate = self._experiment.plate
-            if self._experiment.plate:
-                self._experiment.plate.wells.append(well)
+            if self._experiment.plate and wells_list is not None:
+                wells_list.append(well)
+
+        # Try to access fovs list, initialize if lazy load fails
+        try:
+            fovs_list = well.fovs
+            if fovs_list is None:
+                well.fovs = []
+                fovs_list = well.fovs
+        except Exception:
+            # Lazy load failed, initialize empty list
+            well.fovs = []
+            fovs_list = well.fovs
 
         # Create FOV (assuming fov_name format like "B5_0000_p0")
         pos_idx = int(fov_name.split("_p")[-1])
 
         # Check if FOV already exists in well
         fov = None
-        for f in well.fovs:
+        for f in fovs_list:
             if f.name == fov_name:
                 fov = f
                 break
@@ -534,13 +583,25 @@ class AnalysisRunner:
                 name=fov_name,
                 position_index=pos_idx,
                 fov_number=pos_idx,
+                rois=[],  # Initialize rois list to avoid lazy loading issues
             )
             fov.well = well
-            well.fovs.append(fov)
+            fovs_list.append(fov)
+
+        # Try to access rois list, initialize if lazy load fails
+        try:
+            rois_list = fov.rois
+            if rois_list is None:
+                fov.rois = []
+                rois_list = fov.rois
+        except Exception:
+            # Lazy load failed, initialize empty list
+            fov.rois = []
+            rois_list = fov.rois
 
         # Check if ROI with this label_value already exists in the FOV
         roi = None
-        for existing_roi in fov.rois:
+        for existing_roi in rois_list:
             if existing_roi.label_value == label_value:
                 roi = existing_roi
                 break
@@ -575,9 +636,9 @@ class AnalysisRunner:
                 roi_mask=roi_mask,
                 neuropil_mask=neuropil_mask_obj,
             )
-            roi.fov = fov
+            roi.fov = fov  # This automatically adds roi to fov.rois via back_populates
             roi.analysis_settings = settings
-            fov.rois.append(roi)
+            # Note: No need to append to rois_list - back_populates handles it
         else:
             # Update existing ROI
             roi.active = len(peaks_dec_dff) > 0
@@ -675,10 +736,8 @@ class AnalysisRunner:
             roi.data_analysis.inferred_spikes_threshold = spike_detection_threshold
 
     def _check_for_abort_requested(self) -> bool:
-        """Check if cancellation has been requested through any mechanism."""
-        return self._cancellation_event.is_set() or (
-            self._worker is not None and self._worker.abort_requested
-        )
+        """Check if cancellation has been requested."""
+        return self._cancellation_event.is_set()
 
     def _get_fov_name(self, event_key: str, meta: list[dict], p: int) -> str:
         """Retrieve the fov name from metadata."""
@@ -711,7 +770,11 @@ class AnalysisRunner:
         """Create masks for each label in the labels image."""
         # get the range of labels and remove the background (0)
         labels_range = np.unique(labels[labels != 0])
-        return {label_value: (labels == label_value) for label_value in labels_range}
+        # Convert numpy int to Python int to avoid bytes serialization issues
+        return {
+            int(label_value): (labels == label_value)
+            for label_value in labels_range
+        }
 
     def get_elapsed_time_list(self, meta: list[dict]) -> list[float]:
         elapsed_time_list: list[float] = []

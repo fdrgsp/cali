@@ -67,6 +67,10 @@ def print_experiment_tree(
     console = Console()
     tree = Tree(f"🧪 [bold cyan]{experiment.name}[/bold cyan]", guide_style="cyan")
 
+    tree.add(
+        f"Experiment Type: [bold magenta]{experiment.experiment_type}[/bold magenta]"
+    )
+
     if experiment.description:
         tree.add(f"[dim]{experiment.description}[/dim]")
 
