@@ -36,13 +36,13 @@ from ._models import (
     Well,
     WellCondition,
 )
-from ._useq_plate_to_db import useq_plate_plan_to_plate, useq_plate_to_db_plate
+from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
     check_analysis_settings_consistency,
     create_db_and_tables,
     load_experiment_from_database,
 )
-from ._visualize_experiment import print_experiment_tree, print_model_tree
+from ._visualize_experiment import print_experiment_tree_from_engine, print_experiment_tree
 
 __all__ = [
     "FOV",
@@ -64,9 +64,9 @@ __all__ = [
     "load_analysis_from_json",
     "load_experiment_from_database",
     "load_experiment_from_db",
+    "print_experiment_tree_from_engine",
     "print_experiment_tree",
-    "print_model_tree",
     "save_experiment_to_db",
-    "useq_plate_plan_to_plate",
-    "useq_plate_to_db_plate",
+    "useq_plate_plan_to_db",
+    "useq_plate_to_db",
 ]

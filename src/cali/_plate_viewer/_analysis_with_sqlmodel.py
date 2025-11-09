@@ -360,7 +360,7 @@ class _AnalyseCalciumTraces(QWidget):
         self._elapsed_timer.stop()
         self._cancel_waiting_bar.start()
 
-    def update_widget_form_settings(self, settings: AnalysisSettings | None) -> None:
+    def update_widget_form_settings(self, settings: AnalysisSettingsData | None) -> None:
         """Update the widget form from the JSON settings."""
         if settings is None:
             return
@@ -427,7 +427,7 @@ class _AnalyseCalciumTraces(QWidget):
 
             # Create AnalysisSettings
             value = self._get_validated_settings()
-            analysis_settings = AnalysisSettings(
+            analysis_settings = AnalysisSettingsData(
                 experiment=self._experiment,
                 dff_window_size=value.trace_extraction_data.dff_window_size,
                 decay_constant=value.trace_extraction_data.decay_constant,
@@ -1187,7 +1187,7 @@ class _AnalyseCalciumTraces(QWidget):
 
         # Create AnalysisSettings
         value = self._get_validated_settings()
-        analysis_settings = AnalysisSettings(
+        analysis_settings = AnalysisSettingsData(
             experiment=experiment,
             dff_window_size=value.trace_extraction_data.dff_window_size,
             decay_constant=value.trace_extraction_data.decay_constant,
@@ -1467,7 +1467,7 @@ class _AnalyseCalciumTraces(QWidget):
         self._plate_viewer._tab.setTabEnabled(1, enable)
         self._plate_viewer._tab.setTabEnabled(2, enable)
 
-    def _update_form_settings(self, settings: AnalysisSettings) -> None:
+    def _update_form_settings(self, settings: AnalysisSettingsData) -> None:
         """Update the widget form from the AnalysisSettings."""
         # fmt: off
         # led power equation

@@ -198,6 +198,9 @@ class _SingleWellGraphWidget(QWidget):
     def __init__(self, parent: PlateViewer) -> None:
         super().__init__(parent)
 
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(200)
+
         self._plate_viewer: PlateViewer = parent
 
         self._fov: str = ""
@@ -241,7 +244,6 @@ class _SingleWellGraphWidget(QWidget):
         # Make the toolbar more compact
         self.toolbar.setMaximumHeight(32)
         self.toolbar.setIconSize(self.toolbar.iconSize() * 0.7)
-        # self.toolbar.hide()
         self.toolbar.show()
 
         # Create a layout and add the canvas to it
@@ -352,10 +354,18 @@ class _MultilWellGraphWidget(QWidget):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
 
+        # Create navigation toolbar (hidden by default, shown only for specific plots)
+        self.toolbar = _CustomNavigationToolbar(self.canvas, self)
+        # Make the toolbar more compact
+        self.toolbar.setMaximumHeight(32)
+        self.toolbar.setIconSize(self.toolbar.iconSize() * 0.7)
+        self.toolbar.show()
+
         # Create a layout and add the canvas to it
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(top)
+        layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas)
 
         self.set_combo_text_red(True)

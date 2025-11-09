@@ -50,6 +50,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Optional experiment description
     created_at : datetime
         Timestamp when experiment was created
+    database_path : str | None
+        Path to the SQLite database file
     data_path : str | None
         Path to the raw imaging data (zarr/tensorstore)
     labels_path : str | None
@@ -58,6 +60,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Path to analysis output directory
     experiment_type : str
         Type of experiment: "Spontaneous Activity" or "Evoked Activity"
+    positions_analyzed : list[int]
+        List of position indices that were analyzed
     plate : Plate
         Related plate (back-populated by SQLModel)
     analysis_settings : AnalysisSettings | None
@@ -70,10 +74,12 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     name: str = Field(unique=True, index=True)
     description: str | None = None
     created_at: datetime = Field(default_factory=datetime.now)
+    database_path: str | None = None
     data_path: str | None = None
     labels_path: str | None = None
     analysis_path: str | None = None
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
+    positions_analyzed: list[int] = Field(default_factory=list, sa_column=Column(JSON))
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
@@ -86,9 +92,6 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
 
     Stores the analysis parameters used for a specific analysis run.
-    Multiple AnalysisSettings can exist per experiment (e.g., initial analysis,
-    re-analysis with different parameters). Each ROI links to the specific
-    AnalysisSettings that were used to analyze it.
 
     Attributes
     ----------
@@ -136,20 +139,20 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
         Duration of LED pulse (evoked experiments)
+    led_pulse_powers : list[float] | None
+        List of LED pulse powers (evoked experiments). Should have the same length
+        as `led_pulse_on_frames`.
+    led_pulse_on_frames : list[int] | None
+        List of LED pulse on frames (evoked experiments). Should have the same length
+        as `led_pulse_powers`.
     stimulation_mask_path : str | None
         Path to stimulation mask file (for GUI/reference)
+    threads : int
+        Number of threads to use for analysis (default: 1)
     stimulation_mask_id : int | None
         Foreign key to stimulation mask data
     stimulation_mask : Mask | None
         Stimulation mask data (spatial pattern of stimulation)
-    peaks_prominence_dec_dff : float | None
-        Peak prominence threshold for deconvolved ΔF/F (calculated)
-    peaks_height_dec_dff : float | None
-        Peak height threshold for deconvolved ΔF/F (calculated)
-    inferred_spikes_threshold : float | None
-        Threshold for spike inference from deconvolved trace (calculated)
-    stimulations_frames_and_powers : dict | None
-        Stimulation timing and power data (evoked experiments)
     experiment : Experiment
         Parent experiment
     """
@@ -182,15 +185,11 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     led_power_equation: str | None = None
     led_pulse_duration: float | None = None
+    led_pulse_powers: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    led_pulse_on_frames: list[int] | None = Field(default=None, sa_column=Column(JSON))
     stimulation_mask_path: str | None = None
 
-    # not directly set by user, calculated in the analysis step
-    peaks_prominence_dec_dff: float | None = None
-    peaks_height_dec_dff: float | None = None
-    inferred_spikes_threshold: float | None = None
-    stimulations_frames_and_powers: dict | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
+    threads: int = Field(default=1)
 
     # Foreign keys
     experiment_id: int = Field(foreign_key="experiment.id", index=True)
@@ -225,6 +224,10 @@ class Plate(SQLModel, table=True):  # type: ignore[call-arg]
         Number of rows in plate
     columns : int | None
         Number of columns in plate
+    plate_maps : dict | None
+        Plate map configuration mapping well positions to conditions.
+        Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
+                 "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
     experiment : Experiment
         Parent experiment
     wells : list[Well]
@@ -238,6 +241,9 @@ class Plate(SQLModel, table=True):  # type: ignore[call-arg]
     plate_type: str | None = None  # e.g., "96-well", "384-well"
     rows: int | None = None
     columns: int | None = None
+    plate_maps: dict[str, dict[str, str]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
 
     # Foreign keys
     experiment_id: int = Field(foreign_key="experiment.id", index=True)
@@ -434,10 +440,6 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     active: bool | None = None
     stimulated: bool = False
 
-    # cell_size: float | None = None
-    # cell_size_units: str | None = None
-    # total_recording_time_sec: float | None = None
-
     fov_id: int = Field(foreign_key="fov.id", index=True)
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id", index=True
@@ -540,6 +542,12 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Inter-event intervals (seconds)
     inferred_spikes : list[float] | None
         Inferred spike probabilities
+    peaks_prominence_dec_dff : float | None
+        Peak prominence threshold used for this ROI (calculated)
+    peaks_height_dec_dff : float | None
+        Peak height threshold used for this ROI (calculated)
+    inferred_spikes_threshold : float | None
+        Spike detection threshold used for this ROI (calculated)
     roi : ROI
         Parent ROI
     """
@@ -562,6 +570,11 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
+
+    # ROI-specific calculated thresholds and parameters
+    peaks_prominence_dec_dff: float | None = None
+    peaks_height_dec_dff: float | None = None
+    inferred_spikes_threshold: float | None = None
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis")
