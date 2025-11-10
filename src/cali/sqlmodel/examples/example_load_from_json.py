@@ -12,7 +12,7 @@ from cali.sqlmodel import (
 
 # Set paths for data, labels, and analysis directory
 data_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
 )
 labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
 analysis_dir = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
