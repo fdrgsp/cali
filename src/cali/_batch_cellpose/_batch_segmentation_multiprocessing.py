@@ -24,8 +24,8 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
-from cali._plate_viewer._util import GREEN, RED, _BrowseWidget
-from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
+from cali._constants import GREEN, OME_ZARR, RED, WRITERS, ZARR_TESNSORSTORE
+from cali._plate_viewer._util import _BrowseWidget
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 if TYPE_CHECKING:

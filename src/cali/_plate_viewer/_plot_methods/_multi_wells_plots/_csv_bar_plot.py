@@ -8,7 +8,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
-from cali._plate_viewer._util import (
+from cali._constants import (
     EVK_NON_STIM,
     EVK_STIM,
     MEAN_SUFFIX,

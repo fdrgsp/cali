@@ -26,9 +26,7 @@ from qtpy.QtWidgets import (
 )
 from superqt.fonticon import icon
 
-# from ._plate_map import PlateMapWidget
-from ._plate_map import PlateMapData, PlateMapWidget
-from ._util import (
+from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
@@ -43,8 +41,18 @@ from ._util import (
     DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
+    EVOKED,
+    GLOBAL_HEIGHT,
+    GLOBAL_SPIKE_THRESHOLD,
     GREEN,
+    MULTIPLIER,
     RED,
+    SPONTANEOUS,
+)
+
+# from ._plate_map import PlateMapWidget
+from ._plate_map import PlateMapData, PlateMapWidget
+from ._util import (
     _BrowseWidget,
     create_divider_line,
     parse_lineedit_text,
@@ -56,15 +64,6 @@ if TYPE_CHECKING:
     from cali.sqlmodel import AnalysisSettings
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-
-RUNNER_TIME_KEY = "runner_time_ms"
-SPONTANEOUS = "Spontaneous Activity"
-EVOKED = "Evoked Activity"
-EXCLUDE_AREA_SIZE_THRESHOLD = 10
-STIMULATION_AREA_THRESHOLD = 0.1  # 10%
-GLOBAL_HEIGHT = "global_height"
-GLOBAL_SPIKE_THRESHOLD = "global_spike_threshold"
-MULTIPLIER = "multiplier"
 
 
 @dataclass(frozen=True)

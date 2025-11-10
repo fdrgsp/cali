@@ -16,8 +16,7 @@ from typing import Any, Optional
 
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
-from cali._plate_viewer._analysis_gui import MULTIPLIER
-from cali._plate_viewer._util import (
+from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
@@ -28,6 +27,7 @@ from cali._plate_viewer._util import (
     DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
+    MULTIPLIER,
     SPONTANEOUS,
 )
 

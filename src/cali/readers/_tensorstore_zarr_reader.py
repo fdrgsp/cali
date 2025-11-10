@@ -11,7 +11,7 @@ from pymmcore_plus.metadata.serialize import json_loads
 from tifffile import imwrite
 from tqdm import tqdm
 
-from cali._plate_viewer._util import EVENT_KEY
+from cali._constants import EVENT_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

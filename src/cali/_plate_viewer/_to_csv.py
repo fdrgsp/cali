@@ -9,6 +9,13 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 
+from cali._constants import (
+    EVK_NON_STIM,
+    EVK_STIM,
+    MEAN_SUFFIX,
+    N_SUFFIX,
+    SEM_SUFFIX,
+)
 from cali.cali_logger import LOGGER
 
 from ._plot_methods._single_wells_plots._plot_calcium_network_connectivity import (
@@ -23,11 +30,6 @@ from ._plot_methods._single_wells_plots._plot_inferred_spike_burst_activity impo
     _get_population_spike_data,
 )
 from ._util import (
-    EVK_NON_STIM,
-    EVK_STIM,
-    MEAN_SUFFIX,
-    N_SUFFIX,
-    SEM_SUFFIX,
     ROIData,
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
