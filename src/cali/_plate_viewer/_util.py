@@ -25,68 +25,21 @@ from qtpy.QtWidgets import (
 )
 from skimage import filters, morphology
 
+from cali._constants import (
+    MAX_FRAMES_AFTER_STIMULATION,
+    MWCM,
+    TS,
+    ZR,
+)
 from cali.cali_logger import LOGGER
+from cali.readers._ome_zarr_reader import OMEZarrReader
+from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 # Define a type variable for the BaseClass
 T = TypeVar("T", bound="BaseClass")
-
-RED = "#C33"
-GREEN = "#00FF00"
-GENOTYPE_MAP = "genotype_plate_map.json"
-TREATMENT_MAP = "treatment_plate_map.json"
-SPONTANEOUS = "Spontaneous Activity"
-EVOKED = "Evoked Activity"
-COND1 = "condition_1"
-COND2 = "condition_2"
-STIMULATION_MASK = "stimulation_mask.tif"
-MWCM = "mW/cm²"
-SETTINGS_PATH = "settings.json"
-PLATE_PLAN = "plate_plan"
-LED_POWER_EQUATION = "led_power_equation"
-PEAKS_HEIGHT_VALUE = "peaks_height_value"
-PEAKS_HEIGHT_MODE = "peaks_height_mode"
-SPIKE_THRESHOLD_VALUE = "spike_threshold_value"
-SPIKE_THRESHOLD_MODE = "spike_threshold_mode"
-PEAKS_PROMINENCE_MULTIPLIER = "peaks_prominence_multiplier"
-PEAKS_DISTANCE = "peaks_distance"
-DFF_WINDOW = "dff_window"
-BURST_THRESHOLD = "burst_threshold"
-BURST_MIN_DURATION = "burst_min_duration"
-BURST_GAUSSIAN_SIGMA = "burst_gaussian_sigma"
-EVK_STIM = "evk_stim"
-EVK_NON_STIM = "evk_non_stim"
-MEAN_SUFFIX = "_Mean"
-SEM_SUFFIX = "_SEM"
-N_SUFFIX = "_N"
-EVENT_KEY = "mda_event"
-DECAY_CONSTANT = "decay constant"
-SPIKE_SYNCHRONY_METHOD = "cross_correlation"
-SPIKES_SYNC_CROSS_CORR_MAX_LAG = "spikes_sync_cross_corr_lag"
-CALCIUM_PEAKS_SYNCHRONY_METHOD = "jitter_window"
-CALCIUM_SYNC_JITTER_WINDOW = "calcium_sync_jitter_window"
-CALCIUM_NETWORK_THRESHOLD = "calcium_network_threshold"
-NEUROPIL_INNER_RADIUS = "neuropil_inner_radius"
-NEUROPIL_MIN_PIXELS = "neuropil_min_pixels"
-NEUROPIL_CORRECTION_FACTOR = "neuropil_correction_factor"
-
-MAX_FRAMES_AFTER_STIMULATION = 5
-DEFAULT_BURST_THRESHOLD = 30.0
-DEFAULT_MIN_BURST_DURATION = 3
-DEFAULT_BURST_GAUSS_SIGMA = 2.0
-DEFAULT_DFF_WINDOW = 30
-DEFAULT_PEAKS_DISTANCE = 2
-DEFAULT_HEIGHT = 3
-DEFAULT_SPIKE_THRESHOLD = 1
-DEFAULT_SPIKE_SYNCHRONY_MAX_LAG = 5
-DEFAULT_CALCIUM_SYNC_JITTER_WINDOW = 2
-DEFAULT_CALCIUM_NETWORK_THRESHOLD = 90.0
-DEFAULT_NEUROPIL_INNER_RADIUS = 0
-DEFAULT_NEUROPIL_MIN_PIXELS = 0
-DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
-DEFAULT_FRAME_RATE = 10.0  # in frames per second (fps)
 
 
 @dataclass
@@ -231,6 +184,20 @@ def show_error_dialog(parent: QWidget, message: str) -> None:
     dialog.setIcon(QMessageBox.Icon.Critical)
     dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
     dialog.exec()
+
+
+def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader | None:
+    """Load data from the given path using the appropriate reader."""
+    data_path = str(data_path)
+    # select which reader to use for the datastore
+    if data_path.endswith(TS):
+        # read tensorstore
+        return TensorstoreZarrReader(data_path)
+    elif data_path.endswith(ZR):
+        # read ome zarr
+        return OMEZarrReader(data_path)
+    else:
+        return None
 
 
 class _BrowseWidget(QWidget):

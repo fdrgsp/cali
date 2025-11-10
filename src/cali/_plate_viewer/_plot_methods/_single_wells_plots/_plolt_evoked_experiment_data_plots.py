@@ -12,9 +12,8 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
+from cali._constants import MWCM, STIMULATION_MASK
 from cali._plate_viewer._util import (
-    MWCM,
-    STIMULATION_MASK,
     _get_spikes_over_threshold,
     equation_from_str,
 )

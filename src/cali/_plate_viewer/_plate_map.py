@@ -30,7 +30,7 @@ from qtpy.QtWidgets import (
 )
 from superqt.fonticon import icon
 
-from ._util import GREEN, RED
+from cali._constants import GREEN, RED
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

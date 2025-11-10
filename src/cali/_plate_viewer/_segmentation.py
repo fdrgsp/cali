@@ -30,12 +30,10 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
+from cali._constants import EVENT_KEY, GREEN, RED
 from cali.cali_logger import LOGGER
 
 from ._util import (
-    EVENT_KEY,
-    GREEN,
-    RED,
     _BrowseWidget,
     _ElapsedTimer,
     create_divider_line,

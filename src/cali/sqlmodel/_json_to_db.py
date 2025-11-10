@@ -24,7 +24,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cali._plate_viewer._util import EVOKED, SPONTANEOUS, ROIData, mask_to_coordinates
+from cali._constants import EVOKED, SPONTANEOUS
+from cali._plate_viewer._util import ROIData, mask_to_coordinates
 
 from ._models import (
     FOV,

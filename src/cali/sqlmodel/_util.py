@@ -108,7 +108,7 @@ def save_experiment_to_database(
     experiment: Experiment,
     db_path: Path | str,
     overwrite: bool = False,
-) -> None:
+) -> Experiment:
     """Save an experiment object tree to a SQLite database.
 
     Parameters
@@ -120,11 +120,16 @@ def save_experiment_to_database(
     overwrite : bool, optional
         Whether to overwrite existing database file, by default False
 
+    Returns
+    -------
+    Experiment
+        The experiment object with updated database IDs and all relationships loaded
+
     Example
     -------
     >>> from pathlib import Path
     >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
-    >>> save_experiment_to_database(exp, "analysis.db")
+    >>> exp = save_experiment_to_database(exp, "analysis.db")
     """
     db_path = Path(db_path)
     experiment.database_path = str(db_path)
@@ -139,8 +144,16 @@ def save_experiment_to_database(
     create_database_and_tables(engine)
 
     with Session(engine, expire_on_commit=False) as session:
-        session.merge(experiment)
+        # Merge and get the updated object back with correct database IDs
+        merged_experiment = session.merge(experiment)
         session.commit()
+        # Refresh to ensure all relationships have correct IDs
+        session.refresh(merged_experiment)
+        # Force load all relationships to prevent DetachedInstanceError
+        _force_load_experiment_relationships(merged_experiment)
+        # Make the instance independent of the session
+        session.expunge(merged_experiment)
+        return merged_experiment
 
 
 def load_experiment_from_database(
@@ -193,28 +206,43 @@ def load_experiment_from_database(
 
         experiment.database_path = db_path_str
 
-        # Force load ALL relationships deeply while session is still open
-        # This prevents DetachedInstanceError when accessed later
-        if experiment.plate:
-            _ = len(experiment.plate.wells)  # Force load wells
-            for well in experiment.plate.wells:
-                _ = len(well.conditions)  # Force load conditions
-                _ = len(well.fovs)  # Force load fovs
-                for fov in well.fovs:
-                    _ = len(fov.rois)  # Force load rois
-                    for roi in fov.rois:
-                        # Force load all ROI relationships
-                        _ = roi.traces
-                        _ = roi.data_analysis
-                        _ = roi.roi_mask
-                        _ = roi.neuropil_mask
-                        _ = roi.analysis_settings
-
-        if experiment.analysis_settings:
-            _ = experiment.analysis_settings.stimulation_mask
+        # Force load all relationships to prevent DetachedInstanceError
+        _force_load_experiment_relationships(experiment)
 
         # Make the instance independent of the session
         session.expunge(experiment)
 
     # Session automatically closed here
     return experiment  # type: ignore
+
+
+def _force_load_experiment_relationships(experiment: Experiment) -> None:
+    """Force load all experiment relationships to prevent DetachedInstanceError.
+
+    This function eagerly loads all relationships on an experiment object while
+    the session is still active, ensuring the object can be used outside the session.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The experiment object to load relationships for
+    """
+    # Force load ALL relationships deeply while session is still open
+    # This prevents DetachedInstanceError when accessed later
+    if experiment.plate:
+        _ = len(experiment.plate.wells)  # Force load wells
+        for well in experiment.plate.wells:
+            _ = len(well.conditions)  # Force load conditions
+            _ = len(well.fovs)  # Force load fovs
+            for fov in well.fovs:
+                _ = len(fov.rois)  # Force load rois
+                for roi in fov.rois:
+                    # Force load all ROI relationships
+                    _ = roi.traces
+                    _ = roi.data_analysis
+                    _ = roi.roi_mask
+                    _ = roi.neuropil_mask
+                    _ = roi.analysis_settings
+
+    if experiment.analysis_settings:
+        _ = experiment.analysis_settings.stimulation_mask

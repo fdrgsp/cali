@@ -12,30 +12,37 @@ from psygnal import Signal
 from scipy.signal import find_peaks
 from tqdm import tqdm
 
-from cali._plate_viewer._util import coordinates_to_mask
+from cali._constants import (
+    EVENT_KEY,
+    EVOKED,
+    EXCLUDE_AREA_SIZE_THRESHOLD,
+    GLOBAL_HEIGHT,
+    GLOBAL_SPIKE_THRESHOLD,
+    RUNNER_TIME_KEY,
+    STIMULATION_AREA_THRESHOLD,
+)
 from cali.cali_logger import LOGGER
 from cali.sqlmodel import (
     FOV,
     ROI,
     AnalysisSettings,
     DataAnalysis,
+    Experiment,
     Mask,
     Traces,
     Well,
 )
 from cali.sqlmodel._util import (
-    load_experiment_from_database,
     save_experiment_to_database,
 )
-from cali.sqlmodel._visualize_experiment import print_experiment_tree
 
 from ._util import (
-    EVENT_KEY,
-    EVOKED,
     calculate_dff,
+    coordinates_to_mask,
     create_neuropil_from_dilation,
     get_iei,
     get_overlap_roi_with_stimulated_area,
+    load_data,
     mask_to_coordinates,
 )
 
@@ -43,20 +50,12 @@ if TYPE_CHECKING:
     import useq
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
-    from cali.sqlmodel import (
-        Experiment,
-    )
-
-
-RUNNER_TIME_KEY = "runner_time_ms"
-EXCLUDE_AREA_SIZE_THRESHOLD = 50  # µm² threshold for excluding small ROIs
-STIMULATION_AREA_THRESHOLD = 0.1  # 10% overlap threshold for stimulated ROIs
-GLOBAL_HEIGHT = "global"
-GLOBAL_SPIKE_THRESHOLD = "global"
 
 
 class AnalysisRunner:
     analysisInfo: Signal = Signal(str, str)  # message, type
+    progressUpdated: Signal = Signal(str)  # analysis progress updates
+    experimentUpdated: Signal = Signal(Experiment)  # updated experiment
 
     def __init__(self) -> None:
         super().__init__()
@@ -74,16 +73,39 @@ class AnalysisRunner:
 
     # PUBLIC METHODS -----------------------------------------------------------------
 
+    def experiment(self) -> Experiment | None:
+        """Return the current experiment."""
+        return self._experiment
+
     def set_experiment(self, experiment: Experiment) -> None:
         self._experiment = experiment
+        # if experiments has data_path, try to load the data
+        if experiment.data_path:
+            self._data = load_data(experiment.data_path)
 
-    def set_data(self, data: TensorstoreZarrReader | OMEZarrReader) -> None:
-        self._data = data
+    def data(self) -> TensorstoreZarrReader | OMEZarrReader | None:
+        """Return the current data reader."""
+        return self._data
 
-    def get_settings(self) -> AnalysisSettings | None:
+    def set_data(
+        self, data: TensorstoreZarrReader | OMEZarrReader | str | Path
+    ) -> None:
+        """Set the data reader or load data from path."""
+        self._data = load_data(data) if isinstance(data, (str, Path)) else data
+        if self._data is None:
+            LOGGER.error("Failed to load data from the provided path.")
+
+    def settings(self) -> AnalysisSettings | None:
         if self._experiment is None:
             return None
         return self._experiment.analysis_settings
+
+    def update_settings(self, settings: AnalysisSettings) -> None:
+        """Update the analysis settings in the current experiment."""
+        if self._experiment is None:
+            LOGGER.error("No Experiment set to update settings.")
+            return
+        self._experiment.analysis_settings = settings
 
     def run(self) -> None:
         """Run the analysis."""
@@ -91,9 +113,16 @@ class AnalysisRunner:
 
         if self._experiment is None:
             LOGGER.error("No Experiment set for analysis.")
+            self.analysisInfo.emit("No Experiment set for analysis.", "error")
             return
         if self._data is None:
             LOGGER.error("No Data set for analysis.")
+            self.analysisInfo.emit("No Data set for analysis.", "error")
+            return
+
+        if self._experiment.analysis_settings is None:
+            LOGGER.error("No AnalysisSettings found in Experiment.")
+            self.analysisInfo.emit("No AnalysisSettings found in Experiment.", "error")
             return
 
         # Reset cancellation event
@@ -126,16 +155,17 @@ class AnalysisRunner:
 
         LOGGER.info("Saving results to database...")
 
-        if self._experiment is None or self._experiment.database_path is None:
+        if (exp := self._experiment) is None or exp.database_path is None:
             LOGGER.error("Cannot save results: No Experiment or database path found.")
             return
 
-        save_experiment_to_database(
-            # self._experiment, self._experiment.database_path, overwrite=True
-            self._experiment,
-            self._experiment.database_path,
-        )
+        self._experiment = save_experiment_to_database(exp, exp.database_path)
         LOGGER.info(f"Results saved to database '{self._experiment.database_path}'.")
+
+        print("RUN", self._experiment)
+
+        # Emit the updated experiment
+        self.experimentUpdated.emit(self._experiment)
 
         # show a message box if there are failed labels
         if self._failed_labels:
@@ -145,22 +175,12 @@ class AnalysisRunner:
             )
             self._log_and_emit(msg, "error")
 
-        print("-----------------------------------")
-        exp = load_experiment_from_database(self._experiment.database_path)
-        print_experiment_tree(exp)
-
-        import matplotlib.pyplot as plt
-
-        for roi in exp.plate.wells[0].fovs[0].rois:
-            plt.plot(roi.traces.raw_trace)
-        plt.show()
-
     def _extract_traces_data(self) -> None:
         """Extract the roi traces in multiple threads."""
         LOGGER.info("Starting traces analysis...")
 
         if self._experiment is None or self._experiment.analysis_settings is None:
-            self._log_and_emit("No Experiment or AnalysisSettings found.", "error")
+            LOGGER.error("Experiment or AnalysisSettings not set.")
             return
 
         # Load stimulation mask if available for evoked experiments

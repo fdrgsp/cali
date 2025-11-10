@@ -32,10 +32,17 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
+from cali._constants import (
+    EVENT_KEY,
+    OME_ZARR,
+    PYMMCW_METADATA_KEY,
+    SPONTANEOUS,
+    UNSELECTABLE_COLOR,
+    WRITERS,
+    ZARR_TESNSORSTORE,
+)
 from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
-from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 from cali.cali_logger import LOGGER
-from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel import (
     Experiment,
     load_experiment_from_database,
@@ -66,27 +73,23 @@ from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
-    EVENT_KEY,
-    SPONTANEOUS,
     ROIData,
     _ProgressBarWidget,
+    load_data,
     show_error_dialog,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
-HCS = "hcs"
-UNSELECTABLE_COLOR = "#404040"
+
 DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("coverslip-18mm-square"),
     a1_center_xy=(0.0, 0.0),
     selected_wells=((0,), (0,)),
 )
-PYMMCW_METADATA_KEY = "pymmcore_widgets"
-TS = WRITERS[ZARR_TESNSORSTORE][0]
-ZR = WRITERS[OME_ZARR][0]
 
 
 class PlateViewer(QMainWindow):
@@ -303,6 +306,7 @@ class PlateViewer(QMainWindow):
         )
         # connect analysis runner signal
         self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
+        self._analysis_runner.experimentUpdated.connect(self._on_experiment_updated)
         # connect the run analysis button
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
             self._on_run_analysis_clicked
@@ -383,15 +387,8 @@ class PlateViewer(QMainWindow):
 
         # DATA-------------------------------------------------------------------------
 
-        # select which reader to use for the datastore
-        if data_path.endswith(TS):
-            # read tensorstore
-            self._data = TensorstoreZarrReader(data_path)
-        elif data_path.endswith(ZR):
-            # read ome zarr
-            self._data = OMEZarrReader(data_path)
-        else:
-            self._data = None
+        self._data = load_data(data_path)
+        if self._data is None:
             msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
                 f" {WRITERS[OME_ZARR][0]} are supported."
@@ -435,20 +432,14 @@ class PlateViewer(QMainWindow):
 
         # DATASTORE--------------------------------------------------------------------
 
-        # select which reader to use for the datastore
-        if datastore_path.endswith(TS):
-            # read tensorstore
-            self._data = TensorstoreZarrReader(datastore_path)
-        elif datastore_path.endswith(ZR):
-            # read ome zarr
-            self._data = OMEZarrReader(datastore_path)
-        else:
-            self._data = None
-            show_error_dialog(
-                self,
+        self._data = load_data(datastore_path)
+        if self._data is None:
+            msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
-                f" {WRITERS[OME_ZARR][0]} are supported.",
+                f" {WRITERS[OME_ZARR][0]} are supported."
             )
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
             self._loading_bar.hide()  # Close entire dialog on error
             return
 
@@ -463,8 +454,7 @@ class PlateViewer(QMainWindow):
 
         # CREATE THE DATABASE ---------------------------------------------------------
         self._experiment = Experiment(
-            # temporary ID, will be updated when saved to db. Needed for relationships.
-            id=0,
+            id=0,  # placeholder needed for relationships, set when database is saved.
             name="Experiment",
             description="A test experiment.",
             created_at=datetime.datetime.now(),
@@ -490,27 +480,14 @@ class PlateViewer(QMainWindow):
         # TODO: ask the user to overwrite if the database already exists
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_database(
+        self._experiment = save_experiment_to_database(
             self._experiment, self._database_path, overwrite=True
         )
-
-        # RELOAD THE EXPERIMENT FROM DATABASE TO GET CORRECT IDs-----------------------
-        # This is crucial! After saving, we need to reload to get the actual database
-        # IDs. Otherwise, subsequent saves will fail with foreign key constraint errors
-        # because the in-memory objects still have placeholder IDs.
-        self._init_loading_bar("Reloading experiment from database...", False)
-        self._experiment = load_experiment_from_database(self._database_path)
-        if self._experiment is None:
-            self._loading_bar.hide()
-            msg = "Failed to reload experiment from database after initial save!"
-            show_error_dialog(self, msg)
-            LOGGER.error(msg)
-            return
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
 
-    def get_analysis_settings(self) -> AnalysisSettingsData | None:
+    def analysis_settings(self) -> AnalysisSettingsData | None:
         """Get the current analysis settings from the analysis widget."""
         return self._analysis_wdg.value()
 
@@ -602,8 +579,9 @@ class PlateViewer(QMainWindow):
 
         # Save the updated experiment to database
         if self._database_path:
-            save_experiment_to_database(self._experiment, self._database_path)
-            self._experiment = load_experiment_from_database(self._database_path)
+            self._experiment = save_experiment_to_database(
+                self._experiment, self._database_path
+            )
 
     def _update_experiment_analysis_settings(self) -> None:
         if self._experiment is None or self._data is None:
@@ -662,6 +640,11 @@ class PlateViewer(QMainWindow):
         # cannot do that...I need to accumulate and show when the work is done!
         # if type == "error":
         #     show_error_dialog(self, msg)
+
+    def _on_experiment_updated(self, experiment: Experiment) -> None:
+        """Update the experiment after analysis is done."""
+        self._experiment = experiment
+        print("MAIN", self._experiment)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
