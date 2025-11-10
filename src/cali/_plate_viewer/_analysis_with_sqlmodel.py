@@ -23,7 +23,11 @@ from cali.sqlmodel import (
     Traces,
     Well,
 )
-from cali.sqlmodel._util import save_experiment_to_database
+from cali.sqlmodel._util import (
+    load_experiment_from_database,
+    save_experiment_to_database,
+)
+from cali.sqlmodel._visualize_experiment import print_experiment_tree
 
 from ._util import (
     EVENT_KEY,
@@ -127,7 +131,9 @@ class AnalysisRunner:
             return
 
         save_experiment_to_database(
-            self._experiment, self._experiment.database_path, overwrite=True
+            # self._experiment, self._experiment.database_path, overwrite=True
+            self._experiment,
+            self._experiment.database_path,
         )
         LOGGER.info(f"Results saved to database '{self._experiment.database_path}'.")
 
@@ -138,6 +144,16 @@ class AnalysisRunner:
                 + "\n".join(self._failed_labels)
             )
             self._log_and_emit(msg, "error")
+
+        print("-----------------------------------")
+        exp = load_experiment_from_database(self._experiment.database_path)
+        print_experiment_tree(exp)
+
+        import matplotlib.pyplot as plt
+
+        for roi in exp.plate.wells[0].fovs[0].rois:
+            plt.plot(roi.traces.raw_trace)
+        plt.show()
 
     def _extract_traces_data(self) -> None:
         """Extract the roi traces in multiple threads."""

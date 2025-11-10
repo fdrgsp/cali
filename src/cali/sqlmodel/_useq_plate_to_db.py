@@ -155,7 +155,7 @@ def useq_plate_plan_to_db(
     Example
     -------
     >>> import useq
-    >>> from cali.sqlmodel import Experiment, useq_plate_plan_to_plate
+    >>> from cali.sqlmodel import Experiment, useq_plate_plan_to_db
     >>>
     >>> # Create experiment
     >>> exp = Experiment(name="my_experiment", description="Test")
@@ -171,7 +171,7 @@ def useq_plate_plan_to_db(
     ...     "genotype": {"B5": "WT", "C6": "KO"},
     ...     "treatment": {"B5": "Vehicle", "C6": "Drug"},
     ... }
-    >>> plate = useq_plate_plan_to_plate(plate_plan, exp, plate_maps=plate_maps)
+    >>> plate = useq_plate_plan_to_db(plate_plan, exp, plate_maps=plate_maps)
     >>> print(f"Created plate '{plate.name}' with {len(plate.wells)} wells")
     Created plate '96-well' with 2 wells
     >>> print(f"Well B5 conditions: {[c.name for c in plate.wells[0].conditions]}")
@@ -200,7 +200,6 @@ def useq_plate_plan_to_db(
     # Create Wells for selected wells
     if plate_plan.selected_wells:
         # Use selected_well_indices to get the actual (row, col) coordinates
-        # This handles all formats (slices, tuples, grids, etc.)
         for row, col in plate_plan.selected_well_indices:
             # Convert row index to letter (0=A, 1=B, ..., 26=AA, 30=AE, etc.)
             row_label = _row_index_to_label(row)

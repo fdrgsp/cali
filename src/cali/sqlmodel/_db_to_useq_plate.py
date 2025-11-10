@@ -40,12 +40,13 @@ def experiment_to_useq_plate(
 
     Example
     -------
-    >>> from sqlmodel import create_engine, Session, select
-    >>> from cali.sqlmodel import Experiment, experiment_to_useq_plate
+    >>> from cali.sqlmodel import (
+    ...     load_experiment_from_database,
+    ...     experiment_to_useq_plate,
+    ... )
     >>>
-    >>> engine = create_engine("sqlite:///analysis.db")
-    >>> with Session(engine) as session:
-    ...     exp = session.exec(select(Experiment)).first()
+    >>> exp = load_experiment_from_database("analysis.db")
+    >>> if exp:
     ...     plate = experiment_to_useq_plate(exp)
     ...     print(f"Plate: {plate.name}, Wells: {len(exp.plate.wells)}")
     """
@@ -109,12 +110,13 @@ def experiment_to_useq_plate_plan(
 
     Example
     -------
-    >>> from sqlmodel import create_engine, Session, select
-    >>> from cali.sqlmodel import Experiment, experiment_to_useq_plate_plan
+    >>> from cali.sqlmodel import (
+    ...     load_experiment_from_database,
+    ...     experiment_to_useq_plate_plan,
+    ... )
     >>>
-    >>> engine = create_engine("sqlite:///analysis.db")
-    >>> with Session(engine) as session:
-    ...     exp = session.exec(select(Experiment)).first()
+    >>> exp = load_experiment_from_database("analysis.db")
+    >>> if exp:
     ...     plate_plan = experiment_to_useq_plate_plan(exp)
     ...     print(f"Plate: {plate_plan.plate.name}")
     ...     print(f"Selected wells (rows, cols): {plate_plan.selected_wells}")

@@ -103,6 +103,7 @@ class PlateViewer(QMainWindow):
 
         # INTERNAL VARIABLES ---------------------------------------------------------
         self._database_path: Path | None = None
+        self._data_path: str | None = None
         self._labels_path: str | None = None
         self._analysis_path: str | None = None
         self._experiment: Experiment | None = None
@@ -328,7 +329,7 @@ class PlateViewer(QMainWindow):
             "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
         )
         self.initialize_widget_from_directories(
-            data, self._pv_labels_path, self._pv_analysis_path
+            data, self._pv_analysis_path, self._pv_labels_path
         )
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
@@ -473,6 +474,7 @@ class PlateViewer(QMainWindow):
         )
 
         # LOAD ANALYSIS DATA-----------------------------------------------------------
+        self._data_path = datastore_path
         self._analysis_path = analysis_path
         self._labels_path = labels_path
 
@@ -492,6 +494,19 @@ class PlateViewer(QMainWindow):
             self._experiment, self._database_path, overwrite=True
         )
 
+        # RELOAD THE EXPERIMENT FROM DATABASE TO GET CORRECT IDs-----------------------
+        # This is crucial! After saving, we need to reload to get the actual database
+        # IDs. Otherwise, subsequent saves will fail with foreign key constraint errors
+        # because the in-memory objects still have placeholder IDs.
+        self._init_loading_bar("Reloading experiment from database...", False)
+        self._experiment = load_experiment_from_database(self._database_path)
+        if self._experiment is None:
+            self._loading_bar.hide()
+            msg = "Failed to reload experiment from database after initial save!"
+            show_error_dialog(self, msg)
+            LOGGER.error(msg)
+            return
+
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
 
@@ -508,8 +523,87 @@ class PlateViewer(QMainWindow):
     def _on_run_analysis_clicked(self) -> None:
         if self._experiment is None:
             return
+
+        # Check for settings consistency before running analysis
+        if not self._check_analysis_settings_before_run():
+            return
+
         # update the experiment analysis settings
         self._update_experiment_analysis_settings()
+
+    def _check_analysis_settings_before_run(self) -> bool:
+        """Check if current GUI settings differ from experiment's analysis settings.
+
+        Returns
+        -------
+        bool
+            True if it's safe to proceed with analysis, False if user cancelled
+        """
+        from qtpy.QtWidgets import QMessageBox
+
+        if self._experiment is None:
+            return False
+
+        # If no existing analysis settings, safe to proceed
+        if self._experiment.analysis_settings is None:
+            return True
+
+        # Get current GUI settings
+        new_settings = self._analysis_wdg.to_model_settings(self._experiment.id or 0)[1]
+        # Exclude 'id' from comparison since it's database-specific
+        new_settings_dict = new_settings.model_dump(exclude={"id"})
+
+        # Compare experiment settings with current GUI settings
+        # Exclude 'id' since it's database-specific
+        existing_settings = self._experiment.analysis_settings
+        existing_settings_dict = existing_settings.model_dump(exclude={"id"})
+
+        if existing_settings_dict != new_settings_dict:
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setWindowTitle("Different Analysis Settings Detected")
+            msg_box.setText(
+                "The settings stored in the current database during previous analysis "
+                "run are different from the ones in the GUI.\n\n"
+                "If you proceed, the previous analysis results will be deleted from the"
+                " database and update it with the new settings and newly analyzed "
+                "positions."
+            )
+            msg_box.setInformativeText(
+                "Options:\n"
+                "• Ok: Delete previous results and run new analysis\n"
+                "• Cancel: Keep existing data and do not run analysis\n\n"
+                "NOTE: To keep the old database, please set a new analysis path from "
+                "the 'Load Data and Set Directories...' menu so that the analysis will "
+                "be saved in a new database while keeping the old one intact."
+            )
+            msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+            )
+            msg_box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+
+            result = msg_box.exec()
+            if result == QMessageBox.StandardButton.Cancel:
+                return False
+
+            self._delete_all_analysis_data()
+
+        return True
+
+    def _delete_all_analysis_data(self) -> None:
+        """Delete all existing analysis data (ROIs) from the experiment."""
+        if self._experiment is None or self._experiment.plate is None:
+            return
+
+        # Clear all ROIs from all FOVs in all wells
+        for well in self._experiment.plate.wells:
+            for fov in well.fovs:
+                fov.rois.clear()
+
+        # Save the updated experiment to database
+        if self._database_path:
+            save_experiment_to_database(self._experiment, self._database_path)
+            self._experiment = load_experiment_from_database(self._database_path)
 
     def _update_experiment_analysis_settings(self) -> None:
         if self._experiment is None or self._data is None:
@@ -603,6 +697,7 @@ class PlateViewer(QMainWindow):
         """Clear the widget before initializing it with new data."""
         # clear paths
         self._database_path = None
+        self._data_path = None
         self._analysis_path = None
         self._labels_path = None
         # clear experiment

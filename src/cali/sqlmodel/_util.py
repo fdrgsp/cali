@@ -30,9 +30,9 @@ def create_database_and_tables(engine: Engine) -> None:
     Example
     -------
     >>> from sqlmodel import create_engine
-    >>> from cali.sqlmodel import create_db_and_tables
+    >>> from cali.sqlmodel import create_database_and_tables
     >>> engine = create_engine("sqlite:///calcium_analysis.db")
-    >>> create_db_and_tables(engine)
+    >>> create_database_and_tables(engine)
     """
     from sqlmodel import SQLModel
 
