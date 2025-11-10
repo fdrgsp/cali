@@ -23,7 +23,6 @@ from cali.sqlmodel import (
     Traces,
     Well,
 )
-
 from cali.sqlmodel._util import save_experiment_to_database
 
 from ._util import (

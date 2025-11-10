@@ -343,7 +343,9 @@ class PlateViewer(QMainWindow):
         data = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"  # noqa: E501
         self._pv_labels_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_labels"  # noqa: E501
         self._pv_analysis_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_output"  # noqa: E501
-        self.initialize_widget_from_directories(data, self._pv_analysis_path, self._pv_labels_path)  # noqa: E501
+        self.initialize_widget_from_directories(
+            data, self._pv_analysis_path, self._pv_labels_path
+        )  # noqa: E501
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
@@ -499,6 +501,7 @@ class PlateViewer(QMainWindow):
         )
 
         from rich import print
+
         db = load_experiment_from_database(self._database_path)
         print(db.plate.wells)
 
