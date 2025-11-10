@@ -7,7 +7,7 @@ import useq
 from cali.sqlmodel import (
     load_analysis_from_json,
     print_experiment_tree,
-    save_experiment_to_db,
+    save_experiment_to_database,
 )
 
 # Set paths for data, labels, and analysis directory
@@ -31,7 +31,7 @@ experiment = load_analysis_from_json(
 # save experiment to database
 db_path = Path(analysis_dir) / "cali.db"
 experiment.database_path = str(db_path)
-save_experiment_to_db(experiment, db_path, overwrite=True)
+save_experiment_to_database(experiment, db_path, overwrite=True)
 
 # view experiment tree
 print_experiment_tree(experiment, max_level="roi")

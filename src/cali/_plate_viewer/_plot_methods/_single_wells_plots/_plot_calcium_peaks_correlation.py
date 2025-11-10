@@ -12,7 +12,7 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes

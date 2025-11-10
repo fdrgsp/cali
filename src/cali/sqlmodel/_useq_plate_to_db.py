@@ -199,11 +199,9 @@ def useq_plate_plan_to_db(
 
     # Create Wells for selected wells
     if plate_plan.selected_wells:
-        selected_rows, selected_cols = plate_plan.selected_wells
-
-        # selected_wells uses paired indices, not a grid
-        # E.g., ((1, 2), (4, 5)) means wells (1,4) and (2,5), not all 4 combinations
-        for row, col in zip(selected_rows, selected_cols, strict=True):
+        # Use selected_well_indices to get the actual (row, col) coordinates
+        # This handles all formats (slices, tuples, grids, etc.)
+        for row, col in plate_plan.selected_well_indices:
             # Convert row index to letter (0=A, 1=B, ..., 26=AA, 30=AE, etc.)
             row_label = _row_index_to_label(row)
             # Column is 1-indexed in well names

@@ -1,13 +1,15 @@
+"""Testing."""
+
 from pathlib import Path
 
 import useq
 
 from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from cali.readers import TensorstoreZarrReader
-from cali.sqlmodel._json_to_db import (
+from cali.sqlmodel import (
     load_analysis_from_json,
-    load_experiment_from_db,
-    save_experiment_to_db,
+    load_experiment_from_database,
+    save_experiment_to_database,
 )
 from cali.sqlmodel._visualize_experiment import print_experiment_tree
 
@@ -25,94 +27,39 @@ exp_form_json = load_analysis_from_json(
 database_path = Path(analysis_dir) / "cali.db"
 exp_form_json.database_path = str(database_path)
 print("Saving experiment to database...")
-save_experiment_to_db(exp_form_json, database_path, overwrite=True)
+save_experiment_to_database(exp_form_json, database_path, overwrite=True)
 print_experiment_tree(exp_form_json)
-
+print(exp_form_json.plate.wells)
 
 # load the experiment from the newly created database
 print("Loading experiment from database...")
-exp = load_experiment_from_db(database_path)
+exp = load_experiment_from_database(database_path)
 assert exp is not None
 print_experiment_tree(exp)
+print(exp.plate.wells)
 
-# delete existing rois
-print("Deleting existing ROIs...")
-for well in exp.plate.wells:
-    for fov in well.fovs:
-        fov.rois = []
+# # delete existing rois
+# print("Deleting existing ROIs...")
+# for well in exp.plate.wells:
+#     for fov in well.fovs:
+#         fov.rois = []
 
-# save database after deletion
-print("Saving experiment after ROI deletion...")
-save_experiment_to_db(exp, database_path, overwrite=True)
-print_experiment_tree(exp)
+# # save database after deletion
+# print("Saving experiment after ROI deletion...")
+# save_experiment_to_database(exp, database_path, overwrite=True)
+# print_experiment_tree(exp)
 
-# run analysis
-print("Running analysis to recreate ROIs...")
-runner = AnalysisRunner()
-runner.set_experiment(exp)
-data = TensorstoreZarrReader(exp.data_path)
-runner.set_data(data)
-runner.run()
-print_experiment_tree(exp)
-
-# reopen database to verify the state after analysis
-print("Loading experiment from database after analysis...")
-exp = load_experiment_from_db(database_path)
-assert exp is not None
-print_experiment_tree(exp)
-
-
-# database_path = (
-#     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali_new.db"
-# )
-# data_path = (
-#     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
-# )
-# analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-# labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
-
-
-# new_exp = Experiment(
-#     id=0,
-#     name="New Experiment",
-#     description="A Test Experiment.",
-#     created_at=datetime.now(),
-#     database_path=database_path,
-#     data_path=data_path,
-#     labels_path=labels_path,
-#     analysis_path=analysis_path,
-# )
-# print(new_exp)
-
-# # load the data and get the useq plate plan from the sequence
-# data = TensorstoreZarrReader(new_exp.data_path)
-# # Define plate maps for conditions
-# plate_maps = {"genotype": {"B5": "WT"}, "treatment": {"B5": "Vehicle"}}
-# plate_plan = data.sequence.stage_positions
-# assert isinstance(plate_plan, useq.WellPlatePlan)
-
-# # Create plate with plate_maps and conditions in one step
-# plate = useq_plate_plan_to_db(plate_plan, new_exp, plate_maps=plate_maps)
-# new_exp.plate = plate
-
-# print_experiment_tree(new_exp)
-
-# # Now when we set the experiment in the runner, conditions will be applied
+# # run analysis
+# print("Running analysis to recreate ROIs...")
 # runner = AnalysisRunner()
+# runner.set_experiment(exp)
+# data = TensorstoreZarrReader(exp.data_path)
 # runner.set_data(data)
-# runner.set_experiment(new_exp)
-
-
-# def _p(msg: str) -> None:
-#     print("ANALYSIS INFO:", msg)
-
-
-# runner.analysisInfo.connect(_p)
-
 # runner.run()
+# print_experiment_tree(exp)
 
-# if runner._worker is not None:
-#     while runner._worker.is_running:
-#         time.sleep(0.1)
-
-# print_experiment_tree(new_exp)
+# # reopen database to verify the state after analysis
+# print("Loading experiment from database after analysis...")
+# exp = load_experiment_from_database(database_path)
+# assert exp is not None
+# print_experiment_tree(exp)

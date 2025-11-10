@@ -7,7 +7,7 @@
 # import mplcursors
 # import numpy as np
 
-# from cali._plate_viewer._logger._pv_logger import LOGGER
+# from cali.cali_logger import LOGGER
 
 # if TYPE_CHECKING:
 #     from matplotlib.image import AxesImage

@@ -8,17 +8,18 @@ This module provides helper functions for database operations including:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from sqlmodel import Session, create_engine
 
+from ._models import Experiment
+
+if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from ._models import Experiment
 
-
-def create_db_and_tables(engine: Engine) -> None:
+def create_database_and_tables(engine: Engine) -> None:
     """Create all database tables.
 
     Parameters
@@ -36,40 +37,6 @@ def create_db_and_tables(engine: Engine) -> None:
     from sqlmodel import SQLModel
 
     SQLModel.metadata.create_all(engine)
-
-
-def load_experiment_from_database(database_path: str | Path) -> Experiment | None:
-    """Load the experiment from the given database path.
-
-    Parameters
-    ----------
-    database_path : str | Path
-        Path to the SQLite database file
-
-    Returns
-    -------
-    Experiment | None
-        The loaded experiment, or None if loading failed
-
-    Example
-    -------
-    >>> from cali.sqlmodel import load_experiment_from_database
-    >>> exp = load_experiment_from_database("path/to/cali.db")
-    >>> if exp:
-    ...     print(f"Loaded experiment: {exp.name}")
-    """
-    from sqlmodel import Session, create_engine, select
-
-    from ._models import Experiment
-
-    try:
-        engine = create_engine(f"sqlite:///{database_path}")
-        session = Session(engine)
-        result = session.exec(select(Experiment))
-        return result.first()
-    except Exception as e:
-        print(f"Error loading experiment: {e}")
-        return None
 
 
 def check_analysis_settings_consistency(experiment: Experiment) -> dict[str, Any]:
@@ -135,3 +102,119 @@ def check_analysis_settings_consistency(experiment: Experiment) -> dict[str, Any
         "fovs_by_settings": dict(fovs_by_settings),
         "warning": warning,
     }
+
+
+def save_experiment_to_database(
+    experiment: Experiment,
+    db_path: Path | str,
+    overwrite: bool = False,
+) -> None:
+    """Save an experiment object tree to a SQLite database.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        Experiment object (e.g., from load_analysis_from_json)
+    db_path : Path | str
+        Path to SQLite database file
+    overwrite : bool, optional
+        Whether to overwrite existing database file, by default False
+
+    Example
+    -------
+    >>> from pathlib import Path
+    >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
+    >>> save_experiment_to_database(exp, "analysis.db")
+    """
+    db_path = Path(db_path)
+    experiment.database_path = str(db_path)
+
+    # Ensure parent directory exists
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if overwrite and db_path.exists():
+        db_path.unlink()
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    create_database_and_tables(engine)
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.merge(experiment)
+        session.commit()
+
+
+def load_experiment_from_database(
+    db_path: Path | str,
+    experiment_name: str | None = None,
+) -> Experiment | None:
+    """Load an experiment from SQLite database with all relationships.
+
+    This function properly handles SQLAlchemy session management and eagerly
+    loads all relationships so the returned Experiment object can be used
+    outside the session context.
+
+    Parameters
+    ----------
+    db_path : Path | str
+        Path to SQLite database file
+    experiment_name : str | None, optional
+        Name of specific experiment to load. If None, loads the first experiment.
+
+    Returns
+    -------
+    Experiment | None
+        Loaded experiment with all relationships, or None if not found
+
+    Example
+    -------
+    >>> from pathlib import Path
+    >>> exp = load_experiment_from_database("analysis.db", "my_experiment")
+    >>> if exp:
+    ...     print(f"Loaded {len(exp.plate.wells)} wells")
+    """
+    from sqlmodel import select
+
+    # Convert to string for consistency
+    db_path_str = str(db_path)
+    engine = create_engine(f"sqlite:///{db_path_str}")
+
+    # Use context manager to ensure session is properly closed
+    with Session(engine, expire_on_commit=False) as session:
+        # Query for experiment
+        if experiment_name:
+            statement = select(Experiment).where(Experiment.name == experiment_name)
+        else:
+            statement = select(Experiment)
+
+        experiment = session.exec(statement).first()
+
+        if not experiment:
+            return None
+
+        experiment.database_path = db_path_str
+
+        # Force load ALL relationships deeply while session is still open
+        # This prevents DetachedInstanceError when accessed later
+        if experiment.plate:
+            _ = len(experiment.plate.wells)  # Force load wells
+            for well in experiment.plate.wells:
+                _ = len(well.conditions)  # Force load conditions
+                _ = len(well.fovs)  # Force load fovs
+                for fov in well.fovs:
+                    _ = len(fov.rois)  # Force load rois
+                    for roi in fov.rois:
+                        # Force load all ROI relationships
+                        _ = roi.traces
+                        _ = roi.data_analysis
+                        _ = roi.roi_mask
+                        _ = roi.neuropil_mask
+                        _ = roi.analysis_settings
+
+        if experiment.analysis_settings:
+            _ = experiment.analysis_settings.stimulation_mask
+
+        # Make the instance independent of the session
+        session.expunge(experiment)
+
+    # Session automatically closed here
+    return experiment  # type: ignore

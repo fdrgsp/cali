@@ -12,13 +12,13 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
 from cali._plate_viewer._util import (
     MWCM,
     STIMULATION_MASK,
     _get_spikes_over_threshold,
     equation_from_str,
 )
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes

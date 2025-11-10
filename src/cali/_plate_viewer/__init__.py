@@ -1,3 +1,3 @@
-from ._plate_viewer import PlateViewer
+from ._plate_viewer_with_sqlmodel import PlateViewer
 
 __all__ = ["PlateViewer"]

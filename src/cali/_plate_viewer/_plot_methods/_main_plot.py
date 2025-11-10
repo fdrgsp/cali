@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cali._plate_viewer._logger import LOGGER
+from cali.cali_logger import LOGGER
 
 from ._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (

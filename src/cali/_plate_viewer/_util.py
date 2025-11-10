@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 )
 from skimage import filters, morphology
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -351,6 +351,10 @@ class _ProgressBarWidget(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.addWidget(self._label)
         layout.addWidget(self._progress_bar)
+
+    def show_progress_bar(self, value: bool) -> None:
+        """Show/hide the progress bar while maintaining dialog and text visibility."""
+        self._progress_bar.hide() if not value else self._progress_bar.show()
 
     def setText(self, text: str) -> None:
         """Set the text of the progress bar."""

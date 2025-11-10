@@ -44,7 +44,7 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "cmap",
-    "cellpose==3.1.1.2",
+    "cellpose>=4.0.0",
     "pyconify",
     "rich",
     "matplotlib",
@@ -59,6 +59,9 @@ dependencies = [
     "superqt[font-mi6]",
     "sqlmodel>=0.0.27"
 ]
+
+[project.optional-dependencies]
+cp3 = ["cellpose>=3.0.0,<4.0.0"]
 
 [dependency-groups]
 test = ["pytest>=6.0", "pytest-cov", "pytest-qt"]
