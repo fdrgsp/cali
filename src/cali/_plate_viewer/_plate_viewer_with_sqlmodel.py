@@ -201,8 +201,6 @@ class PlateViewer(QMainWindow):
 
         # SEGMENTATION WIDGET ---------------------------------------------------------
         self._segmentation_wdg = _CellposeSegmentation(self)
-
-        # ADD SEGMENTATION WIDGET TO SCROLL AREA --------------------------------------
         segmentation_content_widget = QWidget()
         segmentation_layout = QVBoxLayout(segmentation_content_widget)
         segmentation_layout.setContentsMargins(10, 10, 10, 10)
@@ -226,8 +224,6 @@ class PlateViewer(QMainWindow):
 
         # ANALYSIS WIDGET -------------------------------------------------------------
         self._analysis_wdg = _CalciumAnalysisGUI(self)
-
-        # ADD ANALYSIS WIDGET TO SCROLL AREA ------------------------------------------
         analysis_content_widget = QWidget()
         analysis_layout = QVBoxLayout(analysis_content_widget)
         analysis_layout.setContentsMargins(10, 10, 10, 10)
@@ -324,10 +320,16 @@ class PlateViewer(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
-        # self._pv_labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"  # noqa: E501
-        # self._pv_analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"  # noqa: E501
-        # self.initialize_widget_from_directories(data, self._pv_labels_path, self._pv_analysis_path)  # noqa: E501
+        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+        self._pv_labels_path = (
+            "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
+        )
+        self._pv_analysis_path = (
+            "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
+        )
+        self.initialize_widget_from_directories(
+            data, self._pv_labels_path, self._pv_analysis_path
+        )
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
@@ -336,16 +338,6 @@ class PlateViewer(QMainWindow):
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
         # self.initialize_widget_from_database(data)
-
-        # data = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_output/cali.db"  # noqa: E501
-        # self.initialize_widget_from_database(data)
-
-        data = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"  # noqa: E501
-        self._pv_labels_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_labels"  # noqa: E501
-        self._pv_analysis_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_output"  # noqa: E501
-        self.initialize_widget_from_directories(
-            data, self._pv_analysis_path, self._pv_labels_path
-        )  # noqa: E501
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
@@ -499,11 +491,6 @@ class PlateViewer(QMainWindow):
         save_experiment_to_database(
             self._experiment, self._database_path, overwrite=True
         )
-
-        from rich import print
-
-        db = load_experiment_from_database(self._database_path)
-        print(db.plate.wells)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done

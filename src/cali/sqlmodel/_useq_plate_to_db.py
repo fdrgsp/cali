@@ -223,8 +223,8 @@ def useq_plate_plan_to_db(
                 plate_id=0,  # placeholder, will be set by relationship
                 plate=plate,
                 name=well_name,
-                row=row,
-                column=col,
+                row=int(row),  # int to avoid SQLite BLOB serialization
+                column=int(col),  # int to avoid SQLite BLOB serialization
                 conditions=well_conditions,
             )
 
