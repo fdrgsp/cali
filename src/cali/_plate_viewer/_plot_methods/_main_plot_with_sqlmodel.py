@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from typing_extensions import TypeAlias
 
-from cali._plate_viewer._logger import LOGGER
 from cali._plate_viewer._util import ROIData
+from cali.cali_logger import LOGGER
 
 from ._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
@@ -352,7 +352,9 @@ AnalysisProduct(
 AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT_AMP,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=False),
+    analyzer=partial(
+        _generate_spike_raster_plot, amplitude_colors=True, colorbar=False
+    ),
     category="Raster Plots",
 )
 AnalysisProduct(
@@ -693,6 +695,7 @@ AnalysisProduct(
 # Helper functions to extract plotting data from database models
 
 
+# NOPE, not good, use database directly!!!
 def get_fov_data_from_db(fov: FOV) -> dict:
     """Extract ROI data from database FOV model.
 

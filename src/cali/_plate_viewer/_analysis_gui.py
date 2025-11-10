@@ -1317,7 +1317,7 @@ class _FrameRateWidget(QWidget):
 
     def value(self) -> float:
         """Return the frame rate value."""
-        return self._frame_rate_spin.value()
+        return self._frame_rate_spin.value()  # type: ignore
 
     def setValue(self, value: float) -> None:
         """Set the frame rate value."""
@@ -1472,6 +1472,7 @@ class _CalciumAnalysisGUI(QGroupBox):
         settings = AnalysisSettings(
             experiment_id=experiment_id,
             created_at=datetime.now(),
+            threads=self._run_analysis_wdg._threads.value(),
             neuropil_inner_radius=(
                 trace_data.neuropil_inner_radius if trace_data else 0
             ),

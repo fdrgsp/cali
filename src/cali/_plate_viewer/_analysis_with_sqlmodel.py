@@ -13,6 +13,7 @@ from scipy.signal import find_peaks
 from tqdm import tqdm
 
 from cali._plate_viewer._util import coordinates_to_mask
+from cali.cali_logger import LOGGER
 from cali.sqlmodel import (
     FOV,
     ROI,
@@ -22,9 +23,9 @@ from cali.sqlmodel import (
     Traces,
     Well,
 )
-from cali.sqlmodel._json_to_db import save_experiment_to_db
 
-from ._logger import LOGGER
+from cali.sqlmodel._util import save_experiment_to_database
+
 from ._util import (
     EVENT_KEY,
     EVOKED,
@@ -126,7 +127,7 @@ class AnalysisRunner:
             LOGGER.error("Cannot save results: No Experiment or database path found.")
             return
 
-        save_experiment_to_db(
+        save_experiment_to_database(
             self._experiment, self._experiment.database_path, overwrite=True
         )
         LOGGER.info(f"Results saved to database '{self._experiment.database_path}'.")

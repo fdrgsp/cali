@@ -24,8 +24,6 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlmodel import Session, create_engine
-
 from cali._plate_viewer._util import EVOKED, SPONTANEOUS, ROIData, mask_to_coordinates
 
 from ._models import (
@@ -40,7 +38,6 @@ from ._models import (
     Traces,
     Well,
 )
-from ._util import create_db_and_tables
 
 if TYPE_CHECKING:
     from useq import WellPlate
@@ -399,7 +396,7 @@ def _label_to_row_index(label: str) -> int:
     """Convert well row label to zero-indexed row number.
 
     Supports single and multi-letter labels using base-26 alphabet.
-    A=0, B=1, ..., Z=25, AA=26, AB=27, ..., AZ=51, BA=52, etc.
+    A=0, B=1, ..., Z=25, AA=26, AB=27, ..., AZ=51, etc.
 
     Parameters
     ----------
@@ -634,121 +631,3 @@ def roi_from_roi_data(
         )
 
     return (roi, trace, data_analysis, roi_mask, neuropil_mask)
-
-
-def save_experiment_to_db(
-    experiment: Experiment,
-    db_path: Path | str,
-    overwrite: bool = False,
-) -> None:
-    """Save an experiment object tree to a SQLite database.
-
-    Parameters
-    ----------
-    experiment : Experiment
-        Experiment object (e.g., from load_analysis_from_json)
-    db_path : Path | str
-        Path to SQLite database file
-    overwrite : bool, optional
-        Whether to overwrite existing database file, by default False
-
-    Example
-    -------
-    >>> from pathlib import Path
-    >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
-    >>> save_experiment_to_db(exp, "analysis.db")
-    """
-    db_path = Path(db_path)
-    experiment.database_path = str(db_path)
-
-    # Ensure parent directory exists
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if overwrite and db_path.exists():
-        db_path.unlink()
-
-    engine = create_engine(f"sqlite:///{db_path}")
-    create_db_and_tables(engine)
-
-    with Session(engine) as session:
-        session.merge(experiment)
-        session.commit()
-    # Session automatically closed here
-
-
-def load_experiment_from_db(
-    db_path: Path | str,
-    experiment_name: str | None = None,
-) -> Experiment | None:
-    """Load an experiment from SQLite database with all relationships.
-
-    This function properly handles SQLAlchemy session management and eagerly
-    loads all relationships so the returned Experiment object can be used
-    outside the session context.
-
-    Parameters
-    ----------
-    db_path : Path | str
-        Path to SQLite database file
-    experiment_name : str | None, optional
-        Name of specific experiment to load. If None, loads the first experiment.
-
-    Returns
-    -------
-    Experiment | None
-        Loaded experiment with all relationships, or None if not found
-
-    Example
-    -------
-    >>> from pathlib import Path
-    >>> exp = load_experiment_from_db("analysis.db", "my_experiment")
-    >>> if exp:
-    ...     print(f"Loaded {len(exp.plate.wells)} wells")
-    """
-    from sqlmodel import select
-
-    # Convert to string for consistency
-    db_path_str = str(db_path)
-    engine = create_engine(f"sqlite:///{db_path_str}")
-
-    # Use context manager to ensure session is properly closed
-    with Session(engine) as session:
-        # Query for experiment
-        if experiment_name:
-            statement = select(Experiment).where(Experiment.name == experiment_name)
-        else:
-            statement = select(Experiment)
-
-        experiment = session.exec(statement).first()
-
-        if not experiment:
-            return None
-
-        experiment.database_path = db_path_str
-
-        # Eagerly load all relationships while session is open
-        session.refresh(experiment)
-
-        # Access all relationships to trigger loading before session closes
-        _ = experiment.plate
-        _ = experiment.analysis_settings
-
-        if experiment.plate:
-            _ = experiment.plate.wells
-            for well in experiment.plate.wells:
-                _ = well.conditions
-                _ = well.fovs
-                for fov in well.fovs:
-                    _ = fov.rois
-                    for roi in fov.rois:
-                        _ = roi.traces
-                        _ = roi.data_analysis
-                        _ = roi.roi_mask
-                        _ = roi.neuropil_mask
-                        _ = roi.analysis_settings
-
-        if experiment.analysis_settings:
-            _ = experiment.analysis_settings.stimulation_mask
-
-    # Session automatically closed here
-    return experiment

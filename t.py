@@ -15,7 +15,7 @@ from cali.sqlmodel import (
     Plate,
     Well,
     WellCondition,
-    create_db_and_tables,
+    create_database_and_tables,
     print_experiment_tree_from_engine,
 )
 
@@ -183,7 +183,7 @@ def create_data() -> None:
 
 
 # Create, populate, and show experiment
-create_db_and_tables(engine)
+create_database_and_tables(engine)
 create_data()
 print_experiment_tree_from_engine("Experiment", engine)
 

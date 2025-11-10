@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import useq
 
+from cali.cali_logger import LOGGER
+
 if TYPE_CHECKING:
     from ._models import Experiment
 
@@ -127,22 +129,22 @@ def experiment_to_useq_plate_plan(
         # No wells in database, return None
         return None
 
-    # Determine selected wells from the wells present in the database
-    rows = set()
-    cols = set()
-    for well in experiment.plate.wells:
-        rows.add(well.row)
-        cols.add(well.column)
-
-    # Convert to sorted tuples (required format for useq.WellPlatePlan)
-    selected_rows = tuple(sorted(rows))
-    selected_cols = tuple(sorted(cols))
-    selected_wells = (selected_rows, selected_cols)
+    # Build explicit paired coordinates (zero-indexed!)
+    # Format: ((row1, row2, ...), (col1, col2, ...))
+    # Sort wells to ensure consistent order
+    wells_sorted = sorted(experiment.plate.wells, key=lambda w: (w.row, w.column))
+    rows = tuple(w.row for w in wells_sorted)
+    cols = tuple(w.column for w in wells_sorted)
+    selected_wells = (rows, cols) if rows and cols else None
 
     # Create the WellPlatePlan
-    return useq.WellPlatePlan(
-        plate=useq_plate,
-        a1_center_xy=(0.0, 0.0),
-        rotation=None,
-        selected_wells=selected_wells,
-    )
+    try:
+        return useq.WellPlatePlan(
+            plate=useq_plate,
+            a1_center_xy=(0.0, 0.0),
+            rotation=None,
+            selected_wells=selected_wells,
+        )
+    except Exception as e:
+        LOGGER.error(f"Failed to create WellPlatePlan: {e}")
+        return None

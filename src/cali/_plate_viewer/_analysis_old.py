@@ -29,6 +29,8 @@ from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
+from cali.cali_logger import LOGGER
+
 from ._analysis_gui import (
     AnalysisSettingsData,
     CalciumPeaksData,
@@ -38,7 +40,6 @@ from ._analysis_gui import (
     _CalciumAnalysisGUI,
     _RunAnalysisWidget,
 )
-from ._logger import LOGGER
 from ._plate_map import PlateMapData
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (

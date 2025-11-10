@@ -6,11 +6,11 @@ import mplcursors
 import numpy as np
 from skimage import measure
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
 from cali._plate_viewer._plot_methods._single_wells_plots._plot_calcium_peaks_correlation import (  # noqa: E501
     _calculate_cross_correlation,
 )
 from cali._plate_viewer._util import coordinates_to_mask
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage

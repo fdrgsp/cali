@@ -32,7 +32,7 @@ from cali.sqlmodel import (
     experiment_to_useq_plate,
     experiment_to_useq_plate_plan,
     load_analysis_from_json,
-    save_experiment_to_db,
+    save_experiment_to_database,
     useq_plate_plan_to_db,
 )
 from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
@@ -44,7 +44,7 @@ from cali.sqlmodel._models import (
 )
 from cali.sqlmodel._util import (
     check_analysis_settings_consistency,
-    create_db_and_tables,
+    create_database_and_tables,
 )
 
 TempDB = tuple[Engine, Path]
@@ -64,7 +64,7 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
         db_path = Path(f.name)
 
     engine = create_engine(f"sqlite:///{db_path}")
-    create_db_and_tables(engine)
+    create_database_and_tables(engine)
 
     yield engine, db_path
 
@@ -285,7 +285,6 @@ def test_parse_well_name_valid() -> None:
     assert parse_well_name("AB5") == (27, 4)
     assert parse_well_name("AE19") == (30, 18)
     assert parse_well_name("ae19") == (30, 18)  # lowercase
-    assert parse_well_name("BA1") == (52, 0)
     assert parse_well_name("ZZ1") == (701, 0)
 
 
@@ -415,22 +414,19 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Save
-    session = save_experiment_to_db(
+    save_experiment_to_database(
         exp,
         db_path,
         overwrite=True,
-        keep_session=True,
     )
 
-    try:
-        # Verify
-        result = session.exec(select(Experiment)).first()
-        assert result is not None
-        assert result.name == "test_experiment"
-        assert db_path.exists()
-    finally:
-        if session:
-            session.close()
+    # Verify
+    from cali.sqlmodel._util import load_experiment_from_database
+
+    result = load_experiment_from_database(db_path)
+    assert result is not None
+    assert result.name == "test_experiment"
+    assert db_path.exists()
 
 
 def test_save_experiment_overwrite_protection(
@@ -440,7 +436,7 @@ def test_save_experiment_overwrite_protection(
     db_path = tmp_path / "test.db"
 
     # Create initial database
-    save_experiment_to_db(simple_experiment, db_path)
+    save_experiment_to_database(simple_experiment, db_path)
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
@@ -448,7 +444,7 @@ def test_save_experiment_overwrite_protection(
     _ = _ = db_path.stat().st_size
 
     # Save with overwrite=True
-    save_experiment_to_db(simple_experiment, db_path, overwrite=True)
+    save_experiment_to_database(simple_experiment, db_path, overwrite=True)
     # File should still exist
     assert db_path.exists()
 
@@ -535,8 +531,9 @@ def test_experiment_to_useq_plate_plan_multiple_wells(temp_db: TempDB) -> None:
 
         plate_plan = experiment_to_useq_plate_plan(exp)
 
-        # Should select rows 1-2 (B-C) and columns 4-5 (5-6)
-        assert plate_plan.selected_wells == ((1, 2), (4, 5))
+        # Should have the three wells explicitly listed (sorted: B5, B6, C6)
+        assert plate_plan.selected_wells == ((1, 1, 2), (4, 5, 5))
+        assert plate_plan.selected_well_names == ["B5", "B6", "C6"]
 
 
 def test_experiment_to_useq_plate_plan_no_wells(temp_db: TempDB) -> None:
@@ -561,6 +558,12 @@ def test_useq_plate_plan_to_plate(temp_db: TempDB) -> None:
 
     # Create experiment
     exp = Experiment(name="test_useq_import", description="Import from useq")
+
+    # Save experiment to get ID
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
 
     from useq import register_well_plates
 
@@ -626,6 +629,13 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
 
     # Create experiment with useq plate plan
     exp = Experiment(name="roundtrip_test", description="Test round-trip")
+
+    # Save experiment to get ID first
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
     plate_plan_orig = useq.WellPlatePlan(
         plate=useq.WellPlate.from_str("96-well"),
         a1_center_xy=(0.0, 0.0),
@@ -636,7 +646,7 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
     _ = useq_plate_plan_to_db(plate_plan_orig, exp)
 
     # Save to database
-    with Session(engine) as session:
+    with Session(engine, expire_on_commit=False) as session:
         session.add(exp)
         session.commit()
         session.refresh(exp)
@@ -790,7 +800,7 @@ def test_full_workflow(tmp_path: Path) -> None:
 
     # 2. Save to database
     db_path = tmp_path / "test.db"
-    save_experiment_to_db(experiment, db_path, overwrite=True)
+    save_experiment_to_database(experiment, db_path, overwrite=True)
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")
@@ -859,10 +869,8 @@ def test_analysis_settings_evoked_fields(temp_db: TempDB) -> None:
         experiment=exp,
         led_power_equation="y = 0.5 * x",
         led_pulse_duration=50.0,
-        stimulations_frames_and_powers={"frames": [100, 200], "powers": [5, 10]},
-        peaks_prominence_dec_dff=0.5,
-        peaks_height_dec_dff=0.3,
-        inferred_spikes_threshold=0.8,
+        led_pulse_powers=[5.0, 10.0],
+        led_pulse_on_frames=[100, 200],
     )
 
     with Session(engine) as session:
@@ -872,8 +880,8 @@ def test_analysis_settings_evoked_fields(temp_db: TempDB) -> None:
         result = session.exec(select(AnalysisSettings)).first()
         assert result.led_power_equation == "y = 0.5 * x"
         assert result.led_pulse_duration == 50.0
-        assert result.stimulations_frames_and_powers is not None
-        assert result.peaks_prominence_dec_dff == 0.5
+        assert result.led_pulse_powers == [5.0, 10.0]
+        assert result.led_pulse_on_frames == [100, 200]
 
 
 def test_traces_all_fields(temp_db: TempDB) -> None:

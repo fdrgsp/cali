@@ -7,12 +7,12 @@ import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
 from cali._plate_viewer._util import (
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
     _get_calcium_peaks_events_from_rois,
 )
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage

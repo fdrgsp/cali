@@ -34,11 +34,12 @@ from tqdm import tqdm
 
 from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from cali._util import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
+from cali.cali_logger import LOGGER
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel import (
     Experiment,
     load_experiment_from_database,
-    save_experiment_to_db,
+    save_experiment_to_database,
     useq_plate_plan_to_db,
 )
 from cali.sqlmodel._db_to_plate_map import experiment_to_plate_map_data
@@ -58,9 +59,10 @@ from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
-from ._logger import LOGGER
 from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
+
+# from ._segmentation import _CellposeSegmentation
 from ._segmentation import _CellposeSegmentation
 from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
@@ -308,6 +310,9 @@ class PlateViewer(QMainWindow):
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
             self._on_run_analysis_clicked
         )
+        self._analysis_wdg._run_analysis_wdg._cancel_btn.clicked.connect(
+            self._analysis_runner.cancel
+        )
         # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
         #     self._on_frame_rate_info_from_meta_clicked
         # )
@@ -318,82 +323,44 @@ class PlateViewer(QMainWindow):
 
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
+
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
         # self._pv_labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"  # noqa: E501
         # self._pv_analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"  # noqa: E501
-        # self.initialize_widget(data, self._pv_labels_path, self._pv_analysis_path)
+        # self.initialize_widget_from_directories(data, self._pv_labels_path, self._pv_analysis_path)  # noqa: E501
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
         # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
-        # self.initialize_widget(data, self._labels_path, self._analysis_path)
+        # self.initialize_widget_from_directories(data, self._labels_path, self._analysis_path)  # noqa: E501
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
         # self.initialize_widget_from_database(data)
+
+        # data = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_output/cali.db"  # noqa: E501
+        # self.initialize_widget_from_database(data)
+
+        data = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"  # noqa: E501
+        self._pv_labels_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_labels"  # noqa: E501
+        self._pv_analysis_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_output"  # noqa: E501
+        self.initialize_widget_from_directories(data, self._pv_analysis_path, self._pv_labels_path)  # noqa: E501
 
         # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
         # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
-        data = "/Users/fdrgsp/Desktop/t/multip.tensorstore.zarr"
-        self._labels_path = "/Users/fdrgsp/Desktop/t/multip_labels"
-        self._analysis_path = "/Users/fdrgsp/Desktop/t/multip_analysis"
-        self.initialize_widget_from_directories(
-            data, self._analysis_path, self._labels_path
-        )  # noqa: E501
-
         # fmt: on
         # ____________________________________________________________________________
-
-    @property
-    def experiment(self) -> Experiment | None:
-        return self._experiment
-
-    @experiment.setter
-    def experiment(self, experiment: Experiment | None) -> None:
-        self._experiment = experiment
-
-    @property
-    def data(self) -> TensorstoreZarrReader | OMEZarrReader | None:
-        return self._data
-
-    @property
-    def database_path(self) -> Path | None:
-        return self._database_path
-
-    @database_path.setter
-    def database_path(self, value: Path | None) -> None:
-        self._database_path = value
-        # reset the widget with new database
-        if value is not None:
-            self.initialize_widget_from_database(value)
-
-    @property
-    def labels_path(self) -> str | None:
-        return self._labels_path
-
-    @labels_path.setter
-    def labels_path(self, value: str | None) -> None:
-        self._labels_path = value
-        self._on_fov_table_selection_changed()
-        # segmentation widget - TO REMOVE or FIX
-        self._segmentation_wdg.labels_path = value
-
-    @property
-    def analysis_path(self) -> str | None:
-        return self._analysis_path
-
-    @analysis_path.setter
-    def analysis_path(self, value: str) -> None:
-        self._analysis_path = value
-        # TODO: update the database and load analysis data if any.
 
     # PUBLIC METHODS-------------------------------------------------------------------
     def initialize_widget_from_database(self, database_path: str | Path) -> None:
         """Initialize the widget with the given database path."""
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
+
+        # SHOW LOADING BAR ------------------------------------------------------------
+        self._init_loading_bar("Initializing cali from database...", False)
 
         # OPEN THE DATABASE -----------------------------------------------------------
         LOGGER.info(f"💿 Loading experiment from database at {database_path}")
@@ -402,6 +369,7 @@ class PlateViewer(QMainWindow):
             msg = f"Could not load experiment from database at {database_path}!"
             show_error_dialog(self, msg)
             LOGGER.error(msg)
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         self._database_path = Path(database_path)
@@ -412,6 +380,7 @@ class PlateViewer(QMainWindow):
             "PlateViewer without a valid data path."
             show_error_dialog(self, msg)
             LOGGER.error(msg)
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         self._analysis_path = self._experiment.analysis_path
@@ -434,6 +403,7 @@ class PlateViewer(QMainWindow):
             )
             show_error_dialog(self, msg)
             LOGGER.error(msg)
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         if self._data.sequence is None:
@@ -443,6 +413,7 @@ class PlateViewer(QMainWindow):
             )
             show_error_dialog(self, msg)
             LOGGER.error(msg)
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         # PLATE------------------------------------------------------------------------
@@ -453,6 +424,9 @@ class PlateViewer(QMainWindow):
         # UPDATE WIDGETS---------------------------------------------------------------
         self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
+        # HIDE LOADING BAR ------------------------------------------------------------
+        self._loading_bar.hide()  # Close entire dialog when done
+
     def initialize_widget_from_directories(
         self, datastore_path: str, analysis_path: str, labels_path: str | None
     ) -> None:
@@ -460,6 +434,9 @@ class PlateViewer(QMainWindow):
         # CLEARING---------------------------------------------------------------------
 
         self._clear_widget_before_initialization()
+
+        # SHOW LOADING BAR ------------------------------------------------------------
+        self._init_loading_bar("Initializing cali from directories...", False)
 
         # DATASTORE--------------------------------------------------------------------
 
@@ -477,6 +454,7 @@ class PlateViewer(QMainWindow):
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
                 f" {WRITERS[OME_ZARR][0]} are supported.",
             )
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         if self._data.sequence is None:
@@ -485,6 +463,7 @@ class PlateViewer(QMainWindow):
                 "useq.MDASequence not found! Cannot use the  `PlateViewer` without "
                 "the useq.MDASequence in the datastore metadata!",
             )
+            self._loading_bar.hide()  # Close entire dialog on error
             return
 
         # CREATE THE DATABASE ---------------------------------------------------------
@@ -515,7 +494,16 @@ class PlateViewer(QMainWindow):
         # TODO: ask the user to overwrite if the database already exists
         self._database_path = Path(analysis_path) / "cali.db"
         LOGGER.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_db(self._experiment, self._database_path, overwrite=True)
+        save_experiment_to_database(
+            self._experiment, self._database_path, overwrite=True
+        )
+
+        from rich import print
+        db = load_experiment_from_database(self._database_path)
+        print(db.plate.wells)
+
+        # HIDE LOADING BAR ------------------------------------------------------------
+        self._loading_bar.hide()  # Close entire dialog when done
 
     def get_analysis_settings(self) -> AnalysisSettingsData | None:
         """Get the current analysis settings from the analysis widget."""
@@ -587,7 +575,7 @@ class PlateViewer(QMainWindow):
     def _on_analysis_info(self, msg: str, type: str) -> None:
         """Handle analysis info messages from the analysis runner."""
         print(f"ANALYSIS INFO: {msg}")
-        # cannot do that...I need to accumulate and show whan the work is done!
+        # cannot do that...I need to accumulate and show when the work is done!
         # if type == "error":
         #     show_error_dialog(self, msg)
 
@@ -827,12 +815,13 @@ class PlateViewer(QMainWindow):
             LOGGER.error(msg)
             return
 
-    def _init_loading_bar(self, text: str) -> None:
+    def _init_loading_bar(self, text: str, show_progress_bar: bool = True) -> None:
         """Reset the loading bar."""
         self._loading_bar.setEnabled(True)
         self._loading_bar.setText(text)
         self._loading_bar.setValue(0)
         self._loading_bar.showPercentage(True)
+        self._loading_bar.show_progress_bar(show_progress_bar)
         self._loading_bar.show()
 
     def _update_graphs_with_roi(self, roi: int) -> None:

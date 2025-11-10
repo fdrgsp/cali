@@ -326,8 +326,8 @@ class Well(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True)
-    row: int
-    column: int
+    row: int = Field(index=True)
+    column: int = Field(index=True)
 
     # Foreign keys
     plate_id: int = Field(foreign_key="plate.id", index=True)

@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 
-from ._logger import LOGGER
+from cali.cali_logger import LOGGER
+
 from ._plot_methods._single_wells_plots._plot_calcium_network_connectivity import (
     _create_connectivity_matrix,
 )

@@ -9,8 +9,8 @@ import numpy as np
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 
-from cali._plate_viewer._logger._pv_logger import LOGGER
 from cali._plate_viewer._util import _get_spikes_over_threshold
+from cali.cali_logger import LOGGER
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
