@@ -38,7 +38,8 @@ def experiment_to_plate_map_data(
 
     Examples
     --------
-    >>> experiment = load_experiment_from_db(db_path, "my_experiment")
+    >>> from cali.sqlmodel import load_experiment_from_database
+    >>> experiment = load_experiment_from_database("analysis.db", "my_experiment")
     >>> cond1_data, cond2_data = experiment_to_plate_map_data(experiment)
     >>> # Use with _load_plate_map or plate_map_wdg.setValue()
     >>> plate_map_wdg.setValue(cond1_data, cond2_data)

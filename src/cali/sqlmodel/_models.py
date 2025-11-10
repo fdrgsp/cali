@@ -340,6 +340,7 @@ class Well(SQLModel, table=True):  # type: ignore[call-arg]
     )
     fovs: list["FOV"] = Relationship(back_populates="well")
 
+    # properties for first and second conditions
     @property
     def condition_1(self) -> Optional["Condition"]:
         """First experimental condition (e.g., genotype)."""

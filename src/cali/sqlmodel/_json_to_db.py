@@ -80,9 +80,9 @@ def load_analysis_from_json(
 
     Example
     -------
-    >>> from sqlmodel import Session, create_engine
-    >>> from models import create_tables
+    >>> from pathlib import Path
     >>> import useq
+    >>> from cali.sqlmodel import load_analysis_from_json, save_experiment_to_database
     >>>
     >>> # Load from JSON
     >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
@@ -97,24 +97,23 @@ def load_analysis_from_json(
     ...     print(f"Loaded plate maps: {list(experiment.plate.plate_maps.keys())}")
     >>>
     >>> # Save to database
-    >>> engine = create_engine("sqlite:///test.db")
-    >>> create_db_and_tables(engine)
-    >>> with Session(engine) as session:
-    ...     session.add(experiment)
-    ...     session.commit()
+    >>> save_experiment_to_database(experiment, "test.db")
     """
     # 1. Create experiment
+
     experiment = Experiment(
+        id=0,  # placeholder, will be set when saved. Needed for relationships.
         name=Path(analysis_path).parent.name,
         description=f"Imported from {analysis_path}",
         data_path=data_path,
         labels_path=labels_path,
         analysis_path=analysis_path,
     )
+    assert experiment.id is not None
 
     # 2. Create plate
     plate = Plate(
-        experiment_id=0,  # Placeholder, will be set when saved
+        experiment_id=experiment.id,
         experiment=experiment,
         name=useq_plate.name,
         plate_type=useq_plate.name,
@@ -210,7 +209,7 @@ def load_analysis_from_json(
                 print(f"Warning: Could not load stimulation mask: {e}")
 
         analysis_settings = AnalysisSettings(
-            experiment_id=0,  # Placeholder, will be set when saved
+            experiment_id=experiment.id,
             experiment=experiment,
             dff_window=settings_data.get("dff_window", 30),
             decay_constant=settings_data.get("decay constant", 0.0),
@@ -279,7 +278,7 @@ def load_analysis_from_json(
 
             # Create well with conditions
             well = Well(
-                plate_id=0,  # Placeholder, will be set when saved
+                plate_id=0,  # placeholder, will be set when saved.
                 plate=plate,  # Use relationship
                 name=well_name,
                 row=row,

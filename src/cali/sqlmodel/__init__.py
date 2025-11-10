@@ -10,10 +10,10 @@ Main Components
 ---------------
 - Models: Experiment, Plate, Well, FOV, ROI, Condition, AnalysisSettings,
   Traces, DataAnalysis, Mask
-- Migration: load_analysis_from_json, save_experiment_to_db
-- Import: useq_plate_plan_to_plate
+- Migration: load_analysis_from_json, save_experiment_to_database
+- Import: useq_plate_plan_to_db
 - Export: experiment_to_useq_plate, experiment_to_useq_plate_plan
-- Visualization: print_experiment_tree, print_model_tree
+- Visualization: print_experiment_tree, print_experiment_tree_from_engine
 """
 
 from ._db_to_plate_map import experiment_to_plate_map_data
