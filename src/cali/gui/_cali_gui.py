@@ -48,11 +48,12 @@ from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
     experiment_to_useq_plate_plan,
+    has_experiment_analysis,
+    has_fov_analysis,
     load_experiment_from_database,
     save_experiment_to_database,
     useq_plate_plan_to_db,
 )
-from cali.util import save_analysis_data_to_csv, save_trace_data_to_csv
 
 from ._analysis_gui import (
     AnalysisSettingsData,
@@ -69,7 +70,6 @@ from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._util import (
-    ROIData,
     _ProgressBarWidget,
     load_data,
     show_error_dialog,
@@ -107,7 +107,6 @@ class CaliGui(QMainWindow):
         self._analysis_path: str | None = None
         self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
-        self._analysis_data: dict[str, dict[str, ROIData]] = {}
 
         # RUNNER ---------------------------------------------------------------------
         self._analysis_runner: AnalysisRunner = AnalysisRunner()
@@ -917,9 +916,9 @@ class CaliGui(QMainWindow):
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
                 return
-            fov_data = self._get_fov_data(value)
+            has_analysis = self._has_fov_analysis(value)
             # update the graphs combo boxes
-            self._update_single_wells_graphs_combo(combo_red=(fov_data is None))
+            self._update_single_wells_graphs_combo(combo_red=(not has_analysis))
 
         # if multi wells tab is selected
         elif idx == 3:
@@ -982,26 +981,42 @@ class CaliGui(QMainWindow):
         data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
         # get labels if they exist
         labels = self._get_labels(value)
-        # get the analysis data for the current fov if it exists
-        fov_data = self._get_fov_data(value)
         # flip data and labels vertically or will look different from the StackViewer
         data = np.flip(data, axis=0)
         labels = np.flip(labels, axis=0) if labels is not None else None
         self._image_viewer.setData(data, labels)
         self._set_graphs_fov(value)
 
+        # Check if the FOV has been analyzed (has ROIs with data)
+        has_analysis = self._has_fov_analysis(value)
         self._update_single_wells_graphs_combo(
-            combo_red=(fov_data is None), clear=(fov_data is None)
+            combo_red=(not has_analysis), clear=(not has_analysis)
         )
 
-    def _get_fov_data(self, value: WellInfo) -> dict[str, ROIData] | None:
-        """Get the analysis data for the given FOV."""
-        fov_name = f"{value.fov.name}_p{value.pos_idx}"
-        fov_data = self._analysis_data.get(str(value.fov.name), None)
-        # use the old name we used to save the data (without position index. e.g. "_p0")
-        if fov_data is None:
-            fov_data = self._analysis_data.get(fov_name, None)
-        return fov_data
+    def _has_fov_analysis(self, value: WellInfo) -> bool:
+        """Check if the given FOV has been analyzed (has ROIs with data).
+
+        This checks the experiment database to see if the FOV has analyzed ROIs.
+
+        Parameters
+        ----------
+        value : WellInfo
+            FOV information from the table
+
+        Returns
+        -------
+        bool
+            True if the FOV has been analyzed, False otherwise
+        """
+        if self._experiment is None:
+            return False
+
+        # Use the FOV name from the value
+        fov_name = value.fov.name
+        if not (fov_name := value.fov.name):
+            return False
+
+        return has_fov_analysis(self._experiment, fov_name)
 
     def _set_graphs_fov(self, value: WellInfo | None) -> None:
         """Set the FOV title for the graphs."""
@@ -1061,8 +1076,13 @@ class CaliGui(QMainWindow):
             sw_graph.set_combo_text_red(combo_red)
 
     def _update_multi_wells_graphs_combo(self) -> None:
+        has_analysis = (
+            has_experiment_analysis(self._experiment)
+            if self._experiment
+            else False
+        )
         for mw_graph in self.MW_GRAPHS:
-            mw_graph.set_combo_text_red(not self._analysis_data)
+            mw_graph.set_combo_text_red(not has_analysis)
 
     # MENU SAVE ACTIONS----------------------------------------------------------------
 
@@ -1135,7 +1155,8 @@ class CaliGui(QMainWindow):
 
     def _show_save_as_csv_dialog(self) -> None:
         """Show the save as csv dialog."""
-        if not self._analysis_data:
+        # Check if experiment has analysis data
+        if not self._experiment or not has_experiment_analysis(self._experiment):
             show_error_dialog(self, "No data to save! Run or load analysis data first.")
             return
 
@@ -1150,8 +1171,14 @@ class CaliGui(QMainWindow):
                 )
                 return
 
-            save_trace_data_to_csv(path, self._analysis_data)
-            save_analysis_data_to_csv(path, self._analysis_data)
+            # TODO: Update these functions to work with SQLModel Experiment
+            # save_trace_data_to_csv(path, self._experiment)
+            # save_analysis_data_to_csv(path, self._experiment)
+            show_error_dialog(
+                self,
+                "CSV export is not yet implemented for SQLModel. "
+                "Please use the database export instead.",
+            )
 
     # def _on_frame_rate_info_from_meta_clicked(self) -> None:
     #     if self._data is None:

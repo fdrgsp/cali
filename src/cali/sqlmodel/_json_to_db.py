@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 from cali._constants import EVOKED, SPONTANEOUS
 from cali.analysis._util import mask_to_coordinates
 
-from ._models import (
+from ._model import (
     FOV,
     ROI,
     AnalysisSettings,

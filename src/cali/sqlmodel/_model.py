@@ -441,6 +441,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     active: bool | None = None
     stimulated: bool = False
 
+    # Foreign keys
     fov_id: int = Field(foreign_key="fov.id", index=True)
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id", index=True

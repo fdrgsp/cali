@@ -19,7 +19,7 @@ Main Components
 from ._db_to_plate_map import experiment_to_plate_map_data
 from ._db_to_useq_plate import experiment_to_useq_plate, experiment_to_useq_plate_plan
 from ._json_to_db import load_analysis_from_json
-from ._models import (
+from ._model import (
     FOV,
     ROI,
     AnalysisSettings,
@@ -36,6 +36,8 @@ from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
     check_analysis_settings_consistency,
     create_database_and_tables,
+    has_experiment_analysis,
+    has_fov_analysis,
     load_experiment_from_database,
     save_experiment_to_database,
 )
@@ -61,6 +63,8 @@ __all__ = [
     "experiment_to_plate_map_data",
     "experiment_to_useq_plate",
     "experiment_to_useq_plate_plan",
+    "has_experiment_analysis",
+    "has_fov_analysis",
     "load_analysis_from_json",
     "load_experiment_from_database",
     "print_experiment_tree",

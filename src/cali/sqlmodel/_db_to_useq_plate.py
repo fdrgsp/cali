@@ -13,7 +13,7 @@ import useq
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from ._models import Experiment
+    from ._model import Experiment
 
 
 def experiment_to_useq_plate(

@@ -13,7 +13,7 @@ from cali.gui._graph_widgets import _SingleWellGraphWidget
 if TYPE_CHECKING:
     from sqlmodel.sql import Select
 
-from cali.sqlmodel._models import ROI
+from cali.sqlmodel._model import ROI
 
 
 class AnalysisGroup(Enum):
