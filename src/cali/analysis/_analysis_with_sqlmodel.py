@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 
-
 class AnalysisRunner:
     analysisInfo: Signal = Signal(str, str)  # message, type
     progressUpdated: Signal = Signal(str)  # analysis progress updates
@@ -216,9 +215,7 @@ class AnalysisRunner:
         cali_logger.info("Saving results to database...")
 
         if (exp := self._experiment) is None:
-            cali_logger.error(
-                "Cannot save results: No Experiment found."
-            )
+            cali_logger.error("Cannot save results: No Experiment found.")
             return
 
         # Save the updated experiment to database

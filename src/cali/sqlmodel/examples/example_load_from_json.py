@@ -1,6 +1,5 @@
 """Example script to load an experiment from JSON files and save it to a database."""
 
-
 import useq
 
 from cali.sqlmodel import (
