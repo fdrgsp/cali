@@ -101,14 +101,15 @@ def load_analysis_from_json(
     >>> save_experiment_to_database(experiment, "test.db")
     """
     # 1. Create experiment
-
+    db_name = f"{Path(data_path).name}.db"
     experiment = Experiment(
         id=0,  # placeholder, will be set when saved. Needed for relationships.
-        name=Path(analysis_path).parent.name,
+        name=db_name,
         description=f"Imported from {analysis_path}",
         data_path=data_path,
         labels_path=labels_path,
         analysis_path=analysis_path,
+        database_name=db_name
     )
     assert experiment.id is not None
 

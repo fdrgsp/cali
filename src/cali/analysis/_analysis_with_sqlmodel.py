@@ -223,6 +223,99 @@ class AnalysisRunner:
                 f"{exp.analysis_path}/{exp.database_name}"
             )
 
+    def set_positions_to_analyze(self, positions: list[int]) -> None:
+        """Set which positions should be analyzed.
+
+        Updates the experiment's positions_analyzed list in the database.
+        Validates that the positions exist in the loaded data.
+
+        Parameters
+        ----------
+        positions : list[int]
+            List of position indices to analyze (e.g., [0, 1, 4, 5])
+
+        Raises
+        ------
+        ValueError
+            If any position index is invalid (negative or beyond available positions)
+
+        Example
+        -------
+        >>> analysis = AnalysisRunner()
+        >>> analysis.set_experiment(exp)
+        >>> analysis.set_positions_to_analyze([0, 2, 4])  # Analyze only these positions
+        >>> analysis.run()
+        """
+        if self._engine is None:
+            cali_logger.error(
+                "No database engine found. Cannot set positions. "
+                "Please set an experiment first with set_experiment(Experiment)."
+            )
+            return
+
+        # Validate positions against loaded data
+        if self._data is not None:
+            # Get total number of positions from data
+            if hasattr(self._data, "sequence") and self._data.sequence is not None:
+                sequence = self._data.sequence
+                if hasattr(sequence, "stage_positions"):
+                    total_positions = len(sequence.stage_positions)
+                else:
+                    # Fallback: try to get from data shape
+                    total_positions = getattr(self._data, "sizes", {}).get("p", None)
+            else:
+                total_positions = None
+
+            if total_positions is not None:
+                # Check for invalid positions
+                invalid_positions = [
+                    p for p in positions if p < 0 or p >= total_positions
+                ]
+                if invalid_positions:
+                    error_msg = (
+                        f"Invalid position indices: {invalid_positions}. "
+                        f"Data has {total_positions} positions "
+                        f"(0 to {total_positions - 1})."
+                    )
+                    cali_logger.error(error_msg)
+                    return
+
+                cali_logger.info(
+                    f"✅ Validated positions {positions} "
+                    f"(data has {total_positions} positions total)"
+                )
+            else:
+                cali_logger.warning(
+                    "Could not determine total number of positions from data. "
+                    "Skipping validation."
+                )
+        else:
+            cali_logger.warning(
+                "No data loaded. Cannot validate positions. "
+                "Make sure to call set_experiment() or set_data() first."
+            )
+
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            # Get the current experiment
+            statement = select(Experiment)
+            exp = session.exec(statement).first()
+
+            if not exp:
+                cali_logger.error("Experiment not found.")
+                return
+
+            # Update positions to analyze
+            exp.positions_analyzed = positions
+            session.add(exp)
+            session.commit()
+
+            cali_logger.info(
+                f"💾 Positions to analyze updated: {positions} in database at "
+                f"{exp.analysis_path}/{exp.database_name}"
+            )
+
     def run(self) -> None:
         """Run the analysis."""
         cali_logger.info("Starting Analysis...")
@@ -255,10 +348,10 @@ class AnalysisRunner:
     def clear_analysis_results(self) -> None:
         """Clear all analysis results using proper SQLModel deletion pattern.
 
-        This uses explicit session.delete() calls as recommended by SQLModel docs,
-        rather than relying solely on cascade delete. The cascade delete is still
-        configured and will handle Traces and DataAnalysis when ROIs are deleted.
+        Deletes all FOVs (which cascades to ROIs, Traces, and DataAnalysis).
+        Wells are preserved since they contain plate map metadata and conditions.
 
+        This uses explicit session.delete() calls as recommended by SQLModel docs.
         Following SQLModel tutorial: https://sqlmodel.tiangolo.com/tutorial/delete/
         """
         if self._engine is None:
@@ -271,16 +364,19 @@ class AnalysisRunner:
         from sqlmodel import Session, select
 
         with Session(self._engine) as session:
-            # Query all ROIs for this experiment using joins
-            statement = select(ROI).join(FOV).join(Well).join(Plate)
+            # Query all FOVs for this experiment using joins
+            # Deleting FOVs will cascade to ROIs, Traces, and DataAnalysis
+            statement = select(FOV).join(Well).join(Plate)
 
-            rois = session.exec(statement).all()
+            fovs = session.exec(statement).all()
 
-            cali_logger.info(f"Deleting {len(rois)} ROIs and their associated data...")
+            cali_logger.info(
+                f"Deleting {len(fovs)} FOVs and their associated analysis data..."
+            )
 
-            # Explicitly delete each ROI (cascade will handle Traces/DataAnalysis)
-            for roi in rois:
-                session.delete(roi)
+            # Explicitly delete each FOV (cascade will handle ROIs/Traces/DataAnalysis)
+            for fov in fovs:
+                session.delete(fov)
 
             session.commit()
 
@@ -301,17 +397,8 @@ class AnalysisRunner:
         self.analysisInfo.emit(msg, type)
 
     def _on_analysis_finished(self) -> None:
-        """Save the experiment to database and log completion."""
+        """Log completion and show any failed labels."""
         cali_logger.info("Analysis Finished.")
-        cali_logger.info("Saving results to database...")
-
-        exp = self.experiment()
-        if exp is None:
-            cali_logger.error("Cannot save results: No Experiment found.")
-            return
-
-        # Save the updated experiment to database
-        save_experiment_to_database(exp)
 
         # show a message box if there are failed labels
         if self._failed_labels:
