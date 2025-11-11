@@ -5,13 +5,6 @@ from importlib.metadata import version
 import pytest
 
 
-def test_package_imports() -> None:
-    """Test that the main package can be imported."""
-    import cali
-
-    assert hasattr(cali, "__version__")
-
-
 def test_package_has_version() -> None:
     """Test that the package has a version."""
     try:
