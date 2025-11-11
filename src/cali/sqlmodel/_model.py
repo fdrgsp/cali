@@ -44,14 +44,14 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     ----------
     id : int | None
         Primary key, auto-generated
+    created_at : datetime
+        Timestamp when experiment was created
     name : str
         Unique experiment identifier
     description : str | None
         Optional experiment description
-    created_at : datetime
-        Timestamp when experiment was created
-    database_path : str | None
-        Path to the SQLite database file
+    database_name: str | None = None
+        Name of the SQLite database file
     data_path : str | None
         Path to the raw imaging data (zarr/tensorstore)
     labels_path : str | None
@@ -71,13 +71,13 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "experiment"
 
     id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
     name: str = Field(unique=True, index=True)
     description: str | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    database_path: str | None = None
     data_path: str | None = None
     labels_path: str | None = None
     analysis_path: str | None = None
+    database_name: str | None = None
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
     positions_analyzed: list[int] = Field(default_factory=list, sa_column=Column(JSON))
 
@@ -338,7 +338,7 @@ class Well(SQLModel, table=True):  # type: ignore[call-arg]
         link_model=WellCondition,
         sa_relationship_kwargs={"lazy": "selectin"},
     )
-    fovs: list["FOV"] = Relationship(back_populates="well")
+    fovs: list["FOV"] = Relationship(back_populates="well", cascade_delete=True)
 
     # properties for first and second conditions
     @property
@@ -388,11 +388,13 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     fov_number: int = Field(default=0)
     fov_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
 
-    well_id: Optional[int] = Field(default=None, foreign_key="well.id", index=True)
+    well_id: Optional[int] = Field(
+        default=None, foreign_key="well.id", index=True, ondelete="CASCADE"
+    )
 
     # Relationships
     well: "Well" = Relationship(back_populates="fovs")
-    rois: list["ROI"] = Relationship(back_populates="fov")
+    rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
 
 
 class ROI(SQLModel, table=True):  # type: ignore[call-arg]
@@ -442,7 +444,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     stimulated: bool = False
 
     # Foreign keys
-    fov_id: int = Field(foreign_key="fov.id", index=True)
+    fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id", index=True
     )
@@ -454,8 +456,12 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     fov: "FOV" = Relationship(back_populates="rois")
     analysis_settings: Optional["AnalysisSettings"] = Relationship()
-    traces: Optional["Traces"] = Relationship(back_populates="roi")
-    data_analysis: Optional["DataAnalysis"] = Relationship(back_populates="roi")
+    traces: Optional["Traces"] = Relationship(
+        back_populates="roi", cascade_delete=True
+    )
+    data_analysis: Optional["DataAnalysis"] = Relationship(
+        back_populates="roi", cascade_delete=True
+    )
     roi_mask: Optional["Mask"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[ROI.roi_mask_id]",
@@ -509,7 +515,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
 
     roi_id: int | None = Field(
-        default=None, foreign_key="roi.id", index=True, unique=True
+        default=None, foreign_key="roi.id", index=True, unique=True, ondelete="CASCADE"
     )
 
     # Relationships
@@ -558,7 +564,7 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: int | None = Field(default=None, primary_key=True)
     roi_id: int | None = Field(
-        default=None, foreign_key="roi.id", index=True, unique=True
+        default=None, foreign_key="roi.id", index=True, unique=True, ondelete="CASCADE"
     )
 
     cell_size: float | None = None

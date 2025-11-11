@@ -21,7 +21,6 @@ from cali._constants import (
     RUNNER_TIME_KEY,
     STIMULATION_AREA_THRESHOLD,
 )
-from cali.gui._util import load_data
 from cali.logger import cali_logger
 from cali.sqlmodel import (
     FOV,
@@ -34,6 +33,7 @@ from cali.sqlmodel import (
     Well,
     save_experiment_to_database,
 )
+from cali.util._util import load_data
 
 from ._util import (
     calculate_dff,
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     import useq
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
+
 
 
 class AnalysisRunner:
@@ -77,6 +78,14 @@ class AnalysisRunner:
 
     def set_experiment(self, experiment: Experiment) -> None:
         self._experiment = experiment
+
+        # save the provided experiment to database
+        self._experiment = exp = save_experiment_to_database(self._experiment)
+        cali_logger.info(
+            f"💾 Experiment updated and saved to database at "
+            f"{exp.analysis_path}/{exp.database_name}"
+        )
+
         # if experiments has data_path, try to load the data
         if experiment.data_path:
             self._data = load_data(experiment.data_path)
@@ -90,8 +99,21 @@ class AnalysisRunner:
     ) -> None:
         """Set the data reader or load data from path."""
         self._data = load_data(data) if isinstance(data, (str, Path)) else data
+
+        # update experiment with the provided data path if different
+        path = data if isinstance(data, (str, Path)) else data.path
+        if self._experiment is not None and path != self._experiment.data_path:
+            self._experiment.data_path = str(path)
+            # Save the updated experiment to database
+            self._experiment = exp = save_experiment_to_database(self._experiment)
+            cali_logger.info(
+                f"💾 Experiment data path updated and saved to database at "
+                f"{exp.analysis_path}/{exp.database_name}"
+            )
+
         if self._data is None:
-            cali_logger.error("Failed to load data from the provided path.")
+            cali_logger.error(f"Failed to load data from the provided path: {path}.")
+            # TODO: send signal to GUI about failure to load data
 
     def settings(self) -> AnalysisSettings | None:
         if self._experiment is None:
@@ -104,6 +126,13 @@ class AnalysisRunner:
             cali_logger.error("No Experiment set to update settings.")
             return
         self._experiment.analysis_settings = settings
+
+        # Save the updated experiment to database
+        self._experiment = exp = save_experiment_to_database(self._experiment)
+        cali_logger.info(
+            f"💾 Experiment analysis updated and saved to database at "
+            f"{exp.analysis_path}/{exp.database_name}"
+        )
 
     def run(self) -> None:
         """Run the analysis."""
@@ -133,6 +162,39 @@ class AnalysisRunner:
         cali_logger.info("Cancellation requested...")
         self._cancellation_event.set()
 
+    def clear_analysis_results(self) -> Experiment | None:
+        """Clear all analysis results (ROIs, traces, data_analysis) from the experiment.
+
+        This removes all ROIs from all FOVs in all wells, effectively clearing
+        all analysis data while preserving the experiment structure.
+
+        The cascade delete configured in the model relationships ensures that
+        when ROIs are deleted, their associated Traces and DataAnalysis records
+        are automatically deleted from the database.
+
+        Returns
+        -------
+        Experiment | None
+            The updated experiment with cleared analysis results, or None if
+            no experiment is set.
+        """
+        if self._experiment is None or self._experiment.plate is None:
+            return None
+
+        # Clear all ROIs from all FOVs in all wells
+        for well in self._experiment.plate.wells:
+            for fov in well.fovs:
+                fov.rois.clear()
+
+        # Save the updated experiment to database
+        self._experiment = exp = save_experiment_to_database(self._experiment)
+        cali_logger.info(
+            f"💾 Experiment analysis results cleared and saved to database at "
+            f"{exp.analysis_path}/{exp.database_name}"
+        )
+
+        return self._experiment
+
     # PRIVATE METHODS ----------------------------------------------------------------
 
     def _log_and_emit(self, msg: str, type: str = "info") -> None:
@@ -153,18 +215,18 @@ class AnalysisRunner:
 
         cali_logger.info("Saving results to database...")
 
-        if (exp := self._experiment) is None or exp.database_path is None:
+        if (exp := self._experiment) is None:
             cali_logger.error(
-                "Cannot save results: No Experiment or database path found."
+                "Cannot save results: No Experiment found."
             )
             return
 
-        self._experiment = save_experiment_to_database(exp, exp.database_path)
+        # Save the updated experiment to database
+        self._experiment = exp = save_experiment_to_database(exp)
         cali_logger.info(
-            f"Results saved to database '{self._experiment.database_path}'."
+            f"💾 Experiment analysis updated and saved to database at "
+            f"{exp.analysis_path}/{exp.database_name}."
         )
-
-        print("RUN", self._experiment)
 
         # Emit the updated experiment
         self.experimentUpdated.emit(self._experiment)
@@ -352,6 +414,7 @@ class AnalysisRunner:
                 data,
                 meta,
                 fov_name,
+                p,  # Pass the actual position index
                 label_value,
                 eroded_masks[label_value],
                 tot_time_sec,
@@ -463,7 +526,6 @@ class AnalysisRunner:
             rois=[],
         )
         fov.well = well
-        fovs_list.append(fov)
         return fov
 
     def _get_or_create_roi(
@@ -596,6 +658,7 @@ class AnalysisRunner:
         data: np.ndarray,
         meta: list[dict],
         fov_name: str,
+        pos_idx: int,
         label_value: int,
         label_mask: np.ndarray,
         tot_time_sec: float,
@@ -786,7 +849,7 @@ class AnalysisRunner:
         # Build SQLModel objects to update the experiment
         # Get or create Well, FOV for this ROI
         well_name = fov_name.split("_")[0]
-        pos_idx = int(fov_name.split("_p")[-1])
+        # pos_idx is now passed as a parameter, no need to recalculate
 
         # Use helper methods to get or create hierarchy objects
         well = self._get_or_create_well(well_name)

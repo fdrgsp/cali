@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from cali.gui._plate_map import PlateMapData
-
 if TYPE_CHECKING:
+    from cali.gui._plate_map import PlateMapData
     from cali.sqlmodel._model import Experiment
 
 
@@ -45,6 +44,8 @@ def experiment_to_plate_map_data(
     >>> # Use with _load_plate_map or plate_map_wdg.setValue()
     >>> plate_map_wdg.setValue(cond1_data, cond2_data)
     """
+    from cali.gui._plate_map import PlateMapData
+
     condition_1_data: list[PlateMapData] = []
     condition_2_data: list[PlateMapData] = []
 

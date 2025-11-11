@@ -43,7 +43,6 @@ from cali.sqlmodel._model import (
     Traces,
 )
 from cali.sqlmodel._util import (
-    check_analysis_settings_consistency,
     create_database_and_tables,
 )
 
@@ -326,51 +325,6 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
     assert result == {}
 
 
-def test_check_analysis_settings_consistency(
-    simple_experiment: Experiment, temp_db: TempDB
-) -> None:
-    """Test checking analysis settings consistency."""
-    engine, _ = temp_db
-
-    with Session(engine) as session:
-        exp = session.get(Experiment, simple_experiment.id)
-
-        # All ROIs have no settings (should be consistent)
-        result = check_analysis_settings_consistency(exp)
-        assert result["consistent"]
-        assert result["settings_count"] == 0
-
-
-def test_check_analysis_settings_inconsistent(temp_db: TempDB) -> None:
-    """Test detecting inconsistent analysis settings."""
-    engine, _ = temp_db
-
-    # Create experiment with two different settings
-    exp = Experiment(name="test")
-    plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
-    well = Well(plate=plate, name="A1", row=0, column=0)
-
-    # Two FOVs with different settings
-    fov1 = FOV(well=well, name="A1_0000_p0", position_index=0)
-    fov2 = FOV(well=well, name="A1_0001_p1", position_index=1)
-
-    settings1 = AnalysisSettings(experiment=exp, dff_window=30)
-    settings2 = AnalysisSettings(experiment=exp, dff_window=60)
-
-    ROI(fov=fov1, label_value=1, analysis_settings=settings1)
-    ROI(fov=fov2, label_value=1, analysis_settings=settings2)
-
-    with Session(engine) as session:
-        session.add(exp)
-        session.commit()
-        session.refresh(exp)
-
-        result = check_analysis_settings_consistency(exp)
-        assert not result["consistent"]
-        assert result["settings_count"] == 2
-        assert result["warning"] is not None
-
-
 # ==================== JSON Migration Tests ====================
 
 
@@ -414,11 +368,7 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Save
-    save_experiment_to_database(
-        exp,
-        db_path,
-        overwrite=True,
-    )
+    save_experiment_to_database(exp, overwrite=True, database_name="test.db")
 
     # Verify
     from cali.sqlmodel._util import load_experiment_from_database
@@ -436,7 +386,7 @@ def test_save_experiment_overwrite_protection(
     db_path = tmp_path / "test.db"
 
     # Create initial database
-    save_experiment_to_database(simple_experiment, db_path)
+    save_experiment_to_database(simple_experiment, database_name="test.db")
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
@@ -444,7 +394,9 @@ def test_save_experiment_overwrite_protection(
     _ = _ = db_path.stat().st_size
 
     # Save with overwrite=True
-    save_experiment_to_database(simple_experiment, db_path, overwrite=True)
+    save_experiment_to_database(
+        simple_experiment, overwrite=True, database_name="test.db"
+    )
     # File should still exist
     assert db_path.exists()
 
@@ -800,7 +752,7 @@ def test_full_workflow(tmp_path: Path) -> None:
 
     # 2. Save to database
     db_path = tmp_path / "test.db"
-    save_experiment_to_database(experiment, db_path, overwrite=True)
+    save_experiment_to_database(experiment, overwrite=True, database_name="test.db")
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")

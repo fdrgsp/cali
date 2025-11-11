@@ -15,7 +15,7 @@ source = "vcs"
 name = "cali"
 description = "A GUI to visualize, segment and analyze calcium imaging data."
 readme = "README.md"
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11, <3.13"
 license = { text = "BSD 3-Clause License" }
 authors = [
     { email = "federico.gasparoli@gmail.com", name = "Federico Gasparoli" },
@@ -25,16 +25,15 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Typing :: Typed",
 ]
 dynamic = ["version"]
 dependencies = [
-    "numpy<2.0.0; platform_system == 'Darwin'",  # Pin numpy to avoid compilation issues on macOS
+    "numpy<2.0.0; platform_system == 'Darwin'",
     "numpy; platform_system != 'Darwin'",
-    "oasis-deconv!=0.2.1",
+    "oasis-deconv==0.2.0",  # Build from source to avoid broken prebuilt wheels
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
     "qtpy",
@@ -44,7 +43,6 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "cmap",
-    "cellpose>=4.0.0",
     "pyconify",
     "rich",
     "matplotlib",
@@ -61,7 +59,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Cellpose is optional - choose the version that fits your Python version
 cp3 = ["cellpose>=3.0.0,<4.0.0"]
+cp4 = ["cellpose>=4.0.0"]
+
+[tool.uv]
+conflicts = [
+    [
+      { extra = "cp3" },
+      { extra = "cp4" },
+    ],
+]
 
 [dependency-groups]
 test = ["pytest>=6.0", "pytest-cov", "pytest-qt"]

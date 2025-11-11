@@ -13,9 +13,11 @@ Update of the analysis and vizualization code of [micromanager-gui](https://gith
 
 `uvx git+https://github.com/fdrgsp/cali`
 
-To run with Cellpose 3.x (instead of Cellpose 4.x):
+**Note:** Cellpose is an optional dependency. To use segmentation features, install with:
 
-`uvx git+https://github.com/fdrgsp/cali[cp3]`
+- `uvx git+https://github.com/fdrgsp/cali[cp4]` for Cellpose 4.x
+
+- `uvx git+https://github.com/fdrgsp/cali[cp3]` for Cellpose 3.x
 
 ## To install
 
@@ -23,6 +25,22 @@ To run with Cellpose 3.x (instead of Cellpose 4.x):
 
 `(uv) pip install git+https://github.com/fdrgsp/cali`
 
-To install with Cellpose 3.x (instead of Cellpose 4.x):
+To install with Cellpose support:
 
-`(uv) pip install git+https://github.com/fdrgsp/cali[cp3]`
+- `(uv) pip install git+https://github.com/fdrgsp/cali[cp4]` for Cellpose 4.x
+
+- `(uv) pip install git+https://github.com/fdrgsp/cali[cp3]` for Cellpose 3.x
+
+
+### NOTE
+
+#### Building on macOS
+
+If you encounter build errors with `oasis-deconv` (especially SDK-related errors), set these environment variables before installing:
+
+```bash
+export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+export LDFLAGS="-L${SDKROOT}/usr/lib"
+```
+
+Then run your installation command.

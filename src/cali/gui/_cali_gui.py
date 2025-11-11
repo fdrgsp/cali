@@ -33,6 +33,7 @@ from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._constants import (
+    DATABASE_NAME,
     EVENT_KEY,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
@@ -54,6 +55,7 @@ from cali.sqlmodel import (
     save_experiment_to_database,
     useq_plate_plan_to_db,
 )
+from cali.util._util import load_data
 
 from ._analysis_gui import (
     AnalysisSettingsData,
@@ -71,7 +73,6 @@ from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._util import (
     _ProgressBarWidget,
-    load_data,
     show_error_dialog,
 )
 
@@ -358,27 +359,30 @@ class CaliGui(QMainWindow):
 
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
-        self._experiment = load_experiment_from_database(database_path)
-        if self._experiment is None:
+        self._experiment = exp = load_experiment_from_database(database_path)
+        if exp is None:
             msg = f"Could not load experiment from database at {database_path}!"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
 
-        self._database_path = Path(database_path)
-
-        data_path = self._experiment.data_path
+        data_path = exp.data_path
         if data_path is None:
             msg = "Data path not found in the database! Cannot initialize the "
-            "PlateViewer without a valid data path."
+            "CaliGui without a valid data path."
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
 
-        self._analysis_path = self._experiment.analysis_path
-        self._labels_path = self._experiment.labels_path
+        if exp.analysis_path is None or exp.database_name is None:
+            msg = "Analysis path or database name not found in the database! Cannot "
+            "initialize the CaliGui without valid analysis path and database name."
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return
 
         # DATA-------------------------------------------------------------------------
 
@@ -390,21 +394,26 @@ class CaliGui(QMainWindow):
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
 
         if self._data.sequence is None:
             msg = (
-                "useq.MDASequence not found! Cannot use the  `PlateViewer` without "
+                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
                 "the useq.MDASequence in the datastore metadata!"
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
 
+        # ASSIGN VARIABLES ------------------------------------------------------------
+        self._database_path = Path(exp.analysis_path) / exp.database_name
+        self._analysis_path = exp.analysis_path
+        self._labels_path = exp.labels_path
+
         # PLATE------------------------------------------------------------------------
-        plate_plan = experiment_to_useq_plate_plan(self._experiment)
+        plate_plan = experiment_to_useq_plate_plan(exp)
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
 
@@ -435,17 +444,23 @@ class CaliGui(QMainWindow):
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
 
         if self._data.sequence is None:
             show_error_dialog(
                 self,
-                "useq.MDASequence not found! Cannot use the  `PlateViewer` without "
+                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
                 "the useq.MDASequence in the datastore metadata!",
             )
-            self._loading_bar.hide()  # Close entire dialog on error
+            self._loading_bar.hide()
             return
+
+        # ASSIGN VARIABLES ------------------------------------------------------------
+        self._data_path = datastore_path
+        self._analysis_path = analysis_path
+        self._labels_path = labels_path
+        self._database_path = Path(analysis_path) / DATABASE_NAME
 
         # CREATE THE DATABASE ---------------------------------------------------------
         self._experiment = Experiment(
@@ -456,12 +471,8 @@ class CaliGui(QMainWindow):
             data_path=datastore_path,
             labels_path=labels_path,
             analysis_path=analysis_path,
+            database_name=DATABASE_NAME,
         )
-
-        # LOAD ANALYSIS DATA-----------------------------------------------------------
-        self._data_path = datastore_path
-        self._analysis_path = analysis_path
-        self._labels_path = labels_path
 
         # LOAD PLATE-------------------------------------------------------------------
         plate_plan = self._load_plate_plan(self._data.sequence.stage_positions)
@@ -473,11 +484,8 @@ class CaliGui(QMainWindow):
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
-        self._database_path = Path(analysis_path) / "cali.db"
         cali_logger.info(f"💾 Creating new database at {self._database_path}")
-        self._experiment = save_experiment_to_database(
-            self._experiment, self._database_path, overwrite=True
-        )
+        self._experiment = save_experiment_to_database(self._experiment, overwrite=True)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
@@ -535,15 +543,13 @@ class CaliGui(QMainWindow):
         if existing_settings_dict != new_settings_dict:
             msg_box = QMessageBox(self)
             msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.setWindowTitle("Different Analysis Settings Detected")
+            msg_box.setWindowTitle("Different Analysis Settings Detected!")
             msg_box.setText(
                 "The settings stored in the current database during previous analysis "
                 "run are different from the ones in the GUI.\n\n"
-                "If you proceed, the previous analysis results will be deleted from the"
-                " database and update it with the new settings and newly analyzed "
-                "positions."
-            )
-            msg_box.setInformativeText(
+                "If you continue and click ok 'OK', the previous analysis results will "
+                "be deleted from the database and update it with the new settings and "
+                "newly analyzed positions.\n\n"
                 "Options:\n"
                 "• Ok: Delete previous results and run new analysis\n"
                 "• Cancel: Keep existing data and do not run analysis\n\n"
@@ -566,18 +572,15 @@ class CaliGui(QMainWindow):
 
     def _delete_all_analysis_data(self) -> None:
         """Delete all existing analysis data (ROIs) from the experiment."""
-        if self._experiment is None or self._experiment.plate is None:
-            return
-
-        # Clear all ROIs from all FOVs in all wells
-        for well in self._experiment.plate.wells:
-            for fov in well.fovs:
-                fov.rois.clear()
+        # Delegate the clearing logic to the analysis runner
+        self._analysis_runner.clear_analysis_results()
 
         # Save the updated experiment to database
-        if self._database_path:
-            self._experiment = save_experiment_to_database(
-                self._experiment, self._database_path
+        if self._database_path and self._experiment:
+            self._experiment = exp = save_experiment_to_database(self._experiment)
+            cali_logger.info(
+                f"💾 Experiment analysis data cleared and saved to database at "
+                f"{exp.analysis_path}/{exp.database_name}"
             )
 
     def _update_experiment_analysis_settings(self) -> None:
@@ -618,8 +621,8 @@ class CaliGui(QMainWindow):
             # Create new settings
             self._experiment.analysis_settings = new_settings
 
-        # Update the analysis runner with the current data and experiment
-        self._analysis_runner.set_data(self._data)
+        # Update the analysis runner with the current data, experiment and settings
+        # This will also save the experiment to the database before running analysis
         self._analysis_runner.set_experiment(self._experiment)
 
         create_worker(

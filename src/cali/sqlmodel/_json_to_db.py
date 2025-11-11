@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cali._constants import EVOKED, SPONTANEOUS
-from cali.analysis._util import mask_to_coordinates
 
 from ._model import (
     FOV,
@@ -190,6 +189,9 @@ def load_analysis_from_json(
             try:
                 # Load the stimulation mask
                 import tifffile
+
+                # Import here to avoid circular dependency
+                from cali.analysis._util import mask_to_coordinates
 
                 stim_mask_array = tifffile.imread(str(stim_mask_file))
 

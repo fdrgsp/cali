@@ -34,7 +34,6 @@ from ._model import (
 )
 from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
-    check_analysis_settings_consistency,
     create_database_and_tables,
     has_experiment_analysis,
     has_fov_analysis,
@@ -58,7 +57,6 @@ __all__ = [
     "Traces",
     "Well",
     "WellCondition",
-    "check_analysis_settings_consistency",
     "create_database_and_tables",
     "experiment_to_plate_map_data",
     "experiment_to_useq_plate",
