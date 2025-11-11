@@ -100,15 +100,19 @@ def save_experiment_to_database(
     engine = create_engine(f"sqlite:///{db_path}", echo=echo)
     create_database_and_tables(engine)
 
-    with Session(engine) as session:
-        # Merge handles add/update for the entire object tree with cascade
-        session.merge(experiment)
-        session.commit()
+    try:
+        with Session(engine) as session:
+            # Merge handles add/update for the entire object tree with cascade
+            session.merge(experiment)
+            session.commit()
 
-    cali_logger.info(
-        f"💾 Experiment analysis updated and saved to database at "
-        f"{experiment.analysis_path}/{experiment.database_name}."
-    )
+        cali_logger.info(
+            f"💾 Experiment analysis updated and saved to database at "
+            f"{experiment.analysis_path}/{experiment.database_name}."
+        )
+    finally:
+        # Dispose engine to release database connections (Windows compatibility)
+        engine.dispose()
 
 
 def load_experiment_from_database(
@@ -158,27 +162,31 @@ def load_experiment_from_database(
     db_path_str = str(db_path)
     engine = create_engine(f"sqlite:///{db_path_str}", echo=echo)
 
-    # Use context manager to ensure session is properly closed
-    with Session(engine, expire_on_commit=False) as session:
-        # Query for experiment
-        if experiment_name:
-            statement = select(Experiment).where(Experiment.name == experiment_name)
-        else:
-            statement = select(Experiment)
+    try:
+        # Use context manager to ensure session is properly closed
+        with Session(engine, expire_on_commit=False) as session:
+            # Query for experiment
+            if experiment_name:
+                statement = select(Experiment).where(Experiment.name == experiment_name)
+            else:
+                statement = select(Experiment)
 
-        experiment = session.exec(statement).first()
+            experiment = session.exec(statement).first()
 
-        if not experiment:
-            return None
+            if not experiment:
+                return None
 
-        # Force load all relationships to prevent DetachedInstanceError
-        _force_load_experiment_relationships(experiment)
+            # Force load all relationships to prevent DetachedInstanceError
+            _force_load_experiment_relationships(experiment)
 
-        # Make the instance independent of the session
-        session.expunge(experiment)
+            # Make the instance independent of the session
+            session.expunge(experiment)
 
-    # Session automatically closed here
-    return experiment  # type: ignore
+        # Session automatically closed here
+        return experiment  # type: ignore
+    finally:
+        # Dispose engine to release database connections (Windows compatibility)
+        engine.dispose()
 
 
 def _force_load_experiment_relationships(experiment: Experiment) -> None:
