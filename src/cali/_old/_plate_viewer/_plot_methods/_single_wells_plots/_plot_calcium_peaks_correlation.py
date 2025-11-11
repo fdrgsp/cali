@@ -15,13 +15,12 @@ from scipy.stats import zscore
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-    from matplotlib.image import AxesImage
-
     from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
     from cali._plate_viewer._util import ROIData
+    from matplotlib.axes import Axes
+    from matplotlib.image import AxesImage
 
 
 def _calculate_cross_correlation(

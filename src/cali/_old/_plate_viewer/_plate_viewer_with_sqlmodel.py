@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import tifffile
 import useq
+from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from fonticon_mdi6 import MDI6
 from ndv import NDViewer
 from pymmcore_widgets.useq_widgets._well_plate_widget import (
@@ -41,7 +42,6 @@ from cali._constants import (
     WRITERS,
     ZARR_TESNSORSTORE,
 )
-from cali._plate_viewer._analysis_with_sqlmodel import AnalysisRunner
 from cali.logger import cali_logger
 from cali.sqlmodel import (
     Experiment,

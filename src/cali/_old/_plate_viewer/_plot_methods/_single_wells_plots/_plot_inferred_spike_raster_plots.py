@@ -6,17 +6,16 @@ from typing import TYPE_CHECKING
 import matplotlib.cm as cm
 import mplcursors
 import numpy as np
+from cali._plate_viewer._util import _get_spikes_over_threshold
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 
-from cali._plate_viewer._util import _get_spikes_over_threshold
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
     from cali._plate_viewer._graph_widgets import _SingleWellGraphWidget
     from cali._plate_viewer._util import ROIData
+    from matplotlib.axes import Axes
 
 
 def _generate_spike_raster_plot(

@@ -448,27 +448,4 @@ def _create_line() -> QFrame:
     return result
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # SYNCHRONY FUNCTIONS -----------------------------------------------------------------
-
-
-
-
-
-
-

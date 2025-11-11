@@ -6,21 +6,20 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
-
 from cali._plate_viewer._util import (
     _get_spike_synchrony,
     _get_spike_synchrony_matrix,
     _get_spikes_over_threshold,
 )
+
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from matplotlib.image import AxesImage
-
     from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
     from cali._plate_viewer._util import ROIData
+    from matplotlib.image import AxesImage
 
 
 def _plot_spike_synchrony_data(

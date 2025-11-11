@@ -7,22 +7,21 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
+from cali._plate_viewer._util import _get_spikes_over_threshold
 from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
 from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from cali._plate_viewer._util import _get_spikes_over_threshold
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-    from matplotlib.image import AxesImage
-
     from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
     from cali._plate_viewer._util import ROIData
+    from matplotlib.axes import Axes
+    from matplotlib.image import AxesImage
 
 
 def _calculate_spike_cross_correlation(

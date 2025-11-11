@@ -115,7 +115,9 @@ def save_trace_data_to_csv(
     try:
         _export_inferred_spikes_data(path, analysis_data, raw=False)
     except Exception as e:
-        cali_logger.error(f"Error exporting INFERRED THRESHOLDED SPIKES DATA to CSV: {e}")
+        cali_logger.error(
+            f"Error exporting INFERRED THRESHOLDED SPIKES DATA to CSV: {e}"
+        )
     cali_logger.info("Exporting Traces Data to CSV: DONE!")
 
 
