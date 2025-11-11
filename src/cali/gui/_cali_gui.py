@@ -106,7 +106,6 @@ class CaliGui(QMainWindow):
         self._data_path: str | None = None
         self._labels_path: str | None = None
         self._analysis_path: str | None = None
-        self._experiment: Experiment | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
         # RUNNER ---------------------------------------------------------------------
@@ -302,7 +301,6 @@ class CaliGui(QMainWindow):
         )
         # connect analysis runner signal
         self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
-        self._analysis_runner.experimentUpdated.connect(self._on_experiment_updated)
         # connect the run analysis button
         self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
             self._on_run_analysis_clicked
@@ -348,6 +346,13 @@ class CaliGui(QMainWindow):
         # fmt: on
         # ____________________________________________________________________________
 
+    # PROPERTY TO LOAD EXPERIMENT ON-DEMAND ------------------------------------------
+    def experiment(self) -> Experiment | None:
+        """Load experiment from database on-demand."""
+        if self._database_path is None:
+            return None
+        return load_experiment_from_database(self._database_path)
+
     # PUBLIC METHODS-------------------------------------------------------------------
     def initialize_widget_from_database(self, database_path: str | Path) -> None:
         """Initialize the widget with the given database path."""
@@ -359,7 +364,7 @@ class CaliGui(QMainWindow):
 
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
-        self._experiment = exp = load_experiment_from_database(database_path)
+        exp = load_experiment_from_database(database_path)
         if exp is None:
             msg = f"Could not load experiment from database at {database_path}!"
             show_error_dialog(self, msg)
@@ -462,8 +467,8 @@ class CaliGui(QMainWindow):
         self._labels_path = labels_path
         self._database_path = Path(analysis_path) / DATABASE_NAME
 
-        # CREATE THE DATABASE ---------------------------------------------------------
-        self._experiment = Experiment(
+        # CREATE THE EXPERIMENT -------------------------------------------------------
+        experiment = Experiment(
             id=0,  # placeholder needed for relationships, set when database is saved.
             name="Experiment",
             description="A test experiment.",
@@ -477,15 +482,15 @@ class CaliGui(QMainWindow):
         # LOAD PLATE-------------------------------------------------------------------
         plate_plan = self._load_plate_plan(self._data.sequence.stage_positions)
         if plate_plan is not None:
-            self._experiment.plate = useq_plate_plan_to_db(plate_plan, self._experiment)
-
-        # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
-        self._update_gui(plate_plan.plate if plate_plan is not None else None)
+            experiment.plate = useq_plate_plan_to_db(plate_plan, experiment)
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
         cali_logger.info(f"💾 Creating new database at {self._database_path}")
-        self._experiment = save_experiment_to_database(self._experiment, overwrite=True)
+        save_experiment_to_database(experiment, overwrite=True)
+
+        # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-----------------------------------
+        self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
@@ -501,17 +506,18 @@ class CaliGui(QMainWindow):
 
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
-        if self._experiment is None:
+        exp = self.experiment()
+        if exp is None:
             return
 
         # Check for settings consistency before running analysis
-        if not self._check_analysis_settings_before_run():
+        if not self._check_analysis_settings_before_run(exp):
             return
 
         # update the experiment analysis settings
         self._update_experiment_analysis_settings()
 
-    def _check_analysis_settings_before_run(self) -> bool:
+    def _check_analysis_settings_before_run(self, experiment: Experiment) -> bool:
         """Check if current GUI settings differ from experiment's analysis settings.
 
         Returns
@@ -521,21 +527,21 @@ class CaliGui(QMainWindow):
         """
         from qtpy.QtWidgets import QMessageBox
 
-        if self._experiment is None:
+        if experiment is None:
             return False
 
         # If no existing analysis settings, safe to proceed
-        if self._experiment.analysis_settings is None:
+        if experiment.analysis_settings is None:
             return True
 
         # Get current GUI settings
-        new_settings = self._analysis_wdg.to_model_settings(self._experiment.id or 0)[1]
+        new_settings = self._analysis_wdg.to_model_settings(experiment.id or 0)[1]
         # Exclude 'id' and 'created_at' from comparison since it's database-specific
         new_settings_dict = new_settings.model_dump(exclude={"id", "created_at"})
 
         # Compare experiment settings with current GUI settings
         # Exclude 'id'  and 'created_at' since it's database-specific
-        existing_settings = self._experiment.analysis_settings
+        existing_settings = experiment.analysis_settings
         existing_settings_dict = existing_settings.model_dump(
             exclude={"id", "created_at"}
         )
@@ -575,29 +581,22 @@ class CaliGui(QMainWindow):
         # Delegate the clearing logic to the analysis runner
         self._analysis_runner.clear_analysis_results()
 
-        # Save the updated experiment to database
-        if self._database_path and self._experiment:
-            self._experiment = exp = save_experiment_to_database(self._experiment)
-            cali_logger.info(
-                f"💾 Experiment analysis data cleared and saved to database at "
-                f"{exp.analysis_path}/{exp.database_name}"
-            )
-
     def _update_experiment_analysis_settings(self) -> None:
-        if self._experiment is None or self._data is None:
+        exp = self.experiment()
+        if exp is None or self._data is None:
             return
 
         # Ensure experiment has an ID (should be set if loaded from DB)
-        if self._experiment.id is None:
+        if exp.id is None:
             cali_logger.warning("Experiment has no ID, cannot update analysis settings")
             return
 
         # Update or set the experiment's type based on gui state
         exp_type = self._analysis_wdg._experiment_type_wdg.value()
-        self._experiment.experiment_type = exp_type.experiment_type or SPONTANEOUS
+        exp.experiment_type = exp_type.experiment_type or SPONTANEOUS
 
         # Get positions to analyze and new settings from GUI
-        pos, new_settings = self._analysis_wdg.to_model_settings(self._experiment.id)
+        pos, new_settings = self._analysis_wdg.to_model_settings(exp.id)
 
         # Update positions to analyze based on selected wells in the plate view
         # If no position selected, analyze all positions from the data
@@ -610,20 +609,20 @@ class CaliGui(QMainWindow):
                 )
                 return
             pos = list(range(len(self._data.sequence.stage_positions)))
-        self._experiment.positions_analyzed = pos
+        exp.positions_analyzed = pos
 
         # Update existing settings or create new one
-        if self._experiment.analysis_settings is not None:
-            self._experiment.analysis_settings.sqlmodel_update(
+        if exp.analysis_settings is not None:
+            exp.analysis_settings.sqlmodel_update(
                 new_settings.model_dump(exclude={"id"})
             )
         else:
             # Create new settings
-            self._experiment.analysis_settings = new_settings
+            exp.analysis_settings = new_settings
 
         # Update the analysis runner with the current data, experiment and settings
         # This will also save the experiment to the database before running analysis
-        self._analysis_runner.set_experiment(self._experiment)
+        self._analysis_runner.set_experiment(exp)
 
         create_worker(
             self._analysis_runner.run,
@@ -640,10 +639,6 @@ class CaliGui(QMainWindow):
         # cannot do that...I need to accumulate and show when the work is done!
         # if type == "error":
         #     show_error_dialog(self, msg)
-
-    def _on_experiment_updated(self, experiment: Experiment) -> None:
-        """Update the experiment after analysis is done."""
-        self._experiment = experiment
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
@@ -682,8 +677,6 @@ class CaliGui(QMainWindow):
         self._data_path = None
         self._analysis_path = None
         self._labels_path = None
-        # clear experiment
-        self._experiment = None
         # clear the datastore
         self._data = None
         # clear fov table
@@ -765,23 +758,24 @@ class CaliGui(QMainWindow):
         self, plate: useq.WellPlate | None = None
     ) -> None:
         """Update the analysis widgets settings."""
-        if self._experiment is None:
+        exp = self.experiment()
+        if exp is None:
             self._analysis_wdg.reset()
             return
 
-        settings = self._experiment.analysis_settings
+        settings = exp.analysis_settings
         if settings is None:
             self._analysis_wdg.reset()
             return
 
         plate_map_data = None
         if plate is not None:
-            plate_map_data = (plate, *experiment_to_plate_map_data(self._experiment))
+            plate_map_data = (plate, *experiment_to_plate_map_data(exp))
 
         value = AnalysisSettingsData(
             plate_map_data=plate_map_data,
             experiment_type_data=ExperimentTypeData(
-                experiment_type=self._experiment.experiment_type,
+                experiment_type=exp.experiment_type,
                 led_power_equation=settings.led_power_equation,
                 stimulation_area_path=settings.stimulation_mask_path,
                 led_pulse_duration=settings.led_pulse_duration,
@@ -1012,7 +1006,8 @@ class CaliGui(QMainWindow):
         bool
             True if the FOV has been analyzed, False otherwise
         """
-        if self._experiment is None:
+        exp = self.experiment()
+        if exp is None:
             return False
 
         # Use the FOV name from the value
@@ -1020,7 +1015,7 @@ class CaliGui(QMainWindow):
         if not (fov_name := value.fov.name):
             return False
 
-        return has_fov_analysis(self._experiment, fov_name)
+        return has_fov_analysis(exp, fov_name)
 
     def _set_graphs_fov(self, value: WellInfo | None) -> None:
         """Set the FOV title for the graphs."""
@@ -1080,9 +1075,8 @@ class CaliGui(QMainWindow):
             sw_graph.set_combo_text_red(combo_red)
 
     def _update_multi_wells_graphs_combo(self) -> None:
-        has_analysis = (
-            has_experiment_analysis(self._experiment) if self._experiment else False
-        )
+        exp = self.experiment()
+        has_analysis = has_experiment_analysis(exp) if exp else False
         for mw_graph in self.MW_GRAPHS:
             mw_graph.set_combo_text_red(not has_analysis)
 
@@ -1158,7 +1152,8 @@ class CaliGui(QMainWindow):
     def _show_save_as_csv_dialog(self) -> None:
         """Show the save as csv dialog."""
         # Check if experiment has analysis data
-        if not self._experiment or not has_experiment_analysis(self._experiment):
+        exp = self.experiment()
+        if not exp or not has_experiment_analysis(exp):
             show_error_dialog(self, "No data to save! Run or load analysis data first.")
             return
 

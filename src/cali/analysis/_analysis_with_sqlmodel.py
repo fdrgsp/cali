@@ -10,6 +10,7 @@ import tifffile
 from oasis.functions import deconvolve
 from psygnal import Signal
 from scipy.signal import find_peaks
+from sqlmodel import Session, create_engine
 from tqdm import tqdm
 
 from cali._constants import (
@@ -29,6 +30,7 @@ from cali.sqlmodel import (
     DataAnalysis,
     Experiment,
     Mask,
+    Plate,
     Traces,
     Well,
     save_experiment_to_database,
@@ -46,6 +48,7 @@ from ._util import (
 
 if TYPE_CHECKING:
     import useq
+    from sqlalchemy.engine import Engine
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
@@ -53,12 +56,14 @@ if TYPE_CHECKING:
 class AnalysisRunner:
     analysisInfo: Signal = Signal(str, str)  # message, type
     progressUpdated: Signal = Signal(str)  # analysis progress updates
-    experimentUpdated: Signal = Signal(Experiment)  # updated experiment
 
     def __init__(self) -> None:
         super().__init__()
 
-        self._experiment: Experiment | None = None
+        # Instead of keeping the full experiment in memory, store engine and ID
+        self._engine: Engine | None = None
+
+        # The data reader
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
         # Use threading.Event for cancellation control
@@ -72,18 +77,57 @@ class AnalysisRunner:
     # PUBLIC METHODS -----------------------------------------------------------------
 
     def experiment(self) -> Experiment | None:
-        """Return the current experiment."""
-        return self._experiment
+        """Load and return the current experiment from database.
+
+        This follows SQLModel best practices by loading from the database
+        when needed rather than keeping objects in memory.
+        """
+        if self._engine is None:
+            return None
+
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            exp = session.exec(select(Experiment)).first()
+            if exp:
+                # Force load relationships while session is active
+                if exp.plate:
+                    _ = len(exp.plate.wells)
+                    for well in exp.plate.wells:
+                        _ = len(well.fovs)
+                        for fov in well.fovs:
+                            _ = len(fov.rois)
+                            # Force load ROI traces and data analysis
+                            for roi in fov.rois:
+                                _ = roi.traces
+                                _ = roi.data_analysis
+                _ = exp.analysis_settings
+                session.expunge(exp)
+            return exp
 
     def set_experiment(self, experiment: Experiment) -> None:
-        self._experiment = experiment
+        """Set the experiment and initialize database connection.
+
+        This saves the experiment to database and stores the engine + ID
+        following SQLModel best practices.
+        """
+        if experiment.analysis_path is None or experiment.database_name is None:
+            # TODO: send error signal to gui
+            cali_logger.error(
+                "Experiment must have BOTH analysis_path and database_name set!"
+            )
+            return
 
         # save the provided experiment to database
-        self._experiment = exp = save_experiment_to_database(self._experiment)
-        cali_logger.info(
-            f"💾 Experiment updated and saved to database at "
-            f"{exp.analysis_path}/{exp.database_name}"
-        )
+        save_experiment_to_database(experiment, overwrite=True)
+        # this should never be None here
+        assert experiment.analysis_path is not None
+        assert experiment.database_name is not None
+        assert experiment.id is not None
+
+        # Store engine instead of the full object
+        db_path = Path(experiment.analysis_path) / experiment.database_name
+        self._engine = create_engine(f"sqlite:///{db_path}")
 
         # if experiments has data_path, try to load the data
         if experiment.data_path:
@@ -101,43 +145,90 @@ class AnalysisRunner:
 
         # update experiment with the provided data path if different
         path = data if isinstance(data, (str, Path)) else data.path
-        if self._experiment is not None and path != self._experiment.data_path:
-            self._experiment.data_path = str(path)
-            # Save the updated experiment to database
-            self._experiment = exp = save_experiment_to_database(self._experiment)
-            cali_logger.info(
-                f"💾 Experiment data path updated and saved to database at "
-                f"{exp.analysis_path}/{exp.database_name}"
+
+        if self._engine is None:
+            cali_logger.error(
+                "No database engine found. Cannot update data path. "
+                "Please set an experiment first with set_experiment(Experiment)."
             )
+            return
+
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            exp = session.exec(select(Experiment)).first()
+            if exp and str(path) != exp.data_path:
+                exp.data_path = str(path)
+                session.add(exp)
+                session.commit()
+                cali_logger.info(
+                    f"💾 Experiment data path updated in database at "
+                    f"{exp.analysis_path}/{exp.database_name}"
+                )
 
         if self._data is None:
             cali_logger.error(f"Failed to load data from the provided path: {path}.")
-            # TODO: send signal to GUI about failure to load data
 
     def settings(self) -> AnalysisSettings | None:
-        if self._experiment is None:
+        """Get current analysis settings from database."""
+        if self._engine is None:
             return None
-        return self._experiment.analysis_settings
+
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            exp = session.exec(select(Experiment)).first()
+            if exp:
+                settings = exp.analysis_settings
+                if settings:
+                    session.expunge(settings)
+                return settings
+        return None
 
     def update_settings(self, settings: AnalysisSettings) -> None:
-        """Update the analysis settings in the current experiment."""
-        if self._experiment is None:
-            cali_logger.error("No Experiment set to update settings.")
-            return
-        self._experiment.analysis_settings = settings
+        """Update the analysis settings following SQLModel best practices.
 
-        # Save the updated experiment to database
-        self._experiment = exp = save_experiment_to_database(self._experiment)
-        cali_logger.info(
-            f"💾 Experiment analysis updated and saved to database at "
-            f"{exp.analysis_path}/{exp.database_name}"
-        )
+        Uses explicit session management and proper deletion patterns.
+        """
+        if self._engine is None:
+            cali_logger.error(
+                "No database engine found. Cannot update settings. "
+                "Please set an experiment first with set_experiment(Experiment)."
+            )
+            return
+
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            # Get the current experiment
+            statement = select(Experiment)
+            exp = session.exec(statement).first()
+
+            if not exp:
+                cali_logger.error("Experiment not found.")
+                return
+
+            # Delete existing settings if present
+            if exp.analysis_settings:
+                session.delete(exp.analysis_settings)
+
+            # Add or merge the new settings
+            exp.analysis_settings = settings
+            session.add(exp)
+            session.add(settings)
+            session.commit()
+
+            cali_logger.info(
+                f"💾 Analysis settings updated in database at "
+                f"{exp.analysis_path}/{exp.database_name}"
+            )
 
     def run(self) -> None:
         """Run the analysis."""
         cali_logger.info("Starting Analysis...")
 
-        if self._experiment is None:
+        exp = self.experiment()
+        if exp is None:
             cali_logger.error("No Experiment set for analysis.")
             self.analysisInfo.emit("No Experiment set for analysis.", "error")
             return
@@ -146,7 +237,7 @@ class AnalysisRunner:
             self.analysisInfo.emit("No Data set for analysis.", "error")
             return
 
-        if self._experiment.analysis_settings is None:
+        if exp.analysis_settings is None:
             cali_logger.error("No AnalysisSettings found in Experiment.")
             self.analysisInfo.emit("No AnalysisSettings found in Experiment.", "error")
             return
@@ -161,38 +252,39 @@ class AnalysisRunner:
         cali_logger.info("Cancellation requested...")
         self._cancellation_event.set()
 
-    def clear_analysis_results(self) -> Experiment | None:
-        """Clear all analysis results (ROIs, traces, data_analysis) from the experiment.
+    def clear_analysis_results(self) -> None:
+        """Clear all analysis results using proper SQLModel deletion pattern.
 
-        This removes all ROIs from all FOVs in all wells, effectively clearing
-        all analysis data while preserving the experiment structure.
+        This uses explicit session.delete() calls as recommended by SQLModel docs,
+        rather than relying solely on cascade delete. The cascade delete is still
+        configured and will handle Traces and DataAnalysis when ROIs are deleted.
 
-        The cascade delete configured in the model relationships ensures that
-        when ROIs are deleted, their associated Traces and DataAnalysis records
-        are automatically deleted from the database.
-
-        Returns
-        -------
-        Experiment | None
-            The updated experiment with cleared analysis results, or None if
-            no experiment is set.
+        Following SQLModel tutorial: https://sqlmodel.tiangolo.com/tutorial/delete/
         """
-        if self._experiment is None or self._experiment.plate is None:
-            return None
+        if self._engine is None:
+            cali_logger.error(
+                "No database engine found. Cannot clear analysis results. "
+                "Please set an experiment first with set_experiment(Experiment)."
+            )
+            return
 
-        # Clear all ROIs from all FOVs in all wells
-        for well in self._experiment.plate.wells:
-            for fov in well.fovs:
-                fov.rois.clear()
+        from sqlmodel import Session, select
 
-        # Save the updated experiment to database
-        self._experiment = exp = save_experiment_to_database(self._experiment)
-        cali_logger.info(
-            f"💾 Experiment analysis results cleared and saved to database at "
-            f"{exp.analysis_path}/{exp.database_name}"
-        )
+        with Session(self._engine) as session:
+            # Query all ROIs for this experiment using joins
+            statement = select(ROI).join(FOV).join(Well).join(Plate)
 
-        return self._experiment
+            rois = session.exec(statement).all()
+
+            cali_logger.info(f"Deleting {len(rois)} ROIs and their associated data...")
+
+            # Explicitly delete each ROI (cascade will handle Traces/DataAnalysis)
+            for roi in rois:
+                session.delete(roi)
+
+            session.commit()
+
+        cali_logger.info("💾 Analysis results cleared from database.")
 
     # PRIVATE METHODS ----------------------------------------------------------------
 
@@ -211,22 +303,15 @@ class AnalysisRunner:
     def _on_analysis_finished(self) -> None:
         """Save the experiment to database and log completion."""
         cali_logger.info("Analysis Finished.")
-
         cali_logger.info("Saving results to database...")
 
-        if (exp := self._experiment) is None:
+        exp = self.experiment()
+        if exp is None:
             cali_logger.error("Cannot save results: No Experiment found.")
             return
 
         # Save the updated experiment to database
-        self._experiment = exp = save_experiment_to_database(exp)
-        cali_logger.info(
-            f"💾 Experiment analysis updated and saved to database at "
-            f"{exp.analysis_path}/{exp.database_name}."
-        )
-
-        # Emit the updated experiment
-        self.experimentUpdated.emit(self._experiment)
+        save_experiment_to_database(exp)
 
         # show a message box if there are failed labels
         if self._failed_labels:
@@ -240,16 +325,14 @@ class AnalysisRunner:
         """Extract the roi traces in multiple threads."""
         cali_logger.info("Starting traces analysis...")
 
-        if self._experiment is None or self._experiment.analysis_settings is None:
+        exp = self.experiment()
+        if exp is None or exp.analysis_settings is None:
             cali_logger.error("Experiment or AnalysisSettings not set.")
             return
 
         # Load stimulation mask if available for evoked experiments
-        settings = self._experiment.analysis_settings
-        if (
-            self._experiment.experiment_type == EVOKED
-            and settings.stimulation_mask is not None
-        ):
+        settings = exp.analysis_settings
+        if exp.experiment_type == EVOKED and settings.stimulation_mask is not None:
             stim_mask = settings.stimulation_mask
             if (
                 stim_mask.coords_y is not None
@@ -269,7 +352,7 @@ class AnalysisRunner:
         threads = settings.threads
         cali_logger.info(f"Number of threads for analysis: {threads}")
 
-        positions = self._experiment.positions_analyzed
+        positions = exp.positions_analyzed
         cali_logger.info(f"Positions to analyze: {positions}")
         try:
             with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -281,11 +364,10 @@ class AnalysisRunner:
                     return
 
                 futures = [
-                    executor.submit(self._extract_trace_data_per_position, p)
-                    for p in positions
+                    executor.submit(self._analyze_position, p) for p in positions
                 ]
 
-                for idx, future in enumerate(as_completed(futures)):
+                for future in as_completed(futures):
                     # Check for cancellation at the start of each iteration
                     if self._cancellation_event.is_set():
                         cali_logger.info(
@@ -299,7 +381,6 @@ class AnalysisRunner:
 
                     try:
                         future.result()
-                        self._log_and_emit(f"Position {positions[idx]} completed.")
 
                         # Check for cancellation after each completed position
                         if self._cancellation_event.is_set():
@@ -321,17 +402,31 @@ class AnalysisRunner:
             cali_logger.error(f"An error occurred: {e}")
             self._log_and_emit(f"An error occurred: {e}", "error")
 
-    def _extract_trace_data_per_position(self, p: int) -> None:
-        """Extract the roi traces for the given position."""
-        if (
-            self._experiment is None
-            or self._data is None
-            or self._check_for_abort_requested()
-        ):
+    def _analyze_position(self, p: int) -> None:
+        """Extract the roi traces for the given position.
+
+        This method works with database session to ensure all changes are persisted.
+        """
+        if self._engine is None or self._data is None:
+            return
+        if self._check_for_abort_requested():
             return
 
-        # Check for cancellation before data loading
-        if self._check_for_abort_requested():
+        from sqlmodel import Session, select
+
+        with Session(self._engine) as session:
+            # Get experiment from database within session
+            exp = session.exec(select(Experiment)).first()
+            if exp is None:
+                return
+
+            self._extract_trace_data_per_position(session, exp, p)
+
+    def _extract_trace_data_per_position(
+        self, session: Session, exp: Experiment, p: int
+    ) -> None:
+        """Implementation of trace extraction with session context."""
+        if self._data is None or self._check_for_abort_requested():
             return
 
         # get the data and metadata for the position
@@ -359,7 +454,7 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return
 
-        settings = self._experiment.analysis_settings
+        settings = exp.analysis_settings
         assert settings is not None  # this should never be None here
 
         # Prepare masks for neuropil correction if enabled
@@ -395,7 +490,7 @@ class AnalysisRunner:
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
         # check if it is an evoked activity experiment
-        evoked_experiment = self._experiment.experiment_type == EVOKED
+        evoked_experiment = exp.experiment_type == EVOKED
 
         msg = f"Extracting Traces Data from Well {fov_name}."
         cali_logger.info(msg)
@@ -406,8 +501,10 @@ class AnalysisRunner:
                 )
                 break
 
-            # extract the data
+            # extract the data - pass session and exp
             self._process_roi_trace(
+                session,
+                exp,
                 data,
                 meta,
                 fov_name,
@@ -427,6 +524,11 @@ class AnalysisRunner:
                     else None
                 ),
             )
+
+        # Commit all changes after processing all ROIs for this position
+        if not self._check_for_abort_requested():
+            session.commit()
+            cali_logger.info(f"💾 Updated analysis data for position {p} in database.")
 
     def _ensure_list_loaded(self, obj: object, attr_name: str) -> list:
         """Safely ensure a relationship list is loaded and initialized.
@@ -454,11 +556,17 @@ class AnalysisRunner:
             attr_list = getattr(obj, attr_name)
         return attr_list
 
-    def _get_or_create_well(self, well_name: str) -> Well:
+    def _get_or_create_well(
+        self, session: Session, exp: Experiment, well_name: str
+    ) -> Well:
         """Get existing well or create new one.
 
         Parameters
         ----------
+        session : Session
+            Active database session
+        exp : Experiment
+            Experiment object (attached to session)
         well_name : str
             Well name (e.g., "B5")
 
@@ -467,10 +575,10 @@ class AnalysisRunner:
         Well
             Existing or newly created Well object
         """
-        if self._experiment is None or self._experiment.plate is None:
-            raise ValueError("Experiment or plate not initialized")
+        if exp.plate is None:
+            raise ValueError("Experiment plate not initialized")
 
-        wells_list = self._ensure_list_loaded(self._experiment.plate, "wells")
+        wells_list = self._ensure_list_loaded(exp.plate, "wells")
 
         # Find existing well
         for well in wells_list:
@@ -487,15 +595,20 @@ class AnalysisRunner:
             column=col,
             fovs=[],
         )
-        well.plate = self._experiment.plate
+        well.plate = exp.plate
         wells_list.append(well)
+        session.add(well)  # Explicitly add to session
         return well
 
-    def _get_or_create_fov(self, well: Well, fov_name: str, pos_idx: int) -> FOV:
+    def _get_or_create_fov(
+        self, session: Session, well: Well, fov_name: str, pos_idx: int
+    ) -> FOV:
         """Get existing FOV or create new one.
 
         Parameters
         ----------
+        session : Session
+            Active database session
         well : Well
             Parent well
         fov_name : str
@@ -523,10 +636,12 @@ class AnalysisRunner:
             rois=[],
         )
         fov.well = well
+        session.add(fov)  # Explicitly add to session
         return fov
 
     def _get_or_create_roi(
         self,
+        session: Session,
         fov: FOV,
         label_value: int,
         settings: AnalysisSettings,
@@ -541,6 +656,8 @@ class AnalysisRunner:
 
         Parameters
         ----------
+        session : Session
+            Active database session
         fov : FOV
             Parent FOV
         label_value : int
@@ -648,10 +765,13 @@ class AnalysisRunner:
         )
         roi.fov = fov
         roi.analysis_settings = settings
+        session.add(roi)  # Explicitly add to session
         return roi
 
     def _process_roi_trace(
         self,
+        session: Session,
+        exp: Experiment,
         data: np.ndarray,
         meta: list[dict],
         fov_name: str,
@@ -664,15 +784,19 @@ class AnalysisRunner:
         neuropil_mask: np.ndarray | None = None,
         neuropil_correction_factor: float | None = None,
     ) -> None:
-        """Process individual ROI traces and update the experiment."""
+        """Process individual ROI traces and update the experiment.
+
+        Works with session-attached objects to ensure proper persistence.
+        """
         # Early exit if cancellation is requested
         if self._check_for_abort_requested():
             return
 
-        if self._experiment is None or self._experiment.analysis_settings is None:
+        # exp is already passed in and attached to session
+        if exp.analysis_settings is None:
             return
 
-        settings = self._experiment.analysis_settings
+        settings = exp.analysis_settings
 
         # get the data for the current label
         masked_data = data[:, label_mask]
@@ -849,9 +973,10 @@ class AnalysisRunner:
         # pos_idx is now passed as a parameter, no need to recalculate
 
         # Use helper methods to get or create hierarchy objects
-        well = self._get_or_create_well(well_name)
-        fov = self._get_or_create_fov(well, fov_name, pos_idx)
+        well = self._get_or_create_well(session, exp, well_name)
+        fov = self._get_or_create_fov(session, well, fov_name, pos_idx)
         roi = self._get_or_create_roi(
+            session,
             fov,
             label_value,
             settings,
@@ -879,6 +1004,7 @@ class AnalysisRunner:
                 x_axis=elapsed_time_list,
             )
             roi.traces = traces
+            session.add(traces)  # Explicitly add to session
         else:
             # Update existing traces
             roi.traces.sqlmodel_update(
@@ -913,6 +1039,7 @@ class AnalysisRunner:
                 inferred_spikes_threshold=spike_detection_threshold,
             )
             roi.data_analysis = data_analysis
+            session.add(data_analysis)  # Explicitly add to session
         else:
             # Update existing data analysis
             roi.data_analysis.sqlmodel_update(
@@ -953,9 +1080,10 @@ class AnalysisRunner:
 
     def _get_labels_file(self, label_name: str) -> str | None:
         """Get the labels file for the given name."""
-        if self._experiment is None:
+        exp = self.experiment()
+        if exp is None:
             return None
-        if (labels_path := self._experiment.labels_path) is None:
+        if (labels_path := exp.labels_path) is None:
             return None
         for label_file in Path(labels_path).glob("*.tif"):
             if label_file.name.endswith(label_name):
