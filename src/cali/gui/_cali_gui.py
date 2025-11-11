@@ -522,13 +522,15 @@ class CaliGui(QMainWindow):
 
         # Get current GUI settings
         new_settings = self._analysis_wdg.to_model_settings(self._experiment.id or 0)[1]
-        # Exclude 'id' from comparison since it's database-specific
-        new_settings_dict = new_settings.model_dump(exclude={"id"})
+        # Exclude 'id' and 'created_at' from comparison since it's database-specific
+        new_settings_dict = new_settings.model_dump(exclude={"id", "created_at"})
 
         # Compare experiment settings with current GUI settings
-        # Exclude 'id' since it's database-specific
+        # Exclude 'id'  and 'created_at' since it's database-specific
         existing_settings = self._experiment.analysis_settings
-        existing_settings_dict = existing_settings.model_dump(exclude={"id"})
+        existing_settings_dict = existing_settings.model_dump(
+            exclude={"id", "created_at"}
+        )
 
         if existing_settings_dict != new_settings_dict:
             msg_box = QMessageBox(self)
@@ -639,7 +641,6 @@ class CaliGui(QMainWindow):
     def _on_experiment_updated(self, experiment: Experiment) -> None:
         """Update the experiment after analysis is done."""
         self._experiment = experiment
-        print("MAIN", self._experiment)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
@@ -1077,9 +1078,7 @@ class CaliGui(QMainWindow):
 
     def _update_multi_wells_graphs_combo(self) -> None:
         has_analysis = (
-            has_experiment_analysis(self._experiment)
-            if self._experiment
-            else False
+            has_experiment_analysis(self._experiment) if self._experiment else False
         )
         for mw_graph in self.MW_GRAPHS:
             mw_graph.set_combo_text_red(not has_analysis)
