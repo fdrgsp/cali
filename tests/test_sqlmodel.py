@@ -72,9 +72,7 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
 
 
 @pytest.fixture
-def simple_experiment(
-    temp_db: tuple[Engine, Path], tmp_path: Path
-) -> Experiment:
+def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experiment:
     """Create a simple experiment with one well, one FOV, and one ROI."""
     engine, db_path = temp_db
 

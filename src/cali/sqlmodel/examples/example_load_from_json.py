@@ -14,10 +14,10 @@ from cali.sqlmodel import (
 # analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
 data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
 labels_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
 )
 analysis_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
+    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
 )
 
 # Create useq.WellPlate that matches the experiment

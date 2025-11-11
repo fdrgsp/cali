@@ -323,7 +323,7 @@ class CaliGui(QMainWindow):
         self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         self.initialize_widget_from_directories(
             data, self._analysis_path, self._labels_path
-        )  # noqa: E501
+        )
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
         # self._labels_path = "tests/test_data/spontaneous/spont_labels"
