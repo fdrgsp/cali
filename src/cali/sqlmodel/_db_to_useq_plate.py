@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import useq
 
-from cali.cali_logger import LOGGER
+from cali.logger import cali_logger
 
 if TYPE_CHECKING:
     from ._models import Experiment
@@ -148,5 +148,5 @@ def experiment_to_useq_plate_plan(
             selected_wells=selected_wells,
         )
     except Exception as e:
-        LOGGER.error(f"Failed to create WellPlatePlan: {e}")
+        cali_logger.error(f"Failed to create WellPlatePlan: {e}")
         return None
