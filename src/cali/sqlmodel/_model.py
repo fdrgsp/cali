@@ -456,9 +456,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     fov: "FOV" = Relationship(back_populates="rois")
     analysis_settings: Optional["AnalysisSettings"] = Relationship()
-    traces: Optional["Traces"] = Relationship(
-        back_populates="roi", cascade_delete=True
-    )
+    traces: Optional["Traces"] = Relationship(back_populates="roi", cascade_delete=True)
     data_analysis: Optional["DataAnalysis"] = Relationship(
         back_populates="roi", cascade_delete=True
     )

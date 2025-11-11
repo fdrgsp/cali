@@ -4,17 +4,16 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import useq
 from rich import print
-
 from sqlmodel import Session, create_engine, select
 
 from cali.analysis import AnalysisRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import (
+    FOV,
+    ROI,
     AnalysisSettings,
     Experiment,
-    FOV,
     Plate,
-    ROI,
     Traces,
     Well,
     print_experiment_tree,
@@ -152,7 +151,8 @@ with Session(engine) as session:
         select(Traces)
         .join(ROI)
         .join(FOV)
-        .join(Well).where(Well.name == "B5")
+        .join(Well)
+        .where(Well.name == "B5")
         .join(Plate)
         .where(Plate.experiment_id == exp.id)
     )
@@ -162,7 +162,7 @@ with Session(engine) as session:
     # Plot all traces
     for i, traces in enumerate(traces_list):
         if traces.dec_dff:
-            plt.plot(traces.dec_dff, label=f"ROI {i+1}")
+            plt.plot(traces.dec_dff, label=f"ROI {i + 1}")
 
 plt.legend()
 plt.xlabel("Frame")

@@ -372,7 +372,6 @@ class PlateViewer(QMainWindow):
             self._loading_bar.hide()  # Close entire dialog on error
             return
 
-
         data_path = self._experiment.data_path
         if data_path is None:
             msg = "Data path not found in the database! Cannot initialize the "
@@ -382,7 +381,7 @@ class PlateViewer(QMainWindow):
             self._loading_bar.hide()  # Close entire dialog on error
             return
 
-        # 
+        #
         self._database_path = Path(database_path)
         self._analysis_path = self._experiment.analysis_path
         self._labels_path = self._experiment.labels_path
