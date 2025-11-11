@@ -384,6 +384,10 @@ def load_analysis_from_json(
     # Set the positions that were analyzed
     experiment.positions_analyzed = sorted(positions_analyzed)
 
+    # Assign analysis_settings to experiment (set relationship)
+    if analysis_settings:
+        experiment.analysis_settings = analysis_settings
+
     # Update AnalysisSettings with LED info collected from ROI data (if available)
     if analysis_settings and experiment.experiment_type == EVOKED:
         if led_pulse_duration_from_roi is not None:

@@ -9,18 +9,12 @@ from cali.sqlmodel import (
 )
 
 # Set paths for data, labels, and analysis directory
-# data_path = (
-#     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
-# )
+# data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
 # labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
 # analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
-# data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-# labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
-# analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
-
-data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-labels_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt_labels"
-analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
+labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
 
 # Create useq.WellPlate that matches the experiment
 plate = useq.WellPlate.from_str("96-well")
@@ -36,9 +30,3 @@ save_experiment_to_database(experiment, overwrite=True)
 
 # view experiment tree
 print_experiment_tree(experiment, max_level="fov")
-
-from rich import print
-
-print(experiment)
-print(experiment.analysis_settings)
-print(experiment.plate)
