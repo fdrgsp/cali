@@ -5,9 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import tifffile
-from cellpose import core
-from cellpose.models import CellposeModel
-from cellpose.utils import fill_holes_and_remove_small_masks
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
@@ -39,6 +36,13 @@ from cali.gui._util import (
     show_error_dialog,
 )
 from cali.logger import cali_logger
+
+try:
+    from cellpose import core
+    from cellpose.models import CellposeModel
+    from cellpose.utils import fill_holes_and_remove_small_masks
+except ImportError:
+    pass
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -90,13 +94,12 @@ class CellposeSegmentationWidget(QWidget):
     def __init__(
         self,
         parent: CaliGui | None = None,
-        *,
-        data: TensorstoreZarrReader | OMEZarrReader | None = None,
     ) -> None:
+
         super().__init__(parent)
 
         self._plate_viewer: CaliGui | None = parent
-        self._data: TensorstoreZarrReader | OMEZarrReader | None = data
+        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         self._labels_path: str | None = None
         self._labels: dict[str, np.ndarray] = {}
         self._worker: GeneratorWorker | None = None
@@ -718,3 +721,65 @@ class CellposeSegmentationWidget(QWidget):
         if self._worker is not None:
             self._worker.quit()
         super().closeEvent(a0)
+
+
+class CellposeNotAvailable(QWidget):
+    """Placeholder widget when Cellpose is not available."""
+
+    # NOTE: TEMMPORARY UNTILL I DIVIDE SEGMENTATIION FUNCTIONALITY FROM THE GUI
+
+    segmentationFinished = Signal()
+
+    def __init__(
+        self,
+        parent: CaliGui | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        label = QLabel(
+            "Cellpose is not installed!\n\n"
+
+            "Please install Cellpose to use the segmentation functionality.\n\n"
+
+            "You can install Cali with Cellpose support using uv:\n\n"
+
+            "`uvx git+https://github.com/fdrgsp/cali[cp4]` for Cellpose 4.x\n\n"
+            "or\n\n"
+            "`uvx git+https://github.com/fdrgsp/cali[cp3]` for Cellpose 3.x\n\n"
+
+            "You can install Cellpose via pip:\n\n"
+            "`pip install cellpose` to install cellpose 4.x\n\n"
+            "or\n\n"
+            "`pip install cellpose<4` to install cellpose 3.x"
+        )
+        layout.addWidget(label)
+
+        self._experiment: Experiment | None = None
+        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
+        self._labels_path: str | None = None
+
+    @property
+    def experiment(self) -> Experiment | None:
+        return self._experiment
+
+    @experiment.setter
+    def experiment(self, experiment: Experiment | None) -> None:
+        self._experiment = experiment
+
+    @property
+    def data(self) -> TensorstoreZarrReader | OMEZarrReader | None:
+        return self._data
+
+    @data.setter
+    def data(self, data: TensorstoreZarrReader | OMEZarrReader | None) -> None:
+        self._data = data
+
+    @property
+    def labels_path(self) -> str | None:
+        return self._labels_path
+
+    @labels_path.setter
+    def labels_path(self, labels_path: str | None) -> None:
+        self._labels_path = labels_path

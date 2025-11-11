@@ -44,6 +44,7 @@ from cali._constants import (
 from cali.analysis import AnalysisRunner
 from cali.logger import cali_logger
 from cali.segmentation import CellposeSegmentationWidget
+from cali.segmentation._segmentation import CellposeNotAvailable
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
@@ -198,7 +199,18 @@ class CaliGui(QMainWindow):
         )
 
         # SEGMENTATION WIDGET ---------------------------------------------------------
-        self._segmentation_wdg = CellposeSegmentationWidget(self)
+        cp_installed = False
+        try:
+            import cellpose  # noqa: F401
+            cp_installed = True
+        except ImportError:
+            cp_installed = False
+            pass
+        if cp_installed:
+            self._segmentation_wdg = CellposeSegmentationWidget(self)
+        else:
+            self._segmentation_wdg = CellposeNotAvailable(self)
+
         segmentation_content_widget = QWidget()
         segmentation_layout = QVBoxLayout(segmentation_content_widget)
         segmentation_layout.setContentsMargins(10, 10, 10, 10)
