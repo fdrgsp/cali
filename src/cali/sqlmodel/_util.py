@@ -40,75 +40,11 @@ def create_database_and_tables(engine: Engine) -> None:
     SQLModel.metadata.create_all(engine)
 
 
-def check_analysis_settings_consistency(experiment: Experiment) -> dict[str, Any]:
-    """Check if all ROIs in an experiment were analyzed with the same settings.
-
-    This helper function checks whether all ROIs across all FOVs in an experiment
-    were analyzed using the same AnalysisSettings. This is useful for detecting
-    partial re-analyses with different parameters.
-
-    Parameters
-    ----------
-    experiment : Experiment
-        The experiment to check
-
-    Returns
-    -------
-    dict[str, Any]
-        Dictionary containing:
-        - 'consistent': bool - True if all ROIs use same settings
-        - 'settings_count': int - Number of different AnalysisSettings used
-        - 'settings_ids': set[int] - Set of unique AnalysisSettings IDs
-        - 'fovs_by_settings': dict[int, list[str]] - FOV names grouped by settings
-        - 'warning': str | None - Warning message if inconsistent
-
-    Example
-    -------
-    >>> from cali.sqlmodel import check_analysis_settings_consistency
-    >>> result = check_analysis_settings_consistency(experiment)
-    >>> if not result["consistent"]:
-    ...     print(result["warning"])
-    ...     print(f"FOVs with different settings: {result['fovs_by_settings']}")
-    """
-    from collections import defaultdict
-
-    settings_ids: set[int] = set()
-    fovs_by_settings: dict[int | None, list[str]] = defaultdict(list)
-
-    # Iterate through all FOVs and their ROIs
-    for well in experiment.plate.wells:
-        for fov in well.fovs:
-            # Get the settings ID from the first ROI (all ROIs in FOV should have same)
-            if fov.rois:
-                settings_id = fov.rois[0].analysis_settings_id
-                if settings_id:
-                    settings_ids.add(settings_id)
-                fovs_by_settings[settings_id].append(fov.name)
-
-    settings_count = len(settings_ids)
-    consistent = settings_count <= 1
-
-    warning = None
-    if not consistent:
-        warning = (
-            f"⚠️  Inconsistent analysis settings detected! "
-            f"{settings_count} different settings used across FOVs. "
-            f"This may affect comparability of results."
-        )
-
-    return {
-        "consistent": consistent,
-        "settings_count": settings_count,
-        "settings_ids": settings_ids,
-        "fovs_by_settings": dict(fovs_by_settings),
-        "warning": warning,
-    }
-
-
 def save_experiment_to_database(
     experiment: Experiment,
-    db_path: Path | str,
     overwrite: bool = False,
+    database_name: str | None = None,
+    echo: bool = False,
 ) -> Experiment:
     """Save an experiment object tree to a SQLite database.
 
@@ -120,6 +56,11 @@ def save_experiment_to_database(
         Path to SQLite database file
     overwrite : bool, optional
         Whether to overwrite existing database file, by default False
+    database_name : str | None, optional
+        Name of the database file (e.g., "cali.db"). If None, uses the
+        experiment's `database_name` attribute.
+    echo : bool, optional
+        Whether to enable SQLAlchemy engine echo for debugging, by default False
 
     Returns
     -------
@@ -132,8 +73,20 @@ def save_experiment_to_database(
     >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
     >>> exp = save_experiment_to_database(exp, "analysis.db")
     """
-    db_path = Path(db_path)
-    experiment.database_path = str(db_path)
+    if experiment.analysis_path is None:
+        raise ValueError(
+            "Experiment must have `analysis_path` set to save to database."
+        )
+    if experiment.database_name is None and database_name is None:
+        raise ValueError(
+            "Experiment must have `database_name` set to save to "
+            "database or provide `database_name` argument."
+        )
+
+    # Use provided database_name or fall back to experiment's database_name
+    db_name = database_name if database_name is not None else experiment.database_name
+    assert db_name is not None  # Guaranteed by the check above
+    db_path = Path(experiment.analysis_path) / db_name
 
     # Ensure parent directory exists
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +94,7 @@ def save_experiment_to_database(
     if overwrite and db_path.exists():
         db_path.unlink()
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(f"sqlite:///{db_path}", echo=echo)
     create_database_and_tables(engine)
 
     with Session(engine, expire_on_commit=False) as session:
@@ -160,6 +113,7 @@ def save_experiment_to_database(
 def load_experiment_from_database(
     db_path: Path | str,
     experiment_name: str | None = None,
+    echo: bool = False,
 ) -> Experiment | None:
     """Load an experiment from SQLite database with all relationships.
 
@@ -173,6 +127,8 @@ def load_experiment_from_database(
         Path to SQLite database file
     experiment_name : str | None, optional
         Name of specific experiment to load. If None, loads the first experiment.
+    echo : bool, optional
+        Whether to enable SQLAlchemy engine echo for debugging, by default False
 
     Returns
     -------
@@ -190,7 +146,7 @@ def load_experiment_from_database(
 
     # Convert to string for consistency
     db_path_str = str(db_path)
-    engine = create_engine(f"sqlite:///{db_path_str}")
+    engine = create_engine(f"sqlite:///{db_path_str}", echo=echo)
 
     # Use context manager to ensure session is properly closed
     with Session(engine, expire_on_commit=False) as session:
@@ -247,7 +203,6 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
 
     if experiment.analysis_settings:
         _ = experiment.analysis_settings.stimulation_mask
-
 
 
 def has_fov_analysis(experiment: Experiment, fov_name: str) -> bool:

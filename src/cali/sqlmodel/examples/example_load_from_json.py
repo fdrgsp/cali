@@ -1,6 +1,5 @@
 """Example script to load an experiment from JSON files and save it to a database."""
 
-from pathlib import Path
 
 import useq
 
@@ -28,10 +27,9 @@ experiment = load_analysis_from_json(
     str(data_path), str(labels_path), str(analysis_dir), plate
 )
 
-# save experiment to database
-db_path = Path(analysis_dir) / "cali.db"
-experiment.database_path = str(db_path)
-save_experiment_to_database(experiment, db_path, overwrite=True)
+# save experiment to database in the specified above analysis directory with the
+# default name "cali.db". specify database_name to use a different name.
+save_experiment_to_database(experiment, overwrite=True)
 
 # view experiment tree
 print_experiment_tree(experiment, max_level="roi")

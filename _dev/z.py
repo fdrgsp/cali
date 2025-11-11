@@ -22,15 +22,14 @@ plate = useq.WellPlate.from_str("96-well")
 exp_form_json = load_analysis_from_json(
     str(data_path), str(labels_path), str(analysis_dir), plate
 )
-database_path = Path(analysis_dir) / "cali.db"
-exp_form_json.database_path = str(database_path)
 print("Saving experiment to database...")
-save_experiment_to_database(exp_form_json, database_path, overwrite=True)
+save_experiment_to_database(exp_form_json, overwrite=True)
 print_experiment_tree(exp_form_json)
 print(exp_form_json.plate.wells)
 
 # load the experiment from the newly created database
 print("Loading experiment from database...")
+database_path = Path(analysis_dir) / "cali.db"
 exp = load_experiment_from_database(database_path)
 assert exp is not None
 print_experiment_tree(exp)

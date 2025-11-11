@@ -34,6 +34,7 @@ from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._constants import (
+    DATABASE_NAME,
     EVENT_KEY,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
@@ -371,7 +372,6 @@ class PlateViewer(QMainWindow):
             self._loading_bar.hide()  # Close entire dialog on error
             return
 
-        self._database_path = Path(database_path)
 
         data_path = self._experiment.data_path
         if data_path is None:
@@ -382,6 +382,8 @@ class PlateViewer(QMainWindow):
             self._loading_bar.hide()  # Close entire dialog on error
             return
 
+        # 
+        self._database_path = Path(database_path)
         self._analysis_path = self._experiment.analysis_path
         self._labels_path = self._experiment.labels_path
 
@@ -461,6 +463,7 @@ class PlateViewer(QMainWindow):
             data_path=datastore_path,
             labels_path=labels_path,
             analysis_path=analysis_path,
+            database_name=DATABASE_NAME,
         )
 
         # LOAD ANALYSIS DATA-----------------------------------------------------------
@@ -478,11 +481,9 @@ class PlateViewer(QMainWindow):
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
-        self._database_path = Path(analysis_path) / "cali.db"
+        self._database_path = Path(analysis_path) / DATABASE_NAME
         cali_logger.info(f"💾 Creating new database at {self._database_path}")
-        self._experiment = save_experiment_to_database(
-            self._experiment, self._database_path, overwrite=True
-        )
+        self._experiment = save_experiment_to_database(self._experiment, overwrite=True)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
