@@ -109,7 +109,7 @@ def load_analysis_from_json(
         data_path=data_path,
         labels_path=labels_path,
         analysis_path=analysis_path,
-        database_name=db_name
+        database_name=db_name,
     )
     assert experiment.id is not None
 
