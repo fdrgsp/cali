@@ -17,12 +17,7 @@ engine = create_engine(f"sqlite:///{database_path}")
 # Query all traces for position 0 in a single efficient query
 with Session(engine) as session:
     # Join Traces -> ROI -> FOV and filter by position_index
-    statement = (
-        select(Traces)
-        .join(ROI)
-        .join(FOV)
-        .where(FOV.position_index == 0)
-    )
+    statement = select(Traces).join(ROI).join(FOV).where(FOV.position_index == 0)
 
     traces_list = session.exec(statement).all()
 
@@ -55,4 +50,3 @@ with Session(engine) as session:
     plt.show()
 
 print("✅ Plot completed!")
-
