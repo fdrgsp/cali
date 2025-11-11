@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlmodel import Session, create_engine
 
+from cali.logger import cali_logger
+
 from ._model import Experiment
 
 if TYPE_CHECKING:
@@ -45,15 +47,18 @@ def save_experiment_to_database(
     overwrite: bool = False,
     database_name: str | None = None,
     echo: bool = False,
-) -> Experiment:
+) -> None:
     """Save an experiment object tree to a SQLite database.
+
+    This function saves the experiment and returns nothing, following SQLModel
+    best practices of not returning objects to discourage keeping large object
+    trees in memory. Load the experiment fresh from the database when needed
+    using load_experiment_from_database().
 
     Parameters
     ----------
     experiment : Experiment
         Experiment object (e.g., from load_analysis_from_json)
-    db_path : Path | str
-        Path to SQLite database file
     overwrite : bool, optional
         Whether to overwrite existing database file, by default False
     database_name : str | None, optional
@@ -62,16 +67,14 @@ def save_experiment_to_database(
     echo : bool, optional
         Whether to enable SQLAlchemy engine echo for debugging, by default False
 
-    Returns
-    -------
-    Experiment
-        The experiment object with updated database IDs and all relationships loaded
-
     Example
     -------
     >>> from pathlib import Path
     >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
-    >>> exp = save_experiment_to_database(exp, "analysis.db")
+    >>> save_experiment_to_database(exp, overwrite=True)
+    >>> # Later, load fresh from DB when needed:
+    >>> db_path = Path(exp.analysis_path) / exp.database_name
+    >>> exp = load_experiment_from_database(db_path)
     """
     if experiment.analysis_path is None:
         raise ValueError(
@@ -97,17 +100,15 @@ def save_experiment_to_database(
     engine = create_engine(f"sqlite:///{db_path}", echo=echo)
     create_database_and_tables(engine)
 
-    with Session(engine, expire_on_commit=False) as session:
-        # Merge and get the updated object back with correct database IDs
-        merged_experiment = session.merge(experiment)
+    with Session(engine) as session:
+        # Merge handles add/update for the entire object tree with cascade
+        session.merge(experiment)
         session.commit()
-        # Refresh to ensure all relationships have correct IDs
-        session.refresh(merged_experiment)
-        # Force load all relationships to prevent DetachedInstanceError
-        _force_load_experiment_relationships(merged_experiment)
-        # Make the instance independent of the session
-        session.expunge(merged_experiment)
-        return merged_experiment
+
+    cali_logger.info(
+        f"💾 Experiment analysis updated and saved to database at "
+        f"{experiment.analysis_path}/{experiment.database_name}."
+    )
 
 
 def load_experiment_from_database(
@@ -117,9 +118,9 @@ def load_experiment_from_database(
 ) -> Experiment | None:
     """Load an experiment from SQLite database with all relationships.
 
-    This function properly handles SQLAlchemy session management and eagerly
-    loads all relationships so the returned Experiment object can be used
-    outside the session context.
+    This function loads a complete experiment snapshot for read-only analysis
+    or display. The returned object is detached from the session (expunged) and
+    can be used outside the session context.
 
     Parameters
     ----------
@@ -133,14 +134,23 @@ def load_experiment_from_database(
     Returns
     -------
     Experiment | None
-        Loaded experiment with all relationships, or None if not found
+        Loaded experiment with all relationships, or None if not found.
+        The object is detached (expunged) and can be used outside the session.
 
     Example
     -------
     >>> from pathlib import Path
+    >>> # For read-only display/analysis:
     >>> exp = load_experiment_from_database("analysis.db", "my_experiment")
     >>> if exp:
     ...     print(f"Loaded {len(exp.plate.wells)} wells")
+    >>>
+    >>> # For modifications, use engine + ID pattern instead:
+    >>> engine = create_engine("sqlite:///analysis.db")
+    >>> with Session(engine) as session:
+    ...     exp = session.get(Experiment, experiment_id)
+    ...     exp.name = "Updated Name"  # Modify within session
+    ...     session.commit()  # Save changes
     """
     from sqlmodel import select
 
@@ -160,8 +170,6 @@ def load_experiment_from_database(
 
         if not experiment:
             return None
-
-        experiment.database_path = db_path_str
 
         # Force load all relationships to prevent DetachedInstanceError
         _force_load_experiment_relationships(experiment)
