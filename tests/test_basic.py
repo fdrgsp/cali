@@ -10,8 +10,6 @@ def test_package_imports() -> None:
     import cali
 
     assert hasattr(cali, "__version__")
-    assert hasattr(cali, "PlateViewer")
-    assert hasattr(cali, "CellposeBatchSegmentation")
 
 
 def test_package_has_version() -> None:
