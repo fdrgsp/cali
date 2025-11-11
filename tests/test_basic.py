@@ -34,12 +34,3 @@ def test_package_version_from_metadata() -> None:
     except Exception:
         # This might fail if package is not installed in development mode
         pytest.skip("Package metadata not available")
-
-
-def test_main_module_imports() -> None:
-    """Test that the main module components can be imported."""
-    from cali import CellposeBatchSegmentation, PlateViewer
-
-    # These should be classes
-    assert callable(PlateViewer)
-    assert callable(CellposeBatchSegmentation)

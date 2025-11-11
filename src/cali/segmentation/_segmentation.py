@@ -38,6 +38,7 @@ from cali.gui._util import (
     parse_lineedit_text,
     show_error_dialog,
 )
+from cali.logger import cali_logger
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -367,7 +368,7 @@ class CellposeSegmentationWidget(QWidget):
         self._elapsed_timer.stop()
         self._reset_progress_bar()
         self._enable(True)
-        LOGGER.info("Cellpose segmentation canceled.")
+        cali_logger.info("Cellpose segmentation canceled.")
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
@@ -384,7 +385,7 @@ class CellposeSegmentationWidget(QWidget):
             return False
 
         if not self._labels_path:
-            LOGGER.error("No Segmentation Path selected.")
+            cali_logger.error("No Segmentation Path selected.")
             show_error_dialog(
                 self,
                 "Please select a Segmentation Path.\n"
@@ -394,7 +395,7 @@ class CellposeSegmentationWidget(QWidget):
             return False
 
         if not Path(self._labels_path).is_dir():
-            LOGGER.error("Invalid Segmentation Path.")
+            cali_logger.error("Invalid Segmentation Path.")
             show_error_dialog(
                 self,
                 "The Segmentation Path is not a valid directory!\n"
@@ -406,7 +407,7 @@ class CellposeSegmentationWidget(QWidget):
         sequence = self._data.sequence
         if sequence is None:
             msg = "No useq.MDAsequence found!"
-            LOGGER.error(msg)
+            cali_logger.error(msg)
             show_error_dialog(self, msg)
             return False
 
@@ -420,7 +421,7 @@ class CellposeSegmentationWidget(QWidget):
                         "Cellpose version 4.x is required for the cpsam model!\n"
                         f"Current version: {cellpose_version}"
                     )
-                    LOGGER.error(msg)
+                    cali_logger.error(msg)
                     show_error_dialog(self, msg)
                     return False
 
@@ -440,7 +441,7 @@ class CellposeSegmentationWidget(QWidget):
         positions = parse_lineedit_text(self._pos_le.text())
         if not positions or max(positions) >= len(sequence.stage_positions):
             msg = "Invalid or out-of-range Positions provided!"
-            LOGGER.error(msg)
+            cali_logger.error(msg)
             show_error_dialog(self, msg)
             return None
 
@@ -518,7 +519,7 @@ class CellposeSegmentationWidget(QWidget):
         normalize: bool = True,
     ) -> Generator[str | int, None, None]:
         """Perform the segmentation using Cellpose."""
-        LOGGER.info("Starting Cellpose segmentation.")
+        cali_logger.info("Starting Cellpose segmentation.")
 
         if self._data is None:
             return
@@ -549,7 +550,9 @@ class CellposeSegmentationWidget(QWidget):
             all_images.append(cyto_frame)
 
         # Process in batches
-        LOGGER.info(f"Processing {len(all_images)} images in batches of {batch_size}")
+        cali_logger.info(
+            f"Processing {len(all_images)} images in batches of {batch_size}"
+        )
         all_masks = []
         for batch_masks, progress_msg in self._batch_process(
             model=model,
@@ -638,7 +641,7 @@ class CellposeSegmentationWidget(QWidget):
 
     def _on_worker_finished(self) -> None:
         """Enable the widgets when the segmentation is finished."""
-        LOGGER.info("Cellpose segmentation finished.")
+        cali_logger.info("Cellpose segmentation finished.")
         self._enable(True)
         self._elapsed_timer.stop()
         self._progress_bar.setValue(self._progress_bar.maximum())
@@ -676,19 +679,19 @@ class CellposeSegmentationWidget(QWidget):
     def _initialize_model(self) -> CellposeModel | None:
         """Initialize the Cellpose model based on user selection."""
         use_gpu = core.use_gpu()
-        LOGGER.info(f"Use GPU: {use_gpu}")
+        cali_logger.info(f"Use GPU: {use_gpu}")
 
         if self._models_combo.currentText() == "custom":
             custom_model_path = self._browse_custom_model.value()
             if not custom_model_path:
                 show_error_dialog(self, "Please select a custom model path.")
-                LOGGER.error("No custom model path selected.")
+                cali_logger.error("No custom model path selected.")
                 return None
-            LOGGER.info(f"Loading custom model from {custom_model_path}")
+            cali_logger.info(f"Loading custom model from {custom_model_path}")
             return CellposeModel(pretrained_model=str(custom_model_path), gpu=use_gpu)
 
         model_type = self._models_combo.currentText()
-        LOGGER.info(f"Loading cellpose model: {model_type}")
+        cali_logger.info(f"Loading cellpose model: {model_type}")
         return CellposeModel(model_type=model_type, gpu=use_gpu)
 
     def _on_model_combo_changed(self, text: str) -> None:
