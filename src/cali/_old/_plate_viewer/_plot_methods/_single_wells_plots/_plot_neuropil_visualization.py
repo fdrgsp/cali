@@ -9,10 +9,9 @@ import numpy as np
 from matplotlib.patches import Polygon
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
     from cali._plate_viewer._graph_widgets import _SingleWellGraphWidget
     from cali._plate_viewer._util import ROIData
+    from matplotlib.axes import Axes
 
 
 def _plot_neuropil_masks(

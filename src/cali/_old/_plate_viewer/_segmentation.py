@@ -552,7 +552,9 @@ class _CellposeSegmentation(QWidget):
             all_images.append(cyto_frame)
 
         # Process in batches
-        cali_logger.info(f"Processing {len(all_images)} images in batches of {batch_size}")
+        cali_logger.info(
+            f"Processing {len(all_images)} images in batches of {batch_size}"
+        )
         all_masks = []
         for batch_masks, progress_msg in self._batch_process(
             model=model,

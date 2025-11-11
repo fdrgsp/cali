@@ -1,6 +1,5 @@
-from qtpy.QtWidgets import QApplication
-
 from cali._plate_viewer._plate_viewer_with_sqlmodel import PlateViewer
+from qtpy.QtWidgets import QApplication
 
 # database_path = (
 #     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"

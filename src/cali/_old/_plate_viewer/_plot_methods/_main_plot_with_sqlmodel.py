@@ -6,9 +6,9 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from cali._plate_viewer._util import ROIData
 from typing_extensions import TypeAlias
 
-from cali._plate_viewer._util import ROIData
 from cali.logger import cali_logger
 
 from ._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
@@ -63,6 +63,7 @@ if TYPE_CHECKING:
         _MultilWellGraphWidget,
         _SingleWellGraphWidget,
     )
+
     from cali.sqlmodel._models import FOV
 
 logger = LOGGER

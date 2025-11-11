@@ -525,7 +525,9 @@ class _AnalyseCalciumTraces(QWidget):
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Check for cancellation before submitting futures
                 if self._cancellation_event.is_set():
-                    cali_logger.info("Cancellation requested before starting thread pool")
+                    cali_logger.info(
+                        "Cancellation requested before starting thread pool"
+                    )
                     return
 
                 futures = [
@@ -536,7 +538,9 @@ class _AnalyseCalciumTraces(QWidget):
                 for idx, future in enumerate(as_completed(futures)):
                     # Check for cancellation at the start of each iteration
                     if self._cancellation_event.is_set():
-                        cali_logger.info("Cancellation requested, shutting down executor...")
+                        cali_logger.info(
+                            "Cancellation requested, shutting down executor..."
+                        )
                         # Cancel pending futures and shutdown executor
                         for f in futures:
                             f.cancel()
@@ -684,7 +688,9 @@ class _AnalyseCalciumTraces(QWidget):
         cali_logger.info(msg)
         for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
             if self._check_for_abort_requested():
-                cali_logger.info(f"Cancellation requested during processing of {fov_name}")
+                cali_logger.info(
+                    f"Cancellation requested during processing of {fov_name}"
+                )
                 break
 
             # extract the data

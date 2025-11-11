@@ -4,20 +4,19 @@ from typing import TYPE_CHECKING
 
 import mplcursors
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
-
 from cali._plate_viewer._util import (
     _get_spikes_over_threshold,
 )
+from scipy.ndimage import gaussian_filter1d
+
 from cali.logger import cali_logger
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
     from cali._plate_viewer._graph_widgets import (
         _SingleWellGraphWidget,
     )
     from cali._plate_viewer._util import ROIData
+    from matplotlib.axes import Axes
 
 
 def _plot_inferred_spikes(

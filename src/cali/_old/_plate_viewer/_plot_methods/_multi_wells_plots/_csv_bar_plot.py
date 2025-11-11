@@ -17,9 +17,8 @@ from cali._constants import (
 )
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
     from cali._plate_viewer._graph_widgets import _MultilWellGraphWidget
+    from matplotlib.axes import Axes
 
 
 CONDITION = "condition"

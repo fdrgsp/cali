@@ -156,11 +156,15 @@ class AnalysisRunner:
         cali_logger.info("Saving results to database...")
 
         if (exp := self._experiment) is None or exp.database_path is None:
-            cali_logger.error("Cannot save results: No Experiment or database path found.")
+            cali_logger.error(
+                "Cannot save results: No Experiment or database path found."
+            )
             return
 
         self._experiment = save_experiment_to_database(exp, exp.database_path)
-        cali_logger.info(f"Results saved to database '{self._experiment.database_path}'.")
+        cali_logger.info(
+            f"Results saved to database '{self._experiment.database_path}'."
+        )
 
         print("RUN", self._experiment)
 
@@ -214,7 +218,9 @@ class AnalysisRunner:
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Check for cancellation before submitting futures
                 if self._cancellation_event.is_set():
-                    cali_logger.info("Cancellation requested before starting thread pool")
+                    cali_logger.info(
+                        "Cancellation requested before starting thread pool"
+                    )
                     return
 
                 futures = [
@@ -225,7 +231,9 @@ class AnalysisRunner:
                 for idx, future in enumerate(as_completed(futures)):
                     # Check for cancellation at the start of each iteration
                     if self._cancellation_event.is_set():
-                        cali_logger.info("Cancellation requested, shutting down executor...")
+                        cali_logger.info(
+                            "Cancellation requested, shutting down executor..."
+                        )
                         # Cancel pending futures and shutdown executor
                         for f in futures:
                             f.cancel()
@@ -336,7 +344,9 @@ class AnalysisRunner:
         cali_logger.info(msg)
         for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
             if self._check_for_abort_requested():
-                cali_logger.info(f"Cancellation requested during processing of {fov_name}")
+                cali_logger.info(
+                    f"Cancellation requested during processing of {fov_name}"
+                )
                 break
 
             # extract the data
