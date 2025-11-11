@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication
 
-from cali import CellposeBatchSegmentation, PlateViewer
+from cali.gui import CaliGui
+from cali.segmentation import CellposeBatchSegmentation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import TracebackType
 
-WALLE_ICON = Path(__file__).parent / "icons" / "wall_e_icon.png"
+
 CELLPOSE_ICON = Path(__file__).parent / "icons" / "cellpose_icon.png"
 
 
@@ -28,7 +29,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     app = QApplication([])
     app.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
-    pl = PlateViewer()
+    pl = CaliGui()
     pl.show()
     sys.excepthook = _our_excepthook
     app.exec()

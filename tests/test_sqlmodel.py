@@ -665,7 +665,7 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
 
 def test_roi_from_roi_data(temp_db: TempDB) -> None:
     """Test converting ROIData to SQLModel entities."""
-    from cali._plate_viewer._util import ROIData
+    from cali.sqlmodel._util import ROIData
 
     # Create mock ROIData
     roi_data = ROIData(

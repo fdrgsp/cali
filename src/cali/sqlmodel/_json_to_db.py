@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cali._constants import EVOKED, SPONTANEOUS
-from cali._plate_viewer._util import ROIData, mask_to_coordinates
+from cali.analysis._util import mask_to_coordinates
 
 from ._models import (
     FOV,
@@ -39,6 +39,7 @@ from ._models import (
     Traces,
     Well,
 )
+from ._util import ROIData
 
 if TYPE_CHECKING:
     from useq import WellPlate
@@ -534,7 +535,7 @@ def roi_from_roi_data(
 
     Example
     -------
-    >>> from cali._plate_viewer._util import ROIData
+    >>> from cali.sqlmodel._util import ROIData
     >>> roi_data = ROIData(...)  # from existing analysis
     >>> roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
     ...     roi_data, fov_id=1, label_value=1
