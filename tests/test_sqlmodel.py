@@ -67,7 +67,8 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
 
     yield engine, db_path
 
-    # Cleanup
+    # Cleanup - dispose engine before deleting file (Windows compatibility)
+    engine.dispose()
     db_path.unlink(missing_ok=True)
 
 
