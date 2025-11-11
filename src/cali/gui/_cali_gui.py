@@ -33,7 +33,6 @@ from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._constants import (
-    DATABASE_NAME,
     EVENT_KEY,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
@@ -319,29 +318,26 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
-        self._pv_labels_path = (
-            "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
-        )
-        self._pv_analysis_path = (
-            "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
-        )
-        self.initialize_widget_from_directories(
-            data, self._pv_analysis_path, self._pv_labels_path
-        )
+        data = "tests/test_data/evoked/evk.tensorstore.zarr"
+        self._labels_path = "tests/test_data/evoked/evk_labels"
+        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-        # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
-        # self._analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"  # noqa: E501
+        # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+        # self._labels_path = "tests/test_data/spontaneous/spont_labels"
+        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._labels_path, self._analysis_path)  # noqa: E501
 
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis/cali.db"  # noqa: E501
-        # self.initialize_widget_from_database(data)
-
-        # data = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-        # self._labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"  # noqa: E501
+        # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+        # self._labels_path = "tests/test_data/spontaneous/spont_labels"
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
+
+        # data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"  # noqa: E501
+        # self.initialize_widget_from_database(data)
+
+        # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
+        # self.initialize_widget_from_database(data)
 
         # fmt: on
         # ____________________________________________________________________________
@@ -465,7 +461,8 @@ class CaliGui(QMainWindow):
         self._data_path = datastore_path
         self._analysis_path = analysis_path
         self._labels_path = labels_path
-        self._database_path = Path(analysis_path) / DATABASE_NAME
+        database_name = f"{Path(datastore_path).name}.db"
+        self._database_path = Path(analysis_path) / database_name
 
         # CREATE THE EXPERIMENT -------------------------------------------------------
         experiment = Experiment(
@@ -476,7 +473,7 @@ class CaliGui(QMainWindow):
             data_path=datastore_path,
             labels_path=labels_path,
             analysis_path=analysis_path,
-            database_name=DATABASE_NAME,
+            database_name=database_name,
         )
 
         # LOAD PLATE-------------------------------------------------------------------
