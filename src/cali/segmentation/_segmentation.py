@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
     from cali.gui import CaliGui
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
-    from cali.sqlmodel._models import Experiment
+    from cali.sqlmodel._model import Experiment
 
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed

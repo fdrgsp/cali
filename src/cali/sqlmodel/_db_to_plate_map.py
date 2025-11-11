@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from cali.gui._plate_map import PlateMapData
 
 if TYPE_CHECKING:
-    from cali.sqlmodel._models import Experiment
+    from cali.sqlmodel._model import Experiment
 
 
 def experiment_to_plate_map_data(

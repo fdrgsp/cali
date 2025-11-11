@@ -36,7 +36,7 @@ from cali.sqlmodel import (
     useq_plate_plan_to_db,
 )
 from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
-from cali.sqlmodel._models import (
+from cali.sqlmodel._model import (
     AnalysisSettings,
     DataAnalysis,
     Mask,

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._models import Condition, Plate
+from ._model import Condition, Plate
 
 if TYPE_CHECKING:
     import useq
 
-    from ._models import Experiment
+    from ._model import Experiment
 
 
 def _row_index_to_label(row: int) -> str:
@@ -177,7 +177,7 @@ def useq_plate_plan_to_db(
     >>> print(f"Well B5 conditions: {[c.name for c in plate.wells[0].conditions]}")
     Well B5 conditions: ['WT', 'Vehicle']
     """
-    from ._models import Well
+    from ._model import Well
 
     useq_plate = plate_plan.plate
 

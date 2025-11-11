@@ -60,7 +60,7 @@ from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_mas
 
 if TYPE_CHECKING:
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
-    from cali.sqlmodel._models import FOV
+    from cali.sqlmodel._model import FOV
 
 
 # ANALYSIS PRODUCT REGISTRY ===========================================================

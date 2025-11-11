@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlmodel import Session, create_engine
 
-from ._models import Experiment
+from ._model import Experiment
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -247,6 +247,81 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
 
     if experiment.analysis_settings:
         _ = experiment.analysis_settings.stimulation_mask
+
+
+
+def has_fov_analysis(experiment: Experiment, fov_name: str) -> bool:
+    """Check if a specific FOV has been analyzed (has ROIs with data).
+
+    This function efficiently checks if a FOV by name exists in the experiment
+    and has at least one analyzed ROI (with traces or data_analysis).
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The experiment object to check
+    fov_name : str
+        Name of the FOV to check (e.g., "B5_0000")
+
+    Returns
+    -------
+    bool
+        True if the FOV exists and has analyzed ROIs, False otherwise
+
+    Example
+    -------
+    >>> from cali.sqlmodel import load_experiment_from_database, has_fov_analysis
+    >>> exp = load_experiment_from_database("analysis.db")
+    >>> if has_fov_analysis(exp, "B5_0000"):
+    ...     print("B5_0000 has been analyzed")
+    """
+    if not experiment.plate or not experiment.plate.wells:
+        return False
+
+    # Search through wells -> FOVs -> ROIs
+    for well in experiment.plate.wells:
+        for fov in well.fovs:
+            # Check if this is the FOV we're looking for (with or without position index)
+            if fov.name == fov_name or fov.name.startswith(f"{fov_name}_p"):
+                # Check if it has any analyzed ROIs
+                if fov.rois:
+                    for roi in fov.rois:
+                        # If ROI has traces or data analysis, it's been analyzed
+                        if roi.traces is not None or roi.data_analysis is not None:
+                            return True
+    return False
+
+
+def has_experiment_analysis(experiment: Experiment) -> bool:
+    """Check if the experiment has any analyzed data.
+
+    This function checks if any FOV in the experiment has analyzed ROIs.
+
+    Parameters
+    ----------
+    experiment : Experiment
+        The experiment object to check
+
+    Returns
+    -------
+    bool
+        True if any FOV has analyzed ROIs, False otherwise
+
+    Example
+    -------
+    >>> if has_experiment_analysis(exp):
+    ...     print("Experiment has analysis data")
+    """
+    if not experiment.plate or not experiment.plate.wells:
+        return False
+
+    for well in experiment.plate.wells:
+        for fov in well.fovs:
+            if fov.rois:
+                for roi in fov.rois:
+                    if roi.traces is not None or roi.data_analysis is not None:
+                        return True
+    return False
 
 
 # OLD WAY TO STORE DATA --------------------------------------------------------------

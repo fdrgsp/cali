@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from superqt.utils import GeneratorWorker
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
-    from cali.sqlmodel._models import Experiment
+    from cali.sqlmodel._model import Experiment
 
     from ._plate_viewer import PlateViewer
 

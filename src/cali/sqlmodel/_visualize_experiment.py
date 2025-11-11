@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 from typing_extensions import Literal
 
-from ._models import Experiment
+from ._model import Experiment
 
 MaxTreeLevel = Literal["experiment", "plate", "well", "fov", "roi"]
 
