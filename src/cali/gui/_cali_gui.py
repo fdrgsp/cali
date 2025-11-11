@@ -202,6 +202,7 @@ class CaliGui(QMainWindow):
         cp_installed = False
         try:
             import cellpose  # noqa: F401
+
             cp_installed = True
         except ImportError:
             cp_installed = False

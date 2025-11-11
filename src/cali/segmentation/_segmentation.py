@@ -95,7 +95,6 @@ class CellposeSegmentationWidget(QWidget):
         self,
         parent: CaliGui | None = None,
     ) -> None:
-
         super().__init__(parent)
 
         self._plate_viewer: CaliGui | None = parent
@@ -726,7 +725,7 @@ class CellposeSegmentationWidget(QWidget):
 class CellposeNotAvailable(QWidget):
     """Placeholder widget when Cellpose is not available."""
 
-    # NOTE: TEMMPORARY UNTILL I DIVIDE SEGMENTATIION FUNCTIONALITY FROM THE GUI
+    # NOTE: TEMMPORARY UNTIL I DIVIDE SEGMENTATIION FUNCTIONALITY FROM THE GUI
 
     segmentationFinished = Signal()
 
@@ -740,15 +739,11 @@ class CellposeNotAvailable(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         label = QLabel(
             "Cellpose is not installed!\n\n"
-
             "Please install Cellpose to use the segmentation functionality.\n\n"
-
             "You can install Cali with Cellpose support using uv:\n\n"
-
             "`uvx git+https://github.com/fdrgsp/cali[cp4]` for Cellpose 4.x\n\n"
             "or\n\n"
             "`uvx git+https://github.com/fdrgsp/cali[cp3]` for Cellpose 3.x\n\n"
-
             "You can install Cellpose via pip:\n\n"
             "`pip install cellpose` to install cellpose 4.x\n\n"
             "or\n\n"
