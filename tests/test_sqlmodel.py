@@ -73,15 +73,17 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
 
 @pytest.fixture
 def simple_experiment(
-    temp_db: tuple[Engine, Path],
+    temp_db: tuple[Engine, Path], tmp_path: Path
 ) -> Experiment:
     """Create a simple experiment with one well, one FOV, and one ROI."""
-    engine, _ = temp_db
+    engine, db_path = temp_db
 
     # Create experiment
     exp = Experiment(
         name="test_experiment",
         description="Test experiment",
+        analysis_path=str(db_path.parent),
+        database_name=db_path.name,
     )
 
     # Create plate
@@ -343,9 +345,12 @@ def test_load_analysis_from_json() -> None:
         str(data_path), str(labels_path), str(analysis_path), plate
     )
 
-    assert experiment.name == "evoked"
+    # Name is now derived from data_path name + ".db"
+    assert experiment.name == "evk.tensorstore.zarr.db"
     assert experiment.plate is not None
     assert len(experiment.plate.wells) > 0
+    # Check that analysis_settings was properly assigned
+    assert experiment.analysis_settings is not None
 
     # Check that stimulation mask was loaded (evoked data should have one)
     if experiment.analysis_settings:
@@ -363,12 +368,17 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     """Test saving experiment to database."""
     db_path = tmp_path / "test.db"
 
-    # Create simple experiment
-    exp = Experiment(name="test_experiment", description="Test")
+    # Create simple experiment with analysis_path set
+    exp = Experiment(
+        name="test_experiment",
+        description="Test",
+        analysis_path=str(tmp_path),
+        database_name="test.db",
+    )
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Save
-    save_experiment_to_database(exp, overwrite=True, database_name="test.db")
+    save_experiment_to_database(exp, overwrite=True)
 
     # Verify
     from cali.sqlmodel._util import load_experiment_from_database
@@ -383,20 +393,21 @@ def test_save_experiment_overwrite_protection(
     simple_experiment: Experiment, tmp_path: Path
 ) -> None:
     """Test that overwrite=False protects existing database."""
+    # Update experiment to use tmp_path
+    simple_experiment.analysis_path = str(tmp_path)
+    simple_experiment.database_name = "test.db"
     db_path = tmp_path / "test.db"
 
     # Create initial database
-    save_experiment_to_database(simple_experiment, database_name="test.db")
+    save_experiment_to_database(simple_experiment, overwrite=True)
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
     assert db_path.exists()
-    _ = _ = db_path.stat().st_size
+    db_path.stat().st_size
 
     # Save with overwrite=True
-    save_experiment_to_database(
-        simple_experiment, overwrite=True, database_name="test.db"
-    )
+    save_experiment_to_database(simple_experiment, overwrite=True)
     # File should still exist
     assert db_path.exists()
 
@@ -750,9 +761,11 @@ def test_full_workflow(tmp_path: Path) -> None:
         str(data_path), str(labels_path), str(analysis_path), plate
     )
 
-    # 2. Save to database
+    # 2. Save to database (update paths to use tmp_path)
+    experiment.analysis_path = str(tmp_path)
+    experiment.database_name = "test.db"
     db_path = tmp_path / "test.db"
-    save_experiment_to_database(experiment, overwrite=True, database_name="test.db")
+    save_experiment_to_database(experiment, overwrite=True)
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")

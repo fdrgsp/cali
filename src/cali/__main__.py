@@ -11,7 +11,6 @@ from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication
 
 from cali.gui import CaliGui
-from cali.segmentation import CellposeBatchSegmentation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -24,23 +23,12 @@ CELLPOSE_ICON = Path(__file__).parent / "icons" / "cellpose_icon.png"
 def main(args: Sequence[str] | None = None) -> None:
     """Run the cali application."""
     from fonticon_mdi6 import MDI6
-    from qtpy.QtGui import QIcon
     from superqt.fonticon import icon
 
     app = QApplication([])
     app.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
     pl = CaliGui()
     pl.show()
-    sys.excepthook = _our_excepthook
-    app.exec()
-
-
-def batch_cellpose() -> None:
-    """Open the Batch Cellpose Segmentation."""
-    app = QApplication([])
-    app.setWindowIcon(QIcon(str(CELLPOSE_ICON)))
-    cp = CellposeBatchSegmentation()
-    cp.show()
     sys.excepthook = _our_excepthook
     app.exec()
 

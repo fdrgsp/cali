@@ -91,7 +91,6 @@ repository = "https://github.com/fdrgsp/cali"
 
 [project.scripts]
 cali = "cali.__main__:main"
-bcp = "cali.__main__:batch_cellpose"
 
 [tool.uv.sources]
 cali = { workspace = true }
