@@ -10,7 +10,6 @@ import tifffile
 from oasis.functions import deconvolve
 from psygnal import Signal
 from scipy.signal import find_peaks
-from sqlmodel import Session, create_engine
 from tqdm import tqdm
 
 from cali._constants import (
@@ -39,7 +38,6 @@ from cali.util._util import load_data
 
 from ._util import (
     calculate_dff,
-    coordinates_to_mask,
     create_neuropil_from_dilation,
     get_iei,
     get_overlap_roi_with_stimulated_area,
@@ -49,6 +47,7 @@ from ._util import (
 if TYPE_CHECKING:
     import useq
     from sqlalchemy.engine import Engine
+    from sqlmodel import Session
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
@@ -126,8 +125,8 @@ class AnalysisRunner:
         assert experiment.id is not None
 
         # Store engine instead of the full object
-        db_path = Path(experiment.analysis_path) / experiment.database_name
-        self._engine = create_engine(f"sqlite:///{db_path}")
+        Path(experiment.analysis_path) / experiment.database_name
+        # self._engine = create_engine(f"sqlite:///{db_path}")  # COMMENTED OUT FOR TESTING
 
         # if experiments has data_path, try to load the data
         if experiment.data_path:

@@ -12,10 +12,21 @@ The schema enables:
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Optional, Self
 
 import numpy as np
-from sqlmodel import JSON, Column, Field, Relationship, SQLModel
+from sqlalchemy.orm import selectinload
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Relationship,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+)
 
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
@@ -88,6 +99,70 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     analysis_settings: Optional["AnalysisSettings"] = Relationship(
         back_populates="experiment"
     )
+
+    @property
+    def db_path(self) -> Optional[str]:
+        """Full path to the experiment's database file."""
+        if self.analysis_path and self.database_name:
+            return str(Path(self.analysis_path) / self.database_name)
+        return None
+
+    @classmethod
+    def load_from_db(
+        cls, db_path: str, id: int, session: Session | None = None
+    ) -> Self:
+        """Load experiment from database with all relationships eagerly loaded.
+
+        Parameters
+        ----------
+        db_path : str
+            Path to the SQLite database file
+        id : int
+            ID of the experiment to load
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self
+            Experiment instance with all relationships loaded and detached
+        """
+        from sqlalchemy.orm import selectinload
+
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            # Build the base chain for plate -> wells -> fovs -> rois
+            plate_chain = (
+                selectinload(Experiment.plate)
+                .selectinload(Plate.wells)
+                .selectinload(Well.fovs)
+                .selectinload(FOV.rois)
+            )
+
+            # Load experiment with all relationships eagerly loaded
+            statement = (
+                select(Experiment)
+                .where(Experiment.id == id)
+                .options(
+                    selectinload(Experiment.analysis_settings),
+                    plate_chain.selectinload(ROI.traces),
+                    plate_chain.selectinload(ROI.data_analysis),
+                    plate_chain.selectinload(ROI.roi_mask),
+                    plate_chain.selectinload(ROI.neuropil_mask),
+                )
+            )
+
+            obj = session.exec(statement).first()
+            session.expunge_all()  # Detach all instances from the session
+            return obj
+        finally:
+            if our_session is not None:
+                our_session.close()
 
 
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
