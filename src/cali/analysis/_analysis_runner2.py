@@ -91,4 +91,10 @@ class AnalysisRunner:
             return
 
         with Session(self._engine) as session:
-            self._extract_trace_data_per_position(session, experiment, p)
+            # Fetch the experiment from the database using its ID
+            # This avoids trying to INSERT the entire detached object graph
+            exp = session.get(Experiment, experiment.id)
+            if exp is None:
+                return
+
+            self._extract_trace_data_per_position(session, exp, p)
