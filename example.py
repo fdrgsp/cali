@@ -1,7 +1,5 @@
 from datetime import datetime
 
-import useq
-
 # from cali.analysis import AnalysisRunner
 from cali.analysis._analysis_runner2 import AnalysisRunner
 from cali.readers import TensorstoreZarrReader

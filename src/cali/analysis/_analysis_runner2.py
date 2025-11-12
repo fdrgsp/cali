@@ -125,7 +125,7 @@ def exec_(
                 # Commit the results to database if we got any
                 if (fov_result := future.result()) is not None:
                     yield fov_result
-            except Exception as e:
+            except Exception:
                 import traceback
 
                 full_tb = traceback.format_exc()
