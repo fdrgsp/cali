@@ -799,8 +799,15 @@ def test_experiment_to_useq_plate_no_plate_type(temp_db: TempDB) -> None:
         session.commit()
         session.refresh(exp)
 
-        result = experiment_to_useq_plate(exp)
-        assert result is None
+        # Force load the plate relationship before expunging
+        _ = exp.plate
+
+        # Expunge the experiment from session to avoid lazy loading issues
+        # when accessing relationships after session closes (Python 3.13 compatibility)
+        session.expunge(exp)
+
+    result = experiment_to_useq_plate(exp)
+    assert result is None
 
 
 def test_well_condition_properties() -> None:
