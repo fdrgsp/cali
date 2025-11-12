@@ -59,6 +59,8 @@ if TYPE_CHECKING:
 @pytest.fixture
 def temp_db() -> Generator[tuple[Engine, Path], None, None]:
     """Create a temporary SQLite database for testing."""
+    import gc
+
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
 
@@ -67,8 +69,11 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
 
     yield engine, db_path
 
-    # Cleanup - dispose engine before deleting file (Windows compatibility)
-    engine.dispose()
+    # Cleanup - dispose engine before deleting file
+    # Dispose with close=True to close all checked-in connections (Python 3.13)
+    engine.dispose(close=True)
+    # Force garbage collection to ensure connections are closed
+    gc.collect()
     db_path.unlink(missing_ok=True)
 
 
@@ -768,16 +773,20 @@ def test_full_workflow(tmp_path: Path) -> None:
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")
-    with Session(engine) as session:
-        exp = session.exec(select(Experiment)).first()
+    try:
+        with Session(engine) as session:
+            exp = session.exec(select(Experiment)).first()
 
-        # 4. Convert to useq.WellPlate
-        useq_plate = experiment_to_useq_plate(exp)
-        assert useq_plate is not None
+            # 4. Convert to useq.WellPlate
+            useq_plate = experiment_to_useq_plate(exp)
+            assert useq_plate is not None
 
-        # 5. Convert to useq.WellPlatePlan
-        useq_plate_plan = experiment_to_useq_plate_plan(exp)
-        assert useq_plate_plan is not None
+            # 5. Convert to useq.WellPlatePlan
+            useq_plate_plan = experiment_to_useq_plate_plan(exp)
+            assert useq_plate_plan is not None
+    finally:
+        # Cleanup - dispose engine (Python 3.13 compatibility)
+        engine.dispose(close=True)
 
 
 if __name__ == "__main__":
@@ -799,15 +808,9 @@ def test_experiment_to_useq_plate_no_plate_type(temp_db: TempDB) -> None:
         session.commit()
         session.refresh(exp)
 
-        # Force load the plate relationship before expunging
-        _ = exp.plate
-
-        # Expunge the experiment from session to avoid lazy loading issues
-        # when accessing relationships after session closes (Python 3.13 compatibility)
-        session.expunge(exp)
-
-    result = experiment_to_useq_plate(exp)
-    assert result is None
+        # Convert while still in session context to avoid detached instance issues
+        result = experiment_to_useq_plate(exp)
+        assert result is None
 
 
 def test_well_condition_properties() -> None:
@@ -1003,6 +1006,13 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
         assert result.neuropil_mask is not None
         assert result.roi_mask.mask_type == "roi"
         assert result.neuropil_mask.mask_type == "neuropil"
+
+        # Force load mask relationships before expunging
+        _ = result.roi_mask
+        _ = result.neuropil_mask
+
+        # Expunge to avoid lazy loading after session closes (Python 3.13)
+        session.expunge_all()
 
 
 def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
