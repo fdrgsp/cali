@@ -4,29 +4,71 @@ from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
+
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_iei_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
-    """Plot traces data."""
+    """Plot inter-event interval data by querying database directly.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Graph widget to plot on
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
+    rois : list[int] | None
+        List of ROI label values to plot. If None, plots all ROIs.
+    """
     # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
-            continue
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
-        _plot_metrics(ax, roi_key, roi_data)
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
+
+    for roi in roi_models:
+        if roi.data_analysis is None:
+            continue
+        _plot_metrics(ax, roi)
 
     _set_graph_title_and_labels(ax)
 
@@ -38,30 +80,29 @@ def _plot_iei_data(
 
 def _plot_metrics(
     ax: Axes,
-    roi_key: str,
-    roi_data: ROIData,
+    roi: ROI,
 ) -> None:
-    """Plot amplitude, frequency, or inter-event intervals."""
-    if not roi_data.iei:
+    """Plot inter-event intervals for a single ROI."""
+    if roi.data_analysis is None or not roi.data_analysis.iei:
         return
     # plot mean inter-event intervals +- sem of each ROI
-    mean_iei = np.mean(roi_data.iei)
-    sem_iei = mean_iei / np.sqrt(len(roi_data.iei))
+    mean_iei = np.mean(roi.data_analysis.iei)
+    sem_iei = mean_iei / np.sqrt(len(roi.data_analysis.iei))
     ax.errorbar(
-        [int(roi_key)],
+        [roi.label_value],
         mean_iei,
         yerr=sem_iei,
         fmt="o",
-        label=f"ROI {roi_key}",
+        label=f"ROI {roi.label_value}",
         capsize=5,
     )
     ax.scatter(
-        [int(roi_key)] * len(roi_data.iei),
-        roi_data.iei,
+        [roi.label_value] * len(roi.data_analysis.iei),
+        roi.data_analysis.iei,
         alpha=0.5,
         color="lightgray",
         s=30,
-        label=f"ROI {roi_key}",
+        label=f"ROI {roi.label_value}",
     )
 
 

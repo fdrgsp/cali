@@ -7,20 +7,27 @@ from typing import TYPE_CHECKING, cast
 import cmap
 import mplcursors
 import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
+
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_neuropil_traces(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
-    """Plot all raw and neuropil traces together on widget canvas.
+    """Plot all raw and neuropil traces together on widget canvas
+    by querying database directly.
 
     Raw traces and neuropil traces are plotted on the same axes,
     allowing the filtering logic to isolate specific ROI pairs.
@@ -29,27 +36,50 @@ def _plot_neuropil_traces(
     ----------
     widget : _SingleWellGraphWidget
         The widget containing the matplotlib figure and canvas
-    data : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of specific ROI IDs to plot, or None for all
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    # Filter data by selected ROIs if specified
-    filtered_data = data
-    if rois is not None:
-        filtered_data = {k: v for k, v in data.items() if int(k) in rois}
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.traces),  # type: ignore
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
 
     # Filter ROIs that have both raw_trace and neuropil traces
-    valid_rois = {
-        roi_id: roi_data
-        for roi_id, roi_data in filtered_data.items()
-        if roi_data.raw_trace is not None
-        and roi_data.neuropil_trace is not None
-        and roi_data.corrected_trace is not None
-    }
+    valid_rois = []
+    for roi in roi_models:
+        if (roi.traces is not None and
+            roi.traces.raw_trace is not None and
+            roi.traces.neuropil_trace is not None and
+            roi.traces.corrected_trace is not None):
+            valid_rois.append(roi)
 
     if not valid_rois:
         # No valid data to plot
@@ -80,17 +110,18 @@ def _plot_neuropil_traces(
     last_trace: np.ndarray | None = None
 
     # Plot all traces on the same axes
-    for idx, (roi_id, roi_data) in enumerate(valid_rois.items()):
+    for idx, roi in enumerate(valid_rois):
         color = colors[idx]
 
-        raw_trace = np.array(roi_data.raw_trace)
-        neuropil_trace = np.array(roi_data.neuropil_trace)
-        corrected_trace = np.array(roi_data.corrected_trace)
+        raw_trace = np.array(roi.traces.raw_trace)
+        neuropil_trace = np.array(roi.traces.neuropil_trace)
+        corrected_trace = np.array(roi.traces.corrected_trace)
         frames = np.arange(len(raw_trace))
 
         # Collect recording time if available
-        if (ttime := roi_data.total_recording_time_sec) is not None:
-            rois_rec_time.append(ttime)
+        if (roi.data_analysis is not None and
+            roi.data_analysis.total_recording_time_sec is not None):
+            rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
 
         # Keep track of last trace for time axis calculation
         last_trace = raw_trace
@@ -99,37 +130,37 @@ def _plot_neuropil_traces(
         line_raw = ax.plot(
             frames,
             raw_trace,
-            label=f"Raw ROI {roi_id}",
+            label=f"Raw ROI {roi.label_value}",
             color=color,
             linewidth=1,
             linestyle="--",
         )[0]
         lines.append(line_raw)
-        roi_ids.append(roi_id)
+        roi_ids.append(roi.label_value)
 
         # Plot neuropil trace (dashed line, same color)
         line_neuropil = ax.plot(
             frames,
             neuropil_trace,
-            label=f"Neuropil ROI {roi_id}",
+            label=f"Neuropil ROI {roi.label_value}",
             color=color,
             linewidth=1,
             linestyle=":",
         )[0]
         lines.append(line_neuropil)
-        roi_ids.append(roi_id)
+        roi_ids.append(roi.label_value)
 
         # Plot corrected trace (dotted line, same color)
         line_corrected = ax.plot(
             frames,
             corrected_trace,
-            label=f"Corrected ROI {roi_id}",
+            label=f"Corrected ROI {roi.label_value}",
             color=color,
             linewidth=1,
             linestyle="-",
         )[0]
         lines.append(line_corrected)
-        roi_ids.append(roi_id)
+        roi_ids.append(roi.label_value)
 
     # Formatting
     ax.set_ylabel("Fluorescence (a.u.)", fontsize=11)

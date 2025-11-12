@@ -17,7 +17,7 @@ from cali._constants import (
     SEM_SUFFIX,
 )
 from cali.logger import cali_logger
-from cali.plot._single_wells_plots._plot_calcium_network_connectivity import (
+from cali.plot._util import (
     _create_connectivity_matrix,
 )
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (

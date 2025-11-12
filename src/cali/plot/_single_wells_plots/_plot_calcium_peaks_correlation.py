@@ -11,32 +11,43 @@ from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
 from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
 
 from cali.logger import cali_logger
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _calculate_cross_correlation(
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Calculate the cross-correlation matrix for the active ROIs."""
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.traces),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
     traces: list[list[float]] = []
     rois_idxs: list[int] = []
-    # get the traces for the active rois
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
+
+    for roi in roi_results:
+        if roi.traces is None or roi.traces.dec_dff is None or roi.id is None:
             continue
-        if not roi_data.active or not roi_data.dec_dff:
-            continue
-        rois_idxs.append(int(roi_key))
-        traces.append(roi_data.dec_dff)
+        rois_idxs.append(roi.id)
+        traces.append(roi.traces.dec_dff)
 
     if len(rois_idxs) <= 1:
         cali_logger.warning(
@@ -62,13 +73,14 @@ def _calculate_cross_correlation(
 
 def _plot_cross_correlation_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
 
     if correlation_matrix is None or rois_idxs is None:
         return
@@ -119,14 +131,15 @@ def _add_hover_functionality_cross_corr(
 
 def _plot_hierarchical_clustering_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
     use_dendrogram: bool = False,
 ) -> None:
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
 
     if correlation_matrix is None or rois_idxs is None:
         return

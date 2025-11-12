@@ -3,33 +3,76 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import mplcursors
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
+
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_cell_size_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
-    """Plot global synchrony."""
+    """Plot cell size data by querying database directly.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Graph widget to plot on
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
+    rois : list[int] | None
+        List of ROI label values to plot. If None, plots all ROIs.
+    """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
+
     units = ""
 
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
+    for roi in roi_models:
+        if roi.data_analysis is None or roi.data_analysis.cell_size is None:
             continue
-        if not roi_data.cell_size:
-            continue
-        if not units and roi_data.cell_size_units:
-            units = roi_data.cell_size_units
-        ax.scatter(int(roi_key), roi_data.cell_size, label=f"ROI {roi_key}")
+        if not units and roi.data_analysis.cell_size_units:
+            units = roi.data_analysis.cell_size_units
+        ax.scatter(
+            roi.label_value, roi.data_analysis.cell_size, label=f"ROI {roi.label_value}"
+        )
 
     ax.set_xlabel("ROI")
     ax.set_xticks([])
