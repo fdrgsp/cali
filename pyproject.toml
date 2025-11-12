@@ -31,9 +31,8 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    # "numpy<2.0.0; platform_system == 'Darwin'",
-    # "numpy; platform_system != 'Darwin'",
     "oasis-deconv==0.2.0",  # Build from source to avoid broken prebuilt wheels
+    "numba",
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
     "qtpy",
@@ -55,7 +54,7 @@ dependencies = [
     "pydantic<2.11.0",
     "pandas",
     "superqt[font-mi6]",
-    "sqlmodel>=0.0.27"
+    "sqlmodel>=0.0.27",
 ]
 
 [project.optional-dependencies]
@@ -77,7 +76,6 @@ dev = [
     "black",
     "ipython",
     "mypy",
-    "pdbpp",
     "pre-commit",
     "pytest-cov",
     "pytest",
