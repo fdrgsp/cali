@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from typing_extensions import TypeAlias
 
 from cali.logger import cali_logger
-from cali.sqlmodel._util import ROIData
 
-from ._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_roi_amp,
@@ -59,8 +56,9 @@ from ._single_wells_plots._plot_neuropil_traces import (
 from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
-    from cali.sqlmodel._model import FOV
 
 
 # ANALYSIS PRODUCT REGISTRY ===========================================================
@@ -74,10 +72,14 @@ class AnalysisGroup(Enum):
 
 
 # Type aliases for better type hints
+# Single-well analyzers now accept (widget, db_path, fov_name, rois)
 SingleWellAnalyzer: TypeAlias = (
-    "Callable[[_SingleWellGraphWidget, dict, list[int] | None], Any]"
+    "Callable[[_SingleWellGraphWidget, str | Path, str, list[int] | None], Any]"
 )
-MultiWellAnalyzer: TypeAlias = "Callable[[_MultilWellGraphWidget, str, str], None]"
+# Multi-well analyzers accept (widget, text, db_path)
+MultiWellAnalyzer: TypeAlias = (
+    "Callable[[_MultilWellGraphWidget, str, str | Path], None]"
+)
 AnyAnalyzer: TypeAlias = "SingleWellAnalyzer | MultiWellAnalyzer"
 
 
@@ -496,34 +498,6 @@ AnalysisProduct(
 # Multi-Well Analysis Products --------------------------------------------------------
 # These plot CSV bar plots from grouped analysis data
 
-# Helper function that all multi-well products use
-def _plot_csv_bar_plot_wrapper(
-    widget: _MultilWellGraphWidget, text: str, analysis_path: str, **kwargs: Any
-) -> None:
-    """Wrapper for CSV bar plot that matches MultiWellAnalyzer signature."""
-    suffix = kwargs.get("suffix")
-    if not suffix:
-        widget.figure.clear()
-        return
-
-    # Determine CSV path based on whether it's stimulated data
-    stimulated = kwargs.get("stimulated", False)
-    if stimulated or "stimulated" in suffix:
-        csv_path = Path(analysis_path) / "grouped_evk"
-    else:
-        csv_path = Path(analysis_path) / "grouped"
-
-    # Find the CSV file
-    csv_files = list(csv_path.glob(f"*{suffix}*.csv"))
-    if not csv_files:
-        widget.figure.clear()
-        return
-
-    # Prepare info dict for plot_csv_bar_plot
-    info = {k: v for k, v in kwargs.items() if k != "suffix" and k != "stimulated"}
-    plot_csv_bar_plot(widget, csv_files[0], info)
-
-
 # General Multi-Well Products
 AnalysisProduct(
     name="Cell Size Bar Plot",
@@ -690,94 +664,6 @@ AnalysisProduct(
 # Helper functions to extract plotting data from database models
 
 
-# NOPE, not good, use database directly!!!
-def get_fov_data_from_db(fov: FOV) -> dict:
-    """Extract ROI data from database FOV model.
-
-    Converts database models (ROI, Traces, DataAnalysis, Mask) into the dict
-    format expected by plotting functions.
-
-    Parameters
-    ----------
-    fov : FOV
-        FOV database model containing ROIs with traces, masks, and analysis results
-
-    Returns
-    -------
-    dict
-        Dictionary mapping ROI label to ROIData objects
-    """
-    roi_data: dict = {}
-
-    for roi in fov.rois:
-        # Create ROIData object with all fields set individually
-        roi_obj = ROIData()
-
-        # Set traces data
-        if roi.traces:
-            roi_obj.raw_trace = roi.traces.raw_trace
-            roi_obj.corrected_trace = roi.traces.corrected_trace
-            roi_obj.neuropil_trace = roi.traces.neuropil_trace
-            roi_obj.dff = roi.traces.dff
-            roi_obj.dec_dff = roi.traces.dec_dff
-            roi_obj.elapsed_time_list_ms = roi.traces.x_axis
-
-        # Set mask data (only if all components are not None)
-        if roi.roi_mask and all(
-            x is not None
-            for x in [
-                roi.roi_mask.coords_y,
-                roi.roi_mask.coords_x,
-                roi.roi_mask.height,
-                roi.roi_mask.width,
-            ]
-        ):
-            roi_obj.mask_coord_and_shape = (
-                (roi.roi_mask.coords_y, roi.roi_mask.coords_x),  # type: ignore
-                (roi.roi_mask.height, roi.roi_mask.width),  # type: ignore
-            )
-
-        # Set neuropil mask data (only if all components are not None)
-        if roi.neuropil_mask and all(
-            x is not None
-            for x in [
-                roi.neuropil_mask.coords_y,
-                roi.neuropil_mask.coords_x,
-                roi.neuropil_mask.height,
-                roi.neuropil_mask.width,
-            ]
-        ):
-            roi_obj.neuropil_mask_coord_and_shape = (
-                (roi.neuropil_mask.coords_y, roi.neuropil_mask.coords_x),  # type: ignore
-                (roi.neuropil_mask.height, roi.neuropil_mask.width),  # type: ignore
-            )
-
-        # Set analysis results
-        if roi.data_analysis:
-            da = roi.data_analysis
-            roi_obj.cell_size = da.cell_size
-            roi_obj.dec_dff_frequency = da.dec_dff_frequency
-            roi_obj.peaks_dec_dff = da.peaks_dec_dff
-            roi_obj.peaks_amplitudes_dec_dff = da.peaks_amplitudes_dec_dff
-            roi_obj.iei = da.iei
-            roi_obj.inferred_spikes = da.inferred_spikes
-            roi_obj.inferred_spikes_threshold = da.inferred_spikes_threshold
-            roi_obj.peaks_prominence_dec_dff = da.peaks_prominence_dec_dff
-            roi_obj.peaks_height_dec_dff = da.peaks_height_dec_dff
-
-        # Set activity status
-        roi_obj.active = False
-        if roi.data_analysis and roi.data_analysis.peaks_dec_dff:
-            roi_obj.active = len(roi.data_analysis.peaks_dec_dff) > 0
-
-        # Set ROI metadata
-        roi_obj.stimulated = roi.stimulated
-
-        roi_data[str(roi.label_value)] = roi_obj
-
-    return roi_data
-
-
 # COMBO BOX OPTIONS ===================================================================
 # Generate combobox options dynamically from the registry
 
@@ -815,20 +701,22 @@ MULTI_WELL_COMBO_OPTIONS_DICT = _get_combo_options_dict(AnalysisGroup.MULTI_WELL
 
 
 def plot_single_well_data(
-
     widget: _SingleWellGraphWidget,
-    data: dict,
+    db_path: str | Path,
+    fov_name: str,
     text: str,
     rois: list[int] | None = None,
 ) -> None:
-    """Plot single-well analysis data using registry pattern.
+    """Plot single-well analysis data using registry pattern with database queries.
 
     Parameters
     ----------
     widget : _SingleWellGraphWidget
         The widget to plot into
-    data : dict
-        The analysis data dictionary
+    db_path : str | Path
+        Path to the SQLite database file
+    fov_name : str
+        Name of the FOV to query (e.g., "B5_0000")
     text : str
         The name of the analysis to plot (matches AnalysisProduct.name)
     rois : list[int] | None, optional
@@ -840,7 +728,7 @@ def plot_single_well_data(
             if product.name == text and product.group == AnalysisGroup.SINGLE_WELL:
                 # Type narrowing: we know this is a SingleWellAnalyzer
                 analyzer = cast("SingleWellAnalyzer", product.analyzer)
-                return analyzer(widget, data, rois)
+                return analyzer(widget, db_path, fov_name, rois)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Analysis '{text}' not found in registry")
@@ -853,9 +741,9 @@ def plot_single_well_data(
 def plot_multi_well_data(
     widget: _MultilWellGraphWidget,
     text: str,
-    analysis_path: str | None,
+    db_path: str | Path,
 ) -> None:
-    """Plot multi-well data using registry pattern.
+    """Plot multi-well data using registry pattern with database queries.
 
     Parameters
     ----------
@@ -863,15 +751,11 @@ def plot_multi_well_data(
         The widget to plot into
     text : str
         The name of the analysis to plot (matches AnalysisProduct.name)
-    analysis_path : str | None
-        Path to the analysis directory containing grouped CSV files
+    db_path : str | Path
+        Path to the SQLite database file
     """
     # Handle empty/invalid selection
     if not text or text == "None" or text in MULTI_WELL_COMBO_OPTIONS_DICT.keys():
-        widget.figure.clear()
-        return
-
-    if not analysis_path:
         widget.figure.clear()
         return
 
@@ -881,7 +765,7 @@ def plot_multi_well_data(
             if product.name == text and product.group == AnalysisGroup.MULTI_WELL:
                 # Type narrowing: we know this is a MultiWellAnalyzer
                 analyzer = cast("MultiWellAnalyzer", product.analyzer)
-                return analyzer(widget, text, analysis_path)
+                return analyzer(widget, text, db_path)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Multi-well analysis '{text}' not found in registry")
@@ -891,80 +775,3 @@ def plot_multi_well_data(
         cali_logger.error(f"Error plotting multi-well data for '{text}': {e}")
         widget.figure.clear()
         raise
-
-
-def _plot_csv_bar_plot_data_legacy(
-    widget: _MultilWellGraphWidget, text: str, analysis_path: str, **kwargs: Any
-) -> None:
-    """Legacy helper function - kept for reference during transition."""
-    suffix = kwargs.get("suffix")
-    if not suffix:
-        print(f"No suffix provided for {text}.")
-        widget.figure.clear()
-        return
-
-    # Determine CSV path based on whether it's stimulated data
-    stimulated = kwargs.get("stimulated", False)
-    if stimulated or "stimulated" in suffix:
-        csv_path = Path(analysis_path) / "grouped_evk"
-    else:
-        csv_path = Path(analysis_path) / "grouped"
-
-    if not csv_path.exists():
-        cali_cali_logger.error(f"CSV path {csv_path} does not exist.")
-        widget.figure.clear()
-        return
-
-    csv_file = next(
-        (f for f in csv_path.glob("*.csv") if f.name.endswith(f"_{suffix}.csv")),
-        None,
-    )
-
-    if not csv_file:
-        cali_cali_logger.error(f"CSV file for suffix '{suffix}' not found in {csv_path}.")
-        widget.figure.clear()
-        return
-
-    # Create plot options from kwargs, filtering out non-plot parameters
-    plot_options = {
-        k: v
-        for k, v in kwargs.items()
-        if k not in ["stimulated", "per_led_power", "burst_metric"]
-    }
-
-    # Special handling for burst activity plots
-    burst_metric = kwargs.get("burst_metric")
-    if suffix == "burst_activity" and burst_metric:
-        # Add burst_metric to plot_options for handling in plot_csv_bar_plot
-        plot_options["burst_metric"] = burst_metric
-        return plot_csv_bar_plot(
-            widget,
-            csv_file,
-            plot_options,
-            mean_n_sem=False,
-        )
-
-    # Special handling for certain plot types that don't use mean_n_sem
-    synchrony_suffixes = [
-        "synchrony",
-        "spike_synchrony",
-        "calcium_network_density",
-        "calcium_peaks_synchrony",
-    ]
-    if any(sync_suffix in suffix for sync_suffix in synchrony_suffixes):
-        return plot_csv_bar_plot(
-            widget,
-            csv_file,
-            plot_options,
-            mean_n_sem=False,
-        )
-
-    if "percentage_active" in suffix:
-        return plot_csv_bar_plot(
-            widget,
-            csv_file,
-            plot_options,
-            value_n=True,
-        )
-
-    return plot_csv_bar_plot(widget, csv_file, plot_options)

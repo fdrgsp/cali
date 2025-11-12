@@ -331,12 +331,10 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        data = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._labels_path = "tests/test_data/evoked/evk_labels"
-        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        self.initialize_widget_from_directories(
-            data, self._analysis_path, self._labels_path
-        )
+        # data = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._labels_path = "tests/test_data/evoked/evk_labels"
+        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
         # self._labels_path = "tests/test_data/spontaneous/spont_labels"
@@ -348,8 +346,8 @@ class CaliGui(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
-        # data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"  # noqa: E501
-        # self.initialize_widget_from_database(data)
+        data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"  # noqa: E501
+        self.initialize_widget_from_database(data)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
@@ -428,6 +426,9 @@ class CaliGui(QMainWindow):
         self._analysis_path = exp.analysis_path
         self._labels_path = exp.labels_path
 
+        # PASS DATABASE PATH TO GRAPHS WIDGETS -----------------------------------------
+        self._update_graph_with_database_path()
+
         # PLATE------------------------------------------------------------------------
         plate_plan = experiment_to_useq_plate_plan(exp)
         if plate_plan is not None:
@@ -479,6 +480,9 @@ class CaliGui(QMainWindow):
         database_name = f"{Path(datastore_path).name}.db"
         self._database_path = Path(analysis_path) / database_name
 
+        # PASS DATABASE PATH TO GRAPHS WIDGETS -----------------------------------------
+        self._update_graph_with_database_path()
+
         # CREATE THE EXPERIMENT -------------------------------------------------------
         experiment = Experiment(
             id=0,  # placeholder needed for relationships, set when database is saved.
@@ -505,7 +509,7 @@ class CaliGui(QMainWindow):
         self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
         # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()  # Close entire dialog when done
+        self._loading_bar.hide()
 
     def analysis_settings(self) -> AnalysisSettingsData | None:
         """Get the current analysis settings from the analysis widget."""
@@ -706,6 +710,13 @@ class CaliGui(QMainWindow):
         self._segmentation_wdg.experiment = None
         self._segmentation_wdg.data = None
         self._segmentation_wdg.labels_path = None
+
+    def _update_graph_with_database_path(self) -> None:
+        """Update all graph widgets with the current database path."""
+        for sw_graph in self.SW_GRAPHS:
+            sw_graph.database_path = self._database_path
+        for mw_graph in self.MW_GRAPHS:
+            mw_graph.database_path = self._database_path
 
     def _load_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
@@ -926,7 +937,13 @@ class CaliGui(QMainWindow):
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
                 return
+
+            from rich import print
+            print(f"ON TAB CHANGED - Selected FOV value: {value}")
+
+            # check if the FOV has been analyzed (has ROIs with data)
             has_analysis = self._has_fov_analysis(value)
+
             # update the graphs combo boxes
             self._update_single_wells_graphs_combo(combo_red=(not has_analysis))
 
@@ -1006,7 +1023,8 @@ class CaliGui(QMainWindow):
     def _has_fov_analysis(self, value: WellInfo) -> bool:
         """Check if the given FOV has been analyzed (has ROIs with data).
 
-        This checks the experiment database to see if the FOV has analyzed ROIs.
+        This efficiently queries the database directly to check if the FOV has
+        analyzed ROIs, without loading the entire experiment object.
 
         Parameters
         ----------
@@ -1018,16 +1036,17 @@ class CaliGui(QMainWindow):
         bool
             True if the FOV has been analyzed, False otherwise
         """
-        exp = self.experiment()
-        if exp is None:
+        if self._database_path is None:
             return False
 
         # Use the FOV name from the value
-        fov_name = value.fov.name
         if not (fov_name := value.fov.name):
             return False
 
-        return has_fov_analysis(exp, fov_name)
+        # the FOV name in the database includes the position index suffix
+        fov_name = f"{fov_name}_p{value.pos_idx}"
+
+        return has_fov_analysis(self._database_path, fov_name)
 
     def _set_graphs_fov(self, value: WellInfo | None) -> None:
         """Set the FOV title for the graphs."""
@@ -1087,8 +1106,11 @@ class CaliGui(QMainWindow):
             sw_graph.set_combo_text_red(combo_red)
 
     def _update_multi_wells_graphs_combo(self) -> None:
-        exp = self.experiment()
-        has_analysis = has_experiment_analysis(exp) if exp else False
+        if self._database_path is None:
+            has_analysis = False
+        else:
+            has_analysis = has_experiment_analysis(self._database_path)
+
         for mw_graph in self.MW_GRAPHS:
             mw_graph.set_combo_text_red(not has_analysis)
 
@@ -1164,8 +1186,11 @@ class CaliGui(QMainWindow):
     def _show_save_as_csv_dialog(self) -> None:
         """Show the save as csv dialog."""
         # Check if experiment has analysis data
-        exp = self.experiment()
-        if not exp or not has_experiment_analysis(exp):
+        if self._database_path is None:
+            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            return
+
+        if not has_experiment_analysis(self._database_path):
             show_error_dialog(self, "No data to save! Run or load analysis data first.")
             return
 
