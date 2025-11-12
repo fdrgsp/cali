@@ -4,9 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import mplcursors
 import numpy as np
-from skimage import measure
 
-from cali.plot._util import coordinates_to_mask
 from cali.logger import cali_logger
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
@@ -42,7 +40,9 @@ def _plot_connectivity_network_data(
     ax = widget.figure.add_subplot(111)
 
     # Calculate correlation matrix
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(
+        db_path, fov_name, rois
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(
@@ -71,7 +71,11 @@ def _plot_connectivity_network_data(
                 )
             )
             roi = session.exec(stmt).first()
-            if roi and roi.data_analysis and roi.data_analysis.calcium_network_threshold is not None:
+            if (
+                roi
+                and roi.data_analysis
+                and roi.data_analysis.calcium_network_threshold is not None
+            ):
                 network_threshold = roi.data_analysis.calcium_network_threshold
 
     # Ensure network_threshold is never None
@@ -439,7 +443,9 @@ def _plot_connectivity_matrix_data(
     ax = widget.figure.add_subplot(111)
 
     # Calculate correlation matrix
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(
+        db_path, fov_name, rois
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(
@@ -468,7 +474,11 @@ def _plot_connectivity_matrix_data(
                 )
             )
             roi = session.exec(stmt).first()
-            if roi and roi.data_analysis and roi.data_analysis.calcium_network_threshold is not None:
+            if (
+                roi
+                and roi.data_analysis
+                and roi.data_analysis.calcium_network_threshold is not None
+            ):
                 network_threshold = roi.data_analysis.calcium_network_threshold
 
     # Ensure network_threshold is never None

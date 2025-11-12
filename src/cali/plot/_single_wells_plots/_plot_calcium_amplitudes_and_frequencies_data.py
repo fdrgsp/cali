@@ -96,15 +96,22 @@ def _plot_metrics(
         return
 
     if amp and freq:
-        if (not roi.data_analysis.peaks_amplitudes_dec_dff or
-            roi.data_analysis.dec_dff_frequency is None):
+        if (
+            not roi.data_analysis.peaks_amplitudes_dec_dff
+            or roi.data_analysis.dec_dff_frequency is None
+        ):
             return
         mean_amp = cast("float", np.mean(roi.data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
+        std_amp = np.std(
+            roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1
+        )  # sample std
         sem_amp = std_amp / np.sqrt(len(roi.data_analysis.peaks_amplitudes_dec_dff))
         _plot_errorbars(
-            ax, [roi.data_analysis.dec_dff_frequency], [mean_amp], [sem_amp],
-            f"ROI {roi.label_value}"
+            ax,
+            [roi.data_analysis.dec_dff_frequency],
+            [mean_amp],
+            [sem_amp],
+            f"ROI {roi.label_value}",
         )
     elif amp:
         if not roi.data_analysis.peaks_amplitudes_dec_dff:
@@ -112,7 +119,9 @@ def _plot_metrics(
 
         # plot mean amplitude +- sem of each ROI
         mean_amp = cast("float", np.mean(roi.data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
+        std_amp = np.std(
+            roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1
+        )  # sample std
         sem_amp = std_amp / np.sqrt(len(roi.data_analysis.peaks_amplitudes_dec_dff))
         _plot_errorbars(
             ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
@@ -129,8 +138,10 @@ def _plot_metrics(
         if roi.data_analysis.dec_dff_frequency is None:
             return
         ax.plot(
-            roi.label_value, roi.data_analysis.dec_dff_frequency, "o",
-            label=f"ROI {roi.label_value}"
+            roi.label_value,
+            roi.data_analysis.dec_dff_frequency,
+            "o",
+            label=f"ROI {roi.label_value}",
         )
 
 
