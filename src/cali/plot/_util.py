@@ -2,9 +2,12 @@ import re
 from typing import Callable
 
 import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
 
 from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
+from cali.sqlmodel._model import FOV, ROI
 from cali.sqlmodel._util import ROIData
 
 
@@ -107,53 +110,57 @@ def _get_calcium_peaks_event_synchrony(
 
 
 def _get_calcium_peaks_events_from_rois(
-    roi_data_dict: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> dict[str, np.ndarray] | None:
     """Extract binary peak event trains from ROI data.
 
     Args:
-        roi_data_dict: Dictionary of ROI data
+        db_path: Path to the database file
+        fov_name: Name of the FOV
         rois: List of ROI indices to include, None for all
 
     Returns
     -------
         Dictionary mapping ROI names to binary peak event arrays
     """
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.data_analysis),  # type: ignore
+            selectinload(ROI.traces),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
     peak_trains: dict[str, np.ndarray] = {}
 
-    if rois is None:
-        rois = [int(roi) for roi in roi_data_dict if roi.isdigit()]
-
-    if len(rois) < 2:
+    if len(roi_results) < 2:
         return None
 
-    max_frames = 0
-    for roi_key, roi_data in roi_data_dict.items():
-        try:
-            roi_id = int(roi_key)
-            if roi_id not in rois or not roi_data.active:
-                continue
-        except ValueError:
+    for roi in roi_results:
+        if roi.data_analysis is None or roi.traces is None:
             continue
 
-        max_frames = len(roi_data.corrected_trace) if roi_data.corrected_trace else 0
-        if max_frames == 0:
-            return None
+        corrected_trace = roi.traces.corrected_trace
+        peaks_dec_dff = roi.data_analysis.peaks_dec_dff
 
-        if (
-            roi_data.dec_dff
-            and roi_data.peaks_dec_dff
-            and len(roi_data.peaks_dec_dff) > 0
-        ):
-            # Create binary peak event train
-            peak_train = np.zeros(max_frames, dtype=np.float32)
-            for peak_frame in roi_data.peaks_dec_dff:
-                if 0 <= int(peak_frame) < max_frames:
-                    peak_train[int(peak_frame)] = 1.0
+        if corrected_trace is None or peaks_dec_dff is None or len(peaks_dec_dff) == 0:
+            continue
 
-            if np.sum(peak_train) > 0:  # Only include ROIs with at least one peak
-                peak_trains[roi_key] = peak_train
+        max_frames = len(corrected_trace)
+
+        # Create binary peak event train
+        peak_train = np.zeros(max_frames, dtype=np.float32)
+        for peak_frame in peaks_dec_dff:
+            if 0 <= int(peak_frame) < max_frames:
+                peak_train[int(peak_frame)] = 1.0
+
+        if np.sum(peak_train) > 0:  # Only include ROIs with at least one peak
+            peak_trains[str(roi.id)] = peak_train
 
     return peak_trains if len(peak_trains) >= 2 else None
 
@@ -369,17 +376,38 @@ def separate_stimulated_vs_non_stimulated_peaks(
 
 
 def _get_spikes_over_threshold(
-    roi_data: ROIData, raw: bool = False
+    db_path: str, fov_name: str, roi_id: int, raw: bool = False
 ) -> list[float] | None:
     """Get spikes over threshold from ROI data."""
-    if not roi_data.inferred_spikes or roi_data.inferred_spikes_threshold is None:
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .where(col(ROI.id) == roi_id)
+            .options(
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+        roi = session.exec(stmt).first()
+
+    if roi is None or roi.data_analysis is None:
         return None
+
+    inferred_spikes = roi.data_analysis.inferred_spikes
+    inferred_spikes_threshold = roi.data_analysis.inferred_spikes_threshold
+
+    if inferred_spikes is None or inferred_spikes_threshold is None:
+        return None
+
     if raw:
         # Return raw inferred spikes
-        return roi_data.inferred_spikes
+        return inferred_spikes
+
     spikes_thresholded = []
-    for spike in roi_data.inferred_spikes:
-        if spike > roi_data.inferred_spikes_threshold:
+    for spike in inferred_spikes:
+        if spike > inferred_spikes_threshold:
             spikes_thresholded.append(spike)
         else:
             spikes_thresholded.append(0.0)
@@ -515,3 +543,56 @@ def _calculate_cross_correlation_synchrony(
         return float(np.clip(max_correlation, 0, 1))
     else:
         return 0.0
+
+
+def _create_connectivity_matrix(
+    correlation_matrix: np.ndarray,
+    threshold_percentile: float = 90.0,
+) -> np.ndarray:
+    """Create binary connectivity matrix from correlation matrix.
+
+    Parameters
+    ----------
+    correlation_matrix : np.ndarray
+        Pairwise correlation matrix
+    threshold_percentile : float
+        Percentile threshold (0-100). Only correlations above this percentile
+        become connections.
+
+    Returns
+    -------
+    np.ndarray
+        Binary connectivity matrix (1 = connected, 0 = not connected)
+    """
+    # Exclude diagonal (self-correlations = 1.0) for threshold calculation
+    off_diagonal_mask = ~np.eye(correlation_matrix.shape[0], dtype=bool)
+    off_diagonal_values = correlation_matrix[off_diagonal_mask]
+
+    if len(off_diagonal_values) == 0:
+        return np.eye(correlation_matrix.shape[0])
+
+    # Calculate threshold
+    threshold = np.percentile(off_diagonal_values, threshold_percentile)
+
+    # Create binary connectivity matrix
+    return (correlation_matrix >= threshold).astype(int)  # type: ignore [no-any-return]
+
+
+def coordinates_to_mask(
+    coordinates: tuple[list[int], list[int]],
+    shape: tuple[int, int],
+) -> np.ndarray:
+    """Convert sparse coordinates back to a 2D boolean mask.
+
+    Args:
+        coordinates: Tuple of (y_coords, x_coords) lists
+        shape: Tuple of (height, width)
+
+    Returns
+    -------
+        2D boolean numpy array
+    """
+    mask = np.zeros(shape, dtype=bool)
+    y_coords, x_coords = coordinates
+    mask[y_coords, x_coords] = True
+    return mask

@@ -18,12 +18,12 @@ if TYPE_CHECKING:
     from matplotlib.image import AxesImage
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_peak_event_synchrony_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     """Plot peak event-based synchrony analysis.
@@ -32,15 +32,17 @@ def _plot_peak_event_synchrony_data(
     ----------
     widget: _SingleWellGraphWidget
         widget to plot on
-    data: dict[str, ROIData]
-        Dictionary of ROI data
+    db_path: str
+        Path to the database file
+    fov_name: str
+        Name of the FOV
     rois: list[int] | None
         List of ROI indices to include, None for all
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    peak_trains = _get_calcium_peaks_events_from_rois(data, rois)
+    peak_trains = _get_calcium_peaks_events_from_rois(db_path, fov_name, rois)
     if peak_trains is None or len(peak_trains) < 2:
         cali_logger.warning(
             "Insufficient peak data for synchrony analysis. "
@@ -48,7 +50,7 @@ def _plot_peak_event_synchrony_data(
         )
         return
 
-    jit = _get_jit(data, rois)
+    jit = _get_jit(db_path, fov_name, rois)
     if jit is None:
         cali_logger.warning(
             "No valid jitter window value found for synchrony analysis."
@@ -106,17 +108,33 @@ def _plot_peak_event_synchrony_data(
     widget.canvas.draw()
 
 
-def _get_jit(roi_data_dict: dict[str, ROIData], rois: list[int] | None) -> int | None:
-    """Get the jitter window value for synchrony form ROIData."""
-    if rois is None:
-        rois = [int(roi) for roi in roi_data_dict if roi.isdigit()]
-    # use only the first roi since the burst parameters are the same for all ROIs
-    roi_key = str(rois[0]) if rois else None
-    if roi_key is None or roi_key not in roi_data_dict:
+def _get_jit(db_path: str, fov_name: str, rois: list[int] | None) -> int | None:
+    """Get the jitter window value for synchrony from database."""
+    from sqlalchemy.orm import selectinload
+    from sqlmodel import Session, col, create_engine, select
+
+    from cali.sqlmodel._model import FOV, ROI
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.data_analysis),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
+    if not roi_results:
         cali_logger.warning("No valid ROIs found for synchrony analysis.")
         return None
-    roi_data = roi_data_dict[roi_key]
-    return roi_data.calcium_sync_jitter_window
+
+    # Use the first ROI since the jitter window is the same for all ROIs
+    roi = roi_results[0]
+    if roi.data_analysis is None:
+        return None
+
+    return roi.data_analysis.calcium_sync_jitter_window
 
 
 def _add_hover_functionality(

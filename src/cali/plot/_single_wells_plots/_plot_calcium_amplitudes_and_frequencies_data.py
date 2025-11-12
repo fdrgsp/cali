@@ -4,32 +4,78 @@ from typing import TYPE_CHECKING, Any, cast
 
 import mplcursors
 import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
+
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_amplitude_and_frequency_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
     amp: bool = False,
     freq: bool = False,
 ) -> None:
-    """Plot traces data."""
+    """Plot amplitude and frequency data by querying database directly.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Graph widget to plot on
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
+    rois : list[int] | None
+        List of ROI label values to plot. If None, plots all ROIs.
+    amp : bool
+        Plot amplitude data
+    freq : bool
+        Plot frequency data
+    """
     # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    # compute nth and nth percentiles globally
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
-            continue
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
-        _plot_metrics(ax, roi_key, roi_data, amp, freq)
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
+
+    # Plot the data
+    for roi in roi_models:
+        if roi.data_analysis is None:
+            continue
+        _plot_metrics(ax, roi, amp, freq)
 
     _set_graph_title_and_labels(ax, amp, freq)
 
@@ -41,42 +87,51 @@ def _plot_amplitude_and_frequency_data(
 
 def _plot_metrics(
     ax: Axes,
-    roi_key: str,
-    roi_data: ROIData,
+    roi: ROI,
     amp: bool,
     freq: bool,
 ) -> None:
-    """Plot amplitude or frequency."""
+    """Plot amplitude or frequency for a single ROI."""
+    if roi.data_analysis is None:
+        return
+
     if amp and freq:
-        if not roi_data.peaks_amplitudes_dec_dff or roi_data.dec_dff_frequency is None:
+        if (not roi.data_analysis.peaks_amplitudes_dec_dff or
+            roi.data_analysis.dec_dff_frequency is None):
             return
-        mean_amp = cast("float", np.mean(roi_data.peaks_amplitudes_dec_dff))
-        std_amp = np.std(roi_data.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(roi_data.peaks_amplitudes_dec_dff))
+        mean_amp = cast("float", np.mean(roi.data_analysis.peaks_amplitudes_dec_dff))
+        std_amp = np.std(roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
+        sem_amp = std_amp / np.sqrt(len(roi.data_analysis.peaks_amplitudes_dec_dff))
         _plot_errorbars(
-            ax, [roi_data.dec_dff_frequency], [mean_amp], [sem_amp], f"ROI {roi_key}"
+            ax, [roi.data_analysis.dec_dff_frequency], [mean_amp], [sem_amp],
+            f"ROI {roi.label_value}"
         )
     elif amp:
-        if not roi_data.peaks_amplitudes_dec_dff:
+        if not roi.data_analysis.peaks_amplitudes_dec_dff:
             return
 
         # plot mean amplitude +- sem of each ROI
-        mean_amp = cast("float", np.mean(roi_data.peaks_amplitudes_dec_dff))
-        std_amp = np.std(roi_data.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(roi_data.peaks_amplitudes_dec_dff))
-        _plot_errorbars(ax, [int(roi_key)], [mean_amp], [sem_amp], f"ROI {roi_key}")
+        mean_amp = cast("float", np.mean(roi.data_analysis.peaks_amplitudes_dec_dff))
+        std_amp = np.std(roi.data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
+        sem_amp = std_amp / np.sqrt(len(roi.data_analysis.peaks_amplitudes_dec_dff))
+        _plot_errorbars(
+            ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
+        )
         ax.scatter(
-            [int(roi_key)] * len(roi_data.peaks_amplitudes_dec_dff),
-            roi_data.peaks_amplitudes_dec_dff,
+            [roi.label_value] * len(roi.data_analysis.peaks_amplitudes_dec_dff),
+            roi.data_analysis.peaks_amplitudes_dec_dff,
             alpha=0.5,
             s=30,
             color="lightgray",
-            label=f"ROI {roi_key}",
+            label=f"ROI {roi.label_value}",
         )
     elif freq:
-        if roi_data.dec_dff_frequency is None:
+        if roi.data_analysis.dec_dff_frequency is None:
             return
-        ax.plot(int(roi_key), roi_data.dec_dff_frequency, "o", label=f"ROI {roi_key}")
+        ax.plot(
+            roi.label_value, roi.data_analysis.dec_dff_frequency, "o",
+            label=f"ROI {roi.label_value}"
+        )
 
 
 def _plot_errorbars(

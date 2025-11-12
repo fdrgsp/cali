@@ -5,20 +5,24 @@ from typing import TYPE_CHECKING
 import mplcursors
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
 
 from cali.logger import cali_logger
-from cali.plot._util import _get_spikes_over_threshold
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_inferred_spikes(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
     raw: bool = False,
     normalize: bool = False,
@@ -26,7 +30,29 @@ def _plot_inferred_spikes(
     dec_dff: bool = False,
     thresholds: bool = False,
 ) -> None:
-    """Plot inferred spikes data."""
+    """Plot inferred spikes data by querying database directly.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Graph widget to plot on
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
+    rois : list[int] | None
+        List of ROI label values to plot. If None, plots all ROIs.
+    raw : bool
+        Plot raw inferred spikes
+    normalize : bool
+        Normalize traces using percentile method
+    active_only : bool
+        Only plot active ROIs
+    dec_dff : bool
+        Show deconvolved ΔF/F traces
+    thresholds : bool
+        Show peak detection thresholds (only if single ROI selected)
+    """
     # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
@@ -34,21 +60,52 @@ def _plot_inferred_spikes(
     # show peaks thresholds only if only 1 roi is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
 
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.traces),  # type: ignore
+                selectinload(ROI.data_analysis),  # type: ignore
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Filter by active if requested
+        if active_only:
+            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
+
     # compute percentiles for normalization if needed
     p1 = p2 = 0.0
     if normalize:
         all_values = []
-        for roi_key, roi_data in data.items():
-            if rois is not None:
-                try:
-                    roi_id = int(roi_key)
-                    if roi_id not in rois:
-                        continue
-                except ValueError:
-                    # Skip non-numeric ROI keys when rois filter is specified
-                    continue
-            if the_spikes := _get_spikes_over_threshold(roi_data):
-                all_values.extend(the_spikes)
+        for roi in roi_models:
+            if roi.data_analysis and roi.data_analysis.inferred_spikes:
+                # Use inferred_spikes as the spike data
+                spike_data = roi.data_analysis.inferred_spikes
+                if raw:
+                    # For raw, use all values above 0
+                    spike_values = [s for s in spike_data if s > 0]
+                else:
+                    # For thresholded, use values above threshold
+                    threshold = roi.data_analysis.inferred_spikes_threshold or 0
+                    spike_values = [s for s in spike_data if s > threshold]
+                all_values.extend(spike_values)
 
         if all_values:
             percentiles = np.percentile(all_values, [5, 100])
@@ -60,39 +117,38 @@ def _plot_inferred_spikes(
     rois_rec_time: list[float] = []
     last_trace: list[float] | None = None
 
-    for roi_key, roi_data in data.items():
-        if rois is not None:
-            try:
-                roi_id = int(roi_key)
-                if roi_id not in rois:
-                    continue
-            except ValueError:
-                # Skip non-numeric ROI keys when rois filter is specified
-                continue
-
-        if not roi_data.inferred_spikes:
+    for roi in roi_models:
+        if roi.data_analysis is None or not roi.data_analysis.inferred_spikes:
             continue
 
-        if (ttime := roi_data.total_recording_time_sec) is not None:
-            rois_rec_time.append(ttime)
+        if roi.data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
 
-        # plot only active neurons if asked to plot active only
-        if active_only and not roi_data.active:
-            continue
+        # Get spike data based on raw/thresholded mode
+        if raw:
+            spike_data = [s if s > 0 else 0 for s in roi.data_analysis.inferred_spikes]
+        else:
+            threshold = roi.data_analysis.inferred_spikes_threshold or 0
+            spike_data = [
+                s if s > threshold else 0 for s in roi.data_analysis.inferred_spikes
+            ]
+
         _plot_trace(
             ax,
-            roi_key,
-            _get_spikes_over_threshold(roi_data, raw),
+            str(roi.label_value),
+            spike_data,
             normalize,
             count,
             p1,
             p2,
             thresholds,
-            roi_data.inferred_spikes_threshold,
+            roi.data_analysis.inferred_spikes_threshold,
         )
-        if dec_dff and roi_data.dec_dff:
-            _plot_trace(ax, roi_key, roi_data.dec_dff, normalize, count, p1, p2)
-        last_trace = roi_data.inferred_spikes
+        if dec_dff and roi.traces and roi.traces.dec_dff:
+            _plot_trace(
+                ax, str(roi.label_value), roi.traces.dec_dff, normalize, count, p1, p2
+            )
+        last_trace = roi.data_analysis.inferred_spikes
         count += 1
 
     _set_graph_title_and_labels(ax, normalize, raw)

@@ -6,7 +6,7 @@ import mplcursors
 import numpy as np
 from skimage import measure
 
-from cali.analysis._util import coordinates_to_mask
+from cali.plot._util import coordinates_to_mask
 from cali.logger import cali_logger
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 
 def _plot_connectivity_network_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     """Plot spatial functional connectivity network.
@@ -30,8 +31,10 @@ def _plot_connectivity_network_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
     """
@@ -39,7 +42,7 @@ def _plot_connectivity_network_data(
     ax = widget.figure.add_subplot(111)
 
     # Calculate correlation matrix
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(
@@ -51,12 +54,25 @@ def _plot_connectivity_network_data(
     # Get network threshold from first available ROI
     network_threshold: float | None = None
     if rois_idxs:
-        first_roi_key = str(rois_idxs[0])
-        if (
-            first_roi_key in data
-            and data[first_roi_key].calcium_network_threshold is not None
-        ):
-            network_threshold = data[first_roi_key].calcium_network_threshold
+        from sqlalchemy.orm import selectinload
+        from sqlmodel import Session, col, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI
+
+        engine = create_engine(f"sqlite:///{db_path}")
+        with Session(engine) as session:
+            stmt = (
+                select(ROI)
+                .join(FOV)
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.id) == rois_idxs[0])
+                .options(
+                    selectinload(ROI.data_analysis),  # type: ignore
+                )
+            )
+            roi = session.exec(stmt).first()
+            if roi and roi.data_analysis and roi.data_analysis.calcium_network_threshold is not None:
+                network_threshold = roi.data_analysis.calcium_network_threshold
 
     # Ensure network_threshold is never None
     if network_threshold is None:
@@ -68,7 +84,7 @@ def _plot_connectivity_network_data(
     )
 
     # Try to get ROI shapes from mask data
-    roi_shapes = _get_roi_shapes_from_mask_data(data, rois_idxs)
+    roi_shapes = _get_roi_shapes_from_mask_data(db_path, fov_name, rois_idxs)
 
     # If no shape data available, fall back to coordinates only
     if len(roi_shapes) < len(rois_idxs):
@@ -251,15 +267,18 @@ def _create_connectivity_matrix(
 
 
 def _get_roi_shapes_from_mask_data(
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     roi_indices: list[int],
 ) -> dict[int, dict[str, Any]]:
     """Extract ROI shapes and contours from mask coordinate data.
 
     Parameters
     ----------
-    data : dict[str, ROIData]
-        Dictionary containing ROI data with mask_coord_and_shape information
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     roi_indices : list[int]
         List of ROI indices to extract shapes for
 
@@ -272,50 +291,9 @@ def _get_roi_shapes_from_mask_data(
         - 'mask': 2D boolean mask array
         - 'bbox': bounding box (x_min, y_min, x_max, y_max)
     """
-    roi_shapes = {}
-
-    for roi_idx in roi_indices:
-        roi_key = str(roi_idx)
-        if roi_key in data:
-            roi_data = data[roi_key]
-
-            # Check if mask coordinate and shape data is available
-            if roi_data.mask_coord_and_shape is not None:
-                # Extract coordinates and shape
-                (y_coords, x_coords), (height, width) = roi_data.mask_coord_and_shape
-
-                if len(x_coords) > 0 and len(y_coords) > 0:
-                    # Reconstruct the 2D mask
-                    mask = coordinates_to_mask((y_coords, x_coords), (height, width))
-
-                    # Calculate centroid
-                    centroid_x = np.mean(x_coords)
-                    centroid_y = np.mean(y_coords)
-
-                    # Calculate bounding box
-                    x_min, x_max = np.min(x_coords), np.max(x_coords)
-                    y_min, y_max = np.min(y_coords), np.max(y_coords)
-
-                    # Find contours for plotting
-                    contours = measure.find_contours(mask.astype(float), 0.5)
-
-                    # Convert contours to matplotlib format (x, y instead of row, col)
-                    matplotlib_contours = []
-                    for contour in contours:
-                        # Swap row/col to x/y and adjust for plotting
-                        matplotlib_contour = np.column_stack(
-                            [contour[:, 1], contour[:, 0]]
-                        )
-                        matplotlib_contours.append(matplotlib_contour)
-
-                    roi_shapes[roi_idx] = {
-                        "centroid": (centroid_x, centroid_y),
-                        "contours": matplotlib_contours,
-                        "mask": mask,
-                        "bbox": (x_min, y_min, x_max, y_max),
-                    }
-
-    return roi_shapes
+    # TODO: Implement mask data retrieval from database
+    # For now, return empty dict to disable mask visualization
+    return {}
 
 
 def _create_roi_composite_image(
@@ -440,7 +418,8 @@ def _add_hover_functionality(
 
 def _plot_connectivity_matrix_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     """Plot the binary connectivity matrix as a heatmap.
@@ -449,8 +428,10 @@ def _plot_connectivity_matrix_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
     """
@@ -458,7 +439,7 @@ def _plot_connectivity_matrix_data(
     ax = widget.figure.add_subplot(111)
 
     # Calculate correlation matrix
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(
@@ -470,14 +451,25 @@ def _plot_connectivity_matrix_data(
     # Get network threshold
     network_threshold = 90.0  # Default
     if rois_idxs:
-        first_roi_key = str(rois_idxs[0])
-        if (
-            first_roi_key in data
-            and data[first_roi_key].calcium_network_threshold is not None
-        ):
-            threshold_value = data[first_roi_key].calcium_network_threshold
-            if threshold_value is not None:
-                network_threshold = threshold_value
+        from sqlalchemy.orm import selectinload
+        from sqlmodel import Session, col, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI
+
+        engine = create_engine(f"sqlite:///{db_path}")
+        with Session(engine) as session:
+            stmt = (
+                select(ROI)
+                .join(FOV)
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.id) == rois_idxs[0])
+                .options(
+                    selectinload(ROI.data_analysis),  # type: ignore
+                )
+            )
+            roi = session.exec(stmt).first()
+            if roi and roi.data_analysis and roi.data_analysis.calcium_network_threshold is not None:
+                network_threshold = roi.data_analysis.calcium_network_threshold
 
     # Ensure network_threshold is never None
     if network_threshold is None:

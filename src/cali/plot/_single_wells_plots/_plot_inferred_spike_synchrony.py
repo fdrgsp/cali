@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 
 def _plot_spike_synchrony_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     """Plot spike-based synchrony analysis.
@@ -32,15 +33,17 @@ def _plot_spike_synchrony_data(
     ----------
     widget: _SingleWellGraphWidget
         widget to plot on
-    data: dict[str, ROIData]
-        Dictionary of ROI data
+    db_path: str
+        Path to the database file
+    fov_name: str
+        Name of the FOV
     rois: list[int] | None
         List of ROI indices to include, None for all
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    spike_trains = _get_spike_trains_from_rois(data, rois)
+    spike_trains = _get_spike_trains_from_rois(db_path, fov_name, rois)
     if spike_trains is None or len(spike_trains) < 2:
         cali_logger.warning(
             "Insufficient spike data for synchrony analysis. "

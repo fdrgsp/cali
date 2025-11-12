@@ -17,7 +17,8 @@ if TYPE_CHECKING:
 
 def _plot_inferred_spike_burst_activity(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
     """Plot burst detection and network state analysis for inferred spikes.
@@ -29,21 +30,23 @@ def _plot_inferred_spike_burst_activity(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data containing spike information
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
     """
     widget.figure.clear()
 
-    burst_params = _get_burst_parameters(data, rois)
+    burst_params = _get_burst_parameters(db_path, fov_name, rois)
     if burst_params is None:
         cali_logger.warning("Burst parameters not found in ROI data.")
         return
     burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
     # Get spike trains and calculate population activity
-    spike_trains, _, time_axis = _get_population_spike_data(data, rois)
+    spike_trains, _, time_axis = _get_population_spike_data(db_path, fov_name, rois)
 
     if spike_trains is None or len(spike_trains) < 2:
         cali_logger.warning(
@@ -84,22 +87,39 @@ def _plot_inferred_spike_burst_activity(
 
 
 def _get_burst_parameters(
-    roi_data_dict: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
 ) -> tuple[float, int, float] | None:
-    """Get burst detection parameters from ROIData."""
-    if rois is None:
-        rois = [int(roi) for roi in roi_data_dict if roi.isdigit()]
-    # use only the first roi since the burst parameters are the same for all ROIs
-    roi_key = str(rois[0]) if rois else None
-    if roi_key is None or roi_key not in roi_data_dict:
+    """Get burst detection parameters from database."""
+    from sqlalchemy.orm import selectinload
+    from sqlmodel import Session, col, create_engine, select
+
+    from cali.sqlmodel._model import FOV, ROI
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.data_analysis),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
+    if not roi_results:
         cali_logger.warning("No valid ROIs found for burst parameter extraction.")
         return None
-    roi_data = roi_data_dict[roi_key]
-    burst_threshold = roi_data.spikes_burst_threshold
-    burst_min_duration = roi_data.spikes_burst_min_duration
-    burst_gaussian_sigma = roi_data.spikes_burst_gaussian_sigma
-    # if any is NOne, return None
+
+    # Use the first ROI since the burst parameters are the same for all ROIs
+    roi = roi_results[0]
+    if roi.data_analysis is None:
+        return None
+
+    burst_threshold = roi.data_analysis.burst_threshold
+    burst_min_duration = roi.data_analysis.burst_min_duration
+    burst_gaussian_sigma = roi.data_analysis.burst_gaussian_sigma
+
     if (
         burst_threshold is None
         or burst_min_duration is None
@@ -107,6 +127,7 @@ def _get_burst_parameters(
     ):
         cali_logger.warning("Burst parameters not set in ROI data.")
         return None
+
     return (
         burst_threshold,
         burst_min_duration,
