@@ -14,6 +14,7 @@ The schema enables:
 from datetime import datetime
 from typing import Any, Optional
 
+import numpy as np
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 from cali._constants import (
@@ -30,6 +31,7 @@ from cali._constants import (
     MULTIPLIER,
     SPONTANEOUS,
 )
+from cali.analysis._util import coordinates_to_mask
 
 # ==================== Core Models ====================
 
@@ -192,7 +194,9 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     threads: int = Field(default=1)
 
     # Foreign keys
-    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    experiment_id: int | None = Field(
+        default=None, foreign_key="experiment.id", index=True
+    )
     stimulation_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
     )
@@ -205,6 +209,20 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
             "lazy": "selectin",
         }
     )
+
+    def stimulated_mask_area(self) -> np.ndarray | None:
+        if (
+            (stim_mask := self.stimulation_mask)
+            and stim_mask.coords_y is not None
+            and stim_mask.coords_x is not None
+            and stim_mask.height is not None
+            and stim_mask.width is not None
+        ):
+            return coordinates_to_mask(
+                (stim_mask.coords_y, stim_mask.coords_x),
+                (stim_mask.height, stim_mask.width),
+            )
+        return None
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
