@@ -1,5 +1,4 @@
 from datetime import datetime
-from unittest import runner
 
 import useq
 
@@ -49,4 +48,5 @@ settings = AnalysisSettings(threads=4)
 analysis = AnalysisRunner()
 analysis.run(exp, settings, positions=list(range(len(plate_plan))))
 
-print_experiment_tree(analysis._runner.experiment())
+loaded_exp = Experiment.load_from_db(exp.db_path, exp.id)
+print_experiment_tree(loaded_exp)
