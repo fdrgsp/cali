@@ -325,6 +325,7 @@ class AnalysisRunner:
             cali_logger.error("No Experiment set for analysis.")
             self.analysisInfo.emit("No Experiment set for analysis.", "error")
             return
+
         if self._data is None:
             cali_logger.error("No Data set for analysis.")
             self.analysisInfo.emit("No Data set for analysis.", "error")
