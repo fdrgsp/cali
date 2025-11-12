@@ -1,6 +1,6 @@
 import logging
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
@@ -9,7 +9,6 @@ import numpy as np
 import tifffile
 from oasis.functions import deconvolve
 from scipy.signal import find_peaks
-from sqlalchemy import Engine
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
@@ -29,7 +28,9 @@ from cali.sqlmodel._model import (
     DataAnalysis,
     Experiment,
     Mask,
+    Plate,
     Traces,
+    Well,
 )
 
 from ._analysis_with_sqlmodel import AnalysisRunner as OriginalAnalysisRunner
@@ -46,117 +47,89 @@ if TYPE_CHECKING:
 cali_logger = logging.getLogger("cali_logger")
 
 
+def commit_result(session: Session, experiment: Experiment, fov_result: FOV) -> None:
+    # Query for plate ID directly to avoid loading relationships
+    plate_statement = (
+        select(Plate.id).join(Experiment).where(Experiment.id == experiment.id)
+    )
+    plate_id_result = session.exec(plate_statement).first()
+    if plate_id_result is None:
+        cali_logger.error("Experiment plate not initialized")
+        return
+
+    plate_id = plate_id_result
+
+    # For each FOV, link it to the appropriate well
+    well_name = fov_result.name.split("_")[0]
+
+    # Query for existing well
+    well_statement = select(Well).where(
+        Well.plate_id == plate_id, Well.name == well_name
+    )
+    well = session.exec(well_statement).first()
+
+    if well is None:
+        # Create new well if needed
+        row = ord(well_name[0]) - ord("A")
+        col = int(well_name[1:]) - 1
+        well = Well(
+            plate_id=plate_id,
+            name=well_name,
+            row=row,
+            column=col,
+            fovs=[],
+        )
+        session.add(well)
+        session.flush()  # Get the well ID
+
+    # Link FOV to well using foreign key
+    fov_result.well_id = well.id
+    session.add(fov_result)
+
+    session.commit()
+    position_idx = fov_result.position_index if fov_result else "unknown"
+    cali_logger.info(
+        f"💾 Updated analysis data for position {position_idx} in database."
+    )
+
+
 def exec_(
     analyze: Callable,
     cancel_event: threading.Event,
-    positions: Sequence[int],
+    global_position_indices: Sequence[int],
+    settings: AnalysisSettings,
     experiment: Experiment,
-    engine: Engine,
     max_workers: int | None = None,
-) -> None:
-    """Execute analysis in parallel and commit results centrally.
-
-    Parameters
-    ----------
-    analyze : Callable
-        Function that analyzes a single position and returns result objects
-    cancel_event : threading.Event
-        Event to signal cancellation
-    positions : Sequence[int]
-        List of position indices to analyze
-    experiment : Experiment
-        Experiment being analyzed
-    engine : Engine
-        SQLAlchemy engine for database operations
-    max_workers : int | None
-        Number of worker threads
-    """
+) -> Iterable[FOV]:
+    """Execute analysis in parallel and commit results centrally."""
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Check for cancellation before submitting futures
         if cancel_event.is_set():
             cali_logger.info("Cancellation requested before starting thread pool")
             return
 
-        futures = [executor.submit(analyze, p, experiment) for p in positions]
+        futures = (
+            executor.submit(analyze, experiment, settings, p)
+            for p in global_position_indices
+        )
 
         for future in as_completed(futures):
             # Check for cancellation at the start of each iteration
             if cancel_event.is_set():
                 cali_logger.info("Cancellation requested, shutting down executor...")
                 # Cancel pending futures and shutdown executor
-                for f in futures:
-                    f.cancel()
                 executor.shutdown(wait=False, cancel_futures=True)
                 break
 
             try:
-                # Get the result objects from analysis
-                result_objects = future.result()
-
-                # Check for cancellation after each completed position
-                if cancel_event.is_set():
-                    cali_logger.info("Cancellation requested after position")
-                    break
-
                 # Commit the results to database if we got any
-                if result_objects:
-                    with Session(engine) as session:
-                        from cali.sqlmodel._model import Plate, Well
-
-                        # Query for plate ID directly to avoid loading relationships
-                        plate_statement = (
-                            select(Plate.id)
-                            .join(Experiment)
-                            .where(Experiment.id == experiment.id)
-                        )
-                        plate_id_result = session.exec(plate_statement).first()
-                        if plate_id_result is None:
-                            cali_logger.error("Experiment plate not initialized")
-                            continue
-
-                        plate_id = plate_id_result
-
-                        # For each FOV, link it to the appropriate well
-                        for fov in result_objects:
-                            well_name = fov.name.split("_")[0]
-
-                            # Query for existing well
-                            well_statement = select(Well).where(
-                                Well.plate_id == plate_id, Well.name == well_name
-                            )
-                            well = session.exec(well_statement).first()
-
-                            if well is None:
-                                # Create new well if needed
-                                row = ord(well_name[0]) - ord("A")
-                                col = int(well_name[1:]) - 1
-                                well = Well(
-                                    plate_id=plate_id,
-                                    name=well_name,
-                                    row=row,
-                                    column=col,
-                                    fovs=[],
-                                )
-                                session.add(well)
-                                session.flush()  # Get the well ID
-
-                            # Link FOV to well using foreign key
-                            fov.well_id = well.id
-                            session.add(fov)
-
-                        session.commit()
-                        position_idx = (
-                            result_objects[0].position_index
-                            if result_objects
-                            else "unknown"
-                        )
-                        cali_logger.info(
-                            f"💾 Updated analysis data for position {position_idx} in database."
-                        )
-
+                if (fov_result := future.result()) is not None:
+                    yield fov_result
             except Exception as e:
-                cali_logger.error(f"An error occurred: {e}")
-                break
+                import traceback
+
+                full_tb = traceback.format_exc()
+                cali_logger.error(f"Exception in analysis thread: {full_tb}")
 
     # Check if cancelled before finishing
     if cancel_event.is_set():
@@ -168,79 +141,72 @@ class AnalysisRunner:
         self,
         experiment: Experiment,
         settings: AnalysisSettings,
-        positions: Sequence[int],
+        global_position_indices: Sequence[int],
     ) -> None:
         self._runner = runner = OriginalAnalysisRunner()
-        experiment.positions_analyzed = list(positions)
-        experiment.analysis_settings = settings
-        settings.experiment_id = experiment.id
-
         runner.set_experiment(experiment)
-
         runner._stimulated_area_mask = settings.stimulated_mask_area()
+
         cancellation_event = threading.Event()
+        engine = create_engine(f"sqlite:///{experiment.db_path}")
+        with Session(engine) as session:
+            for result in exec_(
+                analyze=self._analyze_position,
+                cancel_event=cancellation_event,
+                global_position_indices=global_position_indices,
+                settings=settings,
+                experiment=experiment,
+                max_workers=settings.threads,
+            ):
+                commit_result(session, experiment, result)
+                # TODO: create the AnalysisResult object,
+                # and get analysis_settings off of Roi.
 
-        # Create our own engine - analysis should not use runner's engine
-        assert experiment.analysis_path is not None
-        assert experiment.database_name is not None
-        db_path = Path(experiment.analysis_path) / experiment.database_name
-        engine = create_engine(f"sqlite:///{db_path}")
-
-        exec_(
-            analyze=self._analyze_position,
-            cancel_event=cancellation_event,
-            positions=positions,
-            experiment=experiment,
-            engine=engine,
-            max_workers=settings.threads,
-        )
-
-    def _analyze_position(_self, p: int, experiment: Experiment) -> list[FOV]:
+    def _analyze_position(
+        self, experiment: Experiment, settings: AnalysisSettings, global_pos_idx: int
+    ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
 
         Returns a list of FOV objects with all their nested relationships
         (ROIs, Traces, DataAnalysis, Masks) ready to be committed.
         """
-        runner = _self._runner
-        if runner._data is None:
-            return []
-        if runner._check_for_abort_requested():
-            return []
-
-        # Call the analysis logic that returns objects instead of committing
-        fov_results = _extract_trace_data_per_position(runner, experiment, p)
-        return fov_results if fov_results else []
+        return _extract_trace_data_per_position(
+            self._runner, experiment, settings, global_pos_idx
+        )
 
 
 # These are module-level functions that work with the OriginalAnalysisRunner
 def _extract_trace_data_per_position(
-    runner: OriginalAnalysisRunner, experiment: Experiment, p: int
-) -> list[FOV]:
+    runner: OriginalAnalysisRunner,
+    experiment: Experiment,
+    settings: AnalysisSettings,
+    global_pos_idx: int,
+) -> FOV | None:
     """Extract trace data for a position and return FOV objects (not committed).
 
     Returns a list containing a single FOV with all its ROIs, Traces, DataAnalysis,
     and Masks ready to be committed to the database.
     """
     if runner._data is None or runner._check_for_abort_requested():
-        return []
+        return None
 
     # get the data and metadata for the position
-    data, meta = runner._data.isel(p=p, metadata=True)
+    data, meta = runner._data.isel(p=global_pos_idx, metadata=True)
 
     # get the fov_name name from metadata
-    fov_name = _get_fov_name(EVENT_KEY, meta, p)
+    fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
     # get the labels file for the position
-    labels_path = _get_labels_file_for_position(experiment, fov_name, p)
+    labels_path = _get_labels_file_for_position(experiment, fov_name, global_pos_idx)
     if labels_path is None:
-        return []
+        return None
 
     # open the labels file and create masks for each label
     labels = tifffile.imread(labels_path)
 
     # Check for cancellation after file I/O operation
     if runner._check_for_abort_requested():
-        return []
+        return None
 
     # { roi_id -> np.ndarray mask }
     labels_masks = _create_label_masks_dict(labels)
@@ -248,10 +214,7 @@ def _extract_trace_data_per_position(
 
     # Check for cancellation after loading and processing labels
     if runner._check_for_abort_requested():
-        return []
-
-    settings = experiment.analysis_settings
-    assert settings is not None  # this should never be None here
+        return None
 
     # Prepare masks for neuropil correction if enabled
     from ._util import create_neuropil_from_dilation
@@ -294,8 +257,8 @@ def _extract_trace_data_per_position(
     fov_name.split("_")[0]
     fov = FOV(
         name=fov_name,
-        position_index=p,
-        fov_number=p,
+        position_index=global_pos_idx,
+        fov_number=global_pos_idx,
         rois=[],
     )
 
@@ -315,7 +278,7 @@ def _extract_trace_data_per_position(
             data,
             meta,
             fov_name,
-            p,
+            settings,
             label_value,
             eroded_masks[label_value],
             tot_time_sec,
@@ -337,7 +300,7 @@ def _extract_trace_data_per_position(
             fov.rois.append(roi_result)
 
     # Return the FOV with all its ROIs (will be committed by caller)
-    return [fov] if fov.rois else []
+    return fov
 
 
 def _process_roi_trace(
@@ -346,7 +309,7 @@ def _process_roi_trace(
     data: np.ndarray,
     meta: list[dict],
     fov_name: str,
-    pos_idx: int,
+    settings: AnalysisSettings,
     label_value: int,
     label_mask: np.ndarray,
     tot_time_sec: float,
@@ -363,11 +326,6 @@ def _process_roi_trace(
     # Early exit if cancellation is requested
     if runner._check_for_abort_requested():
         return None
-
-    if experiment.analysis_settings is None:
-        return None
-
-    settings = experiment.analysis_settings
 
     # get the data for the current label
     masked_data = data[:, label_mask]
