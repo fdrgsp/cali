@@ -21,32 +21,24 @@ exp = Experiment(
     analysis_path="analysis_results",
 )
 
+# ----------------------------------- FIXME: create isolated function for this
 # load the data and get the useq plate plan from the sequence
-data = TensorstoreZarrReader(exp.data_path)
-assert data.sequence is not None
-plate_plan = data.sequence.stage_positions
-assert isinstance(plate_plan, useq.WellPlatePlan)
-
-
-# Define plate maps for conditions (optional)
-plate_maps = {
-    "genotype": {"B5": "WT"},
-    "treatment": {"B5": "Vehicle"},
-}
-
 # Create plate with plate_maps and conditions in one step
-plate = useq_plate_plan_to_db(plate_plan, exp, plate_maps)
-exp.plate = plate
-
+data = TensorstoreZarrReader(exp.data_path)
+exp.plate = useq_plate_plan_to_db(
+    (plate_plan := data.sequence.stage_positions),
+    exp,
+    plate_maps={
+        "genotype": {"B5": "WT"},
+        "treatment": {"B5": "Vehicle"},
+    },
+)
+# -----------------------------------
 
 settings = AnalysisSettings(threads=4)
-
-
-# ###########################################
-
 # run the analysis
 analysis = AnalysisRunner()
-analysis.run(exp, settings, positions=list(range(len(plate_plan))))
+analysis.run(exp, settings, global_position_indices=list(range(len(plate_plan))))
 
 loaded_exp = Experiment.load_from_db(exp.db_path, exp.id)
 print_experiment_tree(loaded_exp)
