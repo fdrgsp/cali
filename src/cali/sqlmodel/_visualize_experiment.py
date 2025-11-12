@@ -79,8 +79,8 @@ def print_experiment_tree(
         return
 
     # Analysis Settings
-    if experiment.analysis_settings:
-        tree.add("⚙️ [dim]Analysis Settings available[/dim]")
+    # if experiment.analysis_settings:
+    # tree.add("⚙️ [dim]Analysis Settings available[/dim]")
 
     # Add plate
     plate_type = experiment.plate.plate_type or "unknown"
