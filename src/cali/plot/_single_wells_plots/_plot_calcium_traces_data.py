@@ -128,9 +128,10 @@ def _plot_traces_data(
             continue
 
         # Get recording time from data_analysis if available
-        if roi_model.data_analysis and (
-            ttime := roi_model.data_analysis.total_recording_time_sec
-        ) is not None:
+        if (
+            roi_model.data_analysis
+            and (ttime := roi_model.data_analysis.total_recording_time_sec) is not None
+        ):
             rois_rec_time.append(ttime)
 
         _plot_trace(
