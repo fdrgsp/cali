@@ -80,7 +80,9 @@ def _plot_cross_correlation_data(
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(
+        db_path, fov_name, rois
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         return
@@ -139,7 +141,9 @@ def _plot_hierarchical_clustering_data(
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(db_path, fov_name, rois)
+    correlation_matrix, rois_idxs = _calculate_cross_correlation(
+        db_path, fov_name, rois
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         return

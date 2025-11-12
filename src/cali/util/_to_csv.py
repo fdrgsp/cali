@@ -17,9 +17,6 @@ from cali._constants import (
     SEM_SUFFIX,
 )
 from cali.logger import cali_logger
-from cali.plot._util import (
-    _create_connectivity_matrix,
-)
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -29,6 +26,7 @@ from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
     _get_population_spike_data,
 )
 from cali.plot._util import (
+    _create_connectivity_matrix,
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
     _get_calcium_peaks_events_from_rois,

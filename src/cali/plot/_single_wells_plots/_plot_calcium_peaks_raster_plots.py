@@ -97,8 +97,10 @@ def _generate_raster_plot(
         if roi.data_analysis is None or roi.traces is None:
             continue
 
-        if (not roi.data_analysis.peaks_dec_dff or
-            not roi.data_analysis.peaks_amplitudes_dec_dff):
+        if (
+            not roi.data_analysis.peaks_dec_dff
+            or not roi.data_analysis.peaks_amplitudes_dec_dff
+        ):
             continue
 
         # store the active ROIs

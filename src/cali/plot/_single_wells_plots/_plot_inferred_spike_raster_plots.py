@@ -121,12 +121,15 @@ def _generate_spike_raster_plot(
         active_rois.append(roi.label_value)
 
         # convert the x-axis frames to seconds
-        if (roi.data_analysis.total_recording_time_sec is not None):
+        if roi.data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
 
         # assuming all traces have the same number of frames
-        if (not total_frames and roi.traces is not None and
-            roi.traces.corrected_trace is not None):
+        if (
+            not total_frames
+            and roi.traces is not None
+            and roi.traces.corrected_trace is not None
+        ):
             total_frames = len(roi.traces.corrected_trace)
 
         # store event data (spike times)

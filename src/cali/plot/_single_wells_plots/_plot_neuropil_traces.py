@@ -75,10 +75,12 @@ def _plot_neuropil_traces(
     # Filter ROIs that have both raw_trace and neuropil traces
     valid_rois = []
     for roi in roi_models:
-        if (roi.traces is not None and
-            roi.traces.raw_trace is not None and
-            roi.traces.neuropil_trace is not None and
-            roi.traces.corrected_trace is not None):
+        if (
+            roi.traces is not None
+            and roi.traces.raw_trace is not None
+            and roi.traces.neuropil_trace is not None
+            and roi.traces.corrected_trace is not None
+        ):
             valid_rois.append(roi)
 
     if not valid_rois:
@@ -119,8 +121,10 @@ def _plot_neuropil_traces(
         frames = np.arange(len(raw_trace))
 
         # Collect recording time if available
-        if (roi.data_analysis is not None and
-            roi.data_analysis.total_recording_time_sec is not None):
+        if (
+            roi.data_analysis is not None
+            and roi.data_analysis.total_recording_time_sec is not None
+        ):
             rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
 
         # Keep track of last trace for time axis calculation
