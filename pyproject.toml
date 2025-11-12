@@ -15,7 +15,7 @@ source = "vcs"
 name = "cali"
 description = "A GUI to visualize, segment and analyze calcium imaging data."
 readme = "README.md"
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.11"
 license = { text = "BSD 3-Clause License" }
 authors = [
     { email = "federico.gasparoli@gmail.com", name = "Federico Gasparoli" },
@@ -31,8 +31,8 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "numpy<2.0.0; platform_system == 'Darwin'",
-    "numpy; platform_system != 'Darwin'",
+    # "numpy<2.0.0; platform_system == 'Darwin'",
+    # "numpy; platform_system != 'Darwin'",
     "oasis-deconv==0.2.0",  # Build from source to avoid broken prebuilt wheels
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
