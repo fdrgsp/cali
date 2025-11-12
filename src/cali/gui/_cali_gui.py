@@ -346,7 +346,7 @@ class CaliGui(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path, self._labels_path)  # noqa: E501
 
-        data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"  # noqa: E501
+        data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"
         self.initialize_widget_from_database(data)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
@@ -939,6 +939,7 @@ class CaliGui(QMainWindow):
                 return
 
             from rich import print
+
             print(f"ON TAB CHANGED - Selected FOV value: {value}")
 
             # check if the FOV has been analyzed (has ROIs with data)

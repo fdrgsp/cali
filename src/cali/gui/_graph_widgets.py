@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 RED = "#C33"
 SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
 
+
 class _CustomNavigationToolbar(NavigationToolbar2QT):
     """Custom navigation toolbar that excludes the save button."""
 
@@ -132,16 +133,10 @@ class _DisplaySingleWellTraces(QGroupBox):
         # Get ROI selection
         rois = self._parse_roi_selection()
 
-        if rois is None or (db_path:=self._graph._database_path) is None:
+        if rois is None or (db_path := self._graph._database_path) is None:
             return
 
-        plot_single_well_data(
-            self._graph,
-            db_path,
-            self._graph._fov,
-            text,
-            rois=rois
-        )
+        plot_single_well_data(self._graph, db_path, self._graph._fov, text, rois=rois)
 
     def _parse_roi_selection(self) -> list[int] | None:
         """Return the list of ROIs to be displayed."""
@@ -284,7 +279,7 @@ class _SingleWellGraphWidget(QWidget):
         return self._database_path
 
     @database_path.setter
-    def database_path(self, path: Path |str | None) -> None:
+    def database_path(self, path: Path | str | None) -> None:
         self._database_path = str(path) if path is not None else None
 
     @property
@@ -402,7 +397,7 @@ class _MultilWellGraphWidget(QWidget):
         return self._database_path
 
     @database_path.setter
-    def database_path(self, path: Path |str | None) -> None:
+    def database_path(self, path: Path | str | None) -> None:
         self._database_path = str(path) if path is not None else None
 
     @property
