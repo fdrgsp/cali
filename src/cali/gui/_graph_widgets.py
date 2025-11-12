@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import random
 from typing import TYPE_CHECKING
 
 from fonticon_mdi6 import MDI6
@@ -23,6 +24,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlmodel import Session, col, create_engine, select
 from superqt.fonticon import icon
 
 from cali.plot._main_plot import (
@@ -30,7 +32,9 @@ from cali.plot._main_plot import (
     SINGLE_WELL_COMBO_OPTIONS_DICT,
     plot_multi_well_data,
     plot_single_well_data,
+    requires_active_rois,
 )
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,12 +131,13 @@ class _DisplaySingleWellTraces(QGroupBox):
 
         # Get ROI selection
         rois = self._parse_roi_selection()
-        if rois is None:
+
+        if rois is None or (db_path:=self._graph._database_path) is None:
             return
 
         plot_single_well_data(
             self._graph,
-            self._graph.database_path,
+            db_path,
             self._graph._fov,
             text,
             rois=rois
@@ -145,13 +150,52 @@ class _DisplaySingleWellTraces(QGroupBox):
             return None
 
         # Handle random ROI selection (e.g., "rnd10")
-        # Note: This now selects from all ROIs, not just active ones
-        # The plot functions can filter for active ROIs internally if needed
+        # This queries the database to get all available ROIs for the current FOV
+        # and randomly selects the requested number
         if text[:3] == "rnd" and text[3:].isdigit():
-            return None  # Let the plot function handle all ROIs for now
+            num_rois = int(text[3:])
+            if not self._graph._database_path or not self._graph._fov:
+                return None
+
+            # Check if the current plot requires only active ROIs
+            plot_name = self._graph._combo.currentText()
+            active_only = requires_active_rois(plot_name)
+
+            # Query database to get all available ROI label values for this FOV
+            engine = create_engine(
+                f"sqlite:///{self._graph._database_path}", echo=False
+            )
+
+            try:
+                with Session(engine) as session:
+                    # Get all ROI label values for this FOV
+                    stmt = (
+                        select(ROI.label_value)
+                        .join(FOV)
+                        .where(col(FOV.name) == self._graph._fov)
+                        .order_by(col(ROI.label_value))
+                    )
+
+                    # Filter for active ROIs if the plot requires it
+                    if active_only:
+                        stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+
+                    roi_label_values = session.exec(stmt).all()
+
+                    if not roi_label_values:
+                        return None
+
+                    # Randomly select the requested number of ROIs
+                    selected_rois = random.sample(
+                        roi_label_values, min(num_rois, len(roi_label_values))
+                    )
+                    return sorted(selected_rois)
+            finally:
+                engine.dispose(close=True)
 
         # Parse the input string for specific ROI numbers
         rois = self._parse_input(text)
+
         return rois or None
 
     def _parse_input(self, input_str: str) -> list[int]:

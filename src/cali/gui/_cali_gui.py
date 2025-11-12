@@ -1053,6 +1053,7 @@ class CaliGui(QMainWindow):
         if value is None:
             return
         title = value.fov.name or f"Position {value.pos_idx}"
+        title = f"{title}_p{value.pos_idx}"
         self._update_single_wells_graphs_combo(set_title=title)
 
     def _get_labels(self, value: WellInfo) -> np.ndarray | None:
