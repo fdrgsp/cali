@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import numpy as np
 from fonticon_mdi6 import MDI6
 from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvas
@@ -29,21 +28,18 @@ from superqt.fonticon import icon
 from cali.plot._main_plot import (
     MULTI_WELL_COMBO_OPTIONS_DICT,
     SINGLE_WELL_COMBO_OPTIONS_DICT,
-    get_fov_data_from_db,
     plot_multi_well_data,
     plot_single_well_data,
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import ClassVar
 
     from ._cali_gui import CaliGui
-    from ._fov_table import WellInfo
-    from ._util import ROIData
 
 RED = "#C33"
 SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
-
 
 class _CustomNavigationToolbar(NavigationToolbar2QT):
     """Custom navigation toolbar that excludes the save button."""
@@ -74,56 +70,6 @@ class _PersistentMenu(QMenu):
             return
         # For non-checkable actions, use default behavior (close menu)
         super().mouseReleaseEvent(a0)
-
-
-def _get_fov_data(
-    table_data: WellInfo,
-    analysis_data: dict[str, dict[str, ROIData]],
-    experiment: Any | None = None,
-) -> dict[str, ROIData] | None:
-    """Return the analysis data for the current FOV.
-
-    Tries database first (if Experiment is provided), falls back to dict-based data.
-
-    Parameters
-    ----------
-    table_data : WellInfo
-        Well and FOV information from the table
-    analysis_data : dict
-        Legacy dict-based analysis data
-    experiment : Experiment | None
-        Database experiment object, if available
-
-    Returns
-    -------
-    dict[str, ROIData] | None
-        Dictionary mapping ROI label to ROI data
-    """
-    # Try to get data from database if experiment is provided
-    if experiment is not None and hasattr(experiment, "plate"):
-        try:
-            # Navigate: Experiment -> Plate -> Wells -> FOVs
-            plate = experiment.plate
-            if plate and hasattr(plate, "wells"):
-                # Get well name from the position object
-                well_name = getattr(table_data.fov, "well", None)
-                if well_name:
-                    for well in plate.wells:
-                        if well.name == well_name:
-                            for fov in well.fovs:
-                                if fov.name == table_data.fov.name:
-                                    return get_fov_data_from_db(fov)
-        except Exception:
-            # Fall back to dict-based approach if database navigation fails
-            pass
-
-    # Legacy dict-based approach
-    fov_name = f"{table_data.fov.name}_p{table_data.pos_idx}"
-    # if the well is not in the analysis data, use the old name we used to store
-    # the data (without the position index. e.g. "_p0")
-    if fov_name not in analysis_data:
-        fov_name = str(table_data.fov.name)
-    return analysis_data.get(fov_name)
 
 
 class _DisplaySingleWellTraces(QGroupBox):
@@ -174,49 +120,37 @@ class _DisplaySingleWellTraces(QGroupBox):
         """Update the graph with random traces."""
         self._graph.clear_plot()
         text = self._graph._combo.currentText()
-        table_data = self._graph._plate_viewer._fov_table.value()
-        if table_data is None:
-            return
-        data = _get_fov_data(
-            table_data,
-            self._graph._plate_viewer._analysis_data,
-            getattr(self._graph._plate_viewer, "_experiment", None),
-        )
-        if data is not None:
-            rois = self._get_rois(data, self._graph._combo.currentText())
-            if rois is None:
-                return
-            plot_single_well_data(self._graph, data, text, rois=rois)
 
-    def _get_rois(self, data: dict[str, ROIData], plot_text: str) -> list[int] | None:
+        # Get database path and FOV name
+        if not self._graph._database_path or not self._graph._fov:
+            return
+
+        # Get ROI selection
+        rois = self._parse_roi_selection()
+        if rois is None:
+            return
+
+        plot_single_well_data(
+            self._graph,
+            self._graph.database_path,
+            self._graph._fov,
+            text,
+            rois=rois
+        )
+
+    def _parse_roi_selection(self) -> list[int] | None:
         """Return the list of ROIs to be displayed."""
         text = self._roi_le.text()
         if not text:
             return None
-        # return n random rois
-        try:
-            if text[:3] == "rnd" and text[3:].isdigit():
-                # if the plot text contains any active word, consider only active ROIs
-                active = {
-                    "peaks",
-                    "amplitudes",
-                    "frequencies",
-                    "inter-event",
-                    "synchrony",
-                    "correlation",
-                    "hierarchical",
-                }
-                if any(word in plot_text.lower() for word in active):
-                    data_keys = [k for k in data if data[k].active]
-                else:
-                    data_keys = list(data.keys())
-                random_keys = np.random.choice(
-                    list(data_keys), int(text[3:]), replace=False
-                )
-                return list(map(int, random_keys))
-        except ValueError:
-            return None
-        # parse the input string
+
+        # Handle random ROI selection (e.g., "rnd10")
+        # Note: This now selects from all ROIs, not just active ones
+        # The plot functions can filter for active ROIs internally if needed
+        if text[:3] == "rnd" and text[3:].isdigit():
+            return None  # Let the plot function handle all ROIs for now
+
+        # Parse the input string for specific ROI numbers
         rois = self._parse_input(text)
         return rois or None
 
@@ -246,6 +180,7 @@ class _SingleWellGraphWidget(QWidget):
         self.setMinimumWidth(200)
 
         self._plate_viewer: CaliGui = parent
+        self._database_path: str | None = None
 
         self._fov: str = ""
 
@@ -301,6 +236,14 @@ class _SingleWellGraphWidget(QWidget):
         self.set_combo_text_red(True)
 
     @property
+    def database_path(self) -> str | None:
+        return self._database_path
+
+    @database_path.setter
+    def database_path(self, path: Path |str | None) -> None:
+        self._database_path = str(path) if path is not None else None
+
+    @property
     def fov(self) -> str:
         return self._fov
 
@@ -325,21 +268,12 @@ class _SingleWellGraphWidget(QWidget):
         """Update the graph when the combo box is changed."""
         # clear the plot
         self.clear_plot()
-        if text == "None" or not self._fov:
+        if text == "None" or not self._fov or not self._database_path:
             return
-        # get the data for the current fov
-        table_data = self._plate_viewer._fov_table.value()
-        if table_data is None:
-            return
-        data = _get_fov_data(
-            table_data,
-            self._plate_viewer._analysis_data,
-            getattr(self._plate_viewer, "_experiment", None),
-        )
-        if data is not None:
-            plot_single_well_data(self, data, text, rois=None)
-            if self._choose_dysplayed_traces.isChecked():
-                self._choose_dysplayed_traces._update()
+
+        plot_single_well_data(self, self._database_path, self._fov, text, rois=None)
+        if self._choose_dysplayed_traces.isChecked():
+            self._choose_dysplayed_traces._update()
 
     def _on_save(self) -> None:
         """Save the current plot as a .png file."""
@@ -361,6 +295,7 @@ class _MultilWellGraphWidget(QWidget):
         super().__init__(parent)
 
         self._plate_viewer: CaliGui = parent
+        self._database_path: str | None = None
 
         self._fov: str = ""
 
@@ -419,6 +354,14 @@ class _MultilWellGraphWidget(QWidget):
         self.set_combo_text_red(True)
 
     @property
+    def database_path(self) -> str | None:
+        return self._database_path
+
+    @database_path.setter
+    def database_path(self, path: Path |str | None) -> None:
+        self._database_path = str(path) if path is not None else None
+
+    @property
     def fov(self) -> str:
         return self._fov
 
@@ -453,10 +396,10 @@ class _MultilWellGraphWidget(QWidget):
         # clear the plot
         self.clear_plot()
         self._conditions_btn.setEnabled(text != "None")
-        if text == "None":
+        if text == "None" or not self._database_path:
             return
 
-        plot_multi_well_data(self, text, self._plate_viewer._analysis_path)
+        plot_multi_well_data(self, text, self._database_path)
 
     def _on_save(self) -> None:
         """Save the current plot as a .png file."""

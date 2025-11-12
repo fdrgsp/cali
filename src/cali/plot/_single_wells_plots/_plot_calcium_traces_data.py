@@ -4,12 +4,17 @@ from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, col, create_engine, select
+
+from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 COUNT_INCREMENT = 1
@@ -19,7 +24,8 @@ P2 = 100
 
 def _plot_traces_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str | Path,
+    fov_name: str,
     rois: list[int] | None = None,
     raw: bool = False,
     dff: bool = False,
@@ -29,7 +35,33 @@ def _plot_traces_data(
     active_only: bool = False,
     thresholds: bool = False,
 ) -> None:
-    """Plot traces data."""
+    """Plot traces data by querying database directly.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Graph widget to plot on
+    db_path : str | Path
+        Path to the SQLite database
+    fov_name : str
+        Name of the FOV (e.g., "B5_0000")
+    rois : list[int] | None
+        List of ROI label values to plot. If None, plots all ROIs.
+    raw : bool
+        Plot raw traces
+    dff : bool
+        Plot ΔF/F traces
+    dec : bool
+        Plot deconvolved ΔF/F traces
+    normalize : bool
+        Normalize traces using percentile method
+    with_peaks : bool
+        Show detected peaks
+    active_only : bool
+        Only plot active ROIs
+    thresholds : bool
+        Show peak detection thresholds (only if single ROI selected)
+    """
     # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
@@ -37,20 +69,47 @@ def _plot_traces_data(
     # show peaks thresholds only if only 1 roi is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
 
+    # Query database for ROI data
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    with Session(engine) as session:
+        # Build query to get ROIs for this FOV with eager loading of related data
+        stmt = (
+            select(ROI)
+            .join(FOV)
+            .where(col(FOV.name) == fov_name)
+            .options(
+                selectinload(ROI.traces),
+                selectinload(ROI.data_analysis),
+            )
+        )
+
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Filter by active if requested
+        if active_only or with_peaks:
+            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
+
+        roi_models = session.exec(stmt).all()
+
+    engine.dispose(close=True)
+
+    if not roi_models:
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
+
     # compute nth and nth percentiles globally
     p1 = p2 = 0.0
     if normalize:
         all_values = []
-        for roi_key, roi_data in data.items():
-            if rois is not None:
-                try:
-                    roi_id = int(roi_key)
-                    if roi_id not in rois:
-                        continue
-                except ValueError:
-                    # Skip non-numeric ROI keys when rois filter is specified
-                    continue
-            if trace := _get_trace(roi_data, dff, dec, raw):
+        for roi_model in roi_models:
+            if trace := _get_trace_from_model(roi_model, dff, dec, raw):
                 all_values.extend(trace)
         if all_values:
             percentiles = np.percentile(all_values, [P1, P2])
@@ -62,35 +121,25 @@ def _plot_traces_data(
     rois_rec_time: list[float] = []
     last_trace: list[float] | None = None
 
-    for roi_key, roi_data in data.items():
-        trace = _get_trace(roi_data, dff, dec, raw)
-
-        if rois is not None:
-            try:
-                roi_id = int(roi_key)
-                if roi_id not in rois:
-                    continue
-            except ValueError:
-                # Skip non-numeric ROI keys when rois filter is specified
-                continue
+    for roi_model in roi_models:
+        trace = _get_trace_from_model(roi_model, dff, dec, raw)
 
         if not trace:
             continue
 
-        if (ttime := roi_data.total_recording_time_sec) is not None:
+        # Get recording time from data_analysis if available
+        if roi_model.data_analysis and (
+            ttime := roi_model.data_analysis.total_recording_time_sec
+        ) is not None:
             rois_rec_time.append(ttime)
-
-        # plot only active neurons if asked to plot peaks or active only
-        if (with_peaks or active_only) and not roi_data.active:
-            continue
 
         _plot_trace(
             ax,
-            roi_key,
+            str(roi_model.label_value),
             trace,
             normalize,
             with_peaks,
-            roi_data,
+            roi_model,
             count,
             p1,
             p2,
@@ -109,22 +158,24 @@ def _plot_traces_data(
     widget.canvas.draw()
 
 
-def _get_trace(
-    roi_data: ROIData, dff: bool, dec: bool, raw: bool
+def _get_trace_from_model(
+    roi_model: ROI, dff: bool, dec: bool, raw: bool
 ) -> list[float] | None:
-    """Get the appropriate trace based on the flags."""
+    """Get the appropriate trace from ROI model based on the flags."""
+    if not roi_model.traces:
+        return None
+
     try:
         if dff:
-            data = roi_data.dff
+            data = roi_model.traces.dff
         elif dec:
-            data = roi_data.dec_dff
+            data = roi_model.traces.dec_dff
         elif raw:
-            data = roi_data.raw_trace
+            data = roi_model.traces.raw_trace
         else:
-            data = roi_data.corrected_trace
+            data = roi_model.traces.corrected_trace
         return data or None
     except AttributeError:
-        # Handle case where roi_data is not a proper ROIData object
         return None
 
 
@@ -134,7 +185,7 @@ def _plot_trace(
     trace: list[float] | np.ndarray,
     normalize: bool,
     with_peaks: bool,
-    roi_data: ROIData,
+    roi_model: ROI,
     count: int,
     p1: float,
     p2: float,
@@ -151,16 +202,16 @@ def _plot_trace(
     else:
         ax.plot(trace, label=f"ROI {roi_key}")
 
-    if with_peaks and roi_data.peaks_dec_dff:
-        peaks_indices = [int(p) for p in roi_data.peaks_dec_dff]
+    # Get peaks data from data_analysis if available
+    if with_peaks and roi_model.data_analysis and roi_model.data_analysis.peaks_dec_dff:
+        peaks_indices = [int(p) for p in roi_model.data_analysis.peaks_dec_dff]
         ax.plot(peaks_indices, np.array(trace)[peaks_indices], "x")
 
         # Add vertical lines for peaks height and prominence thresholds
         if thresholds:
-            # Position the vertical lines at x=0 (left side of plot)
-            if roi_data.peaks_height_dec_dff is not None:
+            if roi_model.data_analysis.peaks_height_dec_dff is not None:
                 # Horizontal dashed line for height threshold
-                ph = roi_data.peaks_height_dec_dff
+                ph = roi_model.data_analysis.peaks_height_dec_dff
                 ax.axhline(
                     y=ph,
                     color="black",
@@ -169,9 +220,9 @@ def _plot_trace(
                     alpha=0.6,
                     label=f"Peaks Height threshold\n(ROI {roi_key} - {ph:.4f})",
                 )
-            if roi_data.peaks_prominence_dec_dff is not None:
+            if roi_model.data_analysis.peaks_prominence_dec_dff is not None:
                 # Vertical line from 0 to prominence threshold value
-                pp = roi_data.peaks_prominence_dec_dff
+                pp = roi_model.data_analysis.peaks_prominence_dec_dff
                 ax.plot(
                     [-3, -3],
                     [0, pp],

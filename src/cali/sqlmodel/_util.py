@@ -221,16 +221,15 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
         _ = experiment.analysis_settings.stimulation_mask
 
 
-def has_fov_analysis(experiment: Experiment, fov_name: str) -> bool:
-    """Check if a specific FOV has been analyzed (has ROIs with data).
+def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
+    """Check if a specific FOV has been analyzed by querying database directly.
 
-    This function efficiently checks if a FOV by name exists in the experiment
-    and has at least one analyzed ROI (with traces or data_analysis).
+    Directly queries the database to check if the FOV exists and has analyzed ROIs.
 
     Parameters
     ----------
-    experiment : Experiment
-        The experiment object to check
+    db_path : str | Path
+        Path to the SQLite database file
     fov_name : str
         Name of the FOV to check (e.g., "B5_0000")
 
@@ -241,58 +240,69 @@ def has_fov_analysis(experiment: Experiment, fov_name: str) -> bool:
 
     Example
     -------
-    >>> from cali.sqlmodel import load_experiment_from_database, has_fov_analysis
-    >>> exp = load_experiment_from_database("analysis.db")
-    >>> if has_fov_analysis(exp, "B5_0000"):
+    >>> from cali.sqlmodel import has_fov_analysis
+    >>> if has_fov_analysis("analysis.db", "B5_0000"):
     ...     print("B5_0000 has been analyzed")
     """
-    if not experiment.plate or not experiment.plate.wells:
-        return False
+    from sqlmodel import select
 
-    # Search through wells -> FOVs -> ROIs
-    for well in experiment.plate.wells:
-        for fov in well.fovs:
-            # Check if this is the FOV we're looking for (with or without position index)
-            if fov.name == fov_name or fov.name.startswith(f"{fov_name}_p"):
-                # Check if it has any analyzed ROIs
-                if fov.rois:
-                    for roi in fov.rois:
-                        # If ROI has traces or data analysis, it's been analyzed
-                        if roi.traces is not None or roi.data_analysis is not None:
-                            return True
-    return False
+    from ._model import FOV, ROI
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine) as session:
+            # Query for FOVs with the given name that have ROIs with traces or data
+            statement = (
+                select(FOV)
+                .join(ROI)
+                .where(FOV.name == fov_name)
+                .where((ROI.traces != None) | (ROI.data_analysis != None))  # noqa: E711
+                .limit(1)
+            )
+            result = session.exec(statement).first()
+            return result is not None
+    finally:
+        engine.dispose(close=True)
 
 
-def has_experiment_analysis(experiment: Experiment) -> bool:
-    """Check if the experiment has any analyzed data.
+def has_experiment_analysis(db_path: str | Path) -> bool:
+    """Check if experiment has any analyzed data by querying database directly.
 
-    This function checks if any FOV in the experiment has analyzed ROIs.
+    Directly queries the database to check if any ROIs exist with analysis data.
 
     Parameters
     ----------
-    experiment : Experiment
-        The experiment object to check
+    db_path : str | Path
+        Path to the SQLite database file
 
     Returns
     -------
     bool
-        True if any FOV has analyzed ROIs, False otherwise
+        True if any ROIs have analysis data, False otherwise
 
     Example
     -------
-    >>> if has_experiment_analysis(exp):
+    >>> from cali.sqlmodel import has_experiment_analysis
+    >>> if has_experiment_analysis("analysis.db"):
     ...     print("Experiment has analysis data")
     """
-    if not experiment.plate or not experiment.plate.wells:
-        return False
+    from sqlmodel import select
 
-    for well in experiment.plate.wells:
-        for fov in well.fovs:
-            if fov.rois:
-                for roi in fov.rois:
-                    if roi.traces is not None or roi.data_analysis is not None:
-                        return True
-    return False
+    from ._model import ROI
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine) as session:
+            # Check if any ROI exists with traces or data_analysis
+            statement = (
+                select(ROI)
+                .where((ROI.traces != None) | (ROI.data_analysis != None))  # noqa: E711
+                .limit(1)
+            )
+            result = session.exec(statement).first()
+            return result is not None
+    finally:
+        engine.dispose(close=True)
 
 
 # OLD WAY TO STORE DATA --------------------------------------------------------------

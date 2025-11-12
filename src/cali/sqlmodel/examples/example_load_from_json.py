@@ -9,16 +9,16 @@ from cali.sqlmodel import (
 )
 
 # Set paths for data, labels, and analysis directory
-# data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
-# labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
-# analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
-data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-labels_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
-)
-analysis_path = (
-    "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
-)
+data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"  # noqa: E501
+labels_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_labels"
+analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
+# data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
+# labels_path = (
+#     "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_labels"
+# )
+# analysis_path = (
+#     "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
+# )
 
 # Create useq.WellPlate that matches the experiment
 plate = useq.WellPlate.from_str("96-well")
