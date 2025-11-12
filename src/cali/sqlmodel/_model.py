@@ -12,9 +12,21 @@ The schema enables:
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Optional, Self
 
-from sqlmodel import JSON, Column, Field, Relationship, SQLModel
+import numpy as np
+from sqlalchemy.orm import selectinload
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Relationship,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+)
 
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
@@ -30,8 +42,24 @@ from cali._constants import (
     MULTIPLIER,
     SPONTANEOUS,
 )
+from cali.analysis._util import coordinates_to_mask
 
 # ==================== Core Models ====================
+
+
+class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
+    """Base class for analysis result tables.
+
+    This is an abstract base class and should not be instantiated directly.
+    Specific analysis result tables should inherit from this class.
+    """
+
+    __tablename__ = "analysis_result"
+    id: int | None = Field(default=None, primary_key=True)
+
+    experiment: int = Field(foreign_key="experiment.id")
+    analysis_settings: int = Field(foreign_key="analysis_settings.id")
+    positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
 
 class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
@@ -60,8 +88,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Path to analysis output directory
     experiment_type : str
         Type of experiment: "Spontaneous Activity" or "Evoked Activity"
-    positions_analyzed : list[int]
-        List of position indices that were analyzed
     plate : Plate
         Related plate (back-populated by SQLModel)
     analysis_settings : AnalysisSettings | None
@@ -79,13 +105,70 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     analysis_path: str | None = None
     database_name: str | None = None
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
-    positions_analyzed: list[int] = Field(default_factory=list, sa_column=Column(JSON))
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
-    analysis_settings: Optional["AnalysisSettings"] = Relationship(
-        back_populates="experiment"
-    )
+
+    @property
+    def db_path(self) -> Optional[str]:
+        """Full path to the experiment's database file."""
+        if self.analysis_path and self.database_name:
+            return str(Path(self.analysis_path) / self.database_name)
+        return None
+
+    @classmethod
+    def load_from_db(
+        cls, db_path: str, id: int, session: Session | None = None
+    ) -> Self:
+        """Load experiment from database with all relationships eagerly loaded.
+
+        Parameters
+        ----------
+        db_path : str
+            Path to the SQLite database file
+        id : int
+            ID of the experiment to load
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self
+            Experiment instance with all relationships loaded and detached
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            # Build the base chain for plate -> wells -> fovs -> rois
+            plate_chain = (
+                selectinload(Experiment.plate)
+                .selectinload(Plate.wells)
+                .selectinload(Well.fovs)
+                .selectinload(FOV.rois)
+            )
+
+            # Load experiment with all relationships eagerly loaded
+            statement = (
+                select(Experiment)
+                .where(Experiment.id == id)
+                .options(
+                    plate_chain.selectinload(ROI.traces),
+                    plate_chain.selectinload(ROI.data_analysis),
+                    plate_chain.selectinload(ROI.roi_mask),
+                    plate_chain.selectinload(ROI.neuropil_mask),
+                )
+            )
+
+            obj = session.exec(statement).first()
+            session.expunge_all()  # Detach all instances from the session
+            return obj
+        finally:
+            if our_session is not None:
+                our_session.close()
 
 
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
@@ -192,19 +275,35 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     threads: int = Field(default=1)
 
     # Foreign keys
-    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    # experiment_id: int | None = Field(
+    #     default=None, foreign_key="experiment.id", index=True
+    # )
     stimulation_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
     )
 
     # Relationships
-    experiment: "Experiment" = Relationship(back_populates="analysis_settings")
+    # experiment: "Experiment" = Relationship(back_populates="analysis_settings")
     stimulation_mask: Optional["Mask"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
             "lazy": "selectin",
         }
     )
+
+    def stimulated_mask_area(self) -> np.ndarray | None:
+        if (
+            (stim_mask := self.stimulation_mask)
+            and stim_mask.coords_y is not None
+            and stim_mask.coords_x is not None
+            and stim_mask.height is not None
+            and stim_mask.width is not None
+        ):
+            return coordinates_to_mask(
+                (stim_mask.coords_y, stim_mask.coords_x),
+                (stim_mask.height, stim_mask.width),
+            )
+        return None
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
@@ -443,11 +542,13 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     active: bool | None = None
     stimulated: bool = False
 
-    # Foreign keys
-    fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id", index=True
     )
+    analysis_settings: Optional["AnalysisSettings"] = Relationship()
+
+    # Foreign keys
+    fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
     roi_mask_id: int | None = Field(default=None, foreign_key="mask.id", index=True)
     neuropil_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
@@ -455,7 +556,6 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="rois")
-    analysis_settings: Optional["AnalysisSettings"] = Relationship()
     traces: Optional["Traces"] = Relationship(back_populates="roi", cascade_delete=True)
     data_analysis: Optional["DataAnalysis"] = Relationship(
         back_populates="roi", cascade_delete=True

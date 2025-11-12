@@ -10,7 +10,6 @@ import tifffile
 from oasis.functions import deconvolve
 from psygnal import Signal
 from scipy.signal import find_peaks
-from sqlmodel import Session, create_engine
 from tqdm import tqdm
 
 from cali._constants import (
@@ -39,7 +38,6 @@ from cali.util._util import load_data
 
 from ._util import (
     calculate_dff,
-    coordinates_to_mask,
     create_neuropil_from_dilation,
     get_iei,
     get_overlap_roi_with_stimulated_area,
@@ -49,6 +47,7 @@ from ._util import (
 if TYPE_CHECKING:
     import useq
     from sqlalchemy.engine import Engine
+    from sqlmodel import Session
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
@@ -126,8 +125,8 @@ class AnalysisRunner:
         assert experiment.id is not None
 
         # Store engine instead of the full object
-        db_path = Path(experiment.analysis_path) / experiment.database_name
-        self._engine = create_engine(f"sqlite:///{db_path}")
+        Path(experiment.analysis_path) / experiment.database_name
+        # self._engine = create_engine(f"sqlite:///{db_path}")  # COMMENTED OUT FOR TESTING
 
         # if experiments has data_path, try to load the data
         if experiment.data_path:
@@ -420,18 +419,8 @@ class AnalysisRunner:
 
         # Load stimulation mask if available for evoked experiments
         settings = exp.analysis_settings
-        if exp.experiment_type == EVOKED and settings.stimulation_mask is not None:
-            stim_mask = settings.stimulation_mask
-            if (
-                stim_mask.coords_y is not None
-                and stim_mask.coords_x is not None
-                and stim_mask.height is not None
-                and stim_mask.width is not None
-            ):
-                self._stimulated_area_mask = coordinates_to_mask(
-                    (stim_mask.coords_y, stim_mask.coords_x),
-                    (stim_mask.height, stim_mask.width),
-                )
+        if exp.experiment_type == EVOKED:
+            self._stimulated_area_mask = settings.stimulated_mask_area()
         else:
             # Ensure attribute exists even if no stimulation mask
             self._stimulated_area_mask = None
@@ -510,6 +499,8 @@ class AnalysisRunner:
 
             self._extract_trace_data_per_position(session, exp, p)
 
+    # -------------------------------------------------------------------
+
     def _extract_trace_data_per_position(
         self, session: Session, exp: Experiment, p: int
     ) -> None:
@@ -535,6 +526,7 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return
 
+        # { roi_id -> np.ndarray mask }
         labels_masks = self._create_label_masks_dict(labels)
         sequence = cast("useq.MDASequence", self._data.sequence)
 
@@ -580,6 +572,7 @@ class AnalysisRunner:
         # check if it is an evoked activity experiment
         evoked_experiment = exp.experiment_type == EVOKED
 
+        # >>>> HERE is the big loop over roi mask, calling _process_roi_trace
         msg = f"Extracting Traces Data from Well {fov_name}."
         cali_logger.info(msg)
         for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
