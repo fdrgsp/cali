@@ -42,7 +42,6 @@ from cali._constants import (
     MULTIPLIER,
     SPONTANEOUS,
 )
-from cali.analysis._util import coordinates_to_mask
 
 # ==================== Core Models ====================
 
@@ -292,6 +291,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     def stimulated_mask_area(self) -> np.ndarray | None:
+        from cali.analysis._util import coordinates_to_mask
+
         if (
             (stim_mask := self.stimulation_mask)
             and stim_mask.coords_y is not None
@@ -522,8 +523,6 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to neuropil mask
     fov : FOV
         Parent FOV
-    analysis_settings : AnalysisSettings | None
-        Analysis settings used
     traces : Traces | None
         Fluorescence trace data
     data_analysis : DataAnalysis | None
@@ -542,16 +541,14 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     active: bool | None = None
     stimulated: bool = False
 
-    analysis_settings_id: int | None = Field(
-        default=None, foreign_key="analysis_settings.id", index=True
-    )
-    analysis_settings: Optional["AnalysisSettings"] = Relationship()
-
     # Foreign keys
     fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
     roi_mask_id: int | None = Field(default=None, foreign_key="mask.id", index=True)
     neuropil_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
+    )
+    analysis_settings_id: int | None = Field(
+        default=None, foreign_key="analysis_settings.id", index=True
     )
 
     # Relationships
