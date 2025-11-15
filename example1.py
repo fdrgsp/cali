@@ -1,13 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # from cali.analysis import AnalysisRunner
-from pytest import Session
-from sqlmodel import create_engine, select
+from sqlmodel import create_engine
 
 from cali.analysis._analysis_runner2 import AnalysisRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db
-from cali.sqlmodel._model import AnalysisResult
 from cali.sqlmodel._visualize_experiment import print_all_analysis_results
 
 # ###########################################
@@ -69,7 +67,7 @@ analysis.run(exp1, settings, global_position_indices=list(range(len(plate_plan))
 engine = create_engine(f"sqlite:///{exp.db_path}")
 print_all_analysis_results(
     engine,
-    experiment_name=None,             # or experiment name string
-    show_settings=False,               # show detailed settings
-    max_experiment_level='roi'        # show down to FOV level
+    experiment_name=None,  # or experiment name string
+    show_settings=False,  # show detailed settings
+    max_experiment_level="roi",  # show down to FOV level
 )

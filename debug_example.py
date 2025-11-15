@@ -49,7 +49,7 @@ with Session(engine) as session:
     for r in all_results:
         print(f"  Result ID {r.id}: settings_id={r.analysis_settings}")
 
-print("\n" + "="*60 + "\n")
+print("\n" + "=" * 60 + "\n")
 
 settings1 = AnalysisSettings(threads=4, dff_window=150)
 print(f"Created settings1: id={settings1.id}, dff_window={settings1.dff_window}")

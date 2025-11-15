@@ -60,9 +60,9 @@ analysis.run(exp, settings4, global_position_indices=list(range(len(plate_plan))
 
 # Visualize: Should show 1 experiment with 2 unique AnalysisResults (settings reused)
 engine = create_engine(f"sqlite:///{exp.db_path}")
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("VISUALIZATION: One Experiment, Multiple Analysis Settings")
-print("="*80)
+print("=" * 80)
 print_all_analysis_results(
     engine,
     experiment_name=None,
