@@ -523,9 +523,7 @@ def print_experiment_tree(
                         neuropil_node.add(
                             f"Inner radius: {settings.neuropil_inner_radius} px"
                         )
-                        neuropil_node.add(
-                            f"Min pixels: {settings.neuropil_min_pixels}"
-                        )
+                        neuropil_node.add(f"Min pixels: {settings.neuropil_min_pixels}")
                         neuropil_node.add(
                             f"Correction factor: {settings.neuropil_correction_factor}"
                         )
@@ -567,9 +565,7 @@ def print_experiment_tree(
                             "💥 [green]Burst Analysis[/green]"
                         )
                         burst_node.add(f"Threshold: {settings.burst_threshold}%")
-                        burst_node.add(
-                            f"Min duration: {settings.burst_min_duration}s"
-                        )
+                        burst_node.add(f"Min duration: {settings.burst_min_duration}s")
                         burst_node.add(
                             f"Gaussian sigma: {settings.burst_gaussian_sigma}s"
                         )
@@ -583,8 +579,7 @@ def print_experiment_tree(
                             f"{settings.calcium_sync_jitter_window}"
                         )
                         sync_node.add(
-                            f"Network threshold: "
-                            f"{settings.calcium_network_threshold}%"
+                            f"Network threshold: {settings.calcium_network_threshold}%"
                         )
                         sync_node.add(
                             f"Spike cross-corr lag: "
@@ -645,9 +640,7 @@ def print_experiment_tree(
                         else:
                             positions_list.append(f"{start}-{end}")
 
-                    result_node.add(
-                        f"📍 Positions: {', '.join(positions_list)}"
-                    )
+                    result_node.add(f"📍 Positions: {', '.join(positions_list)}")
 
     if max_level == "experiment":
         console.print(tree)

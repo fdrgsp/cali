@@ -484,7 +484,9 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "fov"
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True)  # Not unique - multiple experiments can have same FOV names
+    name: str = Field(
+        index=True
+    )  # Not unique - multiple experiments can have same FOV names
     position_index: int = Field(index=True)
     fov_number: int = Field(default=0)
     fov_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))

@@ -16,9 +16,9 @@ engine = create_engine("sqlite:///analysis_results/evoked_experiment.db")
 with Session(engine) as session:
     # Get all analysis results
     results = session.exec(select(AnalysisResult)).all()
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"ANALYSIS RESULTS ({len(results)} total)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for i, result in enumerate(results, 1):
         exp = session.get(Experiment, result.experiment)
@@ -52,9 +52,9 @@ with Session(engine) as session:
                         ).all()
                         print(f"      FOV {fov.id} ({fov.name}): {len(rois)} ROIs")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     experiments = session.exec(select(Experiment)).all()
     print(f"Total Experiments: {len(experiments)}")
     for exp in experiments:
