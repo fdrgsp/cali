@@ -181,12 +181,12 @@ class AnalysisRunner:
         echo: bool = False,
     ) -> None:
         """Run analysis on the given experiment with specified settings."""
-        # DATABASE DO NOT EXISTS---------------------------------------------------
+        # DATABASE DO NOT EXISTS
         # if database doesn't exist, save experiment to DB for the first time
         if not Path(experiment.db_path).exists():
             save_experiment_to_database(experiment)
 
-        # DATABASE EXISTS----------------------------------------------------------
+        # DATABASE EXISTS
         engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
         with Session(engine) as session:
             # if database does exist but the overwrite flag is True, just overwrite
@@ -325,16 +325,6 @@ class AnalysisRunner:
         return _extract_trace_data_per_position(
             self, experiment, settings, global_pos_idx
         )
-
-    def _validate_experiment_id(self, experiment: Experiment, db_path: Path) -> bool:
-        """Validate that the experiment ID matches the one in the database."""
-        engine = create_engine(f"sqlite:///{db_path}")
-        with Session(engine) as session:
-            existing_exp = session.exec(select(Experiment)).first()
-            if existing_exp and existing_exp.id != experiment.id:
-                return False
-        engine.dispose()
-        return True
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
