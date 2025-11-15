@@ -181,6 +181,8 @@ class AnalysisRunner:
         echo: bool = False,
     ) -> None:
         """Run analysis on the given experiment with specified settings."""
+        # TODO: ask claude to refactor
+
         # DATABASE DO NOT EXISTS
         # if database doesn't exist, save experiment to DB for the first time
         if not Path(experiment.db_path).exists():
@@ -199,8 +201,10 @@ class AnalysisRunner:
                 if experiment.id is None or experiment.id != db_exp.id:
                     msg = (
                         "The provided Experiment must have an ID matching the one "
-                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either set the id to "
-                        f"{db_exp.id} or set the overwrite flag to `True`."
+                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either "
+                        f"set the `Experiment.id` to {db_exp.id}, use a different "
+                        "`Experiment.database_name` or `Experiment.analysis_path` or"
+                        "`set the overwrite flag to `True` to overwrite the database."
                     )
                     cali_logger.error(msg)
                     raise ValueError(msg)
