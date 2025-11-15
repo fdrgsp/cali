@@ -330,6 +330,7 @@ class AnalysisRunner:
         """Check if cancellation has been requested."""
         return self._cancellation_event.is_set()
 
+
 # These are module-level functions that work with the OriginalAnalysisRunner
 def _extract_trace_data_per_position(
     runner: AnalysisRunner,
