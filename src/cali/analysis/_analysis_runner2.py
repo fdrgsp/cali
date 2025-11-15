@@ -1,5 +1,4 @@
 import logging
-from re import A
 import threading
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,7 +12,6 @@ from scipy.signal import find_peaks
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
-from cali import analysis
 from cali._constants import (
     EVENT_KEY,
     EVOKED,
@@ -38,7 +36,6 @@ from cali.sqlmodel._model import (
 )
 from cali.util._util import load_data
 
-from ._analysis_with_sqlmodel import AnalysisRunner as OriginalAnalysisRunner
 from ._util import (
     calculate_dff,
     get_iei,
@@ -180,39 +177,45 @@ class AnalysisRunner:
         experiment: Experiment,
         settings: AnalysisSettings,
         global_position_indices: Sequence[int],
+        overwrite: bool = False,
         echo: bool = False,
     ) -> None:
-        # Save experiment to DB if database doesn't exist or experiment has no ID
-        if experiment.db_path:
-            db_path = Path(experiment.db_path)
-            if db_path.exists():
-                # If the database exists, make sure the experiment ID matches, otherwise
-                # abort the run
-                if not self._validate_experiment_id(experiment, db_path):
-                    cali_logger.error(
-                        f"Database {db_path} contains an experiment with a different ID"
-                        f" than the current experiment (ID: {experiment.id}). "
-                        "Cannot run analysis on mismatched experiment."
-                    )
-                    return
+        """Run analysis on the given experiment with specified settings."""
+        # DATABASE DO NOT EXISTS---------------------------------------------------
+        # if database doesn't exist, save experiment to DB for the first time
+        if not Path(experiment.db_path).exists():
+            save_experiment_to_database(experiment)
 
-            if not db_path.exists() or experiment.id is None:
-                save_experiment_to_database(experiment, overwrite=False)
-
-        # Initialize the analysis runner with data
-        if experiment.data_path:
-            self._data = load_data(experiment.data_path)
-
+        # DATABASE EXISTS----------------------------------------------------------
         engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
         with Session(engine) as session:
-            # Check for deduplication BEFORE merging
+            # if database does exist but the overwrite flag is True, just overwrite
+            if overwrite:
+                save_experiment_to_database(experiment, overwrite=True)
+            # if database does exist but the the experiment.id is either None or
+            # different than the one in the database, raise ValueError.
+            else:
+                db_exp = cast("Experiment", session.exec(select(Experiment)).first())
+                if experiment.id is None or experiment.id != db_exp.id:
+                    msg = (
+                        "The provided Experiment must have an ID matching the one "
+                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either set the id to "
+                        f"{db_exp.id} or set the overwrite flag to `True`."
+                    )
+                    cali_logger.error(msg)
+                    raise ValueError(msg)
+
+            # initialize the analysis runner with data
+            self._data = load_data(experiment.data_path)
+
+            # check if settings already exist BEFORE merging
             if settings.id is None:
-                # Check if identical settings already exist in database
+                # check if identical settings already exist in database
                 new_settings_dict = settings.model_dump(exclude={"id", "created_at"})
                 try:
+                    # AnalysisSettings exists
                     all_settings = session.exec(select(AnalysisSettings)).all()
                     existing_settings = None
-
                     for candidate in all_settings:
                         candidate_dict = candidate.model_dump(
                             exclude={"id", "created_at"}
@@ -221,36 +224,48 @@ class AnalysisRunner:
                             existing_settings = candidate
                             break
                 except Exception:
-                    # Table doesn't exist yet - this is the first settings
+                    # AnalysisSettings doesn't exist yet - this is the first settings
                     existing_settings = None
 
-                if existing_settings:
-                    # Found duplicate - use the existing one
+                # found duplicate - use the existing one
+                if existing_settings is not None:
                     settings = existing_settings
                     cali_logger.info(
                         f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
                     )
+                # new settings - merge and commit to get an ID
                 else:
-                    # New settings - merge and commit to get an ID
                     settings = session.merge(settings)
                     session.commit()
                     session.refresh(settings)
                     cali_logger.info(f"⚙️ Created new AnalysisSettings ID {settings.id}")
             else:
-                # Settings already has an ID - just merge to reattach
-                settings = session.merge(settings)
-                cali_logger.info(
-                    f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
-                )
+                # get all current settings IDs
+                all_settings_ids = [
+                    s.id for s in session.exec(select(AnalysisSettings)).all()
+                ]
+                # if settings.id is new, merge and commit
+                if settings.id not in all_settings_ids:
+                    settings = session.merge(settings)
+                    session.commit()
+                    session.refresh(settings)
+                    cali_logger.info(f"⚙️ Created new AnalysisSettings ID {settings.id}")
+                else:
+                    # settings already has an ID - just merge to reattach
+                    settings = session.merge(settings)
+                    cali_logger.info(
+                        f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
+                    )
 
-            # Ensure experiment has an ID
+            # ensure experiment has an ID
             if experiment.id is None:
                 msg = "Experiment must have an ID before running analysis"
                 raise ValueError(msg)
 
-            # Track positions processed
+            # track positions processed
             positions_processed = []
 
+            # execute analysis in parallel
             for result in exec_(
                 analyze=self._analyze_position,
                 cancel_event=self._cancellation_event,
@@ -262,9 +277,11 @@ class AnalysisRunner:
                 commit_result(session, experiment, result)
                 positions_processed.append(result.position_index)
 
-            # Create or update AnalysisResult after processing all positions
-            if positions_processed and settings.id is not None:
-                # Query for existing AnalysisResult with same experiment + settings
+            # once the analysis is complete, create or update AnalysisResult
+            if positions_processed:
+                assert settings.id is not None  # should never ne None here
+
+                # query for existing AnalysisResult with same experiment + settings
                 existing_result_stmt = select(AnalysisResult).where(
                     AnalysisResult.experiment == experiment.id,
                     AnalysisResult.analysis_settings == settings.id,
@@ -272,11 +289,11 @@ class AnalysisRunner:
                 existing_result = session.exec(existing_result_stmt).first()
 
                 if existing_result:
-                    # Check if positions match - if so, overwrite; if not, add new
+                    # check if positions match - if so, overwrite; if not, add new
                     if set(existing_result.positions_analyzed or []) != set(
                         positions_processed
                     ):
-                        # Different positions - this is a new analysis run
+                        # different positions - this is a new analysis run
                         new_result = AnalysisResult(
                             experiment=experiment.id,
                             analysis_settings=settings.id,
@@ -286,7 +303,7 @@ class AnalysisRunner:
                     # else is the same positions - just update the timestamp implicitly
                     # (no changes needed, data already committed)
                 else:
-                    # No existing result - create new
+                    # no existing result - create new
                     new_result = AnalysisResult(
                         experiment=experiment.id,
                         analysis_settings=settings.id,

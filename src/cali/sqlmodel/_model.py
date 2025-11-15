@@ -78,13 +78,13 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Unique experiment identifier
     description : str | None
         Optional experiment description
-    database_name: str | None = None
+    database_name: str
         Name of the SQLite database file
-    data_path : str | None
+    data_path : str
         Path to the raw imaging data (zarr/tensorstore)
-    labels_path : str | None
+    labels_path : str
         Path to segmentation labels directory
-    analysis_path : str | None
+    analysis_path : str
         Path to analysis output directory
     experiment_type : str
         Type of experiment: "Spontaneous Activity" or "Evoked Activity"
@@ -98,21 +98,19 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     created_at: datetime = Field(default_factory=datetime.now)
     name: str = Field(unique=True, index=True)
     description: str | None = None
-    data_path: str | None = None
-    labels_path: str | None = None
-    analysis_path: str | None = None
-    database_name: str | None = None
+    data_path: str
+    labels_path: str
+    analysis_path: str
+    database_name: str
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
 
     @property
-    def db_path(self) -> Optional[str]:
+    def db_path(self) -> str:
         """Full path to the experiment's database file."""
-        if self.analysis_path and self.database_name:
-            return str(Path(self.analysis_path) / self.database_name)
-        return None
+        return str(Path(self.analysis_path) / self.database_name)
 
     @classmethod
     def load_from_db(
