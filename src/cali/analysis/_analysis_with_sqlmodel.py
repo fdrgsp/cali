@@ -417,14 +417,7 @@ class AnalysisRunner:
             cali_logger.error("Experiment or AnalysisSettings not set.")
             return
 
-        # Load stimulation mask if available for evoked experiments
         settings = exp.analysis_settings
-        if exp.experiment_type == EVOKED:
-            self._stimulated_area_mask = settings.stimulated_mask_area()
-        else:
-            # Ensure attribute exists even if no stimulation mask
-            self._stimulated_area_mask = None
-
         # set number of threads to use
         threads = settings.threads
         cali_logger.info(f"Number of threads for analysis: {threads}")
@@ -900,9 +893,10 @@ class AnalysisRunner:
 
         # check if the roi is stimulated
         roi_stimulation_overlap_ratio = 0.0
-        if evoked_exp and self._stimulated_area_mask is not None:
+        stimulated_area_mask = settings.stimulated_mask_area()
+        if evoked_exp and stimulated_area_mask is not None:
             roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                self._stimulated_area_mask, label_mask
+                stimulated_area_mask, label_mask
             )
 
         # compute the mean for each frame

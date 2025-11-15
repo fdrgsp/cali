@@ -15,4 +15,4 @@ def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader | 
         # read ome zarr
         return OMEZarrReader(data_path)
     else:
-        return None
+        raise ValueError(f"Unsupported data format for path: {data_path}")

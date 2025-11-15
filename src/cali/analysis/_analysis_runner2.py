@@ -1,4 +1,5 @@
 import logging
+from re import A
 import threading
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +13,7 @@ from scipy.signal import find_peaks
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
+from cali import analysis
 from cali._constants import (
     EVENT_KEY,
     EVOKED,
@@ -21,6 +23,7 @@ from cali._constants import (
     RUNNER_TIME_KEY,
     STIMULATION_AREA_THRESHOLD,
 )
+from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -33,6 +36,7 @@ from cali.sqlmodel._model import (
     Traces,
     Well,
 )
+from cali.util._util import load_data
 
 from ._analysis_with_sqlmodel import AnalysisRunner as OriginalAnalysisRunner
 from ._util import (
@@ -44,6 +48,8 @@ from ._util import (
 
 if TYPE_CHECKING:
     import useq
+
+    from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 cali_logger = logging.getLogger("cali_logger")
 
@@ -161,6 +167,14 @@ def exec_(
 
 
 class AnalysisRunner:
+    def __init__(self) -> None:
+        super().__init__()
+
+        # The data reader
+        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
+        # Use threading.Event for cancellation control
+        self._cancellation_event = threading.Event()
+
     def run(
         self,
         experiment: Experiment,
@@ -168,22 +182,26 @@ class AnalysisRunner:
         global_position_indices: Sequence[int],
         echo: bool = False,
     ) -> None:
-        from cali.analysis._analysis_with_sqlmodel import load_data
-        from cali.sqlmodel._util import save_experiment_to_database
-
-        # Initialize the analysis runner with data
-        self._runner = runner = OriginalAnalysisRunner()
-        runner._experiment = experiment
-        if experiment.data_path:
-            runner._data = load_data(experiment.data_path)
-
         # Save experiment to DB if database doesn't exist or experiment has no ID
         if experiment.db_path:
             db_path = Path(experiment.db_path)
+            if db_path.exists():
+                # If the database exists, make sure the experiment ID matches, otherwise
+                # abort the run
+                if not self._validate_experiment_id(experiment, db_path):
+                    cali_logger.error(
+                        f"Database {db_path} contains an experiment with a different ID"
+                        f" than the current experiment (ID: {experiment.id}). "
+                        "Cannot run analysis on mismatched experiment."
+                    )
+                    return
+
             if not db_path.exists() or experiment.id is None:
                 save_experiment_to_database(experiment, overwrite=False)
 
-        cancellation_event = threading.Event()
+        # Initialize the analysis runner with data
+        if experiment.data_path:
+            self._data = load_data(experiment.data_path)
 
         engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
         with Session(engine) as session:
@@ -225,9 +243,6 @@ class AnalysisRunner:
                     f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
                 )
 
-            # Get stimulated mask area while settings is still attached to session
-            runner._stimulated_area_mask = settings.stimulated_mask_area()
-
             # Ensure experiment has an ID
             if experiment.id is None:
                 msg = "Experiment must have an ID before running analysis"
@@ -238,7 +253,7 @@ class AnalysisRunner:
 
             for result in exec_(
                 analyze=self._analyze_position,
-                cancel_event=cancellation_event,
+                cancel_event=self._cancellation_event,
                 global_position_indices=global_position_indices,
                 settings=settings,
                 experiment=experiment,
@@ -257,7 +272,7 @@ class AnalysisRunner:
                 existing_result = session.exec(existing_result_stmt).first()
 
                 if existing_result:
-                    # Check if positions match - if so, overwrite; if not, add
+                    # Check if positions match - if so, overwrite; if not, add new
                     if set(existing_result.positions_analyzed or []) != set(
                         positions_processed
                     ):
@@ -291,13 +306,26 @@ class AnalysisRunner:
         (ROIs, Traces, DataAnalysis, Masks) ready to be committed.
         """
         return _extract_trace_data_per_position(
-            self._runner, experiment, settings, global_pos_idx
+            self, experiment, settings, global_pos_idx
         )
 
+    def _validate_experiment_id(self, experiment: Experiment, db_path: Path) -> bool:
+        """Validate that the experiment ID matches the one in the database."""
+        engine = create_engine(f"sqlite:///{db_path}")
+        with Session(engine) as session:
+            existing_exp = session.exec(select(Experiment)).first()
+            if existing_exp and existing_exp.id != experiment.id:
+                return False
+        engine.dispose()
+        return True
+
+    def _check_for_abort_requested(self) -> bool:
+        """Check if cancellation has been requested."""
+        return self._cancellation_event.is_set()
 
 # These are module-level functions that work with the OriginalAnalysisRunner
 def _extract_trace_data_per_position(
-    runner: OriginalAnalysisRunner,
+    runner: AnalysisRunner,
     experiment: Experiment,
     settings: AnalysisSettings,
     global_pos_idx: int,
@@ -307,6 +335,7 @@ def _extract_trace_data_per_position(
     Returns a list containing a single FOV with all its ROIs, Traces, DataAnalysis,
     and Masks ready to be committed to the database.
     """
+    # if runner._data is None or runner._check_for_abort_requested():
     if runner._data is None or runner._check_for_abort_requested():
         return None
 
@@ -423,7 +452,7 @@ def _extract_trace_data_per_position(
 
 
 def _process_roi_trace(
-    runner: OriginalAnalysisRunner,
+    runner: AnalysisRunner,
     data: np.ndarray,
     meta: list[dict],
     fov_name: str,
@@ -466,9 +495,10 @@ def _process_roi_trace(
 
     # check if the roi is stimulated
     roi_stimulation_overlap_ratio = 0.0
-    if evoked_exp and runner._stimulated_area_mask is not None:
+    stimulated_area_mask = settings.stimulated_mask_area()
+    if evoked_exp and stimulated_area_mask is not None:
         roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-            runner._stimulated_area_mask, label_mask
+            stimulated_area_mask, label_mask
         )
 
     # compute the mean for each frame
