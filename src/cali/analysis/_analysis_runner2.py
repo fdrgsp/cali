@@ -24,6 +24,7 @@ from cali._constants import (
 from cali.sqlmodel._model import (
     FOV,
     ROI,
+    AnalysisResult,
     AnalysisSettings,
     DataAnalysis,
     Experiment,
@@ -48,6 +49,7 @@ cali_logger = logging.getLogger("cali_logger")
 
 
 def commit_result(session: Session, experiment: Experiment, fov_result: FOV) -> None:
+    """Commit FOV result to database."""
     # Query for plate ID directly to avoid loading relationships
     plate_statement = (
         select(Plate.id).join(Experiment).where(Experiment.id == experiment.id)
@@ -57,14 +59,12 @@ def commit_result(session: Session, experiment: Experiment, fov_result: FOV) -> 
         cali_logger.error("Experiment plate not initialized")
         return
 
-    plate_id = plate_id_result
-
     # For each FOV, link it to the appropriate well
-    well_name = fov_result.name.split("_")[0]
+    well_name = fov_result.name.split("_")[0]  # A1_0000 p -> A1
 
     # Query for existing well
     well_statement = select(Well).where(
-        Well.plate_id == plate_id, Well.name == well_name
+        Well.plate_id == plate_id_result, Well.name == well_name
     )
     well = session.exec(well_statement).first()
 
@@ -73,24 +73,48 @@ def commit_result(session: Session, experiment: Experiment, fov_result: FOV) -> 
         row = ord(well_name[0]) - ord("A")
         col = int(well_name[1:]) - 1
         well = Well(
-            plate_id=plate_id,
+            plate_id=plate_id_result,
             name=well_name,
             row=row,
             column=col,
             fovs=[],
         )
         session.add(well)
-        session.flush()  # Get the well ID
+        # Get the well ID
+        session.flush()
 
-    # Link FOV to well using foreign key
-    fov_result.well_id = well.id
-    session.add(fov_result)
+    # Check if FOV already exists for this well (re-analysis case)
+    # Now that FOV names are not unique, we need to check by name AND well
+    existing_fov_stmt = select(FOV).where(
+        FOV.name == fov_result.name, FOV.well_id == well.id
+    )
+    existing_fov = session.exec(existing_fov_stmt).first()
+
+    if existing_fov:
+        # Re-analysis: Delete old ROIs (cascade handles traces, etc.)
+        for old_roi in existing_fov.rois:
+            session.delete(old_roi)
+        session.flush()
+
+        # Update FOV and link to well
+        existing_fov.position_index = fov_result.position_index
+        existing_fov.fov_number = fov_result.fov_number
+        existing_fov.fov_metadata = fov_result.fov_metadata
+        existing_fov.well_id = well.id
+
+        # Add new ROIs - detach from fov_result to avoid cascading issues
+        # Copy the list to avoid modification during iteration
+        rois_to_add = list(fov_result.rois)
+        for roi in rois_to_add:
+            roi.fov_id = existing_fov.id
+            roi.fov = existing_fov  # Explicitly set the relationship
+            session.add(roi)
+    else:
+        # New FOV - link to well and add
+        fov_result.well_id = well.id
+        session.add(fov_result)
 
     session.commit()
-    position_idx = fov_result.position_index if fov_result else "unknown"
-    cali_logger.info(
-        f"💾 Updated analysis data for position {position_idx} in database."
-    )
 
 
 def exec_(
@@ -142,14 +166,76 @@ class AnalysisRunner:
         experiment: Experiment,
         settings: AnalysisSettings,
         global_position_indices: Sequence[int],
+        echo: bool = False,
     ) -> None:
+        from cali.analysis._analysis_with_sqlmodel import load_data
+        from cali.sqlmodel._util import save_experiment_to_database
+
+        # Initialize the analysis runner with data
         self._runner = runner = OriginalAnalysisRunner()
-        runner.set_experiment(experiment)
-        runner._stimulated_area_mask = settings.stimulated_mask_area()
+        runner._experiment = experiment
+        if experiment.data_path:
+            runner._data = load_data(experiment.data_path)
+
+        # Save experiment to DB if database doesn't exist or experiment has no ID
+        if experiment.db_path:
+            db_path = Path(experiment.db_path)
+            if not db_path.exists() or experiment.id is None:
+                save_experiment_to_database(experiment, overwrite=False)
 
         cancellation_event = threading.Event()
-        engine = create_engine(f"sqlite:///{experiment.db_path}")
+
+        engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
         with Session(engine) as session:
+            # Check for deduplication BEFORE merging
+            if settings.id is None:
+                # Check if identical settings already exist in database
+                new_settings_dict = settings.model_dump(exclude={"id", "created_at"})
+                try:
+                    all_settings = session.exec(select(AnalysisSettings)).all()
+                    existing_settings = None
+
+                    for candidate in all_settings:
+                        candidate_dict = candidate.model_dump(
+                            exclude={"id", "created_at"}
+                        )
+                        if candidate_dict == new_settings_dict:
+                            existing_settings = candidate
+                            break
+                except Exception:
+                    # Table doesn't exist yet - this is the first settings
+                    existing_settings = None
+
+                if existing_settings:
+                    # Found duplicate - use the existing one
+                    settings = existing_settings
+                    cali_logger.info(
+                        f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
+                    )
+                else:
+                    # New settings - merge and commit to get an ID
+                    settings = session.merge(settings)
+                    session.commit()
+                    session.refresh(settings)
+                    cali_logger.info(f"⚙️ Created new AnalysisSettings ID {settings.id}")
+            else:
+                # Settings already has an ID - just merge to reattach
+                settings = session.merge(settings)
+                cali_logger.info(
+                    f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
+                )
+
+            # Get stimulated mask area while settings is still attached to session
+            runner._stimulated_area_mask = settings.stimulated_mask_area()
+
+            # Ensure experiment has an ID
+            if experiment.id is None:
+                msg = "Experiment must have an ID before running analysis"
+                raise ValueError(msg)
+
+            # Track positions processed
+            positions_processed = []
+
             for result in exec_(
                 analyze=self._analyze_position,
                 cancel_event=cancellation_event,
@@ -159,8 +245,42 @@ class AnalysisRunner:
                 max_workers=settings.threads,
             ):
                 commit_result(session, experiment, result)
-                # TODO: create the AnalysisResult object,
-                # and get analysis_settings off of Roi.
+                positions_processed.append(result.position_index)
+
+            # Create or update AnalysisResult after processing all positions
+            if positions_processed and settings.id is not None:
+                # Query for existing AnalysisResult with same experiment + settings
+                existing_result_stmt = select(AnalysisResult).where(
+                    AnalysisResult.experiment == experiment.id,
+                    AnalysisResult.analysis_settings == settings.id,
+                )
+                existing_result = session.exec(existing_result_stmt).first()
+
+                if existing_result:
+                    # Check if positions match - if so, overwrite; if not, add
+                    if set(existing_result.positions_analyzed or []) != set(
+                        positions_processed
+                    ):
+                        # Different positions - this is a new analysis run
+                        new_result = AnalysisResult(
+                            experiment=experiment.id,
+                            analysis_settings=settings.id,
+                            positions_analyzed=positions_processed,
+                        )
+                        session.add(new_result)
+                    # else is the same positions - just update the timestamp implicitly
+                    # (no changes needed, data already committed)
+                else:
+                    # No existing result - create new
+                    new_result = AnalysisResult(
+                        experiment=experiment.id,
+                        analysis_settings=settings.id,
+                        positions_analyzed=positions_processed,
+                    )
+                    session.add(new_result)
+                    cali_logger.info("✅ Created new AnalysisResult.")
+
+                session.commit()
 
     def _analyze_position(
         self, experiment: Experiment, settings: AnalysisSettings, global_pos_idx: int
@@ -264,7 +384,7 @@ def _extract_trace_data_per_position(
 
     # >>>> HERE is the big loop over roi mask, calling _process_roi_trace
 
-    msg = f"Extracting Traces Data from Well {fov_name}."
+    msg = f"Extracting Traces Data from {fov_name}."
     cali_logger.info(msg)
     for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
         if runner._check_for_abort_requested():
@@ -274,7 +394,6 @@ def _extract_trace_data_per_position(
         # Process each ROI and get the result objects (not committed)
         roi_result = _process_roi_trace(
             runner,
-            experiment,
             data,
             meta,
             fov_name,
@@ -305,7 +424,6 @@ def _extract_trace_data_per_position(
 
 def _process_roi_trace(
     runner: OriginalAnalysisRunner,
-    experiment: Experiment,
     data: np.ndarray,
     meta: list[dict],
     fov_name: str,

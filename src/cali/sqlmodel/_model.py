@@ -47,10 +47,11 @@ from cali._constants import (
 
 
 class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
-    """Base class for analysis result tables.
+    """Analysis run metadata.
 
-    This is an abstract base class and should not be instantiated directly.
-    Specific analysis result tables should inherit from this class.
+    Tracks which experiment was analyzed with which settings and which positions
+    were processed. The actual results (traces, data_analysis) can be queried
+    through the hierarchical relationships using the positions_analyzed list.
     """
 
     __tablename__ = "analysis_result"
@@ -483,7 +484,7 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "fov"
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(unique=True, index=True)
+    name: str = Field(index=True)  # Not unique - multiple experiments can have same FOV names
     position_index: int = Field(index=True)
     fov_number: int = Field(default=0)
     fov_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
