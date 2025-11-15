@@ -47,7 +47,7 @@ settings1 = AnalysisSettings(threads=4, dff_window=100)
 analysis.run(exp, settings1, global_position_indices=list(range(len(plate_plan))))
 
 # Run 2: Wider dff_window (150 frames) - New
-settings2 = AnalysisSettings(threads=4, dff_window=150)
+settings2 = AnalysisSettings(threads=4, dff_window=150, id=54)
 analysis.run(exp, settings2, global_position_indices=list(range(len(plate_plan))))
 
 # Run 3: Back to 100 frames - should REUSE settings1 and UPDATE AnalysisResult #1
