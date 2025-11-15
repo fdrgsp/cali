@@ -90,8 +90,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     plate : Plate
         Related plate (back-populated by SQLModel)
-    analysis_settings : AnalysisSettings | None
-        Analysis settings used in this experiment
     """
 
     __tablename__ = "experiment"
