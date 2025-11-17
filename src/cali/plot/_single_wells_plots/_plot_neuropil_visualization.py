@@ -8,6 +8,8 @@ import mplcursors
 import numpy as np
 from matplotlib.patches import Polygon
 
+from cali.util import coordinates_to_mask
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
@@ -175,29 +177,6 @@ def _add_hover_functionality(
         else:
             sel.annotation.set_visible(False)
             sel.annotation.arrow_patch.set_alpha(0)
-
-
-def coordinates_to_mask(
-    coords: tuple[list[int], list[int]], shape: tuple[int, int]
-) -> np.ndarray:
-    """Reconstruct a binary mask from coordinates and shape.
-
-    Parameters
-    ----------
-    coords : tuple[list[int], list[int]]
-        Tuple of (y_coords, x_coords) lists
-    shape : tuple[int, int]
-        Shape of the mask (height, width)
-
-    Returns
-    -------
-    np.ndarray
-        Binary mask array
-    """
-    mask = np.zeros(shape, dtype=bool)
-    y_coords, x_coords = coords
-    mask[y_coords, x_coords] = True
-    return mask
 
 
 def _get_contours(mask: np.ndarray) -> list[np.ndarray]:

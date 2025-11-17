@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
@@ -21,6 +21,8 @@ from qtpy.QtWidgets import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 
 def show_error_dialog(parent: QWidget, message: str) -> None:
@@ -55,7 +57,7 @@ class _BrowseWidget(QWidget):
         self._label_text = label
 
         self._label = QLabel(f"{self._label_text}:")
-        self._label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._label.setSizePolicy(*FIXED)
         self._label.setToolTip(tooltip)
 
         self._path = QLineEdit()
@@ -289,4 +291,41 @@ def _create_line() -> QFrame:
     return result
 
 
-# SYNCHRONY FUNCTIONS -----------------------------------------------------------------
+class _ChoosePositionsWidget(QWidget):
+    """Widget to select the positions to analyze."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self.setToolTip(
+            "Select the Positions to analyze. Leave blank to analyze all Positions. "
+            "You can input single Positions (e.g. 30, 33), a range (e.g. 1-10), or a "
+            "mix of single Positions and ranges (e.g. 1-10, 30, 50-65). Leave empty "
+            "to analyze all Positions.\n\n"
+            "NOTE: The Positions are 0-indexed."
+        )
+
+        self._pos_lbl = QLabel("Analyze Positions:")
+        self._pos_lbl.setSizePolicy(*FIXED)
+        self._pos_le = QLineEdit(self)
+        self._pos_le.setPlaceholderText("e.g. 0-10, 30, 33. Leave empty for all.")
+
+        pos_layout = QHBoxLayout(self)
+        pos_layout.setContentsMargins(0, 0, 0, 0)
+        pos_layout.setSpacing(5)
+        pos_layout.addWidget(self._pos_lbl)
+        pos_layout.addWidget(self._pos_le)
+
+    # PUBLIC METHODS ------------------------------------------------------------
+
+    def set_labels_width(self, width: int) -> None:
+        """Set the width of the label."""
+        self._pos_lbl.setFixedWidth(width)
+
+    def value(self) -> str:
+        """Get the current value of the positions line edit."""
+        return cast("str", self._pos_le.text())
+
+    def setValue(self, value: str) -> None:
+        """Set the value of the positions line edit."""
+        self._pos_le.setText(value)

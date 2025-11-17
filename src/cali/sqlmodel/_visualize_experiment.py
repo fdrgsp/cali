@@ -713,3 +713,184 @@ def print_experiment_tree(
                     roi_node.add("🔵 [dim]Neuropil mask available[/dim]")
 
     console.print(tree)
+
+
+def print_database_tree(
+    engine: Engine,
+    experiment_name: str | None = None,
+    max_level: MaxTreeLevel = "roi",
+    show_analysis_results: bool = True,
+    show_settings: bool = True,
+) -> None:
+    """Print complete database structure including experiments and optionally analysis results.
+
+    This function shows the full database hierarchy regardless of whether
+    analysis has been performed. It's useful for visualizing the output
+    of DetectionRunner (FOV/ROI/Mask structure) before running analysis.
+
+    Parameters
+    ----------
+    engine : Engine
+        SQLAlchemy engine connected to the database
+    experiment_name : str | None
+        Optional experiment name to filter. If None, shows all experiments
+    max_level : MaxTreeLevel
+        Maximum depth level to display (default: "roi")
+    show_analysis_results : bool
+        Whether to show analysis results section (default: True)
+    show_settings : bool
+        Whether to show detailed analysis settings (default: False)
+    """
+    session = Session(engine)
+    console = Console()
+
+    # Get experiments
+    if experiment_name is not None:
+        experiments = [
+            session.exec(
+                select(Experiment).where(Experiment.name == experiment_name)
+            ).first()
+        ]
+        if experiments[0] is None:
+            print(f"❌ Experiment '{experiment_name}' not found")
+            session.close()
+            return
+        title = f"📊 Database: {experiment_name}"
+    else:
+        experiments = list(session.exec(select(Experiment)).all())
+        title = "📊 Complete Database Structure"
+
+    if not experiments:
+        print("📊 No experiments found in database")
+        session.close()
+        return
+
+    # Create main tree
+    experiment_plural = "s" if len(experiments) != 1 else ""
+    main_tree = Tree(
+        f"[bold cyan]{title}[/bold cyan] ({len(experiments)} experiment{experiment_plural})",
+        guide_style="cyan",
+    )
+
+    # Add each experiment
+    for exp in experiments:
+        exp_tree = main_tree.add(f"🧪 [bold cyan]{exp.name}[/bold cyan]")
+        exp_tree.add(f"Type: [magenta]{exp.experiment_type}[/magenta]")
+        if exp.description:
+            exp_tree.add(f"Description: [dim]{exp.description}[/dim]")
+        exp_tree.add(f"Created: [dim]{exp.created_at}[/dim]")
+
+        if max_level == "experiment":
+            continue
+
+        # Add plate
+        if exp.plate:
+            plate_type = exp.plate.plate_type or "unknown"
+            plate_node = exp_tree.add(
+                f"📋 [green]{exp.plate.name}[/green] ({plate_type})"
+            )
+
+            if max_level == "plate":
+                continue
+
+            # Add wells with statistics
+            for well in exp.plate.wells:
+                # Count FOVs and ROIs for this well
+                fov_count = len(well.fovs)
+                roi_count = sum(len(fov.rois) for fov in well.fovs)
+
+                well_conditions = []
+                if well.condition_1:
+                    well_conditions.append(f"{well.condition_1.name}")
+                if well.condition_2:
+                    well_conditions.append(f"{well.condition_2.name}")
+
+                if well_conditions:
+                    conditions_text = ", ".join(well_conditions)
+                    condition_str = f" - 🧪 {conditions_text}"
+                else:
+                    condition_str = ""
+
+                well_label = (
+                    f"🧫 [yellow]{well.name}[/yellow]{condition_str} "
+                    f"[dim]({fov_count} FOVs, {roi_count} ROIs)[/dim]"
+                )
+                well_node = plate_node.add(well_label)
+
+                if max_level == "well":
+                    continue
+
+                # Add FOVs
+                for fov in well.fovs:
+                    fov_label = (
+                        f"📷 [cyan]{fov.name}[/cyan] "
+                        f"[dim](pos: {fov.position_index}, {len(fov.rois)} ROIs)[/dim]"
+                    )
+                    fov_node = well_node.add(fov_label)
+
+                    if max_level == "fov":
+                        continue
+
+                    # Add ROIs
+                    for roi in fov.rois:
+                        roi_info = f"ROI {roi.label_value}"
+
+                        # Show status if analyzed
+                        if roi.active is not None:
+                            status = (
+                                "🔋 active" if roi.active else "🪫 inactive"
+                            )
+                            roi_info += f" - {status}"
+
+                        if roi.stimulated:
+                            roi_info += " - ⚡️ stimulated"
+
+                        roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
+
+                        # Show what data is available
+                        data_available = []
+                        if roi.roi_mask:
+                            data_available.append("🎭 ROI mask")
+                        if roi.neuropil_mask:
+                            data_available.append("🔵 Neuropil mask")
+                        if roi.traces:
+                            data_available.append("📊 Traces")
+                        if roi.data_analysis:
+                            data_available.append("📈 Analysis")
+
+                        if data_available:
+                            roi_node.add(
+                                f"[dim]{'  •  '.join(data_available)}[/dim]"
+                            )
+
+        # Show analysis results if requested
+        if show_analysis_results:
+            results = session.exec(
+                select(AnalysisResult).where(AnalysisResult.experiment == exp.id)
+            ).all()
+
+            if results:
+                results_node = exp_tree.add(
+                    f"📈 [bold yellow]Analysis Results ({len(results)})[/bold yellow]"
+                )
+
+                for result in results:
+                    positions = result.positions_analyzed or []
+                    result_node = results_node.add(
+                        f"Result #{result.id} - {len(positions)} positions"
+                    )
+
+                    # Show settings if requested
+                    if show_settings:
+                        settings = session.exec(
+                            select(AnalysisSettings).where(
+                                AnalysisSettings.id == result.analysis_settings
+                            )
+                        ).first()
+                        if settings:
+                            add_settings_to_tree(
+                                result_node, settings, show_details=True
+                            )
+
+    console.print(main_tree)
+    session.close()

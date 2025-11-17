@@ -576,23 +576,3 @@ def _create_connectivity_matrix(
 
     # Create binary connectivity matrix
     return (correlation_matrix >= threshold).astype(int)  # type: ignore [no-any-return]
-
-
-def coordinates_to_mask(
-    coordinates: tuple[list[int], list[int]],
-    shape: tuple[int, int],
-) -> np.ndarray:
-    """Convert sparse coordinates back to a 2D boolean mask.
-
-    Args:
-        coordinates: Tuple of (y_coords, x_coords) lists
-        shape: Tuple of (height, width)
-
-    Returns
-    -------
-        2D boolean numpy array
-    """
-    mask = np.zeros(shape, dtype=bool)
-    y_coords, x_coords = coordinates
-    mask[y_coords, x_coords] = True
-    return mask

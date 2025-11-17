@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
-import tifffile
 from oasis.functions import deconvolve
 from scipy.signal import find_peaks
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
@@ -30,17 +30,14 @@ from cali.sqlmodel._model import (
     DataAnalysis,
     Experiment,
     Mask,
-    Plate,
     Traces,
-    Well,
 )
-from cali.util._util import load_data
+from cali.util import commit_fov_result, load_data, mask_to_coordinates
 
 from ._util import (
     calculate_dff,
     get_iei,
     get_overlap_roi_with_stimulated_area,
-    mask_to_coordinates,
 )
 
 if TYPE_CHECKING:
@@ -49,75 +46,6 @@ if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 cali_logger = logging.getLogger("cali_logger")
-
-
-def commit_result(session: Session, experiment: Experiment, fov_result: FOV) -> None:
-    """Commit FOV result to database."""
-    # Query for plate ID directly to avoid loading relationships
-    plate_statement = (
-        select(Plate.id).join(Experiment).where(Experiment.id == experiment.id)
-    )
-    plate_id_result = session.exec(plate_statement).first()
-    if plate_id_result is None:
-        cali_logger.error("Experiment plate not initialized")
-        return
-
-    # For each FOV, link it to the appropriate well
-    well_name = fov_result.name.split("_")[0]  # A1_0000 p -> A1
-
-    # Query for existing well
-    well_statement = select(Well).where(
-        Well.plate_id == plate_id_result, Well.name == well_name
-    )
-    well = session.exec(well_statement).first()
-
-    if well is None:
-        # Create new well if needed
-        row = ord(well_name[0]) - ord("A")
-        col = int(well_name[1:]) - 1
-        well = Well(
-            plate_id=plate_id_result,
-            name=well_name,
-            row=row,
-            column=col,
-            fovs=[],
-        )
-        session.add(well)
-        # Get the well ID
-        session.flush()
-
-    # Check if FOV already exists for this well (re-analysis case)
-    # Now that FOV names are not unique, we need to check by name AND well
-    existing_fov_stmt = select(FOV).where(
-        FOV.name == fov_result.name, FOV.well_id == well.id
-    )
-    existing_fov = session.exec(existing_fov_stmt).first()
-
-    if existing_fov:
-        # Re-analysis: Delete old ROIs (cascade handles traces, etc.)
-        for old_roi in existing_fov.rois:
-            session.delete(old_roi)
-        session.flush()
-
-        # Update FOV and link to well
-        existing_fov.position_index = fov_result.position_index
-        existing_fov.fov_number = fov_result.fov_number
-        existing_fov.fov_metadata = fov_result.fov_metadata
-        existing_fov.well_id = well.id
-
-        # Add new ROIs - detach from fov_result to avoid cascading issues
-        # Copy the list to avoid modification during iteration
-        rois_to_add = list(fov_result.rois)
-        for roi in rois_to_add:
-            roi.fov_id = existing_fov.id
-            roi.fov = existing_fov  # Explicitly set the relationship
-            session.add(roi)
-    else:
-        # New FOV - link to well and add
-        fov_result.well_id = well.id
-        session.add(fov_result)
-
-    session.commit()
 
 
 def exec_(
@@ -171,6 +99,11 @@ class AnalysisRunner:
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
+
+    def cancel(self) -> None:
+        """Request cancellation of the analysis process."""
+        cali_logger.info("Cancellation requested...")
+        self._cancellation_event.set()
 
     def run(
         self,
@@ -278,7 +211,7 @@ class AnalysisRunner:
                 experiment=experiment,
                 max_workers=settings.threads,
             ):
-                commit_result(session, experiment, result)
+                commit_fov_result(session, experiment, result)
                 positions_processed.append(result.position_index)
 
             # once the analysis is complete, create or update AnalysisResult
@@ -334,8 +267,6 @@ class AnalysisRunner:
             experiment, settings, global_pos_idx
         )
 
-
-
     # These are module-level functions that work with the OriginalAnalysisRunner
     def _extract_trace_data_per_position(
         self,
@@ -348,6 +279,8 @@ class AnalysisRunner:
         Returns a list containing a single FOV with all its ROIs, Traces, DataAnalysis,
         and Masks ready to be committed to the database.
         """
+        from cali.util import coordinates_to_mask
+
         # if runner._data is None or runner._check_for_abort_requested():
         if self._data is None or self._check_for_abort_requested():
             return None
@@ -358,20 +291,61 @@ class AnalysisRunner:
         # get the fov_name name from metadata
         fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
-        # get the labels file for the position
-        labels_path = _get_labels_file_for_position(experiment, fov_name, global_pos_idx)
-        if labels_path is None:
-            return None
+        # Load existing FOV with ROI masks from database
+        engine = create_engine(f"sqlite:///{experiment.db_path}", echo=False)
+        with Session(engine) as session:
+            # Query for FOV with this name and position
+            fov_stmt = (
+                select(FOV)
+                .where(
+                    FOV.name == fov_name,
+                    FOV.position_index == global_pos_idx,
+                )
+                .options(
+                    selectinload(FOV.rois).selectinload(ROI.roi_mask),
+                )
+            )
+            existing_fov = session.exec(fov_stmt).first()
 
-        # open the labels file and create masks for each label
-        labels = tifffile.imread(labels_path)
+            if existing_fov is None or not existing_fov.rois:
+                cali_logger.error(
+                    f"No ROI masks found in database for FOV {fov_name} "
+                    f"(position {global_pos_idx}). Run detection first."
+                )
+                return None
 
-        # Check for cancellation after file I/O operation
+            # Convert database masks (coordinates) to numpy arrays
+            # { label_value -> np.ndarray mask }
+            labels_masks = {}
+            for roi in existing_fov.rois:
+                if (
+                    roi.roi_mask
+                    and roi.roi_mask.coords_y is not None
+                    and roi.roi_mask.coords_x is not None
+                    and roi.roi_mask.height is not None
+                    and roi.roi_mask.width is not None
+                ):
+                    mask_array = coordinates_to_mask(
+                        (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
+                        (roi.roi_mask.height, roi.roi_mask.width),
+                    )
+                    labels_masks[roi.label_value] = mask_array
+                else:
+                    cali_logger.warning(
+                        f"ROI {roi.label_value} in {fov_name} has no mask data"
+                    )
+
+            if not labels_masks:
+                cali_logger.error(
+                    f"No valid ROI masks found for FOV {fov_name}. "
+                    "Run detection first."
+                )
+                return None
+
+        # Check for cancellation after database I/O
         if self._check_for_abort_requested():
             return None
 
-        # { roi_id -> np.ndarray mask }
-        labels_masks = _create_label_masks_dict(labels)
         sequence = cast("useq.MDASequence", self._data.sequence)
 
         # Check for cancellation after loading and processing labels
@@ -430,7 +404,9 @@ class AnalysisRunner:
         cali_logger.info(msg)
         for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
             if self._check_for_abort_requested():
-                cali_logger.info(f"Cancellation requested during processing of {fov_name}")
+                cali_logger.info(
+                    f"Cancellation requested during processing of {fov_name}"
+                )
                 break
 
             # Process each ROI and get the result objects (not committed)
@@ -647,7 +623,9 @@ class AnalysisRunner:
         # get neuropil mask coords and shape if neuropil mask exists
         neuropil_mask_coords = neuropil_mask_shape = None
         if neuropil_mask is not None:
-            neuropil_mask_coords, neuropil_mask_shape = mask_to_coordinates(neuropil_mask)
+            neuropil_mask_coords, neuropil_mask_shape = mask_to_coordinates(
+                neuropil_mask
+            )
 
         # Create mask objects
         roi_mask = Mask(
@@ -706,6 +684,7 @@ class AnalysisRunner:
             neuropil_mask=neuropil_mask_obj,
             traces=traces,
             data_analysis=data_analysis,
+            fov_id=0,  # placeholder, will be set when committing
         )
         # Use foreign key to avoid trying to INSERT the experiment
         roi.analysis_settings_id = settings.id
@@ -714,40 +693,29 @@ class AnalysisRunner:
 
 
 def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:
-    """Retrieve the fov name from metadata."""
-    # the "Event" key was used in the old metadata format
-    pos_name = meta[0].get(event_key, {}).get("pos_name", f"pos_{str(p).zfill(4)}")
-    return f"{pos_name}_p{p}"
+    """Retrieve the fov name from metadata.
+    
+    Should match the naming used in DetectionRunner to ensure
+    analysis can find the FOV created during detection.
+    """
+    try:
+        # Try to get pos_name first (e.g., "B5_0000")
+        pos_name = meta[0][event_key].get("pos_name")
+        if pos_name:
+            return pos_name
+    except (KeyError, IndexError, AttributeError):
+        pass
 
+    # Fallback to constructing from axes
+    try:
+        well = meta[0][event_key]["axes"]["p"]
+        return f"{well}_{p:04d}"
+    except (KeyError, IndexError):
+        pass
 
-def _get_labels_file_for_position(
-    experiment: Experiment, fov: str, p: int
-) -> str | None:
-    """Retrieve the labels file for the given position."""
-    # if the fov name does not end with "_p{p}", add it
-    labels_name = f"{fov}.tif" if fov.endswith(f"_p{p}") else f"{fov}_p{p}.tif"
-    labels_path = _get_labels_file(experiment, labels_name)
-    if labels_path is None:
-        cali_logger.error("No labels found for %s!", labels_name)
-    return labels_path
+    # Final fallback
+    return f"pos_{p}"
 
-
-def _get_labels_file(experiment: Experiment, label_name: str) -> str | None:
-    """Get the labels file for the given name."""
-    if (labels_path := experiment.labels_path) is None:
-        return None
-    for label_file in Path(labels_path).glob("*.tif"):
-        if label_file.name.endswith(label_name):
-            return str(label_file)
-    return None
-
-
-def _create_label_masks_dict(labels: np.ndarray) -> dict[int, np.ndarray]:
-    """Create masks for each label in the labels image."""
-    # get the range of labels and remove the background (0)
-    labels_range = np.unique(labels[labels != 0])
-    # Convert numpy int to Python int to avoid bytes serialization issues
-    return {int(label_value): (labels == label_value) for label_value in labels_range}
 
 
 def _get_elapsed_time_list(meta: list[dict]) -> list[float]:

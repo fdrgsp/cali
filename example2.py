@@ -1,11 +1,16 @@
 from datetime import datetime
+from pathlib import Path
 
+# from cali.analysis import AnalysisRunner
 from sqlmodel import create_engine
 
 from cali.analysis import AnalysisRunner
+from cali.detection import CellposeSettings, DetectionRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db
-from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+from cali.sqlmodel._visualize_experiment import (
+    print_all_analysis_results,
+)
 
 # ###########################################
 
@@ -14,17 +19,7 @@ exp = Experiment(
     name="New Experiment",
     description="A Test Experiment.",
     created_at=datetime.now(),
-    database_name="cali_new.db",
-    data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    labels_path="tests/test_data/evoked/evk_labels",
-    analysis_path="analysis_results",
-)
-exp1 = Experiment(
-    id=1,
-    name="New Experiment",
-    description="A Test Experiment.",
-    created_at=datetime.now(),
-    database_name="cali_new.db",
+    database_name="cali_cp.db",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
     labels_path="tests/test_data/evoked/evk_labels",
     analysis_path="analysis_results",
@@ -42,31 +37,33 @@ exp.plate = useq_plate_plan_to_db(
         "treatment": {"B5": "Vehicle"},
     },
 )
-exp1.plate = useq_plate_plan_to_db(
-    (plate_plan := data.sequence.stage_positions),
-    exp,
-    plate_maps={
-        "genotype": {"B5": "WT"},
-        "treatment": {"B5": "Vehicle"},
-    },
-)
 # -----------------------------------
 
+# delete existing database if it exists
+if Path(exp.db_path).exists():
+    Path(exp.db_path).unlink()
+
+# DETECTION STEP
+detection = DetectionRunner()
+cp_settings = CellposeSettings()
+detection.run_cellpose(exp, "cpsam", cp_settings, global_position_indices=[0])
+
+# ANALYSIS STEP
 analysis = AnalysisRunner()
-
-# Run 1 - new
 settings = AnalysisSettings(threads=4, dff_window=100)
-analysis.run(exp, settings, global_position_indices=list(range(len(plate_plan))))
-
-# Run 2 - new
-settings = AnalysisSettings(threads=4, dff_window=100)
-analysis.run(exp1, settings, global_position_indices=list(range(len(plate_plan))))
+analysis.run(exp, settings, [0])
 
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")
+# print_database_tree(
+#     engine,
+#     max_level="roi",
+#     show_settings=True,
+#     show_analysis_results=True,
+# )
 print_all_analysis_results(
     engine,
-    experiment_name=None,  # or experiment name string
-    show_settings=False,  # show detailed settings
-    max_experiment_level="roi",  # show down to FOV level
+    experiment_name=None,
+    show_settings=True,
+    max_experiment_level="roi",
 )

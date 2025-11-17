@@ -21,7 +21,6 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QMainWindow,
     QMenuBar,
-    QScrollArea,
     QSizePolicy,
     QSplitter,
     QTabWidget,
@@ -42,9 +41,8 @@ from cali._constants import (
     ZARR_TESNSORSTORE,
 )
 from cali.analysis import AnalysisRunner
+from cali.detection._detection_runner import DetectionRunner
 from cali.logger import cali_logger
-from cali.segmentation import CellposeSegmentationWidget
-from cali.segmentation._segmentation import CellposeNotAvailable
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
@@ -55,7 +53,7 @@ from cali.sqlmodel import (
     save_experiment_to_database,
     useq_plate_plan_to_db,
 )
-from cali.util._util import load_data
+from cali.util import load_data
 
 from ._analysis_gui import (
     AnalysisSettingsData,
@@ -63,8 +61,9 @@ from ._analysis_gui import (
     ExperimentTypeData,
     SpikeData,
     TraceExtractionData,
-    _CalciumAnalysisGUI,
+    _AnalysisGUI,
 )
+from ._detection_gui import _DetectionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
@@ -72,6 +71,7 @@ from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._util import (
+    _ElapsedTimer,
     _ProgressBarWidget,
     show_error_dialog,
 )
@@ -101,6 +101,11 @@ class CaliGui(QMainWindow):
         self.setWindowTitle("Plate Viewer")
         self.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
 
+        # ELAPSED TIMER ---------------------------------------------------------------
+        self._elapsed_timer = _ElapsedTimer()
+        # TODO: FIX ME...should update detection or analysis based on context
+        # self._elapsed_timer.elapsed_time_updated.connect(self._update_progress_label)
+
         # INTERNAL VARIABLES ---------------------------------------------------------
         self._database_path: Path | None = None
         self._data_path: str | None = None
@@ -108,8 +113,9 @@ class CaliGui(QMainWindow):
         self._analysis_path: str | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
-        # RUNNER ---------------------------------------------------------------------
-        self._analysis_runner: AnalysisRunner = AnalysisRunner()
+        # RUNNERS --------------------------------------------------------------------
+        self._analysis_runner = AnalysisRunner()
+        self._detection_runner = DetectionRunner()
 
         # PROGRESS BAR WIDGET --------------------------------------------------------
         self._loading_bar = _ProgressBarWidget(self)
@@ -182,44 +188,15 @@ class CaliGui(QMainWindow):
         self._tab = QTabWidget(self)
         self._tab.currentChanged.connect(self._on_tab_changed)
 
-        # SEGMENTATION TAB ------------------------------------------------------------
-        self._segmentation_tab = QWidget()
-        self._tab.addTab(self._segmentation_tab, "Segmentation Tab")
-        segmentation_tab_layout = QVBoxLayout(self._segmentation_tab)
-        segmentation_tab_layout.setContentsMargins(0, 0, 0, 0)
+        # DETECTION TAB ---------------------------------------------------------------
+        self._detection_tab = QWidget()
+        self._tab.addTab(self._detection_tab, "Detection Tab")
+        detection_tab_layout = QVBoxLayout(self._detection_tab)
+        detection_tab_layout.setContentsMargins(0, 0, 0, 0)
 
-        # SEGMENTATION TAB SCROLL AREA ------------------------------------------------
-        segmentation_scroll_area = QScrollArea()
-        segmentation_scroll_area.setWidgetResizable(True)
-        segmentation_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        segmentation_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-
-        # SEGMENTATION WIDGET ---------------------------------------------------------
-        cp_installed = False
-        try:
-            import cellpose  # noqa: F401
-
-            cp_installed = True
-        except ImportError:
-            cp_installed = False
-            pass
-        if cp_installed:
-            self._segmentation_wdg = CellposeSegmentationWidget(self)
-        else:
-            self._segmentation_wdg = CellposeNotAvailable(self)
-
-        segmentation_content_widget = QWidget()
-        segmentation_layout = QVBoxLayout(segmentation_content_widget)
-        segmentation_layout.setContentsMargins(10, 10, 10, 10)
-        segmentation_layout.setSpacing(15)
-        segmentation_layout.addWidget(self._segmentation_wdg)
-        segmentation_layout.addStretch(1)
-        segmentation_scroll_area.setWidget(segmentation_content_widget)
-        segmentation_tab_layout.addWidget(segmentation_scroll_area)
+        # DETECTION WIDGET ------------------------------------------------------------
+        self._detection_wdg = _DetectionGUI(self)
+        detection_tab_layout.addWidget(self._detection_wdg)
 
         # ANALYSIS TAB ----------------------------------------------------------------
         self._analysis_tab = QWidget()
@@ -227,22 +204,9 @@ class CaliGui(QMainWindow):
         analysis_tab_layout = QVBoxLayout(self._analysis_tab)
         analysis_tab_layout.setContentsMargins(0, 0, 0, 0)
 
-        # ANALYSIS TAB SCROLL AREA ----------------------------------------------------
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
         # ANALYSIS WIDGET -------------------------------------------------------------
-        self._analysis_wdg = _CalciumAnalysisGUI(self)
-        analysis_content_widget = QWidget()
-        analysis_layout = QVBoxLayout(analysis_content_widget)
-        analysis_layout.setContentsMargins(10, 10, 10, 10)
-        analysis_layout.setSpacing(15)
-        analysis_layout.addWidget(self._analysis_wdg)
-        analysis_layout.addStretch(1)
-        scroll_area.setWidget(analysis_content_widget)
-        analysis_tab_layout.addWidget(scroll_area)
+        self._analysis_wdg = _AnalysisGUI(self)
+        analysis_tab_layout.addWidget(self._analysis_wdg)
 
         # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
@@ -300,26 +264,29 @@ class CaliGui(QMainWindow):
 
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
-        self._segmentation_wdg.segmentationFinished.connect(
-            self._on_fov_table_selection_changed
-        )
+
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
         for graph in self.SW_GRAPHS:
             graph.roiSelected.connect(self._highlight_roi)
-        # connect meta button
-        self._analysis_wdg._experiment_type_wdg._from_meta_btn.clicked.connect(
-            self._on_led_info_from_meta_clicked
-        )
-        # connect analysis runner signal
-        self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
+
+        # connect analysis from metadata button
+        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
         # connect the run analysis button
-        self._analysis_wdg._run_analysis_wdg._run_btn.clicked.connect(
-            self._on_run_analysis_clicked
-        )
-        self._analysis_wdg._run_analysis_wdg._cancel_btn.clicked.connect(
-            self._analysis_runner.cancel
-        )
+        self._analysis_wdg.run.connect(self._on_run_analysis_clicked)
+        self._analysis_wdg.cancel.connect(self._analysis_runner.cancel)
+        # connect analysis runner signal
+        # self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
+
+        # connect the run detection button
+        self._detection_wdg.run.connect(self._on_run_detection_clicked)
+        self._detection_wdg.cancel.connect(self._detection_runner.cancel)
+
+        # TODO: FIX ME FOR NEW GUI
+        # self._segmentation_wdg.segmentationFinished.connect(
+        #     self._on_fov_table_selection_changed
+        #
+
         # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
         #     self._on_frame_rate_info_from_meta_clicked
         # )
@@ -520,6 +487,10 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.setValue(value)
         self._analysis_wdg._run_analysis_wdg.reset()
 
+    # RUNNING THE DETECTION------------------------------------------------------------
+    def _on_run_detection_clicked(self) -> None:
+        ...
+
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
         exp = self.experiment()
@@ -541,61 +512,62 @@ class CaliGui(QMainWindow):
         bool
             True if it's safe to proceed with analysis, False if user cancelled
         """
-        from qtpy.QtWidgets import QMessageBox
-
-        if experiment is None:
-            return False
-
-        # If no existing analysis settings, safe to proceed
-        if experiment.analysis_settings is None:
-            return True
-
-        # Get current GUI settings
-        new_settings = self._analysis_wdg.to_model_settings(experiment.id or 0)[1]
-        # Exclude 'id' and 'created_at' from comparison since it's database-specific
-        new_settings_dict = new_settings.model_dump(exclude={"id", "created_at"})
-
-        # Compare experiment settings with current GUI settings
-        # Exclude 'id'  and 'created_at' since it's database-specific
-        existing_settings = experiment.analysis_settings
-        existing_settings_dict = existing_settings.model_dump(
-            exclude={"id", "created_at"}
-        )
-
-        if existing_settings_dict != new_settings_dict:
-            msg_box = QMessageBox(self)
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.setWindowTitle("Different Analysis Settings Detected!")
-            msg_box.setText(
-                "The settings stored in the current database during previous analysis "
-                "run are different from the ones in the GUI.\n\n"
-                "If you continue and click ok 'OK', the previous analysis results will "
-                "be deleted from the database and update it with the new settings and "
-                "newly analyzed positions.\n\n"
-                "Options:\n"
-                "• Ok: Delete previous results and run new analysis\n"
-                "• Cancel: Keep existing data and do not run analysis\n\n"
-                "NOTE: To keep the old database, please set a new analysis path from "
-                "the 'Load Data and Set Directories...' menu so that the analysis will "
-                "be saved in a new database while keeping the old one intact."
-            )
-            msg_box.setStandardButtons(
-                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
-            )
-            msg_box.setDefaultButton(QMessageBox.StandardButton.Cancel)
-
-            result = msg_box.exec()
-            if result == QMessageBox.StandardButton.Cancel:
-                return False
-
-            self._delete_all_analysis_data()
-
         return True
+        # from qtpy.QtWidgets import QMessageBox
 
-    def _delete_all_analysis_data(self) -> None:
-        """Delete all existing analysis data (ROIs) from the experiment."""
-        # Delegate the clearing logic to the analysis runner
-        self._analysis_runner.clear_analysis_results()
+        # if experiment is None:
+        #     return False
+
+        # # If no existing analysis settings, safe to proceed
+        # if experiment.analysis_settings is None:
+        #     return True
+
+        # # Get current GUI settings
+        # new_settings = self._analysis_wdg.to_model_settings(experiment.id or 0)[1]
+        # # Exclude 'id' and 'created_at' from comparison since it's database-specific
+        # new_settings_dict = new_settings.model_dump(exclude={"id", "created_at"})
+
+        # # Compare experiment settings with current GUI settings
+        # # Exclude 'id'  and 'created_at' since it's database-specific
+        # existing_settings = experiment.analysis_settings
+        # existing_settings_dict = existing_settings.model_dump(
+        #     exclude={"id", "created_at"}
+        # )
+
+        # if existing_settings_dict != new_settings_dict:
+        #     msg_box = QMessageBox(self)
+        #     msg_box.setIcon(QMessageBox.Icon.Warning)
+        #     msg_box.setWindowTitle("Different Analysis Settings Detected!")
+        #     msg_box.setText(
+        #         "The settings stored in the current database during previous analysis "
+        #         "run are different from the ones in the GUI.\n\n"
+        #         "If you continue and click ok 'OK', the previous analysis results will "
+        #         "be deleted from the database and update it with the new settings and "
+        #         "newly analyzed positions.\n\n"
+        #         "Options:\n"
+        #         "• Ok: Delete previous results and run new analysis\n"
+        #         "• Cancel: Keep existing data and do not run analysis\n\n"
+        #         "NOTE: To keep the old database, please set a new analysis path from "
+        #         "the 'Load Data and Set Directories...' menu so that the analysis will "
+        #         "be saved in a new database while keeping the old one intact."
+        #     )
+        #     msg_box.setStandardButtons(
+        #         QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+        #     )
+        #     msg_box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+
+        #     result = msg_box.exec()
+        #     if result == QMessageBox.StandardButton.Cancel:
+        #         return False
+
+        #     self._delete_all_analysis_data()
+
+        # return True
+
+    # def _delete_all_analysis_data(self) -> None:
+    #     """Delete all existing analysis data (ROIs) from the experiment."""
+    #     # Delegate the clearing logic to the analysis runner
+    #     self._analysis_runner.clear_analysis_results()
 
     def _update_experiment_analysis_settings(self) -> None:
         exp = self.experiment()

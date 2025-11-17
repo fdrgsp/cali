@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QComboBox,
@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
@@ -54,6 +55,8 @@ from cali._constants import (
 from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     _BrowseWidget,
+    _ChoosePositionsWidget,
+    _ElapsedTimer,
     create_divider_line,
     parse_lineedit_text,
 )
@@ -171,7 +174,7 @@ class _PlateMapWidget(QWidget):
         layout.addWidget(self._plate_map_btn)
         layout.addStretch(1)
 
-    # PUBLIC METHODS -------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def value(
         self,
@@ -212,7 +215,7 @@ class _PlateMapWidget(QWidget):
         self._plate_map_genotype.clear()
         self._plate_map_treatment.clear()
 
-    # PRIVATE METHODS ------------------------------------------------------------
+    # PRIVATE METHODS -----------------------------------------------------------------
 
     def _show_plate_map_dialog(self) -> None:
         """Show the plate map dialog."""
@@ -386,7 +389,7 @@ class _ExperimentTypeWidget(QWidget):
         layout.addWidget(self._led_power_eq)
         layout.addLayout(left_right_layout)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
@@ -438,7 +441,7 @@ class _ExperimentTypeWidget(QWidget):
         self._led_powers_le.clear()
         self._led_pulse_on_frames_le.clear()
 
-    # PRIVATE METHODS ------------------------------------------------------------
+    # PRIVATE METHODS -----------------------------------------------------------------
 
     def _parse_to_list(self, text: str) -> list[int | float]:
         """Parse a comma-separated string into a list of floats."""
@@ -647,7 +650,7 @@ class _TraceExtractionWidget(QWidget):
         layout.addWidget(self._dff_wdg)
         layout.addWidget(self._dec_wdg)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
@@ -717,7 +720,7 @@ class _PeaksHeightWidget(QWidget):
         layout.addWidget(self._height_multiplier, 0)
         layout.addWidget(self._global_peaks_height, 0)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def value(self) -> tuple[float, str]:
         """Return the value of the peaks height multiplier."""
@@ -858,7 +861,7 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._calcium_synchrony_wdg)
         layout.addWidget(self._calcium_network_wdg)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
@@ -939,7 +942,7 @@ class _SpikeThresholdWidget(QWidget):
         layout.addWidget(self._threshold_multiplier, 0)
         layout.addWidget(self._global_spike_threshold, 0)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def value(self) -> tuple[float, str]:
         """Return the value of the spike threshold."""
@@ -1024,7 +1027,7 @@ class _BurstWidget(QWidget):
         burst_layout.addWidget(self._burst_blur_label, 2, 0)
         burst_layout.addWidget(self._burst_blur_sigma, 2, 1)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def value(self) -> tuple[float, int, float]:
         """Return the burst detection parameters."""
@@ -1091,7 +1094,7 @@ class _SpikeWidget(QWidget):
         layout.addWidget(self._burst_wdg)
         layout.addWidget(self._spike_synchrony_wdg)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
@@ -1137,50 +1140,64 @@ class _SpikeWidget(QWidget):
         self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
 
 
-class _ChoosePositionsWidget(QWidget):
-    """Widget to select the positions to analyze."""
+class _FrameRateWidget(QWidget):
+    """Widget to select the frame rate of the experiment."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.setToolTip(
-            "Select the Positions to analyze. Leave blank to analyze all Positions. "
-            "You can input single Positions (e.g. 30, 33), a range (e.g. 1-10), or a "
-            "mix of single Positions and ranges (e.g. 1-10, 30, 50-65). Leave empty "
-            "to analyze all Positions.\n\n"
-            "NOTE: The Positions are 0-indexed."
+            "Set the frame rate (in frames per second or Hz) of the imaging "
+            "experiment.\n\n"
+            "This value is used to convert frame-based measurements into time-based "
+            "units during analysis ONLY IF there are no metadata available.\n"
+            "If the data contains metadata, the frame rate will be extracted for each "
+            "position automatically."
         )
 
-        self._pos_lbl = QLabel("Analyze Positions:")
-        self._pos_lbl.setSizePolicy(*FIXED)
-        self._pos_le = QLineEdit(self)
-        self._pos_le.setPlaceholderText("e.g. 0-10, 30, 33. Leave empty for all.")
+        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
+        self._frame_rate_lbl.setSizePolicy(*FIXED)
 
-        pos_layout = QHBoxLayout(self)
-        pos_layout.setContentsMargins(0, 0, 0, 0)
-        pos_layout.setSpacing(5)
-        pos_layout.addWidget(self._pos_lbl)
-        pos_layout.addWidget(self._pos_le)
+        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setDecimals(2)
+        self._frame_rate_spin.setRange(0.01, 1000.0)
+        self._frame_rate_spin.setSingleStep(0.5)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+        self._from_meta_btn = FromMetaButton(self, "Load From Metadata")
+        self._from_meta_btn.setToolTip(
+            "Try to load the frame rate from the image metadata (from exposure time "
+            " and number of frames)."
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addWidget(self._frame_rate_lbl)
+        layout.addWidget(self._frame_rate_spin, 1)
+        layout.addWidget(self._from_meta_btn, 0)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    def value(self) -> float:
+        """Return the frame rate value."""
+        return self._frame_rate_spin.value()  # type: ignore
+
+    def setValue(self, value: float) -> None:
+        """Set the frame rate value."""
+        self._frame_rate_spin.setValue(value)
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the label."""
-        self._pos_lbl.setFixedWidth(width)
+        self._frame_rate_lbl.setFixedWidth(width)
 
-    def value(self) -> str:
-        """Get the current value of the positions line edit."""
-        return cast("str", self._pos_le.text())
-
-    def setValue(self, value: str) -> None:
-        """Set the value of the positions line edit."""
-        self._pos_le.setText(value)
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
 
 
 class _RunAnalysisWidget(QWidget):
     """Widget to display the progress of the analysis."""
-
-    updated = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1275,102 +1292,75 @@ class _RunAnalysisWidget(QWidget):
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
 
-class _FrameRateWidget(QWidget):
-    """Widget to select the frame rate of the experiment."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setToolTip(
-            "Set the frame rate (in frames per second or Hz) of the imaging "
-            "experiment.\n\n"
-            "This value is used to convert frame-based measurements into time-based "
-            "units during analysis ONLY IF there are no metadata available.\n"
-            "If the data contains metadata, the frame rate will be extracted for each "
-            "position automatically."
-        )
-
-        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
-        self._frame_rate_lbl.setSizePolicy(*FIXED)
-
-        self._frame_rate_spin = QDoubleSpinBox(self)
-        self._frame_rate_spin.setDecimals(2)
-        self._frame_rate_spin.setRange(0.01, 1000.0)
-        self._frame_rate_spin.setSingleStep(0.5)
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-
-        self._from_meta_btn = FromMetaButton(self, "Load From Metadata")
-        self._from_meta_btn.setToolTip(
-            "Try to load the frame rate from the image metadata (from exposure time "
-            " and number of frames)."
-        )
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._frame_rate_lbl)
-        layout.addWidget(self._frame_rate_spin, 1)
-        layout.addWidget(self._from_meta_btn, 0)
-
-    # PUBLIC METHODS ------------------------------------------------------------
-
-    def value(self) -> float:
-        """Return the frame rate value."""
-        return self._frame_rate_spin.value()  # type: ignore
-
-    def setValue(self, value: float) -> None:
-        """Set the frame rate value."""
-        self._frame_rate_spin.setValue(value)
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the label."""
-        self._frame_rate_lbl.setFixedWidth(width)
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-
-
-class _CalciumAnalysisGUI(QGroupBox):
+class _AnalysisGUI(QWidget):
     progress_bar_updated = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.setTitle("Run Analysis")
+        # MAIN WIDGET -----------------------------------------------------------------
+        group_wdg = QGroupBox(self)
+        group_layout = QVBoxLayout(group_wdg)
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(5)
 
+        # ANALYSIS WIDGETS -----------------------------------------------------------
         self._plate_map_wdg = _PlateMapWidget(self)
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
-        self._positions_wdg = _ChoosePositionsWidget(self)
-        self._run_analysis_wdg = _RunAnalysisWidget(self)
         # self._frame_rate_wdg = _FrameRateWidget(self)
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(5)
-        main_layout.addWidget(create_divider_line("Plate Map"))
-        main_layout.addWidget(self._plate_map_wdg)
-        main_layout.addWidget(create_divider_line("Type of Experiment"))
-        main_layout.addWidget(self._experiment_type_wdg)
-        # main_layout.addWidget(create_divider_line("Frame Rate"))
-        # main_layout.addWidget(self._frame_rate_wdg)
-        main_layout.addWidget(create_divider_line("Neuropil Settings"))
-        main_layout.addWidget(self._neuropil_wdg)
-        main_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
-        main_layout.addWidget(self._trace_extraction_wdg)
-        main_layout.addWidget(create_divider_line("Calcium Peaks"))
-        main_layout.addWidget(self._calcium_peaks_wdg)
-        main_layout.addWidget(create_divider_line("Spikes and Bursts"))
-        main_layout.addWidget(self._spike_wdg)
-        main_layout.addWidget(create_divider_line("Positions to Analyze"))
-        main_layout.addWidget(self._positions_wdg)
-        main_layout.addWidget(self._run_analysis_wdg)
+        # SCROLL AREA WIDGET ---------------------------------------------------------
+        analysis_scroll_area = QScrollArea()
+        analysis_scroll_area.setWidgetResizable(True)
+        analysis_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        analysis_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        # add cellpose and caiman widgets to scroll area
+        group_layout.addWidget(create_divider_line("Plate Map"))
+        group_layout.addWidget(self._plate_map_wdg)
+        group_layout.addWidget(create_divider_line("Type of Experiment"))
+        group_layout.addWidget(self._experiment_type_wdg)
+        # group_layout.addWidget(create_divider_line("Frame Rate"))
+        # group_layout.addWidget(self._frame_rate_wdg)
+        group_layout.addWidget(create_divider_line("Neuropil Settings"))
+        group_layout.addWidget(self._neuropil_wdg)
+        group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
+        group_layout.addWidget(self._trace_extraction_wdg)
+        group_layout.addWidget(create_divider_line("Calcium Peaks"))
+        group_layout.addWidget(self._calcium_peaks_wdg)
+        group_layout.addWidget(create_divider_line("Spikes and Bursts"))
+        group_layout.addWidget(self._spike_wdg)
+        # group_layout.addWidget(self._frame_rate_wdg)
+        group_layout.addStretch(1)
+        analysis_scroll_area.setWidget(group_wdg)
 
-        # STYLING ------------------------------------------------------------
+        # BOTTOM WIDGET ---------------------------------------------------------------
+
+        self._positions_wdg = _ChoosePositionsWidget(self)
+        self._run_analysis_wdg = _RunAnalysisWidget(self)
+        run_wdg = QGroupBox(self)
+        run_layout = QVBoxLayout(run_wdg)
+        run_layout.setContentsMargins(0, 0, 0, 0)
+        run_layout.setSpacing(5)
+        run_layout.addWidget(create_divider_line("Positions to Analyze"))
+        run_layout.addWidget(self._positions_wdg)
+        run_layout.addWidget(self._run_analysis_wdg)
+
+        # MAIN LAYOUT -----------------------------------------------------------------
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(15)
+        main_layout.addWidget(analysis_scroll_area)
+        main_layout.addWidget(run_wdg)
+
+        # STYLING ---------------------------------------------------------------------
         fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
         self._plate_map_wdg.set_labels_width(fix_width)
         self._experiment_type_wdg.set_labels_width(fix_width)
@@ -1381,7 +1371,24 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._positions_wdg.set_labels_width(fix_width)
         # self._frame_rate_wdg.set_labels_width(fix_width)
 
-    # PUBLIC METHODS ------------------------------------------------------------
+    # PROPERTIES ----------------------------------------------------------------------
+
+    @property
+    def run(self):  # noqa: ANN202
+        """Signal emitted when the run button is clicked."""
+        return self._run_analysis_wdg._run_btn.clicked
+
+    @property
+    def cancel(self):  # noqa: ANN202
+        """Signal emitted when the cancel button is clicked."""
+        return self._run_analysis_wdg._cancel_btn.clicked
+
+    @property
+    def from_metadata(self):  # noqa: ANN202
+        """Signal emitted when the 'Load From Metadata' button is clicked."""
+        return self._experiment_type_wdg._from_meta_btn.clicked
+
+    # PUBLIC METHODS ------------------------------------------------------------------
 
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
@@ -1542,3 +1549,8 @@ class _CalciumAnalysisGUI(QGroupBox):
         positions = parse_lineedit_text(self._positions_wdg.value())
 
         return positions, settings
+
+    def update_progress_label(self, elapsed_time: str) -> None:
+        """Update the progress label with elapsed time."""
+        self._run_analysis_wdg.set_time_label(elapsed_time)
+
