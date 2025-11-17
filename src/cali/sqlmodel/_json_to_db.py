@@ -9,11 +9,10 @@ Example
 >>> from cali.sqlmodel import load_analysis_from_json
 >>> import useq
 >>> data_dir = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
->>> labels_dir = Path("tests/test_data/spontaneous/spont_labels")
 >>> analysis_dir = Path("tests/test_data/spontaneous/spont_analysis")
 >>> plate = useq.WellPlate.from_str("96-well")
 >>> experiment = load_analysis_from_json(
-...     str(data_dir), str(labels_dir), str(analysis_dir), plate
+...     str(data_dir), str(analysis_dir), plate
 ... )
 >>> print(f"Loaded {len(experiment.plate.wells)} wells")
 """
@@ -45,7 +44,9 @@ if TYPE_CHECKING:
 
 
 def load_analysis_from_json(
-    data_path: str, labels_path: str, analysis_path: str, useq_plate: WellPlate
+    data_path: str,
+    analysis_path: str,
+    useq_plate: WellPlate,
 ) -> Experiment:
     """Load analysis data from JSON directory into SQLModel objects.
 
@@ -63,8 +64,6 @@ def load_analysis_from_json(
     ----------
     data_path : str
         Path to the data directory (e.g. .tensorstore.zarr)
-    labels_path : str
-        Path to the labels directory
     analysis_path : str
         Path to the analysis directory. May contain optional plate map files:
         - genotype_plate_map.json
@@ -88,10 +87,9 @@ def load_analysis_from_json(
     >>> # Load from JSON
     >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
     >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
-    >>> labels_dir = "tests/test_data/spontaneous/spont_labels"
     >>> plate = useq.WellPlate.from_str("96-well")
     >>> experiment = load_analysis_from_json(
-    ...     data_dir, labels_dir, analysis_dir, useq_plate=plate
+    ...     data_dir, analysis_dir, useq_plate=plate
     ... )
     >>> # Check if plate maps were loaded
     >>> if experiment.plate.plate_maps:
@@ -107,7 +105,6 @@ def load_analysis_from_json(
         name=db_name,
         description=f"Imported from {analysis_path}",
         data_path=data_path,
-        labels_path=labels_path,
         analysis_path=analysis_path,
         database_name=db_name,
     )
@@ -192,7 +189,7 @@ def load_analysis_from_json(
                 import tifffile
 
                 # Import here to avoid circular dependency
-                from cali.analysis._util import mask_to_coordinates
+                from cali.util import mask_to_coordinates
 
                 stim_mask_array = tifffile.imread(str(stim_mask_file))
 
@@ -214,8 +211,6 @@ def load_analysis_from_json(
                 print(f"Warning: Could not load stimulation mask: {e}")
 
         analysis_settings = AnalysisSettings(
-            experiment_id=experiment.id,
-            experiment=experiment,
             dff_window=settings_data.get("dff_window", 30),
             decay_constant=settings_data.get("decay constant", 0.0),
             peaks_height_value=settings_data.get("peaks_height_value", 3.0),
