@@ -82,8 +82,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Name of the SQLite database file
     data_path : str
         Path to the raw imaging data (zarr/tensorstore)
-    labels_path : str
-        Path to segmentation labels directory
     analysis_path : str
         Path to analysis output directory
     experiment_type : str
@@ -99,7 +97,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     name: str = Field(unique=True, index=True)
     description: str | None = None
     data_path: str
-    labels_path: str
     analysis_path: str
     database_name: str
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
@@ -271,15 +268,12 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     threads: int = Field(default=1)
 
     # Foreign keys
-    # experiment_id: int | None = Field(
-    #     default=None, foreign_key="experiment.id", index=True
-    # )
     stimulation_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
     )
 
     # Relationships
-    # experiment: "Experiment" = Relationship(back_populates="analysis_settings")
+
     stimulation_mask: Optional["Mask"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
@@ -288,7 +282,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     def stimulated_mask_area(self) -> np.ndarray | None:
-        from cali.analysis._util import coordinates_to_mask
+        from cali.util import coordinates_to_mask
 
         if (
             (stim_mask := self.stimulation_mask)

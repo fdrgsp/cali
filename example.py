@@ -3,10 +3,10 @@ from pathlib import Path
 
 from sqlmodel import create_engine
 
-from cali.analysis._analysis_runner2 import AnalysisRunner
+from cali.analysis import AnalysisRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db
-from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+from cali.sqlmodel._visualize_experiment import print_all_analysis_results, print_database_tree
 
 # ============================================================================
 # ONE EXPERIMENT, MULTIPLE ANALYSIS RUNS
@@ -44,25 +44,21 @@ analysis = AnalysisRunner()
 
 # Run 1: Conservative dff_window (100 frames) - New
 settings1 = AnalysisSettings(threads=4, dff_window=100)
-analysis.run(exp, settings1, global_position_indices=list(range(len(plate_plan))))
+analysis.run(exp, settings1, global_position_indices=[0])
 
 # Run 2: Wider dff_window (150 frames) - New
 settings2 = AnalysisSettings(threads=4, dff_window=150, id=54)
-analysis.run(exp, settings2, global_position_indices=list(range(len(plate_plan))))
+analysis.run(exp, settings2, global_position_indices=[0])
 
 # Run 3: Back to 100 frames - should REUSE settings1 and UPDATE AnalysisResult #1
 settings3 = AnalysisSettings(threads=4, dff_window=100)
-analysis.run(exp, settings3, global_position_indices=list(range(len(plate_plan))))
-
+analysis.run(exp, settings3, global_position_indices=[0])
 # Run 4: Even wider dff_window (200 frames) - New
 settings4 = AnalysisSettings(threads=4, dff_window=200)
-analysis.run(exp, settings4, global_position_indices=list(range(len(plate_plan))))
+analysis.run(exp, settings4, global_position_indices=[0])
 
 # Visualize: Should show 1 experiment with 2 unique AnalysisResults (settings reused)
 engine = create_engine(f"sqlite:///{exp.db_path}")
-print("\n" + "=" * 80)
-print("VISUALIZATION: One Experiment, Multiple Analysis Settings")
-print("=" * 80)
 print_all_analysis_results(
     engine,
     experiment_name=None,

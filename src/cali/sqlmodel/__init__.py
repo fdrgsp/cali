@@ -41,6 +41,7 @@ from ._util import (
     save_experiment_to_database,
 )
 from ._visualize_experiment import (
+    print_database_tree,
     print_experiment_tree,
     print_experiment_tree_from_engine,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "has_fov_analysis",
     "load_analysis_from_json",
     "load_experiment_from_database",
+    "print_database_tree",
     "print_experiment_tree",
     "print_experiment_tree_from_engine",
     "save_experiment_to_database",

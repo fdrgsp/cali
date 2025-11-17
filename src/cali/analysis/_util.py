@@ -154,45 +154,6 @@ def get_overlap_roi_with_stimulated_area(
 
     return float(overlapping_pixels / cell_pixels)
 
-
-def mask_to_coordinates(
-    mask: np.ndarray,
-) -> tuple[tuple[list[int], list[int]], tuple[int, int]]:
-    """Convert a 2D boolean mask to sparse coordinates.
-
-    Args:
-        mask: 2D boolean numpy array
-
-    Returns
-    -------
-        Tuple of ((y_coords, x_coords), (height, width))
-    """
-    y_coords, x_coords = np.where(mask)
-    y_coords_list: list[int] = [int(y) for y in y_coords]
-    x_coords_list: list[int] = [int(x) for x in x_coords]
-    return ((y_coords_list, x_coords_list), (mask.shape[0], mask.shape[1]))
-
-
-def coordinates_to_mask(
-    coordinates: tuple[list[int], list[int]],
-    shape: tuple[int, int],
-) -> np.ndarray:
-    """Convert sparse coordinates back to a 2D boolean mask.
-
-    Args:
-        coordinates: Tuple of (y_coords, x_coords) lists
-        shape: Tuple of (height, width)
-
-    Returns
-    -------
-        2D boolean numpy array
-    """
-    mask = np.zeros(shape, dtype=bool)
-    y_coords, x_coords = coordinates
-    mask[y_coords, x_coords] = True
-    return mask
-
-
 def _extendROI(
     ypix: np.ndarray,
     xpix: np.ndarray,
