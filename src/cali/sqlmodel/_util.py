@@ -215,10 +215,6 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
                     _ = roi.data_analysis
                     _ = roi.roi_mask
                     _ = roi.neuropil_mask
-                    _ = roi.analysis_settings
-
-    if experiment.analysis_settings:
-        _ = experiment.analysis_settings.stimulation_mask
 
 
 def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:

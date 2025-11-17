@@ -263,7 +263,7 @@ def print_analysis_result(
 def print_all_analysis_results(
     engine: Engine,
     experiment_name: str | None = None,
-    show_settings: bool = False,
+    show_settings: bool = True,
     max_experiment_level: MaxTreeLevel = "roi",
 ) -> None:
     """Print all analysis results, optionally filtered by experiment.
@@ -435,7 +435,7 @@ def print_experiment_tree_from_engine(
 
     print_experiment_tree(
         experiment,
-        max_level=max_level,
+        max_experiment_level=max_level,
         session=session,
         show_analysis_results=show_analysis_results,
         show_settings=show_settings,
@@ -445,7 +445,7 @@ def print_experiment_tree_from_engine(
 
 def print_experiment_tree(
     experiment: Experiment,
-    max_level: MaxTreeLevel = "roi",
+    max_experiment_level: MaxTreeLevel = "roi",
     session: Session | None = None,
     show_analysis_results: bool = True,
     show_settings: bool = False,
@@ -456,7 +456,7 @@ def print_experiment_tree(
     ----------
     experiment : Experiment
         The experiment to display
-    max_level : MaxTreeLevel
+    max_experiment_level : MaxTreeLevel
         Maximum depth level to display. Options:
         "experiment": Just experiment info
         "plate": Show experiment and plate
@@ -642,7 +642,7 @@ def print_experiment_tree(
 
                     result_node.add(f"📍 Positions: {', '.join(positions_list)}")
 
-    if max_level == "experiment":
+    if max_experiment_level == "experiment":
         console.print(tree)
         return
 
@@ -652,7 +652,7 @@ def print_experiment_tree(
         f"📋 [bold green]{experiment.plate.name}[/bold green] ({plate_type})"
     )
 
-    if max_level == "plate":
+    if max_experiment_level == "plate":
         console.print(tree)
         return
 
@@ -672,7 +672,7 @@ def print_experiment_tree(
 
         well_node = plate_node.add(f"🧫 [yellow]{well.name}[/yellow]{condition_str}")
 
-        if max_level == "well":
+        if max_experiment_level == "well":
             continue  # Skip FOVs and ROIs
 
         # Add FOVs
@@ -682,7 +682,7 @@ def print_experiment_tree(
                 f"(fov: {fov.fov_number} - pos: {fov.position_index})[/cyan]"
             )
 
-            if max_level == "fov":
+            if max_experiment_level == "fov":
                 continue  # Skip ROIs
 
             # Add ROIs
@@ -837,9 +837,7 @@ def print_database_tree(
 
                         # Show status if analyzed
                         if roi.active is not None:
-                            status = (
-                                "🔋 active" if roi.active else "🪫 inactive"
-                            )
+                            status = "🔋 active" if roi.active else "🪫 inactive"
                             roi_info += f" - {status}"
 
                         if roi.stimulated:
@@ -859,9 +857,7 @@ def print_database_tree(
                             data_available.append("📈 Analysis")
 
                         if data_available:
-                            roi_node.add(
-                                f"[dim]{'  •  '.join(data_available)}[/dim]"
-                            )
+                            roi_node.add(f"[dim]{'  •  '.join(data_available)}[/dim]")
 
         # Show analysis results if requested
         if show_analysis_results:

@@ -142,7 +142,7 @@ class AnalysisRunner:
                     cali_logger.error(msg)
                     raise ValueError(msg)
 
-            # initialize the analysis runner with data
+            # load data
             self._data = load_data(experiment.data_path)
 
             # check if settings already exist BEFORE merging
