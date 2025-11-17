@@ -16,6 +16,7 @@ Main Components
 - Visualization: print_experiment_tree, print_experiment_tree_from_engine
 """
 
+from ._data_to_plate import data_to_plate
 from ._db_to_plate_map import experiment_to_plate_map_data
 from ._db_to_useq_plate import experiment_to_useq_plate, experiment_to_useq_plate_plan
 from ._json_to_db import load_analysis_from_json
@@ -59,6 +60,7 @@ __all__ = [
     "Well",
     "WellCondition",
     "create_database_and_tables",
+    "data_to_plate",
     "experiment_to_plate_map_data",
     "experiment_to_useq_plate",
     "experiment_to_useq_plate_plan",

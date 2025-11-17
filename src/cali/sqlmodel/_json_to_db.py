@@ -28,6 +28,7 @@ from cali._constants import EVOKED, SPONTANEOUS
 from ._model import (
     FOV,
     ROI,
+    AnalysisResult,
     AnalysisSettings,
     Condition,
     DataAnalysis,
@@ -47,8 +48,9 @@ def load_analysis_from_json(
     data_path: str,
     analysis_path: str,
     useq_plate: WellPlate,
+    save_to_db: bool = True,
 ) -> Experiment:
-    """Load analysis data from JSON directory into SQLModel objects.
+    """Load analysis data from JSON directory and optionally save to database.
 
     This function reads all JSON files in the analysis directory and creates
     a complete Experiment object with all related entities (Plate, Wells,
@@ -57,8 +59,9 @@ def load_analysis_from_json(
     If 'genotype_plate_map.json' and/or 'treatment_plate_map.json' files exist
     in the analysis directory, they will be loaded and stored in plate.plate_maps.
 
-    The function does NOT save to a database - it returns an in-memory object
-    tree that can be added to a SQLModel session.
+    If save_to_db is True (default), the experiment will be saved to the database
+    and an AnalysisResult entry will be created to track which positions were
+    analyzed with which settings.
 
     Parameters
     ----------
@@ -70,33 +73,29 @@ def load_analysis_from_json(
         - treatment_plate_map.json
     useq_plate : WellPlate
         useq-schema WellPlate object defining the plate used
+    save_to_db : bool, optional
+        Whether to save to database automatically, by default True
 
     Returns
     -------
     Experiment
-        Complete experiment object with all relationships populated.
-        The plate.plate_maps field will be populated if plate map JSON files
-        were found.
+        Complete experiment object. If save_to_db=True, this is freshly loaded
+        from the database. If save_to_db=False, this is an in-memory object tree.
 
     Example
     -------
     >>> from pathlib import Path
     >>> import useq
-    >>> from cali.sqlmodel import load_analysis_from_json, save_experiment_to_database
+    >>> from cali.sqlmodel import load_analysis_from_json
     >>>
-    >>> # Load from JSON
+    >>> # Load from JSON and save to database (default)
     >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
     >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
     >>> plate = useq.WellPlate.from_str("96-well")
     >>> experiment = load_analysis_from_json(
     ...     data_dir, analysis_dir, useq_plate=plate
     ... )
-    >>> # Check if plate maps were loaded
-    >>> if experiment.plate.plate_maps:
-    ...     print(f"Loaded plate maps: {list(experiment.plate.plate_maps.keys())}")
-    >>>
-    >>> # Save to database
-    >>> save_experiment_to_database(experiment, "test.db")
+    >>> # Experiment is now saved in database with AnalysisResult tracking
     """
     # 1. Create experiment
     db_name = f"{Path(data_path).name}.db"
@@ -361,7 +360,6 @@ def load_analysis_from_json(
 
                 # Since we're not in DB session, manually set relationships
                 roi.fov = fov  # This automatically adds roi to fov.rois
-                roi.analysis_settings = analysis_settings
                 roi.roi_mask = roi_mask
                 roi.neuropil_mask = neuropil_mask
                 roi.traces = trace
@@ -376,13 +374,6 @@ def load_analysis_from_json(
                 print(f"    {json_file.name}: {e}")
                 continue
 
-    # Set the positions that were analyzed
-    experiment.positions_analyzed = sorted(positions_analyzed)
-
-    # Assign analysis_settings to experiment (set relationship)
-    if analysis_settings:
-        experiment.analysis_settings = analysis_settings
-
     # Update AnalysisSettings with LED info collected from ROI data (if available)
     if analysis_settings and experiment.experiment_type == EVOKED:
         if led_pulse_duration_from_roi is not None:
@@ -391,6 +382,74 @@ def load_analysis_from_json(
             analysis_settings.led_pulse_powers = led_pulse_powers_from_roi
         if led_pulse_on_frames_from_roi is not None:
             analysis_settings.led_pulse_on_frames = led_pulse_on_frames_from_roi
+
+    # Save to database if requested
+    if save_to_db:
+        from sqlmodel import Session, create_engine, select
+
+        from cali.logger import cali_logger
+
+        from ._util import create_database_and_tables
+
+        db_path = Path(experiment.analysis_path) / experiment.database_name
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if db_path.exists():
+            db_path.unlink()
+
+        engine = create_engine(f"sqlite:///{db_path}")
+        create_database_and_tables(engine)
+
+        saved_exp_id = None
+        try:
+            with Session(engine) as session:
+                # First merge analysis_settings if it exists
+                # (it's not part of experiment tree)
+                if analysis_settings:
+                    session.add(analysis_settings)
+                    session.flush()  # Get the ID without committing
+
+                    # Now update all ROIs with the correct analysis_settings_id
+                    for well in plate.wells:
+                        for fov in well.fovs:
+                            for roi in fov.rois:
+                                roi.analysis_settings_id = analysis_settings.id
+
+                # Merge handles add/update for the entire object tree with cascade
+                session.merge(experiment)
+                session.commit()
+
+                # Query to get the saved experiment ID
+                saved_exp = session.exec(
+                    select(Experiment).where(Experiment.name == experiment.name)
+                ).first()
+
+                if saved_exp:
+                    saved_exp_id = saved_exp.id
+
+                    # Now create AnalysisResult to track this analysis run
+                    if analysis_settings:
+                        analysis_result = AnalysisResult(
+                            experiment=saved_exp.id,
+                            analysis_settings=analysis_settings.id,
+                            positions_analyzed=sorted(positions_analyzed),
+                        )
+                        session.add(analysis_result)
+                        session.commit()
+
+            cali_logger.info(
+                f"💾 Experiment analysis loaded and saved to database at "
+                f"{experiment.analysis_path}/{experiment.database_name}."
+            )
+
+            # Load fresh from database to return
+            if saved_exp_id:
+                with Session(engine) as session:
+                    experiment = Experiment.load_from_db(
+                        str(db_path), id=saved_exp_id, session=session
+                    )
+        finally:
+            engine.dispose()
 
     return experiment
 

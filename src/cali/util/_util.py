@@ -16,7 +16,7 @@ from cali.sqlmodel._model import (
 cali_logger = logging.getLogger("cali_logger")
 
 
-def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader | None:
+def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader:
     """Load data from the given path using the appropriate reader."""
     data_path = str(data_path)
     # select which reader to use for the datastore
@@ -27,7 +27,9 @@ def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader | 
         # read ome zarr
         return OMEZarrReader(data_path)
     else:
-        raise ValueError(f"Unsupported data format for path: {data_path}")
+        msg = f"Unsupported data format for path: {data_path}"
+        cali_logger.error(msg)
+        raise ValueError(msg)
 
 
 def mask_to_coordinates(

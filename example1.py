@@ -1,8 +1,10 @@
 from datetime import datetime
+from pathlib import Path
 
 from sqlmodel import create_engine
 
 from cali.analysis import AnalysisRunner
+from cali.detection import CellposeSettings, DetectionRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db
 from cali.sqlmodel._visualize_experiment import print_all_analysis_results
@@ -16,7 +18,6 @@ exp = Experiment(
     created_at=datetime.now(),
     database_name="cali_new.db",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    labels_path="tests/test_data/evoked/evk_labels",
     analysis_path="analysis_results",
 )
 exp1 = Experiment(
@@ -26,7 +27,6 @@ exp1 = Experiment(
     created_at=datetime.now(),
     database_name="cali_new.db",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    labels_path="tests/test_data/evoked/evk_labels",
     analysis_path="analysis_results",
 )
 
@@ -52,6 +52,16 @@ exp1.plate = useq_plate_plan_to_db(
 )
 # -----------------------------------
 
+# delete existing database if it exists
+if Path(exp.db_path).exists():
+    Path(exp.db_path).unlink()
+
+# DETECTION STEP
+detection = DetectionRunner()
+cp_settings = CellposeSettings()
+detection.run_cellpose(exp, "cpsam", cp_settings, global_position_indices=[0])
+
+# ANALYSIS STEP
 analysis = AnalysisRunner()
 
 # Run 1 - new

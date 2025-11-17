@@ -178,30 +178,33 @@ class DetectionRunner:
         """
         from sqlmodel import Session, select
 
-        # DATABASE SETUP
+        # DATABASE DO NOT EXISTS
         if not Path(experiment.db_path).exists():
             save_experiment_to_database(experiment)
 
+        # DATABASE EXISTS
         engine = create_engine(f"sqlite:///{experiment.db_path}", echo=False)
-
         with Session(engine) as session:
+            # if database does exist but the overwrite flag is True, just overwrite
             if overwrite:
                 save_experiment_to_database(experiment, overwrite=True)
             else:
+                # if database does exist but the the experiment.id is either None or
+                # different than the one in the database, raise ValueError.
                 db_exp = cast("Experiment", session.exec(select(Experiment)).first())
                 if experiment.id is None or experiment.id != db_exp.id:
                     msg = (
-                        f"Experiment ID mismatch: {experiment.id} vs {db_exp.id}. "
-                        "Set overwrite=True to replace the database."
+                        "The provided Experiment must have an ID matching the one "
+                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either "
+                        f"set the `Experiment.id` to {db_exp.id}, use a different "
+                        "`Experiment.database_name` or `Experiment.analysis_path` or"
+                        "`set the overwrite flag to `True` to overwrite the database."
                     )
                     cali_logger.error(msg)
                     raise ValueError(msg)
 
-            # Load data
+            # load data
             self._data = load_data(experiment.data_path)
-            if self._data is None:
-                msg = f"Could not load data from {experiment.data_path}"
-                raise ValueError(msg)
 
             if experiment.id is None:
                 msg = "Experiment must have an ID before running detection"
@@ -221,9 +224,11 @@ class DetectionRunner:
                     return []
 
                 data, meta = self._data.isel(p=pos_idx, metadata=True)
-                # Use max projection if data is a time series
+
+                # Preprocess data: max projection from half to end of stack
                 if data.ndim == 3:  # (t, y, x)
-                    image = np.max(data, axis=0)
+                    data_half_to_end = data[data.shape[0] // 2 :, :, :]
+                    image = data_half_to_end.max(axis=0)
                 else:  # already 2D
                     image = data
 
