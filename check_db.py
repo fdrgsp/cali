@@ -1,5 +1,6 @@
 from sqlmodel import Session, create_engine, select
-from cali.sqlmodel import Experiment, FOV, Well
+
+from cali.sqlmodel import FOV, Well
 
 engine = create_engine("sqlite:///cali_cp.db")
 session = Session(engine)

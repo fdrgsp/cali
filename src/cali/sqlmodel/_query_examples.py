@@ -6,8 +6,7 @@ when you have multiple analysis runs with different settings.
 
 from sqlmodel import Session, select
 
-from ._model import AnalysisResult, DataAnalysis, ROI, Traces
-
+from ._model import ROI, AnalysisResult, DataAnalysis, Traces
 
 # ============================================================================
 # Query Pattern 1: Get results for a specific AnalysisResult
@@ -68,7 +67,9 @@ def get_data_analysis_for_analysis_result(
     ...     print(f"ROI {result.roi_id}: {result.dec_dff_frequency} Hz")
     """
     return session.exec(
-        select(DataAnalysis).where(DataAnalysis.analysis_result_id == analysis_result_id)
+        select(DataAnalysis).where(
+            DataAnalysis.analysis_result_id == analysis_result_id
+        )
     ).all()
 
 
@@ -100,9 +101,7 @@ def get_all_traces_for_roi(session: Session, roi_id: int) -> list[Traces]:
     ...     print(f"Analysis {trace.analysis_result_id} at {trace.created_at}")
     """
     return session.exec(
-        select(Traces)
-        .where(Traces.roi_id == roi_id)
-        .order_by(Traces.created_at)
+        select(Traces).where(Traces.roi_id == roi_id).order_by(Traces.created_at)
     ).all()
 
 
@@ -131,9 +130,7 @@ def get_latest_trace_for_roi(session: Session, roi_id: int) -> Traces | None:
     from sqlalchemy import desc
 
     return session.exec(
-        select(Traces)
-        .where(Traces.roi_id == roi_id)
-        .order_by(desc(Traces.created_at))
+        select(Traces).where(Traces.roi_id == roi_id).order_by(desc(Traces.created_at))
     ).first()
 
 
@@ -170,26 +167,24 @@ def get_traces_by_settings(
     -------
     >>> # Get traces for experiment #1 with specific analysis settings
     >>> traces = get_traces_by_settings(
-    ...     session,
-    ...     experiment_id=1,
-    ...     analysis_settings_id=3
+    ...     session, experiment_id=1, analysis_settings_id=3
     ... )
     """
     # First find matching AnalysisResults
     query = select(AnalysisResult).where(AnalysisResult.experiment == experiment_id)
-    
+
     if detection_settings_id is not None:
         query = query.where(AnalysisResult.detection_settings == detection_settings_id)
-    
+
     if analysis_settings_id is not None:
         query = query.where(AnalysisResult.analysis_settings == analysis_settings_id)
-    
+
     analysis_results = session.exec(query).all()
-    
+
     # Get traces for those AnalysisResults
     if not analysis_results:
         return []
-    
+
     analysis_result_ids = [ar.id for ar in analysis_results]
     return session.exec(
         select(Traces).where(Traces.analysis_result_id.in_(analysis_result_ids))  # type: ignore
@@ -232,19 +227,21 @@ def load_experiment_with_analysis_result(
     traces = session.exec(
         select(Traces).where(Traces.analysis_result_id == analysis_result_id)
     ).all()
-    
+
     # Get all data_analysis from this analysis run
     data_analyses = session.exec(
-        select(DataAnalysis).where(DataAnalysis.analysis_result_id == analysis_result_id)
+        select(DataAnalysis).where(
+            DataAnalysis.analysis_result_id == analysis_result_id
+        )
     ).all()
-    
+
     # Build lookup dictionaries
     traces_by_roi = {t.roi_id: t for t in traces}
     analyses_by_roi = {da.roi_id: da for da in data_analyses}
-    
+
     # Get all ROI IDs
     all_roi_ids = set(traces_by_roi.keys()) | set(analyses_by_roi.keys())
-    
+
     # Combine results
     return {
         roi_id: (traces_by_roi.get(roi_id), analyses_by_roi.get(roi_id))
@@ -281,8 +278,9 @@ def compare_analysis_results(
     Example
     -------
     >>> # Compare ROI #123 across 3 different analysis runs
-    >>> results = compare_analysis_results(session, roi_id=123, 
-    ...                                     analysis_result_ids=[1, 2, 3])
+    >>> results = compare_analysis_results(
+    ...     session, roi_id=123, analysis_result_ids=[1, 2, 3]
+    ... )
     >>> for ar_id, (trace, analysis) in results.items():
     ...     if analysis:
     ...         print(f"Analysis {ar_id}: {analysis.dec_dff_frequency} Hz")
@@ -293,18 +291,18 @@ def compare_analysis_results(
         .where(Traces.roi_id == roi_id)
         .where(Traces.analysis_result_id.in_(analysis_result_ids))  # type: ignore
     ).all()
-    
+
     # Get data_analysis for this ROI from specified analysis runs
     data_analyses = session.exec(
         select(DataAnalysis)
         .where(DataAnalysis.roi_id == roi_id)
         .where(DataAnalysis.analysis_result_id.in_(analysis_result_ids))  # type: ignore
     ).all()
-    
+
     # Build lookup dictionaries
     traces_by_ar = {t.analysis_result_id: t for t in traces}
     analyses_by_ar = {da.analysis_result_id: da for da in data_analyses}
-    
+
     # Combine results
     return {
         ar_id: (traces_by_ar.get(ar_id), analyses_by_ar.get(ar_id))
@@ -339,13 +337,13 @@ def get_roi_with_all_history(session: Session, roi_id: int) -> ROI | None:
     >>> if roi:
     ...     print(f"ROI has {len(roi.traces_history)} trace versions")
     ...     print(f"ROI has {len(roi.data_analysis_history)} analysis versions")
-    ...     
+    ...
     ...     # Get latest version
     ...     latest_trace = max(roi.traces_history, key=lambda t: t.created_at)
     ...     print(f"Latest analysis: {latest_trace.analysis_result_id}")
     """
     from sqlalchemy.orm import selectinload
-    
+
     return session.exec(
         select(ROI)
         .where(ROI.id == roi_id)
@@ -383,11 +381,13 @@ def get_rois_by_detection_settings(
     Example
     -------
     >>> # Get Cellpose ROIs for FOV #1
-    >>> cellpose_rois = get_rois_by_detection_settings(session, fov_id=1,
-    ...                                                 detection_settings_id=1)
+    >>> cellpose_rois = get_rois_by_detection_settings(
+    ...     session, fov_id=1, detection_settings_id=1
+    ... )
     >>> # Get CaImAn ROIs for the same FOV
-    >>> caiman_rois = get_rois_by_detection_settings(session, fov_id=1,
-    ...                                               detection_settings_id=2)
+    >>> caiman_rois = get_rois_by_detection_settings(
+    ...     session, fov_id=1, detection_settings_id=2
+    ... )
     >>> print(f"Cellpose found {len(cellpose_rois)} ROIs")
     >>> print(f"CaImAn found {len(caiman_rois)} ROIs")
     """
@@ -423,11 +423,14 @@ def compare_detection_methods(
     Example
     -------
     >>> # Compare Cellpose vs CaImAn detection
-    >>> comparison = compare_detection_methods(session, experiment_id=1,
-    ...                                         detection_settings_ids=[1, 2])
+    >>> comparison = compare_detection_methods(
+    ...     session, experiment_id=1, detection_settings_ids=[1, 2]
+    ... )
     >>> for det_id, stats in comparison.items():
-    ...     print(f"Detection {det_id}: {stats['total_rois']} total, "
-    ...           f"{stats['active_rois']} active")
+    ...     print(
+    ...         f"Detection {det_id}: {stats['total_rois']} total, "
+    ...         f"{stats['active_rois']} active"
+    ...     )
     """
     from sqlalchemy import func
 
@@ -435,8 +438,7 @@ def compare_detection_methods(
     for det_id in detection_settings_ids:
         # Count total ROIs
         total = session.exec(
-            select(func.count(ROI.id))
-            .where(ROI.detection_settings_id == det_id)
+            select(func.count(ROI.id)).where(ROI.detection_settings_id == det_id)
         ).one()
 
         # Count active ROIs
@@ -533,8 +535,7 @@ def get_analysis_for_detection_method(
 
     # Combine results
     return [
-        (roi, traces_by_roi.get(roi.id), analyses_by_roi.get(roi.id))
-        for roi in rois
+        (roi, traces_by_roi.get(roi.id), analyses_by_roi.get(roi.id)) for roi in rois
     ]
 
 
@@ -576,8 +577,9 @@ def get_latest_results_for_experiment(
     ...         print(f"ROI {roi_id}: {analysis.dec_dff_frequency} Hz")
     >>>
     >>> # Get latest results for Cellpose ROIs only
-    >>> results = get_latest_results_for_experiment(session, experiment_id=1,
-    ...                                              detection_settings_id=1)
+    >>> results = get_latest_results_for_experiment(
+    ...     session, experiment_id=1, detection_settings_id=1
+    ... )
     """
     from sqlalchemy import desc
 
@@ -587,7 +589,9 @@ def get_latest_results_for_experiment(
     if detection_settings_id is not None:
         query = query.where(AnalysisResult.detection_settings == detection_settings_id)
 
-    latest_analysis_result = session.exec(query.order_by(desc(AnalysisResult.id))).first()
+    latest_analysis_result = session.exec(
+        query.order_by(desc(AnalysisResult.id))
+    ).first()
 
     if not latest_analysis_result or latest_analysis_result.id is None:
         return {}

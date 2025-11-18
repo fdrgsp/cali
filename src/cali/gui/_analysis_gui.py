@@ -1551,4 +1551,3 @@ class _AnalysisGUI(QWidget):
     def update_progress_label(self, elapsed_time: str) -> None:
         """Update the progress label with elapsed time."""
         self._run_analysis_wdg.set_time_label(elapsed_time)
-

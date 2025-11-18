@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -35,7 +34,6 @@ from cali._constants import (
     EVENT_KEY,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
-    SPONTANEOUS,
     UNSELECTABLE_COLOR,
     WRITERS,
     ZARR_TESNSORSTORE,
@@ -51,7 +49,6 @@ from cali.sqlmodel import (
     has_fov_analysis,
     load_experiment_from_database,
     save_experiment_to_database,
-    useq_plate_plan_to_db,
 )
 from cali.util import load_data
 
@@ -63,7 +60,7 @@ from ._analysis_gui import (
     TraceExtractionData,
     _AnalysisGUI,
 )
-from ._detection_gui import _DetectionGUI, CellposeSettings, CaimanSettings
+from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer

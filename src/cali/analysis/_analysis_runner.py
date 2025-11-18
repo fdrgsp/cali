@@ -383,8 +383,7 @@ class AnalysisRunner:
 
             if not labels_masks:
                 cali_logger.error(
-                    f"No valid ROI masks found for FOV {fov_name}. "
-                    "Run detection first."
+                    f"No valid ROI masks found for FOV {fov_name}. Run detection first."
                 )
                 return None
 
