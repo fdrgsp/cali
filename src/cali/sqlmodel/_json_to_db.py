@@ -11,9 +11,7 @@ Example
 >>> data_dir = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
 >>> analysis_dir = Path("tests/test_data/spontaneous/spont_analysis")
 >>> plate = useq.WellPlate.from_str("96-well")
->>> experiment = load_analysis_from_json(
-...     str(data_dir), str(analysis_dir), plate
-... )
+>>> experiment = load_analysis_from_json(str(data_dir), str(analysis_dir), plate)
 >>> print(f"Loaded {len(experiment.plate.wells)} wells")
 """
 
@@ -92,9 +90,7 @@ def load_analysis_from_json(
     >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
     >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
     >>> plate = useq.WellPlate.from_str("96-well")
-    >>> experiment = load_analysis_from_json(
-    ...     data_dir, analysis_dir, useq_plate=plate
-    ... )
+    >>> experiment = load_analysis_from_json(data_dir, analysis_dir, useq_plate=plate)
     >>> # Experiment is now saved in database with AnalysisResult tracking
     """
     # 1. Create experiment

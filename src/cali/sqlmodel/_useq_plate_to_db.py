@@ -65,13 +65,13 @@ def _row_label_to_index(label: str) -> int:
 
     Examples
     --------
-    >>> _row_label_to_index('A')
+    >>> _row_label_to_index("A")
     0
-    >>> _row_label_to_index('Z')
+    >>> _row_label_to_index("Z")
     25
-    >>> _row_label_to_index('AA')
+    >>> _row_label_to_index("AA")
     26
-    >>> _row_label_to_index('AE')
+    >>> _row_label_to_index("AE")
     30
     """
     index = 0

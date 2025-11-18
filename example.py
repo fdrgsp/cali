@@ -4,7 +4,7 @@ from sqlmodel import create_engine
 
 from cali._constants import EVOKED
 from cali.analysis import AnalysisRunner
-from cali.detection import CellposeSettings, DetectionRunner
+from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import DetectionSettings
 from cali.sqlmodel._visualize_experiment import (

@@ -154,6 +154,7 @@ def get_overlap_roi_with_stimulated_area(
 
     return float(overlapping_pixels / cell_pixels)
 
+
 def _extendROI(
     ypix: np.ndarray,
     xpix: np.ndarray,

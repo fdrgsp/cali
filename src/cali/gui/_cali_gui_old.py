@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -51,7 +50,6 @@ from cali.sqlmodel import (
     has_fov_analysis,
     load_experiment_from_database,
     save_experiment_to_database,
-    useq_plate_plan_to_db,
 )
 from cali.util import load_data
 

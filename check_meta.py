@@ -1,5 +1,6 @@
-from cali.readers import TensorstoreZarrReader
 import json
+
+from cali.readers import TensorstoreZarrReader
 
 data = TensorstoreZarrReader("tests/test_data/evoked/evk.tensorstore.zarr")
 print("Sequence stage positions:")
