@@ -188,7 +188,7 @@ with Session(engine) as session:
     for i, mask in enumerate(masks):
         plt.subplot(1, len(masks), i + 1)
         plt.imshow(mask, cmap="gray")
-        plt.title(f"ROI {i+1}")
+        plt.title(f"ROI {i + 1}")
         plt.axis("off")
     plt.show()
 
