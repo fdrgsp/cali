@@ -68,7 +68,12 @@ def exec_(
 
         futures = (
             executor.submit(
-                analyze, experiment, settings, p, analysis_result_id, detection_settings_id
+                analyze,
+                experiment,
+                settings,
+                p,
+                analysis_result_id,
+                detection_settings_id,
             )
             for p in global_position_indices
         )
@@ -314,7 +319,11 @@ class AnalysisRunner:
         (ROIs, Traces, DataAnalysis, Masks) ready to be committed.
         """
         return self._extract_trace_data_per_position(
-            experiment, settings, global_pos_idx, analysis_result_id, detection_settings_id
+            experiment,
+            settings,
+            global_pos_idx,
+            analysis_result_id,
+            detection_settings_id,
         )
 
     # These are module-level functions that work with the OriginalAnalysisRunner
