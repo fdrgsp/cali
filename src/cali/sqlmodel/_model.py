@@ -51,8 +51,25 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis run metadata.
 
     Tracks which experiment was analyzed with which settings and which positions
-    were processed. The actual results (traces, data_analysis) can be queried
-    through the hierarchical relationships using the positions_analyzed list.
+    were processed. The actual results (traces, data_analysis) are linked via
+    the analysis_result_id foreign key in those tables.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    experiment : int
+        Foreign key to experiment
+    detection_settings : int | None
+        Foreign key to detection settings used
+    analysis_settings : int
+        Foreign key to analysis settings used
+    positions_analyzed : list[int] | None
+        List of position indices that were analyzed
+    traces : list[Traces]
+        All trace results from this analysis run
+    data_analysis_results : list[DataAnalysis]
+        All analysis results from this analysis run
     """
 
     __tablename__ = "analysis_result"
@@ -64,6 +81,12 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     )
     analysis_settings: int = Field(foreign_key="analysis_settings.id")
     positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
+
+    # Relationships
+    traces: list["Traces"] = Relationship(back_populates="analysis_result")
+    data_analysis_results: list["DataAnalysis"] = Relationship(
+        back_populates="analysis_result"
+    )
 
 
 class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
@@ -153,8 +176,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                 select(Experiment)
                 .where(Experiment.id == id)
                 .options(
-                    plate_chain.selectinload(ROI.traces),
-                    plate_chain.selectinload(ROI.data_analysis),
+                    plate_chain.selectinload(ROI.traces_history),
+                    plate_chain.selectinload(ROI.data_analysis_history),
                     plate_chain.selectinload(ROI.roi_mask),
                     plate_chain.selectinload(ROI.neuropil_mask),
                 )
@@ -766,6 +789,9 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
 
     Represents a single cell/neuron segmented from imaging data.
     Related analysis data is stored in separate tables (Traces, DataAnalysis, etc.)
+    Each ROI can have multiple analysis results from different analysis runs.
+    Multiple ROIs can exist for the same FOV with different detection settings,
+    allowing comparison of detection methods (e.g., Cellpose vs CaImAn).
 
     Attributes
     ----------
@@ -773,24 +799,24 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
         Primary key, auto-generated
     fov_id : int
         Foreign key to parent FOV
+    detection_settings_id : int | None
+        Foreign key to detection settings that created this ROI
     label_value : int
         ROI label number from segmentation (e.g., 1, 2, 3...)
     active : bool | None
-        Whether ROI shows calcium activity
+        Whether ROI shows calcium activity (from latest analysis)
     stimulated : bool
         Whether ROI was stimulated (for evoked experiments)
-    analysis_settings_id : int | None
-        Foreign key to analysis settings used
     roi_mask_id : int | None
         Foreign key to ROI mask
     neuropil_mask_id : int | None
         Foreign key to neuropil mask
     fov : FOV
         Parent FOV
-    traces : Traces | None
-        Fluorescence trace data
-    data_analysis : DataAnalysis | None
-        Data analysis results (peaks, spikes, etc.)
+    traces_history : list[Traces]
+        All fluorescence trace versions from different analysis runs
+    data_analysis_history : list[DataAnalysis]
+        All analysis result versions from different analysis runs
     roi_mask : Mask | None
         ROI mask (cell boundary)
     neuropil_mask : Mask | None
@@ -807,18 +833,20 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Foreign keys
     fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
+    detection_settings_id: int | None = Field(
+        default=None, foreign_key="detection_settings.id", index=True
+    )
     roi_mask_id: int | None = Field(default=None, foreign_key="mask.id", index=True)
     neuropil_mask_id: int | None = Field(
         default=None, foreign_key="mask.id", index=True
     )
-    analysis_settings_id: int | None = Field(
-        default=None, foreign_key="analysis_settings.id", index=True
-    )
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="rois")
-    traces: Optional["Traces"] = Relationship(back_populates="roi", cascade_delete=True)
-    data_analysis: Optional["DataAnalysis"] = Relationship(
+    traces_history: list["Traces"] = Relationship(
+        back_populates="roi", cascade_delete=True
+    )
+    data_analysis_history: list["DataAnalysis"] = Relationship(
         back_populates="roi", cascade_delete=True
     )
     roi_mask: Optional["Mask"] = Relationship(
@@ -839,13 +867,18 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     """Fluorescence trace data for an ROI.
 
     Stores all time-series fluorescence measurements and derived traces.
+    Each ROI can have multiple trace versions from different analysis runs.
 
     Attributes
     ----------
     id : int | None
         Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this trace was created
     roi_id : int | None
         Foreign key to parent ROI
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this trace
     raw_trace : list[float] | None
         Raw fluorescence trace
     corrected_trace : list[float] | None
@@ -860,11 +893,14 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Frame numbers or frame timestamps (milliseconds)
     roi : ROI
         Parent ROI
+    analysis_result : AnalysisResult
+        The analysis run that created this trace
     """
 
     __tablename__ = "trace"
 
     id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
 
     raw_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     corrected_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
@@ -873,12 +909,17 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
 
+    # Foreign keys - roi_id is no longer unique to allow multiple versions
     roi_id: int | None = Field(
-        default=None, foreign_key="roi.id", index=True, unique=True, ondelete="CASCADE"
+        default=None, foreign_key="roi.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
     )
 
     # Relationships
-    roi: "ROI" = Relationship(back_populates="traces")
+    roi: "ROI" = Relationship(back_populates="traces_history")
+    analysis_result: "AnalysisResult" = Relationship(back_populates="traces")
 
 
 class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
@@ -886,13 +927,18 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
 
     This class stores various analysis results related to an ROI,
     such as peak detection, spike inference, and cell size measurements.
+    Each ROI can have multiple analysis result versions from different analysis runs.
 
     Attributes
     ----------
     id : int | None
         Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this analysis was created
     roi_id : int | None
         Foreign key to parent ROI
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this result
     cell_size : float | None
         ROI area (µm² or pixels)
     cell_size_units : str | None
@@ -917,13 +963,21 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Spike detection threshold used for this ROI (calculated)
     roi : ROI
         Parent ROI
+    analysis_result : AnalysisResult
+        The analysis run that created this result
     """
 
     __tablename__ = "data_analysis"
 
     id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys - roi_id is no longer unique to allow multiple versions
     roi_id: int | None = Field(
-        default=None, foreign_key="roi.id", index=True, unique=True, ondelete="CASCADE"
+        default=None, foreign_key="roi.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
     )
 
     cell_size: float | None = None
@@ -941,7 +995,10 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     inferred_spikes_threshold: float | None = None
 
     # Relationships
-    roi: "ROI" = Relationship(back_populates="data_analysis")
+    roi: "ROI" = Relationship(back_populates="data_analysis_history")
+    analysis_result: "AnalysisResult" = Relationship(
+        back_populates="data_analysis_results"
+    )
 
 
 class Mask(SQLModel, table=True):  # type: ignore[call-arg]
