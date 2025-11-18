@@ -142,7 +142,10 @@ def add_analysis_settings_to_tree(
 
 
 def add_experiment_tree_to_node(
-    parent_node: Tree, experiment: Experiment, max_level: MaxTreeLevel = "roi"
+    parent_node: Tree,
+    experiment: Experiment,
+    max_level: MaxTreeLevel = "roi",
+    detection_settings_id: int | None = None,
 ) -> None:
     """Add experiment hierarchy (plate/well/fov/roi) to a tree node.
 
@@ -154,6 +157,9 @@ def add_experiment_tree_to_node(
         Experiment object to display
     max_level : MaxTreeLevel
         Maximum depth level to display
+    detection_settings_id : int | None
+        If provided, only show ROIs matching this detection_settings_id
+        (useful when showing ROIs for a specific AnalysisResult)
     """
     exp_node = parent_node.add(f"🧪 [bold]Experiment (ID: {experiment.id})[/bold]")
     exp_node.add(f"Name: {experiment.name}")
@@ -202,8 +208,16 @@ def add_experiment_tree_to_node(
             if max_level == "fov":
                 continue
 
-            # Add ROIs
-            for roi in fov.rois:
+            # Add ROIs (filter by detection_settings_id if provided)
+            rois_to_show = fov.rois
+            if detection_settings_id is not None:
+                rois_to_show = [
+                    roi
+                    for roi in fov.rois
+                    if roi.detection_settings_id == detection_settings_id
+                ]
+
+            for roi in rois_to_show:
                 roi_info = f"ROI {roi.label_value}"
                 if roi.active is not None:
                     status = (
@@ -220,9 +234,11 @@ def add_experiment_tree_to_node(
                 roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
 
                 # Add related data if present
-                if roi.traces:
+                if roi.roi_mask:
+                    roi_node.add("🎭 [dim]ROI mask available[/dim]")
+                if roi.traces_history:
                     roi_node.add("📊 [dim]Trace data available[/dim]")
-                if roi.data_analysis:
+                if roi.data_analysis_history:
                     roi_node.add("📈 [dim]Data analysis available[/dim]")
 
 
@@ -309,7 +325,12 @@ def print_analysis_result(
         select(Experiment).where(Experiment.id == analysis_result.experiment)
     ).first()
     if experiment:
-        add_experiment_tree_to_node(tree, experiment, max_level=max_experiment_level)
+        add_experiment_tree_to_node(
+            tree,
+            experiment,
+            max_level=max_experiment_level,
+            detection_settings_id=analysis_result.detection_settings,
+        )
 
     console.print(tree)
 
@@ -391,8 +412,8 @@ def print_all_analysis_results(
             select(Experiment)
             .where(Experiment.id == result.experiment)
             .options(
-                plate_chain.selectinload(ROI.traces),
-                plate_chain.selectinload(ROI.data_analysis),
+                plate_chain.selectinload(ROI.traces_history),
+                plate_chain.selectinload(ROI.data_analysis_history),
                 plate_chain.selectinload(ROI.roi_mask),
                 plate_chain.selectinload(ROI.neuropil_mask),
             )
@@ -459,7 +480,10 @@ def print_all_analysis_results(
         # Experiment info with full tree
         if result_experiment:
             add_experiment_tree_to_node(
-                result_tree, result_experiment, max_level=max_experiment_level
+                result_tree,
+                result_experiment,
+                max_level=max_experiment_level,
+                detection_settings_id=result.detection_settings,
             )
 
     console.print(main_tree)
@@ -774,9 +798,9 @@ def print_experiment_tree(
                 roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
 
                 # Add related data if present
-                if roi.traces:
+                if roi.traces_history:
                     roi_node.add("📊 [dim]Trace data available[/dim]")
-                if roi.data_analysis:
+                if roi.data_analysis_history:
                     roi_node.add("📈 [dim]Data analysis available[/dim]")
                 if roi.roi_mask:
                     roi_node.add("🎭 [dim]ROI mask available[/dim]")
@@ -789,7 +813,7 @@ def print_experiment_tree(
 def print_database_tree(
     engine: Engine,
     experiment_name: str | None = None,
-    max_level: MaxTreeLevel = "roi",
+    max_experiment_level: MaxTreeLevel = "roi",
     show_analysis_results: bool = True,
     show_settings: bool = True,
 ) -> None:
@@ -805,7 +829,7 @@ def print_database_tree(
         SQLAlchemy engine connected to the database
     experiment_name : str | None
         Optional experiment name to filter. If None, shows all experiments
-    max_level : MaxTreeLevel
+    max_experiment_level : MaxTreeLevel
         Maximum depth level to display (default: "roi")
     show_analysis_results : bool
         Whether to show analysis results section (default: True)
@@ -851,7 +875,7 @@ def print_database_tree(
             exp_tree.add(f"Description: [dim]{exp.description}[/dim]")
         exp_tree.add(f"Created: [dim]{exp.created_at}[/dim]")
 
-        if max_level == "experiment":
+        if max_experiment_level == "experiment":
             continue
 
         # Add plate
@@ -861,7 +885,7 @@ def print_database_tree(
                 f"📋 [green]{exp.plate.name}[/green] ({plate_type})"
             )
 
-            if max_level == "plate":
+            if max_experiment_level == "plate":
                 continue
 
             # Add wells with statistics
@@ -888,7 +912,7 @@ def print_database_tree(
                 )
                 well_node = plate_node.add(well_label)
 
-                if max_level == "well":
+                if max_experiment_level == "well":
                     continue
 
                 # Add FOVs
@@ -899,7 +923,7 @@ def print_database_tree(
                     )
                     fov_node = well_node.add(fov_label)
 
-                    if max_level == "fov":
+                    if max_experiment_level == "fov":
                         continue
 
                     # Add ROIs
@@ -922,9 +946,9 @@ def print_database_tree(
                             data_available.append("🎭 ROI mask")
                         if roi.neuropil_mask:
                             data_available.append("🔵 Neuropil mask")
-                        if roi.traces:
+                        if roi.traces_history:
                             data_available.append("📊 Traces")
-                        if roi.data_analysis:
+                        if roi.data_analysis_history:
                             data_available.append("📈 Analysis")
 
                         if data_available:
