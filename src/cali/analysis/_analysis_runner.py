@@ -56,6 +56,8 @@ def exec_(
     settings: AnalysisSettings,
     experiment: Experiment,
     max_workers: int | None = None,
+    analysis_result_id: int | None = None,
+    detection_settings_id: int | None = None,
 ) -> Iterable[FOV]:
     """Execute analysis in parallel and commit results centrally."""
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -65,7 +67,9 @@ def exec_(
             return
 
         futures = (
-            executor.submit(analyze, experiment, settings, p)
+            executor.submit(
+                analyze, experiment, settings, p, analysis_result_id, detection_settings_id
+            )
             for p in global_position_indices
         )
 
@@ -243,10 +247,30 @@ class AnalysisRunner:
                 msg = "Experiment must have an ID before running analysis"
                 raise ValueError(msg)
 
+            # Create AnalysisResult BEFORE processing (so we have the ID to link)
+            assert settings.id is not None  # should never be None here
+
+            # Create a new AnalysisResult for this analysis run
+            analysis_result = AnalysisResult(
+                experiment=experiment.id,
+                detection_settings=detection_settings_id,
+                analysis_settings=settings.id,
+                positions_analyzed=list(global_position_indices),
+            )
+            session.add(analysis_result)
+            session.commit()
+            session.refresh(analysis_result)
+
+            cali_logger.info(
+                f"📊 Created AnalysisResult ID {analysis_result.id} "
+                f"(DetectionSettings={detection_settings_id}, "
+                f"AnalysisSettings={settings.id})"
+            )
+
             # track positions processed
             positions_processed = []
 
-            # execute analysis in parallel
+            # execute analysis in parallel, passing the analysis_result_id
             for result in exec_(
                 analyze=self._analyze_position,
                 cancel_event=self._cancellation_event,
@@ -254,55 +278,35 @@ class AnalysisRunner:
                 settings=settings,
                 experiment=experiment,
                 max_workers=settings.threads,
+                analysis_result_id=analysis_result.id,
+                detection_settings_id=detection_settings_id,
             ):
+                # Don't pass detection_settings_id for analysis - ROIs already have it
                 commit_fov_result(session, experiment, result)
                 positions_processed.append(result.position_index)
 
-            # once the analysis is complete, create or update AnalysisResult
+            # Update AnalysisResult with actual positions processed
+            # (in case some failed)
             if positions_processed:
-                assert settings.id is not None  # should never ne None here
-
-                # query for existing AnalysisResult with same experiment + settings
-                existing_result_stmt = select(AnalysisResult).where(
-                    AnalysisResult.experiment == experiment.id,
-                    AnalysisResult.analysis_settings == settings.id,
-                )
-                existing_result = session.exec(existing_result_stmt).first()
-
-                if existing_result:
-                    # check if positions match - if so, overwrite; if not, add new
-                    if set(existing_result.positions_analyzed or []) != set(
-                        positions_processed
-                    ):
-                        # different positions - this is a new analysis run
-                        new_result = AnalysisResult(
-                            experiment=experiment.id,
-                            detection_settings=detection_settings_id,
-                            analysis_settings=settings.id,
-                            positions_analyzed=positions_processed,
-                        )
-                        session.add(new_result)
-                    # else is the same positions - just update the timestamp implicitly
-                    # (no changes needed, data already committed)
-                else:
-                    # no existing result - create new
-                    new_result = AnalysisResult(
-                        experiment=experiment.id,
-                        detection_settings=detection_settings_id,
-                        analysis_settings=settings.id,
-                        positions_analyzed=positions_processed,
-                    )
-                    session.add(new_result)
-                    cali_logger.info("✅ Created new AnalysisResult.")
-
+                analysis_result.positions_analyzed = positions_processed
+                session.add(analysis_result)
                 session.commit()
+                cali_logger.info(
+                    f"✅ Completed AnalysisResult ID {analysis_result.id} "
+                    f"({len(positions_processed)} positions)"
+                )
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
         return self._cancellation_event.is_set()
 
     def _analyze_position(
-        self, experiment: Experiment, settings: AnalysisSettings, global_pos_idx: int
+        self,
+        experiment: Experiment,
+        settings: AnalysisSettings,
+        global_pos_idx: int,
+        analysis_result_id: int | None = None,
+        detection_settings_id: int | None = None,
     ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
 
@@ -310,7 +314,7 @@ class AnalysisRunner:
         (ROIs, Traces, DataAnalysis, Masks) ready to be committed.
         """
         return self._extract_trace_data_per_position(
-            experiment, settings, global_pos_idx
+            experiment, settings, global_pos_idx, analysis_result_id, detection_settings_id
         )
 
     # These are module-level functions that work with the OriginalAnalysisRunner
@@ -319,6 +323,8 @@ class AnalysisRunner:
         experiment: Experiment,
         settings: AnalysisSettings,
         global_pos_idx: int,
+        analysis_result_id: int | None = None,
+        detection_settings_id: int | None = None,
     ) -> FOV | None:
         """Extract trace data for a position and return FOV objects (not committed).
 
@@ -360,10 +366,28 @@ class AnalysisRunner:
                 )
                 return None
 
+            # Filter ROIs by detection_settings_id if specified
+            # This ensures we only analyze ROIs from the correct detection run
+            rois_to_analyze = existing_fov.rois
+            if detection_settings_id is not None:
+                rois_to_analyze = [
+                    roi
+                    for roi in existing_fov.rois
+                    if roi.detection_settings_id == detection_settings_id
+                ]
+                if not rois_to_analyze:
+                    cali_logger.error(
+                        f"No ROIs found with detection_settings_id="
+                        f"{detection_settings_id} in FOV {fov_name}"
+                    )
+                    return None
+
             # Convert database masks (coordinates) to numpy arrays
             # { label_value -> np.ndarray mask }
             labels_masks = {}
-            for roi in existing_fov.rois:
+            # All ROIs in a FOV share the same detection_settings_id
+            fov_detection_settings_id = None
+            for roi in rois_to_analyze:
                 if (
                     roi.roi_mask
                     and roi.roi_mask.coords_y is not None
@@ -376,6 +400,9 @@ class AnalysisRunner:
                         (roi.roi_mask.height, roi.roi_mask.width),
                     )
                     labels_masks[roi.label_value] = mask_array
+                    # Capture detection_settings_id from first ROI (same for all in FOV)
+                    if fov_detection_settings_id is None:
+                        fov_detection_settings_id = roi.detection_settings_id
                 else:
                     cali_logger.warning(
                         f"ROI {roi.label_value} in {fov_name} has no mask data"
@@ -474,6 +501,8 @@ class AnalysisRunner:
                     )
                     else None
                 ),
+                detection_settings_id=fov_detection_settings_id,
+                analysis_result_id=analysis_result_id,
             )
 
             # Add the ROI to the FOV if processing succeeded
@@ -496,6 +525,8 @@ class AnalysisRunner:
         elapsed_time_list: list[float],
         neuropil_mask: np.ndarray | None = None,
         neuropil_correction_factor: float | None = None,
+        detection_settings_id: int | None = None,
+        analysis_result_id: int | None = None,
     ) -> ROI | None:
         """Process individual ROI trace and return ROI object (not committed).
 
@@ -703,6 +734,7 @@ class AnalysisRunner:
             dff=cast("list[float]", dff.tolist()),
             dec_dff=dec_dff.tolist(),
             x_axis=elapsed_time_list,
+            analysis_result_id=analysis_result_id,
         )
 
         # Create DataAnalysis object
@@ -718,6 +750,7 @@ class AnalysisRunner:
             peaks_prominence_dec_dff=peaks_prominence_dec_dff,
             peaks_height_dec_dff=peaks_height_dec_dff,
             inferred_spikes_threshold=spike_detection_threshold,
+            analysis_result_id=analysis_result_id,
         )
 
         # Create ROI object with all relationships
@@ -727,12 +760,13 @@ class AnalysisRunner:
             stimulated=is_roi_stimulated,
             roi_mask=roi_mask,
             neuropil_mask=neuropil_mask_obj,
-            traces=traces,
-            data_analysis=data_analysis,
             fov_id=0,  # placeholder, will be set when committing
+            detection_settings_id=detection_settings_id,
         )
-        # Use foreign key to avoid trying to INSERT the experiment
-        roi.analysis_settings_id = settings.id
+
+        # Add traces and data_analysis to the relationship lists
+        roi.traces_history.append(traces)
+        roi.data_analysis_history.append(data_analysis)
 
         return roi
 

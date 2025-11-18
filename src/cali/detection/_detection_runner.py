@@ -159,9 +159,11 @@ class DetectionRunner:
                     f"⚙️ Created new DetectionSettings ID {detection_settings.id}"
                 )
 
-                # Save FOV results
-                for fov_result in tqdm(fov_results, desc="Saving to database"):
-                    commit_fov_result(session, experiment, fov_result)
+                # Save FOV results with detection_settings_id
+                for fov_result in fov_results:
+                    commit_fov_result(
+                        session, experiment, fov_result, detection_settings.id
+                    )
 
     def _run_cellpose_detection(
         self,
@@ -223,9 +225,7 @@ class DetectionRunner:
             all_pos_indices = []
 
             cali_logger.info("Loading images for batch processing...")
-            for pos_idx in tqdm(
-                global_position_indices, desc="Loading images for detection"
-            ):
+            for pos_idx in global_position_indices:
                 if self._check_for_abort_requested():
                     cali_logger.info("Detection cancelled during image loading")
                     return []
@@ -268,10 +268,8 @@ class DetectionRunner:
             cali_logger.info("Creating FOV objects with ROIs and masks...")
             fov_results = []
 
-            for pos_idx, meta, masks_2d in tqdm(
-                zip(all_pos_indices, all_metadata, all_masks),
-                total=len(all_pos_indices),
-                desc="Creating FOV objects",
+            for pos_idx, meta, masks_2d in zip(
+                all_pos_indices, all_metadata, all_masks
             ):
                 if self._check_for_abort_requested():
                     cali_logger.info("Detection cancelled during FOV creation")
