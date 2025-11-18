@@ -46,6 +46,10 @@ d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter
 detection.run_cellpose(exp, d_settings_2, global_position_indices=[0])
 analysis.run(exp, a_settings1, global_position_indices=[0])
 
+# RUN WITH DIFFERENT ANALYSIS SETTINGS
+a_settings2 = AnalysisSettings(threads=2, dff_window=200)
+analysis.run(exp, a_settings2, global_position_indices=[0])
+
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")
 print_all_analysis_results(
