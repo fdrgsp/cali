@@ -575,6 +575,77 @@ def print_experiment_tree(
     if experiment.description:
         tree.add(f"[dim]{experiment.description}[/dim]")
 
+    if max_experiment_level == "experiment":
+        console.print(tree)
+        return
+
+    # Add plate
+    plate_type = experiment.plate.plate_type or "unknown"
+    plate_node = tree.add(
+        f"📋 [bold green]{experiment.plate.name}[/bold green] ({plate_type})"
+    )
+
+    if max_experiment_level == "plate":
+        console.print(tree)
+        return
+
+    # Add wells
+    for well in experiment.plate.wells:
+        well_conditions = []
+        if well.condition_1:
+            well_conditions.append(f"{well.condition_1.name}")
+        if well.condition_2:
+            well_conditions.append(f"{well.condition_2.name}")
+
+        if well_conditions:
+            conditions_text = ", ".join(well_conditions)
+            condition_str = f" - 🧪 [green]Conditions: {conditions_text}[/green]"
+        else:
+            condition_str = ""
+
+        well_node = plate_node.add(f"🧫 [yellow]{well.name}[/yellow]{condition_str}")
+
+        if max_experiment_level == "well":
+            continue  # Skip FOVs and ROIs
+
+        # Add FOVs
+        for fov in well.fovs:
+            fov_node = well_node.add(
+                f"📷 [cyan]{fov.name} "
+                f"(fov: {fov.fov_number} - pos: {fov.position_index})[/cyan]"
+            )
+
+            if max_experiment_level == "fov":
+                continue  # Skip ROIs
+
+            # Add ROIs
+            for roi in fov.rois:
+                roi_info = f"ROI {roi.label_value} "
+                roi_info += f"(Detection Settings ID: {roi.detection_settings_id})"
+                if roi.active is not None:
+                    status = (
+                        "🔋 [green]active[/green]"
+                        if roi.active
+                        else "🪫 [red]inactive[/red]"
+                    )
+                    roi_info += f" - {status}"
+                if roi.stimulated:
+                    roi_info += " - ⚡️ [green]stimulated[/green]"
+                else:
+                    roi_info += " - ✨ [magenta]spontaneous[/magenta]"
+
+                roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
+
+                # Add related data if present
+                if roi.traces_history:
+                    roi_node.add("📊 [dim]Trace data available[/dim]")
+                if roi.data_analysis_history:
+                    roi_node.add("📈 [dim]Data analysis available[/dim]")
+                if roi.roi_mask:
+                    roi_node.add("🎭 [dim]ROI mask available[/dim]")
+                if roi.neuropil_mask:
+                    roi_node.add("🔵 [dim]Neuropil mask available[/dim]")
+
     # Show analysis results if session is provided
     if show_analysis_results and session and experiment.id is not None:
         analysis_results = session.exec(
@@ -591,6 +662,15 @@ def print_experiment_tree(
                     )
                 ).first()
 
+                # Get detection settings if available
+                detection_settings = None
+                if result.detection_settings:
+                    detection_settings = session.exec(
+                        select(DetectionSettings).where(
+                            DetectionSettings.id == result.detection_settings
+                        )
+                    ).first()
+
                 # Create result node
                 positions_count = len(result.positions_analyzed or [])
                 plural = "s" if positions_count != 1 else ""
@@ -600,7 +680,13 @@ def print_experiment_tree(
                     f"{positions_count} position{plural}"
                 )
 
-                # Settings info
+                # Detection settings (if available)
+                if detection_settings:
+                    add_detection_settings_to_tree(
+                        result_node, detection_settings, show_details=show_settings
+                    )
+
+                # Analysis settings info
                 if settings:
                     settings_node = result_node.add(
                         f"⚙️ [bold yellow]Analysis Settings "
@@ -736,76 +822,6 @@ def print_experiment_tree(
                             positions_list.append(f"{start}-{end}")
 
                     result_node.add(f"📍 Positions: {', '.join(positions_list)}")
-
-    if max_experiment_level == "experiment":
-        console.print(tree)
-        return
-
-    # Add plate
-    plate_type = experiment.plate.plate_type or "unknown"
-    plate_node = tree.add(
-        f"📋 [bold green]{experiment.plate.name}[/bold green] ({plate_type})"
-    )
-
-    if max_experiment_level == "plate":
-        console.print(tree)
-        return
-
-    # Add wells
-    for well in experiment.plate.wells:
-        well_conditions = []
-        if well.condition_1:
-            well_conditions.append(f"{well.condition_1.name}")
-        if well.condition_2:
-            well_conditions.append(f"{well.condition_2.name}")
-
-        if well_conditions:
-            conditions_text = ", ".join(well_conditions)
-            condition_str = f" - 🧪 [green]Conditions: {conditions_text}[/green]"
-        else:
-            condition_str = ""
-
-        well_node = plate_node.add(f"🧫 [yellow]{well.name}[/yellow]{condition_str}")
-
-        if max_experiment_level == "well":
-            continue  # Skip FOVs and ROIs
-
-        # Add FOVs
-        for fov in well.fovs:
-            fov_node = well_node.add(
-                f"📷 [cyan]{fov.name} "
-                f"(fov: {fov.fov_number} - pos: {fov.position_index})[/cyan]"
-            )
-
-            if max_experiment_level == "fov":
-                continue  # Skip ROIs
-
-            # Add ROIs
-            for roi in fov.rois:
-                roi_info = f"ROI {roi.label_value}"
-                if roi.active is not None:
-                    status = (
-                        "🔋 [green]active[/green]"
-                        if roi.active
-                        else "🪫 [red]inactive[/red]"
-                    )
-                    roi_info += f" - {status}"
-                if roi.stimulated:
-                    roi_info += " - ⚡️ [green]stimulated[/green]"
-                else:
-                    roi_info += " - ✨ [magenta]spontaneous[/magenta]"
-
-                roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
-
-                # Add related data if present
-                if roi.traces_history:
-                    roi_node.add("📊 [dim]Trace data available[/dim]")
-                if roi.data_analysis_history:
-                    roi_node.add("📈 [dim]Data analysis available[/dim]")
-                if roi.roi_mask:
-                    roi_node.add("🎭 [dim]ROI mask available[/dim]")
-                if roi.neuropil_mask:
-                    roi_node.add("🔵 [dim]Neuropil mask available[/dim]")
 
     console.print(tree)
 
