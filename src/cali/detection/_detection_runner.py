@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from cellpose import io
 from cellpose.models import CellposeModel
+from sqlmodel import Session, select
 from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, ROI, Experiment, Mask
+from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Experiment, Mask
 from cali.sqlmodel._util import create_engine, save_experiment_to_database
 from cali.util import commit_fov_result, load_data, mask_to_coordinates
 
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
-    from cali.sqlmodel import DetectionSettings
 
 
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
@@ -151,13 +151,63 @@ class DetectionRunner:
             cali_logger.info("Committing detection results to database...")
             engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
             with Session(engine) as session:
-                # Save detection settings to database
-                session.add(detection_settings)
-                session.commit()
-                session.refresh(detection_settings)
-                cali_logger.info(
-                    f"⚙️ Created new DetectionSettings ID {detection_settings.id}"
-                )
+                # Check if identical detection settings already exist
+                if detection_settings.id is None:
+                    # Check if identical settings already exist in database
+                    new_settings_dict = detection_settings.model_dump(
+                        exclude={"id", "created_at"}
+                    )
+                    try:
+                        all_settings = session.exec(select(DetectionSettings)).all()
+                        existing_settings = None
+                        for candidate in all_settings:
+                            candidate_dict = candidate.model_dump(
+                                exclude={"id", "created_at"}
+                            )
+                            if candidate_dict == new_settings_dict:
+                                existing_settings = candidate
+                                break
+                    except Exception:
+                        existing_settings = None
+
+                    # Found duplicate - use the existing one
+                    if existing_settings is not None:
+                        detection_settings = existing_settings
+                        cali_logger.info(
+                            f"♻️ Reusing existing DetectionSettings ID "
+                            f"{detection_settings.id}"
+                        )
+                    else:
+                        # New settings - add and commit to get an ID
+                        session.add(detection_settings)
+                        session.commit()
+                        session.refresh(detection_settings)
+                        cali_logger.info(
+                            f"⚙️ Created new DetectionSettings ID "
+                            f"{detection_settings.id}"
+                        )
+                else:
+                    # Settings already has an ID - check if it exists
+                    all_settings_ids = [
+                        s.id for s in session.exec(select(DetectionSettings)).all()
+                    ]
+                    if detection_settings.id not in all_settings_ids:
+                        session.add(detection_settings)
+                        session.commit()
+                        session.refresh(detection_settings)
+                        cali_logger.info(
+                            f"⚙️ Created new DetectionSettings ID "
+                            f"{detection_settings.id}"
+                        )
+                    else:
+                        # Get the existing settings from database
+                        existing = session.get(DetectionSettings, detection_settings.id)
+                        if existing is not None:
+                            detection_settings = existing
+                        cali_logger.info(
+                            f"♻️ Reusing existing DetectionSettings ID "
+                            f"{detection_settings.id}"
+                        )
 
                 # Save FOV results with detection_settings_id
                 for fov_result in fov_results:

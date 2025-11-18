@@ -15,7 +15,7 @@ from cali.sqlmodel._model import (
 )
 
 # Update this path to your actual database
-DB_PATH = "/path/to/your/experiment.db"
+DB_PATH = "/Users/fdrgsp/Desktop/cali_test/evk.tensorstore.zarr.db"
 
 
 def example_1_get_traces_by_settings(

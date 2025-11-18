@@ -252,25 +252,62 @@ class AnalysisRunner:
                 msg = "Experiment must have an ID before running analysis"
                 raise ValueError(msg)
 
-            # Create AnalysisResult BEFORE processing (so we have the ID to link)
+            # Create or reuse AnalysisResult
             assert settings.id is not None  # should never be None here
 
-            # Create a new AnalysisResult for this analysis run
-            analysis_result = AnalysisResult(
-                experiment=experiment.id,
-                detection_settings=detection_settings_id,
-                analysis_settings=settings.id,
-                positions_analyzed=list(global_position_indices),
-            )
-            session.add(analysis_result)
-            session.commit()
-            session.refresh(analysis_result)
+            # Check if an identical AnalysisResult already exists
+            existing_result = session.exec(
+                select(AnalysisResult).where(
+                    AnalysisResult.experiment == experiment.id,
+                    AnalysisResult.detection_settings == detection_settings_id,
+                    AnalysisResult.analysis_settings == settings.id,
+                )
+            ).first()
 
-            cali_logger.info(
-                f"📊 Created AnalysisResult ID {analysis_result.id} "
-                f"(DetectionSettings={detection_settings_id}, "
-                f"AnalysisSettings={settings.id})"
-            )
+            if existing_result is not None:
+                # Check if positions match
+                existing_positions = set(existing_result.positions_analyzed or [])
+                new_positions = set(global_position_indices)
+                if existing_positions == new_positions:
+                    # Identical AnalysisResult exists - reuse it
+                    analysis_result = existing_result
+                    cali_logger.info(
+                        f"♻️ Reusing existing AnalysisResult ID {analysis_result.id} "
+                        f"(DetectionSettings={detection_settings_id}, "
+                        f"AnalysisSettings={settings.id})"
+                    )
+                else:
+                    # Different positions - create new AnalysisResult
+                    analysis_result = AnalysisResult(
+                        experiment=experiment.id,
+                        detection_settings=detection_settings_id,
+                        analysis_settings=settings.id,
+                        positions_analyzed=list(global_position_indices),
+                    )
+                    session.add(analysis_result)
+                    session.commit()
+                    session.refresh(analysis_result)
+                    cali_logger.info(
+                        f"📊 Created AnalysisResult ID {analysis_result.id} "
+                        f"(DetectionSettings={detection_settings_id}, "
+                        f"AnalysisSettings={settings.id})"
+                    )
+            else:
+                # No existing result - create new
+                analysis_result = AnalysisResult(
+                    experiment=experiment.id,
+                    detection_settings=detection_settings_id,
+                    analysis_settings=settings.id,
+                    positions_analyzed=list(global_position_indices),
+                )
+                session.add(analysis_result)
+                session.commit()
+                session.refresh(analysis_result)
+                cali_logger.info(
+                    f"📊 Created AnalysisResult ID {analysis_result.id} "
+                    f"(DetectionSettings={detection_settings_id}, "
+                    f"AnalysisSettings={settings.id})"
+                )
 
             # track positions processed
             positions_processed = []
