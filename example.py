@@ -9,6 +9,7 @@ from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import DetectionSettings
 from cali.sqlmodel._visualize_experiment import (
     print_all_analysis_results,
+    print_experiment_tree_from_engine,
 )
 
 exp = Experiment.create_from_data(
@@ -50,6 +51,11 @@ analysis.run(exp, a_settings1, global_position_indices=[0])
 a_settings2 = AnalysisSettings(threads=2, dff_window=200)
 analysis.run(exp, a_settings2, global_position_indices=[0])
 
+# RUN WITH ANOTHER DETECTION METHOD NO ANALYSIS
+# (Not visible in print_all_analysis_results, visible in experiment tree)
+d_settings_3 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=10)
+detection.run_cellpose(exp, d_settings_3, global_position_indices=[0])
+
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")
 print_all_analysis_results(
@@ -57,4 +63,13 @@ print_all_analysis_results(
     experiment_name=None,
     show_settings=False,
     max_experiment_level="roi",
+)
+
+
+print_experiment_tree_from_engine(
+    "New Experiment",
+    engine,
+    max_level="roi",
+    show_analysis_results=True,
+    show_settings=True,
 )
