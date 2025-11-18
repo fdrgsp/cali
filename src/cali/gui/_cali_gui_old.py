@@ -63,7 +63,7 @@ from ._analysis_gui import (
     TraceExtractionData,
     _AnalysisGUI,
 )
-from ._detection_gui import _DetectionGUI, CellposeSettings, CaimanSettings
+from ._detection_gui import _DetectionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
@@ -297,9 +297,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        data = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        self.initialize_widget_from_directories(data, self._analysis_path)
+        # data = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._analysis_path)
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
@@ -328,11 +328,11 @@ class CaliGui(QMainWindow):
     # PUBLIC METHODS-------------------------------------------------------------------
     def initialize_widget_from_database(self, database_path: str | Path) -> None:
         """Initialize the widget with the given database path."""
-        # SHOW LOADING BAR ------------------------------------------------------------
-        self._init_loading_bar("Initializing cali from database...", False)
-
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
+
+        # SHOW LOADING BAR ------------------------------------------------------------
+        self._init_loading_bar("Initializing cali from database...", False)
 
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
@@ -362,6 +362,7 @@ class CaliGui(QMainWindow):
             return
 
         # DATA-------------------------------------------------------------------------
+
         self._data = load_data(data_path)
         if self._data is None:
             msg = (
@@ -387,7 +388,7 @@ class CaliGui(QMainWindow):
         self._database_path = Path(exp.analysis_path) / exp.database_name
         self._analysis_path = exp.analysis_path
 
-        # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
+        # PASS DATABASE PATH TO GRAPHS WIDGETS -----------------------------------------
         self._update_graph_with_database_path()
 
         # PLATE------------------------------------------------------------------------
@@ -395,12 +396,8 @@ class CaliGui(QMainWindow):
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
 
-        # UPDATE GUI-------------------------------------------------------------------
-        self._analysis_wdg.reset()
-        # TODO:
-        # - reset detection wdg
-        # - read the database settings and update detection and analysis gui accordingly
-        # self._update_gui(plate_plan.plate if plate_plan is not None else None)
+        # UPDATE WIDGETS---------------------------------------------------------------
+        self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()  # Close entire dialog when done
@@ -409,13 +406,15 @@ class CaliGui(QMainWindow):
         self, data_path: str, analysis_path: str
     ) -> None:
         """Initialize the widget with given datastore and analysis path."""
+        # CLEARING---------------------------------------------------------------------
+
+        self._clear_widget_before_initialization()
+
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from directories...", False)
 
-        # CLEARING---------------------------------------------------------------------
-        self._clear_widget_before_initialization()
-
         # DATASTORE--------------------------------------------------------------------
+
         self._data = load_data(data_path)
         if self._data is None:
             msg = (
@@ -458,9 +457,11 @@ class CaliGui(QMainWindow):
         cali_logger.info(f"💾 Creating new database at {self._database_path}")
         save_experiment_to_database(experiment, overwrite=True)
 
-        # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_plate_plan(self._data.sequence.stage_positions)
-        self._analysis_wdg.reset()
+        # UPDATE SEGMENTATION AND ANALYSIS WIDGETS-------------------------------------
+        self._update_plate_in_gui(self._data.sequence.stage_positions)
+        # if plate_plan is not None:
+        #     experiment.plate = useq_plate_plan_to_db(plate_plan, experiment)
+        # self._update_gui(plate_plan.plate if plate_plan is not None else None)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
@@ -474,29 +475,21 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.setValue(value)
         self._analysis_wdg._run_analysis_wdg.reset()
 
-    def detection_settings(self) -> CellposeSettings | CaimanSettings:
-        return self._detection_wdg.value()
-
-    def set_detection_settings(self, value: CellposeSettings | CaimanSettings) -> None:
-        self._detection_wdg.setValue(value)
-        self._detection_wdg._run_detection_wdg.reset()
-
     # RUNNING THE DETECTION------------------------------------------------------------
     def _on_run_detection_clicked(self) -> None: ...
 
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
-        ...
-        # exp = self.experiment()
-        # if exp is None:
-        #     return
+        exp = self.experiment()
+        if exp is None:
+            return
 
-        # # Check for settings consistency before running analysis
-        # if not self._check_analysis_settings_before_run(exp):
-        #     return
+        # Check for settings consistency before running analysis
+        if not self._check_analysis_settings_before_run(exp):
+            return
 
-        # # update the experiment analysis settings
-        # self._update_experiment_analysis_settings()
+        # update the experiment analysis settings
+        self._update_experiment_analysis_settings()
 
     def _check_analysis_settings_before_run(self, experiment: Experiment) -> bool:
         """Check if current GUI settings differ from experiment's analysis settings.
@@ -563,54 +556,54 @@ class CaliGui(QMainWindow):
     #     # Delegate the clearing logic to the analysis runner
     #     self._analysis_runner.clear_analysis_results()
 
-    # def _update_experiment_analysis_settings(self) -> None:
-    #     exp = self.experiment()
-    #     if exp is None or self._data is None:
-    #         return
+    def _update_experiment_analysis_settings(self) -> None:
+        exp = self.experiment()
+        if exp is None or self._data is None:
+            return
 
-    #     # Ensure experiment has an ID (should be set if loaded from DB)
-    #     if exp.id is None:
-    #         cali_logger.warning("Experiment has no ID, cannot update analysis settings")
-    #         return
+        # Ensure experiment has an ID (should be set if loaded from DB)
+        if exp.id is None:
+            cali_logger.warning("Experiment has no ID, cannot update analysis settings")
+            return
 
-    #     # Update or set the experiment's type based on gui state
-    #     exp_type = self._analysis_wdg._experiment_type_wdg.value()
-    #     exp.experiment_type = exp_type.experiment_type or SPONTANEOUS
+        # Update or set the experiment's type based on gui state
+        exp_type = self._analysis_wdg._experiment_type_wdg.value()
+        exp.experiment_type = exp_type.experiment_type or SPONTANEOUS
 
-    #     # Get positions to analyze and new settings from GUI
-    #     pos, new_settings = self._analysis_wdg.to_model_settings(exp.id)
+        # Get positions to analyze and new settings from GUI
+        pos, new_settings = self._analysis_wdg.to_model_settings(exp.id)
 
-    #     # Update positions to analyze based on selected wells in the plate view
-    #     # If no position selected, analyze all positions from the data
-    #     if len(pos) == 0:
-    #         if self._data.sequence is None:
-    #             show_error_dialog(
-    #                 self,
-    #                 "No MDASequence found in the datastore! Cannot determine "
-    #                 "positions to analyze.",
-    #             )
-    #             return
-    #         pos = list(range(len(self._data.sequence.stage_positions)))
-    #     exp.positions_analyzed = pos
+        # Update positions to analyze based on selected wells in the plate view
+        # If no position selected, analyze all positions from the data
+        if len(pos) == 0:
+            if self._data.sequence is None:
+                show_error_dialog(
+                    self,
+                    "No MDASequence found in the datastore! Cannot determine "
+                    "positions to analyze.",
+                )
+                return
+            pos = list(range(len(self._data.sequence.stage_positions)))
+        exp.positions_analyzed = pos
 
-    #     # Update existing settings or create new one
-    #     if exp.analysis_settings is not None:
-    #         exp.analysis_settings.sqlmodel_update(
-    #             new_settings.model_dump(exclude={"id"})
-    #         )
-    #     else:
-    #         # Create new settings
-    #         exp.analysis_settings = new_settings
+        # Update existing settings or create new one
+        if exp.analysis_settings is not None:
+            exp.analysis_settings.sqlmodel_update(
+                new_settings.model_dump(exclude={"id"})
+            )
+        else:
+            # Create new settings
+            exp.analysis_settings = new_settings
 
-    #     # Update the analysis runner with the current data, experiment and settings
-    #     # This will also save the experiment to the database before running analysis
-    #     self._analysis_runner.set_experiment(exp)
+        # Update the analysis runner with the current data, experiment and settings
+        # This will also save the experiment to the database before running analysis
+        self._analysis_runner.set_experiment(exp)
 
-    #     create_worker(
-    #         self._analysis_runner.run,
-    #         _start_thread=True,
-    #         _connect={"errored": self._on_worker_errored},
-    #     )
+        create_worker(
+            self._analysis_runner.run,
+            _start_thread=True,
+            _connect={"errored": self._on_worker_errored},
+        )
 
     def _on_worker_errored(self) -> None:
         cali_logger.error("Analysis runner encountered an error during execution.")
@@ -680,7 +673,7 @@ class CaliGui(QMainWindow):
         for mw_graph in self.MW_GRAPHS:
             mw_graph.database_path = self._database_path
 
-    def _update_gui_plate_plan(
+    def _update_plate_in_gui(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
     ) -> None:
         """Update the gui based on the specified plate plan."""

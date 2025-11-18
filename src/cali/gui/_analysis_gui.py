@@ -56,7 +56,6 @@ from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     _BrowseWidget,
     _ChoosePositionsWidget,
-    _ElapsedTimer,
     create_divider_line,
     parse_lineedit_text,
 )
@@ -1476,7 +1475,6 @@ class _AnalysisGUI(QWidget):
         exp_type_data = settings.experiment_type_data
 
         settings = AnalysisSettings(
-            experiment_id=experiment_id,
             created_at=datetime.now(),
             threads=self._run_analysis_wdg._threads.value(),
             neuropil_inner_radius=(

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Callable, cast
 import numpy as np
 from oasis.functions import deconvolve
 from scipy.signal import find_peaks
+from sqlalchemy import desc
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
@@ -110,10 +111,36 @@ class AnalysisRunner:
         experiment: Experiment,
         settings: AnalysisSettings,
         global_position_indices: Sequence[int],
+        detection_settings_id: int | None = None,
         overwrite: bool = False,
         echo: bool = False,
     ) -> None:
-        """Run analysis on the given experiment with specified settings."""
+        """Run analysis on the given experiment with specified settings.
+
+        This analysis extracts calcium imaging traces from ROIs that were previously
+        detected via the detection step. ROI masks must exist in the database for
+        the specified experiment before running analysis.
+
+        If no ROI masks are found, the analysis will fail with an error message
+        indicating that detection should be run first using DetectionRunner on
+        the same experiment.
+
+        Parameters
+        ----------
+        experiment : Experiment
+            Experiment to analyze (must have ROI masks from prior detection)
+        settings : AnalysisSettings
+            Analysis parameters
+        global_position_indices : Sequence[int]
+            Position indices to analyze
+        detection_settings_id: int | None
+            The detection settings id to associate with the analysis. If None,
+            the ID from the most recent DetectionSettings in the database will be used.
+        overwrite : bool
+            Whether to overwrite existing database
+        echo : bool
+            Enable SQLAlchemy echo for database operations
+        """
         # TODO: ask claude to refactor
 
         # DATABASE DO NOT EXISTS
@@ -144,6 +171,23 @@ class AnalysisRunner:
 
             # load data
             self._data = load_data(experiment.data_path)
+
+            # Auto-detect the most recent DetectionSettings from database
+            # (Analysis requires ROI masks which come from detection)
+            if detection_settings_id is None:
+                from cali.sqlmodel._model import DetectionSettings
+
+                detection_settings = session.exec(
+                    select(DetectionSettings).order_by(
+                        desc(DetectionSettings.created_at)  # type: ignore
+                    )
+                ).first()
+                if detection_settings:
+                    detection_settings_id = detection_settings.id
+                    cali_logger.info(
+                        f"🔍 Using DetectionSettings ID {detection_settings_id} "
+                        f"(method: {detection_settings.method})"
+                    )
 
             # check if settings already exist BEFORE merging
             if settings.id is None:
@@ -233,6 +277,7 @@ class AnalysisRunner:
                         # different positions - this is a new analysis run
                         new_result = AnalysisResult(
                             experiment=experiment.id,
+                            detection_settings=detection_settings_id,
                             analysis_settings=settings.id,
                             positions_analyzed=positions_processed,
                         )
@@ -243,6 +288,7 @@ class AnalysisRunner:
                     # no existing result - create new
                     new_result = AnalysisResult(
                         experiment=experiment.id,
+                        detection_settings=detection_settings_id,
                         analysis_settings=settings.id,
                         positions_analyzed=positions_processed,
                     )
@@ -694,7 +740,7 @@ class AnalysisRunner:
 
 def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:
     """Retrieve the fov name from metadata.
-    
+
     Should match the naming used in DetectionRunner to ensure
     analysis can find the FOV created during detection.
     """
@@ -715,7 +761,6 @@ def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:
 
     # Final fallback
     return f"pos_{p}"
-
 
 
 def _get_elapsed_time_list(meta: list[dict]) -> list[float]:

@@ -431,6 +431,8 @@ def load_analysis_from_json(
                     if analysis_settings:
                         analysis_result = AnalysisResult(
                             experiment=saved_exp.id,
+                            # Legacy JSON imports don't have detection settings
+                            detection_settings=None,
                             analysis_settings=analysis_settings.id,
                             positions_analyzed=sorted(positions_analyzed),
                         )
