@@ -119,7 +119,6 @@ class DetectionRunner:
             Enable SQLAlchemy echo for database operations
         """
         from cellpose import core
-        from sqlmodel import Session
 
         if cellpose_debug:
             io.logger_setup()
@@ -235,7 +234,7 @@ class DetectionRunner:
         list[FOV]
             List of FOV objects with ROIs and Masks, ready to be committed
         """
-        from sqlmodel import Session, select
+        from sqlmodel import select
 
         # DATABASE DO NOT EXISTS
         if not Path(experiment.db_path).exists():
