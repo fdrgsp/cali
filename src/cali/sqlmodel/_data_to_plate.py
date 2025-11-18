@@ -7,7 +7,6 @@ import useq
 
 from cali.logger import cali_logger
 from cali.sqlmodel._useq_plate_to_db import useq_plate_plan_to_db
-from cali.util import load_data
 
 if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
@@ -20,6 +19,8 @@ def data_to_plate(
     plate_maps: dict[str, dict[str, str]] | None = None,
 ) -> Plate | None:
     if isinstance(data, (str, Path)):
+        from cali.util import load_data
+
         dataset = load_data(data)
         if dataset is None:
             cali_logger.error(f"Could not load data from path: {data}")

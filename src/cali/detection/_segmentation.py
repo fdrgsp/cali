@@ -60,7 +60,7 @@ FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 CUSTOM_MODEL_PATH = (
     Path(__file__).parent.parent
-    / "_batch_cellpose"
+    / "detection"
     / "cellpose_models"
     / "cp3_img8_epoch7000_py"
 )

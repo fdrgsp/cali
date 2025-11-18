@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from fonticon_mdi6 import MDI6
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -30,23 +30,15 @@ from cali._constants import GREEN, RED
 from cali.gui._util import (
     _BrowseWidget,
     _ChoosePositionsWidget,
-    _ElapsedTimer,
     create_divider_line,
+    parse_lineedit_text,
 )
-
-try:
-    from cellpose import core
-    from cellpose.models import CellposeModel
-    from cellpose.utils import fill_holes_and_remove_small_masks
-except ImportError:
-    pass
-
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 CUSTOM_MODEL_PATH = (
     Path(__file__).parent.parent
-    / "_batch_cellpose"
+    / "detection"
     / "cellpose_models"
     / "cp3_img8_epoch7000_py"
 )
@@ -529,3 +521,55 @@ class _DetectionGUI(QWidget):
     def update_progress_label(self, elapsed_time: str) -> None:
         """Update the progress label with elapsed time."""
         self._run_detection_wdg.set_time_label(elapsed_time)
+
+    def to_model_settings(
+        self, experiment_id: int
+    ) -> tuple[list[int], AnalysisSettings]:
+        """Convert current GUI settings to AnalysisSettings model.
+
+        Parameters
+        ----------
+        experiment_id : int
+            The experiment ID to associate with these settings
+
+        Returns
+        -------
+        tuple[list[int], AnalysisSettings]
+            A tuple containing the list of positions to analyze and the
+            AnalysisSettings model instance.
+        """
+        from datetime import datetime
+
+        from cali.sqlmodel import DetectionSettings
+
+        settings = self.value()
+
+        if isinstance(settings, CellposeSettings):
+            model_type = (
+                settings.model_type
+                if settings.model_type != "custom"
+                else settings.model_path
+            )
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="cellpose",
+                model_type=model_type,
+                diameter=None if settings.diameter == 0 else settings.diameter,
+                cellprob_threshold=settings.cellprob_threshold,
+                flow_threshold=settings.flow_threshold,
+                min_size=settings.min_size,
+                normalize=settings.normalize,
+                batch_size=settings.batch_size,
+                # + caiman defaults
+            )
+        else:  #  caiman
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="caiman",
+                # + cellpose defaults
+            )
+
+        # Parse positions
+        positions = parse_lineedit_text(self._positions_wdg.value())
+
+        return positions, settings

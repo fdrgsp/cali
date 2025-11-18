@@ -7,6 +7,7 @@ from cali.sqlmodel._model import (
     AnalysisSettings,
     Condition,
     DataAnalysis,
+    DetectionSettings,
     Experiment,
     Mask,
     Plate,
@@ -18,6 +19,7 @@ from cali.sqlmodel._model import (
 models = [
     AnalysisResult,
     Experiment,
+    DetectionSettings,
     AnalysisSettings,
     Plate,
     Condition,

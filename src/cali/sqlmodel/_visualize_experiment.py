@@ -11,12 +11,54 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 from typing_extensions import Literal
 
-from ._model import FOV, ROI, AnalysisResult, AnalysisSettings, Experiment, Plate, Well
+from ._model import (
+    FOV,
+    ROI,
+    AnalysisResult,
+    AnalysisSettings,
+    DetectionSettings,
+    Experiment,
+    Plate,
+    Well,
+)
 
 MaxTreeLevel = Literal["experiment", "plate", "well", "fov", "roi"]
 
 
-def add_settings_to_tree(
+def add_detection_settings_to_tree(
+    parent_node: Tree, settings: DetectionSettings, show_details: bool = True
+) -> None:
+    """Add detection settings information to a tree node.
+
+    Parameters
+    ----------
+    parent_node : Tree
+        Parent node to add settings information to
+    settings : DetectionSettings
+        Settings object to display
+    show_details : bool
+        Whether to show detailed parameter values (default: True)
+    """
+    settings_node = parent_node.add(
+        f"⚙️ [bold green]Detection Settings (ID: {settings.id})[/bold green]"
+    )
+    settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
+    settings_node.add(f"🔬 Method: [cyan]{settings.method}[/cyan]")
+
+    if show_details and settings.method == "cellpose":
+        # Cellpose-specific settings
+        cellpose_node = settings_node.add("🟡 [green]Cellpose Parameters[/green]")
+        cellpose_node.add(f"Model: {settings.model_type}")
+        diameter_str = f"{settings.diameter} px" if settings.diameter else "auto-detect"
+        cellpose_node.add(f"Diameter: {diameter_str}")
+        cellpose_node.add(f"Cell prob threshold: {settings.cellprob_threshold}")
+        cellpose_node.add(f"Flow threshold: {settings.flow_threshold}")
+        cellpose_node.add(f"Min size: {settings.min_size} px")
+        cellpose_node.add(f"Normalize: {settings.normalize}")
+        cellpose_node.add(f"Batch size: {settings.batch_size}")
+
+
+def add_analysis_settings_to_tree(
     parent_node: Tree, settings: AnalysisSettings, show_details: bool = True
 ) -> None:
     """Add analysis settings information to a tree node.
@@ -113,7 +155,7 @@ def add_experiment_tree_to_node(
     max_level : MaxTreeLevel
         Maximum depth level to display
     """
-    exp_node = parent_node.add("🧪 [bold]Experiment[/bold]")
+    exp_node = parent_node.add(f"🧪 [bold]Experiment (ID: {experiment.id})[/bold]")
     exp_node.add(f"Name: {experiment.name}")
     exp_node.add(f"Type: [magenta]{experiment.experiment_type}[/magenta]")
     if experiment.description:
@@ -240,6 +282,18 @@ def print_analysis_result(
             else:
                 positions_node.add(f"Positions {start}-{end}")
 
+    # Detection settings (if available)
+    if analysis_result.detection_settings:
+        detection_settings = session.exec(
+            select(DetectionSettings).where(
+                DetectionSettings.id == analysis_result.detection_settings
+            )
+        ).first()
+        if detection_settings:
+            add_detection_settings_to_tree(
+                tree, detection_settings, show_details=show_settings
+            )
+
     # Analysis settings
     settings = session.exec(
         select(AnalysisSettings).where(
@@ -248,7 +302,7 @@ def print_analysis_result(
     ).first()
 
     if settings:
-        add_settings_to_tree(tree, settings, show_details=show_settings)
+        add_analysis_settings_to_tree(tree, settings, show_details=show_settings)
 
     # Experiment info with full tree
     experiment = session.exec(
@@ -378,6 +432,18 @@ def print_all_analysis_results(
                 else:
                     positions_node.add(f"Positions {start}-{end}")
 
+        # Detection settings (if available)
+        if result.detection_settings:
+            detection_settings = session.exec(
+                select(DetectionSettings).where(
+                    DetectionSettings.id == result.detection_settings
+                )
+            ).first()
+            if detection_settings:
+                add_detection_settings_to_tree(
+                    result_tree, detection_settings, show_details=show_settings
+                )
+
         # Analysis settings
         settings = session.exec(
             select(AnalysisSettings).where(
@@ -386,7 +452,9 @@ def print_all_analysis_results(
         ).first()
 
         if settings:
-            add_settings_to_tree(result_tree, settings, show_details=show_settings)
+            add_analysis_settings_to_tree(
+                result_tree, settings, show_details=show_settings
+            )
 
         # Experiment info with full tree
         if result_experiment:
@@ -448,7 +516,7 @@ def print_experiment_tree(
     max_experiment_level: MaxTreeLevel = "roi",
     session: Session | None = None,
     show_analysis_results: bool = True,
-    show_settings: bool = False,
+    show_settings: bool = True,
 ) -> None:
     """Print the full hierarchical model tree for an experiment.
 
@@ -471,7 +539,10 @@ def print_experiment_tree(
         Whether to show detailed analysis settings for each result (default: False)
     """
     console = Console()
-    tree = Tree(f"🧪 [bold cyan]{experiment.name}[/bold cyan]", guide_style="cyan")
+    tree = Tree(
+        f"🧪 [bold cyan]{experiment.name} (ID: {experiment.id})[/bold cyan]",
+        guide_style="cyan",
+    )
 
     tree.add(
         f"Experiment Type: [bold magenta]{experiment.experiment_type}[/bold magenta]"
@@ -774,7 +845,7 @@ def print_database_tree(
 
     # Add each experiment
     for exp in experiments:
-        exp_tree = main_tree.add(f"🧪 [bold cyan]{exp.name}[/bold cyan]")
+        exp_tree = main_tree.add(f"🧪 [bold cyan]{exp.name} (ID: {exp.id})[/bold cyan]")
         exp_tree.add(f"Type: [magenta]{exp.experiment_type}[/magenta]")
         if exp.description:
             exp_tree.add(f"Description: [dim]{exp.description}[/dim]")
@@ -878,13 +949,26 @@ def print_database_tree(
 
                     # Show settings if requested
                     if show_settings:
+                        # Detection settings
+                        if result.detection_settings:
+                            detection_settings = session.exec(
+                                select(DetectionSettings).where(
+                                    DetectionSettings.id == result.detection_settings
+                                )
+                            ).first()
+                            if detection_settings:
+                                add_detection_settings_to_tree(
+                                    result_node, detection_settings, show_details=True
+                                )
+
+                        # Analysis settings
                         settings = session.exec(
                             select(AnalysisSettings).where(
                                 AnalysisSettings.id == result.analysis_settings
                             )
                         ).first()
                         if settings:
-                            add_settings_to_tree(
+                            add_analysis_settings_to_tree(
                                 result_node, settings, show_details=True
                             )
 

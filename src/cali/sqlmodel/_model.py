@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Optional, Self
 
 import numpy as np
+import useq
 from sqlalchemy.orm import selectinload
 from sqlmodel import (
     JSON,
@@ -58,6 +59,9 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     id: int | None = Field(default=None, primary_key=True)
 
     experiment: int = Field(foreign_key="experiment.id")
+    detection_settings: int | None = Field(
+        default=None, foreign_key="detection_settings.id"
+    )
     analysis_settings: int = Field(foreign_key="analysis_settings.id")
     positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
@@ -163,6 +167,275 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             if our_session is not None:
                 our_session.close()
 
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        data_path: str,
+        analysis_path: str,
+        plate_type: str = "96-well",
+        well_names: list[str] | None = None,
+        fovs_per_well: int = 1,
+        plate_maps: dict[str, dict[str, str]] | None = None,
+        experiment_type: str = SPONTANEOUS,
+        database_name: str | None = None,
+        description: str | None = None,
+    ) -> Self:
+        """Create a new experiment with plate structure ready for analysis.
+
+        This is a convenience method that creates an Experiment with an associated
+        Plate and Wells structure, making it easy to set up a new experiment database.
+
+        Parameters
+        ----------
+        name : str
+            Experiment name (must be unique)
+        data_path : str
+            Path to the raw imaging data (zarr/tensorstore)
+        analysis_path : str
+            Path to analysis output directory
+        plate_type : str, optional
+            Plate format from useq-schema options (e.g., "96-well", "384-well",
+            "24-well", "6-well", "coverslip-18mm-square"), by default "96-well"
+        well_names : list[str] | None, optional
+            List of well names to create (e.g., ["A1", "A2", "B5"]). If None,
+            creates all wells in the plate format, by default None
+        fovs_per_well : int, optional
+            Number of FOV (Field of View) positions per well, by default 1
+        plate_maps : dict[str, dict[str, str]] | None, optional
+            Plate map configuration mapping well positions to conditions.
+            Format: {"genotype": {"A1": "WT", "A2": "KO"},
+                     "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
+        experiment_type : str, optional
+            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
+            by default SPONTANEOUS
+        database_name : str | None, optional
+            Name of the database file. If None, uses "{name}.db", by default None
+        description : str | None, optional
+            Optional experiment description, by default None
+
+        Returns
+        -------
+        Self
+            Experiment instance with plate and wells ready for detection/analysis
+
+        Example
+        -------
+        >>> from cali.sqlmodel import Experiment
+        >>> from cali._constants import EVOKED
+        >>>
+        >>> # Create experiment with specific wells
+        >>> exp = Experiment.create_with_plate(
+        ...     name="My Experiment",
+        ...     data_path="path/to/data.zarr",
+        ...     analysis_path="path/to/analysis",
+        ...     plate_type="96-well",
+        ...     well_names=["B5", "B6", "C5"],
+        ...     fovs_per_well=2,
+        ...     plate_maps={
+        ...         "genotype": {"B5": "WT", "B6": "KO", "C5": "WT"},
+        ...         "treatment": {"B5": "Vehicle", "B6": "Vehicle", "C5": "Drug"},
+        ...     },
+        ...     experiment_type=EVOKED,
+        ... )
+        >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
+        """
+        from ._json_to_db import parse_well_name
+        from ._useq_plate_to_db import _row_index_to_label, useq_plate_plan_to_db
+
+        # Create experiment
+        db_name = database_name if database_name is not None else f"{name}.db"
+        experiment = cls(
+            id=0,  # Placeholder, will be set when saved
+            name=name,
+            description=description,
+            data_path=data_path,
+            analysis_path=analysis_path,
+            database_name=db_name,
+            experiment_type=experiment_type,
+        )
+
+        # Create useq WellPlate and WellPlatePlan
+        useq_plate = useq.WellPlate.from_str(plate_type)
+
+        # If no well names specified, use all wells in plate
+        if well_names is None:
+            # Create all possible wells for this plate type
+            well_names = [
+                f"{_row_index_to_label(row)}{col + 1}"
+                for row in range(useq_plate.rows)
+                for col in range(useq_plate.columns)
+            ]
+
+        # Convert well names to row,col tuples for WellPlatePlan
+        selected_wells_list = [parse_well_name(well_name) for well_name in well_names]
+
+        # Convert to tuple of tuples format: ((rows...), (cols...))
+        rows_tuple = tuple(well[0] for well in selected_wells_list)
+        cols_tuple = tuple(well[1] for well in selected_wells_list)
+
+        # Create WellPlatePlan with selected wells
+        plate_plan = useq.WellPlatePlan(
+            plate=useq_plate,
+            a1_center_xy=(0, 0),  # Placeholder, not used for structure
+            selected_wells=(rows_tuple, cols_tuple),
+        )
+
+        # Create plate with wells and conditions
+        plate = useq_plate_plan_to_db(
+            plate_plan,
+            experiment,
+            plate_maps=plate_maps,
+        )
+
+        # Create FOVs for each well
+        position_index = 0
+        for well in plate.wells:
+            for fov_num in range(fovs_per_well):
+                FOV(
+                    well=well,
+                    name=f"{well.name}_{fov_num:04d}",
+                    position_index=position_index,
+                    fov_number=fov_num,
+                )
+                position_index += 1
+
+        return experiment
+
+    @classmethod
+    def create_from_data(
+        cls,
+        name: str,
+        data_path: str,
+        analysis_path: str,
+        plate_maps: dict[str, dict[str, str]] | None = None,
+        experiment_type: str = SPONTANEOUS,
+        database_name: str | None = None,
+        description: str | None = None,
+    ) -> Self:
+        """Create a new experiment by loading plate structure from data's useq metadata.
+
+        This method automatically extracts the plate configuration (wells, FOVs)
+        from the imaging data's useq metadata, making it ideal for datasets that
+        already contain plate information.
+
+        Parameters
+        ----------
+        name : str
+            Experiment name (must be unique)
+        data_path : str
+            Path to the raw imaging data (zarr/tensorstore) containing useq metadata
+        analysis_path : str
+            Path to analysis output directory
+        plate_maps : dict[str, dict[str, str]] | None, optional
+            Plate map configuration mapping well positions to conditions.
+            Format: {"genotype": {"A1": "WT", "A2": "KO"},
+                     "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
+        experiment_type : str, optional
+            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
+            by default SPONTANEOUS
+        database_name : str | None, optional
+            Name of the database file. If None, uses "{name}.db", by default None
+        description : str | None, optional
+            Optional experiment description, by default None
+
+        Returns
+        -------
+        Self
+            Experiment instance with plate, wells, and FOVs loaded from data metadata
+
+        Example
+        -------
+        >>> from cali.sqlmodel import Experiment
+        >>> from cali._constants import EVOKED
+        >>>
+        >>> # Create experiment from data with useq metadata
+        >>> exp = Experiment.create_from_data(
+        ...     name="My Experiment",
+        ...     data_path="path/to/data.zarr",
+        ...     analysis_path="path/to/analysis",
+        ...     plate_maps={
+        ...         "genotype": {"B5": "WT"},
+        ...         "treatment": {"B5": "Vehicle"},
+        ...     },
+        ...     experiment_type=EVOKED,
+        ... )
+        >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
+        """
+        from ._data_to_plate import data_to_plate
+
+        # Create experiment
+        db_name = database_name if database_name is not None else f"{name}.db"
+        experiment = cls(
+            id=0,  # Placeholder, will be set when saved
+            name=name,
+            description=description,
+            data_path=data_path,
+            analysis_path=analysis_path,
+            database_name=db_name,
+            experiment_type=experiment_type,
+        )
+
+        # Load plate structure from data
+        plate = data_to_plate(data_path, experiment, plate_maps=plate_maps)
+        if plate is None:
+            raise ValueError(
+                f"Failed to load plate structure from data at {data_path}. "
+                "Ensure the data contains valid useq metadata with WellPlatePlan."
+            )
+
+        return experiment
+
+
+class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
+    """Detection/segmentation parameter settings.
+
+    Stores the detection parameters used for cell segmentation.
+    Currently supports Cellpose parameters. CaImAn support coming soon.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        When these settings were created
+    method : str
+        Detection method ("cellpose" or "caiman")
+    model_type : str
+        Cellpose model type ("cpsam", "cyto3", etc.) or path to custom model
+    diameter : float | None
+        Expected cell diameter in pixels (None for auto-detection)
+    cellprob_threshold : float
+        Cell probability threshold (0-1)
+    flow_threshold : float
+        Flow error threshold for quality control
+    min_size : int
+        Minimum cell size in pixels
+    normalize : bool
+        Whether to normalize images before detection
+    batch_size : int
+        Number of images to process per batch
+    """
+
+    __tablename__ = "detection_settings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Detection method
+    method: str = Field(default="cellpose", index=True)  # "cellpose" or "caiman"
+
+    # Cellpose settings
+    model_type: str = "cpsam"
+    diameter: float | None = None
+    cellprob_threshold: float = 0.0
+    flow_threshold: float = 0.4
+    min_size: int = 10
+    normalize: bool = True
+    batch_size: int = 8
+
+    # TODO: add CaImAn settings
+
 
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
@@ -229,8 +502,6 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to stimulation mask data
     stimulation_mask : Mask | None
         Stimulation mask data (spatial pattern of stimulation)
-    experiment : Experiment
-        Parent experiment
     """
 
     __tablename__ = "analysis_settings"

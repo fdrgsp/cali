@@ -20,8 +20,8 @@ from cali.util import commit_fov_result, load_data, mask_to_coordinates
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from cali.gui._detection_gui import CaimanSettings, CellposeSettings
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
+    from cali.sqlmodel import DetectionSettings
 
 
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
@@ -68,7 +68,7 @@ class DetectionRunner:
     def run_caiman(
         self,
         experiment: Experiment,
-        caiman_settings: CaimanSettings,
+        detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         overwrite: bool = False,
         echo: bool = False,
@@ -79,10 +79,10 @@ class DetectionRunner:
         ----------
         experiment : Experiment
             Experiment to add detection results to
+        detection_settings : DetectionSettings
+            Detection parameters (method should be "caiman")
         global_position_indices : Sequence[int]
             Position indices to process
-        caiman_settings : CaimanSettings
-            CaImAn parameters
         overwrite : bool
             Whether to overwrite existing database
         echo : bool
@@ -95,8 +95,7 @@ class DetectionRunner:
     def run_cellpose(
         self,
         experiment: Experiment,
-        model_name: str,
-        cellpose_settings: CellposeSettings,
+        detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         overwrite: bool = False,
         cellpose_debug: bool = False,
@@ -108,10 +107,8 @@ class DetectionRunner:
         ----------
         experiment : Experiment
             Experiment to add detection results to
-        model_name : str
-            Name of Cellpose model ("cpsam", "cyto3") or path to custom model
-        cellpose_settings : CellposeSettings
-            Cellpose parameters
+        detection_settings : DetectionSettings
+            Detection parameters (method should be "cellpose")
         global_position_indices : Sequence[int]
             Position indices to process
         overwrite : bool
@@ -130,20 +127,22 @@ class DetectionRunner:
         use_gpu = core.use_gpu()
         cali_logger.info(f"Use GPU: {use_gpu}")
 
-        cali_logger.info(f"Loading model from `{model_name}`.")
-        model = CellposeModel(pretrained_model=str(model_name), gpu=use_gpu)
+        cali_logger.info(f"Loading model from `{detection_settings.model_type}`.")
+        model = CellposeModel(
+            pretrained_model=str(detection_settings.model_type), gpu=use_gpu
+        )
 
         # Run detection and get FOV results
         fov_results = self._run_cellpose_detection(
             experiment=experiment,
             global_position_indices=global_position_indices,
             model=model,
-            diameter=cellpose_settings.diameter,
-            cellprob_threshold=cellpose_settings.cellprob_threshold,
-            flow_threshold=cellpose_settings.flow_threshold,
-            batch_size=cellpose_settings.batch_size,
-            min_size=cellpose_settings.min_size,
-            normalize=cellpose_settings.normalize,
+            diameter=detection_settings.diameter,
+            cellprob_threshold=detection_settings.cellprob_threshold,
+            flow_threshold=detection_settings.flow_threshold,
+            batch_size=detection_settings.batch_size,
+            min_size=detection_settings.min_size,
+            normalize=detection_settings.normalize,
             overwrite=overwrite,
         )
 
@@ -152,9 +151,17 @@ class DetectionRunner:
             cali_logger.info("Committing detection results to database...")
             engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
             with Session(engine) as session:
+                # Save detection settings to database
+                session.add(detection_settings)
+                session.commit()
+                session.refresh(detection_settings)
+                cali_logger.info(
+                    f"⚙️ Created new DetectionSettings ID {detection_settings.id}"
+                )
+
+                # Save FOV results
                 for fov_result in tqdm(fov_results, desc="Saving to database"):
                     commit_fov_result(session, experiment, fov_result)
-            cali_logger.info("✅ Detection completed successfully")
 
     def _run_cellpose_detection(
         self,
@@ -270,9 +277,7 @@ class DetectionRunner:
                     cali_logger.info("Detection cancelled during FOV creation")
                     return fov_results
 
-                fov_result = self._create_fov_with_rois(
-                    experiment, pos_idx, meta, masks_2d
-                )
+                fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
 
                 if fov_result:
                     fov_results.append(fov_result)
@@ -333,7 +338,6 @@ class DetectionRunner:
 
     def _create_fov_with_rois(
         self,
-        experiment: Experiment,
         global_pos_idx: int,
         meta: list[dict],
         masks_2d: np.ndarray,
@@ -407,6 +411,4 @@ class DetectionRunner:
             )
 
             fov.rois.append(roi)
-
-        cali_logger.info(f"Created {len(fov.rois)} ROIs for {fov_name}")
         return fov
