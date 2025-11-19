@@ -454,7 +454,7 @@ def load_analysis_from_json(
                         str(db_path), id=saved_exp_id, session=session
                     )
         finally:
-            engine.dispose()
+            engine.dispose(close=True)
 
     return experiment
 

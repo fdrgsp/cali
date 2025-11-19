@@ -112,7 +112,7 @@ def save_experiment_to_database(
         )
     finally:
         # Dispose engine to release database connections (Windows compatibility)
-        engine.dispose()
+        engine.dispose(close=True)
 
 
 def load_experiment_from_database(
@@ -198,7 +198,7 @@ def load_experiment_from_database(
         return experiment  # type: ignore
     finally:
         # Dispose engine to release database connections (Windows compatibility)
-        engine.dispose()
+        engine.dispose(close=True)
 
 
 def _force_load_experiment_relationships(experiment: Experiment) -> None:
