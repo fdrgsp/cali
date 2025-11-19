@@ -5,8 +5,7 @@ when you have multiple analysis runs with different settings.
 """
 
 from sqlmodel import Session, select
-
-from src.cali.sqlmodel._model import AnalysisResult, DataAnalysis, ROI, Traces
+from src.cali.sqlmodel._model import ROI, AnalysisResult, DataAnalysis, Traces
 
 # ============================================================================
 # Query Pattern 1: Get results for a specific AnalysisResult
@@ -391,9 +390,7 @@ def get_roi_by_label_and_fov(
     ...     print(f"Found ROI {roi.id} with label {roi.label_value}")
     """
     query = (
-        select(ROI)
-        .where(ROI.fov_id == fov_id)
-        .where(ROI.label_value == label_value)
+        select(ROI).where(ROI.fov_id == fov_id).where(ROI.label_value == label_value)
     )
 
     if detection_settings_id is not None:
@@ -436,19 +433,14 @@ def compare_roi_across_analyses(
     -------
     >>> # Compare how ROI label #5 was analyzed across 3 different analysis runs
     >>> results = compare_roi_across_analyses(
-    ...     session,
-    ...     fov_id=1,
-    ...     label_value=5,
-    ...     analysis_result_ids=[1, 2, 3]
+    ...     session, fov_id=1, label_value=5, analysis_result_ids=[1, 2, 3]
     ... )
     >>> for ar_id, (trace, analysis) in results.items():
     ...     if analysis:
     ...         print(f"Analysis {ar_id}: {analysis.dec_dff_frequency} Hz")
     """
     # First, find the ROI with this label
-    roi = get_roi_by_label_and_fov(
-        session, fov_id, label_value, detection_settings_id
-    )
+    roi = get_roi_by_label_and_fov(session, fov_id, label_value, detection_settings_id)
 
     if roi is None or roi.id is None:
         return {}
