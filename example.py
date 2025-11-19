@@ -5,7 +5,7 @@ from sqlmodel import create_engine
 from cali._constants import EVOKED
 from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
-from cali.sqlmodel import AnalysisSettings, Experiment
+from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
 from cali.sqlmodel._visualize_experiment import (
     print_all_analysis_results,
     print_experiment_tree_from_engine,
@@ -14,7 +14,7 @@ from cali.sqlmodel._visualize_experiment import (
 exp = Experiment.create_from_data(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    analysis_path="tests/test_data/evoked/database/",
     database_name="evk.tensorstore.zarr.db",
     plate_maps={
         "genotype": {"B5": "WT"},
@@ -30,30 +30,30 @@ if Path(exp.db_path).exists():
 # DETECTION and ANALYSIS RUNS
 detection = DetectionRunner()
 analysis = AnalysisRunner()
-# d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-# detection.run_cellpose(exp, d_settings, global_position_indices=[0])
+d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+detection.run_cellpose(exp, d_settings, global_position_indices=[0])
 a_settings = AnalysisSettings(threads=4, dff_window=100)
 analysis.run(exp, a_settings, global_position_indices=[0])
 
-# # RUN DIFFERENT DETECTION + ANALYSIS
-# d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
-# detection.run_cellpose(exp, d_settings_1, global_position_indices=[0])
-# a_settings1 = AnalysisSettings(threads=4, dff_window=150)
-# analysis.run(exp, a_settings1, global_position_indices=[0])
+# RUN DIFFERENT DETECTION + ANALYSIS
+d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
+detection.run_cellpose(exp, d_settings_1, global_position_indices=[0])
+a_settings1 = AnalysisSettings(threads=4, dff_window=150)
+analysis.run(exp, a_settings1, global_position_indices=[0])
 
-# # RERUN TO MAKE SURE IS OVERWRITING PROPERLY
-# d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
-# detection.run_cellpose(exp, d_settings_2, global_position_indices=[0])
-# analysis.run(exp, a_settings1, global_position_indices=[0])
+# RERUN TO MAKE SURE IS OVERWRITING PROPERLY
+d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
+detection.run_cellpose(exp, d_settings_2, global_position_indices=[0])
+analysis.run(exp, a_settings1, global_position_indices=[0])
 
-# # RUN WITH DIFFERENT ANALYSIS SETTINGS
-# a_settings2 = AnalysisSettings(threads=2, dff_window=200)
-# analysis.run(exp, a_settings2, global_position_indices=[0])
+# RUN WITH DIFFERENT ANALYSIS SETTINGS
+a_settings2 = AnalysisSettings(threads=2, dff_window=200)
+analysis.run(exp, a_settings2, global_position_indices=[0])
 
-# # RUN WITH ANOTHER DETECTION METHOD NO ANALYSIS
-# # (Not visible in print_all_analysis_results, visible in experiment tree)
-# d_settings_3 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=10)
-# detection.run_cellpose(exp, d_settings_3, global_position_indices=[0])
+# RUN WITH ANOTHER DETECTION METHOD NO ANALYSIS
+# (Not visible in print_all_analysis_results, visible in experiment tree)
+d_settings_3 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=10)
+detection.run_cellpose(exp, d_settings_3, global_position_indices=[0])
 
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")

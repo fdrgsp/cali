@@ -19,6 +19,7 @@ See test_results.py for examples using the higher-level classmethods.
 
 from __future__ import annotations
 
+import gc
 import json
 import tempfile
 from pathlib import Path
@@ -868,6 +869,307 @@ def test_full_workflow(tmp_path: Path) -> None:
     finally:
         # Cleanup - dispose engine (Python 3.13 compatibility)
         engine.dispose(close=True)
+
+
+def test_data_to_plate_error_cases(tmp_path: Path) -> None:
+    """Test data_to_plate error handling."""
+    from cali.sqlmodel._data_to_plate import data_to_plate
+
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path=str(tmp_path),
+        database_name="test.db",
+    )
+
+    # Save to get ID
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+    engine = create_engine(f"sqlite:///{db_path}")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+    # Test with invalid path - load_data raises ValueError
+    with pytest.raises(ValueError, match="Unsupported data format"):
+        data_to_plate("/nonexistent/path", exp)
+
+    engine.dispose(close=True)
+    gc.collect()
+    db_path.unlink(missing_ok=True)
+
+
+def test_db_to_useq_plate_error_cases(temp_db: TempDB) -> None:
+    """Test db_to_useq_plate error handling."""
+    from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
+
+    engine, _ = temp_db
+
+    # Experiment with no plate
+    exp = Experiment(
+        name="no_plate",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Test experiment_to_useq_plate with no plate - this should raise AttributeError
+        # because experiment.plate is None
+        with pytest.raises(AttributeError):
+            experiment_to_useq_plate(exp)
+
+
+def test_useq_plate_to_db_with_positions(temp_db: TempDB) -> None:
+    """Test useq_plate_plan_to_db with actual positions."""
+    engine, _ = temp_db
+
+    exp = Experiment(
+        name="test_positions",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+    # Create plate plan with positions
+    plate_plan = useq.WellPlatePlan(
+        plate=useq.WellPlate.from_str("96-well"),
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((1,), (4,)),  # B5
+    )
+
+    # Add a position manually
+    from useq import Position
+    Position(name="B5_0000", x=100.0, y=200.0)
+
+    # Create new plan with position
+    from useq import WellPlatePlan
+    plan_with_pos = WellPlatePlan(
+        plate=plate_plan.plate,
+        a1_center_xy=plate_plan.a1_center_xy,
+        selected_wells=plate_plan.selected_wells,
+    )
+
+    plate = useq_plate_plan_to_db(plan_with_pos, exp)
+    assert plate is not None
+    assert len(plate.wells) > 0
+
+
+def test_util_load_experiment_from_database(tmp_path: Path) -> None:
+    """Test load_experiment_from_database utility."""
+    from cali.sqlmodel._util import (
+        load_experiment_from_database,
+        save_experiment_to_database,
+    )
+
+    # Create experiment structure
+    exp = Experiment(
+        name="test_load",
+        data_path="/dummy/path",
+        analysis_path=str(tmp_path),
+        database_name="test_load.db",
+    )
+    plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
+    well = Well(plate=plate, name="B5", row=1, column=4)
+    FOV(well=well, name="B5_0000", position_index=0, fov_number=0)
+
+    # Save to database (this creates tables internally)
+    save_experiment_to_database(exp, overwrite=True)
+
+    # Load back
+    db_path = tmp_path / "test_load.db"
+    loaded_exp = load_experiment_from_database(db_path)
+
+    assert loaded_exp is not None
+    assert loaded_exp.name == "test_load"
+    assert loaded_exp.plate is not None
+    assert len(loaded_exp.plate.wells) == 1
+    assert len(loaded_exp.plate.wells[0].fovs) == 1
+
+    # Test with non-existent database
+    result = load_experiment_from_database(tmp_path / "nonexistent.db")
+    assert result is None
+
+
+def test_visualize_experiment_functions(simple_experiment: Experiment, temp_db: TempDB) -> None:
+    """Test visualization functions."""
+    from cali.sqlmodel._visualize_experiment import (
+        print_all_analysis_results,
+        print_experiment_tree,
+        print_experiment_tree_from_engine,
+    )
+
+    engine, _db_path = temp_db
+
+    with Session(engine) as session:
+        exp = session.get(Experiment, simple_experiment.id)
+
+        # Test print_experiment_tree with different max levels
+        print_experiment_tree(exp, max_experiment_level="experiment", session=session)
+        print_experiment_tree(exp, max_experiment_level="plate", session=session)
+        print_experiment_tree(exp, max_experiment_level="well", session=session)
+        print_experiment_tree(exp, max_experiment_level="fov", session=session)
+        print_experiment_tree(exp, max_experiment_level="roi", session=session)
+
+        # Test with analysis results off
+        print_experiment_tree(exp, show_analysis_results=False, session=session)
+        print_experiment_tree(exp, show_settings=False, session=session)
+
+    # Test print_all_analysis_results
+    print_all_analysis_results(
+        engine,
+        experiment_name=simple_experiment.name,
+        show_settings=False,
+    )
+
+    print_all_analysis_results(
+        engine,
+        experiment_name=None,  # All experiments
+        show_settings=True,
+    )
+
+    # Test print_experiment_tree_from_engine
+    print_experiment_tree_from_engine(
+        simple_experiment.name,
+        engine,
+        max_level="roi",
+        show_analysis_results=True,
+        show_settings=True,
+    )
+
+    # Test with non-existent experiment
+    print_experiment_tree_from_engine(
+        "NonExistent",
+        engine,
+        max_level="roi",
+    )
+
+
+def test_json_to_db_error_handling(tmp_path: Path) -> None:
+    """Test JSON loading error cases."""
+    from cali.sqlmodel._json_to_db import parse_well_name
+
+    # Test parse_well_name edge cases
+    with pytest.raises(ValueError):
+        parse_well_name("")
+
+    with pytest.raises(ValueError):
+        parse_well_name("123")
+
+    with pytest.raises(ValueError):
+        parse_well_name("ABC")
+
+
+def test_model_stimulated_mask_area() -> None:
+    """Test AnalysisSettings.stimulated_mask_area method."""
+    from cali.sqlmodel._model import AnalysisSettings, Mask
+
+    # Test with no mask
+    settings = AnalysisSettings()
+    assert settings.stimulated_mask_area() is None
+
+    # Test with mask
+    mask = Mask(
+        coords_y=[0, 1, 2],
+        coords_x=[0, 1, 2],
+        height=10,
+        width=10,
+        mask_type="stimulation",
+    )
+    settings = AnalysisSettings(stimulation_mask=mask)
+    result = settings.stimulated_mask_area()
+    assert result is not None
+    assert result.shape == (10, 10)
+
+
+def test_db_to_plate_map_with_multiple_condition_types(temp_db: TempDB) -> None:
+    """Test experiment_to_plate_map_data with various configurations."""
+    from cali.sqlmodel._db_to_plate_map import experiment_to_plate_map_data
+
+    engine, _ = temp_db
+
+    exp = Experiment(
+        name="test_map",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
+    plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
+
+    # Create conditions
+    cond1 = Condition(name="WT", condition_type="genotype", color="blue")
+    cond2 = Condition(name="KO", condition_type="genotype", color="red")
+    cond3 = Condition(name="Drug", condition_type="treatment", color="green")
+
+    # Well with multiple conditions
+    Well(plate=plate, name="A1", row=0, column=0, conditions=[cond1, cond3])
+    Well(plate=plate, name="A2", row=0, column=1, conditions=[cond2])
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        result = experiment_to_plate_map_data(exp)
+        # Result is a tuple of lists, not a dict
+        assert len(result) == 2  # Two condition types
+        # Verify wells are present in the results
+        all_wells = [item.name for sublist in result for item in sublist]
+        assert "A1" in all_wells
+        assert "A2" in all_wells
+
+
+def test_useq_coverslip_plate_types(temp_db: TempDB) -> None:
+    """Test special handling of coverslip plate types."""
+    from cali.sqlmodel._useq_plate_to_db import useq_plate_to_db
+
+    engine, _ = temp_db
+
+    exp = Experiment(
+        name="test_coverslip",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+    # Test 18mm coverslip
+    plate_18mm = useq.WellPlate(
+        name="18mm coverslip",
+        rows=1,
+        columns=1,
+        well_spacing=0,
+        well_size=18,
+    )
+    plate = useq_plate_to_db(plate_18mm, exp)
+    assert plate.plate_type == "coverslip-18mm-square"
+
+    # Test 22mm coverslip
+    plate_22mm = useq.WellPlate(
+        name="22mm coverslip",
+        rows=1,
+        columns=1,
+        well_spacing=0,
+        well_size=22,
+    )
+    plate = useq_plate_to_db(plate_22mm, exp)
+    assert plate.plate_type == "coverslip-22mm-square"
 
 
 if __name__ == "__main__":

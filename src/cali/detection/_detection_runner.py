@@ -147,6 +147,9 @@ class DetectionRunner:
 
         # Commit results to database
         if fov_results:
+            cali_logger.info(
+                f"ROIs detected: {sum(len(fov.rois) for fov in fov_results)}"
+            )
             cali_logger.info("Committing detection results to database...")
             engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
             with Session(engine) as session:
@@ -316,8 +319,7 @@ class DetectionRunner:
         if self._check_for_abort_requested():
             return []
 
-        # Create FOV objects (not yet committed)
-        cali_logger.info("Creating FOV objects with ROIs and masks...")
+        # Create FOV objects
         fov_results = []
 
         for pos_idx, meta, masks_2d in zip(all_pos_indices, all_metadata, all_masks):
@@ -453,7 +455,7 @@ class DetectionRunner:
             roi = ROI(
                 label_value=int(label_value),
                 active=None,  # Will be determined during analysis
-                stimulated=False,  # Will be determined during analysis
+                stimulated=None,  # Will be determined during analysis
                 roi_mask=mask_obj,
                 fov_id=0,  # Placeholder - will be set by relationship
             )

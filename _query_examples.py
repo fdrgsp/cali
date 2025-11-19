@@ -6,7 +6,7 @@ when you have multiple analysis runs with different settings.
 
 from sqlmodel import Session, select
 
-from .src.cali.sqlmodel._model import ROI, AnalysisResult, DataAnalysis, Traces
+from src.cali.sqlmodel._model import AnalysisResult, DataAnalysis, ROI, Traces
 
 # ============================================================================
 # Query Pattern 1: Get results for a specific AnalysisResult
@@ -355,7 +355,168 @@ def get_roi_with_all_history(session: Session, roi_id: int) -> ROI | None:
 
 
 # ============================================================================
-# Query Pattern 7: Detection method comparison
+# Query Pattern 7: Compare ROIs by label value across analyses
+# ============================================================================
+
+
+def get_roi_by_label_and_fov(
+    session: Session,
+    fov_id: int,
+    label_value: int,
+    detection_settings_id: int | None = None,
+) -> ROI | None:
+    """Get a specific ROI by its label value within a FOV.
+
+    Parameters
+    ----------
+    session : Session
+        Database session
+    fov_id : int
+        ID of the FOV
+    label_value : int
+        The label value of the ROI (e.g., 1, 2, 3...)
+    detection_settings_id : int | None
+        Optional: specify which detection run if multiple exist
+
+    Returns
+    -------
+    ROI | None
+        The ROI with that label, or None if not found
+
+    Example
+    -------
+    >>> # Get ROI with label 5 from FOV #1
+    >>> roi = get_roi_by_label_and_fov(session, fov_id=1, label_value=5)
+    >>> if roi:
+    ...     print(f"Found ROI {roi.id} with label {roi.label_value}")
+    """
+    query = (
+        select(ROI)
+        .where(ROI.fov_id == fov_id)
+        .where(ROI.label_value == label_value)
+    )
+
+    if detection_settings_id is not None:
+        query = query.where(ROI.detection_settings_id == detection_settings_id)
+
+    return session.exec(query).first()
+
+
+def compare_roi_across_analyses(
+    session: Session,
+    fov_id: int,
+    label_value: int,
+    analysis_result_ids: list[int],
+    detection_settings_id: int | None = None,
+) -> dict[int, tuple[Traces | None, DataAnalysis | None]]:
+    """Compare analysis results for the same ROI label across different analysis runs.
+
+    This is useful when you want to see how different analysis settings affect
+    the same cell (identified by its label value from segmentation).
+
+    Parameters
+    ----------
+    session : Session
+        Database session
+    fov_id : int
+        ID of the FOV containing the ROI
+    label_value : int
+        The label value of the ROI (e.g., 1, 2, 3...)
+    analysis_result_ids : list[int]
+        List of AnalysisResult IDs to compare
+    detection_settings_id : int | None
+        Optional: specify which detection run if multiple exist
+
+    Returns
+    -------
+    dict[int, tuple[Traces | None, DataAnalysis | None]]
+        Dictionary mapping analysis_result_id to (trace, data_analysis) tuples
+
+    Example
+    -------
+    >>> # Compare how ROI label #5 was analyzed across 3 different analysis runs
+    >>> results = compare_roi_across_analyses(
+    ...     session,
+    ...     fov_id=1,
+    ...     label_value=5,
+    ...     analysis_result_ids=[1, 2, 3]
+    ... )
+    >>> for ar_id, (trace, analysis) in results.items():
+    ...     if analysis:
+    ...         print(f"Analysis {ar_id}: {analysis.dec_dff_frequency} Hz")
+    """
+    # First, find the ROI with this label
+    roi = get_roi_by_label_and_fov(
+        session, fov_id, label_value, detection_settings_id
+    )
+
+    if roi is None or roi.id is None:
+        return {}
+
+    # Now use the existing comparison function with the ROI ID
+    return compare_analysis_results(session, roi.id, analysis_result_ids)
+
+
+def compare_all_rois_in_fov_across_analyses(
+    session: Session,
+    fov_id: int,
+    analysis_result_ids: list[int],
+    detection_settings_id: int | None = None,
+) -> dict[int, dict[int, tuple[Traces | None, DataAnalysis | None]]]:
+    """Compare all ROIs in a FOV across different analysis runs.
+
+    This gives you a complete comparison showing how each cell (by label)
+    was analyzed under different settings.
+
+    Parameters
+    ----------
+    session : Session
+        Database session
+    fov_id : int
+        ID of the FOV
+    analysis_result_ids : list[int]
+        List of AnalysisResult IDs to compare
+    detection_settings_id : int | None
+        Optional: specify which detection run if multiple exist
+
+    Returns
+    -------
+    dict[int, dict[int, tuple[Traces | None, DataAnalysis | None]]]
+        Nested dictionary: {label_value: {analysis_result_id: (trace, analysis)}}
+
+    Example
+    -------
+    >>> # Compare all ROIs across 3 analysis runs
+    >>> results = compare_all_rois_in_fov_across_analyses(
+    ...     session, fov_id=1, analysis_result_ids=[1, 2, 3]
+    ... )
+    >>> # Check results for ROI label 5
+    >>> for ar_id, (trace, analysis) in results[5].items():
+    ...     if analysis:
+    ...         print(f"Label 5, Analysis {ar_id}: {analysis.dec_dff_frequency} Hz")
+    """
+    # Get all ROIs for this FOV
+    query = select(ROI).where(ROI.fov_id == fov_id)
+    if detection_settings_id is not None:
+        query = query.where(ROI.detection_settings_id == detection_settings_id)
+
+    rois = session.exec(query).all()
+
+    # For each ROI, get all analysis versions
+    results: dict[int, dict[int, tuple[Traces | None, DataAnalysis | None]]] = {}
+
+    for roi in rois:
+        if roi.id is None:
+            continue
+
+        roi_results = compare_analysis_results(session, roi.id, analysis_result_ids)
+        results[roi.label_value] = roi_results
+
+    return results
+
+
+# ============================================================================
+# Query Pattern 8: Detection method comparison
 # ============================================================================
 
 
