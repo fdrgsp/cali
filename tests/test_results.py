@@ -17,7 +17,6 @@ from sqlmodel import Session, create_engine, select
 
 from cali._constants import SPONTANEOUS
 from cali.analysis import AnalysisRunner
-from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import (
     ROI,
@@ -27,6 +26,7 @@ from cali.sqlmodel._model import (
     Traces,
 )
 
+pytest.importorskip('cellpose', reason="Cellpose not installed; skipping detection tests.")
 
 @pytest.fixture
 def temp_db_path() -> Path:
