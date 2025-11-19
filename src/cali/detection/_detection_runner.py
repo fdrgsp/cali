@@ -320,9 +320,7 @@ class DetectionRunner:
         cali_logger.info("Creating FOV objects with ROIs and masks...")
         fov_results = []
 
-        for pos_idx, meta, masks_2d in zip(
-            all_pos_indices, all_metadata, all_masks
-        ):
+        for pos_idx, meta, masks_2d in zip(all_pos_indices, all_metadata, all_masks):
             if self._check_for_abort_requested():
                 cali_logger.info("Detection cancelled during FOV creation")
                 return fov_results

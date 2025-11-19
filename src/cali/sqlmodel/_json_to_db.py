@@ -428,17 +428,18 @@ def load_analysis_from_json(
                         )
                         session.add(analysis_result)
                         session.flush()  # Get analysis_result.id
-                        
+
                         # Link all Traces and DataAnalysis to this AnalysisResult
                         from sqlmodel import select
+
                         all_traces = session.exec(select(Traces)).all()
                         all_data_analysis = session.exec(select(DataAnalysis)).all()
-                        
+
                         for trace in all_traces:
                             trace.analysis_result_id = analysis_result.id
                         for data_analysis in all_data_analysis:
                             data_analysis.analysis_result_id = analysis_result.id
-                        
+
                         session.commit()
 
             cali_logger.info(
