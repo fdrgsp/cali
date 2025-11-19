@@ -806,7 +806,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
         ROI label number from segmentation (e.g., 1, 2, 3...)
     active : bool | None
         Whether ROI shows calcium activity (from latest analysis)
-    stimulated : bool
+    stimulated : bool | None
         Whether ROI was stimulated (for evoked experiments)
     roi_mask_id : int | None
         Foreign key to ROI mask
@@ -830,7 +830,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     label_value: int = Field(index=True)
 
     active: bool | None = None
-    stimulated: bool = False
+    stimulated: bool | None = None
 
     # Foreign keys
     fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")

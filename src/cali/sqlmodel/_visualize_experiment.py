@@ -226,10 +226,12 @@ def add_experiment_tree_to_node(
                         else "🪫 [red]inactive[/red]"
                     )
                     roi_info += f" - {status}"
-                if roi.stimulated:
-                    roi_info += " - ⚡️ [green]stimulated[/green]"
-                else:
-                    roi_info += " - ✨ [magenta]spontaneous[/magenta]"
+
+                if roi.stimulated is not None:
+                    if roi.stimulated:
+                        roi_info += " - ⚡️ [green]stimulated[/green]"
+                    else:
+                        roi_info += " - ✨ [magenta]spontaneous[/magenta]"
 
                 roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
 
@@ -629,10 +631,11 @@ def print_experiment_tree(
                         else "🪫 [red]inactive[/red]"
                     )
                     roi_info += f" - {status}"
-                if roi.stimulated:
-                    roi_info += " - ⚡️ [green]stimulated[/green]"
-                else:
-                    roi_info += " - ✨ [magenta]spontaneous[/magenta]"
+                if roi.stimulated is not None:
+                    if roi.stimulated:
+                        roi_info += " - ⚡️ [green]stimulated[/green]"
+                    else:
+                        roi_info += " - ✨ [magenta]spontaneous[/magenta]"
 
                 roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
 
@@ -951,8 +954,11 @@ def print_database_tree(
                             status = "🔋 active" if roi.active else "🪫 inactive"
                             roi_info += f" - {status}"
 
-                        if roi.stimulated:
-                            roi_info += " - ⚡️ stimulated"
+                        if roi.stimulated is not None:
+                            if roi.stimulated:
+                                roi_info += " - ⚡️ [green]stimulated[/green]"
+                            else:
+                                roi_info += " - ✨ [magenta]spontaneous[/magenta]"
 
                         roi_node = fov_node.add(f"🔬 [magenta]{roi_info}[/magenta]")
 
