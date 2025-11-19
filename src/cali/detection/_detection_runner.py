@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from sqlmodel import Session, select
+from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Experiment, Mask
-from cali.sqlmodel._util import create_engine, save_experiment_to_database
+from cali.sqlmodel._util import save_experiment_to_database
 from cali.util import commit_fov_result, load_data, mask_to_coordinates
 
 if TYPE_CHECKING:
