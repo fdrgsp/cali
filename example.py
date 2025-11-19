@@ -6,7 +6,6 @@ from cali._constants import EVOKED
 from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment
-from cali.sqlmodel._model import DetectionSettings
 from cali.sqlmodel._visualize_experiment import (
     print_all_analysis_results,
     print_experiment_tree_from_engine,
@@ -65,7 +64,7 @@ print_all_analysis_results(
     max_experiment_level="roi",
 )
 
-print('---' * 10)
+print("---" * 10)
 
 print_experiment_tree_from_engine(
     "New Experiment",
