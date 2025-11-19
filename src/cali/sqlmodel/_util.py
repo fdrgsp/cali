@@ -156,7 +156,15 @@ def load_experiment_from_database(
     ...     exp.name = "Updated Name"  # Modify within session
     ...     session.commit()  # Save changes
     """
+    from pathlib import Path
+
+    from sqlalchemy.exc import OperationalError
     from sqlmodel import select
+
+    # Check if database file exists
+    db_path = Path(db_path) if isinstance(db_path, str) else db_path
+    if not db_path.exists():
+        return None
 
     # Convert to string for consistency
     db_path_str = str(db_path)
@@ -171,7 +179,11 @@ def load_experiment_from_database(
             else:
                 statement = select(Experiment)
 
-            experiment = session.exec(statement).first()
+            try:
+                experiment = session.exec(statement).first()
+            except OperationalError:
+                # Database exists but tables don't (corrupted or empty database)
+                return None
 
             if not experiment:
                 return None
