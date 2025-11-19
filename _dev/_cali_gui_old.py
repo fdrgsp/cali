@@ -53,7 +53,7 @@ from cali.sqlmodel import (
 )
 from cali.util import load_data
 
-from ._analysis_gui import (
+from ..src.cali.gui._analysis_gui import (
     AnalysisSettingsData,
     CalciumPeaksData,
     ExperimentTypeData,
@@ -61,14 +61,14 @@ from ._analysis_gui import (
     TraceExtractionData,
     _AnalysisGUI,
 )
-from ._detection_gui import _DetectionGUI
-from ._fov_table import WellInfo, _FOVTable
-from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
-from ._image_viewer import _ImageViewer
-from ._init_dialog import _InputDialog
-from ._plate_plan_wizard import PlatePlanWizard
-from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
-from ._util import (
+from ..src.cali.gui._detection_gui import _DetectionGUI
+from ..src.cali.gui._fov_table import WellInfo, _FOVTable
+from ..src.cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
+from ..src.cali.gui._image_viewer import _ImageViewer
+from ..src.cali.gui._init_dialog import _InputDialog
+from ..src.cali.gui._plate_plan_wizard import PlatePlanWizard
+from ..src.cali.gui._save_as_widgets import _SaveAsCSV, _SaveAsTiff
+from ..src.cali.gui._util import (
     _ElapsedTimer,
     _ProgressBarWidget,
     show_error_dialog,
