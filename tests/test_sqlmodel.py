@@ -952,10 +952,12 @@ def test_useq_plate_to_db_with_positions(temp_db: TempDB) -> None:
 
     # Add a position manually
     from useq import Position
+
     Position(name="B5_0000", x=100.0, y=200.0)
 
     # Create new plan with position
     from useq import WellPlatePlan
+
     plan_with_pos = WellPlatePlan(
         plate=plate_plan.plate,
         a1_center_xy=plate_plan.a1_center_xy,
@@ -1003,7 +1005,9 @@ def test_util_load_experiment_from_database(tmp_path: Path) -> None:
     assert result is None
 
 
-def test_visualize_experiment_functions(simple_experiment: Experiment, temp_db: TempDB) -> None:
+def test_visualize_experiment_functions(
+    simple_experiment: Experiment, temp_db: TempDB
+) -> None:
     """Test visualization functions."""
     from cali.sqlmodel._visualize_experiment import (
         print_all_analysis_results,

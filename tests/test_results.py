@@ -135,9 +135,9 @@ def test_multiple_detection_settings_create_separate_rois(
         roi_ids_d1 = {roi.id for roi in rois_d1}
         roi_ids_d2 = {roi.id for roi in rois_d2}
         # They should be disjoint sets (no overlap)
-        assert roi_ids_d1.isdisjoint(
-            roi_ids_d2
-        ), "ROIs from different detections should be separate"
+        assert roi_ids_d1.isdisjoint(roi_ids_d2), (
+            "ROIs from different detections should be separate"
+        )
     engine.dispose()
 
 
@@ -216,9 +216,9 @@ def test_multiple_analysis_settings_create_separate_results(
             ).all()
 
             assert len(traces) > 0, f"AnalysisResult {ar.id} should have traces"
-            assert (
-                len(data_analyses) > 0
-            ), f"AnalysisResult {ar.id} should have data analysis"
+            assert len(data_analyses) > 0, (
+                f"AnalysisResult {ar.id} should have data analysis"
+            )
     engine.dispose()
 
 
@@ -321,9 +321,9 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
                 .where(AnalysisResult.detection_settings == det_id)
                 .where(AnalysisResult.analysis_settings == ana_id)
             ).first()
-            assert (
-                ar is not None
-            ), f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
+            assert ar is not None, (
+                f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
+            )
     engine.dispose()
 
 
@@ -469,9 +469,9 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
         for trace in traces:
             roi = session.get(ROI, trace.roi_id)
             assert roi is not None
-            assert (
-                roi.detection_settings_id == det_settings_1.id
-            ), "Trace should link to ROI from correct detection"
+            assert roi.detection_settings_id == det_settings_1.id, (
+                "Trace should link to ROI from correct detection"
+            )
     engine.dispose()
 
 
@@ -515,19 +515,19 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
         trace_count = len(session.exec(select(Traces)).all())
 
         # Should have 2 unique detection settings
-        assert (
-            detection_count == 2
-        ), f"Expected 2 detection settings, got {detection_count}"
+        assert detection_count == 2, (
+            f"Expected 2 detection settings, got {detection_count}"
+        )
 
         # Should have 2 unique analysis settings
-        assert (
-            analysis_count == 2
-        ), f"Expected 2 analysis settings, got {analysis_count}"
+        assert analysis_count == 2, (
+            f"Expected 2 analysis settings, got {analysis_count}"
+        )
 
         # Should have analysis results (might be 2 or 3 depending on rerun behavior)
-        assert (
-            analysis_result_count >= 2
-        ), f"Expected at least 2 analysis results, got {analysis_result_count}"
+        assert analysis_result_count >= 2, (
+            f"Expected at least 2 analysis results, got {analysis_result_count}"
+        )
 
         # Should have ROIs from both detections
         assert roi_count > 0, "Should have ROIs"
@@ -538,12 +538,12 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
         # Verify audit trail integrity
         for ar in session.exec(select(AnalysisResult)).all():
             # Each AnalysisResult should link to valid detection and analysis settings
-            assert (
-                ar.detection_settings is not None
-            ), "AnalysisResult should link to detection"
-            assert (
-                ar.analysis_settings is not None
-            ), "AnalysisResult should link to analysis"
+            assert ar.detection_settings is not None, (
+                "AnalysisResult should link to detection"
+            )
+            assert ar.analysis_settings is not None, (
+                "AnalysisResult should link to analysis"
+            )
 
             # Each AnalysisResult should have associated traces/data
             session.exec(select(Traces).where(Traces.analysis_result_id == ar.id)).all()
@@ -574,9 +574,9 @@ def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
     with Session(engine) as session:
         analysis_results = session.exec(select(AnalysisResult)).all()
         # Should only have 1 result (not 2)
-        assert (
-            len(analysis_results) == 1
-        ), "Identical analysis should reuse AnalysisResult"
+        assert len(analysis_results) == 1, (
+            "Identical analysis should reuse AnalysisResult"
+        )
     engine.dispose()
 
 
@@ -623,9 +623,9 @@ def test_detection_with_different_cellpose_params(test_experiment: Experiment) -
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
         detection_settings = session.exec(select(DetectionSettings)).all()
-        assert len(detection_settings) == len(
-            params_list
-        ), f"Should have {len(params_list)} detection settings"
+        assert len(detection_settings) == len(params_list), (
+            f"Should have {len(params_list)} detection settings"
+        )
     engine.dispose()
 
 
