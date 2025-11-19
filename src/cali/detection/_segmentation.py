@@ -725,7 +725,7 @@ class CellposeSegmentationWidget(QWidget):
 class CellposeNotAvailable(QWidget):
     """Placeholder widget when Cellpose is not available."""
 
-    # NOTE: TEMMPORARY UNTIL I DIVIDE SEGMENTATIION FUNCTIONALITY FROM THE GUI
+    # NOTE: TEMPORARY UNTIL I DIVIDE SEGMENTATION FUNCTIONALITY FROM THE GUI
 
     segmentationFinished = Signal()
 
