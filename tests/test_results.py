@@ -26,7 +26,10 @@ from cali.sqlmodel._model import (
     Traces,
 )
 
-pytest.importorskip('cellpose', reason="Cellpose not installed; skipping detection tests.")
+pytest.importorskip(
+    "cellpose", reason="Cellpose not installed; skipping detection tests."
+)
+
 
 @pytest.fixture
 def temp_db_path() -> Path:
