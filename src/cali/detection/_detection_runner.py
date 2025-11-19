@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from cellpose import io
-from cellpose.models import CellposeModel
 from sqlmodel import Session, select
 from tqdm import tqdm
 
@@ -20,6 +18,8 @@ from cali.util import commit_fov_result, load_data, mask_to_coordinates
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from cellpose.models import CellposeModel
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
@@ -118,7 +118,15 @@ class DetectionRunner:
         echo : bool
             Enable SQLAlchemy echo for database operations
         """
-        from cellpose import core
+        try:
+            from cellpose import core, io
+            from cellpose.models import CellposeModel
+        except ImportError as e:
+            cali_logger.error(
+                "Cellpose is not installed. Please install Cellpose to use "
+                "Cellpose detection: `uv sync --extra cp4`."
+            )
+            raise e
 
         if cellpose_debug:
             io.logger_setup()
