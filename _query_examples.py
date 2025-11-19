@@ -6,7 +6,7 @@ when you have multiple analysis runs with different settings.
 
 from sqlmodel import Session, select
 
-from ._model import ROI, AnalysisResult, DataAnalysis, Traces
+from .src.cali.sqlmodel._model import ROI, AnalysisResult, DataAnalysis, Traces
 
 # ============================================================================
 # Query Pattern 1: Get results for a specific AnalysisResult
