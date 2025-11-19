@@ -836,11 +836,12 @@ def print_database_tree(
     show_analysis_results: bool = True,
     show_settings: bool = True,
 ) -> None:
-    """Print complete database structure including experiments and optionally analysis results.
+    """Print complete database structure.
 
-    This function shows the full database hierarchy regardless of whether
-    analysis has been performed. It's useful for visualizing the output
-    of DetectionRunner (FOV/ROI/Mask structure) before running analysis.
+    Shows experiments and optionally analysis results. This displays the full
+    database hierarchy regardless of whether analysis has been performed.
+    Useful for visualizing DetectionRunner output (FOV/ROI/Mask structure)
+    before running analysis.
 
     Parameters
     ----------
@@ -881,8 +882,9 @@ def print_database_tree(
 
     # Create main tree
     experiment_plural = "s" if len(experiments) != 1 else ""
+    exp_count = len(experiments)
     main_tree = Tree(
-        f"[bold cyan]{title}[/bold cyan] ({len(experiments)} experiment{experiment_plural})",
+        f"[bold cyan]{title}[/bold cyan] ({exp_count} experiment{experiment_plural})",
         guide_style="cyan",
     )
 

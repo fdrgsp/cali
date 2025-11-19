@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from cali.sqlmodel._model import AnalysisSettings
 
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt

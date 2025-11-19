@@ -270,7 +270,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         # Create experiment
         db_name = database_name if database_name is not None else f"{name}.db"
         experiment = cls(
-            id=0,  # Placeholder, will be set when saved
+            id=0,
             name=name,
             description=description,
             data_path=data_path,
@@ -391,7 +391,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         # Create experiment
         db_name = database_name if database_name is not None else f"{name}.db"
         experiment = cls(
-            id=0,  # Placeholder, will be set when saved
+            id=0,
             name=name,
             description=description,
             data_path=data_path,
