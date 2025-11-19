@@ -189,6 +189,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         finally:
             if our_session is not None:
                 our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
 
     @classmethod
     def create(

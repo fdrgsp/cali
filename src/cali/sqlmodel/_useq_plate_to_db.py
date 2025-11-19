@@ -249,6 +249,13 @@ def useq_plate_plan_to_db(
                     # If we can't parse FOV index, skip this position
                     continue
 
+    # If no positions found, use selected_well_names as fallback
+    # This handles the case of a plate plan with just well selection, no positions
+    if not wells_data and plate_plan.selected_well_names:
+        for well_name in plate_plan.selected_well_names:
+            # Create a single FOV (index 0) for each selected well
+            wells_data[well_name].append((0, 0.0, 0.0))
+
     # Create Wells and FOVs
     for well_name, fov_data in sorted(wells_data.items()):
         # Parse well name to get row and column

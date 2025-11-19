@@ -213,6 +213,7 @@ class DetectionRunner:
                     commit_fov_result(
                         session, experiment, fov_result, detection_settings.id
                     )
+            engine.dispose()
 
     def _run_cellpose_detection(
         self,
@@ -259,77 +260,79 @@ class DetectionRunner:
                         "`set the overwrite flag to `True` to overwrite the database."
                     )
                     cali_logger.error(msg)
+                    engine.dispose()
                     raise ValueError(msg)
+        engine.dispose()
 
-            # load data
-            self._data = load_data(experiment.data_path)
+        # load data
+        self._data = load_data(experiment.data_path)
 
-            if experiment.id is None:
-                msg = "Experiment must have an ID before running detection"
-                raise ValueError(msg)
+        if experiment.id is None:
+            msg = "Experiment must have an ID before running detection"
+            raise ValueError(msg)
 
-            # Load all images for batch processing
-            all_images = []
-            all_metadata = []
-            all_pos_indices = []
+        # Load all images for batch processing
+        all_images = []
+        all_metadata = []
+        all_pos_indices = []
 
-            cali_logger.info("Loading images for batch processing...")
-            for pos_idx in global_position_indices:
-                if self._check_for_abort_requested():
-                    cali_logger.info("Detection cancelled during image loading")
-                    return []
-
-                data, meta = self._data.isel(p=pos_idx, metadata=True)
-
-                # Preprocess data: max projection from half to end of stack
-                if data.ndim == 3:  # (t, y, x)
-                    data_half_to_end = data[data.shape[0] // 2 :, :, :]
-                    image = data_half_to_end.max(axis=0)
-                else:  # already 2D
-                    image = data
-
-                all_images.append(image)
-                all_metadata.append(meta)
-                all_pos_indices.append(pos_idx)
-
+        cali_logger.info("Loading images for batch processing...")
+        for pos_idx in global_position_indices:
             if self._check_for_abort_requested():
+                cali_logger.info("Detection cancelled during image loading")
                 return []
 
-            # Process in batches
-            cali_logger.info(
-                f"Processing {len(all_images)} images in batches of {batch_size}"
-            )
-            all_masks = self._batch_process(
-                model=model,
-                images=all_images,
-                diameter=diameter,
-                cellprob_threshold=cellprob_threshold,
-                flow_threshold=flow_threshold,
-                batch_size=batch_size,
-                min_size=min_size,
-                normalize=normalize,
-            )
+            data, meta = self._data.isel(p=pos_idx, metadata=True)
 
+            # Preprocess data: max projection from half to end of stack
+            if data.ndim == 3:  # (t, y, x)
+                data_half_to_end = data[data.shape[0] // 2 :, :, :]
+                image = data_half_to_end.max(axis=0)
+            else:  # already 2D
+                image = data
+
+            all_images.append(image)
+            all_metadata.append(meta)
+            all_pos_indices.append(pos_idx)
+
+        if self._check_for_abort_requested():
+            return []
+
+        # Process in batches
+        cali_logger.info(
+            f"Processing {len(all_images)} images in batches of {batch_size}"
+        )
+        all_masks = self._batch_process(
+            model=model,
+            images=all_images,
+            diameter=diameter,
+            cellprob_threshold=cellprob_threshold,
+            flow_threshold=flow_threshold,
+            batch_size=batch_size,
+            min_size=min_size,
+            normalize=normalize,
+        )
+
+        if self._check_for_abort_requested():
+            return []
+
+        # Create FOV objects (not yet committed)
+        cali_logger.info("Creating FOV objects with ROIs and masks...")
+        fov_results = []
+
+        for pos_idx, meta, masks_2d in zip(
+            all_pos_indices, all_metadata, all_masks
+        ):
             if self._check_for_abort_requested():
-                return []
+                cali_logger.info("Detection cancelled during FOV creation")
+                return fov_results
 
-            # Create FOV objects (not yet committed)
-            cali_logger.info("Creating FOV objects with ROIs and masks...")
-            fov_results = []
+            fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
 
-            for pos_idx, meta, masks_2d in zip(
-                all_pos_indices, all_metadata, all_masks
-            ):
-                if self._check_for_abort_requested():
-                    cali_logger.info("Detection cancelled during FOV creation")
-                    return fov_results
+            if fov_result:
+                fov_results.append(fov_result)
 
-                fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
-
-                if fov_result:
-                    fov_results.append(fov_result)
-
-            return fov_results
+        return fov_results
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""

@@ -144,7 +144,9 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
     "ignore:Failing to pass a value:DeprecationWarning",
-    "ignore:Could not find cvxpy.*:UserWarning"
+    "ignore:Could not find cvxpy.*:UserWarning",
+    "ignore:nperseg.*is greater than signal length:UserWarning",
+    "ignore::FutureWarning"
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html

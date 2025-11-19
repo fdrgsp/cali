@@ -176,6 +176,7 @@ class AnalysisRunner:
                         "`set the overwrite flag to `True` to overwrite the database."
                     )
                     cali_logger.error(msg)
+                    engine.dispose()
                     raise ValueError(msg)
 
             # load data
@@ -250,6 +251,7 @@ class AnalysisRunner:
             # ensure experiment has an ID
             if experiment.id is None:
                 msg = "Experiment must have an ID before running analysis"
+                engine.dispose()
                 raise ValueError(msg)
 
             # Create or reuse AnalysisResult
@@ -337,6 +339,7 @@ class AnalysisRunner:
                     f"✅ Completed AnalysisResult ID {analysis_result.id} "
                     f"({len(positions_processed)} positions)"
                 )
+        engine.dispose()
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
@@ -410,6 +413,7 @@ class AnalysisRunner:
                     f"No ROI masks found in database for FOV {fov_name} "
                     f"(position {global_pos_idx}). Run detection first."
                 )
+                engine.dispose()
                 return None
 
             # Filter ROIs by detection_settings_id if specified
@@ -426,6 +430,7 @@ class AnalysisRunner:
                         f"No ROIs found with detection_settings_id="
                         f"{detection_settings_id} in FOV {fov_name}"
                     )
+                    engine.dispose()
                     return None
 
             # Convert database masks (coordinates) to numpy arrays
@@ -458,7 +463,9 @@ class AnalysisRunner:
                 cali_logger.error(
                     f"No valid ROI masks found for FOV {fov_name}. Run detection first."
                 )
+                engine.dispose()
                 return None
+        engine.dispose()
 
         # Check for cancellation after database I/O
         if self._check_for_abort_requested():
@@ -520,7 +527,7 @@ class AnalysisRunner:
 
         msg = f"Extracting Traces Data from {fov_name}."
         cali_logger.info(msg)
-        for label_value, _label_mask in tqdm(labels_masks.items(), desc=msg):
+        for label_value in tqdm(labels_masks.keys(), desc=msg):
             if self._check_for_abort_requested():
                 cali_logger.info(
                     f"Cancellation requested during processing of {fov_name}"

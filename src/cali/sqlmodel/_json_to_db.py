@@ -358,8 +358,8 @@ def load_analysis_from_json(
                 roi.fov = fov  # This automatically adds roi to fov.rois
                 roi.roi_mask = roi_mask
                 roi.neuropil_mask = neuropil_mask
-                roi.traces = trace
-                roi.data_analysis = data_analysis
+                roi.traces_history.append(trace)
+                roi.data_analysis_history.append(data_analysis)
 
                 # Note: No need to append to fov.rois - back_populates handles it
 
@@ -405,12 +405,6 @@ def load_analysis_from_json(
                     session.add(analysis_settings)
                     session.flush()  # Get the ID without committing
 
-                    # Now update all ROIs with the correct analysis_settings_id
-                    for well in plate.wells:
-                        for fov in well.fovs:
-                            for roi in fov.rois:
-                                roi.analysis_settings_id = analysis_settings.id
-
                 # Merge handles add/update for the entire object tree with cascade
                 session.merge(experiment)
                 session.commit()
@@ -433,6 +427,18 @@ def load_analysis_from_json(
                             positions_analyzed=sorted(positions_analyzed),
                         )
                         session.add(analysis_result)
+                        session.flush()  # Get analysis_result.id
+                        
+                        # Link all Traces and DataAnalysis to this AnalysisResult
+                        from sqlmodel import select
+                        all_traces = session.exec(select(Traces)).all()
+                        all_data_analysis = session.exec(select(DataAnalysis)).all()
+                        
+                        for trace in all_traces:
+                            trace.analysis_result_id = analysis_result.id
+                        for data_analysis in all_data_analysis:
+                            data_analysis.analysis_result_id = analysis_result.id
+                        
                         session.commit()
 
             cali_logger.info(
@@ -622,7 +628,6 @@ def roi_from_roi_data(
     roi = ROI(
         fov_id=fov_id if fov_id is not None else 0,
         label_value=label_value,
-        analysis_settings_id=settings_id,
         active=roi_data.active,
         stimulated=roi_data.stimulated,
     )

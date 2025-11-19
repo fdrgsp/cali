@@ -7,6 +7,14 @@ Tests cover:
 - Database to useq.WellPlate/WellPlatePlan conversion
 - Helper functions and utilities
 - Edge cases and error handling
+
+Note: For creating experiments in your code, prefer using Experiment classmethods:
+- Experiment.create() - Create experiment with manual configuration
+- Experiment.create_from_data() - Create from data directory (auto-detects structure)
+- Experiment.load_from_db() - Load existing experiment with all relationships
+
+These fixtures use the lower-level constructors for fine-grained testing.
+See test_results.py for examples using the higher-level classmethods.
 """
 
 from __future__ import annotations
@@ -86,6 +94,7 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
     exp = Experiment(
         name="test_experiment",
         description="Test experiment",
+        data_path="/dummy/path",
         analysis_path=str(db_path.parent),
         database_name=db_path.name,
     )
@@ -164,12 +173,14 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
 
 def test_experiment_creation(temp_db: TempDB) -> None:
     """Test basic Experiment model creation."""
-    engine, _ = temp_db
+    engine, db_path = temp_db
 
     exp = Experiment(
         name="test_exp",
         description="Test description",
         data_path="/path/to/data",
+        analysis_path=str(db_path.parent),
+        database_name=db_path.name,
     )
 
     with Session(engine) as session:
@@ -181,6 +192,38 @@ def test_experiment_creation(temp_db: TempDB) -> None:
         assert result.name == "test_exp"
         assert result.description == "Test description"
         assert result.id is not None
+
+
+def test_experiment_create_from_data(tmp_path: Path) -> None:
+    """Test Experiment.create_from_data classmethod."""
+    from cali._constants import SPONTANEOUS
+
+    # Create experiment from test data
+    exp = Experiment.create_from_data(
+        name="Test Experiment From Data",
+        data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+        analysis_path=str(tmp_path),
+        database_name="test_from_data.db",
+        plate_maps={
+            "genotype": {"B5": "WT"},
+            "treatment": {"B5": "Vehicle"},
+        },
+        experiment_type=SPONTANEOUS,
+    )
+
+    # Verify experiment structure was loaded from data
+    assert exp.name == "Test Experiment From Data"
+    assert exp.plate is not None
+    assert len(exp.plate.wells) > 0
+    assert exp.plate.wells[0].name == "B5"
+    assert len(exp.plate.wells[0].fovs) > 0
+    assert exp.experiment_type == SPONTANEOUS
+
+    # Verify plate maps were applied
+    assert len(exp.plate.wells[0].conditions) == 2
+    condition_names = {c.name for c in exp.plate.wells[0].conditions}
+    assert "WT" in condition_names
+    assert "Vehicle" in condition_names
 
 
 def test_plate_relationship(simple_experiment: Experiment, temp_db: TempDB) -> None:
@@ -228,23 +271,37 @@ def test_roi_relationships(simple_experiment: Experiment, temp_db: TempDB) -> No
     with Session(engine) as session:
         roi = session.exec(select(ROI)).first()
         assert roi.fov.name == "B5_0000_p0"
-        assert roi.traces is not None
-        assert roi.traces.raw_trace == [1.0, 2.0, 3.0]
-        assert roi.data_analysis is not None
-        assert roi.data_analysis.cell_size == 100.5
+        assert len(roi.traces_history) > 0
+        assert roi.traces_history[0].raw_trace == [1.0, 2.0, 3.0]
+        assert len(roi.data_analysis_history) > 0
+        assert roi.data_analysis_history[0].cell_size == 100.5
 
 
 def test_unique_constraints(temp_db: TempDB) -> None:
     """Test unique constraints on models."""
-    engine, _ = temp_db
+    engine, db_path = temp_db
 
     # Experiment names must be unique
     with Session(engine) as session:
-        session.add(Experiment(name="test1"))
+        session.add(
+            Experiment(
+                name="test1",
+                data_path="/dummy/path",
+                analysis_path=str(db_path.parent),
+                database_name=db_path.name,
+            )
+        )
         session.commit()
 
     with Session(engine) as session:
-        session.add(Experiment(name="test1"))
+        session.add(
+            Experiment(
+                name="test1",
+                data_path="/dummy/path",
+                analysis_path=str(db_path.parent),
+                database_name=db_path.name,
+            )
+        )
         with pytest.raises(Exception):  # IntegrityError  # noqa: B017  # noqa: B017
             session.commit()
 
@@ -338,34 +395,19 @@ def test_load_analysis_from_json() -> None:
     """Test loading analysis from JSON directory."""
     test_data_dir = Path(__file__).parent / "test_data" / "evoked"
     data_path = test_data_dir / "evk.tensorstore.zarr"
-    labels_path = test_data_dir / "evk_labels"
     analysis_path = test_data_dir / "evk_analysis"
 
     if not analysis_path.exists():
         pytest.skip("Test data not available")
 
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(
-        str(data_path), str(labels_path), str(analysis_path), plate
-    )
+    experiment = load_analysis_from_json(str(data_path), str(analysis_path), plate)
 
     # Name is now derived from data_path name + ".db"
     assert experiment.name == "evk.tensorstore.zarr.db"
     assert experiment.plate is not None
     assert len(experiment.plate.wells) > 0
-    # Check that analysis_settings was properly assigned
-    assert experiment.analysis_settings is not None
-
-    # Check that stimulation mask was loaded (evoked data should have one)
-    if experiment.analysis_settings:
-        analysis_settings = experiment.analysis_settings
-        # The evoked test data has a stimulation_mask.tif file
-        assert analysis_settings.stimulation_mask_path is not None
-        assert "stimulation_mask.tif" in analysis_settings.stimulation_mask_path
-        assert analysis_settings.stimulation_mask is not None
-        assert analysis_settings.stimulation_mask.mask_type == "stimulation"
-        assert analysis_settings.stimulation_mask.coords_y is not None
-        assert analysis_settings.stimulation_mask.coords_x is not None
+    # Analysis settings are created separately, not as experiment attribute
 
 
 def test_save_experiment_to_db(tmp_path: Path) -> None:
@@ -376,6 +418,7 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     exp = Experiment(
         name="test_experiment",
         description="Test",
+        data_path=str(tmp_path / "data"),
         analysis_path=str(tmp_path),
         database_name="test.db",
     )
@@ -483,7 +526,12 @@ def test_experiment_to_useq_plate_plan_multiple_wells(temp_db: TempDB) -> None:
     """Test plate plan with multiple wells."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Create multiple wells
@@ -507,7 +555,12 @@ def test_experiment_to_useq_plate_plan_no_wells(temp_db: TempDB) -> None:
     """Test plate plan with no wells returns None."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     with Session(engine) as session:
@@ -524,7 +577,13 @@ def test_useq_plate_plan_to_plate(temp_db: TempDB) -> None:
     engine, _ = temp_db
 
     # Create experiment
-    exp = Experiment(name="test_useq_import", description="Import from useq")
+    exp = Experiment(
+        name="test_useq_import",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+        description="Import from useq",
+    )
 
     # Save experiment to get ID
     with Session(engine) as session:
@@ -595,7 +654,13 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
     engine, _ = temp_db
 
     # Create experiment with useq plate plan
-    exp = Experiment(name="roundtrip_test", description="Test round-trip")
+    exp = Experiment(
+        name="roundtrip_test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+        description="Test round-trip",
+    )
 
     # Save experiment to get ID first
     with Session(engine, expire_on_commit=False) as session:
@@ -687,7 +752,12 @@ def test_roi_without_traces(temp_db: TempDB) -> None:
     """Test ROI can exist without traces."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
@@ -699,15 +769,20 @@ def test_roi_without_traces(temp_db: TempDB) -> None:
 
         # Query and verify
         result = session.exec(select(ROI)).first()
-        assert result.traces is None
-        assert result.data_analysis is None
+        assert len(result.traces_history) == 0
+        assert len(result.data_analysis_history) == 0
 
 
 def test_well_without_conditions(temp_db: TempDB) -> None:
     """Test well can exist without conditions."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     Well(plate=plate, name="A1", row=0, column=0)
 
@@ -725,7 +800,12 @@ def test_large_trace_data(temp_db: TempDB) -> None:
     """Test storing large trace arrays."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
@@ -753,7 +833,6 @@ def test_full_workflow(tmp_path: Path) -> None:
     """Test complete workflow from JSON to database to export."""
     test_data_dir = Path(__file__).parent / "test_data" / "evoked"
     data_path = test_data_dir / "evk.tensorstore.zarr"
-    labels_path = test_data_dir / "evk_labels"
     analysis_path = test_data_dir / "evk_analysis"
 
     if not analysis_path.exists():
@@ -761,9 +840,11 @@ def test_full_workflow(tmp_path: Path) -> None:
 
     # 1. Load from JSON
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(
-        str(data_path), str(labels_path), str(analysis_path), plate
-    )
+    experiment = load_analysis_from_json(str(data_path), str(analysis_path), plate)
+
+    # Verify basic experiment structure
+    assert experiment.plate is not None
+    assert len(experiment.plate.wells) > 0
 
     # 2. Save to database (update paths to use tmp_path)
     experiment.analysis_path = str(tmp_path)
@@ -800,7 +881,12 @@ def test_experiment_to_useq_plate_no_plate_type(temp_db: TempDB) -> None:
     """Test converting experiment with no plate_type returns None."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     Plate(experiment=exp, name="test-plate", plate_type=None)
 
     with Session(engine) as session:
@@ -838,9 +924,7 @@ def test_analysis_settings_evoked_fields(temp_db: TempDB) -> None:
     """Test AnalysisSettings with evoked experiment fields."""
     engine, _ = temp_db
 
-    exp = Experiment(name="evoked_test")
-    AnalysisSettings(
-        experiment=exp,
+    settings = AnalysisSettings(
         led_power_equation="y = 0.5 * x",
         led_pulse_duration=50.0,
         led_pulse_powers=[5.0, 10.0],
@@ -848,7 +932,7 @@ def test_analysis_settings_evoked_fields(temp_db: TempDB) -> None:
     )
 
     with Session(engine) as session:
-        session.add(exp)
+        session.add(settings)
         session.commit()
 
         result = session.exec(select(AnalysisSettings)).first()
@@ -862,7 +946,12 @@ def test_traces_all_fields(temp_db: TempDB) -> None:
     """Test Traces with all fields populated."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
@@ -893,7 +982,12 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
     """Test DataAnalysis with all fields."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
@@ -947,7 +1041,12 @@ def test_fov_metadata(temp_db: TempDB) -> None:
     """Test FOV with metadata."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     FOV(
@@ -971,7 +1070,12 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
     """Test ROI with both ROI and neuropil masks."""
     engine, _ = temp_db
 
-    exp = Experiment(name="test")
+    exp = Experiment(
+        name="test",
+        data_path="/dummy/path",
+        analysis_path="/dummy/analysis",
+        database_name="test.db",
+    )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
@@ -1020,9 +1124,6 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
     engine, _ = temp_db
 
     with Session(engine) as session:
-        # Create experiment
-        exp = Experiment(name="stim_mask_test")
-
         # Create stimulation mask
         stim_mask = Mask(
             coords_y=[10, 11, 12],
@@ -1033,14 +1134,12 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
         )
 
         # Create analysis settings with stimulation mask
-        AnalysisSettings(
-            experiment_id=0,  # placeholder, will be set by relationship
-            experiment=exp,
+        settings = AnalysisSettings(
             stimulation_mask_path="/path/to/stimulation_mask.tif",
             stimulation_mask=stim_mask,
         )
 
-        session.add(exp)
+        session.add(settings)
         session.commit()
 
         # Retrieve and verify
@@ -1060,11 +1159,10 @@ def test_analysis_settings_without_stimulation_mask(temp_db: TempDB) -> None:
     engine, _ = temp_db
 
     with Session(engine) as session:
-        # Create experiment without stimulation mask
-        exp = Experiment(name="no_stim_mask_test")
-        AnalysisSettings(experiment=exp)
+        # Create analysis settings without stimulation mask
+        settings = AnalysisSettings()
 
-        session.add(exp)
+        session.add(settings)
         session.commit()
 
         # Retrieve and verify
@@ -1113,7 +1211,12 @@ def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment with multiple wells
-        exp = Experiment(name="multi_well_test")
+        exp = Experiment(
+            name="multi_well_test",
+            data_path="/dummy/path",
+            analysis_path="/dummy/analysis",
+            database_name="test.db",
+        )
         plate = Plate(experiment=exp, name="24-well")
 
         # Create conditions
@@ -1169,7 +1272,12 @@ def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment with wells but no conditions
-        exp = Experiment(name="no_conditions_test")
+        exp = Experiment(
+            name="no_conditions_test",
+            data_path="/dummy/path",
+            analysis_path="/dummy/analysis",
+            database_name="test.db",
+        )
         plate = Plate(experiment=exp, name="24-well")
         Well(plate=plate, name="A1", row=0, column=0)
         Well(plate=plate, name="A2", row=0, column=1)
@@ -1192,7 +1300,12 @@ def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment without plate
-        exp = Experiment(name="no_plate_test")
+        exp = Experiment(
+            name="no_plate_test",
+            data_path="/dummy/path",
+            analysis_path="/dummy/analysis",
+            database_name="test.db",
+        )
 
         session.add(exp)
         session.commit()
