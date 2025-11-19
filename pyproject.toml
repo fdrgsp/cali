@@ -104,7 +104,7 @@ target-version = "py39"
 src = ["src", "tests"]
 fix = true
 unsafe-fixes = true
-exclude = ["_todo", "_todo/**"]
+exclude = ["_dev/**"]
 
 
 # https://docs.astral.sh/ruff/rules
@@ -182,6 +182,7 @@ ignore = [
     ".pre-commit-config.yaml",
     ".ruff_cache/**/*",
     "tests/**/*",
+    "_dev/**/*",
 ]
 
 [tool.typos.default] 
