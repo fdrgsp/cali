@@ -53,7 +53,7 @@ def _row_index_to_label(row: int) -> str:
 
 
 def _row_label_to_index(label: str) -> int:
-    """Convert well plate row label to 0-based row index (A→0, B→1, ..., Z→25, AA→26, ...).
+    """Convert row label to 0-based index (A→0, B→1, ..., Z→25, AA→26).
 
     Parameters
     ----------

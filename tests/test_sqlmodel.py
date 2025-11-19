@@ -452,7 +452,7 @@ def test_save_experiment_overwrite_protection(
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
     assert db_path.exists()
-    db_path.stat().st_size
+    _size = db_path.stat().st_size  # Check file size
 
     # Save with overwrite=True
     save_experiment_to_database(simple_experiment, overwrite=True)

@@ -68,16 +68,16 @@ def mock_cellpose_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     real_mask = tifffile.imread(mask_path)
 
     def fake_batch_process(
-        self,
-        model,
-        images,
-        diameter,
-        cellprob_threshold,
-        flow_threshold,
-        batch_size,
-        min_size,
-        normalize,
-    ):
+        self,  # noqa: ANN001
+        model,  # noqa: ANN001
+        images,  # noqa: ANN001
+        diameter,  # noqa: ANN001
+        cellprob_threshold,  # noqa: ANN001
+        flow_threshold,  # noqa: ANN001
+        batch_size,  # noqa: ANN001
+        min_size,  # noqa: ANN001
+        normalize,  # noqa: ANN001
+    ) -> list:
         """Return real cellpose masks for testing."""
         # Return the real mask for each image
         masks_list = [real_mask.copy() for _ in images]
@@ -131,13 +131,13 @@ def test_multiple_detection_settings_create_separate_rois(
         assert len(rois_d1) > 0, "First detection should create ROIs"
         assert len(rois_d2) > 0, "Second detection should create ROIs"
 
-        # ROIs should be different (different detection settings can yield different cells)
+        # ROIs should be different
+        # (different detection settings can yield different cells)
         roi_ids_d1 = {roi.id for roi in rois_d1}
         roi_ids_d2 = {roi.id for roi in rois_d2}
         # They should be disjoint sets (no overlap)
-        assert roi_ids_d1.isdisjoint(roi_ids_d2), (
-            "ROIs from different detections should be separate"
-        )
+        msg = "ROIs from different detections should be separate"
+        assert roi_ids_d1.isdisjoint(roi_ids_d2), msg
     engine.dispose()
 
 
