@@ -141,7 +141,7 @@ def test_multiple_detection_settings_create_separate_rois(
         # They should be disjoint sets (no overlap)
         msg = "ROIs from different detections should be separate"
         assert roi_ids_d1.isdisjoint(roi_ids_d2), msg
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_same_detection_settings_reuses_settings_object(
@@ -173,7 +173,7 @@ def test_same_detection_settings_reuses_settings_object(
         detection_settings = session.exec(select(DetectionSettings)).all()
         # Should have only 1 unique settings (identical settings reused)
         assert len(detection_settings) == 1, "Identical settings should be reused"
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_multiple_analysis_settings_create_separate_results(
@@ -222,7 +222,7 @@ def test_multiple_analysis_settings_create_separate_results(
             assert len(data_analyses) > 0, (
                 f"AnalysisResult {ar.id} should have data analysis"
             )
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_roi_has_multiple_analysis_versions(test_experiment: Experiment) -> None:
@@ -264,7 +264,7 @@ def test_roi_has_multiple_analysis_versions(test_experiment: Experiment) -> None
         # Verify they're linked to different AnalysisResults
         ar_ids = {t.analysis_result_id for t in traces_versions}
         assert len(ar_ids) == 2, "Traces should link to 2 different AnalysisResults"
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
@@ -327,7 +327,7 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
             assert ar is not None, (
                 f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
             )
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_detection_without_analysis(test_experiment: Experiment) -> None:
@@ -352,7 +352,7 @@ def test_detection_without_analysis(test_experiment: Experiment) -> None:
 
         data_analyses = session.exec(select(DataAnalysis)).all()
         assert len(data_analyses) == 0, "Should have no data analysis without analysis"
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_analysis_without_detection_fails(test_experiment: Experiment) -> None:
@@ -380,7 +380,7 @@ def test_analysis_without_detection_fails(test_experiment: Experiment) -> None:
         # AnalysisResult might be created but with no traces/data
         traces = session.exec(select(Traces)).all()
         assert len(traces) == 0, "Should have no traces without ROIs"
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> None:
@@ -415,7 +415,7 @@ def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> 
         # Adjust assertion based on actual behavior
         # For now, we just verify we still have ROIs
         assert second_run_count > 0, "Second run should have ROIs"
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_query_results_by_settings(test_experiment: Experiment) -> None:
@@ -475,7 +475,7 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
             assert roi.detection_settings_id == det_settings_1.id, (
                 "Trace should link to ROI from correct detection"
             )
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> None:
@@ -554,7 +554,7 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
             # assert len(ar_traces) >= 0, "AnalysisResult should have traces"
 
     # Properly dispose engine to avoid resource warnings
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
@@ -580,7 +580,7 @@ def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
         assert len(analysis_results) == 1, (
             "Identical analysis should reuse AnalysisResult"
         )
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_analysis_with_different_positions(test_experiment: Experiment) -> None:
@@ -601,7 +601,7 @@ def test_analysis_with_different_positions(test_experiment: Experiment) -> None:
         ar = session.exec(select(AnalysisResult)).first()
         assert ar is not None
         assert ar.positions_analyzed == [0]
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_detection_with_different_cellpose_params(test_experiment: Experiment) -> None:
@@ -629,7 +629,7 @@ def test_detection_with_different_cellpose_params(test_experiment: Experiment) -
         assert len(detection_settings) == len(params_list), (
             f"Should have {len(params_list)} detection settings"
         )
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_roi_active_and_stimulated_flags(test_experiment: Experiment) -> None:
@@ -652,7 +652,7 @@ def test_roi_active_and_stimulated_flags(test_experiment: Experiment) -> None:
         for roi in rois:
             assert roi.active is not None or roi.active is None  # Can be null
             assert isinstance(roi.stimulated, bool) or roi.stimulated is None
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_traces_and_analysis_linkage(test_experiment: Experiment) -> None:
@@ -687,7 +687,7 @@ def test_traces_and_analysis_linkage(test_experiment: Experiment) -> None:
         for da in data_analyses:
             assert da.roi_id is not None
             assert da.analysis_result_id is not None
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_analysis_with_evoked_settings(test_experiment: Experiment) -> None:
@@ -717,7 +717,7 @@ def test_analysis_with_evoked_settings(test_experiment: Experiment) -> None:
         assert settings.led_pulse_duration == 50.0
         assert settings.led_pulse_powers == [5.0, 10.0]
         assert settings.led_pulse_on_frames == [100, 200]
-    engine.dispose()
+    engine.dispose(close=True)
 
 
 def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> None:
@@ -755,4 +755,4 @@ def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> 
         for trace in session.exec(select(Traces)).all():
             assert session.get(ROI, trace.roi_id) is not None
             assert session.get(AnalysisResult, trace.analysis_result_id) is not None
-    engine.dispose()
+    engine.dispose(close=True)

@@ -224,7 +224,7 @@ class DetectionRunner:
                     commit_fov_result(
                         session, experiment, fov_result, detection_settings.id
                     )
-            engine.dispose()
+            engine.dispose(close=True)
 
     def _run_cellpose_detection(
         self,
@@ -271,9 +271,9 @@ class DetectionRunner:
                         "`set the overwrite flag to `True` to overwrite the database."
                     )
                     cali_logger.error(msg)
-                    engine.dispose()
+                    engine.dispose(close=True)
                     raise ValueError(msg)
-        engine.dispose()
+        engine.dispose(close=True)
 
         # load data
         self._data = load_data(experiment.data_path)
