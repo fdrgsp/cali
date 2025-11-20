@@ -247,22 +247,24 @@ class CaliGui(QMainWindow):
 
         self.MW_GRAPHS = [self._multi_well_graph_1]
 
-        # MAIN SPLITTER-------------------------------------------------------------
-        # splitter between the plate map/fov table/image viewer and the graphs
-        self.main_splitter = QSplitter(self)
-        self.main_splitter.setContentsMargins(0, 0, 0, 0)
-        self.main_splitter.setChildrenCollapsible(False)
-        self.main_splitter.addWidget(self.splitter_bottom_left)
-
-        # Right side horizontal splitter for tabs and runs panel
+        # RIGHT SPLITTER --------------------------------------------------------------
+        # splitter between the tabs and the runs panel
         self.right_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.right_splitter.setContentsMargins(0, 0, 0, 0)
         self.right_splitter.setChildrenCollapsible(False)
         self.right_splitter.addWidget(self._tab)
 
+        # RUNS PANEL -------------------------------------------------------------------
         self._runs_panel = _RunsPanel()
         self._runs_panel.runSelected.connect(self._on_run_selected)
         self.right_splitter.addWidget(self._runs_panel)
+
+        # MAIN SPLITTER---------------------------------------------------------------
+        # splitter between the plate map/fov table/image viewer and the graphs
+        self.main_splitter = QSplitter(self)
+        self.main_splitter.setContentsMargins(0, 0, 0, 0)
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.addWidget(self.splitter_bottom_left)
 
         self.main_splitter.addWidget(self.right_splitter)
 
