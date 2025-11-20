@@ -107,7 +107,7 @@ def test_multiple_detection_settings_create_separate_rois(
         diameter=30,
         cellprob_threshold=0.0,
     )
-    detection.run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
 
     # Run detection with different settings
     d_settings_2 = DetectionSettings(
@@ -116,7 +116,7 @@ def test_multiple_detection_settings_create_separate_rois(
         diameter=50,
         cellprob_threshold=0.5,
     )
-    detection.run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Verify both detection settings exist in database
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -158,7 +158,7 @@ def test_same_detection_settings_reuses_settings_object(
         diameter=40,
         cellprob_threshold=0.0,
     )
-    detection.run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
 
     d_settings_2 = DetectionSettings(
         method="cellpose",
@@ -166,7 +166,7 @@ def test_same_detection_settings_reuses_settings_object(
         diameter=40,
         cellprob_threshold=0.0,
     )
-    detection.run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Verify only one detection settings record exists
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -186,7 +186,7 @@ def test_multiple_analysis_settings_create_separate_results(
 
     # Run detection once
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     # Run analysis with first settings
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
@@ -233,7 +233,7 @@ def test_roi_has_multiple_analysis_versions(test_experiment: Experiment) -> None
 
     # Run detection
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     # Run analysis twice with different settings
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
@@ -275,7 +275,7 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
 
     # Detection run 1
     d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
-    detection.run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
 
     # Analysis run 1-1 (detection 1 + analysis settings A)
     a_settings_A = AnalysisSettings(threads=1, dff_window=100)
@@ -287,7 +287,7 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
 
     # Detection run 2
     d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
-    detection.run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Analysis run 2-1 (detection 2 + analysis settings A)
     analysis.run(test_experiment, a_settings_A, global_position_indices=[0])
@@ -337,7 +337,7 @@ def test_detection_without_analysis(test_experiment: Experiment) -> None:
 
     # Run detection only
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     # Verify detection created ROIs but no analysis results
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -390,7 +390,7 @@ def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> 
 
     # First detection run
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
@@ -402,7 +402,7 @@ def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> 
     d_settings_same = DetectionSettings(
         method="cellpose", model_type="cpsam", diameter=40
     )
-    detection.run_cellpose(
+    detection._run_cellpose(
         test_experiment, d_settings_same, global_position_indices=[0]
     )
 
@@ -426,13 +426,13 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
 
     # Create multiple combinations
     d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
-    detection.run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
 
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings_1, global_position_indices=[0])
 
     d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
-    detection.run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
 
     a_settings_2 = AnalysisSettings(threads=1, dff_window=200)
     analysis.run(test_experiment, a_settings_2, global_position_indices=[0])
@@ -486,11 +486,11 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
 
     # Scenario 1: Detection only (no analysis)
     d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=25)
-    detection.run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_1, global_position_indices=[0])
 
     # Scenario 2: Detection + Analysis
     d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=35)
-    detection.run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings_2, global_position_indices=[0])
 
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings_1, global_position_indices=[0])
@@ -503,7 +503,7 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
     d_settings_2_rerun = DetectionSettings(
         method="cellpose", model_type="cpsam", diameter=35
     )
-    detection.run_cellpose(
+    detection._run_cellpose(
         test_experiment, d_settings_2_rerun, global_position_indices=[0]
     )
     analysis.run(test_experiment, a_settings_1, global_position_indices=[0])
@@ -565,7 +565,7 @@ def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
 
     # Run detection
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     # Run analysis
     a_settings = AnalysisSettings(threads=1, dff_window=100)
@@ -592,7 +592,7 @@ def test_analysis_with_different_positions(test_experiment: Experiment) -> None:
     # This test would need multi-position data
     # For now, verify single position works
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, global_position_indices=[0])
@@ -622,7 +622,7 @@ def test_detection_with_different_cellpose_params(test_experiment: Experiment) -
 
     for params in params_list:
         d_settings = DetectionSettings(method="cellpose", model_type="cpsam", **params)
-        detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+        detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
@@ -639,7 +639,7 @@ def test_roi_active_and_stimulated_flags(test_experiment: Experiment) -> None:
     analysis = AnalysisRunner()
 
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, global_position_indices=[0])
@@ -662,7 +662,7 @@ def test_traces_and_analysis_linkage(test_experiment: Experiment) -> None:
     analysis = AnalysisRunner()
 
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, global_position_indices=[0])
@@ -697,7 +697,7 @@ def test_analysis_with_evoked_settings(test_experiment: Experiment) -> None:
     analysis = AnalysisRunner()
 
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+    detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
     # Analysis settings with evoked parameters
     a_settings = AnalysisSettings(
@@ -731,7 +731,7 @@ def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> 
         d_settings = DetectionSettings(
             method="cellpose", model_type="cpsam", diameter=30 + i * 10
         )
-        detection.run_cellpose(test_experiment, d_settings, global_position_indices=[0])
+        detection._run_cellpose(test_experiment, d_settings, global_position_indices=[0])
 
         for j in range(2):
             a_settings = AnalysisSettings(threads=1, dff_window=100 + j * 50)

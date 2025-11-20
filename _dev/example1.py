@@ -30,7 +30,7 @@ if Path(exp.db_path).exists():
 # DETECTION STEP
 detection = DetectionRunner()
 dsettings1 = DetectionSettings(method="cellpose", model_type="cpsam")
-detection.run_cellpose(exp, dsettings1, global_position_indices=[0])
+detection.run(exp, dsettings1, global_position_indices=[0])
 
 # ANALYSIS STEP
 analysis = AnalysisRunner()
