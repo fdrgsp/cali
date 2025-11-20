@@ -473,7 +473,7 @@ class _DetectionGUI(QWidget):
                 self._cellpose_wdg.setChecked(False)
         else:
             raise TypeError(
-                "Value must be an instance of CellposeSettings or" "CaimanSettings."
+                "Value must be an instance of CellposeSettings orCaimanSettings."
             )
 
     def positions(self) -> list[int]:

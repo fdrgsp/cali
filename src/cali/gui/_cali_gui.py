@@ -452,7 +452,7 @@ class CaliGui(QMainWindow):
                     burst_min_duration=a_settings.burst_min_duration,
                     burst_blur_sigma=a_settings.burst_gaussian_sigma,
                     synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
-                )
+                ),
             )
         )
         # load plate plan data
@@ -526,7 +526,6 @@ class CaliGui(QMainWindow):
 
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
-
         create_worker(
             self._analysis_runner.run,
             _start_thread=True,
