@@ -7,9 +7,8 @@ experimental plate layouts.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
-
-from cali.logger import cali_logger
 
 from ._model import Condition, Plate
 
@@ -17,6 +16,8 @@ if TYPE_CHECKING:
     import useq
 
     from ._model import Experiment
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _row_index_to_label(row: int) -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
@@ -14,7 +15,6 @@ from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from matplotlib.image import AxesImage
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _calculate_cross_correlation(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.cm as cm
@@ -7,7 +8,6 @@ import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
 
-from cali.logger import cali_logger
 from cali.plot._util import (
     _get_spike_synchrony,
     _get_spike_synchrony_matrix,
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
 
+cali_logger = logging.getLogger("cali_logger")
 
 def _plot_spike_synchrony_data(
     widget: _SingleWellGraphWidget,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import mplcursors
@@ -8,7 +9,6 @@ from scipy.ndimage import gaussian_filter1d
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _plot_inferred_spikes(

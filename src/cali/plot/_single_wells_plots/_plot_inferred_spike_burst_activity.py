@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from cali.logger import cali_logger
 from cali.plot._util import _get_spikes_over_threshold
 
 if TYPE_CHECKING:
@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _plot_inferred_spike_burst_activity(

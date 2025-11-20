@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
@@ -12,7 +13,6 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from cali.logger import cali_logger
 from cali.plot._util import _get_spikes_over_threshold
 
 if TYPE_CHECKING:
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _calculate_spike_cross_correlation(

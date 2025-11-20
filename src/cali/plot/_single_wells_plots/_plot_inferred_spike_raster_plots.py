@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
@@ -11,7 +12,6 @@ from matplotlib.colors import Normalize
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI
 
 if TYPE_CHECKING:
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _generate_spike_raster_plot(

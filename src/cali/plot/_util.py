@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Callable
 
@@ -6,9 +7,10 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
 from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
-from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI
 from cali.sqlmodel._util import ROIData
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def equation_from_str(equation: str) -> Callable | None:

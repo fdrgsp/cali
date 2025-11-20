@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
@@ -13,7 +14,6 @@ from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
 from cali._constants import MWCM, STIMULATION_MASK
-from cali.logger import cali_logger
 from cali.plot._util import (
     _get_spikes_over_threshold,
     equation_from_str,
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
 
+cali_logger = logging.getLogger("cali_logger")
 
 DEFAULT_COLOR = "gray"
 STIMULATED_COLOR = "green"
