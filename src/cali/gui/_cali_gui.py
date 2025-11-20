@@ -294,9 +294,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        data = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        self.initialize_widget_from_directories(data, self._analysis_path)
+        # data = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._analysis_path)
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
