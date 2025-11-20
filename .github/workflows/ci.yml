@@ -53,7 +53,7 @@ jobs:
       - name: Run Tests
         run: uv run --no-sync coverage run -p -m pytest -v --color=yes
         env:
-          # Prevent Qt/PyTorch DLL conflicts on Windows
+          # Prevent Qt/PyTorch DLL conflicts on Windows (pytest-qt loads PyQt6 early)
           QT_QPA_PLATFORM: offscreen
 
       - name: Coverage
