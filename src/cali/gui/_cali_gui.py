@@ -42,6 +42,7 @@ from cali._constants import (
 )
 from cali.analysis import AnalysisRunner
 from cali.detection._detection_runner import DetectionRunner
+from cali.gui._runs_panel import _RunsPanel
 from cali.logger import cali_logger
 from cali.sqlmodel import (
     Experiment,
@@ -252,7 +253,18 @@ class CaliGui(QMainWindow):
         self.main_splitter.setContentsMargins(0, 0, 0, 0)
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.addWidget(self.splitter_bottom_left)
-        self.main_splitter.addWidget(self._tab)
+
+        # Right side horizontal splitter for tabs and runs panel
+        self.right_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.right_splitter.setContentsMargins(0, 0, 0, 0)
+        self.right_splitter.setChildrenCollapsible(False)
+        self.right_splitter.addWidget(self._tab)
+
+        self._runs_panel = _RunsPanel()
+        self._runs_panel.runSelected.connect(self._on_run_selected)
+        self.right_splitter.addWidget(self._runs_panel)
+
+        self.main_splitter.addWidget(self.right_splitter)
 
         # CENTRAL WIDGET -------------------------------------------------------------
         self._central_widget = QWidget(self)
@@ -309,8 +321,8 @@ class CaliGui(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path)
 
-        data = "tests/test_data/evoked/database/cali.db"
-        self.initialize_widget_from_database(data)
+        # data = "tests/test_data/evoked/database/cali.db"
+        # self.initialize_from_database(data)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
@@ -319,7 +331,7 @@ class CaliGui(QMainWindow):
         # ____________________________________________________________________________
 
     # PUBLIC METHODS-------------------------------------------------------------------
-    def initialize_widget_from_database(self, database_path: str | Path) -> None:
+    def initialize_from_database(self, database_path: str | Path) -> None:
         """Initialize the widget with the given database path."""
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from database...", False)
@@ -462,7 +474,7 @@ class CaliGui(QMainWindow):
         if plate_map_data is not None and plate is not None:
             self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
-    def initialize_widget_from_directories(
+    def initialize_from_directories(
         self, data_path: str, analysis_path: str
     ) -> None:
         """Initialize the widget with given datastore and analysis path."""
@@ -692,7 +704,7 @@ class CaliGui(QMainWindow):
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
-                self.initialize_widget_from_directories(data_path, value.analysis_path)
+                self.initialize_from_directories(data_path, value.analysis_path)
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
@@ -779,67 +791,125 @@ class CaliGui(QMainWindow):
     def _update_gui(self, plate: useq.WellPlate | None = None) -> None:
         """Update the analysis widgets gui."""
         # analysis widget
-        self._update_analysis_gui_settings(plate)
+        # self._update_analysis_gui_settings(plate)
 
         # # segmentation widget - TO REMOVE
         # self._segmentation_wdg.data = self._data
         # self._segmentation_wdg.labels_path = self._labels_path
 
-    def _update_analysis_gui_settings(
-        self, plate: useq.WellPlate | None = None
-    ) -> None:
-        """Update the analysis widgets settings."""
-        exp = self.experiment()
-        if exp is None:
-            self._analysis_wdg.reset()
-            return
-
-        settings = exp.analysis_settings
-        if settings is None:
-            self._analysis_wdg.reset()
-            return
-
-        plate_map_data = None
-        if plate is not None:
-            plate_map_data = (plate, *experiment_to_plate_map_data(exp))
-
-        value = AnalysisSettingsData(
-            plate_map_data=plate_map_data,
-            experiment_type_data=ExperimentTypeData(
-                experiment_type=exp.experiment_type,
-                led_power_equation=settings.led_power_equation,
-                stimulation_area_path=settings.stimulation_mask_path,
-                led_pulse_duration=settings.led_pulse_duration,
-                led_pulse_powers=settings.led_pulse_powers,
-                led_pulse_on_frames=settings.led_pulse_on_frames,
-            ),
-            trace_extraction_data=TraceExtractionData(
-                dff_window_size=settings.dff_window,
-                decay_constant=settings.decay_constant,
-                neuropil_inner_radius=settings.neuropil_inner_radius,
-                neuropil_min_pixels=settings.neuropil_min_pixels,
-                neuropil_correction_factor=settings.neuropil_correction_factor,
-            ),
-            calcium_peaks_data=CalciumPeaksData(
-                peaks_height=settings.peaks_height_value,
-                peaks_height_mode=settings.peaks_height_mode,
-                peaks_distance=settings.peaks_distance,
-                peaks_prominence_multiplier=settings.peaks_prominence_multiplier,
-                calcium_synchrony_jitter=settings.calcium_sync_jitter_window,
-                calcium_network_threshold=settings.calcium_network_threshold,
-            ),
-            spikes_data=SpikeData(
-                spike_threshold=settings.spike_threshold_value,
-                spike_threshold_mode=settings.spike_threshold_mode,
-                burst_threshold=settings.burst_threshold,
-                burst_min_duration=settings.burst_min_duration,
-                burst_blur_sigma=settings.burst_gaussian_sigma,
-                synchrony_lag=settings.spikes_sync_cross_corr_lag,
-            ),
-        )
-        self.set_analysis_settings(value)
-
     # ---------------------WIDGETS------------------------------------
+
+    def _on_run_selected(self, run_id: int) -> None:
+        """Handle run selection from the runs panel.
+
+        Load the detection and analysis settings for the selected run.
+
+        Parameters
+        ----------
+        run_id : int
+            The ID of the selected AnalysisResult
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            # Load the selected analysis result
+            result = AnalysisResult.load_from_database(self._database_path, id=run_id)
+            if isinstance(result, list):
+                result = result[0]
+
+            # Load and apply detection settings
+            if result.detection_settings:
+                d_settings = DetectionSettings.load_from_database(
+                    self._database_path, id=result.detection_settings
+                )
+                if isinstance(d_settings, DetectionSettings):
+                    if d_settings.method == "cellpose":
+                        model_options = [
+                            self._detection_wdg._cellpose_wdg._models_combo.itemText(i)
+                            for i in range(
+                                self._detection_wdg._cellpose_wdg._models_combo.count()
+                            )
+                        ]
+                        model_path = (
+                            d_settings.model_type
+                            if d_settings.model_type not in model_options
+                            else None
+                        )
+                        self._detection_wdg.setValue(
+                            CellposeSettings(
+                                model_type=d_settings.model_type,
+                                model_path=model_path,
+                                diameter=d_settings.diameter,
+                                cellprob_threshold=d_settings.cellprob_threshold,
+                                flow_threshold=d_settings.flow_threshold,
+                                min_size=d_settings.min_size,
+                                normalize=d_settings.normalize,
+                                batch_size=d_settings.batch_size,
+                            )
+                        )
+                    elif d_settings.method == "caiman":
+                        self._detection_wdg.setValue(CaimanSettings())
+
+            # Load and apply analysis settings
+            if result.analysis_settings:
+                a_settings = AnalysisSettings.load_from_database(
+                    self._database_path, id=result.analysis_settings
+                )
+                if isinstance(a_settings, AnalysisSettings):
+                    self._analysis_wdg.setValue(
+                        AnalysisSettingsData(
+                            experiment_type_data=ExperimentTypeData(
+                                experiment_type=(
+                                    EVOKED
+                                    if a_settings.stimulated_mask_area() is not None
+                                    else SPONTANEOUS
+                                ),
+                                led_power_equation=a_settings.led_power_equation,
+                                led_pulse_duration=a_settings.led_pulse_duration,
+                                led_pulse_on_frames=a_settings.led_pulse_on_frames,
+                                led_pulse_powers=a_settings.led_pulse_powers,
+                                stimulation_area_path=a_settings.stimulation_mask_path,
+                            ),
+                            trace_extraction_data=TraceExtractionData(
+                                dff_window_size=a_settings.dff_window,
+                                decay_constant=a_settings.decay_constant,
+                                neuropil_inner_radius=a_settings.neuropil_inner_radius,
+                                neuropil_min_pixels=a_settings.neuropil_min_pixels,
+                                neuropil_correction_factor=(
+                                    a_settings.neuropil_correction_factor
+                                ),
+                            ),
+                            calcium_peaks_data=CalciumPeaksData(
+                                peaks_height=a_settings.peaks_height_value,
+                                peaks_height_mode=a_settings.peaks_height_mode,
+                                peaks_distance=a_settings.peaks_distance,
+                                peaks_prominence_multiplier=(
+                                    a_settings.peaks_prominence_multiplier
+                                ),
+                                calcium_synchrony_jitter=(
+                                    a_settings.calcium_sync_jitter_window
+                                ),
+                                calcium_network_threshold=(
+                                    a_settings.calcium_network_threshold
+                                ),
+                            ),
+                            spikes_data=SpikeData(
+                                spike_threshold=a_settings.spike_threshold_value,
+                                spike_threshold_mode=a_settings.spike_threshold_mode,
+                                burst_threshold=a_settings.burst_threshold,
+                                burst_min_duration=a_settings.burst_min_duration,
+                                burst_blur_sigma=a_settings.burst_gaussian_sigma,
+                                synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                            ),
+                        )
+                    )
+
+            cali_logger.info(f"Loaded settings from Run #{run_id}")
+
+        except Exception as e:
+            show_error_dialog(self, f"Failed to load run settings: {e}")
+            cali_logger.error(f"Failed to load run #{run_id}: {e}")
 
     def _set_splitter_sizes(self) -> None:
         """Set the initial sizes for the splitters."""
