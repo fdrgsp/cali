@@ -8,18 +8,19 @@ This module provides helper functions for database operations including:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlmodel import Session, create_engine
 
-from cali.logger import cali_logger
-
 from ._model import Experiment
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def create_database_and_tables(engine: Engine) -> None:
@@ -223,8 +224,8 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
                 _ = len(fov.rois)  # Force load rois
                 for roi in fov.rois:
                     # Force load all ROI relationships
-                    _ = roi.traces_history
-                    _ = roi.data_analysis_history
+                    _ = roi.traces
+                    _ = roi.data_analysis
                     _ = roi.roi_mask
                     _ = roi.neuropil_mask
 
