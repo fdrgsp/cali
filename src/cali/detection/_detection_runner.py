@@ -65,7 +65,57 @@ class DetectionRunner:
         self._cancellation_event.set()
         cali_logger.info("Cancellation requested...")
 
-    def run_caiman(
+    def run(
+        self,
+        experiment: Experiment,
+        detection_settings: DetectionSettings,
+        global_position_indices: Sequence[int],
+        overwrite: bool = False,
+        echo: bool = False,
+    ) -> None:
+        """Run detection and save masks to database.
+
+        Automatically selects the appropriate detection method based on
+        detection_settings.method ("cellpose" or "caiman").
+
+        Parameters
+        ----------
+        experiment : Experiment
+            Experiment to add detection results to
+        detection_settings : DetectionSettings
+            Detection parameters (method field determines which algorithm to use)
+        global_position_indices : Sequence[int]
+            Position indices to process
+        overwrite : bool
+            Whether to overwrite existing database
+        echo : bool
+            Enable SQLAlchemy echo for database operations
+        """
+        if detection_settings.method == "cellpose":
+            self._run_cellpose(
+                experiment=experiment,
+                detection_settings=detection_settings,
+                global_position_indices=global_position_indices,
+                overwrite=overwrite,
+                echo=echo,
+            )
+        elif detection_settings.method == "caiman":
+            self._run_caiman(
+                experiment=experiment,
+                detection_settings=detection_settings,
+                global_position_indices=global_position_indices,
+                overwrite=overwrite,
+                echo=echo,
+            )
+        else:
+            msg = (
+                f"Unknown detection method: {detection_settings.method}. "
+                "Supported methods: 'cellpose', 'caiman'"
+            )
+            cali_logger.error(msg)
+            raise ValueError(msg)
+
+    def _run_caiman(
         self,
         experiment: Experiment,
         detection_settings: DetectionSettings,
@@ -92,7 +142,7 @@ class DetectionRunner:
         cali_logger.warning("CaImAn detection not yet implemented")
         raise NotImplementedError("CaImAn detection coming soon!")
 
-    def run_cellpose(
+    def _run_cellpose(
         self,
         experiment: Experiment,
         detection_settings: DetectionSettings,
