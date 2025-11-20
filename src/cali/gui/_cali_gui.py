@@ -474,9 +474,7 @@ class CaliGui(QMainWindow):
         if plate_map_data is not None and plate is not None:
             self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
-    def initialize_from_directories(
-        self, data_path: str, analysis_path: str
-    ) -> None:
+    def initialize_from_directories(self, data_path: str, analysis_path: str) -> None:
         """Initialize the widget with given datastore and analysis path."""
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from directories...", False)
