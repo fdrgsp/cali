@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 cali_logger = logging.getLogger("cali_logger")
 
+
 def _plot_spike_synchrony_data(
     widget: _SingleWellGraphWidget,
     db_path: str,
