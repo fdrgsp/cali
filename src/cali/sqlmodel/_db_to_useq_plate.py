@@ -6,14 +6,15 @@ objects from the database representation, enabling round-trip conversion.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import useq
 
-from cali.logger import cali_logger
-
 if TYPE_CHECKING:
     from ._model import Experiment
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def experiment_to_useq_plate(

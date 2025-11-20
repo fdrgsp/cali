@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from itertools import zip_longest
 from pathlib import Path
@@ -16,7 +17,6 @@ from cali._constants import (
     N_SUFFIX,
     SEM_SUFFIX,
 )
-from cali.logger import cali_logger
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -37,6 +37,8 @@ from cali.plot._util import (
 
 if TYPE_CHECKING:
     from cali.sqlmodel._util import ROIData
+
+cali_logger = logging.getLogger("cali_logger")
 
 # fmt: off
 NUMBER_RE = re.compile(r"[0-9]+(?:\.[0-9]+)?")

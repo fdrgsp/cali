@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from typing_extensions import TypeAlias
-
-from cali.logger import cali_logger
 
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
@@ -60,6 +59,8 @@ if TYPE_CHECKING:
 
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 
+
+cali_logger = logging.getLogger("cali_logger")
 
 # ANALYSIS PRODUCT REGISTRY ===========================================================
 

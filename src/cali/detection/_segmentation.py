@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,7 +36,6 @@ from cali.gui._util import (
     parse_lineedit_text,
     show_error_dialog,
 )
-from cali.logger import cali_logger
 
 try:
     from cellpose import core
@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
     from cali.sqlmodel._model import Experiment
 
+cali_logger = logging.getLogger("cali_logger")
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import mplcursors
 import numpy as np
 
-from cali.logger import cali_logger
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _plot_connectivity_network_data(

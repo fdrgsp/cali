@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import useq
 
-from cali.logger import cali_logger
 from cali.sqlmodel._useq_plate_to_db import useq_plate_plan_to_db
 
 if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
     from cali.sqlmodel import Experiment, Plate
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def data_to_plate(

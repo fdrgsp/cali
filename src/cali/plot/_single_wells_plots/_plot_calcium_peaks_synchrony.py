@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.cm as cm
@@ -7,7 +8,6 @@ import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
 
-from cali.logger import cali_logger
 from cali.plot._util import (
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from matplotlib.image import AxesImage
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _plot_peak_event_synchrony_data(

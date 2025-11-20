@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from cali.logger import cali_logger
 
 from ._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
@@ -55,6 +54,7 @@ from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_mas
 if TYPE_CHECKING:
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 
+cali_logger = logging.getLogger("cali_logger")
 
 # TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
 # fmt: off

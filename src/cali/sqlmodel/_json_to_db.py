@@ -18,6 +18,7 @@ Example
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,8 @@ from ._util import ROIData
 
 if TYPE_CHECKING:
     from useq import WellPlate
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def load_analysis_from_json(
@@ -382,8 +385,6 @@ def load_analysis_from_json(
     # Save to database if requested
     if save_to_db:
         from sqlmodel import Session, create_engine, select
-
-        from cali.logger import cali_logger
 
         from ._util import create_database_and_tables
 

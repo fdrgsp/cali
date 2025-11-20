@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -43,7 +44,6 @@ from cali._constants import (
 from cali.analysis import AnalysisRunner
 from cali.detection._detection_runner import DetectionRunner
 from cali.gui._runs_panel import _RunsPanel
-from cali.logger import cali_logger
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
@@ -82,6 +82,7 @@ if TYPE_CHECKING:
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
+cali_logger = logging.getLogger("cali_logger")
 
 DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("coverslip-18mm-square"),

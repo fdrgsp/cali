@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -11,7 +12,6 @@ from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
-from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Experiment, Mask
 from cali.sqlmodel._util import save_experiment_to_database
 from cali.util import commit_fov_result, load_data, mask_to_coordinates
@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from cellpose.models import CellposeModel
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
+
+cali_logger = logging.getLogger("cali_logger")
 
 
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
