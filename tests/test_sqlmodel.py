@@ -55,12 +55,10 @@ from cali.sqlmodel._util import (
     create_database_and_tables,
 )
 
-TempDB = tuple[Engine, Path]
-
-TempDB = tuple[Engine, Path]
-
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+TempDB = tuple[Engine, Path]
 
 # ==================== Fixtures ====================
 

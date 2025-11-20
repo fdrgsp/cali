@@ -357,139 +357,133 @@ def print_all_analysis_results(
     max_experiment_level : MaxTreeLevel
         Maximum depth for experiment tree in each result (default: "roi")
     """
-    session = Session(engine)
+    with Session(engine) as session:
+        # Get analysis results - either filtered by experiment or all results
+        if experiment_name is not None:
+            # Get specific experiment
+            experiment = session.exec(
+                select(Experiment).where(Experiment.name == experiment_name)
+            ).first()
 
-    # Get analysis results - either filtered by experiment or all results
-    if experiment_name is not None:
-        # Get specific experiment
-        experiment = session.exec(
-            select(Experiment).where(Experiment.name == experiment_name)
-        ).first()
+            if experiment is None:
+                print(f"❌ Experiment '{experiment_name}' not found")
+                return
 
-        if experiment is None:
-            print(f"❌ Experiment '{experiment_name}' not found")
-            session.close()
+            # Get results for this experiment
+            results = session.exec(
+                select(AnalysisResult).where(AnalysisResult.experiment == experiment.id)
+            ).all()
+
+            title = f"Analysis Results for '{experiment_name}'"
+        else:
+            # Get all results from all experiments
+            results = session.exec(select(AnalysisResult)).all()
+            title = "All Analysis Results"
+
+        if not results:
+            if experiment_name:
+                print(f"📊 No analysis results found for experiment '{experiment_name}'")
+            else:
+                print("📊 No analysis results found in database")
             return
 
-        # Get results for this experiment
-        results = session.exec(
-            select(AnalysisResult).where(AnalysisResult.experiment == experiment.id)
-        ).all()
-
-        title = f"Analysis Results for '{experiment_name}'"
-    else:
-        # Get all results from all experiments
-        results = session.exec(select(AnalysisResult)).all()
-        title = "All Analysis Results"
-
-    if not results:
-        if experiment_name:
-            print(f"📊 No analysis results found for experiment '{experiment_name}'")
-        else:
-            print("📊 No analysis results found in database")
-        session.close()
-        return
-
-    # Create main tree with title as root
-    console = Console()
-    plural = "s" if len(results) != 1 else ""
-    main_tree = Tree(
-        f"[bold cyan]{title}[/bold cyan] ({len(results)} result{plural})",
-        guide_style="cyan",
-    )
-
-    # Add each result as a child of the main tree
-    for result in results:
-        # Get experiment for this result with eager loading of relationships
-        from sqlalchemy.orm import selectinload
-
-        plate_chain = (
-            selectinload(Experiment.plate)
-            .selectinload(Plate.wells)
-            .selectinload(Well.fovs)
-            .selectinload(FOV.rois)
+        # Create main tree with title as root
+        console = Console()
+        plural = "s" if len(results) != 1 else ""
+        main_tree = Tree(
+            f"[bold cyan]{title}[/bold cyan] ({len(results)} result{plural})",
+            guide_style="cyan",
         )
 
-        result_experiment = session.exec(
-            select(Experiment)
-            .where(Experiment.id == result.experiment)
-            .options(
-                plate_chain.selectinload(ROI.traces_history),
-                plate_chain.selectinload(ROI.data_analysis_history),
-                plate_chain.selectinload(ROI.roi_mask),
-                plate_chain.selectinload(ROI.neuropil_mask),
+        # Add each result as a child of the main tree
+        for result in results:
+            # Get experiment for this result with eager loading of relationships
+            from sqlalchemy.orm import selectinload
+
+            plate_chain = (
+                selectinload(Experiment.plate)
+                .selectinload(Plate.wells)
+                .selectinload(Well.fovs)
+                .selectinload(FOV.rois)
             )
-        ).first()
 
-        # Create result subtree
-        positions = result.positions_analyzed or []
-        positions_count = len(positions)
-        pos_plural = "s" if positions_count != 1 else ""
-
-        result_tree = main_tree.add(
-            f"📊 [bold cyan]Analysis Result #{result.id}[/bold cyan]"
-        )
-
-        # Positions analyzed first
-        if positions:
-            positions_node = result_tree.add(
-                f"📍 [bold magenta]Positions Analyzed[/bold magenta] "
-                f"({positions_count} position{pos_plural})"
-            )
-            # Group consecutive positions for cleaner display
-            ranges = []
-            start = positions[0]
-            end = positions[0]
-
-            for pos in positions[1:]:
-                if pos == end + 1:
-                    end = pos
-                else:
-                    ranges.append((start, end))
-                    start = end = pos
-            ranges.append((start, end))
-
-            for start, end in ranges:
-                if start == end:
-                    positions_node.add(f"Position {start}")
-                else:
-                    positions_node.add(f"Positions {start}-{end}")
-
-        # Detection settings (if available)
-        if result.detection_settings:
-            detection_settings = session.exec(
-                select(DetectionSettings).where(
-                    DetectionSettings.id == result.detection_settings
+            result_experiment = session.exec(
+                select(Experiment)
+                .where(Experiment.id == result.experiment)
+                .options(
+                    plate_chain.selectinload(ROI.traces_history),
+                    plate_chain.selectinload(ROI.data_analysis_history),
+                    plate_chain.selectinload(ROI.roi_mask),
+                    plate_chain.selectinload(ROI.neuropil_mask),
                 )
             ).first()
-            if detection_settings:
-                add_detection_settings_to_tree(
-                    result_tree, detection_settings, show_details=show_settings
+
+            # Create result subtree
+            positions = result.positions_analyzed or []
+            positions_count = len(positions)
+            pos_plural = "s" if positions_count != 1 else ""
+
+            result_tree = main_tree.add(
+                f"📊 [bold cyan]Analysis Result #{result.id}[/bold cyan]"
+            )            # Positions analyzed first
+            if positions:
+                positions_node = result_tree.add(
+                    f"📍 [bold magenta]Positions Analyzed[/bold magenta] "
+                    f"({positions_count} position{pos_plural})"
+                )
+                # Group consecutive positions for cleaner display
+                ranges = []
+                start = positions[0]
+                end = positions[0]
+
+                for pos in positions[1:]:
+                    if pos == end + 1:
+                        end = pos
+                    else:
+                        ranges.append((start, end))
+                        start = end = pos
+                ranges.append((start, end))
+
+                for start, end in ranges:
+                    if start == end:
+                        positions_node.add(f"Position {start}")
+                    else:
+                        positions_node.add(f"Positions {start}-{end}")
+
+            # Detection settings (if available)
+            if result.detection_settings:
+                detection_settings = session.exec(
+                    select(DetectionSettings).where(
+                        DetectionSettings.id == result.detection_settings
+                    )
+                ).first()
+                if detection_settings:
+                    add_detection_settings_to_tree(
+                        result_tree, detection_settings, show_details=show_settings
+                    )
+
+            # Analysis settings
+            settings = session.exec(
+                select(AnalysisSettings).where(
+                    AnalysisSettings.id == result.analysis_settings
+                )
+            ).first()
+
+            if settings:
+                add_analysis_settings_to_tree(
+                    result_tree, settings, show_details=show_settings
                 )
 
-        # Analysis settings
-        settings = session.exec(
-            select(AnalysisSettings).where(
-                AnalysisSettings.id == result.analysis_settings
-            )
-        ).first()
+            # Experiment info with full tree
+            if result_experiment:
+                add_experiment_tree_to_node(
+                    result_tree,
+                    result_experiment,
+                    max_level=max_experiment_level,
+                    detection_settings_id=result.detection_settings,
+                )
 
-        if settings:
-            add_analysis_settings_to_tree(
-                result_tree, settings, show_details=show_settings
-            )
-
-        # Experiment info with full tree
-        if result_experiment:
-            add_experiment_tree_to_node(
-                result_tree,
-                result_experiment,
-                max_level=max_experiment_level,
-                detection_settings_id=result.detection_settings,
-            )
-
-    console.print(main_tree)
-    session.close()
+        console.print(main_tree)
 
 
 def print_experiment_tree_from_engine(
@@ -519,22 +513,21 @@ def print_experiment_tree_from_engine(
     show_settings : bool
         Whether to show detailed analysis settings for each result (default: False)
     """
-    session = Session(engine)
-    statement = select(Experiment).where(Experiment.name == experiment_name)
-    experiment = session.exec(statement).first()
+    with Session(engine) as session:
+        statement = select(Experiment).where(Experiment.name == experiment_name)
+        experiment = session.exec(statement).first()
 
-    if experiment is None:
-        print(f"❌ Experiment '{experiment_name}' not found")
-        return
+        if experiment is None:
+            print(f"❌ Experiment '{experiment_name}' not found")
+            return
 
-    print_experiment_tree(
-        experiment,
-        max_experiment_level=max_level,
-        session=session,
-        show_analysis_results=show_analysis_results,
-        show_settings=show_settings,
-    )
-    session.close()
+        print_experiment_tree(
+            experiment,
+            max_experiment_level=max_level,
+            session=session,
+            show_analysis_results=show_analysis_results,
+            show_settings=show_settings,
+        )
 
 
 def print_experiment_tree(

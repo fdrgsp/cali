@@ -394,6 +394,7 @@ class AnalysisRunner:
 
         # Load existing FOV with ROI masks from database
         engine = create_engine(f"sqlite:///{experiment.db_path}", echo=False)
+        early_exit = False
         with Session(engine) as session:
             # Query for FOV with this name and position
             fov_stmt = (
@@ -407,19 +408,16 @@ class AnalysisRunner:
                 )
             )
             existing_fov = session.exec(fov_stmt).first()
-
+            rois_to_analyze: list[ROI] = []
             if existing_fov is None or not existing_fov.rois:
                 cali_logger.error(
                     f"No ROI masks found in database for FOV {fov_name} "
                     f"(position {global_pos_idx}). Run detection first."
                 )
-                engine.dispose(close=True)
-                return None
-
-            # Filter ROIs by detection_settings_id if specified
-            # This ensures we only analyze ROIs from the correct detection run
-            rois_to_analyze = existing_fov.rois
-            if detection_settings_id is not None:
+                early_exit = True
+            elif detection_settings_id is not None:
+                # Filter ROIs by detection_settings_id if specified
+                # This ensures we only analyze ROIs from the correct detection run
                 rois_to_analyze = [
                     roi
                     for roi in existing_fov.rois
@@ -430,42 +428,49 @@ class AnalysisRunner:
                         f"No ROIs found with detection_settings_id="
                         f"{detection_settings_id} in FOV {fov_name}"
                     )
-                    engine.dispose(close=True)
-                    return None
+                    early_exit = True
+            else:
+                rois_to_analyze = existing_fov.rois
 
             # Convert database masks (coordinates) to numpy arrays
             # { label_value -> np.ndarray mask }
             labels_masks = {}
             # All ROIs in a FOV share the same detection_settings_id
             fov_detection_settings_id = None
-            for roi in rois_to_analyze:
-                if (
-                    roi.roi_mask
-                    and roi.roi_mask.coords_y is not None
-                    and roi.roi_mask.coords_x is not None
-                    and roi.roi_mask.height is not None
-                    and roi.roi_mask.width is not None
-                ):
-                    mask_array = coordinates_to_mask(
-                        (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
-                        (roi.roi_mask.height, roi.roi_mask.width),
-                    )
-                    labels_masks[roi.label_value] = mask_array
-                    # Capture detection_settings_id from first ROI (same for all in FOV)
-                    if fov_detection_settings_id is None:
-                        fov_detection_settings_id = roi.detection_settings_id
-                else:
-                    cali_logger.warning(
-                        f"ROI {roi.label_value} in {fov_name} has no mask data"
-                    )
 
-            if not labels_masks:
-                cali_logger.error(
-                    f"No valid ROI masks found for FOV {fov_name}. Run detection first."
-                )
-                engine.dispose(close=True)
-                return None
+            if not early_exit:
+                for roi in rois_to_analyze:
+                    if (
+                        roi.roi_mask
+                        and roi.roi_mask.coords_y is not None
+                        and roi.roi_mask.coords_x is not None
+                        and roi.roi_mask.height is not None
+                        and roi.roi_mask.width is not None
+                    ):
+                        mask_array = coordinates_to_mask(
+                            (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
+                            (roi.roi_mask.height, roi.roi_mask.width),
+                        )
+                        labels_masks[roi.label_value] = mask_array
+                        # Capture detection_settings_id from ROI
+                        if fov_detection_settings_id is None:
+                            fov_detection_settings_id = roi.detection_settings_id
+                    else:
+                        cali_logger.warning(
+                            f"ROI {roi.label_value} in {fov_name} has no mask data"
+                        )
+
+                if not labels_masks:
+                    cali_logger.error(
+                        f"No valid ROI masks found for FOV {fov_name}. "
+                        "Run detection first."
+                    )
+                    early_exit = True
         engine.dispose(close=True)
+
+        # If we marked for early exit, return None after disposing engine
+        if early_exit:
+            return None
 
         # Check for cancellation after database I/O
         if self._check_for_abort_requested():
