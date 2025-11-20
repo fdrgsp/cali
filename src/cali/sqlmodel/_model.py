@@ -73,8 +73,11 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     """
 
     __tablename__ = "analysis_result"
-    id: int | None = Field(default=None, primary_key=True)
 
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys
     experiment: int = Field(foreign_key="experiment.id")
     detection_settings: int | None = Field(
         default=None, foreign_key="detection_settings.id"
@@ -87,6 +90,88 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     data_analysis_results: list["DataAnalysis"] = Relationship(
         back_populates="analysis_result"
     )
+
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        experiment_id: int | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load analysis result(s) from database with related settings.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific analysis result to load. If None, loads based on
+            experiment_id or all results.
+        experiment_id : int | None
+            Filter by experiment ID. If None and id is None, loads all results.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single AnalysisResult if id specified, otherwise list of results.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific analysis result
+        >>> result = AnalysisResult.load_from_database("path/to/db.db", id=1)
+        >>> print(result.analysis_settings_obj.dff_window)
+        >>>
+        >>> # Load all results for an experiment
+        >>> results = AnalysisResult.load_from_database(
+        ...     "path/to/db.db", experiment_id=1
+        ... )
+        >>> for r in results:
+        ...     print(f"Analysis {r.id}: {r.positions_analyzed}")
+        >>>
+        >>> # Load most recent analysis result
+        >>> results = AnalysisResult.load_from_database("path/to/db.db")
+        >>> latest = results[-1]  # Ordered by id (creation order)
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            # Build query with eager loading of settings
+            statement = (
+                select(cls)
+                .options(selectinload(cls.traces))
+                .options(selectinload(cls.data_analysis_results))
+            )
+
+            # Filter by id or experiment_id
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No AnalysisResult found with id={id}")
+                session.expunge_all()
+                return obj
+            elif experiment_id is not None:
+                statement = statement.where(cls.experiment == experiment_id)
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
 
 
 class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
@@ -138,7 +223,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
 
     @classmethod
     def load_from_db(
-        cls, db_path: str, id: int, session: Session | None = None
+        cls, db_path: str | Path, id: int | None = None, session: Session | None = None
     ) -> Self:
         """Load experiment from database with all relationships eagerly loaded.
 
@@ -146,8 +231,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         ----------
         db_path : str
             Path to the SQLite database file
-        id : int
-            ID of the experiment to load
+        id : int | None
+            ID of the experiment to load. If None, loads the first experiment.
         session : Session | None
             Optional existing session to use. If None, creates a new one.
 
@@ -172,16 +257,16 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             )
 
             # Load experiment with all relationships eagerly loaded
-            statement = (
-                select(Experiment)
-                .where(Experiment.id == id)
-                .options(
-                    plate_chain.selectinload(ROI.traces_history),
-                    plate_chain.selectinload(ROI.data_analysis_history),
-                    plate_chain.selectinload(ROI.roi_mask),
-                    plate_chain.selectinload(ROI.neuropil_mask),
-                )
+            statement = select(Experiment).options(
+                plate_chain.selectinload(ROI.traces_history),
+                plate_chain.selectinload(ROI.data_analysis_history),
+                plate_chain.selectinload(ROI.roi_mask),
+                plate_chain.selectinload(ROI.neuropil_mask),
             )
+
+            # Filter by ID if provided, otherwise get first experiment
+            if id is not None:
+                statement = statement.where(Experiment.id == id)
 
             obj = session.exec(statement).first()
             session.expunge_all()  # Detach all instances from the session
@@ -460,6 +545,82 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     # TODO: add CaImAn settings
 
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        method: str | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load detection settings from database.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific detection settings to load. If None, loads based on
+            method or all settings.
+        method : str | None
+            Filter by detection method ("cellpose" or "caiman"). If None and
+            id is None, loads all settings.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single DetectionSettings if id specified, otherwise list of settings.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific detection settings
+        >>> settings = DetectionSettings.load_from_database("db.db", id=1)
+        >>> print(settings.model_type)
+        >>>
+        >>> # Load all cellpose settings
+        >>> cellpose_settings = DetectionSettings.load_from_database(
+        ...     "db.db", method="cellpose"
+        ... )
+        >>>
+        >>> # Load most recent settings
+        >>> all_settings = DetectionSettings.load_from_database("db.db")
+        >>> latest = all_settings[-1]
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            statement = select(cls)
+
+            # Filter by id or method
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No DetectionSettings found with id={id}")
+                session.expunge_all()
+                return obj
+            elif method is not None:
+                statement = statement.where(cls.method == method)
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
 
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
@@ -591,6 +752,70 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 (stim_mask.height, stim_mask.width),
             )
         return None
+
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load analysis settings from database.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific analysis settings to load. If None, loads all settings.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single AnalysisSettings if id specified, otherwise list of settings.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific analysis settings
+        >>> settings = AnalysisSettings.load_from_database("db.db", id=1)
+        >>> print(settings.dff_window)
+        >>>
+        >>> # Load most recent settings
+        >>> all_settings = AnalysisSettings.load_from_database("db.db")
+        >>> latest = all_settings[-1]
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            statement = select(cls)
+
+            # Filter by id if provided
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No AnalysisSettings found with id={id}")
+                session.expunge_all()
+                return obj
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]

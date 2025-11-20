@@ -427,7 +427,9 @@ def print_all_analysis_results(
 
             result_tree = main_tree.add(
                 f"📊 [bold cyan]Analysis Result #{result.id}[/bold cyan]"
-            )  # Positions analyzed first
+            )
+            result_tree.add(f"📅 Created: [dim]{result.created_at}[/dim]")
+            # Positions analyzed first
             if positions:
                 positions_node = result_tree.add(
                     f"📍 [bold magenta]Positions Analyzed[/bold magenta] "

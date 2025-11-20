@@ -32,8 +32,10 @@ from tqdm import tqdm
 
 from cali._constants import (
     EVENT_KEY,
+    EVOKED,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
+    SPONTANEOUS,
     UNSELECTABLE_COLOR,
     WRITERS,
     ZARR_TESNSORSTORE,
@@ -47,9 +49,10 @@ from cali.sqlmodel import (
     experiment_to_useq_plate_plan,
     has_experiment_analysis,
     has_fov_analysis,
-    load_experiment_from_database,
     save_experiment_to_database,
 )
+from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
+from cali.sqlmodel._model import AnalysisResult, AnalysisSettings, DetectionSettings
 from cali.util import load_data
 
 from ._analysis_gui import (
@@ -306,21 +309,14 @@ class CaliGui(QMainWindow):
         # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._analysis_path)
 
-        # data = "tests/test_data/evoked/evk_analysis/evk.tensorstore.zarr.db"
-        # self.initialize_widget_from_database(data)
+        data = "tests/test_data/evoked/database/cali.db"
+        self.initialize_widget_from_database(data)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
         # fmt: on
         # ____________________________________________________________________________
-
-    # PROPERTY TO LOAD EXPERIMENT ON-DEMAND ------------------------------------------
-    def experiment(self) -> Experiment | None:
-        """Load experiment from database on-demand."""
-        if self._database_path is None:
-            return None
-        return load_experiment_from_database(self._database_path)
 
     # PUBLIC METHODS-------------------------------------------------------------------
     def initialize_widget_from_database(self, database_path: str | Path) -> None:
@@ -333,33 +329,11 @@ class CaliGui(QMainWindow):
 
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
-        exp = load_experiment_from_database(database_path)
-        if exp is None:
-            msg = f"Could not load experiment from database at {database_path}!"
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
-
-        data_path = exp.data_path
-        if data_path is None:
-            msg = "Data path not found in the database! Cannot initialize the "
-            "CaliGui without a valid data path."
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
-
-        if exp.analysis_path is None or exp.database_name is None:
-            msg = "Analysis path or database name not found in the database! Cannot "
-            "initialize the CaliGui without valid analysis path and database name."
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
+        # load the first experiment from the database (there should be only one)
+        exp = Experiment.load_from_db(database_path)
 
         # DATA-------------------------------------------------------------------------
-        self._data = load_data(data_path)
+        self._data = load_data(exp.data_path)
         if self._data is None:
             msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
@@ -385,22 +359,108 @@ class CaliGui(QMainWindow):
         self._analysis_path = exp.analysis_path
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path()
+        self._update_graph_with_database_path(self._database_path)
 
         # PLATE------------------------------------------------------------------------
         plate_plan = experiment_to_useq_plate_plan(exp)
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
+        else:
+            cali_logger.warning("❌ Plate plan not found in experiment.")
 
         # UPDATE GUI-------------------------------------------------------------------
-        self._analysis_wdg.reset()
-        # TODO:
-        # - reset detection wdg
-        # - read the database settings and update detection and analysis gui accordingly
-        # self._update_gui(plate_plan.plate if plate_plan is not None else None)
+        self._update_gui_settings(self._database_path)
 
         # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()  # Close entire dialog when done
+        self._loading_bar.hide()
+
+    def _update_gui_settings(self, database_path: Path) -> None:
+        """Update the GUI settings based on the latest analysis result."""
+        # load the latest analysis result
+        latest_result = AnalysisResult.load_from_database(database_path)
+        if isinstance(latest_result, list):
+            latest_result = latest_result[0]
+
+        # get and set the latest analysis settings
+        d_id = latest_result.detection_settings
+        d_settings = DetectionSettings.load_from_database(database_path, id=d_id)
+        assert isinstance(d_settings, DetectionSettings)  # it cannot be a list here
+        if d_settings.method == "cellpose":
+            model_options = [
+                self._detection_wdg._cellpose_wdg._models_combo.itemText(i)
+                for i in range(self._detection_wdg._cellpose_wdg._models_combo.count())
+            ]
+            model_path = (
+                d_settings.model_type
+                if d_settings.model_type not in model_options
+                else None
+            )
+            self._detection_wdg.setValue(
+                CellposeSettings(
+                    model_type=d_settings.model_type,
+                    model_path=model_path,
+                    diameter=d_settings.diameter,
+                    cellprob_threshold=d_settings.cellprob_threshold,
+                    flow_threshold=d_settings.flow_threshold,
+                    min_size=d_settings.min_size,
+                    normalize=d_settings.normalize,
+                    batch_size=d_settings.batch_size,
+                )
+            )
+        elif d_settings.method == "caiman":
+            self._detection_wdg.setValue(CaimanSettings())
+        else:
+            raise ValueError(f"Unknown detection method: {d_settings.method}.")
+
+        # get and set the latest analysis settings
+        a_id = latest_result.analysis_settings
+        a_settings = AnalysisSettings.load_from_database(database_path, id=a_id)
+        assert isinstance(a_settings, AnalysisSettings)  # it cannot be a list here
+        self._analysis_wdg.setValue(
+            AnalysisSettingsData(
+                experiment_type_data=ExperimentTypeData(
+                    experiment_type=(
+                        EVOKED
+                        if a_settings.stimulated_mask_area() is not None
+                        else SPONTANEOUS
+                    ),
+                    led_power_equation=a_settings.led_power_equation,
+                    led_pulse_duration=a_settings.led_pulse_duration,
+                    led_pulse_on_frames=a_settings.led_pulse_on_frames,
+                    led_pulse_powers=a_settings.led_pulse_powers,
+                    stimulation_area_path=a_settings.stimulation_mask_path,
+                ),
+                trace_extraction_data=TraceExtractionData(
+                    dff_window_size=a_settings.dff_window,
+                    decay_constant=a_settings.decay_constant,
+                    neuropil_inner_radius=a_settings.neuropil_inner_radius,
+                    neuropil_min_pixels=a_settings.neuropil_min_pixels,
+                    neuropil_correction_factor=a_settings.neuropil_correction_factor,
+                ),
+                calcium_peaks_data=CalciumPeaksData(
+                    peaks_height=a_settings.peaks_height_value,
+                    peaks_height_mode=a_settings.peaks_height_mode,
+                    peaks_distance=a_settings.peaks_distance,
+                    peaks_prominence_multiplier=a_settings.peaks_prominence_multiplier,
+                    calcium_synchrony_jitter=a_settings.calcium_sync_jitter_window,
+                    calcium_network_threshold=a_settings.calcium_network_threshold,
+                ),
+                spikes_data=SpikeData(
+                    spike_threshold=a_settings.spike_threshold_value,
+                    spike_threshold_mode=a_settings.spike_threshold_mode,
+                    burst_threshold=a_settings.burst_threshold,
+                    burst_min_duration=a_settings.burst_min_duration,
+                    burst_blur_sigma=a_settings.burst_gaussian_sigma,
+                    synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                )
+            )
+        )
+        # load plate plan data
+        exp = Experiment.load_from_db(database_path)
+        plate = experiment_to_useq_plate(exp)
+        plate_map_data = experiment_to_plate_map_data(exp)
+        if plate_map_data is not None and plate is not None:
+            self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
     def initialize_widget_from_directories(
         self, data_path: str, analysis_path: str
@@ -440,7 +500,7 @@ class CaliGui(QMainWindow):
         self._database_path = Path(analysis_path) / database_name
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path()
+        self._update_graph_with_database_path(self._database_path)
 
         # CREATE THE EXPERIMENT BASED ON DATA -----------------------------------------
         experiment = Experiment.create_from_data(
@@ -457,32 +517,21 @@ class CaliGui(QMainWindow):
 
         # UPDATE GUI-------------------------------------------------------------------
         self._update_gui_plate_plan(self._data.sequence.stage_positions)
-        self._analysis_wdg.reset()
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
-
-    def analysis_settings(self) -> AnalysisSettingsData | None:
-        """Get the current analysis settings from the analysis widget."""
-        return self._analysis_wdg.value()
-
-    def set_analysis_settings(self, value: AnalysisSettingsData) -> None:
-        """Set the current analysis settings in the analysis widget."""
-        self._analysis_wdg.setValue(value)
-        self._analysis_wdg._run_analysis_wdg.reset()
-
-    def detection_settings(self) -> CellposeSettings | CaimanSettings:
-        return self._detection_wdg.value()
-
-    def set_detection_settings(self, value: CellposeSettings | CaimanSettings) -> None:
-        self._detection_wdg.setValue(value)
-        self._detection_wdg._run_detection_wdg.reset()
 
     # RUNNING THE DETECTION------------------------------------------------------------
     def _on_run_detection_clicked(self) -> None: ...
 
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
+
+        create_worker(
+            self._analysis_runner.run,
+            _start_thread=True,
+            _connect={"errored": self._on_worker_errored},
+        )
         ...
         # exp = self.experiment()
         # if exp is None:
@@ -664,18 +713,20 @@ class CaliGui(QMainWindow):
         self._default_plate_plan = False
         # reset analysis widget gui
         self._analysis_wdg.reset()
+        # reset detection widget gui
+        self._detection_wdg.reset()
 
         # clear the segmentation widget - TO REMOVE
         # self._segmentation_wdg.experiment = None
         # self._segmentation_wdg.data = None
         # self._segmentation_wdg.labels_path = None
 
-    def _update_graph_with_database_path(self) -> None:
+    def _update_graph_with_database_path(self, database_path: Path) -> None:
         """Update all graph widgets with the current database path."""
         for sw_graph in self.SW_GRAPHS:
-            sw_graph.database_path = self._database_path
+            sw_graph.database_path = database_path
         for mw_graph in self.MW_GRAPHS:
-            mw_graph.database_path = self._database_path
+            mw_graph.database_path = database_path
 
     def _update_gui_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None

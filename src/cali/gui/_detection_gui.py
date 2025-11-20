@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-if TYPE_CHECKING:
-    from cali.sqlmodel._model import AnalysisSettings
-
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QIcon
@@ -37,6 +34,9 @@ from cali.gui._util import (
     parse_lineedit_text,
 )
 
+if TYPE_CHECKING:
+    from cali.sqlmodel._model import DetectionSettings
+
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 CUSTOM_MODEL_PATH = (
@@ -50,7 +50,7 @@ CUSTOM_MODEL_PATH = (
 @dataclass(frozen=True)
 class CellposeSettings:
     model_type: str = "cpsam"
-    model_path: str = ""
+    model_path: str | None = None
     diameter: float | None = None
     cellprob_threshold: float = 0.0
     flow_threshold: float = 0.4
@@ -261,7 +261,7 @@ class _CellposeDetectionWidget(QGroupBox):
     def setValue(self, value: CellposeSettings) -> None:
         """Set the Cellpose parameters from a CellposeData object."""
         self._models_combo.setCurrentText(value.model_type)
-        if value.model_type == "custom":
+        if value.model_type == "custom" and value.model_path is not None:
             self._browse_custom_model.setValue(value.model_path)
         self._diameter_spin.setValue(0 if value.diameter is None else value.diameter)
         self._cellprob_threshold_spin.setValue(value.cellprob_threshold)
@@ -465,12 +465,24 @@ class _DetectionGUI(QWidget):
                 self._cellpose_wdg.setChecked(True)
             with signals_blocked(self._caiman_wdg):
                 self._caiman_wdg.setChecked(False)
-        else:  # CaimanData
+        elif isinstance(value, CaimanSettings):
             self._caiman_wdg.setValue(value)
             with signals_blocked(self._caiman_wdg):
                 self._caiman_wdg.setChecked(True)
             with signals_blocked(self._cellpose_wdg):
                 self._cellpose_wdg.setChecked(False)
+        else:
+            raise TypeError(
+                "Value must be an instance of CellposeSettings or" "CaimanSettings."
+            )
+
+    def positions(self) -> list[int]:
+        """Get the positions to analyze."""
+        return parse_lineedit_text(self._positions_wdg.value())
+
+    def set_positions(self, positions: list[int]) -> None:
+        """Set the positions to analyze."""
+        self._positions_wdg.setValue(",".join(map(str, positions)))
 
     def enable(self, enabled: bool) -> None:
         """Enable or disable the detection GUI."""
@@ -480,18 +492,7 @@ class _DetectionGUI(QWidget):
 
     def reset(self) -> None:
         """Reset the detection GUI to default values."""
-        self._cellpose_wdg.setValue(
-            CellposeSettings(
-                model_type="cpsam",
-                model_path="",
-                diameter=0,
-                cellprob_threshold=0.0,
-                flow_threshold=0.4,
-                min_size=15,
-                normalize=True,
-                batch_size=8,
-            )
-        )
+        self._cellpose_wdg.setValue(CellposeSettings())
         self._caiman_wdg.setValue(CaimanSettings())
         with signals_blocked(self._cellpose_wdg):
             self._cellpose_wdg.setChecked(True)
@@ -499,6 +500,48 @@ class _DetectionGUI(QWidget):
             self._caiman_wdg.setChecked(False)
         self._positions_wdg.setValue("")
         self._run_detection_wdg.reset()
+
+    def to_model_settings(self) -> tuple[list[int], DetectionSettings]:
+        """Convert current GUI settings to AnalysisSettings model.
+
+        Returns
+        -------
+        tuple[list[int], AnalysisSettings]
+            A tuple containing the list of positions to analyze and the
+            AnalysisSettings model instance.
+        """
+        from datetime import datetime
+
+        from cali.sqlmodel import DetectionSettings
+
+        settings = self.value()
+
+        if isinstance(settings, CellposeSettings):
+            model_type = (
+                settings.model_path
+                if settings.model_type == "custom" and settings.model_path is not None
+                else settings.model_type
+            )
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="cellpose",
+                model_type=model_type,
+                diameter=None if settings.diameter == 0 else settings.diameter,
+                cellprob_threshold=settings.cellprob_threshold,
+                flow_threshold=settings.flow_threshold,
+                min_size=settings.min_size,
+                normalize=settings.normalize,
+                batch_size=settings.batch_size,
+                # + caiman defaults
+            )
+        else:  #  caiman
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="caiman",
+                # + cellpose defaults
+            )
+
+        return self.positions(), settings
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
@@ -523,55 +566,3 @@ class _DetectionGUI(QWidget):
     def update_progress_label(self, elapsed_time: str) -> None:
         """Update the progress label with elapsed time."""
         self._run_detection_wdg.set_time_label(elapsed_time)
-
-    def to_model_settings(
-        self, experiment_id: int
-    ) -> tuple[list[int], AnalysisSettings]:
-        """Convert current GUI settings to AnalysisSettings model.
-
-        Parameters
-        ----------
-        experiment_id : int
-            The experiment ID to associate with these settings
-
-        Returns
-        -------
-        tuple[list[int], AnalysisSettings]
-            A tuple containing the list of positions to analyze and the
-            AnalysisSettings model instance.
-        """
-        from datetime import datetime
-
-        from cali.sqlmodel import DetectionSettings
-
-        settings = self.value()
-
-        if isinstance(settings, CellposeSettings):
-            model_type = (
-                settings.model_type
-                if settings.model_type != "custom"
-                else settings.model_path
-            )
-            settings = DetectionSettings(
-                created_at=datetime.now(),
-                method="cellpose",
-                model_type=model_type,
-                diameter=None if settings.diameter == 0 else settings.diameter,
-                cellprob_threshold=settings.cellprob_threshold,
-                flow_threshold=settings.flow_threshold,
-                min_size=settings.min_size,
-                normalize=settings.normalize,
-                batch_size=settings.batch_size,
-                # + caiman defaults
-            )
-        else:  #  caiman
-            settings = DetectionSettings(
-                created_at=datetime.now(),
-                method="caiman",
-                # + cellpose defaults
-            )
-
-        # Parse positions
-        positions = parse_lineedit_text(self._positions_wdg.value())
-
-        return positions, settings

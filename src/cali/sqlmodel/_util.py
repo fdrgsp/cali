@@ -223,8 +223,8 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
                 _ = len(fov.rois)  # Force load rois
                 for roi in fov.rois:
                     # Force load all ROI relationships
-                    _ = roi.traces
-                    _ = roi.data_analysis
+                    _ = roi.traces_history
+                    _ = roi.data_analysis_history
                     _ = roi.roi_mask
                     _ = roi.neuropil_mask
 
