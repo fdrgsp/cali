@@ -382,7 +382,9 @@ def print_all_analysis_results(
 
         if not results:
             if experiment_name:
-                print(f"📊 No analysis results found for experiment '{experiment_name}'")
+                print(
+                    f"📊 No analysis results found for experiment '{experiment_name}'"
+                )
             else:
                 print("📊 No analysis results found in database")
             return
@@ -425,7 +427,7 @@ def print_all_analysis_results(
 
             result_tree = main_tree.add(
                 f"📊 [bold cyan]Analysis Result #{result.id}[/bold cyan]"
-            )            # Positions analyzed first
+            )  # Positions analyzed first
             if positions:
                 positions_node = result_tree.add(
                     f"📍 [bold magenta]Positions Analyzed[/bold magenta] "

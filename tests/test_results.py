@@ -394,9 +394,7 @@ def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> 
     d_settings_same = DetectionSettings(
         method="cellpose", model_type="cpsam", diameter=40
     )
-    detection.run(
-        test_experiment, d_settings_same, global_position_indices=[0]
-    )
+    detection.run(test_experiment, d_settings_same, global_position_indices=[0])
 
     with Session(engine) as session:
         second_run_rois = session.exec(select(ROI)).all()
@@ -495,9 +493,7 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
     d_settings_2_rerun = DetectionSettings(
         method="cellpose", model_type="cpsam", diameter=35
     )
-    detection.run(
-        test_experiment, d_settings_2_rerun, global_position_indices=[0]
-    )
+    detection.run(test_experiment, d_settings_2_rerun, global_position_indices=[0])
     analysis.run(test_experiment, a_settings_1, global_position_indices=[0])
 
     # Verify complete database state
