@@ -6,11 +6,23 @@ and convert it to the PlateMapData format used by the plate viewer GUI.
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from cali.gui._plate_map import PlateMapData
     from cali.sqlmodel._model import Experiment
+
+
+def _generate_random_color() -> str:
+    """Generate a random color in hex format.
+
+    Returns
+    -------
+    str
+        A random color in hex format (e.g., "#3A7F9B")
+    """
+    return f"#{random.randint(0, 0xFFFFFF):06X}"
 
 
 def experiment_to_plate_map_data(
@@ -64,7 +76,7 @@ def experiment_to_plate_map_data(
                 row_col=(well.row, well.column),
                 condition=(
                     well.condition_1.name,
-                    well.condition_1.color or "gray",  # Default color if none
+                    well.condition_1.color or _generate_random_color(),
                 ),
             )
             condition_1_data.append(plate_map_entry)
@@ -78,7 +90,7 @@ def experiment_to_plate_map_data(
                 row_col=(well.row, well.column),
                 condition=(
                     well.condition_2.name,
-                    well.condition_2.color or "gray",  # Default color if none
+                    well.condition_2.color or _generate_random_color(),
                 ),
             )
             condition_2_data.append(plate_map_entry)

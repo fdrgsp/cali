@@ -79,7 +79,6 @@ class AnalysisSettingsData:
     trace_extraction_data: TraceExtractionData | None = None
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
-    positions: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1397,7 +1396,6 @@ class _AnalysisGUI(QWidget):
             self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
             self._calcium_peaks_wdg.value(),
             self._spike_wdg.value(),
-            self._positions_wdg.value(),
         )
 
     def setValue(self, value: AnalysisSettingsData) -> None:
@@ -1420,8 +1418,14 @@ class _AnalysisGUI(QWidget):
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
             self._spike_wdg.setValue(value.spikes_data)
-        if value.positions is not None:
-            self._positions_wdg.setValue(value.positions)
+
+    def positions(self) -> list[int]:
+        """Get the positions to analyze."""
+        return parse_lineedit_text(self._positions_wdg.value())
+
+    def set_positions(self, positions: list[int]) -> None:
+        """Set the positions to analyze."""
+        self._positions_wdg.setValue(",".join(map(str, positions)))
 
     def enable(self, enable: bool) -> None:
         """Enable or disable the widget."""
@@ -1446,15 +1450,8 @@ class _AnalysisGUI(QWidget):
         self._positions_wdg.setValue("")
         self._run_analysis_wdg.reset()
 
-    def to_model_settings(
-        self, experiment_id: int
-    ) -> tuple[list[int], AnalysisSettings]:
+    def to_model_settings(self) -> tuple[list[int], AnalysisSettings]:
         """Convert current GUI settings to AnalysisSettings model.
-
-        Parameters
-        ----------
-        experiment_id : int
-            The experiment ID to associate with these settings
 
         Returns
         -------
@@ -1543,10 +1540,7 @@ class _AnalysisGUI(QWidget):
             # frame_rate=self._frame_rate_wdg.value(),
         )
 
-        # Parse positions
-        positions = parse_lineedit_text(self._positions_wdg.value())
-
-        return positions, settings
+        return self.positions(), settings
 
     def update_progress_label(self, elapsed_time: str) -> None:
         """Update the progress label with elapsed time."""
