@@ -260,7 +260,7 @@ class DetectionRunner:
                             f"⏭️  Skipping detection - all {len(positions_to_save)} "
                             f"position(s) already have ROIs with DetectionSettings ID "
                             f"{detection_settings.id}. Use force=True to re-run and "
-                            f"replace existing analysis."
+                            f"replace existing ROIs."
                         )
                         engine.dispose(close=True)
                         return
