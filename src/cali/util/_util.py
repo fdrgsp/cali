@@ -13,7 +13,7 @@ from cali.sqlmodel._model import (
     Well,
 )
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader:

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def _calculate_spike_cross_correlation(

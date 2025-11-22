@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
     from cali.sqlmodel._model import Experiment
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 

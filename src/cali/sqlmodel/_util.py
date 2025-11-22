@@ -20,7 +20,7 @@ from ._model import Experiment
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def create_database_and_tables(engine: Engine) -> None:

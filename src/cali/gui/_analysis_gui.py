@@ -1450,14 +1450,13 @@ class _AnalysisGUI(QWidget):
         self._positions_wdg.setValue("")
         self._run_analysis_wdg.reset()
 
-    def to_model_settings(self) -> tuple[list[int], AnalysisSettings]:
+    def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
 
         Returns
         -------
-        tuple[list[int], AnalysisSettings]
-            A tuple containing the list of positions to analyze and the
-            AnalysisSettings model instance.
+        AnalysisSettings
+            The AnalysisSettings model populated with current GUI values.
         """
         from datetime import datetime
 
@@ -1540,7 +1539,7 @@ class _AnalysisGUI(QWidget):
             # frame_rate=self._frame_rate_wdg.value(),
         )
 
-        return self.positions(), settings
+        return settings
 
     def update_progress_label(self, elapsed_time: str) -> None:
         """Update the progress label with elapsed time."""

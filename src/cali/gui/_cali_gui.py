@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -82,7 +81,7 @@ if TYPE_CHECKING:
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("coverslip-18mm-square"),
@@ -257,7 +256,6 @@ class CaliGui(QMainWindow):
 
         # RUNS PANEL -------------------------------------------------------------------
         self._runs_panel = _RunsPanel()
-        self._runs_panel.runSelected.connect(self._on_run_selected)
         self.right_splitter.addWidget(self._runs_panel)
 
         # MAIN SPLITTER---------------------------------------------------------------
@@ -278,6 +276,8 @@ class CaliGui(QMainWindow):
 
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
+
+        self._runs_panel.runSelected.connect(self._on_run_selected)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
@@ -325,7 +325,8 @@ class CaliGui(QMainWindow):
         # self.initialize_widget_from_directories(data, self._analysis_path)
 
         # data = "tests/test_data/evoked/database/cali.db"
-        # self.initialize_from_database(data)
+        data = "tests/test_data/evoked/database/evk.tensorstore.zarr.db"
+        self.initialize_from_database(data)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
@@ -391,85 +392,15 @@ class CaliGui(QMainWindow):
 
     def _update_gui_settings(self, database_path: Path) -> None:
         """Update the GUI settings based on the latest analysis result."""
-        # load the latest analysis result
-        latest_result = AnalysisResult.load_from_database(database_path)
-        if isinstance(latest_result, list):
-            latest_result = latest_result[0]
-
-        # get and set the latest analysis settings
-        d_id = latest_result.detection_settings
-        d_settings = DetectionSettings.load_from_database(database_path, id=d_id)
-        assert isinstance(d_settings, DetectionSettings)  # it cannot be a list here
-        if d_settings.method == "cellpose":
-            model_options = [
-                self._detection_wdg._cellpose_wdg._models_combo.itemText(i)
-                for i in range(self._detection_wdg._cellpose_wdg._models_combo.count())
-            ]
-            model_path = (
-                d_settings.model_type
-                if d_settings.model_type not in model_options
-                else None
-            )
-            self._detection_wdg.setValue(
-                CellposeSettings(
-                    model_type=d_settings.model_type,
-                    model_path=model_path,
-                    diameter=d_settings.diameter,
-                    cellprob_threshold=d_settings.cellprob_threshold,
-                    flow_threshold=d_settings.flow_threshold,
-                    min_size=d_settings.min_size,
-                    normalize=d_settings.normalize,
-                    batch_size=d_settings.batch_size,
-                )
-            )
-        elif d_settings.method == "caiman":
-            self._detection_wdg.setValue(CaimanSettings())
-        else:
-            raise ValueError(f"Unknown detection method: {d_settings.method}.")
-
-        # get and set the latest analysis settings
-        a_id = latest_result.analysis_settings
-        a_settings = AnalysisSettings.load_from_database(database_path, id=a_id)
-        assert isinstance(a_settings, AnalysisSettings)  # it cannot be a list here
-        self._analysis_wdg.setValue(
-            AnalysisSettingsData(
-                experiment_type_data=ExperimentTypeData(
-                    experiment_type=(
-                        EVOKED
-                        if a_settings.stimulated_mask_area() is not None
-                        else SPONTANEOUS
-                    ),
-                    led_power_equation=a_settings.led_power_equation,
-                    led_pulse_duration=a_settings.led_pulse_duration,
-                    led_pulse_on_frames=a_settings.led_pulse_on_frames,
-                    led_pulse_powers=a_settings.led_pulse_powers,
-                    stimulation_area_path=a_settings.stimulation_mask_path,
-                ),
-                trace_extraction_data=TraceExtractionData(
-                    dff_window_size=a_settings.dff_window,
-                    decay_constant=a_settings.decay_constant,
-                    neuropil_inner_radius=a_settings.neuropil_inner_radius,
-                    neuropil_min_pixels=a_settings.neuropil_min_pixels,
-                    neuropil_correction_factor=a_settings.neuropil_correction_factor,
-                ),
-                calcium_peaks_data=CalciumPeaksData(
-                    peaks_height=a_settings.peaks_height_value,
-                    peaks_height_mode=a_settings.peaks_height_mode,
-                    peaks_distance=a_settings.peaks_distance,
-                    peaks_prominence_multiplier=a_settings.peaks_prominence_multiplier,
-                    calcium_synchrony_jitter=a_settings.calcium_sync_jitter_window,
-                    calcium_network_threshold=a_settings.calcium_network_threshold,
-                ),
-                spikes_data=SpikeData(
-                    spike_threshold=a_settings.spike_threshold_value,
-                    spike_threshold_mode=a_settings.spike_threshold_mode,
-                    burst_threshold=a_settings.burst_threshold,
-                    burst_min_duration=a_settings.burst_min_duration,
-                    burst_blur_sigma=a_settings.burst_gaussian_sigma,
-                    synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
-                ),
-            )
-        )
+        # set the database path in the runs panel
+        self._runs_panel.set_database_path(database_path)
+        # select first run if available
+        if self._runs_panel._runs_list.count() > 0:
+            # select first run
+            self._runs_panel._runs_list.setCurrentRow(0)
+            # emit runSelected signal for the first run
+            if (first_item := self._runs_panel._runs_list.item(0)) is not None:
+                self._runs_panel._on_run_clicked(first_item)
         # load plate plan data
         exp = Experiment.load_from_db(database_path)
         plate = experiment_to_useq_plate(exp)
@@ -535,143 +466,70 @@ class CaliGui(QMainWindow):
         self._loading_bar.hide()
 
     # RUNNING THE DETECTION------------------------------------------------------------
-    def _on_run_detection_clicked(self) -> None: ...
+    def _on_run_detection_clicked(self) -> None:
+        if (
+            self._data is None
+            or self._database_path is None
+            or self._data.sequence is None
+        ):
+            return
+
+        experiment = Experiment.load_from_db(self._database_path)
+        d_settings = self._detection_wdg.to_model_settings()
+        pos = self._detection_wdg.positions() or list(
+            range(len(self._data.sequence.stage_positions))
+        )
+        create_worker(
+            self._detection_runner.run,
+            experiment,
+            d_settings,
+            pos,
+            _start_thread=True,
+            _connect={
+                "errored": self._on_worker_errored,
+                "finished": self._on_worker_finished,
+            },
+        )
 
     # RUNNING THE ANALYSIS-------------------------------------------------------------
     def _on_run_analysis_clicked(self) -> None:
+        if (
+            self._data is None
+            or self._database_path is None
+            or self._data.sequence is None
+        ):
+            return
+
+        experiment = Experiment.load_from_db(self._database_path)
+        a_settings = self._analysis_wdg.to_model_settings()
+        pos = self._analysis_wdg.positions() or list(
+            range(len(self._data.sequence.stage_positions))
+        )
         create_worker(
             self._analysis_runner.run,
+            experiment,
+            a_settings,
+            pos,
             _start_thread=True,
-            _connect={"errored": self._on_worker_errored},
+            _connect={
+                "errored": self._on_worker_errored,
+                "finished": self._on_worker_finished,
+            },
         )
-        ...
-        # exp = self.experiment()
-        # if exp is None:
-        #     return
-
-        # # Check for settings consistency before running analysis
-        # if not self._check_analysis_settings_before_run(exp):
-        #     return
-
-        # # update the experiment analysis settings
-        # self._update_experiment_analysis_settings()
-
-    def _check_analysis_settings_before_run(self, experiment: Experiment) -> bool:
-        """Check if current GUI settings differ from experiment's analysis settings.
-
-        Returns
-        -------
-        bool
-            True if it's safe to proceed with analysis, False if user cancelled
-        """
-        return True
-        # from qtpy.QtWidgets import QMessageBox
-
-        # if experiment is None:
-        #     return False
-
-        # # If no existing analysis settings, safe to proceed
-        # if experiment.analysis_settings is None:
-        #     return True
-
-        # # Get current GUI settings
-        # new_settings = self._analysis_wdg.to_model_settings(experiment.id or 0)[1]
-        # # Exclude 'id' and 'created_at' from comparison since it's database-specific
-        # new_settings_dict = new_settings.model_dump(exclude={"id", "created_at"})
-
-        # # Compare experiment settings with current GUI settings
-        # # Exclude 'id'  and 'created_at' since it's database-specific
-        # existing_settings = experiment.analysis_settings
-        # existing_settings_dict = existing_settings.model_dump(
-        #     exclude={"id", "created_at"}
-        # )
-
-        # if existing_settings_dict != new_settings_dict:
-        #     msg_box = QMessageBox(self)
-        #     msg_box.setIcon(QMessageBox.Icon.Warning)
-        #     msg_box.setWindowTitle("Different Analysis Settings Detected!")
-        #     msg_box.setText(
-        #         "The settings stored in the current database during previous analysis "
-        #         "run are different from the ones in the GUI.\n\n"
-        #         "If you continue and click ok 'OK', the previous analysis results will "
-        #         "be deleted from the database and update it with the new settings and "
-        #         "newly analyzed positions.\n\n"
-        #         "Options:\n"
-        #         "• Ok: Delete previous results and run new analysis\n"
-        #         "• Cancel: Keep existing data and do not run analysis\n\n"
-        #         "NOTE: To keep the old database, please set a new analysis path from "
-        #         "the 'Load Data and Set Directories...' menu so that the analysis will "
-        #         "be saved in a new database while keeping the old one intact."
-        #     )
-        #     msg_box.setStandardButtons(
-        #         QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
-        #     )
-        #     msg_box.setDefaultButton(QMessageBox.StandardButton.Cancel)
-
-        #     result = msg_box.exec()
-        #     if result == QMessageBox.StandardButton.Cancel:
-        #         return False
-
-        #     self._delete_all_analysis_data()
-
-        # return True
-
-    # def _delete_all_analysis_data(self) -> None:
-    #     """Delete all existing analysis data (ROIs) from the experiment."""
-    #     # Delegate the clearing logic to the analysis runner
-    #     self._analysis_runner.clear_analysis_results()
-
-    # def _update_experiment_analysis_settings(self) -> None:
-    #     exp = self.experiment()
-    #     if exp is None or self._data is None:
-    #         return
-
-    #     # Ensure experiment has an ID (should be set if loaded from DB)
-    #     if exp.id is None:
-    #         cali_logger.warning("Experiment has no ID, cannot update analysis settings")
-    #         return
-
-    #     # Update or set the experiment's type based on gui state
-    #     exp_type = self._analysis_wdg._experiment_type_wdg.value()
-    #     exp.experiment_type = exp_type.experiment_type or SPONTANEOUS
-
-    #     # Get positions to analyze and new settings from GUI
-    #     pos, new_settings = self._analysis_wdg.to_model_settings(exp.id)
-
-    #     # Update positions to analyze based on selected wells in the plate view
-    #     # If no position selected, analyze all positions from the data
-    #     if len(pos) == 0:
-    #         if self._data.sequence is None:
-    #             show_error_dialog(
-    #                 self,
-    #                 "No MDASequence found in the datastore! Cannot determine "
-    #                 "positions to analyze.",
-    #             )
-    #             return
-    #         pos = list(range(len(self._data.sequence.stage_positions)))
-    #     exp.positions_analyzed = pos
-
-    #     # Update existing settings or create new one
-    #     if exp.analysis_settings is not None:
-    #         exp.analysis_settings.sqlmodel_update(
-    #             new_settings.model_dump(exclude={"id"})
-    #         )
-    #     else:
-    #         # Create new settings
-    #         exp.analysis_settings = new_settings
-
-    #     # Update the analysis runner with the current data, experiment and settings
-    #     # This will also save the experiment to the database before running analysis
-    #     self._analysis_runner.set_experiment(exp)
-
-    #     create_worker(
-    #         self._analysis_runner.run,
-    #         _start_thread=True,
-    #         _connect={"errored": self._on_worker_errored},
-    #     )
 
     def _on_worker_errored(self) -> None:
         cali_logger.error("Analysis runner encountered an error during execution.")
+
+    def _on_worker_finished(self) -> None:
+        cali_logger.info("✅ Runner finished successfully.")
+        # refresh the runs panel
+        self._runs_panel.refresh_runs()
+        # select the last run
+        last_index = self._runs_panel._runs_list.count() - 1
+        if last_index >= 0:
+            self._runs_panel._runs_list.setCurrentRow(last_index)
+            if (last_item := self._runs_panel._runs_list.item(last_index)) is not None:
+                self._runs_panel._on_run_clicked(last_item)
 
     def _on_analysis_info(self, msg: str, type: str) -> None:
         """Handle analysis info messages from the analysis runner."""
@@ -694,7 +552,7 @@ class CaliGui(QMainWindow):
             value = init_dialog.value()
             # input from database
             if value.database_path is not None:
-                self.initialize_widget_from_database(value.database_path)
+                self.initialize_from_database(value.database_path)
             # input from directories
             elif (data_path := value.data_path) is not None:
                 if value.analysis_path is None:
@@ -727,11 +585,6 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.reset()
         # reset detection widget gui
         self._detection_wdg.reset()
-
-        # clear the segmentation widget - TO REMOVE
-        # self._segmentation_wdg.experiment = None
-        # self._segmentation_wdg.data = None
-        # self._segmentation_wdg.labels_path = None
 
     def _update_graph_with_database_path(self, database_path: Path) -> None:
         """Update all graph widgets with the current database path."""
@@ -816,101 +669,104 @@ class CaliGui(QMainWindow):
         try:
             # Load the selected analysis result
             result = AnalysisResult.load_from_database(self._database_path, id=run_id)
-            if isinstance(result, list):
-                result = result[0]
+            assert isinstance(result, AnalysisResult)
 
             # Load and apply detection settings
             if result.detection_settings:
                 d_settings = DetectionSettings.load_from_database(
                     self._database_path, id=result.detection_settings
                 )
-                if isinstance(d_settings, DetectionSettings):
-                    if d_settings.method == "cellpose":
-                        model_options = [
-                            self._detection_wdg._cellpose_wdg._models_combo.itemText(i)
-                            for i in range(
-                                self._detection_wdg._cellpose_wdg._models_combo.count()
-                            )
-                        ]
-                        model_path = (
-                            d_settings.model_type
-                            if d_settings.model_type not in model_options
-                            else None
+                assert isinstance(d_settings, DetectionSettings)
+                if d_settings.method == "cellpose":
+                    cp_wdg = self._detection_wdg._cellpose_wdg
+                    model_options = [
+                        cp_wdg._models_combo.itemText(i)
+                        for i in range(cp_wdg._models_combo.count())
+                    ]
+                    model_path = (
+                        d_settings.model_type
+                        if d_settings.model_type not in model_options
+                        else None
+                    )
+                    self._detection_wdg.setValue(
+                        CellposeSettings(
+                            model_type=d_settings.model_type,
+                            model_path=model_path,
+                            diameter=d_settings.diameter,
+                            cellprob_threshold=d_settings.cellprob_threshold,
+                            flow_threshold=d_settings.flow_threshold,
+                            min_size=d_settings.min_size,
+                            normalize=d_settings.normalize,
+                            batch_size=d_settings.batch_size,
                         )
-                        self._detection_wdg.setValue(
-                            CellposeSettings(
-                                model_type=d_settings.model_type,
-                                model_path=model_path,
-                                diameter=d_settings.diameter,
-                                cellprob_threshold=d_settings.cellprob_threshold,
-                                flow_threshold=d_settings.flow_threshold,
-                                min_size=d_settings.min_size,
-                                normalize=d_settings.normalize,
-                                batch_size=d_settings.batch_size,
-                            )
-                        )
-                    elif d_settings.method == "caiman":
-                        self._detection_wdg.setValue(CaimanSettings())
+                    )
+                elif d_settings.method == "caiman":
+                    self._detection_wdg.setValue(CaimanSettings())
+                else:
+                    msg = f"Unknown detection method: {d_settings.method}."
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    return
 
             # Load and apply analysis settings
             if result.analysis_settings:
                 a_settings = AnalysisSettings.load_from_database(
                     self._database_path, id=result.analysis_settings
                 )
-                if isinstance(a_settings, AnalysisSettings):
-                    self._analysis_wdg.setValue(
-                        AnalysisSettingsData(
-                            experiment_type_data=ExperimentTypeData(
-                                experiment_type=(
-                                    EVOKED
-                                    if a_settings.stimulated_mask_area() is not None
-                                    else SPONTANEOUS
-                                ),
-                                led_power_equation=a_settings.led_power_equation,
-                                led_pulse_duration=a_settings.led_pulse_duration,
-                                led_pulse_on_frames=a_settings.led_pulse_on_frames,
-                                led_pulse_powers=a_settings.led_pulse_powers,
-                                stimulation_area_path=a_settings.stimulation_mask_path,
+                assert isinstance(a_settings, AnalysisSettings)
+                self._analysis_wdg.setValue(
+                    AnalysisSettingsData(
+                        experiment_type_data=ExperimentTypeData(
+                            experiment_type=(
+                                EVOKED
+                                if a_settings.stimulated_mask_area() is not None
+                                else SPONTANEOUS
                             ),
-                            trace_extraction_data=TraceExtractionData(
-                                dff_window_size=a_settings.dff_window,
-                                decay_constant=a_settings.decay_constant,
-                                neuropil_inner_radius=a_settings.neuropil_inner_radius,
-                                neuropil_min_pixels=a_settings.neuropil_min_pixels,
-                                neuropil_correction_factor=(
-                                    a_settings.neuropil_correction_factor
-                                ),
+                            led_power_equation=a_settings.led_power_equation,
+                            led_pulse_duration=a_settings.led_pulse_duration,
+                            led_pulse_on_frames=a_settings.led_pulse_on_frames,
+                            led_pulse_powers=a_settings.led_pulse_powers,
+                            stimulation_area_path=a_settings.stimulation_mask_path,
+                        ),
+                        trace_extraction_data=TraceExtractionData(
+                            dff_window_size=a_settings.dff_window,
+                            decay_constant=a_settings.decay_constant,
+                            neuropil_inner_radius=a_settings.neuropil_inner_radius,
+                            neuropil_min_pixels=a_settings.neuropil_min_pixels,
+                            neuropil_correction_factor=(
+                                a_settings.neuropil_correction_factor
                             ),
-                            calcium_peaks_data=CalciumPeaksData(
-                                peaks_height=a_settings.peaks_height_value,
-                                peaks_height_mode=a_settings.peaks_height_mode,
-                                peaks_distance=a_settings.peaks_distance,
-                                peaks_prominence_multiplier=(
-                                    a_settings.peaks_prominence_multiplier
-                                ),
-                                calcium_synchrony_jitter=(
-                                    a_settings.calcium_sync_jitter_window
-                                ),
-                                calcium_network_threshold=(
-                                    a_settings.calcium_network_threshold
-                                ),
+                        ),
+                        calcium_peaks_data=CalciumPeaksData(
+                            peaks_height=a_settings.peaks_height_value,
+                            peaks_height_mode=a_settings.peaks_height_mode,
+                            peaks_distance=a_settings.peaks_distance,
+                            peaks_prominence_multiplier=(
+                                a_settings.peaks_prominence_multiplier
                             ),
-                            spikes_data=SpikeData(
-                                spike_threshold=a_settings.spike_threshold_value,
-                                spike_threshold_mode=a_settings.spike_threshold_mode,
-                                burst_threshold=a_settings.burst_threshold,
-                                burst_min_duration=a_settings.burst_min_duration,
-                                burst_blur_sigma=a_settings.burst_gaussian_sigma,
-                                synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                            calcium_synchrony_jitter=(
+                                a_settings.calcium_sync_jitter_window
                             ),
-                        )
+                            calcium_network_threshold=(
+                                a_settings.calcium_network_threshold
+                            ),
+                        ),
+                        spikes_data=SpikeData(
+                            spike_threshold=a_settings.spike_threshold_value,
+                            spike_threshold_mode=a_settings.spike_threshold_mode,
+                            burst_threshold=a_settings.burst_threshold,
+                            burst_min_duration=a_settings.burst_min_duration,
+                            burst_blur_sigma=a_settings.burst_gaussian_sigma,
+                            synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                        ),
                     )
+                )
 
-            cali_logger.info(f"Loaded settings from Run #{run_id}")
+            cali_logger.info(f"✅ Loaded settings from Run #{run_id}")
 
         except Exception as e:
             show_error_dialog(self, f"Failed to load run settings: {e}")
-            cali_logger.error(f"Failed to load run #{run_id}: {e}")
+            cali_logger.error(f"❌ Failed to load run #{run_id}: {e}")
 
     def _set_splitter_sizes(self) -> None:
         """Set the initial sizes for the splitters."""

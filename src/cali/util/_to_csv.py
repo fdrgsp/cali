@@ -38,7 +38,7 @@ from cali.plot._util import (
 if TYPE_CHECKING:
     from cali.sqlmodel._util import ROIData
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 # fmt: off
 NUMBER_RE = re.compile(r"[0-9]+(?:\.[0-9]+)?")

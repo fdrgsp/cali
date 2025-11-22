@@ -54,7 +54,7 @@ from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_mas
 if TYPE_CHECKING:
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 # TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
 # fmt: off
