@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import re
 from itertools import zip_longest
 from pathlib import Path

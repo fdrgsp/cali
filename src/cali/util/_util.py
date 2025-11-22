@@ -1,10 +1,10 @@
-import logging
 from pathlib import Path
 
 import numpy as np
 from sqlmodel import Session, select
 
 from cali._constants import TS, ZR
+from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel._model import (
     FOV,
@@ -12,8 +12,6 @@ from cali.sqlmodel._model import (
     Plate,
     Well,
 )
-
-from cali.logger import cali_logger
 
 
 def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader:

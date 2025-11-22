@@ -7,7 +7,6 @@ experimental plate layouts.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from ._model import Condition, Plate

@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 
 class CaliRunner:
     """Unified runner for calcium imaging detection and analysis.
-    
+
     This class provides a single interface for running both detection (ROI
     segmentation) and analysis (trace extraction) steps. It delegates to
     specialized runners internally while providing a cleaner API.
-    
+
     Examples
     --------
     Run detection only:
@@ -27,24 +27,24 @@ class CaliRunner:
     >>> runner.run(
     ...     experiment=exp,
     ...     detection_settings=d_settings,
-    ...     global_position_indices=[0, 1, 2]
+    ...     global_position_indices=[0, 1, 2],
     ... )
-    
+
     Run detection + analysis:
     >>> runner.run(
     ...     experiment=exp,
     ...     detection_settings=d_settings,
     ...     analysis_settings=a_settings,
-    ...     global_position_indices=[0, 1, 2]
+    ...     global_position_indices=[0, 1, 2],
     ... )
-    
+
     Run analysis only (detection must exist):
     >>> runner.run(
     ...     experiment=exp,
     ...     detection_settings=d_settings,  # Specify which detection to use
     ...     analysis_settings=a_settings,
     ...     global_position_indices=[0, 1, 2],
-    ...     skip_detection=True
+    ...     skip_detection=True,
     ... )
     """
 
