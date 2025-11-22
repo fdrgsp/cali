@@ -501,7 +501,7 @@ class _DetectionGUI(QWidget):
         self._positions_wdg.setValue("")
         self._run_detection_wdg.reset()
 
-    def to_model_settings(self) -> tuple[list[int], DetectionSettings]:
+    def to_model_settings(self) -> DetectionSettings:
         """Convert current GUI settings to AnalysisSettings model.
 
         Returns
@@ -541,7 +541,7 @@ class _DetectionGUI(QWidget):
                 # + cellpose defaults
             )
 
-        return self.positions(), settings
+        return settings
 
     # PRIVATE METHODS -----------------------------------------------------------------
 

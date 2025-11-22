@@ -42,7 +42,7 @@ from ._util import ROIData
 if TYPE_CHECKING:
     from useq import WellPlate
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def load_analysis_from_json(

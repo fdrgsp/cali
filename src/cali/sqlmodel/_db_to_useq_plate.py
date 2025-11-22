@@ -14,7 +14,7 @@ import useq
 if TYPE_CHECKING:
     from ._model import Experiment
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def experiment_to_useq_plate(

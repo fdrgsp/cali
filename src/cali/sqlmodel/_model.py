@@ -58,12 +58,14 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     ----------
     id : int | None
         Primary key, auto-generated
+    created_at : datetime
+        Timestamp when analysis was created
     experiment : int
         Foreign key to experiment
     detection_settings : int | None
         Foreign key to detection settings used
-    analysis_settings : int
-        Foreign key to analysis settings used
+    analysis_settings : int | None
+        Foreign key to analysis settings used (None for detection-only runs)
     positions_analyzed : list[int] | None
         List of position indices that were analyzed
     traces : list[Traces]
@@ -82,7 +84,9 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     detection_settings: int | None = Field(
         default=None, foreign_key="detection_settings.id"
     )
-    analysis_settings: int = Field(foreign_key="analysis_settings.id")
+    analysis_settings: int | None = Field(
+        default=None, foreign_key="analysis_settings.id"
+    )
     positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     # Relationships
@@ -90,6 +94,36 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
     data_analysis_results: list["DataAnalysis"] = Relationship(
         back_populates="analysis_result"
     )
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes created_at for semantic comparison.
+
+        Two AnalysisResults are considered equal if they have the same:
+        - experiment, detection_settings, analysis_settings, positions_analyzed
+
+        The created_at field is excluded since it's automatically generated
+        and doesn't represent semantic differences in analysis configuration.
+        """
+        if not isinstance(other, AnalysisResult):
+            return False
+        return (
+            self.experiment == other.experiment
+            and self.detection_settings == other.detection_settings
+            and self.analysis_settings == other.analysis_settings
+            and self.positions_analyzed == other.positions_analyzed
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes created_at for consistency with __eq__.
+
+        Note: id is excluded since it's None before database insertion.
+        """
+        return hash((
+            self.experiment,
+            self.detection_settings,
+            self.analysis_settings,
+            tuple(self.positions_analyzed) if self.positions_analyzed else None,
+        ))
 
     @classmethod
     def load_from_database(
@@ -545,6 +579,38 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     # TODO: add CaImAn settings
 
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes id and created_at for semantic comparison.
+
+        Two DetectionSettings are considered equal if they have the same detection
+        parameters, regardless of when they were created or their database IDs.
+        """
+        if not isinstance(other, DetectionSettings):
+            return False
+        return (
+            self.method == other.method
+            and self.model_type == other.model_type
+            and self.diameter == other.diameter
+            and self.cellprob_threshold == other.cellprob_threshold
+            and self.flow_threshold == other.flow_threshold
+            and self.min_size == other.min_size
+            and self.normalize == other.normalize
+            and self.batch_size == other.batch_size
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes id and created_at for consistency with __eq__."""
+        return hash((
+            self.method,
+            self.model_type,
+            self.diameter,
+            self.cellprob_threshold,
+            self.flow_threshold,
+            self.min_size,
+            self.normalize,
+            self.batch_size,
+        ))
+
     @classmethod
     def load_from_database(
         cls,
@@ -752,6 +818,70 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 (stim_mask.height, stim_mask.width),
             )
         return None
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes id and created_at for semantic comparison.
+
+        Two AnalysisSettings are considered equal if they have the same analysis
+        parameters, regardless of when they were created or their database IDs.
+        """
+        if not isinstance(other, AnalysisSettings):
+            return False
+        return (
+            self.neuropil_inner_radius == other.neuropil_inner_radius
+            and self.neuropil_min_pixels == other.neuropil_min_pixels
+            and self.neuropil_correction_factor == other.neuropil_correction_factor
+            and self.decay_constant == other.decay_constant
+            and self.dff_window == other.dff_window
+            and self.peaks_height_value == other.peaks_height_value
+            and self.peaks_height_mode == other.peaks_height_mode
+            and self.peaks_distance == other.peaks_distance
+            and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
+            and self.calcium_sync_jitter_window == other.calcium_sync_jitter_window
+            and self.calcium_network_threshold == other.calcium_network_threshold
+            and self.spike_threshold_value == other.spike_threshold_value
+            and self.spike_threshold_mode == other.spike_threshold_mode
+            and self.burst_threshold == other.burst_threshold
+            and self.burst_min_duration == other.burst_min_duration
+            and self.burst_gaussian_sigma == other.burst_gaussian_sigma
+            and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
+            and self.led_power_equation == other.led_power_equation
+            and self.led_pulse_duration == other.led_pulse_duration
+            and self.led_pulse_powers == other.led_pulse_powers
+            and self.led_pulse_on_frames == other.led_pulse_on_frames
+            and self.stimulation_mask_path == other.stimulation_mask_path
+            and self.threads == other.threads
+            and self.stimulation_mask_id == other.stimulation_mask_id
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes id and created_at for consistency with __eq__."""
+        return hash((
+            self.neuropil_inner_radius,
+            self.neuropil_min_pixels,
+            self.neuropil_correction_factor,
+            self.decay_constant,
+            self.dff_window,
+            self.peaks_height_value,
+            self.peaks_height_mode,
+            self.peaks_distance,
+            self.peaks_prominence_multiplier,
+            self.calcium_sync_jitter_window,
+            self.calcium_network_threshold,
+            self.spike_threshold_value,
+            self.spike_threshold_mode,
+            self.burst_threshold,
+            self.burst_min_duration,
+            self.burst_gaussian_sigma,
+            self.spikes_sync_cross_corr_lag,
+            self.led_power_equation,
+            self.led_pulse_duration,
+            tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
+            tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
+            self.stimulation_mask_path,
+            self.threads,
+            self.stimulation_mask_id,
+        ))
 
     @classmethod
     def load_from_database(

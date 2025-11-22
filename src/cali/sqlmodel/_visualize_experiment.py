@@ -680,6 +680,8 @@ def print_experiment_tree(
                     f"{positions_count} position{plural}"
                 )
 
+                result_node.add(f"📅 Created: [dim]{result.created_at}[/dim]")
+
                 # Detection settings (if available)
                 if detection_settings:
                     add_detection_settings_to_tree(

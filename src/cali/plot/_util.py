@@ -10,7 +10,7 @@ from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.sqlmodel._model import FOV, ROI
 from cali.sqlmodel._util import ROIData
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def equation_from_str(equation: str) -> Callable | None:

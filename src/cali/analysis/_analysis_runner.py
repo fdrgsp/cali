@@ -1,4 +1,3 @@
-import logging
 import threading
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,7 +7,6 @@ from typing import TYPE_CHECKING, Callable, cast
 import numpy as np
 from oasis.functions import deconvolve
 from scipy.signal import find_peaks
-from sqlalchemy import desc
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
@@ -29,6 +27,7 @@ from cali.sqlmodel._model import (
     AnalysisResult,
     AnalysisSettings,
     DataAnalysis,
+    DetectionSettings,
     Experiment,
     Mask,
     Traces,
@@ -46,7 +45,7 @@ if TYPE_CHECKING:
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def exec_(
@@ -119,8 +118,8 @@ class AnalysisRunner:
         self,
         experiment: Experiment,
         settings: AnalysisSettings,
+        detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
-        detection_settings_id: int | None = None,
         overwrite: bool = False,
         echo: bool = False,
     ) -> None:
@@ -140,11 +139,11 @@ class AnalysisRunner:
             Experiment to analyze (must have ROI masks from prior detection)
         settings : AnalysisSettings
             Analysis parameters
+        detection_settings : DetectionSettings
+            The detection settings that were used to generate the ROIs. This explicitly
+            specifies which detection+analysis combination to create/update.
         global_position_indices : Sequence[int]
             Position indices to analyze
-        detection_settings_id: int | None
-            The detection settings id to associate with the analysis. If None,
-            the ID from the most recent DetectionSettings in the database will be used.
         overwrite : bool
             Whether to overwrite existing database
         echo : bool
@@ -182,36 +181,69 @@ class AnalysisRunner:
             # load data
             self._data = load_data(experiment.data_path)
 
-            # Auto-detect the most recent DetectionSettings from database
-            # (Analysis requires ROI masks which come from detection)
-            if detection_settings_id is None:
-                from cali.sqlmodel._model import DetectionSettings
+            # Get or create detection_settings in database to get its ID
+            if detection_settings.id is None:
+                # Check if identical settings already exist in database
+                try:
+                    all_detection_settings = session.exec(
+                        select(DetectionSettings)
+                    ).all()
+                    existing_detection = None
+                    for candidate in all_detection_settings:
+                        if detection_settings == candidate:
+                            existing_detection = candidate
+                            break
+                except Exception:
+                    existing_detection = None
 
-                detection_settings = session.exec(
-                    select(DetectionSettings).order_by(
-                        desc(DetectionSettings.created_at)  # type: ignore
-                    )
-                ).first()
-                if detection_settings:
-                    detection_settings_id = detection_settings.id
+                if existing_detection is not None:
+                    detection_settings = existing_detection
                     cali_logger.info(
-                        f"🔍 Using DetectionSettings ID {detection_settings_id} "
+                        f"♻️ Using existing DetectionSettings ID "
+                        f"{detection_settings.id} (method: {detection_settings.method})"
+                    )
+                else:
+                    # New detection settings - add to database
+                    session.add(detection_settings)
+                    session.commit()
+                    session.refresh(detection_settings)
+                    cali_logger.info(
+                        f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
                         f"(method: {detection_settings.method})"
                     )
+            else:
+                # Settings already has an ID - verify it exists
+                all_detection_ids = [
+                    s.id for s in session.exec(select(DetectionSettings)).all()
+                ]
+                if detection_settings.id not in all_detection_ids:
+                    session.add(detection_settings)
+                    session.commit()
+                    session.refresh(detection_settings)
+                    cali_logger.info(
+                        f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
+                        f"(method: {detection_settings.method})"
+                    )
+                else:
+                    # Get existing from database
+                    existing = session.get(DetectionSettings, detection_settings.id)
+                    if existing is not None:
+                        detection_settings = existing
+                    cali_logger.info(
+                        f"♻️ Using existing DetectionSettings ID "
+                        f"{detection_settings.id} (method: {detection_settings.method})"
+                    )
 
+            detection_settings_id = detection_settings.id
             # check if settings already exist BEFORE merging
             if settings.id is None:
                 # check if identical settings already exist in database
-                new_settings_dict = settings.model_dump(exclude={"id", "created_at"})
                 try:
                     # AnalysisSettings exists
                     all_settings = session.exec(select(AnalysisSettings)).all()
                     existing_settings = None
                     for candidate in all_settings:
-                        candidate_dict = candidate.model_dump(
-                            exclude={"id", "created_at"}
-                        )
-                        if candidate_dict == new_settings_dict:
+                        if settings == candidate:
                             existing_settings = candidate
                             break
                 except Exception:
@@ -257,6 +289,15 @@ class AnalysisRunner:
             # Create or reuse AnalysisResult
             assert settings.id is not None  # should never be None here
 
+            # First, check if there's a detection-only result we can upgrade
+            detection_only_result = session.exec(
+                select(AnalysisResult).where(
+                    AnalysisResult.experiment == experiment.id,
+                    AnalysisResult.detection_settings == detection_settings_id,
+                    AnalysisResult.analysis_settings == None,  # noqa: E711
+                )
+            ).first()
+
             # Check if an identical AnalysisResult already exists
             existing_result = session.exec(
                 select(AnalysisResult).where(
@@ -267,33 +308,54 @@ class AnalysisRunner:
             ).first()
 
             if existing_result is not None:
-                # Check if positions match
+                # Check if positions match or if we can merge them
                 existing_positions = set(existing_result.positions_analyzed or [])
                 new_positions = set(global_position_indices)
+
                 if existing_positions == new_positions:
-                    # Identical AnalysisResult exists - reuse it
+                    # Identical AnalysisResult exists - reuse it and update timestamp
+                    from datetime import datetime
+
+                    existing_result.created_at = datetime.now()
+                    session.add(existing_result)
+                    session.commit()
+                    session.refresh(existing_result)
                     analysis_result = existing_result
                     cali_logger.info(
-                        f"♻️ Reusing existing AnalysisResult ID {analysis_result.id} "
+                        f" ♻️ Reusing existing AnalysisResult ID {analysis_result.id} "
                         f"(DetectionSettings={detection_settings_id}, "
                         f"AnalysisSettings={settings.id})"
                     )
                 else:
-                    # Different positions - create new AnalysisResult
-                    analysis_result = AnalysisResult(
-                        experiment=experiment.id,
-                        detection_settings=detection_settings_id,
-                        analysis_settings=settings.id,
-                        positions_analyzed=list(global_position_indices),
-                    )
-                    session.add(analysis_result)
+                    # Different positions - merge them into existing result
+                    merged_positions = sorted(existing_positions | new_positions)
+                    existing_result.positions_analyzed = merged_positions
+                    session.add(existing_result)
                     session.commit()
-                    session.refresh(analysis_result)
+                    session.refresh(existing_result)
+                    analysis_result = existing_result
                     cali_logger.info(
-                        f"📊 Created AnalysisResult ID {analysis_result.id} "
+                        f"🔄 Updated AnalysisResult ID {analysis_result.id} "
+                        f"to include positions {merged_positions} "
                         f"(DetectionSettings={detection_settings_id}, "
                         f"AnalysisSettings={settings.id})"
                     )
+            elif detection_only_result is not None:
+                # Upgrade detection-only result to full analysis result
+                detection_only_result.analysis_settings = settings.id
+                detection_pos = set(detection_only_result.positions_analyzed or [])
+                new_positions = set(global_position_indices)
+                merged_positions = sorted(detection_pos | new_positions)
+                detection_only_result.positions_analyzed = merged_positions
+                session.add(detection_only_result)
+                session.commit()
+                session.refresh(detection_only_result)
+                analysis_result = detection_only_result
+                cali_logger.info(
+                    f"⬆️ Upgraded detection-only AnalysisResult ID {analysis_result.id} "
+                    f"to full analysis (DetectionSettings={detection_settings_id}, "
+                    f"AnalysisSettings={settings.id}, positions={merged_positions})"
+                )
             else:
                 # No existing result - create new
                 analysis_result = AnalysisResult(
@@ -332,9 +394,16 @@ class AnalysisRunner:
             # Update AnalysisResult with actual positions processed
             # (in case some failed)
             if positions_processed:
-                analysis_result.positions_analyzed = positions_processed
-                session.add(analysis_result)
-                session.commit()
+                # Only update if the positions actually changed
+                current_positions = set(analysis_result.positions_analyzed or [])
+                processed_positions = set(positions_processed)
+                if current_positions != processed_positions:
+                    analysis_result.positions_analyzed = positions_processed
+                    session.add(analysis_result)
+                    session.commit()
+                    cali_logger.info(
+                        f"📝 Updated AnalysisResult ID {analysis_result.id} positions"
+                    )
                 cali_logger.info(
                     f"✅ Completed AnalysisResult ID {analysis_result.id} "
                     f"({len(positions_processed)} positions)"

@@ -60,7 +60,7 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 # ANALYSIS PRODUCT REGISTRY ===========================================================
 

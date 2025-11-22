@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
     from cali.sqlmodel import Experiment, Plate
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def data_to_plate(

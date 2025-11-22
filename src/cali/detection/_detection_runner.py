@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
 
     from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
-cali_logger = logging.getLogger("cali_logger")
+from cali.logger import cali_logger
 
 
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
@@ -73,6 +72,7 @@ class DetectionRunner:
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         overwrite: bool = False,
+        force: bool = False,
         echo: bool = False,
     ) -> None:
         """Run detection and save masks to database.
@@ -90,6 +90,10 @@ class DetectionRunner:
             Position indices to process
         overwrite : bool
             Whether to overwrite existing database
+        force : bool
+            If True, delete all existing analysis results using these detection
+            settings and re-run detection. If False (default), skip detection if
+            settings+positions are unchanged, or run only for new positions.
         echo : bool
             Enable SQLAlchemy echo for database operations
         """
@@ -99,6 +103,7 @@ class DetectionRunner:
                 detection_settings=detection_settings,
                 global_position_indices=global_position_indices,
                 overwrite=overwrite,
+                force=force,
                 echo=echo,
             )
         elif detection_settings.method == "caiman":
@@ -107,6 +112,7 @@ class DetectionRunner:
                 detection_settings=detection_settings,
                 global_position_indices=global_position_indices,
                 overwrite=overwrite,
+                force=force,
                 echo=echo,
             )
         else:
@@ -123,6 +129,7 @@ class DetectionRunner:
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         overwrite: bool = False,
+        force: bool = False,
         echo: bool = False,
     ) -> None:
         """Run CaImAn detection and save masks to database.
@@ -137,6 +144,9 @@ class DetectionRunner:
             Position indices to process
         overwrite : bool
             Whether to overwrite existing database
+        force : bool
+            If True, delete existing analysis and re-run. If False, skip if unchanged
+            or run only new positions.
         echo : bool
             Enable SQLAlchemy echo for database operations
         """
@@ -150,6 +160,7 @@ class DetectionRunner:
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         overwrite: bool = False,
+        force: bool = False,
         cellpose_debug: bool = False,
         echo: bool = False,
     ) -> None:
@@ -165,6 +176,9 @@ class DetectionRunner:
             Position indices to process
         overwrite : bool
             Whether to overwrite existing database
+        force : bool
+            If True, delete existing analysis and re-run. If False, skip if unchanged
+            or run only new positions.
         cellpose_debug : bool
             Enable Cellpose debug logging
         echo : bool
@@ -214,68 +228,136 @@ class DetectionRunner:
             engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
             with Session(engine) as session:
                 # Check if identical detection settings already exist
-                if detection_settings.id is None:
-                    # Check if identical settings already exist in database
-                    new_settings_dict = detection_settings.model_dump(
-                        exclude={"id", "created_at"}
-                    )
-                    try:
-                        all_settings = session.exec(select(DetectionSettings)).all()
-                        existing_settings = None
-                        for candidate in all_settings:
-                            candidate_dict = candidate.model_dump(
-                                exclude={"id", "created_at"}
-                            )
-                            if candidate_dict == new_settings_dict:
-                                existing_settings = candidate
-                                break
-                    except Exception:
-                        existing_settings = None
+                detection_settings = self._get_or_create_detection_settings(
+                    session, detection_settings
+                )
 
-                    # Found duplicate - use the existing one
-                    if existing_settings is not None:
-                        detection_settings = existing_settings
-                        cali_logger.info(
-                            f"♻️ Reusing existing DetectionSettings ID "
-                            f"{detection_settings.id}"
+                # Determine which positions to actually save based on force flag
+                positions_to_save = []
+                for fov_result in fov_results:
+                    positions_to_save.append(fov_result.position_index)
+
+                if not force:
+                    # Check which positions already have ROIs
+                    existing_positions = session.exec(
+                        select(FOV.position_index)
+                        .join(ROI)
+                        .where(
+                            ROI.detection_settings_id == detection_settings.id,
+                            FOV.position_index.in_(positions_to_save),  # type: ignore
                         )
-                    else:
-                        # New settings - add and commit to get an ID
-                        session.add(detection_settings)
-                        session.commit()
-                        session.refresh(detection_settings)
-                        cali_logger.info(
-                            f"⚙️ Created new DetectionSettings ID "
-                            f"{detection_settings.id}"
-                        )
-                else:
-                    # Settings already has an ID - check if it exists
-                    all_settings_ids = [
-                        s.id for s in session.exec(select(DetectionSettings)).all()
+                        .distinct()
+                    ).all()
+
+                    existing_pos_set = set(existing_positions)
+                    new_positions = [
+                        p for p in positions_to_save if p not in existing_pos_set
                     ]
-                    if detection_settings.id not in all_settings_ids:
-                        session.add(detection_settings)
-                        session.commit()
-                        session.refresh(detection_settings)
+
+                    if not new_positions and existing_pos_set:
+                        # All positions already exist - skip
                         cali_logger.info(
-                            f"⚙️ Created new DetectionSettings ID "
-                            f"{detection_settings.id}"
+                            f"⏭️  Skipping detection - all {len(positions_to_save)} "
+                            f"position(s) already have ROIs with DetectionSettings ID "
+                            f"{detection_settings.id}. Use force=True to re-run and "
+                            f"replace existing analysis."
                         )
-                    else:
-                        # Get the existing settings from database
-                        existing = session.get(DetectionSettings, detection_settings.id)
-                        if existing is not None:
-                            detection_settings = existing
+                        engine.dispose(close=True)
+                        return
+
+                    if new_positions and len(new_positions) < len(positions_to_save):
+                        # Some positions already exist - only save new ones
                         cali_logger.info(
-                            f"♻️ Reusing existing DetectionSettings ID "
-                            f"{detection_settings.id}"
+                            f"📍 Saving detection for {len(new_positions)} new "
+                            f"position(s): {new_positions} (skipping "
+                            f"{len(existing_pos_set)} existing)"
                         )
+                        # Filter fov_results to only new positions
+                        fov_results = [
+                            fov for fov in fov_results
+                            if fov.position_index in new_positions
+                        ]
+                        positions_to_save = new_positions
+
+                if force and detection_settings.id is not None:
+                    # Delete existing analysis results
+                    self._cascade_delete_analysis_results(
+                        session=session,
+                        experiment=experiment,
+                        detection_settings_id=detection_settings.id,
+                    )
 
                 # Save FOV results with detection_settings_id
+                positions_processed = []
                 for fov_result in fov_results:
                     commit_fov_result(
                         session, experiment, fov_result, detection_settings.id
                     )
+                    positions_processed.append(fov_result.position_index)
+
+                # Create/update AnalysisResult to track detection-only run
+                if positions_processed and detection_settings.id is not None:
+                    from datetime import datetime
+
+                    from sqlalchemy import desc
+
+                    from cali.sqlmodel._model import AnalysisResult
+
+                    # Check if ANY AnalysisResult exists for this detection
+                    # (detection-only OR full analysis), ordered by most recent
+                    existing_any_result = session.exec(
+                        select(AnalysisResult)
+                        .where(
+                            AnalysisResult.experiment == experiment.id,
+                            AnalysisResult.detection_settings == detection_settings.id,
+                        )
+                        .order_by(desc(AnalysisResult.created_at))  # type: ignore
+                    ).first()
+
+                    if (
+                        existing_any_result is not None
+                        and existing_any_result.analysis_settings is not None
+                    ):
+                        # Full AnalysisResult exists - update its timestamp
+                        existing_any_result.created_at = datetime.now()
+                        session.add(existing_any_result)
+                        session.commit()
+                        cali_logger.info(
+                            f"⏭️  Skipping detection-only AnalysisResult creation - "
+                            f"updated AnalysisResult ID {existing_any_result.id} "
+                            f"timestamp (DetectionSettings={detection_settings.id})"
+                        )
+                    elif existing_any_result is not None:
+                        # Merge positions into existing detection-only result
+                        existing_pos = set(existing_any_result.positions_analyzed or [])
+                        new_positions = set(positions_processed)
+                        merged_positions = sorted(existing_pos | new_positions)
+                        existing_any_result.positions_analyzed = merged_positions
+                        session.add(existing_any_result)
+                        session.commit()
+                        cali_logger.info(
+                            f"🔄 Updated detection-only AnalysisResult ID "
+                            f"{existing_any_result.id} to include "
+                            f"positions {merged_positions}"
+                        )
+                    else:
+                        # Create new detection-only AnalysisResult
+                        if experiment.id is not None:
+                            detection_result = AnalysisResult(
+                                experiment=experiment.id,
+                                detection_settings=detection_settings.id,
+                                analysis_settings=None,  # Detection-only
+                                positions_analyzed=positions_processed,
+                            )
+                            session.add(detection_result)
+                            session.commit()
+                            session.refresh(detection_result)
+                            cali_logger.info(
+                                f"📊 Created detection-only AnalysisResult ID "
+                                f"{detection_result.id} (DetectionSettings="
+                                f"{detection_settings.id}, "
+                                f"positions={positions_processed})"
+                            )
             engine.dispose(close=True)
 
     def _run_cellpose_detection(
@@ -522,3 +604,101 @@ class DetectionRunner:
 
             fov.rois.append(roi)
         return fov
+
+    def _get_or_create_detection_settings(
+        self, session: Session, detection_settings: DetectionSettings
+    ) -> DetectionSettings:
+        """Get existing or create new DetectionSettings in database.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        detection_settings : DetectionSettings
+            Detection settings to find or create
+
+        Returns
+        -------
+        DetectionSettings
+            Existing or newly created settings with ID
+        """
+        if detection_settings.id is None:
+            # Check if identical settings already exist in database
+            try:
+                all_settings = session.exec(select(DetectionSettings)).all()
+                existing_settings = None
+                for candidate in all_settings:
+                    if detection_settings == candidate:
+                        existing_settings = candidate
+                        break
+            except Exception:
+                existing_settings = None
+
+            # Found duplicate - use the existing one
+            if existing_settings is not None:
+                return existing_settings
+
+            # Create new settings
+            session.add(detection_settings)
+            session.commit()
+            session.refresh(detection_settings)
+            return detection_settings
+        else:
+            # Settings already has an ID - check if it exists
+            all_settings_ids = [
+                s.id for s in session.exec(select(DetectionSettings)).all()
+            ]
+            if detection_settings.id not in all_settings_ids:
+                session.add(detection_settings)
+                session.commit()
+                session.refresh(detection_settings)
+                return detection_settings
+            else:
+                # Get the existing settings from database
+                existing = session.get(DetectionSettings, detection_settings.id)
+                if existing is not None:
+                    return existing
+                return detection_settings
+
+    def _cascade_delete_analysis_results(
+        self,
+        session: Session,
+        experiment: Experiment,
+        detection_settings_id: int,
+    ) -> None:
+        """Delete all AnalysisResults using these DetectionSettings.
+
+        This cascades to delete Traces, DataAnalysis, and other related data.
+        ROIs will be replaced during the new detection run.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        experiment : Experiment
+            Current experiment
+        detection_settings_id : int
+            ID of DetectionSettings to clear
+        """
+        from cali.sqlmodel._model import AnalysisResult
+
+        # Find all AnalysisResults using these detection settings
+        results_to_delete = session.exec(
+            select(AnalysisResult).where(
+                AnalysisResult.experiment == experiment.id,
+                AnalysisResult.detection_settings == detection_settings_id,
+            )
+        ).all()
+
+        if results_to_delete:
+            count = len(results_to_delete)
+            result_ids = [r.id for r in results_to_delete]
+            cali_logger.warning(
+                f"🗑️  force=True: Deleting {count} AnalysisResult(s) "
+                f"(IDs: {result_ids}) and associated analysis data "
+                f"for DetectionSettings ID {detection_settings_id}"
+            )
+
+            for result in results_to_delete:
+                session.delete(result)
+            session.commit()
