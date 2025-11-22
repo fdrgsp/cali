@@ -1,0 +1,1395 @@
+"""SQLModel schema for calcium imaging analysis data.
+
+This module defines the database schema for storing calcium imaging analysis results
+using SQLModel. The schema supports hierarchical data organization:
+Experiment → Plate → Well → FOV (Field of View) → ROI (Region of Interest)
+
+The schema enables:
+- Efficient querying by experimental conditions
+- Tracking analysis parameters and metadata
+- Easy data export and statistical analysis
+- Relationship navigation (e.g., all ROIs for a condition)
+"""
+
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional, Self
+
+import numpy as np
+import useq
+from sqlalchemy.orm import selectinload
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Relationship,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+)
+
+from cali._constants import (
+    DEFAULT_BURST_GAUSS_SIGMA,
+    DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
+    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
+    DEFAULT_DFF_WINDOW,
+    DEFAULT_HEIGHT,
+    DEFAULT_MIN_BURST_DURATION,
+    DEFAULT_PEAKS_DISTANCE,
+    DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
+    DEFAULT_SPIKE_THRESHOLD,
+    MULTIPLIER,
+    SPONTANEOUS,
+)
+
+# ==================== Core Models ====================
+
+
+class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
+    """Analysis run metadata.
+
+    Tracks which experiment was analyzed with which settings and which positions
+    were processed. The actual results (traces, data_analysis) are linked via
+    the analysis_result_id foreign key in those tables.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when analysis was created
+    experiment : int
+        Foreign key to experiment
+    detection_settings : int | None
+        Foreign key to detection settings used
+    analysis_settings : int | None
+        Foreign key to analysis settings used (None for detection-only runs)
+    positions_analyzed : list[int] | None
+        List of position indices that were analyzed
+    traces : list[Traces]
+        All trace results from this analysis run
+    data_analysis_results : list[DataAnalysis]
+        All analysis results from this analysis run
+    """
+
+    __tablename__ = "analysis_result"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys
+    experiment: int = Field(foreign_key="experiment.id")
+    detection_settings: int | None = Field(
+        default=None, foreign_key="detection_settings.id"
+    )
+    analysis_settings: int | None = Field(
+        default=None, foreign_key="analysis_settings.id"
+    )
+    positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
+
+    # Relationships
+    traces: list["Traces"] = Relationship(back_populates="analysis_result")
+    data_analysis_results: list["DataAnalysis"] = Relationship(
+        back_populates="analysis_result"
+    )
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes created_at for semantic comparison.
+
+        Two AnalysisResults are considered equal if they have the same:
+        - experiment, detection_settings, analysis_settings, positions_analyzed
+
+        The created_at field is excluded since it's automatically generated
+        and doesn't represent semantic differences in analysis configuration.
+        """
+        if not isinstance(other, AnalysisResult):
+            return False
+        return (
+            self.experiment == other.experiment
+            and self.detection_settings == other.detection_settings
+            and self.analysis_settings == other.analysis_settings
+            and self.positions_analyzed == other.positions_analyzed
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes created_at for consistency with __eq__.
+
+        Note: id is excluded since it's None before database insertion.
+        """
+        return hash(
+            (
+                self.experiment,
+                self.detection_settings,
+                self.analysis_settings,
+                tuple(self.positions_analyzed) if self.positions_analyzed else None,
+            )
+        )
+
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        experiment_id: int | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load analysis result(s) from database with related settings.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific analysis result to load. If None, loads based on
+            experiment_id or all results.
+        experiment_id : int | None
+            Filter by experiment ID. If None and id is None, loads all results.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single AnalysisResult if id specified, otherwise list of results.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific analysis result
+        >>> result = AnalysisResult.load_from_database("path/to/db.db", id=1)
+        >>> print(result.analysis_settings_obj.dff_window)
+        >>>
+        >>> # Load all results for an experiment
+        >>> results = AnalysisResult.load_from_database(
+        ...     "path/to/db.db", experiment_id=1
+        ... )
+        >>> for r in results:
+        ...     print(f"Analysis {r.id}: {r.positions_analyzed}")
+        >>>
+        >>> # Load most recent analysis result
+        >>> results = AnalysisResult.load_from_database("path/to/db.db")
+        >>> latest = results[-1]  # Ordered by id (creation order)
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            # Build query with eager loading of settings
+            statement = (
+                select(cls)
+                .options(selectinload(cls.traces))
+                .options(selectinload(cls.data_analysis_results))
+            )
+
+            # Filter by id or experiment_id
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No AnalysisResult found with id={id}")
+                session.expunge_all()
+                return obj
+            elif experiment_id is not None:
+                statement = statement.where(cls.experiment == experiment_id)
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
+
+class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
+    """Top-level experiment container.
+
+    An experiment can contain a plate and tracks global metadata
+    like creation date, description, and data paths.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when experiment was created
+    name : str
+        Unique experiment identifier
+    description : str | None
+        Optional experiment description
+    database_name: str
+        Name of the SQLite database file
+    data_path : str
+        Path to the raw imaging data (zarr/tensorstore)
+    analysis_path : str
+        Path to analysis output directory
+    experiment_type : str
+        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
+    plate : Plate
+        Related plate (back-populated by SQLModel)
+    """
+
+    __tablename__ = "experiment"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+    name: str = Field(unique=True, index=True)
+    description: str | None = None
+    data_path: str
+    analysis_path: str
+    database_name: str
+    experiment_type: str = Field(default=SPONTANEOUS, index=True)
+
+    # Relationships
+    plate: "Plate" = Relationship(back_populates="experiment")
+
+    @property
+    def db_path(self) -> str:
+        """Full path to the experiment's database file."""
+        return str(Path(self.analysis_path) / self.database_name)
+
+    @classmethod
+    def load_from_db(
+        cls, db_path: str | Path, id: int | None = None, session: Session | None = None
+    ) -> Self:
+        """Load experiment from database with all relationships eagerly loaded.
+
+        Parameters
+        ----------
+        db_path : str
+            Path to the SQLite database file
+        id : int | None
+            ID of the experiment to load. If None, loads the first experiment.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self
+            Experiment instance with all relationships loaded and detached
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            # Build the base chain for plate -> wells -> fovs -> rois
+            plate_chain = (
+                selectinload(Experiment.plate)
+                .selectinload(Plate.wells)
+                .selectinload(Well.fovs)
+                .selectinload(FOV.rois)
+            )
+
+            # Load experiment with all relationships eagerly loaded
+            statement = select(Experiment).options(
+                plate_chain.selectinload(ROI.traces_history),
+                plate_chain.selectinload(ROI.data_analysis_history),
+                plate_chain.selectinload(ROI.roi_mask),
+                plate_chain.selectinload(ROI.neuropil_mask),
+            )
+
+            # Filter by ID if provided, otherwise get first experiment
+            if id is not None:
+                statement = statement.where(Experiment.id == id)
+
+            obj = session.exec(statement).first()
+            session.expunge_all()  # Detach all instances from the session
+            return obj
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        data_path: str,
+        analysis_path: str,
+        plate_type: str = "96-well",
+        well_names: list[str] | None = None,
+        fovs_per_well: int = 1,
+        plate_maps: dict[str, dict[str, str]] | None = None,
+        experiment_type: str = SPONTANEOUS,
+        database_name: str | None = None,
+        description: str | None = None,
+    ) -> Self:
+        """Create a new experiment with plate structure ready for analysis.
+
+        This is a convenience method that creates an Experiment with an associated
+        Plate and Wells structure, making it easy to set up a new experiment database.
+
+        Parameters
+        ----------
+        name : str
+            Experiment name (must be unique)
+        data_path : str
+            Path to the raw imaging data (zarr/tensorstore)
+        analysis_path : str
+            Path to analysis output directory
+        plate_type : str, optional
+            Plate format from useq-schema options (e.g., "96-well", "384-well",
+            "24-well", "6-well", "coverslip-18mm-square"), by default "96-well"
+        well_names : list[str] | None, optional
+            List of well names to create (e.g., ["A1", "A2", "B5"]). If None,
+            creates all wells in the plate format, by default None
+        fovs_per_well : int, optional
+            Number of FOV (Field of View) positions per well, by default 1
+        plate_maps : dict[str, dict[str, str]] | None, optional
+            Plate map configuration mapping well positions to conditions.
+            Format: {"genotype": {"A1": "WT", "A2": "KO"},
+                     "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
+        experiment_type : str, optional
+            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
+            by default SPONTANEOUS
+        database_name : str | None, optional
+            Name of the database file. If None, uses "{name}.db", by default None
+        description : str | None, optional
+            Optional experiment description, by default None
+
+        Returns
+        -------
+        Self
+            Experiment instance with plate and wells ready for detection/analysis
+
+        Example
+        -------
+        >>> from cali.sqlmodel import Experiment
+        >>> from cali._constants import EVOKED
+        >>>
+        >>> # Create experiment with specific wells
+        >>> exp = Experiment.create_with_plate(
+        ...     name="My Experiment",
+        ...     data_path="path/to/data.zarr",
+        ...     analysis_path="path/to/analysis",
+        ...     plate_type="96-well",
+        ...     well_names=["B5", "B6", "C5"],
+        ...     fovs_per_well=2,
+        ...     plate_maps={
+        ...         "genotype": {"B5": "WT", "B6": "KO", "C5": "WT"},
+        ...         "treatment": {"B5": "Vehicle", "B6": "Vehicle", "C5": "Drug"},
+        ...     },
+        ...     experiment_type=EVOKED,
+        ... )
+        >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
+        """
+        from ._json_to_db import parse_well_name
+        from ._useq_plate_to_db import _row_index_to_label, useq_plate_plan_to_db
+
+        # Create experiment
+        db_name = database_name if database_name is not None else f"{name}.db"
+        experiment = cls(
+            id=0,
+            name=name,
+            description=description,
+            data_path=data_path,
+            analysis_path=analysis_path,
+            database_name=db_name,
+            experiment_type=experiment_type,
+        )
+
+        # Create useq WellPlate and WellPlatePlan
+        useq_plate = useq.WellPlate.from_str(plate_type)
+
+        # If no well names specified, use all wells in plate
+        if well_names is None:
+            # Create all possible wells for this plate type
+            well_names = [
+                f"{_row_index_to_label(row)}{col + 1}"
+                for row in range(useq_plate.rows)
+                for col in range(useq_plate.columns)
+            ]
+
+        # Convert well names to row,col tuples for WellPlatePlan
+        selected_wells_list = [parse_well_name(well_name) for well_name in well_names]
+
+        # Convert to tuple of tuples format: ((rows...), (cols...))
+        rows_tuple = tuple(well[0] for well in selected_wells_list)
+        cols_tuple = tuple(well[1] for well in selected_wells_list)
+
+        # Create WellPlatePlan with selected wells
+        plate_plan = useq.WellPlatePlan(
+            plate=useq_plate,
+            a1_center_xy=(0, 0),  # Placeholder, not used for structure
+            selected_wells=(rows_tuple, cols_tuple),
+        )
+
+        # Create plate with wells and conditions
+        plate = useq_plate_plan_to_db(
+            plate_plan,
+            experiment,
+            plate_maps=plate_maps,
+        )
+
+        # Create FOVs for each well
+        position_index = 0
+        for well in plate.wells:
+            for fov_num in range(fovs_per_well):
+                FOV(
+                    well=well,
+                    name=f"{well.name}_{fov_num:04d}",
+                    position_index=position_index,
+                    fov_number=fov_num,
+                )
+                position_index += 1
+
+        return experiment
+
+    @classmethod
+    def create_from_data(
+        cls,
+        name: str,
+        data_path: str,
+        analysis_path: str,
+        plate_maps: dict[str, dict[str, str]] | None = None,
+        experiment_type: str = SPONTANEOUS,
+        database_name: str | None = None,
+        description: str | None = None,
+    ) -> Self:
+        """Create a new experiment by loading plate structure from data's useq metadata.
+
+        This method automatically extracts the plate configuration (wells, FOVs)
+        from the imaging data's useq metadata, making it ideal for datasets that
+        already contain plate information.
+
+        Parameters
+        ----------
+        name : str
+            Experiment name (must be unique)
+        data_path : str
+            Path to the raw imaging data (zarr/tensorstore) containing useq metadata
+        analysis_path : str
+            Path to analysis output directory
+        plate_maps : dict[str, dict[str, str]] | None, optional
+            Plate map configuration mapping well positions to conditions.
+            Format: {"genotype": {"A1": "WT", "A2": "KO"},
+                     "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
+        experiment_type : str, optional
+            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
+            by default SPONTANEOUS
+        database_name : str | None, optional
+            Name of the database file. If None, uses "{name}.db", by default None
+        description : str | None, optional
+            Optional experiment description, by default None
+
+        Returns
+        -------
+        Self
+            Experiment instance with plate, wells, and FOVs loaded from data metadata
+
+        Example
+        -------
+        >>> from cali.sqlmodel import Experiment
+        >>> from cali._constants import EVOKED
+        >>>
+        >>> # Create experiment from data with useq metadata
+        >>> exp = Experiment.create_from_data(
+        ...     name="My Experiment",
+        ...     data_path="path/to/data.zarr",
+        ...     analysis_path="path/to/analysis",
+        ...     plate_maps={
+        ...         "genotype": {"B5": "WT"},
+        ...         "treatment": {"B5": "Vehicle"},
+        ...     },
+        ...     experiment_type=EVOKED,
+        ... )
+        >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
+        """
+        from ._data_to_plate import data_to_plate
+
+        # Create experiment
+        db_name = database_name if database_name is not None else f"{name}.db"
+        experiment = cls(
+            id=0,
+            name=name,
+            description=description,
+            data_path=data_path,
+            analysis_path=analysis_path,
+            database_name=db_name,
+            experiment_type=experiment_type,
+        )
+
+        # Load plate structure from data
+        plate = data_to_plate(data_path, experiment, plate_maps=plate_maps)
+        if plate is None:
+            raise ValueError(
+                f"Failed to load plate structure from data at {data_path}. "
+                "Ensure the data contains valid useq metadata with WellPlatePlan."
+            )
+
+        return experiment
+
+
+class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
+    """Detection/segmentation parameter settings.
+
+    Stores the detection parameters used for cell segmentation.
+    Currently supports Cellpose parameters. CaImAn support coming soon.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        When these settings were created
+    method : str
+        Detection method ("cellpose" or "caiman")
+    model_type : str
+        Cellpose model type ("cpsam", "cyto3", etc.) or path to custom model
+    diameter : float | None
+        Expected cell diameter in pixels (None for auto-detection)
+    cellprob_threshold : float
+        Cell probability threshold (0-1)
+    flow_threshold : float
+        Flow error threshold for quality control
+    min_size : int
+        Minimum cell size in pixels
+    normalize : bool
+        Whether to normalize images before detection
+    batch_size : int
+        Number of images to process per batch
+    """
+
+    __tablename__ = "detection_settings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Detection method
+    method: str = Field(default="cellpose", index=True)  # "cellpose" or "caiman"
+
+    # Cellpose settings
+    model_type: str = "cpsam"
+    diameter: float | None = None
+    cellprob_threshold: float = 0.0
+    flow_threshold: float = 0.4
+    min_size: int = 10
+    normalize: bool = True
+    batch_size: int = 8
+
+    # TODO: add CaImAn settings
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes id and created_at for semantic comparison.
+
+        Two DetectionSettings are considered equal if they have the same detection
+        parameters, regardless of when they were created or their database IDs.
+        """
+        if not isinstance(other, DetectionSettings):
+            return False
+        return (
+            self.method == other.method
+            and self.model_type == other.model_type
+            and self.diameter == other.diameter
+            and self.cellprob_threshold == other.cellprob_threshold
+            and self.flow_threshold == other.flow_threshold
+            and self.min_size == other.min_size
+            and self.normalize == other.normalize
+            and self.batch_size == other.batch_size
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes id and created_at for consistency with __eq__."""
+        return hash(
+            (
+                self.method,
+                self.model_type,
+                self.diameter,
+                self.cellprob_threshold,
+                self.flow_threshold,
+                self.min_size,
+                self.normalize,
+                self.batch_size,
+            )
+        )
+
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        method: str | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load detection settings from database.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific detection settings to load. If None, loads based on
+            method or all settings.
+        method : str | None
+            Filter by detection method ("cellpose" or "caiman"). If None and
+            id is None, loads all settings.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single DetectionSettings if id specified, otherwise list of settings.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific detection settings
+        >>> settings = DetectionSettings.load_from_database("db.db", id=1)
+        >>> print(settings.model_type)
+        >>>
+        >>> # Load all cellpose settings
+        >>> cellpose_settings = DetectionSettings.load_from_database(
+        ...     "db.db", method="cellpose"
+        ... )
+        >>>
+        >>> # Load most recent settings
+        >>> all_settings = DetectionSettings.load_from_database("db.db")
+        >>> latest = all_settings[-1]
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            statement = select(cls)
+
+            # Filter by id or method
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No DetectionSettings found with id={id}")
+                session.expunge_all()
+                return obj
+            elif method is not None:
+                statement = statement.where(cls.method == method)
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
+
+class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
+    """Analysis parameter settings for an experiment.
+
+    Stores the analysis parameters used for a specific analysis run.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    experiment_id : int
+        Foreign key to parent experiment
+    created_at : datetime
+        When these settings were created
+    neuropil_inner_radius : int
+        Inner radius for neuropil mask (pixels)
+    neuropil_min_pixels : int
+        Minimum pixels required for neuropil mask
+    neuropil_correction_factor : float
+        Neuropil correction factor (0-1)
+    decay_constant : float
+        Decay constant for deconvolution
+    dff_window : int
+        Window size for ΔF/F baseline calculation
+    peaks_height_value : float
+        Peak height threshold value
+    peaks_height_mode : str
+        Mode for peak height ("multiplier" or "absolute")
+    peaks_distance : int
+        Minimum distance between peaks (frames)
+    peaks_prominence_multiplier : float
+        Multiplier for peak prominence threshold
+    calcium_sync_jitter_window : int
+        Jitter window for calcium synchrony (frames)
+    calcium_network_threshold : float
+        Percentile threshold for network connectivity (0-100)
+    spike_threshold_value : float
+        Spike detection threshold value
+    spike_threshold_mode : str
+        Mode for spike threshold ("multiplier" or "absolute")
+    burst_threshold : float
+        Threshold for burst detection (%)
+    burst_min_duration : int
+        Minimum burst duration (seconds)
+    burst_gaussian_sigma : float
+        Gaussian sigma for burst smoothing (seconds)
+    spikes_sync_cross_corr_lag : int
+        Max lag for spike synchrony cross-correlation (frames)
+    led_power_equation : str | None
+        Equation for LED power calculation (evoked experiments)
+    led_pulse_duration : float | None
+        Duration of LED pulse (evoked experiments)
+    led_pulse_powers : list[float] | None
+        List of LED pulse powers (evoked experiments). Should have the same length
+        as `led_pulse_on_frames`.
+    led_pulse_on_frames : list[int] | None
+        List of LED pulse on frames (evoked experiments). Should have the same length
+        as `led_pulse_powers`.
+    stimulation_mask_path : str | None
+        Path to stimulation mask file (for GUI/reference)
+    threads : int
+        Number of threads to use for analysis (default: 1)
+    stimulation_mask_id : int | None
+        Foreign key to stimulation mask data
+    stimulation_mask : Mask | None
+        Stimulation mask data (spatial pattern of stimulation)
+    """
+
+    __tablename__ = "analysis_settings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    neuropil_inner_radius: int = 0
+    neuropil_min_pixels: int = 0
+    neuropil_correction_factor: float = 0.0
+
+    decay_constant: float = 0.0
+    dff_window: int = DEFAULT_DFF_WINDOW
+
+    peaks_height_value: float = DEFAULT_HEIGHT
+    peaks_height_mode: str = MULTIPLIER
+    peaks_distance: int = DEFAULT_PEAKS_DISTANCE
+    peaks_prominence_multiplier: float = 1.0
+    calcium_sync_jitter_window: int = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
+
+    spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
+    spike_threshold_mode: str = MULTIPLIER
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: int = DEFAULT_MIN_BURST_DURATION
+    burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
+    spikes_sync_cross_corr_lag: int = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+
+    led_power_equation: str | None = None
+    led_pulse_duration: float | None = None
+    led_pulse_powers: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    led_pulse_on_frames: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    stimulation_mask_path: str | None = None
+
+    threads: int = Field(default=1)
+
+    # Foreign keys
+    stimulation_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
+
+    # Relationships
+
+    stimulation_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
+            "lazy": "selectin",
+        }
+    )
+
+    def stimulated_mask_area(self) -> np.ndarray | None:
+        from cali.util import coordinates_to_mask
+
+        if (
+            (stim_mask := self.stimulation_mask)
+            and stim_mask.coords_y is not None
+            and stim_mask.coords_x is not None
+            and stim_mask.height is not None
+            and stim_mask.width is not None
+        ):
+            return coordinates_to_mask(
+                (stim_mask.coords_y, stim_mask.coords_x),
+                (stim_mask.height, stim_mask.width),
+            )
+        return None
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes id and created_at for semantic comparison.
+
+        Two AnalysisSettings are considered equal if they have the same analysis
+        parameters, regardless of when they were created or their database IDs.
+        """
+        if not isinstance(other, AnalysisSettings):
+            return False
+        return (
+            self.neuropil_inner_radius == other.neuropil_inner_radius
+            and self.neuropil_min_pixels == other.neuropil_min_pixels
+            and self.neuropil_correction_factor == other.neuropil_correction_factor
+            and self.decay_constant == other.decay_constant
+            and self.dff_window == other.dff_window
+            and self.peaks_height_value == other.peaks_height_value
+            and self.peaks_height_mode == other.peaks_height_mode
+            and self.peaks_distance == other.peaks_distance
+            and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
+            and self.calcium_sync_jitter_window == other.calcium_sync_jitter_window
+            and self.calcium_network_threshold == other.calcium_network_threshold
+            and self.spike_threshold_value == other.spike_threshold_value
+            and self.spike_threshold_mode == other.spike_threshold_mode
+            and self.burst_threshold == other.burst_threshold
+            and self.burst_min_duration == other.burst_min_duration
+            and self.burst_gaussian_sigma == other.burst_gaussian_sigma
+            and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
+            and self.led_power_equation == other.led_power_equation
+            and self.led_pulse_duration == other.led_pulse_duration
+            and self.led_pulse_powers == other.led_pulse_powers
+            and self.led_pulse_on_frames == other.led_pulse_on_frames
+            and self.stimulation_mask_path == other.stimulation_mask_path
+            and self.threads == other.threads
+            and self.stimulation_mask_id == other.stimulation_mask_id
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes id and created_at for consistency with __eq__."""
+        return hash(
+            (
+                self.neuropil_inner_radius,
+                self.neuropil_min_pixels,
+                self.neuropil_correction_factor,
+                self.decay_constant,
+                self.dff_window,
+                self.peaks_height_value,
+                self.peaks_height_mode,
+                self.peaks_distance,
+                self.peaks_prominence_multiplier,
+                self.calcium_sync_jitter_window,
+                self.calcium_network_threshold,
+                self.spike_threshold_value,
+                self.spike_threshold_mode,
+                self.burst_threshold,
+                self.burst_min_duration,
+                self.burst_gaussian_sigma,
+                self.spikes_sync_cross_corr_lag,
+                self.led_power_equation,
+                self.led_pulse_duration,
+                tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
+                tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
+                self.stimulation_mask_path,
+                self.threads,
+                self.stimulation_mask_id,
+            )
+        )
+
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load analysis settings from database.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific analysis settings to load. If None, loads all settings.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single AnalysisSettings if id specified, otherwise list of settings.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific analysis settings
+        >>> settings = AnalysisSettings.load_from_database("db.db", id=1)
+        >>> print(settings.dff_window)
+        >>>
+        >>> # Load most recent settings
+        >>> all_settings = AnalysisSettings.load_from_database("db.db")
+        >>> latest = all_settings[-1]
+        """
+        if session is None:
+            engine = create_engine(f"sqlite:///{db_path}")
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            statement = select(cls)
+
+            # Filter by id if provided
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No AnalysisSettings found with id={id}")
+                session.expunge_all()
+                return obj
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
+
+class Plate(SQLModel, table=True):  # type: ignore[call-arg]
+    """Plate container (e.g., 96-well plate).
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    experiment_id : int
+        Foreign key to parent experiment
+    name : str
+        Plate name/identifier
+    plate_type : str | None
+        Plate format (e.g., "96-well", "384-well")
+    rows : int | None
+        Number of rows in plate
+    columns : int | None
+        Number of columns in plate
+    plate_maps : dict | None
+        Plate map configuration mapping well positions to conditions.
+        Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
+                 "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
+    experiment : Experiment
+        Parent experiment
+    wells : list[Well]
+        Child wells in this plate
+    """
+
+    __tablename__ = "plate"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    plate_type: str | None = None  # e.g., "96-well", "384-well"
+    rows: int | None = None
+    columns: int | None = None
+    plate_maps: dict[str, dict[str, str]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+
+    # Foreign keys
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+
+    # Relationships
+    experiment: "Experiment" = Relationship(back_populates="plate")
+    wells: list["Well"] = Relationship(back_populates="plate")
+
+
+class Condition(SQLModel, table=True):  # type: ignore[call-arg]
+    """Experimental condition (e.g., genotype, treatment).
+
+    Conditions can be reused across multiple wells. This allows for
+    consistent condition naming and easy grouping.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    name : str
+        Unique condition name (e.g., "WT", "KO", "Vehicle", "Drug_10uM")
+    condition_type : str
+        Type of condition ("genotype", "treatment", "other")
+    color : str | None
+        Display color for plots (e.g., "coral", "#FF6347")
+    description : str | None
+        Optional detailed description
+    """
+
+    __tablename__ = "condition"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+    condition_type: str = Field(index=True)  # "genotype", "treatment", etc.
+    color: str | None = None
+    description: str | None = None
+
+
+class WellCondition(SQLModel, table=True):  # type: ignore[call-arg]
+    """Link table for Well-Condition many-to-many relationship."""
+
+    __tablename__ = "well_condition_link"
+
+    # Foreign keys
+    well_id: int = Field(foreign_key="well.id", primary_key=True)
+    condition_id: int = Field(foreign_key="condition.id", primary_key=True)
+
+
+class Well(SQLModel, table=True):  # type: ignore[call-arg]
+    """Well in a plate (e.g., "B5").
+
+    A well can have multiple FOVs (imaging positions) and is associated
+    with experimental conditions.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    plate_id : int
+        Foreign key to parent plate
+    name : str
+        Well name (e.g., "B5", "C3")
+    row : int
+        Row index (0-based)
+    column : int
+        Column index (0-based)
+    plate : Plate
+        Parent plate
+    conditions : list[Condition]
+        Associated experimental conditions (many-to-many)
+    fovs : list[FOV]
+        Imaging positions in this well
+    condition_1 : Condition | None
+        First experimental condition (convenience property)
+    condition_2 : Condition | None
+        Second experimental condition (convenience property)
+    """
+
+    __tablename__ = "well"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    row: int = Field(index=True)
+    column: int = Field(index=True)
+
+    # Foreign keys
+    plate_id: int = Field(foreign_key="plate.id", index=True)
+
+    # Relationships
+    plate: "Plate" = Relationship(back_populates="wells")
+    conditions: list["Condition"] = Relationship(
+        link_model=WellCondition,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+    fovs: list["FOV"] = Relationship(back_populates="well", cascade_delete=True)
+
+    # properties for first and second conditions
+    @property
+    def condition_1(self) -> Optional["Condition"]:
+        """First experimental condition (e.g., genotype)."""
+        return self.conditions[0] if len(self.conditions) > 0 else None
+
+    @property
+    def condition_2(self) -> Optional["Condition"]:
+        """Second experimental condition (e.g., treatment)."""
+        return self.conditions[1] if len(self.conditions) > 1 else None
+
+
+class FOV(SQLModel, table=True):  # type: ignore[call-arg]
+    """Field of View (imaging position) within a well.
+
+    Each FOV represents a single imaging position/site within a well.
+    FOVs contain multiple ROIs (individual cells).
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    well_id : int | None
+        Foreign key to parent well
+    name : str
+        FOV name (e.g., "B5_0000_p0")
+    position_index : int
+        Position index in acquisition order (e.g., if in an experiment we have 2 FOVs
+        per well and this is the second well, second FOV, this index would be 3 - the
+        4th position)
+    fov_number : int
+        The FOV number per well
+    fov_metadata : dict | None
+        Additional metadata from acquisition (stored as JSON)
+    well : Well
+        Parent well
+    rois : list[ROI]
+        Regions of interest (cells) in this FOV
+    """
+
+    __tablename__ = "fov"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(
+        index=True
+    )  # Not unique - multiple experiments can have same FOV names
+    position_index: int = Field(index=True)
+    fov_number: int = Field(default=0)
+    fov_metadata: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+
+    well_id: Optional[int] = Field(
+        default=None, foreign_key="well.id", index=True, ondelete="CASCADE"
+    )
+
+    # Relationships
+    well: "Well" = Relationship(back_populates="fovs")
+    rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
+
+
+class ROI(SQLModel, table=True):  # type: ignore[call-arg]
+    """Region of Interest (ROI) core metadata.
+
+    Represents a single cell/neuron segmented from imaging data.
+    Related analysis data is stored in separate tables (Traces, DataAnalysis, etc.)
+    Each ROI can have multiple analysis results from different analysis runs.
+    Multiple ROIs can exist for the same FOV with different detection settings,
+    allowing comparison of detection methods (e.g., Cellpose vs CaImAn).
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    fov_id : int
+        Foreign key to parent FOV
+    detection_settings_id : int | None
+        Foreign key to detection settings that created this ROI
+    label_value : int
+        ROI label number from segmentation (e.g., 1, 2, 3...)
+    active : bool | None
+        Whether ROI shows calcium activity (from latest analysis)
+    stimulated : bool | None
+        Whether ROI was stimulated (for evoked experiments)
+    roi_mask_id : int | None
+        Foreign key to ROI mask
+    neuropil_mask_id : int | None
+        Foreign key to neuropil mask
+    fov : FOV
+        Parent FOV
+    traces_history : list[Traces]
+        All fluorescence trace versions from different analysis runs
+    data_analysis_history : list[DataAnalysis]
+        All analysis result versions from different analysis runs
+    roi_mask : Mask | None
+        ROI mask (cell boundary)
+    neuropil_mask : Mask | None
+        Neuropil mask (background region)
+    """
+
+    __tablename__ = "roi"
+
+    id: int | None = Field(default=None, primary_key=True)
+    label_value: int = Field(index=True)
+
+    active: bool | None = None
+    stimulated: bool | None = None
+
+    # Foreign keys
+    fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")
+    detection_settings_id: int | None = Field(
+        default=None, foreign_key="detection_settings.id", index=True
+    )
+    roi_mask_id: int | None = Field(default=None, foreign_key="mask.id", index=True)
+    neuropil_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
+
+    # Relationships
+    fov: "FOV" = Relationship(back_populates="rois")
+    traces_history: list["Traces"] = Relationship(
+        back_populates="roi", cascade_delete=True
+    )
+    data_analysis_history: list["DataAnalysis"] = Relationship(
+        back_populates="roi", cascade_delete=True
+    )
+    roi_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[ROI.roi_mask_id]",
+            "lazy": "selectin",
+        }
+    )
+    neuropil_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[ROI.neuropil_mask_id]",
+            "lazy": "selectin",
+        }
+    )
+
+
+class Traces(SQLModel, table=True):  # type: ignore[call-arg]
+    """Fluorescence trace data for an ROI.
+
+    Stores all time-series fluorescence measurements and derived traces.
+    Each ROI can have multiple trace versions from different analysis runs.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this trace was created
+    roi_id : int | None
+        Foreign key to parent ROI
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this trace
+    raw_trace : list[float] | None
+        Raw fluorescence trace
+    corrected_trace : list[float] | None
+        Neuropil-corrected fluorescence trace
+    neuropil_trace : list[float] | None
+        Neuropil fluorescence trace
+    dff : list[float] | None
+        ΔF/F normalized trace
+    dec_dff : list[float] | None
+        Deconvolved ΔF/F trace
+    x_axis : list[float] | None
+        Frame numbers or frame timestamps (milliseconds)
+    roi : ROI
+        Parent ROI
+    analysis_result : AnalysisResult
+        The analysis run that created this trace
+    """
+
+    __tablename__ = "trace"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    raw_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    corrected_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    neuropil_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
+
+    # Foreign keys - roi_id is no longer unique to allow multiple versions
+    roi_id: int | None = Field(
+        default=None, foreign_key="roi.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
+    )
+
+    # Relationships
+    roi: "ROI" = Relationship(back_populates="traces_history")
+    analysis_result: "AnalysisResult" = Relationship(back_populates="traces")
+
+
+class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+    """Container for data analysis results for an ROI.
+
+    This class stores various analysis results related to an ROI,
+    such as peak detection, spike inference, and cell size measurements.
+    Each ROI can have multiple analysis result versions from different analysis runs.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this analysis was created
+    roi_id : int | None
+        Foreign key to parent ROI
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this result
+    cell_size : float | None
+        ROI area (µm² or pixels)
+    cell_size_units : str | None
+        Units for cell_size
+    total_recording_time_sec : float | None
+        Total recording duration (seconds)
+    dec_dff_frequency : float | None
+        Calcium event frequency (Hz)
+    peaks_dec_dff : list[float] | None
+        Peak indices in deconvolved trace
+    peaks_amplitudes_dec_dff : list[float] | None
+        Peak amplitudes
+    iei : list[float] | None
+        Inter-event intervals (seconds)
+    inferred_spikes : list[float] | None
+        Inferred spike probabilities
+    peaks_prominence_dec_dff : float | None
+        Peak prominence threshold used for this ROI (calculated)
+    peaks_height_dec_dff : float | None
+        Peak height threshold used for this ROI (calculated)
+    inferred_spikes_threshold : float | None
+        Spike detection threshold used for this ROI (calculated)
+    roi : ROI
+        Parent ROI
+    analysis_result : AnalysisResult
+        The analysis run that created this result
+    """
+
+    __tablename__ = "data_analysis"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys - roi_id is no longer unique to allow multiple versions
+    roi_id: int | None = Field(
+        default=None, foreign_key="roi.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
+    )
+
+    cell_size: float | None = None
+    cell_size_units: str | None = None
+    total_recording_time_sec: float | None = None
+    dec_dff_frequency: float | None = None
+    peaks_dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    peaks_prominence_dec_dff: float | None = None
+    peaks_height_dec_dff: float | None = None
+    peaks_amplitudes_dec_dff: list[float] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    inferred_spikes_threshold: float | None = None
+
+    # Relationships
+    roi: "ROI" = Relationship(back_populates="data_analysis_history")
+    analysis_result: "AnalysisResult" = Relationship(
+        back_populates="data_analysis_results"
+    )
+
+
+class Mask(SQLModel, table=True):  # type: ignore[call-arg]
+    """Generic mask coordinate data.
+
+    Stores spatial coordinates and dimensions for a mask (ROI or neuropil).
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    coords_y : list[int] | None
+        Y-coordinates of mask pixels
+    coords_x : list[int] | None
+        X-coordinates of mask pixels
+    height : int | None
+        Mask height
+    width : int | None
+        Mask width
+    mask_type : str
+        Type of mask ("roi", "neuropil", or "stimulation")
+    """
+
+    __tablename__ = "mask"
+
+    id: int | None = Field(default=None, primary_key=True)
+
+    coords_y: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    coords_x: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    height: int | None = None
+    width: int | None = None
+    mask_type: str = Field(index=True)  # "roi", "neuropil", or "stimulation"

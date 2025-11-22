@@ -15,7 +15,7 @@ source = "vcs"
 name = "cali"
 description = "A GUI to visualize, segment and analyze calcium imaging data."
 readme = "README.md"
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11"
 license = { text = "BSD 3-Clause License" }
 authors = [
     { email = "federico.gasparoli@gmail.com", name = "Federico Gasparoli" },
@@ -25,16 +25,14 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Typing :: Typed",
 ]
 dynamic = ["version"]
 dependencies = [
-    "numpy<2.0.0; platform_system == 'Darwin'",  # Pin numpy to avoid compilation issues on macOS
-    "numpy; platform_system != 'Darwin'",
-    "oasis-deconv!=0.2.1",
+    "oasis-deconv==0.2.0",  # Build from source to avoid broken prebuilt wheels
+    "numba",
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
     "qtpy",
@@ -44,7 +42,6 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "cmap",
-    "cellpose==3.1.1.2",
     "pyconify",
     "rich",
     "matplotlib",
@@ -56,7 +53,21 @@ dependencies = [
     "tensorstore >=0.1.67,!=0.1.72",
     "pydantic<2.11.0",
     "pandas",
-    "superqt[font-mi6]"
+    "superqt[font-mi6]",
+    "sqlmodel>=0.0.27",
+]
+
+[project.optional-dependencies]
+# Cellpose is optional - choose the version that fits your Python version
+cp3 = ["cellpose>=3.0.0,<4.0.0"]
+cp4 = ["cellpose>=4.0.0"]
+
+[tool.uv]
+conflicts = [
+    [
+      { extra = "cp3" },
+      { extra = "cp4" },
+    ],
 ]
 
 [dependency-groups]
@@ -65,7 +76,6 @@ dev = [
     "black",
     "ipython",
     "mypy",
-    "pdbpp",
     "pre-commit",
     "pytest-cov",
     "pytest",
@@ -79,7 +89,6 @@ repository = "https://github.com/fdrgsp/cali"
 
 [project.scripts]
 cali = "cali.__main__:main"
-bcp = "cali.__main__:batch_cellpose"
 
 [tool.uv.sources]
 cali = { workspace = true }
@@ -95,7 +104,7 @@ target-version = "py39"
 src = ["src", "tests"]
 fix = true
 unsafe-fixes = true
-exclude = ["_todo", "_todo/**"]
+exclude = ["_dev/**"]
 
 
 # https://docs.astral.sh/ruff/rules
@@ -135,7 +144,9 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
     "ignore:Failing to pass a value:DeprecationWarning",
-    "ignore:Could not find cvxpy.*:UserWarning"
+    "ignore:Could not find cvxpy.*:UserWarning",
+    "ignore:nperseg.*is greater than signal length:UserWarning",
+    "ignore::FutureWarning"
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
@@ -146,6 +157,7 @@ disallow_any_generics = false
 disallow_subclassing_any = false
 show_error_codes = true
 pretty = true
+plugins = ["pydantic.mypy"]
 
 # https://coverage.readthedocs.io/en/6.4/config.html
 [tool.coverage.report]
@@ -170,7 +182,8 @@ ignore = [
     ".pre-commit-config.yaml",
     ".ruff_cache/**/*",
     "tests/**/*",
+    "_dev/**/*",
 ]
 
 [tool.typos.default] 
-extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems"]
+extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems", "selectin", "pn"]

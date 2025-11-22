@@ -5,15 +5,6 @@ from importlib.metadata import version
 import pytest
 
 
-def test_package_imports() -> None:
-    """Test that the main package can be imported."""
-    import cali
-
-    assert hasattr(cali, "__version__")
-    assert hasattr(cali, "PlateViewer")
-    assert hasattr(cali, "CellposeBatchSegmentation")
-
-
 def test_package_has_version() -> None:
     """Test that the package has a version."""
     try:
@@ -34,12 +25,3 @@ def test_package_version_from_metadata() -> None:
     except Exception:
         # This might fail if package is not installed in development mode
         pytest.skip("Package metadata not available")
-
-
-def test_main_module_imports() -> None:
-    """Test that the main module components can be imported."""
-    from cali import CellposeBatchSegmentation, PlateViewer
-
-    # These should be classes
-    assert callable(PlateViewer)
-    assert callable(CellposeBatchSegmentation)

@@ -7,39 +7,37 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+# CRITICAL: Import torch before Qt on Windows to avoid DLL conflicts
+# When PyQt6 initializes before PyTorch on Windows, it can cause c10.dll loading failures
+if sys.platform == "win32":
+    try:
+        import torch  # noqa: F401
+    except (ImportError, OSError):
+        # Cellpose is optional, so torch might not be installed
+        pass
+
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication
 
-from cali import CellposeBatchSegmentation, PlateViewer
+from cali.gui import CaliGui
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import TracebackType
 
-WALLE_ICON = Path(__file__).parent / "icons" / "wall_e_icon.png"
+
 CELLPOSE_ICON = Path(__file__).parent / "icons" / "cellpose_icon.png"
 
 
 def main(args: Sequence[str] | None = None) -> None:
     """Run the cali application."""
     from fonticon_mdi6 import MDI6
-    from qtpy.QtGui import QIcon
     from superqt.fonticon import icon
 
     app = QApplication([])
     app.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
-    pl = PlateViewer()
+    pl = CaliGui()
     pl.show()
-    sys.excepthook = _our_excepthook
-    app.exec()
-
-
-def batch_cellpose() -> None:
-    """Open the Batch Cellpose Segmentation."""
-    app = QApplication([])
-    app.setWindowIcon(QIcon(str(CELLPOSE_ICON)))
-    cp = CellposeBatchSegmentation()
-    cp.show()
     sys.excepthook = _our_excepthook
     app.exec()
 
