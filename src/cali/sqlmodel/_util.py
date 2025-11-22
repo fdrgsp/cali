@@ -8,7 +8,6 @@ This module provides helper functions for database operations including:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar

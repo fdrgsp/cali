@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING

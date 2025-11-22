@@ -118,12 +118,14 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
 
         Note: id is excluded since it's None before database insertion.
         """
-        return hash((
-            self.experiment,
-            self.detection_settings,
-            self.analysis_settings,
-            tuple(self.positions_analyzed) if self.positions_analyzed else None,
-        ))
+        return hash(
+            (
+                self.experiment,
+                self.detection_settings,
+                self.analysis_settings,
+                tuple(self.positions_analyzed) if self.positions_analyzed else None,
+            )
+        )
 
     @classmethod
     def load_from_database(
@@ -600,16 +602,18 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     def __hash__(self) -> int:
         """Custom hash that excludes id and created_at for consistency with __eq__."""
-        return hash((
-            self.method,
-            self.model_type,
-            self.diameter,
-            self.cellprob_threshold,
-            self.flow_threshold,
-            self.min_size,
-            self.normalize,
-            self.batch_size,
-        ))
+        return hash(
+            (
+                self.method,
+                self.model_type,
+                self.diameter,
+                self.cellprob_threshold,
+                self.flow_threshold,
+                self.min_size,
+                self.normalize,
+                self.batch_size,
+            )
+        )
 
     @classmethod
     def load_from_database(
@@ -856,32 +860,34 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     def __hash__(self) -> int:
         """Custom hash that excludes id and created_at for consistency with __eq__."""
-        return hash((
-            self.neuropil_inner_radius,
-            self.neuropil_min_pixels,
-            self.neuropil_correction_factor,
-            self.decay_constant,
-            self.dff_window,
-            self.peaks_height_value,
-            self.peaks_height_mode,
-            self.peaks_distance,
-            self.peaks_prominence_multiplier,
-            self.calcium_sync_jitter_window,
-            self.calcium_network_threshold,
-            self.spike_threshold_value,
-            self.spike_threshold_mode,
-            self.burst_threshold,
-            self.burst_min_duration,
-            self.burst_gaussian_sigma,
-            self.spikes_sync_cross_corr_lag,
-            self.led_power_equation,
-            self.led_pulse_duration,
-            tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
-            tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
-            self.stimulation_mask_path,
-            self.threads,
-            self.stimulation_mask_id,
-        ))
+        return hash(
+            (
+                self.neuropil_inner_radius,
+                self.neuropil_min_pixels,
+                self.neuropil_correction_factor,
+                self.decay_constant,
+                self.dff_window,
+                self.peaks_height_value,
+                self.peaks_height_mode,
+                self.peaks_distance,
+                self.peaks_prominence_multiplier,
+                self.calcium_sync_jitter_window,
+                self.calcium_network_threshold,
+                self.spike_threshold_value,
+                self.spike_threshold_mode,
+                self.burst_threshold,
+                self.burst_min_duration,
+                self.burst_gaussian_sigma,
+                self.spikes_sync_cross_corr_lag,
+                self.led_power_equation,
+                self.led_pulse_duration,
+                tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
+                tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
+                self.stimulation_mask_path,
+                self.threads,
+                self.stimulation_mask_id,
+            )
+        )
 
     @classmethod
     def load_from_database(

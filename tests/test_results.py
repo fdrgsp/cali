@@ -212,9 +212,9 @@ def test_multiple_analysis_settings_create_separate_results(
             ).all()
 
             assert len(traces) > 0, f"AnalysisResult {ar.id} should have traces"
-            assert (
-                len(data_analyses) > 0
-            ), f"AnalysisResult {ar.id} should have data analysis"
+            assert len(data_analyses) > 0, (
+                f"AnalysisResult {ar.id} should have data analysis"
+            )
     engine.dispose(close=True)
 
 
@@ -271,22 +271,30 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
 
     # Analysis run 1-1 (detection 1 + analysis settings A)
     a_settings_A = AnalysisSettings(threads=1, dff_window=100)
-    analysis.run(test_experiment, a_settings_A, d_settings_1, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_A, d_settings_1, global_position_indices=[0]
+    )
 
     # Analysis run 1-2 (detection 1 + analysis settings B)
     a_settings_B = AnalysisSettings(threads=1, dff_window=200)
-    analysis.run(test_experiment, a_settings_B, d_settings_1, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_B, d_settings_1, global_position_indices=[0]
+    )
 
     # Detection run 2
     d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
     detection.run(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Analysis run 2-1 (detection 2 + analysis settings A)
-    analysis.run(test_experiment, a_settings_A, d_settings_2, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_A, d_settings_2, global_position_indices=[0]
+    )
 
     # Analysis run 2-2 (detection 2 + analysis settings C)
     a_settings_C = AnalysisSettings(threads=2, dff_window=150)
-    analysis.run(test_experiment, a_settings_C, d_settings_2, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_C, d_settings_2, global_position_indices=[0]
+    )
 
     # Verify complete audit trail
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -317,9 +325,9 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
                 .where(AnalysisResult.detection_settings == det_id)
                 .where(AnalysisResult.analysis_settings == ana_id)
             ).first()
-            assert (
-                ar is not None
-            ), f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
+            assert ar is not None, (
+                f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
+            )
     engine.dispose(close=True)
 
 
@@ -338,12 +346,12 @@ def test_detection_without_analysis(test_experiment: Experiment) -> None:
         assert len(rois) > 0, "Detection should create ROIs"
 
         analysis_results = session.exec(select(AnalysisResult)).all()
-        assert (
-            len(analysis_results) == 1
-        ), "Should have one detection-only AnalysisResult"
-        assert (
-            analysis_results[0].analysis_settings is None
-        ), "Detection-only should have no analysis_settings"
+        assert len(analysis_results) == 1, (
+            "Should have one detection-only AnalysisResult"
+        )
+        assert analysis_results[0].analysis_settings is None, (
+            "Detection-only should have no analysis_settings"
+        )
 
         traces = session.exec(select(Traces)).all()
         assert len(traces) == 0, "Should have no traces without analysis"
@@ -428,13 +436,17 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
     detection.run(test_experiment, d_settings_1, global_position_indices=[0])
 
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
-    analysis.run(test_experiment, a_settings_1, d_settings_1, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_1, d_settings_1, global_position_indices=[0]
+    )
 
     d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
     detection.run(test_experiment, d_settings_2, global_position_indices=[0])
 
     a_settings_2 = AnalysisSettings(threads=1, dff_window=200)
-    analysis.run(test_experiment, a_settings_2, d_settings_2, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_2, d_settings_2, global_position_indices=[0]
+    )
 
     # Query specific combination
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -472,9 +484,9 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
         for trace in traces:
             roi = session.get(ROI, trace.roi_id)
             assert roi is not None
-            assert (
-                roi.detection_settings_id == det_settings_1.id
-            ), "Trace should link to ROI from correct detection"
+            assert roi.detection_settings_id == det_settings_1.id, (
+                "Trace should link to ROI from correct detection"
+            )
     engine.dispose(close=True)
 
 
@@ -492,18 +504,24 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
     detection.run(test_experiment, d_settings_2, global_position_indices=[0])
 
     a_settings_1 = AnalysisSettings(threads=1, dff_window=100)
-    analysis.run(test_experiment, a_settings_1, d_settings_2, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_1, d_settings_2, global_position_indices=[0]
+    )
 
     # Scenario 3: Same detection, different analysis
     a_settings_2 = AnalysisSettings(threads=1, dff_window=200)
-    analysis.run(test_experiment, a_settings_2, d_settings_2, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_2, d_settings_2, global_position_indices=[0]
+    )
 
     # Scenario 4: Rerun same detection+analysis (should create new or update)
     d_settings_2_rerun = DetectionSettings(
         method="cellpose", model_type="cpsam", diameter=35
     )
     detection.run(test_experiment, d_settings_2_rerun, global_position_indices=[0])
-    analysis.run(test_experiment, a_settings_1, d_settings_2_rerun, global_position_indices=[0])
+    analysis.run(
+        test_experiment, a_settings_1, d_settings_2_rerun, global_position_indices=[0]
+    )
 
     # Verify complete database state
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
@@ -516,19 +534,19 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
         trace_count = len(session.exec(select(Traces)).all())
 
         # Should have 2 unique detection settings
-        assert (
-            detection_count == 2
-        ), f"Expected 2 detection settings, got {detection_count}"
+        assert detection_count == 2, (
+            f"Expected 2 detection settings, got {detection_count}"
+        )
 
         # Should have 2 unique analysis settings
-        assert (
-            analysis_count == 2
-        ), f"Expected 2 analysis settings, got {analysis_count}"
+        assert analysis_count == 2, (
+            f"Expected 2 analysis settings, got {analysis_count}"
+        )
 
         # Should have analysis results (might be 2 or 3 depending on rerun behavior)
-        assert (
-            analysis_result_count >= 2
-        ), f"Expected at least 2 analysis results, got {analysis_result_count}"
+        assert analysis_result_count >= 2, (
+            f"Expected at least 2 analysis results, got {analysis_result_count}"
+        )
 
         # Should have ROIs from both detections
         assert roi_count > 0, "Should have ROIs"
@@ -539,9 +557,9 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
         # Verify audit trail integrity
         for ar in session.exec(select(AnalysisResult)).all():
             # Each AnalysisResult should link to valid detection settings
-            assert (
-                ar.detection_settings is not None
-            ), "AnalysisResult should link to detection"
+            assert ar.detection_settings is not None, (
+                "AnalysisResult should link to detection"
+            )
             # analysis_settings can be None for detection-only runs
 
             # Each AnalysisResult should have associated traces/data
@@ -649,9 +667,9 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
     )
 
     # created_at should be different
-    assert (
-        result1.created_at != result2.created_at
-    ), "created_at should be different for objects created at different times"
+    assert result1.created_at != result2.created_at, (
+        "created_at should be different for objects created at different times"
+    )
 
     # But objects should still be equal (semantic equality)
     assert result1 == result2, (
@@ -666,9 +684,9 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
         positions_analyzed=[0, 1],
     )
 
-    assert (
-        result1 != result3
-    ), "AnalysisResults with different settings should not be equal"
+    assert result1 != result3, (
+        "AnalysisResults with different settings should not be equal"
+    )
 
     # Test hash consistency
     assert hash(result1) == hash(result2), "Equal AnalysisResults should have same hash"
@@ -688,9 +706,9 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
         positions_analyzed=None,
     )
 
-    assert (
-        result4 == result5
-    ), "AnalysisResults with None values should be equal if other fields match"
+    assert result4 == result5, (
+        "AnalysisResults with None values should be equal if other fields match"
+    )
 
 
 def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
@@ -713,9 +731,9 @@ def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
     with Session(engine) as session:
         analysis_results = session.exec(select(AnalysisResult)).all()
         # Should only have 1 result (not 2)
-        assert (
-            len(analysis_results) == 1
-        ), "Identical analysis should reuse AnalysisResult"
+        assert len(analysis_results) == 1, (
+            "Identical analysis should reuse AnalysisResult"
+        )
     engine.dispose(close=True)
 
 
@@ -762,9 +780,9 @@ def test_detection_with_different_cellpose_params(test_experiment: Experiment) -
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
         detection_settings = session.exec(select(DetectionSettings)).all()
-        assert len(detection_settings) == len(
-            params_list
-        ), f"Should have {len(params_list)} detection settings"
+        assert len(detection_settings) == len(params_list), (
+            f"Should have {len(params_list)} detection settings"
+        )
     engine.dispose(close=True)
 
 
@@ -870,7 +888,9 @@ def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> 
 
         for j in range(2):
             a_settings = AnalysisSettings(threads=1, dff_window=100 + j * 50)
-            analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
+            analysis.run(
+                test_experiment, a_settings, d_settings, global_position_indices=[0]
+            )
 
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
@@ -1023,9 +1043,9 @@ def test_position_different_settings_separate_results(
     engine = create_engine(f"sqlite:///{test_experiment.db_path}")
     with Session(engine) as session:
         results = session.exec(select(AnalysisResult)).all()
-        assert (
-            len(results) == 2
-        ), "Should have 2 separate results for different settings"
+        assert len(results) == 2, (
+            "Should have 2 separate results for different settings"
+        )
 
         # Both should analyze position 0
         positions_sets = [set(r.positions_analyzed) for r in results]
@@ -1033,8 +1053,8 @@ def test_position_different_settings_separate_results(
 
         # But should link to different analysis settings
         analysis_settings_ids = {r.analysis_settings for r in results}
-        assert (
-            len(analysis_settings_ids) == 2
-        ), "Should link to different analysis settings"
+        assert len(analysis_settings_ids) == 2, (
+            "Should link to different analysis settings"
+        )
 
     engine.dispose(close=True)

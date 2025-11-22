@@ -274,7 +274,8 @@ class DetectionRunner:
                         )
                         # Filter fov_results to only new positions
                         fov_results = [
-                            fov for fov in fov_results
+                            fov
+                            for fov in fov_results
                             if fov.position_index in new_positions
                         ]
                         positions_to_save = new_positions
