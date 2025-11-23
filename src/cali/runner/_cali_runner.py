@@ -67,12 +67,24 @@ class CaliRunner:
     ...     global_position_indices=[0, 1, 2],
     ...     force=True,
     ... )
+
+    Adjust commit frequency:
+    >>> # Commit every 5 FOVs instead of default 10
+    >>> runner = CaliRunner(commit_batch_size=5)
     """
 
-    def __init__(self) -> None:
-        """Initialize the unified runner."""
+    def __init__(self, commit_batch_size: int = 5) -> None:
+        """Initialize the unified runner.
+
+        Parameters
+        ----------
+        commit_batch_size : int
+            Number of FOVs to accumulate before committing to database.
+            Default is 5. Set to 1 for immediate commits (safest but slowest).
+        """
         # database path
         self._db_path: Path | None = None
+        self.commit_batch_size = commit_batch_size
 
         self._detection_runner = DetectionRunner()
         self._analysis_runner = AnalysisRunner()
@@ -131,6 +143,8 @@ class CaliRunner:
         global_position_indices : Sequence[int] | None
             Position indices to process. If None, processes all positions
             in the dataset.
+        database_name : str | None
+            Name of the database file to create/use. If None, defaults "results.cali".
         output_path : Path | None
             Output path to save databse and analysis results. If None, uses dataset
             parent directory.
@@ -200,6 +214,7 @@ class CaliRunner:
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
+                    fov_count = 0
                     for fov in self._run_detection(
                         dataset,
                         detection_settings,
@@ -208,13 +223,32 @@ class CaliRunner:
                         # Count ROIs before commit (they may become detached after)
                         roi_count = len(fov.rois)
                         total_rois_detected += roi_count
+                        fov_count += 1
 
-                        # Commit each FOV immediately to reduce memory usage
+                        # Commit in batches
+                        should_commit = fov_count % self.commit_batch_size == 0
                         commit_fov_result(
-                            session, experiment, fov, detection_settings.id
+                            session,
+                            experiment,
+                            fov,
+                            detection_settings.id,
+                            commit=should_commit,
                         )
+                        if should_commit:
+                            cali_logger.info(
+                                f"💾 Committed batch of {self.commit_batch_size} FOVs "
+                                f"(total: {fov_count}/{len(positions_for_detection)})"
+                            )
                         positions_processed_detection.append(fov.position_index)
                         fovs_with_rois.append(fov)
+
+                    # Final commit for any remaining FOVs
+                    if fov_count % self.commit_batch_size != 0:
+                        session.commit()
+                        remaining = fov_count % self.commit_batch_size
+                        cali_logger.info(
+                            f"💾 Final commit for remaining {remaining} FOVs"
+                        )
 
                     # Log detection completion
                     if positions_processed_detection:
@@ -275,13 +309,14 @@ class CaliRunner:
                     # Now run analysis and commit FOVs one by one, setting
                     # analysis_result_id on Traces before committing
                     positions_processed = []
+                    fov_count = 0
                     for fov in self._run_analysis(
                         dataset,
                         analysis_settings,
                         fovs_with_rois,
                         global_position_indices,
                     ):
-                        # Set analysis_result_id on all Traces before committing this FOV
+                        # Set analysis_result_id on all Traces before committing
                         if analysis_result_id is not None:
                             for roi in fov.rois:
                                 traces = (
@@ -291,9 +326,26 @@ class CaliRunner:
                                 for trace in traces:
                                     trace.analysis_result_id = analysis_result_id
 
-                        # Commit immediately while temp lists are still attached
-                        commit_fov_result(session, experiment, fov)
+                        fov_count += 1
+                        # Commit in batches
+                        should_commit = fov_count % self.commit_batch_size == 0
+                        commit_fov_result(
+                            session, experiment, fov, commit=should_commit
+                        )
+                        if should_commit:
+                            cali_logger.info(
+                                f"💾 Committed batch of {self.commit_batch_size} FOVs "
+                                f"(total: {fov_count}/{len(positions_for_analysis)})"
+                            )
                         positions_processed.append(fov.position_index)
+
+                    # Final commit for any remaining FOVs
+                    if fov_count % self.commit_batch_size != 0:
+                        session.commit()
+                        remaining = fov_count % self.commit_batch_size
+                        cali_logger.info(
+                            f"💾 Final commit for remaining {remaining} FOVs"
+                        )
 
                     # Log completion
                     if positions_processed:

@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from cellpose.models import CellposeModel
 
 
-
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
     """Get the FOV name from metadata."""
     try:
@@ -146,7 +145,7 @@ class DetectionRunner:
 
     def _run_cellpose(
         self,
-        dataset: str | Path |TensorstoreZarrReader | OMEZarrReader,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
         cellpose_debug: bool = False,
@@ -191,9 +190,7 @@ class DetectionRunner:
         )
 
         # Run detection and yield FOV results
-        total_fovs = 0
-        total_rois = 0
-        for fov in self._run_cellpose_detection(
+        yield from self._run_cellpose_detection(
             dataset=dataset,
             position_indices=position_indices,
             model=model,
@@ -203,10 +200,7 @@ class DetectionRunner:
             batch_size=detection_settings.batch_size,
             min_size=detection_settings.min_size,
             normalize=detection_settings.normalize,
-        ):
-            total_fovs += 1
-            total_rois += len(fov.rois)
-            yield fov
+        )
 
         cali_logger.info("✅ Detection complete!")
 
@@ -237,77 +231,90 @@ class DetectionRunner:
                 dataset, (TensorstoreZarrReader, OMEZarrReader)
             ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
-        # Load all images for batch processing
-        all_images = []
-        all_metadata = []
-        all_pos_indices = []
+        # Process images in batches
+        n_positions = len(position_indices)
+        n_batches = (n_positions + batch_size - 1) // batch_size
 
-        cali_logger.info("Loading images for batch processing...")
-        for pos_idx in position_indices:
-            if self._check_for_abort_requested():
-                cali_logger.info("Detection cancelled during image loading")
-                return
-
-            data, meta = dataset.isel(p=pos_idx, metadata=True)
-
-            # Preprocess data: max projection from half to end of stack
-            if data.ndim == 3:  # (t, y, x)
-                data_half_to_end = data[data.shape[0] // 2 :, :, :]
-                image = data_half_to_end.max(axis=0)
-            else:  # already 2D
-                image = data
-            all_images.append(image)
-            all_metadata.append(meta)
-            all_pos_indices.append(pos_idx)
-
-        if self._check_for_abort_requested():
-            return
-
-        # Process in batches
         cali_logger.info(
-            f"Processing {len(all_images)} images in batches of {batch_size}"
-        )
-        all_masks = self._batch_process(
-            model=model,
-            images=all_images,
-            diameter=diameter,
-            cellprob_threshold=cellprob_threshold,
-            flow_threshold=flow_threshold,
-            batch_size=batch_size,
-            min_size=min_size,
-            normalize=normalize,
+            f"Processing {n_positions} positions in {n_batches} batches of {batch_size}"
         )
 
-        if self._check_for_abort_requested():
-            return
-
-        # Yield FOV objects one at a time
-        for pos_idx, meta, masks_2d in zip(all_pos_indices, all_metadata, all_masks):
+        for batch_idx in tqdm(range(n_batches), desc="Running Cellpose"):
             if self._check_for_abort_requested():
-                cali_logger.info("Detection cancelled during FOV creation")
+                cali_logger.info("Detection cancelled")
                 return
 
-            fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
+            # Load one batch of images
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, n_positions)
+            batch_positions = position_indices[start_idx:end_idx]
 
-            if fov_result:
-                yield fov_result
+            batch_images = []
+            batch_metadata = []
+            batch_pos_indices = []
+
+            for pos_idx in batch_positions:
+                if self._check_for_abort_requested():
+                    return
+
+                data, meta = dataset.isel(p=pos_idx, metadata=True)
+
+                # Preprocess data: max projection from half to end of stack
+                if data.ndim == 3:  # (t, y, x)
+                    data_half_to_end = data[data.shape[0] // 2 :, :, :]
+                    image = data_half_to_end.max(axis=0)
+                else:  # already 2D
+                    image = data
+
+                batch_images.append(image)
+                batch_metadata.append(meta)
+                batch_pos_indices.append(pos_idx)
+
+            if self._check_for_abort_requested():
+                return
+
+            # Process this batch
+            batch_masks = self._process_single_batch(
+                model=model,
+                images=batch_images,
+                diameter=diameter,
+                cellprob_threshold=cellprob_threshold,
+                flow_threshold=flow_threshold,
+                min_size=min_size,
+                normalize=normalize,
+            )
+
+            if self._check_for_abort_requested():
+                return
+
+            # Yield FOV objects for this batch
+            for pos_idx, meta, masks_2d in zip(
+                batch_pos_indices, batch_metadata, batch_masks
+            ):
+                if self._check_for_abort_requested():
+                    cali_logger.info("Detection cancelled during FOV creation")
+                    return
+
+                fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
+
+                if fov_result:
+                    yield fov_result
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
         return self._cancellation_event.is_set()
 
-    def _batch_process(
+    def _process_single_batch(
         self,
         model: CellposeModel,
         images: list[np.ndarray],
         diameter: float | None,
         cellprob_threshold: float,
         flow_threshold: float,
-        batch_size: int,
         min_size: int,
         normalize: bool,
     ) -> list[np.ndarray]:
-        """Process images in batches using Cellpose.
+        """Process a single batch of images using Cellpose.
 
         Returns
         -------
@@ -316,33 +323,23 @@ class DetectionRunner:
         """
         from cellpose.utils import fill_holes_and_remove_small_masks
 
-        all_masks = []
-        n_batches = (len(images) + batch_size - 1) // batch_size
+        # Run Cellpose on batch
+        masks, _, _ = model.eval(
+            images,
+            diameter=diameter,
+            cellprob_threshold=cellprob_threshold,
+            flow_threshold=flow_threshold,
+            normalize=normalize,
+            batch_size=len(images),
+        )
 
-        for batch_idx in tqdm(range(n_batches), desc="Running Cellpose"):
-            if self._check_for_abort_requested():
-                break
+        # Post-process masks
+        processed_masks = []
+        for mask in masks:
+            mask = fill_holes_and_remove_small_masks(mask, min_size=min_size)
+            processed_masks.append(mask)
 
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, len(images))
-            batch_images = images[start_idx:end_idx]
-
-            # Run Cellpose on batch
-            masks, _, _ = model.eval(
-                batch_images,
-                diameter=diameter,
-                cellprob_threshold=cellprob_threshold,
-                flow_threshold=flow_threshold,
-                normalize=normalize,
-                batch_size=len(batch_images),
-            )
-
-            # Post-process masks
-            for mask in masks:
-                mask = fill_holes_and_remove_small_masks(mask, min_size=min_size)
-                all_masks.append(mask)
-
-        return all_masks
+        return processed_masks
 
     def _create_fov_with_rois(
         self,
@@ -379,11 +376,19 @@ class DetectionRunner:
             cali_logger.warning(f"No cells detected in {fov_name}")
             return None
 
+        # Extract fov_number from name (e.g., "B2_0001" -> 1)
+        # FOV number is the FOV index within the well, not the global position
+        try:
+            fov_number = int(fov_name.split("_")[1])
+        except (IndexError, ValueError):
+            # Fallback if name format is unexpected
+            fov_number = global_pos_idx
+
         # Create FOV (well association will be handled by commit_detection_result)
         fov = FOV(
             name=fov_name,
             position_index=global_pos_idx,
-            fov_number=global_pos_idx,
+            fov_number=fov_number,
             rois=[],
         )
 

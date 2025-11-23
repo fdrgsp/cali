@@ -73,6 +73,7 @@ def commit_fov_result(
     experiment: Experiment,
     fov_result: FOV,
     detection_settings_id: int | None = None,
+    commit: bool = True,
 ) -> None:
     """Commit FOV result to database.
 
@@ -81,7 +82,7 @@ def commit_fov_result(
 
     For detection: Creates new ROIs with detection_settings_id set.
     For analysis: Adds traces/analysis to existing ROIs matching by label_value
-                  and detection_settings_id.
+    and detection_settings_id.
 
     Parameters
     ----------
@@ -94,6 +95,9 @@ def commit_fov_result(
     detection_settings_id : int | None
         Detection settings ID to assign to new ROIs (required for detection,
         optional for analysis which reads it from existing ROIs)
+    commit : bool
+        Whether to commit immediately (True) or let caller handle batched commits
+        (False). Default True.
     """
     # Query for plate ID directly to avoid loading relationships
     plate_statement = (
@@ -201,4 +205,5 @@ def commit_fov_result(
         fov_result.well_id = well.id
         session.add(fov_result)
 
-    session.commit()
+    if commit:
+        session.commit()

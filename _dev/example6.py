@@ -1,3 +1,5 @@
+from concurrent.futures import thread
+from operator import imod
 from pathlib import Path
 
 from sqlmodel import create_engine, Session, select
@@ -8,6 +10,10 @@ from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment, CaliResult
 from cali.sqlmodel._model import DetectionSettings
 from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+
+from cellpose import io
+
+io.logger_setup()
 
 
 def table(db_path: str):
@@ -60,25 +66,17 @@ experiment = Experiment.create_from_data(
     data_path=data_path,
 )
 
+custom_model = "/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py"
 # -------------------------------------------------------
 # Run 1: d1 + a1
 cali.run(
     experiment,
     data_path,
-    detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
-    analysis_settings=AnalysisSettings(dff_window=150),
-    global_position_indices=[0],
+    # detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
+    detection_settings=DetectionSettings(
+        method="cellpose", model_type=custom_model, batch_size=3
+    ),
+    analysis_settings=AnalysisSettings(dff_window=150, threads=5),
     overwrite=True,
-)
-table(cali.database_path)
-
-# -------------------------------------------------------
-# Run 1: d1 + a1 on a different position -> should skip detection and analysis on pos 0
-cali.run(
-    experiment,
-    data_path,
-    detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
-    analysis_settings=AnalysisSettings(dff_window=150),
-    global_position_indices=[0, 1],
 )
 table(cali.database_path)

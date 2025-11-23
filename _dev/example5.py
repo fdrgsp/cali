@@ -57,8 +57,8 @@ cali = CaliRunner()
 data_path="tests/test_data/evoked/evk.tensorstore.zarr"
 
 experiment = Experiment.create_from_data(
-    name="New Experiment",
     data_path=data_path,
+    name="New Experiment",
     plate_maps={
         "genotype": {"B5": "WT"},
         "treatment": {"B5": "Vehicle"},
