@@ -146,7 +146,7 @@ class CaliRunner:
         database_name : str | None
             Name of the database file to create/use. If None, defaults "results.cali".
         output_path : Path | None
-            Output path to save databse and analysis results. If None, uses dataset
+            Output path to save database and analysis results. If None, uses dataset
             parent directory.
         overwrite : bool
             Whether to overwrite existing database

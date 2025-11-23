@@ -171,7 +171,7 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
 
 def test_experiment_creation(temp_db: TempDB) -> None:
     """Test basic Experiment model creation."""
-    engine, db_path = temp_db
+    engine, _db_path = temp_db
 
     exp = Experiment(
         name="test_exp",
@@ -417,7 +417,9 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Save
-    save_experiment_to_database(exp, output_path=tmp_path, database_name="test.db", overwrite=True)
+    save_experiment_to_database(
+        exp, output_path=tmp_path, database_name="test.db", overwrite=True
+    )
 
     # Verify
     from cali.sqlmodel._util import load_experiment_from_database
@@ -436,7 +438,9 @@ def test_save_experiment_overwrite_protection(
     db_path = tmp_path / "test.db"
 
     # Create initial database
-    save_experiment_to_database(simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
+    save_experiment_to_database(
+        simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True
+    )
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
@@ -444,7 +448,9 @@ def test_save_experiment_overwrite_protection(
     _size = db_path.stat().st_size  # Check file size
 
     # Save with overwrite=True
-    save_experiment_to_database(simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
+    save_experiment_to_database(
+        simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True
+    )
     # File should still exist
     assert db_path.exists()
 
@@ -817,7 +823,9 @@ def test_full_workflow(tmp_path: Path) -> None:
 
     # 2. Save to database
     db_path = tmp_path / "test.db"
-    save_experiment_to_database(experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
+    save_experiment_to_database(
+        experiment, output_path=tmp_path, database_name="test.db", overwrite=True
+    )
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")
@@ -943,7 +951,9 @@ def test_util_load_experiment_from_database(tmp_path: Path) -> None:
     FOV(well=well, name="B5_0000", position_index=0, fov_number=0)
 
     # Save to database (this creates tables internally)
-    save_experiment_to_database(exp, output_path=tmp_path, database_name="test_load.db", overwrite=True)
+    save_experiment_to_database(
+        exp, output_path=tmp_path, database_name="test_load.db", overwrite=True
+    )
 
     # Load back
     db_path = tmp_path / "test_load.db"

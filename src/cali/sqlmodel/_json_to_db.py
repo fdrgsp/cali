@@ -26,8 +26,8 @@ from cali._constants import EVOKED, SPONTANEOUS
 from ._model import (
     FOV,
     ROI,
-    CaliResult,
     AnalysisSettings,
+    CaliResult,
     Condition,
     DataAnalysis,
     Experiment,

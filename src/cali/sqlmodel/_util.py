@@ -103,8 +103,7 @@ def save_experiment_to_database(
             experiment.id = merged_exp.id
 
         cali_logger.info(
-            f"💾 Experiment analysis updated and saved to database at "
-            f"{db_path}."
+            f"💾 Experiment analysis updated and saved to database at {db_path}."
         )
     finally:
         # Dispose engine to release database connections (Windows compatibility)

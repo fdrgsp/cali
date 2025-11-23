@@ -213,7 +213,8 @@ def add_experiment_tree_to_node(
             if detection_settings_id is not None:
                 # Only show ROIs matching the requested detection settings
                 rois_to_show = [
-                    roi for roi in fov.rois
+                    roi
+                    for roi in fov.rois
                     if roi.detection_settings_id == detection_settings_id
                 ]
             else:

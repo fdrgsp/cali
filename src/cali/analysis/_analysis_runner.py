@@ -140,9 +140,9 @@ class AnalysisRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         # Execute analysis in parallel and yield results
         for fov_result in exec_(
@@ -243,7 +243,7 @@ class AnalysisRunner:
 
         if not labels_masks:
             cali_logger.error(
-                f"No valid ROI masks found for FOV {fov_name}. " "Run detection first."
+                f"No valid ROI masks found for FOV {fov_name}. Run detection first."
             )
             return None
 

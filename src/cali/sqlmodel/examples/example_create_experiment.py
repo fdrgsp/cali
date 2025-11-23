@@ -1,6 +1,5 @@
 """Example showing the simplified Experiment.create_with_plate API."""
 
-
 from cali.sqlmodel import Experiment, print_experiment_tree
 from cali.sqlmodel._util import save_experiment_to_database
 
@@ -35,4 +34,3 @@ exp = Experiment.create_from_data(
 # Save to database
 save_experiment_to_database(exp, out, overwrite=True)
 print_experiment_tree(exp)
-

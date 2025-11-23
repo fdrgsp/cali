@@ -259,10 +259,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         if self.id is not None and other.id is not None:
             return self.id == other.id
         # Otherwise compare by semantic fields
-        return (
-            self.name == other.name
-            and self.experiment_type == other.experiment_type
-        )
+        return self.name == other.name and self.experiment_type == other.experiment_type
 
     def __hash__(self) -> int:
         """Custom hash based on ID for consistency with __eq__."""
@@ -441,6 +438,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                 # Create additional FOVs (starting from fov_number=1)
                 for fov_num in range(1, fovs_per_well):
                     from ._model import FOV
+
                     FOV(
                         well=well,
                         name=f"{well.name}_{fov_num:04d}",
@@ -1358,9 +1356,7 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
-    analysis_result: "CaliResult" = Relationship(
-        back_populates="data_analysis_results"
-    )
+    analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
 
 
 class Mask(SQLModel, table=True):  # type: ignore[call-arg]

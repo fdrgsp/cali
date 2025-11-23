@@ -657,16 +657,12 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
     import time
 
     # Create two AnalysisResult objects with identical settings
-    result1 = CaliResult(
-        experiment=1, analysis_settings=1, positions_analyzed=[0, 1]
-    )
+    result1 = CaliResult(experiment=1, analysis_settings=1, positions_analyzed=[0, 1])
 
     # Small delay to ensure different timestamps
     time.sleep(0.001)
 
-    result2 = CaliResult(
-        experiment=1, analysis_settings=1, positions_analyzed=[0, 1]
-    )
+    result2 = CaliResult(experiment=1, analysis_settings=1, positions_analyzed=[0, 1])
 
     # created_at should be different
     assert result1.created_at != result2.created_at, (

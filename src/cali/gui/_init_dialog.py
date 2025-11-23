@@ -122,9 +122,7 @@ class _InputDialog(QDialog):
                 data_path=(
                     os.path.normpath(datastore_path) if datastore_path else None
                 ),
-                output_path=(
-                    os.path.normpath(output_path) if output_path else None
-                ),
+                output_path=(os.path.normpath(output_path) if output_path else None),
                 database_path=None,
             )
         # from Database

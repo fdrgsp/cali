@@ -166,8 +166,11 @@ def commit_fov_result(
                 # Find matching existing ROI by label_value and detection_settings_id
                 matching_roi = None
                 for existing_roi in existing_fov.rois:
-                    if (existing_roi.label_value == new_roi.label_value and
-                        existing_roi.detection_settings_id == new_roi.detection_settings_id):
+                    if (
+                        existing_roi.label_value == new_roi.label_value
+                        and existing_roi.detection_settings_id
+                        == new_roi.detection_settings_id
+                    ):
                         matching_roi = existing_roi
                         break
 
@@ -178,8 +181,13 @@ def commit_fov_result(
 
                     # Add traces and data_analysis to existing ROI
                     # Check for both regular relationship and temp in-memory list
-                    traces_to_add = getattr(new_roi, '_new_traces', []) or new_roi.traces_history
-                    data_analysis_to_add = getattr(new_roi, '_new_data_analysis', []) or new_roi.data_analysis_history
+                    traces_to_add = (
+                        getattr(new_roi, "_new_traces", []) or new_roi.traces_history
+                    )
+                    data_analysis_to_add = (
+                        getattr(new_roi, "_new_data_analysis", [])
+                        or new_roi.data_analysis_history
+                    )
 
                     for trace in traces_to_add:
                         trace.roi_id = matching_roi.id

@@ -93,9 +93,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         if detection_settings.method == "cellpose":
             yield from self._run_cellpose(
@@ -227,9 +227,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         # Process images in batches
         n_positions = len(position_indices)
