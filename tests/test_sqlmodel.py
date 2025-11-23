@@ -93,8 +93,7 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
     exp = Experiment(
         name="test_experiment",
         description="Test experiment",
-        data_path="/dummy/path",
-        analysis_path=str(db_path.parent),
+        output_path=str(db_path.parent),
         database_name=db_path.name,
     )
 
@@ -177,9 +176,6 @@ def test_experiment_creation(temp_db: TempDB) -> None:
     exp = Experiment(
         name="test_exp",
         description="Test description",
-        data_path="/path/to/data",
-        analysis_path=str(db_path.parent),
-        database_name=db_path.name,
     )
 
     with Session(engine) as session:
@@ -201,7 +197,7 @@ def test_experiment_create_from_data(tmp_path: Path) -> None:
     exp = Experiment.create_from_data(
         name="Test Experiment From Data",
         data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
-        analysis_path=str(tmp_path),
+        output_path=str(tmp_path),
         database_name="test_from_data.db",
         plate_maps={
             "genotype": {"B5": "WT"},
@@ -286,7 +282,7 @@ def test_unique_constraints(temp_db: TempDB) -> None:
             Experiment(
                 name="test1",
                 data_path="/dummy/path",
-                analysis_path=str(db_path.parent),
+                output_path=str(db_path.parent),
                 database_name=db_path.name,
             )
         )
@@ -297,7 +293,7 @@ def test_unique_constraints(temp_db: TempDB) -> None:
             Experiment(
                 name="test1",
                 data_path="/dummy/path",
-                analysis_path=str(db_path.parent),
+                output_path=str(db_path.parent),
                 database_name=db_path.name,
             )
         )
@@ -394,13 +390,13 @@ def test_load_analysis_from_json() -> None:
     """Test loading analysis from JSON directory."""
     test_data_dir = Path(__file__).parent / "test_data" / "evoked"
     data_path = test_data_dir / "evk.tensorstore.zarr"
-    analysis_path = test_data_dir / "evk_analysis"
+    output_path = test_data_dir / "evk_analysis"
 
-    if not analysis_path.exists():
+    if not output_path.exists():
         pytest.skip("Test data not available")
 
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(str(data_path), str(analysis_path), plate)
+    experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
 
     # Name is now derived from data_path name + ".db"
     assert experiment.name == "evk.tensorstore.zarr.db"
@@ -413,18 +409,15 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     """Test saving experiment to database."""
     db_path = tmp_path / "test.db"
 
-    # Create simple experiment with analysis_path set
+    # Create simple experiment
     exp = Experiment(
         name="test_experiment",
         description="Test",
-        data_path=str(tmp_path / "data"),
-        analysis_path=str(tmp_path),
-        database_name="test.db",
     )
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Save
-    save_experiment_to_database(exp, overwrite=True)
+    save_experiment_to_database(exp, output_path=tmp_path, database_name="test.db", overwrite=True)
 
     # Verify
     from cali.sqlmodel._util import load_experiment_from_database
@@ -439,13 +432,11 @@ def test_save_experiment_overwrite_protection(
     simple_experiment: Experiment, tmp_path: Path
 ) -> None:
     """Test that overwrite=False protects existing database."""
-    # Update experiment to use tmp_path
-    simple_experiment.analysis_path = str(tmp_path)
-    simple_experiment.database_name = "test.db"
+    # Use tmp_path for database
     db_path = tmp_path / "test.db"
 
     # Create initial database
-    save_experiment_to_database(simple_experiment, overwrite=True)
+    save_experiment_to_database(simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
@@ -453,7 +444,7 @@ def test_save_experiment_overwrite_protection(
     _size = db_path.stat().st_size  # Check file size
 
     # Save with overwrite=True
-    save_experiment_to_database(simple_experiment, overwrite=True)
+    save_experiment_to_database(simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
     # File should still exist
     assert db_path.exists()
 
@@ -527,9 +518,6 @@ def test_experiment_to_useq_plate_plan_multiple_wells(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
 
@@ -556,9 +544,6 @@ def test_experiment_to_useq_plate_plan_no_wells(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     Plate(experiment=exp, name="96-well", plate_type="96-well")
 
@@ -578,9 +563,6 @@ def test_useq_plate_plan_to_plate(temp_db: TempDB) -> None:
     # Create experiment
     exp = Experiment(
         name="test_useq_import",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
         description="Import from useq",
     )
 
@@ -655,9 +637,6 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
     # Create experiment with useq plate plan
     exp = Experiment(
         name="roundtrip_test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
         description="Test round-trip",
     )
 
@@ -753,9 +732,6 @@ def test_roi_without_traces(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -778,9 +754,6 @@ def test_well_without_conditions(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     Well(plate=plate, name="A1", row=0, column=0)
@@ -801,9 +774,6 @@ def test_large_trace_data(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -832,24 +802,22 @@ def test_full_workflow(tmp_path: Path) -> None:
     """Test complete workflow from JSON to database to export."""
     test_data_dir = Path(__file__).parent / "test_data" / "evoked"
     data_path = test_data_dir / "evk.tensorstore.zarr"
-    analysis_path = test_data_dir / "evk_analysis"
+    output_path = test_data_dir / "evk_analysis"
 
-    if not analysis_path.exists():
+    if not output_path.exists():
         pytest.skip("Test data not available")
 
     # 1. Load from JSON
     plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(str(data_path), str(analysis_path), plate)
+    experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
 
     # Verify basic experiment structure
     assert experiment.plate is not None
     assert len(experiment.plate.wells) > 0
 
-    # 2. Save to database (update paths to use tmp_path)
-    experiment.analysis_path = str(tmp_path)
-    experiment.database_name = "test.db"
+    # 2. Save to database
     db_path = tmp_path / "test.db"
-    save_experiment_to_database(experiment, overwrite=True)
+    save_experiment_to_database(experiment, output_path=tmp_path, database_name="test.db", overwrite=True)
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")
@@ -875,9 +843,7 @@ def test_data_to_plate_error_cases(tmp_path: Path) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path=str(tmp_path),
-        database_name="test.db",
+        output_path=str(tmp_path),
     )
 
     # Save to get ID
@@ -909,9 +875,6 @@ def test_db_to_useq_plate_error_cases(temp_db: TempDB) -> None:
     # Experiment with no plate
     exp = Experiment(
         name="no_plate",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
 
     with Session(engine) as session:
@@ -931,9 +894,6 @@ def test_useq_plate_to_db_with_positions(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test_positions",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
 
     with Session(engine) as session:
@@ -977,16 +937,13 @@ def test_util_load_experiment_from_database(tmp_path: Path) -> None:
     # Create experiment structure
     exp = Experiment(
         name="test_load",
-        data_path="/dummy/path",
-        analysis_path=str(tmp_path),
-        database_name="test_load.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="B5", row=1, column=4)
     FOV(well=well, name="B5_0000", position_index=0, fov_number=0)
 
     # Save to database (this creates tables internally)
-    save_experiment_to_database(exp, overwrite=True)
+    save_experiment_to_database(exp, output_path=tmp_path, database_name="test_load.db", overwrite=True)
 
     # Load back
     db_path = tmp_path / "test_load.db"
@@ -1104,9 +1061,6 @@ def test_db_to_plate_map_with_multiple_condition_types(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test_map",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
 
@@ -1141,9 +1095,6 @@ def test_useq_coverslip_plate_types(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test_coverslip",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
 
     with Session(engine) as session:
@@ -1187,9 +1138,6 @@ def test_experiment_to_useq_plate_no_plate_type(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     Plate(experiment=exp, name="test-plate", plate_type=None)
 
@@ -1252,9 +1200,6 @@ def test_traces_all_fields(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -1288,9 +1233,6 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -1347,9 +1289,6 @@ def test_fov_metadata(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -1376,9 +1315,6 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
 
     exp = Experiment(
         name="test",
-        data_path="/dummy/path",
-        analysis_path="/dummy/analysis",
-        database_name="test.db",
     )
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
@@ -1518,7 +1454,7 @@ def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
         exp = Experiment(
             name="multi_well_test",
             data_path="/dummy/path",
-            analysis_path="/dummy/analysis",
+            output_path="/dummy/analysis",
             database_name="test.db",
         )
         plate = Plate(experiment=exp, name="24-well")
@@ -1579,7 +1515,7 @@ def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
         exp = Experiment(
             name="no_conditions_test",
             data_path="/dummy/path",
-            analysis_path="/dummy/analysis",
+            output_path="/dummy/analysis",
             database_name="test.db",
         )
         plate = Plate(experiment=exp, name="24-well")
@@ -1607,7 +1543,7 @@ def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
         exp = Experiment(
             name="no_plate_test",
             data_path="/dummy/path",
-            analysis_path="/dummy/analysis",
+            output_path="/dummy/analysis",
             database_name="test.db",
         )
 

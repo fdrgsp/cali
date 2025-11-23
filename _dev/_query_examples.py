@@ -5,7 +5,7 @@ when you have multiple analysis runs with different settings.
 """
 
 from sqlmodel import Session, select
-from src.cali.sqlmodel._model import ROI, AnalysisResult, DataAnalysis, Traces
+from src.cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
 # ============================================================================
 # Query Pattern 1: Get results for a specific AnalysisResult
@@ -170,13 +170,13 @@ def get_traces_by_settings(
     ... )
     """
     # First find matching AnalysisResults
-    query = select(AnalysisResult).where(AnalysisResult.experiment == experiment_id)
+    query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:
-        query = query.where(AnalysisResult.detection_settings == detection_settings_id)
+        query = query.where(CaliResult.detection_settings == detection_settings_id)
 
     if analysis_settings_id is not None:
-        query = query.where(AnalysisResult.analysis_settings == analysis_settings_id)
+        query = query.where(CaliResult.analysis_settings == analysis_settings_id)
 
     analysis_results = session.exec(query).all()
 
@@ -650,16 +650,16 @@ def get_analysis_for_detection_method(
 
     # Find analysis results matching criteria
     query = (
-        select(AnalysisResult)
-        .where(AnalysisResult.experiment == experiment_id)
-        .where(AnalysisResult.detection_settings == detection_settings_id)
+        select(CaliResult)
+        .where(CaliResult.experiment == experiment_id)
+        .where(CaliResult.detection_settings == detection_settings_id)
     )
 
     if analysis_settings_id is not None:
-        query = query.where(AnalysisResult.analysis_settings == analysis_settings_id)
+        query = query.where(CaliResult.analysis_settings == analysis_settings_id)
 
     # Get most recent analysis result
-    analysis_result = session.exec(query.order_by(desc(AnalysisResult.id))).first()
+    analysis_result = session.exec(query.order_by(desc(CaliResult.id))).first()
 
     if not analysis_result or analysis_result.id is None:
         return []
@@ -737,13 +737,13 @@ def get_latest_results_for_experiment(
     from sqlalchemy import desc
 
     # Find latest AnalysisResult for this experiment
-    query = select(AnalysisResult).where(AnalysisResult.experiment == experiment_id)
+    query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:
-        query = query.where(AnalysisResult.detection_settings == detection_settings_id)
+        query = query.where(CaliResult.detection_settings == detection_settings_id)
 
     latest_analysis_result = session.exec(
-        query.order_by(desc(AnalysisResult.id))
+        query.order_by(desc(CaliResult.id))
     ).first()
 
     if not latest_analysis_result or latest_analysis_result.id is None:

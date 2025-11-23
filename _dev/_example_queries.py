@@ -8,7 +8,7 @@ from sqlmodel import Session, create_engine, select
 
 from cali.sqlmodel._model import (
     ROI,
-    AnalysisResult,
+    CaliResult,
     AnalysisSettings,
     DetectionSettings,
     Traces,
@@ -24,9 +24,9 @@ def example_1_get_traces_by_settings(
     """Get all traces from a specific DetectionSettings + AnalysisSettings combo."""
     # First find the AnalysisResult with these settings
     ar = session.exec(
-        select(AnalysisResult).where(
-            AnalysisResult.detection_settings == detection_id,
-            AnalysisResult.analysis_settings == analysis_id,
+        select(CaliResult).where(
+            CaliResult.detection_settings == detection_id,
+            CaliResult.analysis_settings == analysis_id,
         )
     ).first()
 
@@ -55,8 +55,8 @@ def example_2_compare_detection_methods(
     for trace in roi.traces_history:
         if trace.analysis_result_id:
             ar = session.exec(
-                select(AnalysisResult).where(
-                    AnalysisResult.id == trace.analysis_result_id
+                select(CaliResult).where(
+                    CaliResult.id == trace.analysis_result_id
                 )
             ).first()
             if ar and ar.detection_settings:
@@ -84,7 +84,7 @@ def example_4_get_analysis_metadata(session: Session, trace_id: int) -> dict[str
 
     # Get the AnalysisResult
     ar = session.exec(
-        select(AnalysisResult).where(AnalysisResult.id == trace.analysis_result_id)
+        select(CaliResult).where(CaliResult.id == trace.analysis_result_id)
     ).first()
     if not ar:
         return {}
@@ -130,7 +130,7 @@ def example_5_filter_by_analysis_params(
     results = []
     for setting in settings:
         ars = session.exec(
-            select(AnalysisResult).where(AnalysisResult.analysis_settings == setting.id)
+            select(CaliResult).where(CaliResult.analysis_settings == setting.id)
         ).all()
         results.extend(ars)
 

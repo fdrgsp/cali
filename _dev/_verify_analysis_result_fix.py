@@ -10,7 +10,7 @@ from sqlmodel import Session, create_engine, select
 
 from cali.sqlmodel._model import (
     ROI,
-    AnalysisResult,
+    CaliResult,
     DataAnalysis,
     Traces,
 )
@@ -26,7 +26,7 @@ with Session(engine) as session:
     print("=" * 80)
 
     # Get all AnalysisResults
-    analysis_results = session.exec(select(AnalysisResult)).all()
+    analysis_results = session.exec(select(CaliResult)).all()
 
     print(f"\nFound {len(analysis_results)} AnalysisResult(s):\n")
     for ar in analysis_results:

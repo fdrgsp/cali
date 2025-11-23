@@ -86,11 +86,11 @@ def _load_and_set_data_from_json(path: Path) -> dict[str, dict[str, ROIData]]:
 
 
 datastore_path = "..."
-analysis_path = "..."
+output_path = "..."
 
 data = TensorstoreZarrReader(datastore_path)
 
-analysis_data = _load_and_set_data_from_json(Path(analysis_path))
+analysis_data = _load_and_set_data_from_json(Path(output_path))
 
 # create a numpy array that contains the traces
 # for well, fov_data in analysis_data.items():

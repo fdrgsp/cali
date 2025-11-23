@@ -8,7 +8,7 @@ from cali.sqlmodel._util import save_experiment_to_database
 exp = Experiment.create(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="evk.tensorstore.zarr.db",
     plate_type="96-well",
     well_names=["B5", "B6", "C5"],
@@ -29,7 +29,7 @@ print_experiment_tree(exp)
 exp = Experiment.create_from_data(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="evk.tensorstore.zarr.db",
     plate_maps={
         "genotype": {"B5": "WT"},

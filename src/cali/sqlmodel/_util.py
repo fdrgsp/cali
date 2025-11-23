@@ -44,8 +44,9 @@ def create_database_and_tables(engine: Engine) -> None:
 
 def save_experiment_to_database(
     experiment: Experiment,
+    output_path: Path | str,
+    database_name: str = "results.cali",
     overwrite: bool = False,
-    database_name: str | None = None,
     echo: bool = False,
 ) -> None:
     """Save an experiment object tree to a SQLite database.
@@ -59,11 +60,12 @@ def save_experiment_to_database(
     ----------
     experiment : Experiment
         Experiment object (e.g., from load_analysis_from_json)
+    output_path : Path | str
+        Output directory to save the database file.
+    database_name : str, optional
+        Name of the database file (e.g., "cali.db"). Defaults to "results.cali".
     overwrite : bool, optional
         Whether to overwrite existing database file, by default False
-    database_name : str | None, optional
-        Name of the database file (e.g., "cali.db"). If None, uses the
-        experiment's `database_name` attribute.
     echo : bool, optional
         Whether to enable SQLAlchemy engine echo for debugging, by default False
 
@@ -73,23 +75,13 @@ def save_experiment_to_database(
     >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
     >>> save_experiment_to_database(exp, overwrite=True)
     >>> # Later, load fresh from DB when needed:
-    >>> db_path = Path(exp.analysis_path) / exp.database_name
+    >>> db_path = Path(exp.output_path) / exp.database_name
     >>> exp = load_experiment_from_database(db_path)
     """
-    if experiment.analysis_path is None:
-        raise ValueError(
-            "Experiment must have `analysis_path` set to save to database."
-        )
-    if experiment.database_name is None and database_name is None:
-        raise ValueError(
-            "Experiment must have `database_name` set to save to "
-            "database or provide `database_name` argument."
-        )
-
-    # Use provided database_name or fall back to experiment's database_name
-    db_name = database_name if database_name is not None else experiment.database_name
+    # Determine database path
+    db_name = database_name if database_name is not None else "results.cali"
     assert db_name is not None  # Guaranteed by the check above
-    db_path = Path(experiment.analysis_path) / db_name
+    db_path = Path(output_path) / db_name
 
     # Ensure parent directory exists
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,12 +95,16 @@ def save_experiment_to_database(
     try:
         with Session(engine) as session:
             # Merge handles add/update for the entire object tree with cascade
-            session.merge(experiment)
+            merged_exp = session.merge(experiment)
             session.commit()
+            # Refresh to get the ID assigned by the database
+            session.refresh(merged_exp)
+            # Update the original experiment object with the database ID
+            experiment.id = merged_exp.id
 
         cali_logger.info(
             f"💾 Experiment analysis updated and saved to database at "
-            f"{experiment.analysis_path}/{experiment.database_name}."
+            f"{db_path}."
         )
     finally:
         # Dispose engine to release database connections (Windows compatibility)
@@ -223,8 +219,8 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
                 _ = len(fov.rois)  # Force load rois
                 for roi in fov.rois:
                     # Force load all ROI relationships
-                    _ = roi.traces
-                    _ = roi.data_analysis
+                    _ = len(roi.traces_history)
+                    _ = len(roi.data_analysis_history)
                     _ = roi.roi_mask
                     _ = roi.neuropil_mask
 

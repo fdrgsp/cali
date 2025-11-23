@@ -40,9 +40,8 @@ from cali._constants import (
     WRITERS,
     ZARR_TESNSORSTORE,
 )
-from cali.analysis import AnalysisRunner
-from cali.detection._detection_runner import DetectionRunner
 from cali.gui._runs_panel import _RunsPanel
+from cali.runner._cali_runner import CaliRunner
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
@@ -52,7 +51,7 @@ from cali.sqlmodel import (
     save_experiment_to_database,
 )
 from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
-from cali.sqlmodel._model import AnalysisResult, AnalysisSettings, DetectionSettings
+from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data
 
 from ._analysis_gui import (
@@ -110,12 +109,11 @@ class CaliGui(QMainWindow):
         # INTERNAL VARIABLES ---------------------------------------------------------
         self._database_path: Path | None = None
         self._data_path: str | None = None
-        self._analysis_path: str | None = None
+        self._output_path: str | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
-        # RUNNERS --------------------------------------------------------------------
-        self._analysis_runner = AnalysisRunner()
-        self._detection_runner = DetectionRunner()
+        # RUNNER ----------------------------------------------------------------------
+        self._runner = CaliRunner()
 
         # PROGRESS BAR WIDGET --------------------------------------------------------
         self._loading_bar = _ProgressBarWidget(self)
@@ -288,13 +286,13 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
         # connect the run analysis button
         self._analysis_wdg.run.connect(self._on_run_analysis_clicked)
-        self._analysis_wdg.cancel.connect(self._analysis_runner.cancel)
+        self._analysis_wdg.cancel.connect(self._runner.cancel)
         # connect analysis runner signal
-        # self._analysis_runner.analysisInfo.connect(self._on_analysis_info)
+        # self._runner.analysisInfo.connect(self._on_analysis_info)
 
         # connect the run detection button
         self._detection_wdg.run.connect(self._on_run_detection_clicked)
-        self._detection_wdg.cancel.connect(self._detection_runner.cancel)
+        self._detection_wdg.cancel.connect(self._runner.cancel)
 
         # TODO: FIX ME FOR NEW GUI
         # self._segmentation_wdg.segmentationFinished.connect(
@@ -313,20 +311,20 @@ class CaliGui(QMainWindow):
         # fmt off
 
         # data = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data, self._analysis_path)
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._output_path)
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data self._analysis_path)
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data self._output_path)
 
         # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._analysis_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data, self._analysis_path)
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
+        # self.initialize_widget_from_directories(data, self._output_path)
 
-        # data = "tests/test_data/evoked/database/cali.db"
-        data = "tests/test_data/evoked/database/evk.tensorstore.zarr.db"
-        self.initialize_from_database(data)
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self.initialize_from_database(db_path, data_path)
 
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
@@ -335,7 +333,9 @@ class CaliGui(QMainWindow):
         # ____________________________________________________________________________
 
     # PUBLIC METHODS-------------------------------------------------------------------
-    def initialize_from_database(self, database_path: str | Path) -> None:
+    def initialize_from_database(
+        self, database_path: str | Path, data_path: str | Path
+    ) -> None:
         """Initialize the widget with the given database path."""
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from database...", False)
@@ -349,7 +349,7 @@ class CaliGui(QMainWindow):
         exp = Experiment.load_from_db(database_path)
 
         # DATA-------------------------------------------------------------------------
-        self._data = load_data(exp.data_path)
+        self._data = load_data(data_path)
         if self._data is None:
             msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
@@ -371,8 +371,7 @@ class CaliGui(QMainWindow):
             return
 
         # ASSIGN VARIABLES ------------------------------------------------------------
-        self._database_path = Path(exp.analysis_path) / exp.database_name
-        self._analysis_path = exp.analysis_path
+        self._database_path = Path(database_path)
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_with_database_path(self._database_path)
@@ -408,7 +407,7 @@ class CaliGui(QMainWindow):
         if plate_map_data is not None and plate is not None:
             self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
-    def initialize_from_directories(self, data_path: str, analysis_path: str) -> None:
+    def initialize_from_directories(self, data_path: str, output_path: str) -> None:
         """Initialize the widget with given datastore and analysis path."""
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from directories...", False)
@@ -439,9 +438,8 @@ class CaliGui(QMainWindow):
 
         # ASSIGN VARIABLES ------------------------------------------------------------
         self._data_path = data_path
-        self._analysis_path = analysis_path
         database_name = f"{Path(data_path).name}.db"
-        self._database_path = Path(analysis_path) / database_name
+        self._database_path = Path(output_path) / database_name
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_with_database_path(self._database_path)
@@ -450,14 +448,13 @@ class CaliGui(QMainWindow):
         experiment = Experiment.create_from_data(
             name="Cali Experiment",
             data_path=data_path,
-            analysis_path=analysis_path,
-            database_name=database_name,
+            description=f"Experiment from data at {data_path}.",
         )
 
         # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
         # TODO: ask the user to overwrite if the database already exists
         cali_logger.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_database(experiment, overwrite=True)
+        save_experiment_to_database(experiment, output_path, overwrite=True)
 
         # UPDATE GUI-------------------------------------------------------------------
         self._update_gui_plate_plan(self._data.sequence.stage_positions)
@@ -480,7 +477,7 @@ class CaliGui(QMainWindow):
             range(len(self._data.sequence.stage_positions))
         )
         create_worker(
-            self._detection_runner.run,
+            self._runner.run,
             experiment,
             d_settings,
             pos,
@@ -502,14 +499,16 @@ class CaliGui(QMainWindow):
 
         experiment = Experiment.load_from_db(self._database_path)
         a_settings = self._analysis_wdg.to_model_settings()
+        d_settings = self._detection_wdg.to_model_settings()
         pos = self._analysis_wdg.positions() or list(
             range(len(self._data.sequence.stage_positions))
         )
         create_worker(
-            self._analysis_runner.run,
+            self._runner.run,
             experiment,
-            a_settings,
+            d_settings,
             pos,
+            a_settings,  # Pass analysis_settings to run both detection + analysis
             _start_thread=True,
             _connect={
                 "errored": self._on_worker_errored,
@@ -545,7 +544,7 @@ class CaliGui(QMainWindow):
         init_dialog = _InputDialog(
             self,
             data_path=(str(self._data.path) if self._data is not None else None),
-            analysis_path=self._analysis_path,
+            output_path=self._output_path,
         )
         init_dialog.resize(700, init_dialog.sizeHint().height())
         if init_dialog.exec():
@@ -555,7 +554,7 @@ class CaliGui(QMainWindow):
                 self.initialize_from_database(value.database_path)
             # input from directories
             elif (data_path := value.data_path) is not None:
-                if value.analysis_path is None:
+                if value.output_path is None:
                     msg = (
                         "Analysis path must be provided to create the analysis "
                         "database!"
@@ -563,14 +562,14 @@ class CaliGui(QMainWindow):
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
-                self.initialize_from_directories(data_path, value.analysis_path)
+                self.initialize_from_directories(data_path, value.output_path)
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
         # clear paths
         self._database_path = None
         self._data_path = None
-        self._analysis_path = None
+        self._output_path = None
         # clear the datastore
         self._data = None
         # clear fov table
@@ -668,8 +667,8 @@ class CaliGui(QMainWindow):
 
         try:
             # Load the selected analysis result
-            result = AnalysisResult.load_from_database(self._database_path, id=run_id)
-            assert isinstance(result, AnalysisResult)
+            result = CaliResult.load_from_database(self._database_path, id=run_id)
+            assert isinstance(result, CaliResult)
 
             # Load and apply detection settings
             if result.detection_settings:

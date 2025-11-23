@@ -11,7 +11,7 @@ from cali.sqlmodel._visualize_experiment import (
 exp = Experiment.create_from_data(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="evk.tensorstore.zarr.db",
     plate_maps={
         "genotype": {"B5": "WT"},

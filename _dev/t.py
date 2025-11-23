@@ -60,7 +60,7 @@ def create_data() -> None:
         created_at=datetime.datetime.now(),
         data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
         labels_path="tests/test_data/spontaneous/spont_labels",
-        analysis_path="tests/test_data/spontaneous/spont_analysis",
+        output_path="tests/test_data/spontaneous/spont_analysis",
     )
 
     session.add(experiment)

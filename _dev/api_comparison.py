@@ -7,7 +7,7 @@ from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
 exp = Experiment.create_from_data(
     name="API Comparison",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="api_comparison",
     plate_maps={
         "genotype": {"B5": "WT"},

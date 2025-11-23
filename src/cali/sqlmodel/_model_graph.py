@@ -3,7 +3,7 @@ from sqlalchemy_data_model_visualizer import generate_data_model_diagram
 from cali.sqlmodel._model import (
     FOV,
     ROI,
-    AnalysisResult,
+    CaliResult,
     AnalysisSettings,
     Condition,
     DataAnalysis,
@@ -17,7 +17,7 @@ from cali.sqlmodel._model import (
 )
 
 models = [
-    AnalysisResult,
+    CaliResult,
     Experiment,
     DetectionSettings,
     AnalysisSettings,

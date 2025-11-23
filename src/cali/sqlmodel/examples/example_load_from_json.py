@@ -13,10 +13,10 @@ from cali.sqlmodel._visualize_experiment import (
 # data_path = (
 #     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
 # )
-# analysis_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
+# output_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk_analysis"
 
 data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont.tensorstore.zarr"  # noqa: E501
-analysis_path = (
+output_path = (
     "/Users/fdrgsp/Documents/git/cali/tests/test_data/spontaneous/spont_analysis"
 )
 
@@ -24,11 +24,11 @@ analysis_path = (
 plate = useq.WellPlate.from_str("96-well")
 
 # Load experiment from JSON files and save to database (with AnalysisResult tracking)
-experiment = load_analysis_from_json(str(data_path), str(analysis_path), plate)
+experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
 
 # view experiment tree
 print_experiment_tree(experiment, max_experiment_level="roi")
 
-# engine = create_engine(f"sqlite:///{analysis_path}/evk.tensorstore.zarr.db")
-engine = create_engine(f"sqlite:///{analysis_path}/spont.tensorstore.zarr.db")
+# engine = create_engine(f"sqlite:///{output_path}/evk.tensorstore.zarr.db")
+engine = create_engine(f"sqlite:///{output_path}/spont.tensorstore.zarr.db")
 print_all_analysis_results(engine)

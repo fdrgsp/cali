@@ -14,8 +14,8 @@ from typing_extensions import Literal
 from ._model import (
     FOV,
     ROI,
-    AnalysisResult,
     AnalysisSettings,
+    CaliResult,
     DetectionSettings,
     Experiment,
     Plate,
@@ -209,13 +209,15 @@ def add_experiment_tree_to_node(
                 continue
 
             # Add ROIs (filter by detection_settings_id if provided)
-            rois_to_show = fov.rois
+            # Note: detection_settings_id is now on ROI, not FOV
             if detection_settings_id is not None:
+                # Only show ROIs matching the requested detection settings
                 rois_to_show = [
-                    roi
-                    for roi in fov.rois
+                    roi for roi in fov.rois
                     if roi.detection_settings_id == detection_settings_id
                 ]
+            else:
+                rois_to_show = fov.rois
 
             for roi in rois_to_show:
                 roi_info = f"ROI {roi.label_value}"
@@ -245,7 +247,7 @@ def add_experiment_tree_to_node(
 
 
 def print_analysis_result(
-    analysis_result: AnalysisResult,
+    analysis_result: CaliResult,
     session: Session,
     show_settings: bool = True,
     max_experiment_level: MaxTreeLevel = "roi",
@@ -371,13 +373,13 @@ def print_all_analysis_results(
 
             # Get results for this experiment
             results = session.exec(
-                select(AnalysisResult).where(AnalysisResult.experiment == experiment.id)
+                select(CaliResult).where(CaliResult.experiment == experiment.id)
             ).all()
 
             title = f"Analysis Results for '{experiment_name}'"
         else:
             # Get all results from all experiments
-            results = session.exec(select(AnalysisResult)).all()
+            results = session.exec(select(CaliResult)).all()
             title = "All Analysis Results"
 
         if not results:
@@ -619,8 +621,7 @@ def print_experiment_tree(
 
             # Add ROIs
             for roi in fov.rois:
-                roi_info = f"ROI {roi.label_value} "
-                roi_info += f"(Detection Settings ID: {roi.detection_settings_id})"
+                roi_info = f"ROI {roi.label_value}"
                 if roi.active is not None:
                     status = (
                         "🔋 [green]active[/green]"
@@ -649,7 +650,7 @@ def print_experiment_tree(
     # Show analysis results if session is provided
     if show_analysis_results and session and experiment.id is not None:
         analysis_results = session.exec(
-            select(AnalysisResult).where(AnalysisResult.experiment == experiment.id)
+            select(CaliResult).where(CaliResult.experiment == experiment.id)
         ).all()
 
         if analysis_results:
@@ -980,7 +981,7 @@ def print_database_tree(
         # Show analysis results if requested
         if show_analysis_results:
             results = session.exec(
-                select(AnalysisResult).where(AnalysisResult.experiment == exp.id)
+                select(CaliResult).where(CaliResult.experiment == exp.id)
             ).all()
 
             if results:

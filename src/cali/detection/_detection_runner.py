@@ -4,25 +4,22 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
-from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
-from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Experiment, Mask
-from cali.sqlmodel._util import save_experiment_to_database
-from cali.util import commit_fov_result, load_data, mask_to_coordinates
+from cali.logger import cali_logger
+from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Mask
+from cali.util import load_data, mask_to_coordinates
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Generator, Sequence
 
     from cellpose.models import CellposeModel
 
-    from cali.readers import OMEZarrReader, TensorstoreZarrReader
-
-from cali.logger import cali_logger
 
 
 def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
@@ -56,8 +53,6 @@ class DetectionRunner:
 
     def __init__(self) -> None:
         super().__init__()
-        # The data reader
-        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
 
@@ -68,52 +63,52 @@ class DetectionRunner:
 
     def run(
         self,
-        experiment: Experiment,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
-        overwrite: bool = False,
-        force: bool = False,
-        echo: bool = False,
-    ) -> None:
-        """Run detection and save masks to database.
+    ) -> Generator[FOV, None, None]:
+        """Run detection and yield FOV results with ROIs and masks.
 
         Automatically selects the appropriate detection method based on
         detection_settings.method ("cellpose" or "caiman").
 
+        This method performs pure computation and does not interact with the database.
+        Database operations (checking for duplicates, saving results) should be
+        handled by the caller (typically CaliRunner).
+
         Parameters
         ----------
-        experiment : Experiment
-            Experiment to add detection results to
+        dataset : str | Path | TensorstoreZarrReader | OMEZarrReader
+            Path to imaging data (zarr store) or a data reader instance
         detection_settings : DetectionSettings
             Detection parameters (method field determines which algorithm to use)
         global_position_indices : Sequence[int]
             Position indices to process
-        overwrite : bool
-            Whether to overwrite existing database
-        force : bool
-            If True, delete all existing analysis results using these detection
-            settings and re-run detection. If False (default), skip detection if
-            settings+positions are unchanged, or run only for new positions.
-        echo : bool
-            Enable SQLAlchemy echo for database operations
+
+        Yields
+        ------
+        FOV
+            FOV objects with ROIs and masks, ready to be saved to database
         """
+        # Load data
+        if isinstance(dataset, (str, Path)):
+            dataset = load_data(dataset)
+        else:
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+
         if detection_settings.method == "cellpose":
-            self._run_cellpose(
-                experiment=experiment,
+            yield from self._run_cellpose(
+                dataset=dataset,
                 detection_settings=detection_settings,
-                global_position_indices=global_position_indices,
-                overwrite=overwrite,
-                force=force,
-                echo=echo,
+                position_indices=global_position_indices,
             )
         elif detection_settings.method == "caiman":
-            self._run_caiman(
-                experiment=experiment,
+            yield from self._run_caiman(
+                dataset=dataset,
                 detection_settings=detection_settings,
-                global_position_indices=global_position_indices,
-                overwrite=overwrite,
-                force=force,
-                echo=echo,
+                position_indices=global_position_indices,
             )
         else:
             msg = (
@@ -125,30 +120,25 @@ class DetectionRunner:
 
     def _run_caiman(
         self,
-        experiment: Experiment,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         detection_settings: DetectionSettings,
-        global_position_indices: Sequence[int],
-        overwrite: bool = False,
-        force: bool = False,
-        echo: bool = False,
-    ) -> None:
-        """Run CaImAn detection and save masks to database.
+        position_indices: Sequence[int],
+    ) -> list[FOV]:
+        """Run CaImAn detection and return FOV results with ROIs and masks.
 
         Parameters
         ----------
-        experiment : Experiment
-            Experiment to add detection results to
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader
+            Path to imaging data (zarr store) or a data reader instance
         detection_settings : DetectionSettings
             Detection parameters (method should be "caiman")
-        global_position_indices : Sequence[int]
+        position_indices : Sequence[int]
             Position indices to process
-        overwrite : bool
-            Whether to overwrite existing database
-        force : bool
-            If True, delete existing analysis and re-run. If False, skip if unchanged
-            or run only new positions.
-        echo : bool
-            Enable SQLAlchemy echo for database operations
+
+        Returns
+        -------
+        list[FOV]
+            List of FOV objects with ROIs and masks
         """
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
@@ -156,33 +146,28 @@ class DetectionRunner:
 
     def _run_cellpose(
         self,
-        experiment: Experiment,
+        dataset: str | Path |TensorstoreZarrReader | OMEZarrReader,
         detection_settings: DetectionSettings,
-        global_position_indices: Sequence[int],
-        overwrite: bool = False,
-        force: bool = False,
+        position_indices: Sequence[int],
         cellpose_debug: bool = False,
-        echo: bool = False,
-    ) -> None:
-        """Run Cellpose segmentation and save masks to database.
+    ) -> Generator[FOV, None, None]:
+        """Run Cellpose segmentation and yield FOV results with ROIs and masks.
 
         Parameters
         ----------
-        experiment : Experiment
-            Experiment to add detection results to
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader
+            Path to imaging data (zarr store) or a data reader instance
         detection_settings : DetectionSettings
             Detection parameters (method should be "cellpose")
-        global_position_indices : Sequence[int]
+        position_indices : Sequence[int]
             Position indices to process
-        overwrite : bool
-            Whether to overwrite existing database
-        force : bool
-            If True, delete existing analysis and re-run. If False, skip if unchanged
-            or run only new positions.
         cellpose_debug : bool
             Enable Cellpose debug logging
-        echo : bool
-            Enable SQLAlchemy echo for database operations
+
+        Yields
+        ------
+        FOV
+            FOV objects with ROIs and masks, ready to be saved to database
         """
         try:
             from cellpose import core, io
@@ -205,10 +190,12 @@ class DetectionRunner:
             pretrained_model=str(detection_settings.model_type), gpu=use_gpu
         )
 
-        # Run detection and get FOV results
-        fov_results = self._run_cellpose_detection(
-            experiment=experiment,
-            global_position_indices=global_position_indices,
+        # Run detection and yield FOV results
+        total_fovs = 0
+        total_rois = 0
+        for fov in self._run_cellpose_detection(
+            dataset=dataset,
+            position_indices=position_indices,
             model=model,
             diameter=detection_settings.diameter,
             cellprob_threshold=detection_settings.cellprob_threshold,
@@ -216,155 +203,17 @@ class DetectionRunner:
             batch_size=detection_settings.batch_size,
             min_size=detection_settings.min_size,
             normalize=detection_settings.normalize,
-            overwrite=overwrite,
-        )
+        ):
+            total_fovs += 1
+            total_rois += len(fov.rois)
+            yield fov
 
-        # Commit results to database
-        if fov_results:
-            cali_logger.info(
-                f"ROIs detected: {sum(len(fov.rois) for fov in fov_results)}"
-            )
-            cali_logger.info("Committing detection results to database...")
-            engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
-            with Session(engine) as session:
-                # Check if identical detection settings already exist
-                detection_settings = self._get_or_create_detection_settings(
-                    session, detection_settings
-                )
-
-                # Determine which positions to actually save based on force flag
-                positions_to_save = []
-                for fov_result in fov_results:
-                    positions_to_save.append(fov_result.position_index)
-
-                if not force:
-                    # Check which positions already have ROIs
-                    existing_positions = session.exec(
-                        select(FOV.position_index)
-                        .join(ROI)
-                        .where(
-                            ROI.detection_settings_id == detection_settings.id,
-                            FOV.position_index.in_(positions_to_save),  # type: ignore
-                        )
-                        .distinct()
-                    ).all()
-
-                    existing_pos_set = set(existing_positions)
-                    new_positions = [
-                        p for p in positions_to_save if p not in existing_pos_set
-                    ]
-
-                    if not new_positions and existing_pos_set:
-                        # All positions already exist - skip
-                        cali_logger.info(
-                            f"⏭️  Skipping detection - all {len(positions_to_save)} "
-                            f"position(s) already have ROIs with DetectionSettings ID "
-                            f"{detection_settings.id}. Use force=True to re-run and "
-                            f"replace existing ROIs."
-                        )
-                        engine.dispose(close=True)
-                        return
-
-                    if new_positions and len(new_positions) < len(positions_to_save):
-                        # Some positions already exist - only save new ones
-                        cali_logger.info(
-                            f"📍 Saving detection for {len(new_positions)} new "
-                            f"position(s): {new_positions} (skipping "
-                            f"{len(existing_pos_set)} existing)"
-                        )
-                        # Filter fov_results to only new positions
-                        fov_results = [
-                            fov
-                            for fov in fov_results
-                            if fov.position_index in new_positions
-                        ]
-                        positions_to_save = new_positions
-
-                if force and detection_settings.id is not None:
-                    # Delete existing analysis results
-                    self._cascade_delete_analysis_results(
-                        session=session,
-                        experiment=experiment,
-                        detection_settings_id=detection_settings.id,
-                    )
-
-                # Save FOV results with detection_settings_id
-                positions_processed = []
-                for fov_result in fov_results:
-                    commit_fov_result(
-                        session, experiment, fov_result, detection_settings.id
-                    )
-                    positions_processed.append(fov_result.position_index)
-
-                # Create/update AnalysisResult to track detection-only run
-                if positions_processed and detection_settings.id is not None:
-                    from datetime import datetime
-
-                    from sqlalchemy import desc
-
-                    from cali.sqlmodel._model import AnalysisResult
-
-                    # Check if ANY AnalysisResult exists for this detection
-                    # (detection-only OR full analysis), ordered by most recent
-                    existing_any_result = session.exec(
-                        select(AnalysisResult)
-                        .where(
-                            AnalysisResult.experiment == experiment.id,
-                            AnalysisResult.detection_settings == detection_settings.id,
-                        )
-                        .order_by(desc(AnalysisResult.created_at))  # type: ignore
-                    ).first()
-
-                    if (
-                        existing_any_result is not None
-                        and existing_any_result.analysis_settings is not None
-                    ):
-                        # Full AnalysisResult exists - update its timestamp
-                        existing_any_result.created_at = datetime.now()
-                        session.add(existing_any_result)
-                        session.commit()
-                        cali_logger.info(
-                            f"⏭️  Skipping detection-only AnalysisResult creation - "
-                            f"updated AnalysisResult ID {existing_any_result.id} "
-                            f"timestamp (DetectionSettings={detection_settings.id})"
-                        )
-                    elif existing_any_result is not None:
-                        # Merge positions into existing detection-only result
-                        existing_pos = set(existing_any_result.positions_analyzed or [])
-                        new_positions = set(positions_processed)
-                        merged_positions = sorted(existing_pos | new_positions)
-                        existing_any_result.positions_analyzed = merged_positions
-                        session.add(existing_any_result)
-                        session.commit()
-                        cali_logger.info(
-                            f"🔄 Updated detection-only AnalysisResult ID "
-                            f"{existing_any_result.id} to include "
-                            f"positions {merged_positions}"
-                        )
-                    else:
-                        # Create new detection-only AnalysisResult
-                        if experiment.id is not None:
-                            detection_result = AnalysisResult(
-                                experiment=experiment.id,
-                                detection_settings=detection_settings.id,
-                                analysis_settings=None,  # Detection-only
-                                positions_analyzed=positions_processed,
-                            )
-                            session.add(detection_result)
-                            session.commit()
-                            session.refresh(detection_result)
-                            cali_logger.info(
-                                f"📊 Created detection-only AnalysisResult ID "
-                                f"{detection_result.id} (DetectionSettings="
-                                f"{detection_settings.id}, "
-                                f"positions={positions_processed})"
-                            )
-            engine.dispose(close=True)
+        cali_logger.info("✅ Detection complete!")
 
     def _run_cellpose_detection(
         self,
-        experiment: Experiment,
-        global_position_indices: Sequence[int],
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        position_indices: Sequence[int],
         model: CellposeModel,
         diameter: float | None,
         cellprob_threshold: float,
@@ -372,50 +221,21 @@ class DetectionRunner:
         batch_size: int,
         min_size: int,
         normalize: bool,
-        overwrite: bool,
-    ) -> list[FOV]:
-        """Internal method to run Cellpose detection and return FOV objects.
+    ) -> Generator[FOV, None, None]:
+        """Internal method to run Cellpose detection and yield FOV objects.
 
-        Returns
-        -------
-        list[FOV]
-            List of FOV objects with ROIs and Masks, ready to be committed
+        Yields
+        ------
+        FOV
+            FOV objects with ROIs and Masks, ready to be committed
         """
-        from sqlmodel import select
-
-        # DATABASE DO NOT EXISTS
-        if not Path(experiment.db_path).exists():
-            save_experiment_to_database(experiment)
-
-        # DATABASE EXISTS
-        engine = create_engine(f"sqlite:///{experiment.db_path}", echo=False)
-        with Session(engine) as session:
-            # if database does exist but the overwrite flag is True, just overwrite
-            if overwrite:
-                save_experiment_to_database(experiment, overwrite=True)
-            else:
-                # if database does exist but the the experiment.id is either None or
-                # different than the one in the database, raise ValueError.
-                db_exp = cast("Experiment", session.exec(select(Experiment)).first())
-                if experiment.id is None or experiment.id != db_exp.id:
-                    msg = (
-                        "The provided Experiment must have an ID matching the one "
-                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either "
-                        f"set the `Experiment.id` to {db_exp.id}, use a different "
-                        "`Experiment.database_name` or `Experiment.analysis_path` or"
-                        "`set the overwrite flag to `True` to overwrite the database."
-                    )
-                    cali_logger.error(msg)
-                    engine.dispose(close=True)
-                    raise ValueError(msg)
-        engine.dispose(close=True)
-
-        # load data
-        self._data = load_data(experiment.data_path)
-
-        if experiment.id is None:
-            msg = "Experiment must have an ID before running detection"
-            raise ValueError(msg)
+        # Load data
+        if isinstance(dataset, (str, Path)):
+            dataset = load_data(dataset)
+        else:
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
         # Load all images for batch processing
         all_images = []
@@ -423,12 +243,12 @@ class DetectionRunner:
         all_pos_indices = []
 
         cali_logger.info("Loading images for batch processing...")
-        for pos_idx in global_position_indices:
+        for pos_idx in position_indices:
             if self._check_for_abort_requested():
                 cali_logger.info("Detection cancelled during image loading")
-                return []
+                return
 
-            data, meta = self._data.isel(p=pos_idx, metadata=True)
+            data, meta = dataset.isel(p=pos_idx, metadata=True)
 
             # Preprocess data: max projection from half to end of stack
             if data.ndim == 3:  # (t, y, x)
@@ -436,13 +256,12 @@ class DetectionRunner:
                 image = data_half_to_end.max(axis=0)
             else:  # already 2D
                 image = data
-
             all_images.append(image)
             all_metadata.append(meta)
             all_pos_indices.append(pos_idx)
 
         if self._check_for_abort_requested():
-            return []
+            return
 
         # Process in batches
         cali_logger.info(
@@ -460,22 +279,18 @@ class DetectionRunner:
         )
 
         if self._check_for_abort_requested():
-            return []
+            return
 
-        # Create FOV objects
-        fov_results = []
-
+        # Yield FOV objects one at a time
         for pos_idx, meta, masks_2d in zip(all_pos_indices, all_metadata, all_masks):
             if self._check_for_abort_requested():
                 cali_logger.info("Detection cancelled during FOV creation")
-                return fov_results
+                return
 
             fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
 
             if fov_result:
-                fov_results.append(fov_result)
-
-        return fov_results
+                yield fov_result
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
@@ -605,101 +420,3 @@ class DetectionRunner:
 
             fov.rois.append(roi)
         return fov
-
-    def _get_or_create_detection_settings(
-        self, session: Session, detection_settings: DetectionSettings
-    ) -> DetectionSettings:
-        """Get existing or create new DetectionSettings in database.
-
-        Parameters
-        ----------
-        session : Session
-            Database session
-        detection_settings : DetectionSettings
-            Detection settings to find or create
-
-        Returns
-        -------
-        DetectionSettings
-            Existing or newly created settings with ID
-        """
-        if detection_settings.id is None:
-            # Check if identical settings already exist in database
-            try:
-                all_settings = session.exec(select(DetectionSettings)).all()
-                existing_settings = None
-                for candidate in all_settings:
-                    if detection_settings == candidate:
-                        existing_settings = candidate
-                        break
-            except Exception:
-                existing_settings = None
-
-            # Found duplicate - use the existing one
-            if existing_settings is not None:
-                return existing_settings
-
-            # Create new settings
-            session.add(detection_settings)
-            session.commit()
-            session.refresh(detection_settings)
-            return detection_settings
-        else:
-            # Settings already has an ID - check if it exists
-            all_settings_ids = [
-                s.id for s in session.exec(select(DetectionSettings)).all()
-            ]
-            if detection_settings.id not in all_settings_ids:
-                session.add(detection_settings)
-                session.commit()
-                session.refresh(detection_settings)
-                return detection_settings
-            else:
-                # Get the existing settings from database
-                existing = session.get(DetectionSettings, detection_settings.id)
-                if existing is not None:
-                    return existing
-                return detection_settings
-
-    def _cascade_delete_analysis_results(
-        self,
-        session: Session,
-        experiment: Experiment,
-        detection_settings_id: int,
-    ) -> None:
-        """Delete all AnalysisResults using these DetectionSettings.
-
-        This cascades to delete Traces, DataAnalysis, and other related data.
-        ROIs will be replaced during the new detection run.
-
-        Parameters
-        ----------
-        session : Session
-            Database session
-        experiment : Experiment
-            Current experiment
-        detection_settings_id : int
-            ID of DetectionSettings to clear
-        """
-        from cali.sqlmodel._model import AnalysisResult
-
-        # Find all AnalysisResults using these detection settings
-        results_to_delete = session.exec(
-            select(AnalysisResult).where(
-                AnalysisResult.experiment == experiment.id,
-                AnalysisResult.detection_settings == detection_settings_id,
-            )
-        ).all()
-
-        if results_to_delete:
-            count = len(results_to_delete)
-            result_ids = [r.id for r in results_to_delete]
-            cali_logger.warning(
-                f"🗑️  force=True: Deleting {count} AnalysisResult(s) "
-                f"(IDs: {result_ids}) and associated analysis data "
-                f"for DetectionSettings ID {detection_settings_id}"
-            )
-
-            for result in results_to_delete:
-                session.delete(result)
-            session.commit()

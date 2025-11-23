@@ -7,13 +7,13 @@ from cali._constants import EVOKED
 from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
-from cali.sqlmodel._model import AnalysisResult, ROI
+from cali.sqlmodel._model import CaliResult, ROI
 
 
 exp = Experiment.create_from_data(
     name="Force Test",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="testforce",
     plate_maps={
         "genotype": {"B5": "WT"},
@@ -41,7 +41,7 @@ analysis.run(exp, a_settings, global_position_indices=[0])
 engine = create_engine(f"sqlite:///{exp.db_path}")
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
-    results = session.exec(select(AnalysisResult)).all()
+    results = session.exec(select(CaliResult)).all()
     print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
     first_roi_ids = {roi.id for roi in rois}
     first_result_ids = {r.id for r in results}
@@ -53,7 +53,7 @@ detection.run(exp, d_settings, global_position_indices=[0])
 
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
-    results = session.exec(select(AnalysisResult)).all()
+    results = session.exec(select(CaliResult)).all()
     print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
     assert {roi.id for roi in rois} == first_roi_ids, "ROIs should be unchanged"
     assert {r.id for r in results} == first_result_ids, "Results should be unchanged"
@@ -66,7 +66,7 @@ detection.run(exp, d_settings, global_position_indices=[0], force=True)
 
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
-    results = session.exec(select(AnalysisResult)).all()
+    results = session.exec(select(CaliResult)).all()
     print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
     # ROIs are replaced (deleted then recreated, may have same IDs in SQLite)
     # AnalysisResults should be deleted (full analysis)

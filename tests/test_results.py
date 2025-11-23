@@ -20,7 +20,7 @@ from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import (
     ROI,
-    AnalysisResult,
+    CaliResult,
     DataAnalysis,
     DetectionSettings,
     Traces,
@@ -37,14 +37,14 @@ def test_experiment(tmp_path: Path) -> Experiment:
     exp = Experiment.create_from_data(
         name="Test Versioned Analysis",
         data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
-        analysis_path=str(tmp_path),
-        database_name="results_test.db",
         plate_maps={
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
         },
         experiment_type=SPONTANEOUS,
     )
+    # Store database path for tests (not on model anymore)
+    exp._test_db_path = tmp_path / "results_test.db"  # type: ignore
     return exp
 
 
@@ -111,12 +111,14 @@ def test_multiple_detection_settings_create_separate_rois(
     detection.run(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Verify both detection settings exist in database
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         detection_settings = session.exec(select(DetectionSettings)).all()
         assert len(detection_settings) == 2, "Should have 2 detection settings"
 
         # Verify ROIs are linked to correct detection settings
+        from cali.sqlmodel import ROI
+
         rois_d1 = session.exec(
             select(ROI).where(ROI.detection_settings_id == detection_settings[0].id)
         ).all()
@@ -161,7 +163,7 @@ def test_same_detection_settings_reuses_settings_object(
     detection.run(test_experiment, d_settings_2, global_position_indices=[0])
 
     # Verify only one detection settings record exists
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         detection_settings = session.exec(select(DetectionSettings)).all()
         # Should have only 1 unique settings (identical settings reused)
@@ -193,9 +195,9 @@ def test_multiple_analysis_settings_create_separate_results(
     analysis.run(test_experiment, a_settings_3, d_settings, global_position_indices=[0])
 
     # Verify separate AnalysisResult records
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
-        analysis_results = session.exec(select(AnalysisResult)).all()
+        analysis_results = session.exec(select(CaliResult)).all()
         assert len(analysis_results) == 3, "Should have 3 analysis results"
 
         analysis_settings = session.exec(select(AnalysisSettings)).all()
@@ -235,7 +237,7 @@ def test_roi_has_multiple_analysis_versions(test_experiment: Experiment) -> None
     analysis.run(test_experiment, a_settings_2, d_settings, global_position_indices=[0])
 
     # Verify each ROI has multiple trace/analysis versions
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         rois = session.exec(select(ROI)).all()
         assert len(rois) > 0, "Should have ROIs from detection"
@@ -297,7 +299,7 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
     )
 
     # Verify complete audit trail
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Should have 2 detection settings
         detection_settings = session.exec(select(DetectionSettings)).all()
@@ -308,7 +310,7 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
         assert len(analysis_settings) == 3, "Should have 3 analysis settings"
 
         # Should have 4 AnalysisResults (1-A, 1-B, 2-A, 2-C)
-        analysis_results = session.exec(select(AnalysisResult)).all()
+        analysis_results = session.exec(select(CaliResult)).all()
         assert len(analysis_results) == 4, "Should have 4 analysis results"
 
         # Verify each combination exists
@@ -321,9 +323,9 @@ def test_detection_analysis_combinations(test_experiment: Experiment) -> None:
 
         for det_id, ana_id in combinations:
             ar = session.exec(
-                select(AnalysisResult)
-                .where(AnalysisResult.detection_settings == det_id)
-                .where(AnalysisResult.analysis_settings == ana_id)
+                select(CaliResult)
+                .where(CaliResult.detection_settings == det_id)
+                .where(CaliResult.analysis_settings == ana_id)
             ).first()
             assert ar is not None, (
                 f"Should have AnalysisResult for det={det_id}, ana={ana_id}"
@@ -340,12 +342,12 @@ def test_detection_without_analysis(test_experiment: Experiment) -> None:
     detection.run(test_experiment, d_settings, global_position_indices=[0])
 
     # Verify detection created ROIs and detection-only AnalysisResult
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         rois = session.exec(select(ROI)).all()
         assert len(rois) > 0, "Detection should create ROIs"
 
-        analysis_results = session.exec(select(AnalysisResult)).all()
+        analysis_results = session.exec(select(CaliResult)).all()
         assert len(analysis_results) == 1, (
             "Should have one detection-only AnalysisResult"
         )
@@ -380,7 +382,7 @@ def test_analysis_without_detection_fails(test_experiment: Experiment) -> None:
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
     # Verify no analysis results created (no ROIs to analyze)
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         rois = session.exec(select(ROI)).all()
         assert len(rois) == 0, "Should have no ROIs without detection"
@@ -399,7 +401,7 @@ def test_rerunning_same_detection_replaces_rois(test_experiment: Experiment) -> 
     d_settings = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
     detection.run(test_experiment, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         first_run_rois = session.exec(select(ROI)).all()
         len(first_run_rois)
@@ -449,7 +451,7 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
     )
 
     # Query specific combination
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Get first detection settings
         det_settings_1 = session.exec(
@@ -465,9 +467,9 @@ def test_query_results_by_settings(test_experiment: Experiment) -> None:
 
         # Find AnalysisResult for this combination
         ar = session.exec(
-            select(AnalysisResult)
-            .where(AnalysisResult.detection_settings == det_settings_1.id)
-            .where(AnalysisResult.analysis_settings == ana_settings_1.id)
+            select(CaliResult)
+            .where(CaliResult.detection_settings == det_settings_1.id)
+            .where(CaliResult.analysis_settings == ana_settings_1.id)
         ).first()
 
         assert ar is not None, "Should find AnalysisResult for this combination"
@@ -524,12 +526,12 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
     )
 
     # Verify complete database state
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Count all records
         detection_count = len(session.exec(select(DetectionSettings)).all())
         analysis_count = len(session.exec(select(AnalysisSettings)).all())
-        analysis_result_count = len(session.exec(select(AnalysisResult)).all())
+        analysis_result_count = len(session.exec(select(CaliResult)).all())
         roi_count = len(session.exec(select(ROI)).all())
         trace_count = len(session.exec(select(Traces)).all())
 
@@ -555,7 +557,7 @@ def test_complete_workflow_with_all_scenarios(test_experiment: Experiment) -> No
         assert trace_count > 0, "Should have traces"
 
         # Verify audit trail integrity
-        for ar in session.exec(select(AnalysisResult)).all():
+        for ar in session.exec(select(CaliResult)).all():
             # Each AnalysisResult should link to valid detection settings
             assert ar.detection_settings is not None, (
                 "AnalysisResult should link to detection"
@@ -655,14 +657,14 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
     import time
 
     # Create two AnalysisResult objects with identical settings
-    result1 = AnalysisResult(
+    result1 = CaliResult(
         experiment=1, analysis_settings=1, positions_analyzed=[0, 1]
     )
 
     # Small delay to ensure different timestamps
     time.sleep(0.001)
 
-    result2 = AnalysisResult(
+    result2 = CaliResult(
         experiment=1, analysis_settings=1, positions_analyzed=[0, 1]
     )
 
@@ -678,7 +680,7 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
     )
 
     # Different settings should not be equal
-    result3 = AnalysisResult(
+    result3 = CaliResult(
         experiment=1,
         analysis_settings=2,  # Different analysis settings
         positions_analyzed=[0, 1],
@@ -692,14 +694,14 @@ def test_analysis_result_created_at_field(test_experiment: Experiment) -> None:
     assert hash(result1) == hash(result2), "Equal AnalysisResults should have same hash"
 
     # Test with None values
-    result4 = AnalysisResult(
+    result4 = CaliResult(
         experiment=1,
         detection_settings=None,
         analysis_settings=1,
         positions_analyzed=None,
     )
 
-    result5 = AnalysisResult(
+    result5 = CaliResult(
         experiment=1,
         detection_settings=None,
         analysis_settings=1,
@@ -727,9 +729,9 @@ def test_analysis_result_deduplication(test_experiment: Experiment) -> None:
     # Run same analysis again - should reuse AnalysisResult
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
-        analysis_results = session.exec(select(AnalysisResult)).all()
+        analysis_results = session.exec(select(CaliResult)).all()
         # Should only have 1 result (not 2)
         assert len(analysis_results) == 1, (
             "Identical analysis should reuse AnalysisResult"
@@ -750,9 +752,9 @@ def test_analysis_with_different_positions(test_experiment: Experiment) -> None:
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
-        ar = session.exec(select(AnalysisResult)).first()
+        ar = session.exec(select(CaliResult)).first()
         assert ar is not None
         assert ar.positions_analyzed == [0]
     engine.dispose(close=True)
@@ -777,7 +779,7 @@ def test_detection_with_different_cellpose_params(test_experiment: Experiment) -
         d_settings = DetectionSettings(method="cellpose", model_type="cpsam", **params)
         detection.run(test_experiment, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         detection_settings = session.exec(select(DetectionSettings)).all()
         assert len(detection_settings) == len(params_list), (
@@ -797,7 +799,7 @@ def test_roi_active_and_stimulated_flags(test_experiment: Experiment) -> None:
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         rois = session.exec(select(ROI)).all()
         assert len(rois) > 0
@@ -820,7 +822,7 @@ def test_traces_and_analysis_linkage(test_experiment: Experiment) -> None:
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Get all traces
         traces = session.exec(select(Traces)).all()
@@ -863,7 +865,7 @@ def test_analysis_with_evoked_settings(test_experiment: Experiment) -> None:
     )
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         settings = session.exec(select(AnalysisSettings)).first()
         assert settings is not None
@@ -892,12 +894,12 @@ def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> 
                 test_experiment, a_settings, d_settings, global_position_indices=[0]
             )
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Verify no orphaned records
         detection_count = len(session.exec(select(DetectionSettings)).all())
         analysis_count = len(session.exec(select(AnalysisSettings)).all())
-        result_count = len(session.exec(select(AnalysisResult)).all())
+        result_count = len(session.exec(select(CaliResult)).all())
         roi_count = len(session.exec(select(ROI)).all())
         trace_count = len(session.exec(select(Traces)).all())
 
@@ -910,7 +912,7 @@ def test_database_integrity_after_multiple_runs(test_experiment: Experiment) -> 
         # Verify all traces link to valid ROIs and AnalysisResults
         for trace in session.exec(select(Traces)).all():
             assert session.get(ROI, trace.roi_id) is not None
-            assert session.get(AnalysisResult, trace.analysis_result_id) is not None
+            assert session.get(CaliResult, trace.analysis_result_id) is not None
     engine.dispose(close=True)
 
 
@@ -925,7 +927,7 @@ def test_position_merging_same_settings(test_experiment: Experiment) -> None:
     # Create DetectionSettings object (will be added to DB by analysis.run)
     det_settings = DetectionSettings(method="cellpose", model_type="cpsam")
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
         # Add detection settings to get an ID
         session.add(det_settings)
@@ -935,7 +937,13 @@ def test_position_merging_same_settings(test_experiment: Experiment) -> None:
 
         # Add fake FOVs and ROIs for position 0 and simulated position 1
         for pos in [0, 1]:
-            fov = FOV(name=f"B5_{pos:04d}", position_index=pos, fov_number=pos)
+            fov = FOV(
+                name=f"B5_{pos:04d}",
+                position_index=pos,
+                fov_number=pos,
+                well_id=well.id,
+                detection_settings_id=det_settings_id,
+            )
             session.add(fov)
             session.commit()
             session.refresh(fov)
@@ -954,7 +962,6 @@ def test_position_merging_same_settings(test_experiment: Experiment) -> None:
                     active=True,
                     stimulated=False,
                     fov_id=fov.id,
-                    detection_settings_id=det_settings_id,
                     roi_mask=mask,
                 )
                 session.add(roi)
@@ -972,7 +979,7 @@ def test_position_merging_same_settings(test_experiment: Experiment) -> None:
     analysis.run(test_experiment, a_settings, det_settings, global_position_indices=[0])
 
     with Session(engine) as session:
-        results = session.exec(select(AnalysisResult)).all()
+        results = session.exec(select(CaliResult)).all()
         assert len(results) == 1, "Should have 1 result after first position"
         assert results[0].positions_analyzed == [0]
 
@@ -980,7 +987,7 @@ def test_position_merging_same_settings(test_experiment: Experiment) -> None:
     analysis.run(test_experiment, a_settings, det_settings, global_position_indices=[1])
 
     with Session(engine) as session:
-        results = session.exec(select(AnalysisResult)).all()
+        results = session.exec(select(CaliResult)).all()
         assert len(results) == 1, "Should still have 1 result after merging"
         assert set(results[0].positions_analyzed) == {
             0,
@@ -1003,9 +1010,9 @@ def test_position_rerun_same_positions(test_experiment: Experiment) -> None:
     a_settings = AnalysisSettings(threads=1, dff_window=100)
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
-        results = session.exec(select(AnalysisResult)).all()
+        results = session.exec(select(CaliResult)).all()
         assert len(results) == 1
         first_result_id = results[0].id
 
@@ -1013,7 +1020,7 @@ def test_position_rerun_same_positions(test_experiment: Experiment) -> None:
     analysis.run(test_experiment, a_settings, d_settings, global_position_indices=[0])
 
     with Session(engine) as session:
-        results = session.exec(select(AnalysisResult)).all()
+        results = session.exec(select(CaliResult)).all()
         assert len(results) == 1, "Should still have 1 result (reused)"
         assert results[0].id == first_result_id, "Should reuse same AnalysisResult"
         assert results[0].positions_analyzed == [0]
@@ -1040,9 +1047,9 @@ def test_position_different_settings_separate_results(
     a_settings_2 = AnalysisSettings(threads=1, dff_window=200)  # Different window
     analysis.run(test_experiment, a_settings_2, d_settings, global_position_indices=[0])
 
-    engine = create_engine(f"sqlite:///{test_experiment.db_path}")
+    engine = create_engine(f"sqlite:///{test_experiment._test_db_path}")
     with Session(engine) as session:
-        results = session.exec(select(AnalysisResult)).all()
+        results = session.exec(select(CaliResult)).all()
         assert len(results) == 2, (
             "Should have 2 separate results for different settings"
         )

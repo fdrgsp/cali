@@ -7,7 +7,7 @@ from cali._constants import EVOKED
 from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
-from cali.sqlmodel._model import AnalysisResult
+from cali.sqlmodel._model import CaliResult
 from cali.sqlmodel._visualize_experiment import (
     print_all_analysis_results,
     print_experiment_tree_from_engine,
@@ -18,7 +18,7 @@ def _table(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         # Get all AnalysisResults
-        results = session.exec(select(AnalysisResult).order_by(AnalysisResult.id)).all()
+        results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
 
         print("\n" + "=" * 100)
         print("ALL ANALYSIS RESULTS - TABLE OF RUNS")
@@ -51,8 +51,8 @@ def _table(db_path: str):
 exp = Experiment.create_from_data(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
-    # analysis_path="tests/test_data/evoked/database/",
-    analysis_path="/Users/fdrgsp/Desktop/cali_test",
+    # output_path="tests/test_data/evoked/database/",
+    output_path="/Users/fdrgsp/Desktop/cali_test",
     database_name="testcalidb",
     plate_maps={
         "genotype": {"B5": "WT"},

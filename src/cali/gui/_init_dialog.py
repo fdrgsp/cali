@@ -17,7 +17,7 @@ from ._util import _BrowseWidget
 
 class InputDialogData(NamedTuple):
     data_path: str | None = None
-    analysis_path: str | None = None
+    output_path: str | None = None
     database_path: str | None = None
 
 
@@ -27,7 +27,7 @@ class _InputDialog(QDialog):
         parent: QWidget | None = None,
         *,
         data_path: str | None = None,
-        analysis_path: str | None = None,
+        output_path: str | None = None,
         database_path: str | None = None,
     ) -> None:
         super().__init__(parent)
@@ -50,11 +50,11 @@ class _InputDialog(QDialog):
             "The path to the zarr datastore.",
         )
 
-        # analysis_path with json files
+        # output_path with json files
         self._browse_analysis = _BrowseWidget(
             directories_tab,
             "Analysis Path",
-            analysis_path,
+            output_path,
             "The path to the analysis where to save the analysis database.",
             is_dir=True,
         )
@@ -116,14 +116,14 @@ class _InputDialog(QDialog):
         # from Directories
         if self._tab_widget.currentIndex() == 0:
             datastore_path = self._browse_data.value()
-            analysis_path = self._browse_analysis.value()
+            output_path = self._browse_analysis.value()
 
             return InputDialogData(
                 data_path=(
                     os.path.normpath(datastore_path) if datastore_path else None
                 ),
-                analysis_path=(
-                    os.path.normpath(analysis_path) if analysis_path else None
+                output_path=(
+                    os.path.normpath(output_path) if output_path else None
                 ),
                 database_path=None,
             )

@@ -15,7 +15,3 @@ except PackageNotFoundError:
 
 __author__ = "Federico Gasparoli"
 __email__ = "federico.gasparoli@gmail.com"
-
-from cali.runner import CaliRunner
-
-__all__ = ["CaliRunner"]

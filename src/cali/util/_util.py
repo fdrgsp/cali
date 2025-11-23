@@ -77,8 +77,11 @@ def commit_fov_result(
     """Commit FOV result to database.
 
     Handles both detection results (ROIs with masks only) and analysis results
-    (ROIs with masks, traces, and analysis data). The function works for both
-    cases because it simply replaces all ROIs, regardless of their content.
+    (ROIs with masks, traces, and analysis data).
+
+    For detection: Creates new ROIs with detection_settings_id set.
+    For analysis: Adds traces/analysis to existing ROIs matching by label_value
+                  and detection_settings_id.
 
     Parameters
     ----------
@@ -89,7 +92,7 @@ def commit_fov_result(
     fov_result : FOV
         FOV with ROIs to commit
     detection_settings_id : int | None
-        Detection settings ID to assign to all ROIs (required for detection,
+        Detection settings ID to assign to new ROIs (required for detection,
         optional for analysis which reads it from existing ROIs)
     """
     # Query for plate ID directly to avoid loading relationships
@@ -140,12 +143,8 @@ def commit_fov_result(
         existing_fov.well_id = well.id
 
         if detection_settings_id is not None:
-            # DETECTION MODE: Replace ROIs with same detection_settings_id
-            # Delete old ROIs that match this detection_settings_id
-            for old_roi in list(existing_fov.rois):
-                if old_roi.detection_settings_id == detection_settings_id:
-                    session.delete(old_roi)
-            session.flush()
+            # DETECTION MODE: Add new ROIs with detection_settings_id
+            # Multiple detections can coexist on same FOV
 
             # Add new ROIs from detection
             # IMPORTANT: Iterate over a copy of the list because SQLAlchemy modifies
@@ -158,16 +157,13 @@ def commit_fov_result(
         else:
             # ANALYSIS MODE: Don't create new ROIs, only attach traces/analysis
             # to existing ROIs
-            # Match ROIs by (label_value, detection_settings_id) and update
+            # Match ROIs by label_value and detection_settings_id (from the ROI's analysis)
             for new_roi in fov_result.rois:
-                # Find matching existing ROI
+                # Find matching existing ROI by label_value and detection_settings_id
                 matching_roi = None
                 for existing_roi in existing_fov.rois:
-                    if (
-                        existing_roi.label_value == new_roi.label_value
-                        and existing_roi.detection_settings_id
-                        == new_roi.detection_settings_id
-                    ):
+                    if (existing_roi.label_value == new_roi.label_value and
+                        existing_roi.detection_settings_id == new_roi.detection_settings_id):
                         matching_roi = existing_roi
                         break
 
@@ -177,24 +173,28 @@ def commit_fov_result(
                     matching_roi.stimulated = new_roi.stimulated
 
                     # Add traces and data_analysis to existing ROI
-                    for trace in new_roi.traces_history:
+                    # Check for both regular relationship and temp in-memory list
+                    traces_to_add = getattr(new_roi, '_new_traces', []) or new_roi.traces_history
+                    data_analysis_to_add = getattr(new_roi, '_new_data_analysis', []) or new_roi.data_analysis_history
+
+                    for trace in traces_to_add:
                         trace.roi_id = matching_roi.id
                         trace.roi = matching_roi
                         session.add(trace)
 
-                    for data_analysis in new_roi.data_analysis_history:
+                    for data_analysis in data_analysis_to_add:
                         data_analysis.roi_id = matching_roi.id
                         data_analysis.roi = matching_roi
                         session.add(data_analysis)
                 else:
                     cali_logger.warning(
-                        f"No matching ROI found for label={new_roi.label_value}, "
-                        f"detection_settings={new_roi.detection_settings_id} "
+                        f"No matching ROI found for label={new_roi.label_value} "
+                        f"detection_settings_id={new_roi.detection_settings_id} "
                         f"in FOV {existing_fov.name}"
                     )
     else:
         # New FOV - link to well and add
-        # Set detection_settings_id on all ROIs if provided
+        # Set detection_settings_id on each ROI if provided (detection mode)
         if detection_settings_id is not None:
             for roi in fov_result.rois:
                 roi.detection_settings_id = detection_settings_id

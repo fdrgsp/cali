@@ -126,9 +126,6 @@ def useq_plate_to_db(
     >>> print(f"Created plate '{plate.name}' with {plate.rows}x{plate.columns} layout")
     Created plate '96-well' with 8x12 layout
     """
-    if experiment.id is None:
-        raise ValueError("Experiment must have an ID before creating a Plate.")
-
     # this is because the 18 and 22 mm coverslips name are different from the name that
     # useq uses to create the plate and in cali we use the plate.plate_type to
     # eventually reconstruct the useq plate.
@@ -139,7 +136,6 @@ def useq_plate_to_db(
     else:
         plate_type = useq_plate.name
     plate = Plate(
-        experiment_id=experiment.id,
         experiment=experiment,
         name=useq_plate.name,
         plate_type=plate_type,

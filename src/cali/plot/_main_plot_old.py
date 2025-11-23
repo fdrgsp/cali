@@ -389,32 +389,32 @@ MULTI_WELL_COMBO_OPTIONS_DICT = {
 def plot_multi_well_data(
     widget: _MultilWellGraphWidget,
     text: str,
-    analysis_path: str | None,
+    output_path: str | None,
 ) -> None:
     """Plot multi-well data based on the text."""
     if not text or text == "None" or text in MULTI_WELL_COMBO_OPTIONS_DICT.keys():
         widget.figure.clear()
         return
 
-    if not analysis_path:
+    if not output_path:
         widget.figure.clear()
         return
 
     # MW_GENERAL_GROUP
     if text in MW_GENERAL_GROUP:
         return _plot_csv_bar_plot_data(
-            widget, text, analysis_path, **MW_GENERAL_GROUP[text]
+            widget, text, output_path, **MW_GENERAL_GROUP[text]
         )
 
     # MW_EVOKED_GROUP
     if text in MW_EVOKED_GROUP:
         return _plot_csv_bar_plot_data(
-            widget, text, analysis_path, **MW_EVOKED_GROUP[text]
+            widget, text, output_path, **MW_EVOKED_GROUP[text]
         )
 
 
 def _plot_csv_bar_plot_data(
-    widget: _MultilWellGraphWidget, text: str, analysis_path: str, **kwargs: Any
+    widget: _MultilWellGraphWidget, text: str, output_path: str, **kwargs: Any
 ) -> None:
     """Helper function to plot CSV bar plot data."""
     suffix = kwargs.get("suffix")
@@ -426,9 +426,9 @@ def _plot_csv_bar_plot_data(
     # Determine CSV path based on whether it's stimulated data
     stimulated = kwargs.get("stimulated", False)
     if stimulated or "stimulated" in suffix:
-        csv_path = Path(analysis_path) / "grouped_evk"
+        csv_path = Path(output_path) / "grouped_evk"
     else:
-        csv_path = Path(analysis_path) / "grouped"
+        csv_path = Path(output_path) / "grouped"
 
     if not csv_path.exists():
         cali_logger.error(f"CSV path {csv_path} does not exist.")

@@ -66,8 +66,8 @@ def _plot_stim_or_not_stim_peaks_amplitude(
     ax = widget.figure.add_subplot(111)
 
     # get analysis path
-    analysis_path = widget._plate_viewer.analysis_path
-    if analysis_path is None:
+    output_path = widget._plate_viewer.output_path
+    if output_path is None:
         return
 
     pulse: str = ""
@@ -222,12 +222,12 @@ def _visualize_stimulated_area(
     ax = widget.figure.add_subplot(111)
 
     # get analysis path
-    analysis_path = widget._plate_viewer.analysis_path
-    if analysis_path is None:
+    output_path = widget._plate_viewer.output_path
+    if output_path is None:
         return
 
     # get the stimulation mask
-    stimulation_mask_path = Path(analysis_path) / STIMULATION_MASK
+    stimulation_mask_path = Path(output_path) / STIMULATION_MASK
     if not stimulation_mask_path.exists():
         return
     stim_mask = tifffile.imread(stimulation_mask_path)

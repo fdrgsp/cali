@@ -47,8 +47,8 @@ from cali._constants import (
 # ==================== Core Models ====================
 
 
-class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
-    """Analysis run metadata.
+class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
+    """Cali run metadata.
 
     Tracks which experiment was analyzed with which settings and which positions
     were processed. The actual results (traces, data_analysis) are linked via
@@ -104,7 +104,7 @@ class AnalysisResult(SQLModel, table=True):  # type: ignore[call-arg]
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
         """
-        if not isinstance(other, AnalysisResult):
+        if not isinstance(other, CaliResult):
             return False
         return (
             self.experiment == other.experiment
@@ -226,12 +226,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Unique experiment identifier
     description : str | None
         Optional experiment description
-    database_name: str
-        Name of the SQLite database file
-    data_path : str
-        Path to the raw imaging data (zarr/tensorstore)
-    analysis_path : str
-        Path to analysis output directory
     experiment_type : str
         Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     plate : Plate
@@ -244,18 +238,37 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     created_at: datetime = Field(default_factory=datetime.now)
     name: str = Field(unique=True, index=True)
     description: str | None = None
-    data_path: str
-    analysis_path: str
-    database_name: str
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
 
-    @property
-    def db_path(self) -> str:
-        """Full path to the experiment's database file."""
-        return str(Path(self.analysis_path) / self.database_name)
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that compares by ID or semantic fields.
+
+        Two Experiments are considered equal if:
+        1. Both have IDs and they match (same database record), OR
+        2. They have the same name and experiment_type (semantic match)
+
+        The description field is excluded since it can change without
+        affecting the experiment's identity.
+        """
+        if not isinstance(other, Experiment):
+            return False
+        # If both have IDs, compare by ID
+        if self.id is not None and other.id is not None:
+            return self.id == other.id
+        # Otherwise compare by semantic fields
+        return (
+            self.name == other.name
+            and self.experiment_type == other.experiment_type
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash based on ID for consistency with __eq__."""
+        if self.id is None:
+            return hash(id(self))  # Fallback to object identity
+        return hash(self.id)
 
     @classmethod
     def load_from_db(
@@ -310,20 +323,17 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         finally:
             if our_session is not None:
                 our_session.close()
-                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+                engine.dispose(close=True)
 
     @classmethod
     def create(
         cls,
         name: str,
-        data_path: str,
-        analysis_path: str,
         plate_type: str = "96-well",
         well_names: list[str] | None = None,
         fovs_per_well: int = 1,
         plate_maps: dict[str, dict[str, str]] | None = None,
         experiment_type: str = SPONTANEOUS,
-        database_name: str | None = None,
         description: str | None = None,
     ) -> Self:
         """Create a new experiment with plate structure ready for analysis.
@@ -335,10 +345,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         ----------
         name : str
             Experiment name (must be unique)
-        data_path : str
-            Path to the raw imaging data (zarr/tensorstore)
-        analysis_path : str
-            Path to analysis output directory
+        # data_path : str
+        #     Path to the raw imaging data (zarr/tensorstore)
         plate_type : str, optional
             Plate format from useq-schema options (e.g., "96-well", "384-well",
             "24-well", "6-well", "coverslip-18mm-square"), by default "96-well"
@@ -354,8 +362,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment_type : str, optional
             Type of experiment: "Spontaneous Activity" or "Evoked Activity",
             by default SPONTANEOUS
-        database_name : str | None, optional
-            Name of the database file. If None, uses "{name}.db", by default None
         description : str | None, optional
             Optional experiment description, by default None
 
@@ -372,8 +378,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         >>> # Create experiment with specific wells
         >>> exp = Experiment.create_with_plate(
         ...     name="My Experiment",
-        ...     data_path="path/to/data.zarr",
-        ...     analysis_path="path/to/analysis",
         ...     plate_type="96-well",
         ...     well_names=["B5", "B6", "C5"],
         ...     fovs_per_well=2,
@@ -389,14 +393,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         from ._useq_plate_to_db import _row_index_to_label, useq_plate_plan_to_db
 
         # Create experiment
-        db_name = database_name if database_name is not None else f"{name}.db"
         experiment = cls(
-            id=0,
             name=name,
             description=description,
-            data_path=data_path,
-            analysis_path=analysis_path,
-            database_name=db_name,
             experiment_type=experiment_type,
         )
 
@@ -427,22 +426,34 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         )
 
         # Create plate with wells and conditions
+        # This will create wells but only 1 FOV per well (from default positions)
         plate = useq_plate_plan_to_db(
             plate_plan,
             experiment,
             plate_maps=plate_maps,
         )
 
-        # Create FOVs for each well
+        # If we need more than 1 FOV per well, create additional FOVs
+        # useq_plate_plan_to_db already created one FOV per well
+        if fovs_per_well > 1:
+            position_index = len(plate.wells)  # Start after existing FOVs
+            for well in sorted(plate.wells, key=lambda w: (w.row, w.column)):
+                # Create additional FOVs (starting from fov_number=1)
+                for fov_num in range(1, fovs_per_well):
+                    from ._model import FOV
+                    FOV(
+                        well=well,
+                        name=f"{well.name}_{fov_num:04d}",
+                        position_index=position_index,
+                        fov_number=fov_num,
+                    )
+                    position_index += 1
+
+        # Fix position_index for all FOVs to be sequential across wells
         position_index = 0
-        for well in plate.wells:
-            for fov_num in range(fovs_per_well):
-                FOV(
-                    well=well,
-                    name=f"{well.name}_{fov_num:04d}",
-                    position_index=position_index,
-                    fov_number=fov_num,
-                )
+        for well in sorted(plate.wells, key=lambda w: (w.row, w.column)):
+            for fov in sorted(well.fovs, key=lambda f: f.fov_number):
+                fov.position_index = position_index
                 position_index += 1
 
         return experiment
@@ -452,10 +463,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         cls,
         name: str,
         data_path: str,
-        analysis_path: str,
         plate_maps: dict[str, dict[str, str]] | None = None,
         experiment_type: str = SPONTANEOUS,
-        database_name: str | None = None,
         description: str | None = None,
     ) -> Self:
         """Create a new experiment by loading plate structure from data's useq metadata.
@@ -470,8 +479,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             Experiment name (must be unique)
         data_path : str
             Path to the raw imaging data (zarr/tensorstore) containing useq metadata
-        analysis_path : str
-            Path to analysis output directory
         plate_maps : dict[str, dict[str, str]] | None, optional
             Plate map configuration mapping well positions to conditions.
             Format: {"genotype": {"A1": "WT", "A2": "KO"},
@@ -479,8 +486,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment_type : str, optional
             Type of experiment: "Spontaneous Activity" or "Evoked Activity",
             by default SPONTANEOUS
-        database_name : str | None, optional
-            Name of the database file. If None, uses "{name}.db", by default None
         description : str | None, optional
             Optional experiment description, by default None
 
@@ -498,7 +503,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         >>> exp = Experiment.create_from_data(
         ...     name="My Experiment",
         ...     data_path="path/to/data.zarr",
-        ...     analysis_path="path/to/analysis",
+        ...     output_path="path/to/analysis",
         ...     plate_maps={
         ...         "genotype": {"B5": "WT"},
         ...         "treatment": {"B5": "Vehicle"},
@@ -510,14 +515,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         from ._data_to_plate import data_to_plate
 
         # Create experiment
-        db_name = database_name if database_name is not None else f"{name}.db"
         experiment = cls(
-            id=0,
             name=name,
             description=description,
-            data_path=data_path,
-            analysis_path=analysis_path,
-            database_name=db_name,
             experiment_type=experiment_type,
         )
 
@@ -701,8 +701,6 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     ----------
     id : int | None
         Primary key, auto-generated
-    experiment_id : int
-        Foreign key to parent experiment
     created_at : datetime
         When these settings were created
     neuropil_inner_radius : int
@@ -757,6 +755,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to stimulation mask data
     stimulation_mask : Mask | None
         Stimulation mask data (spatial pattern of stimulation)
+    experiment_id : int
+        Foreign key to parent experiment
     """
 
     __tablename__ = "analysis_settings"
@@ -1103,7 +1103,8 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     """Field of View (imaging position) within a well.
 
     Each FOV represents a single imaging position/site within a well.
-    FOVs contain multiple ROIs (individual cells).
+    FOVs can contain multiple ROIs (individual cells) from different detection runs.
+    Each ROI tracks which detection created it via ROI.detection_settings_id.
 
     Attributes
     ----------
@@ -1124,7 +1125,7 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     well : Well
         Parent well
     rois : list[ROI]
-        Regions of interest (cells) in this FOV
+        Regions of interest (cells) in this FOV (can be from multiple detection runs)
     """
 
     __tablename__ = "fov"
@@ -1152,8 +1153,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     Represents a single cell/neuron segmented from imaging data.
     Related analysis data is stored in separate tables (Traces, DataAnalysis, etc.)
     Each ROI can have multiple analysis results from different analysis runs.
-    Multiple ROIs can exist for the same FOV with different detection settings,
-    allowing comparison of detection methods (e.g., Cellpose vs CaImAn).
+    The detection method used is tracked at the ROI level via detection_settings_id.
 
     Attributes
     ----------
@@ -1281,7 +1281,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="traces_history")
-    analysis_result: "AnalysisResult" = Relationship(back_populates="traces")
+    analysis_result: "CaliResult" = Relationship(back_populates="traces")
 
 
 class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
@@ -1358,7 +1358,7 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
-    analysis_result: "AnalysisResult" = Relationship(
+    analysis_result: "CaliResult" = Relationship(
         back_populates="data_analysis_results"
     )
 

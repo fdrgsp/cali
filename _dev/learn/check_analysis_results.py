@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from cali.sqlmodel._model import (
     FOV,
     ROI,
-    AnalysisResult,
+    CaliResult,
     AnalysisSettings,
     Experiment,
     Plate,
@@ -15,7 +15,7 @@ engine = create_engine("sqlite:///analysis_results/evoked_experiment.db")
 
 with Session(engine) as session:
     # Get all analysis results
-    results = session.exec(select(AnalysisResult)).all()
+    results = session.exec(select(CaliResult)).all()
     print(f"\n{'=' * 60}")
     print(f"ANALYSIS RESULTS ({len(results)} total)")
     print(f"{'=' * 60}")

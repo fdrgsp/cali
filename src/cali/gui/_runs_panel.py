@@ -22,7 +22,7 @@ from superqt.fonticon import icon
 
 from cali._constants import RED
 from cali.logger import cali_logger
-from cali.sqlmodel._model import AnalysisResult, DetectionSettings
+from cali.sqlmodel._model import CaliResult, DetectionSettings
 
 
 class _RunsPanel(QGroupBox):
@@ -123,7 +123,7 @@ class _RunsPanel(QGroupBox):
 
         try:
             # Load all analysis results ordered by creation time (most recent first)
-            results = AnalysisResult.load_from_database(self._database_path)
+            results = CaliResult.load_from_database(self._database_path)
 
             if not isinstance(results, list):
                 results = [results]
@@ -134,7 +134,7 @@ class _RunsPanel(QGroupBox):
         except Exception as e:
             cali_logger.error(f"Error loading runs: {e}")
 
-    def _add_run_item(self, result: AnalysisResult) -> None:
+    def _add_run_item(self, result: CaliResult) -> None:
         """Add a run item to the list.
 
         Parameters
@@ -234,7 +234,7 @@ class _RunsPanel(QGroupBox):
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Delete the analysis result (this should cascade to related data)
-                result = session.get(AnalysisResult, run_id)
+                result = session.get(CaliResult, run_id)
                 if result:
                     session.delete(result)
                     session.commit()
@@ -254,7 +254,7 @@ class _RunsPanel(QGroupBox):
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Delete all analysis results (this should cascade to related data)
-                results = session.exec(select(AnalysisResult)).all()
+                results = session.exec(select(CaliResult)).all()
                 for result in results:
                     session.delete(result)
                 session.commit()

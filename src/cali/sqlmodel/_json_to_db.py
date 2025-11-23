@@ -26,7 +26,7 @@ from cali._constants import EVOKED, SPONTANEOUS
 from ._model import (
     FOV,
     ROI,
-    AnalysisResult,
+    CaliResult,
     AnalysisSettings,
     Condition,
     DataAnalysis,
@@ -46,7 +46,7 @@ from cali.logger import cali_logger
 
 def load_analysis_from_json(
     data_path: str,
-    analysis_path: str,
+    output_path: str,
     useq_plate: WellPlate,
     save_to_db: bool = True,
 ) -> Experiment:
@@ -67,7 +67,7 @@ def load_analysis_from_json(
     ----------
     data_path : str
         Path to the data directory (e.g. .tensorstore.zarr)
-    analysis_path : str
+    output_path : str
         Path to the analysis directory. May contain optional plate map files:
         - genotype_plate_map.json
         - treatment_plate_map.json
@@ -100,9 +100,9 @@ def load_analysis_from_json(
     experiment = Experiment(
         id=0,  # placeholder, will be set when saved. Needed for relationships.
         name=db_name,
-        description=f"Imported from {analysis_path}",
+        description=f"Imported from {output_path}",
         data_path=data_path,
-        analysis_path=analysis_path,
+        output_path=output_path,
         database_name=db_name,
     )
     assert experiment.id is not None
@@ -118,8 +118,8 @@ def load_analysis_from_json(
     )
 
     # 3. Load and create conditions
-    genotype_map_path = Path(analysis_path) / "genotype_plate_map.json"
-    treatment_map_path = Path(analysis_path) / "treatment_plate_map.json"
+    genotype_map_path = Path(output_path) / "genotype_plate_map.json"
+    treatment_map_path = Path(output_path) / "treatment_plate_map.json"
 
     genotype_map = load_plate_map(genotype_map_path)
     treatment_map = load_plate_map(treatment_map_path)
@@ -166,7 +166,7 @@ def load_analysis_from_json(
             conditions[name] = cond
 
     # 4. Load analysis settings
-    settings_path = Path(analysis_path) / "settings.json"
+    settings_path = Path(output_path) / "settings.json"
     analysis_settings = None
 
     if settings_path.exists():
@@ -176,7 +176,7 @@ def load_analysis_from_json(
         # Check for stimulation mask
         stimulation_mask = None
         stimulation_mask_path = None
-        stim_mask_file = Path(analysis_path) / "stimulation_mask.tif"
+        stim_mask_file = Path(output_path) / "stimulation_mask.tif"
 
         experiment.experiment_type = EVOKED if stim_mask_file.exists() else SPONTANEOUS
 
@@ -245,7 +245,7 @@ def load_analysis_from_json(
     # 5. Process JSON files
     json_files = [
         f
-        for f in Path(analysis_path).glob("*.json")
+        for f in Path(output_path).glob("*.json")
         if f.name
         not in [
             "settings.json",
@@ -387,7 +387,7 @@ def load_analysis_from_json(
 
         from ._util import create_database_and_tables
 
-        db_path = Path(experiment.analysis_path) / experiment.database_name
+        db_path = Path(experiment.output_path) / experiment.database_name
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         if db_path.exists():
@@ -419,7 +419,7 @@ def load_analysis_from_json(
 
                     # Now create AnalysisResult to track this analysis run
                     if analysis_settings:
-                        analysis_result = AnalysisResult(
+                        analysis_result = CaliResult(
                             experiment=saved_exp.id,
                             # Legacy JSON imports don't have detection settings
                             detection_settings=None,
@@ -444,7 +444,7 @@ def load_analysis_from_json(
 
             cali_logger.info(
                 f"💾 Experiment analysis loaded and saved to database at "
-                f"{experiment.analysis_path}/{experiment.database_name}."
+                f"{experiment.output_path}/{experiment.database_name}."
             )
 
             # Load fresh from database to return

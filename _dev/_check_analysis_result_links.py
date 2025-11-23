@@ -4,7 +4,7 @@ from sqlmodel import Session, create_engine, select
 
 from cali.sqlmodel._model import (
     ROI,
-    AnalysisResult,
+    CaliResult,
     DataAnalysis,
     Traces,
 )
@@ -16,7 +16,7 @@ engine = create_engine(f"sqlite:///{DB_PATH}")
 
 with Session(engine) as session:
     # Get all AnalysisResults
-    analysis_results = session.exec(select(AnalysisResult)).all()
+    analysis_results = session.exec(select(CaliResult)).all()
 
     print("=" * 80)
     print("AnalysisResult Records:")

@@ -1,5 +1,5 @@
 import threading
-from collections.abc import Iterable, Sequence
+from collections.abc import Generator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
@@ -7,32 +7,23 @@ from typing import TYPE_CHECKING, Callable, cast
 import numpy as np
 from oasis.functions import deconvolve
 from scipy.signal import find_peaks
-from sqlalchemy.orm import selectinload
-from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
 from cali._constants import (
     EVENT_KEY,
-    EVOKED,
     EXCLUDE_AREA_SIZE_THRESHOLD,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
     RUNNER_TIME_KEY,
     STIMULATION_AREA_THRESHOLD,
 )
-from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import (
     FOV,
-    ROI,
-    AnalysisResult,
     AnalysisSettings,
     DataAnalysis,
-    DetectionSettings,
-    Experiment,
-    Mask,
     Traces,
 )
-from cali.util import commit_fov_result, load_data, mask_to_coordinates
+from cali.util import load_data
 
 from ._util import (
     calculate_dff,
@@ -43,22 +34,21 @@ from ._util import (
 if TYPE_CHECKING:
     import useq
 
-    from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 from cali.logger import cali_logger
+from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 
 def exec_(
     analyze: Callable,
+    dataset: TensorstoreZarrReader | OMEZarrReader,
     cancel_event: threading.Event,
     global_position_indices: Sequence[int],
     settings: AnalysisSettings,
-    experiment: Experiment,
+    fovs_with_rois: list[FOV],
     max_workers: int | None = None,
-    analysis_result_id: int | None = None,
-    detection_settings_id: int | None = None,
 ) -> Iterable[FOV]:
-    """Execute analysis in parallel and commit results centrally."""
+    """Execute analysis in parallel and yield FOV results."""
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Check for cancellation before submitting futures
         if cancel_event.is_set():
@@ -68,11 +58,10 @@ def exec_(
         futures = (
             executor.submit(
                 analyze,
-                experiment,
+                dataset,
                 settings,
                 p,
-                analysis_result_id,
-                detection_settings_id,
+                fovs_with_rois,
             )
             for p in global_position_indices
         )
@@ -104,8 +93,6 @@ class AnalysisRunner:
     def __init__(self) -> None:
         super().__init__()
 
-        # The data reader
-        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
 
@@ -116,299 +103,61 @@ class AnalysisRunner:
 
     def run(
         self,
-        experiment: Experiment,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
-        detection_settings: DetectionSettings,
+        fovs_with_rois: list[FOV],
         global_position_indices: Sequence[int],
-        overwrite: bool = False,
-        echo: bool = False,
-    ) -> None:
-        """Run analysis on the given experiment with specified settings.
+    ) -> Generator[FOV, None, None]:
+        """Run analysis and yield FOV results with traces and analysis data.
 
-        This analysis extracts calcium imaging traces from ROIs that were previously
-        detected via the detection step. ROI masks must exist in the database for
-        the specified experiment before running analysis.
-
-        If no ROI masks are found, the analysis will fail with an error message
-        indicating that detection should be run first using DetectionRunner on
-        the same experiment.
+        This method performs pure computation - it takes FOVs with ROIs and adds
+        traces and analysis data to them. It does not interact with the database.
 
         Parameters
         ----------
-        experiment : Experiment
-            Experiment to analyze (must have ROI masks from prior detection)
+        dataset : str | Path | TensorstoreZarrReader | OMEZarrReader
+            Path to imaging data (zarr store) or a data reader instance
         settings : AnalysisSettings
             Analysis parameters
-        detection_settings : DetectionSettings
-            The detection settings that were used to generate the ROIs. This explicitly
-            specifies which detection+analysis combination to create/update.
+        fovs_with_rois : list[FOV]
+            FOVs with ROIs to analyze. These typically come from DetectionRunner
+            or are loaded from the database by the caller.
         global_position_indices : Sequence[int]
             Position indices to analyze
-        overwrite : bool
-            Whether to overwrite existing database
-        echo : bool
-            Enable SQLAlchemy echo for database operations
+
+        Yields
+        ------
+        FOV
+            FOV objects with ROIs containing traces and analysis data,
+            ready to be saved to database
+
+        Raises
+        ------
+        ValueError
+            If no ROI masks are found in the provided FOVs
         """
-        # TODO: ask claude to refactor
+        # Load data
+        if isinstance(dataset, (str, Path)):
+            dataset = load_data(dataset)
+        else:
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
-        # DATABASE DO NOT EXISTS
-        # if database doesn't exist, save experiment to DB for the first time
-        if not Path(experiment.db_path).exists():
-            save_experiment_to_database(experiment)
+        # Execute analysis in parallel and yield results
+        for fov_result in exec_(
+            analyze=self._analyze_position,
+            dataset=dataset,
+            cancel_event=self._cancellation_event,
+            global_position_indices=global_position_indices,
+            settings=settings,
+            fovs_with_rois=fovs_with_rois,
+            max_workers=settings.threads,
+        ):
+            if fov_result is not None:
+                yield fov_result
 
-        # DATABASE EXISTS
-        engine = create_engine(f"sqlite:///{experiment.db_path}", echo=echo)
-        with Session(engine) as session:
-            # if database does exist but the overwrite flag is True, just overwrite
-            if overwrite:
-                save_experiment_to_database(experiment, overwrite=True)
-            # if database does exist but the the experiment.id is either None or
-            # different than the one in the database, raise ValueError.
-            else:
-                db_exp = cast("Experiment", session.exec(select(Experiment)).first())
-                if experiment.id is None or experiment.id != db_exp.id:
-                    msg = (
-                        "The provided Experiment must have an ID matching the one "
-                        f"in the database (ID: {db_exp.id} vs {experiment.id}). Either "
-                        f"set the `Experiment.id` to {db_exp.id}, use a different "
-                        "`Experiment.database_name` or `Experiment.analysis_path` or"
-                        "`set the overwrite flag to `True` to overwrite the database."
-                    )
-                    cali_logger.error(msg)
-                    engine.dispose(close=True)
-                    raise ValueError(msg)
-
-            # load data
-            self._data = load_data(experiment.data_path)
-
-            # Get or create detection_settings in database to get its ID
-            if detection_settings.id is None:
-                # Check if identical settings already exist in database
-                try:
-                    all_detection_settings = session.exec(
-                        select(DetectionSettings)
-                    ).all()
-                    existing_detection = None
-                    for candidate in all_detection_settings:
-                        if detection_settings == candidate:
-                            existing_detection = candidate
-                            break
-                except Exception:
-                    existing_detection = None
-
-                if existing_detection is not None:
-                    detection_settings = existing_detection
-                    cali_logger.info(
-                        f"♻️ Using existing DetectionSettings ID "
-                        f"{detection_settings.id} (method: {detection_settings.method})"
-                    )
-                else:
-                    # New detection settings - add to database
-                    session.add(detection_settings)
-                    session.commit()
-                    session.refresh(detection_settings)
-                    cali_logger.info(
-                        f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
-                        f"(method: {detection_settings.method})"
-                    )
-            else:
-                # Settings already has an ID - verify it exists
-                all_detection_ids = [
-                    s.id for s in session.exec(select(DetectionSettings)).all()
-                ]
-                if detection_settings.id not in all_detection_ids:
-                    session.add(detection_settings)
-                    session.commit()
-                    session.refresh(detection_settings)
-                    cali_logger.info(
-                        f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
-                        f"(method: {detection_settings.method})"
-                    )
-                else:
-                    # Get existing from database
-                    existing = session.get(DetectionSettings, detection_settings.id)
-                    if existing is not None:
-                        detection_settings = existing
-                    cali_logger.info(
-                        f"♻️ Using existing DetectionSettings ID "
-                        f"{detection_settings.id} (method: {detection_settings.method})"
-                    )
-
-            detection_settings_id = detection_settings.id
-            # check if settings already exist BEFORE merging
-            if settings.id is None:
-                # check if identical settings already exist in database
-                try:
-                    # AnalysisSettings exists
-                    all_settings = session.exec(select(AnalysisSettings)).all()
-                    existing_settings = None
-                    for candidate in all_settings:
-                        if settings == candidate:
-                            existing_settings = candidate
-                            break
-                except Exception:
-                    # AnalysisSettings doesn't exist yet - this is the first settings
-                    existing_settings = None
-
-                # found duplicate - use the existing one
-                if existing_settings is not None:
-                    settings = existing_settings
-                    cali_logger.info(
-                        f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
-                    )
-                # new settings - merge and commit to get an ID
-                else:
-                    settings = session.merge(settings)
-                    session.commit()
-                    session.refresh(settings)
-                    cali_logger.info(f"⚙️ Created new AnalysisSettings ID {settings.id}")
-            else:
-                # get all current settings IDs
-                all_settings_ids = [
-                    s.id for s in session.exec(select(AnalysisSettings)).all()
-                ]
-                # if settings.id is new, merge and commit
-                if settings.id not in all_settings_ids:
-                    settings = session.merge(settings)
-                    session.commit()
-                    session.refresh(settings)
-                    cali_logger.info(f"⚙️ Created new AnalysisSettings ID {settings.id}")
-                else:
-                    # settings already has an ID - just merge to reattach
-                    settings = session.merge(settings)
-                    cali_logger.info(
-                        f"♻️ Reusing existing AnalysisSettings ID {settings.id}"
-                    )
-
-            # ensure experiment has an ID
-            if experiment.id is None:
-                msg = "Experiment must have an ID before running analysis"
-                engine.dispose(close=True)
-                raise ValueError(msg)
-
-            # Create or reuse AnalysisResult
-            assert settings.id is not None  # should never be None here
-
-            # First, check if there's a detection-only result we can upgrade
-            detection_only_result = session.exec(
-                select(AnalysisResult).where(
-                    AnalysisResult.experiment == experiment.id,
-                    AnalysisResult.detection_settings == detection_settings_id,
-                    AnalysisResult.analysis_settings == None,  # noqa: E711
-                )
-            ).first()
-
-            # Check if an identical AnalysisResult already exists
-            existing_result = session.exec(
-                select(AnalysisResult).where(
-                    AnalysisResult.experiment == experiment.id,
-                    AnalysisResult.detection_settings == detection_settings_id,
-                    AnalysisResult.analysis_settings == settings.id,
-                )
-            ).first()
-
-            if existing_result is not None:
-                # Check if positions match or if we can merge them
-                existing_positions = set(existing_result.positions_analyzed or [])
-                new_positions = set(global_position_indices)
-
-                if existing_positions == new_positions:
-                    # Identical AnalysisResult exists - reuse it and update timestamp
-                    from datetime import datetime
-
-                    existing_result.created_at = datetime.now()
-                    session.add(existing_result)
-                    session.commit()
-                    session.refresh(existing_result)
-                    analysis_result = existing_result
-                    cali_logger.info(
-                        f" ♻️ Reusing existing AnalysisResult ID {analysis_result.id} "
-                        f"(DetectionSettings={detection_settings_id}, "
-                        f"AnalysisSettings={settings.id})"
-                    )
-                else:
-                    # Different positions - merge them into existing result
-                    merged_positions = sorted(existing_positions | new_positions)
-                    existing_result.positions_analyzed = merged_positions
-                    session.add(existing_result)
-                    session.commit()
-                    session.refresh(existing_result)
-                    analysis_result = existing_result
-                    cali_logger.info(
-                        f"🔄 Updated AnalysisResult ID {analysis_result.id} "
-                        f"to include positions {merged_positions} "
-                        f"(DetectionSettings={detection_settings_id}, "
-                        f"AnalysisSettings={settings.id})"
-                    )
-            elif detection_only_result is not None:
-                # Upgrade detection-only result to full analysis result
-                detection_only_result.analysis_settings = settings.id
-                detection_pos = set(detection_only_result.positions_analyzed or [])
-                new_positions = set(global_position_indices)
-                merged_positions = sorted(detection_pos | new_positions)
-                detection_only_result.positions_analyzed = merged_positions
-                session.add(detection_only_result)
-                session.commit()
-                session.refresh(detection_only_result)
-                analysis_result = detection_only_result
-                cali_logger.info(
-                    f"⬆️ Upgraded detection-only AnalysisResult ID {analysis_result.id} "
-                    f"to full analysis (DetectionSettings={detection_settings_id}, "
-                    f"AnalysisSettings={settings.id}, positions={merged_positions})"
-                )
-            else:
-                # No existing result - create new
-                analysis_result = AnalysisResult(
-                    experiment=experiment.id,
-                    detection_settings=detection_settings_id,
-                    analysis_settings=settings.id,
-                    positions_analyzed=list(global_position_indices),
-                )
-                session.add(analysis_result)
-                session.commit()
-                session.refresh(analysis_result)
-                cali_logger.info(
-                    f"📊 Created AnalysisResult ID {analysis_result.id} "
-                    f"(DetectionSettings={detection_settings_id}, "
-                    f"AnalysisSettings={settings.id})"
-                )
-
-            # track positions processed
-            positions_processed = []
-
-            # execute analysis in parallel, passing the analysis_result_id
-            for result in exec_(
-                analyze=self._analyze_position,
-                cancel_event=self._cancellation_event,
-                global_position_indices=global_position_indices,
-                settings=settings,
-                experiment=experiment,
-                max_workers=settings.threads,
-                analysis_result_id=analysis_result.id,
-                detection_settings_id=detection_settings_id,
-            ):
-                # Don't pass detection_settings_id for analysis - ROIs already have it
-                commit_fov_result(session, experiment, result)
-                positions_processed.append(result.position_index)
-
-            # Update AnalysisResult with actual positions processed
-            # (in case some failed)
-            if positions_processed:
-                # Only update if the positions actually changed
-                current_positions = set(analysis_result.positions_analyzed or [])
-                processed_positions = set(positions_processed)
-                if current_positions != processed_positions:
-                    analysis_result.positions_analyzed = positions_processed
-                    session.add(analysis_result)
-                    session.commit()
-                    cali_logger.info(
-                        f"📝 Updated AnalysisResult ID {analysis_result.id} positions"
-                    )
-                cali_logger.info(
-                    f"✅ Completed AnalysisResult ID {analysis_result.id} "
-                    f"({len(positions_processed)} positions)"
-                )
-        engine.dispose(close=True)
+        cali_logger.info("✅ Analysis complete!")
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
@@ -416,136 +165,93 @@ class AnalysisRunner:
 
     def _analyze_position(
         self,
-        experiment: Experiment,
+        dataset: TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
         global_pos_idx: int,
-        analysis_result_id: int | None = None,
-        detection_settings_id: int | None = None,
+        fovs_with_rois: list[FOV],
     ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
 
-        Returns a list of FOV objects with all their nested relationships
+        Returns a FOV object with all its nested relationships
         (ROIs, Traces, DataAnalysis, Masks) ready to be committed.
         """
         return self._extract_trace_data_per_position(
-            experiment,
+            dataset,
             settings,
             global_pos_idx,
-            analysis_result_id,
-            detection_settings_id,
+            fovs_with_rois,
         )
 
     # These are module-level functions that work with the OriginalAnalysisRunner
     def _extract_trace_data_per_position(
         self,
-        experiment: Experiment,
+        dataset: TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
         global_pos_idx: int,
-        analysis_result_id: int | None = None,
-        detection_settings_id: int | None = None,
+        fovs_with_rois: list[FOV],
     ) -> FOV | None:
         """Extract trace data for a position and return FOV objects (not committed).
 
-        Returns a list containing a single FOV with all its ROIs, Traces, DataAnalysis,
-        and Masks ready to be committed to the database.
+        Returns a FOV with all its ROIs, Traces, DataAnalysis, and Masks
+        ready to be committed to the database.
         """
         from cali.util import coordinates_to_mask
 
         # if runner._data is None or runner._check_for_abort_requested():
-        if self._data is None or self._check_for_abort_requested():
-            return None
-
-        # get the data and metadata for the position
-        data, meta = self._data.isel(p=global_pos_idx, metadata=True)
-
-        # get the fov_name name from metadata
-        fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
-
-        # Load existing FOV with ROI masks from database
-        engine = create_engine(f"sqlite:///{experiment.db_path}", echo=False)
-        early_exit = False
-        with Session(engine) as session:
-            # Query for FOV with this name and position
-            fov_stmt = (
-                select(FOV)
-                .where(
-                    FOV.name == fov_name,
-                    FOV.position_index == global_pos_idx,
-                )
-                .options(
-                    selectinload(FOV.rois).selectinload(ROI.roi_mask),
-                )
-            )
-            existing_fov = session.exec(fov_stmt).first()
-            rois_to_analyze: list[ROI] = []
-            if existing_fov is None or not existing_fov.rois:
-                cali_logger.error(
-                    f"No ROI masks found in database for FOV {fov_name} "
-                    f"(position {global_pos_idx}). Run detection first."
-                )
-                early_exit = True
-            elif detection_settings_id is not None:
-                # Filter ROIs by detection_settings_id if specified
-                # This ensures we only analyze ROIs from the correct detection run
-                rois_to_analyze = [
-                    roi
-                    for roi in existing_fov.rois
-                    if roi.detection_settings_id == detection_settings_id
-                ]
-                if not rois_to_analyze:
-                    cali_logger.error(
-                        f"No ROIs found with detection_settings_id="
-                        f"{detection_settings_id} in FOV {fov_name}"
-                    )
-                    early_exit = True
-            else:
-                rois_to_analyze = existing_fov.rois
-
-            # Convert database masks (coordinates) to numpy arrays
-            # { label_value -> np.ndarray mask }
-            labels_masks = {}
-            # All ROIs in a FOV share the same detection_settings_id
-            fov_detection_settings_id = None
-
-            if not early_exit:
-                for roi in rois_to_analyze:
-                    if (
-                        roi.roi_mask
-                        and roi.roi_mask.coords_y is not None
-                        and roi.roi_mask.coords_x is not None
-                        and roi.roi_mask.height is not None
-                        and roi.roi_mask.width is not None
-                    ):
-                        mask_array = coordinates_to_mask(
-                            (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
-                            (roi.roi_mask.height, roi.roi_mask.width),
-                        )
-                        labels_masks[roi.label_value] = mask_array
-                        # Capture detection_settings_id from ROI
-                        if fov_detection_settings_id is None:
-                            fov_detection_settings_id = roi.detection_settings_id
-                    else:
-                        cali_logger.warning(
-                            f"ROI {roi.label_value} in {fov_name} has no mask data"
-                        )
-
-                if not labels_masks:
-                    cali_logger.error(
-                        f"No valid ROI masks found for FOV {fov_name}. "
-                        "Run detection first."
-                    )
-                    early_exit = True
-        engine.dispose(close=True)
-
-        # If we marked for early exit, return None after disposing engine
-        if early_exit:
-            return None
-
-        # Check for cancellation after database I/O
         if self._check_for_abort_requested():
             return None
 
-        sequence = cast("useq.MDASequence", self._data.sequence)
+        # get the data and metadata for the position
+        data, meta = dataset.isel(p=global_pos_idx, metadata=True)
+        # get the fov_name name from metadata
+        fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
+
+        # Find the FOV with matching position index in the provided list
+        fov_to_analyze = None
+        for fov in fovs_with_rois:
+            if fov.position_index == global_pos_idx:
+                fov_to_analyze = fov
+                break
+
+        if fov_to_analyze is None or not fov_to_analyze.rois:
+            cali_logger.error(
+                f"No ROI masks found for FOV at position {global_pos_idx}. "
+                "Run detection first."
+            )
+            return None
+
+        # Convert ROI masks to numpy arrays
+        # { label_value -> np.ndarray mask }
+        labels_masks = {}
+        for roi in fov_to_analyze.rois:
+            if (
+                roi.roi_mask
+                and roi.roi_mask.coords_y is not None
+                and roi.roi_mask.coords_x is not None
+                and roi.roi_mask.height is not None
+                and roi.roi_mask.width is not None
+            ):
+                mask_array = coordinates_to_mask(
+                    (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
+                    (roi.roi_mask.height, roi.roi_mask.width),
+                )
+                labels_masks[roi.label_value] = mask_array
+            else:
+                cali_logger.warning(
+                    f"ROI {roi.label_value} in {fov_name} has no mask data"
+                )
+
+        if not labels_masks:
+            cali_logger.error(
+                f"No valid ROI masks found for FOV {fov_name}. " "Run detection first."
+            )
+            return None
+
+        # Check for cancellation
+        if self._check_for_abort_requested():
+            return None
+
+        sequence = cast("useq.MDASequence", dataset.sequence)
 
         # Check for cancellation after loading and processing labels
         if self._check_for_abort_requested():
@@ -585,22 +291,14 @@ class AnalysisRunner:
         # get the total time in seconds for the recording
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
-        # check if it is an evoked activity experiment
-        evoked_experiment = experiment.experiment_type == EVOKED
-
-        # Create the FOV object (not yet committed)
-        fov_name.split("_")[0]
-        fov = FOV(
-            name=fov_name,
-            position_index=global_pos_idx,
-            fov_number=global_pos_idx,
-            rois=[],
-        )
-
-        # >>>> HERE is the big loop over roi mask, calling _process_roi_trace
-
+        # Use the existing FOV from detection (don't create a new one)
+        # We'll add traces to the existing ROIs
         msg = f"Extracting Traces Data from {fov_name}."
         cali_logger.info(msg)
+
+        # Create a map of label_value -> ROI for quick lookup
+        roi_map = {roi.label_value: roi for roi in fov_to_analyze.rois}
+
         for label_value in tqdm(labels_masks.keys(), desc=msg):
             if self._check_for_abort_requested():
                 cali_logger.info(
@@ -608,8 +306,16 @@ class AnalysisRunner:
                 )
                 break
 
-            # Process each ROI and get the result objects (not committed)
-            roi_result = self._process_roi_trace(
+            # Get the existing ROI from detection
+            existing_roi = roi_map.get(label_value)
+            if existing_roi is None:
+                cali_logger.warning(
+                    f"No ROI found with label_value={label_value} in {fov_name}"
+                )
+                continue
+
+            # Process the trace and get Traces + DataAnalysis objects
+            trace_data = self._process_roi_trace(
                 data,
                 meta,
                 fov_name,
@@ -617,7 +323,6 @@ class AnalysisRunner:
                 label_value,
                 eroded_masks[label_value],
                 tot_time_sec,
-                evoked_experiment,
                 elapsed_time_list,
                 neuropil_masks_dict.get(label_value),
                 (
@@ -628,16 +333,23 @@ class AnalysisRunner:
                     )
                     else None
                 ),
-                detection_settings_id=fov_detection_settings_id,
-                analysis_result_id=analysis_result_id,
             )
 
-            # Add the ROI to the FOV if processing succeeded
-            if roi_result:
-                fov.rois.append(roi_result)
+            # Add traces and analysis to the existing ROI if processing succeeded
+            if trace_data is not None:
+                traces, data_analysis, active, stimulated = trace_data
+                # Don't use .append() which triggers lazy load - instead add to
+                # in-memory list and let commit_fov_result handle database merge
+                if not hasattr(existing_roi, "_new_traces"):
+                    existing_roi._new_traces = []  # type: ignore
+                    existing_roi._new_data_analysis = []  # type: ignore
+                existing_roi._new_traces.append(traces)  # type: ignore
+                existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
+                existing_roi.active = active
+                existing_roi.stimulated = stimulated
 
-        # Return the FOV with all its ROIs (will be committed by caller)
-        return fov
+        # Return the FOV with updated ROIs (will be committed by caller)
+        return fov_to_analyze
 
     def _process_roi_trace(
         self,
@@ -648,17 +360,14 @@ class AnalysisRunner:
         label_value: int,
         label_mask: np.ndarray,
         tot_time_sec: float,
-        evoked_exp: bool,
         elapsed_time_list: list[float],
         neuropil_mask: np.ndarray | None = None,
         neuropil_correction_factor: float | None = None,
-        detection_settings_id: int | None = None,
-        analysis_result_id: int | None = None,
-    ) -> ROI | None:
-        """Process individual ROI trace and return ROI object (not committed).
+    ) -> tuple[Traces, DataAnalysis, bool, bool] | None:
+        """Process individual ROI trace and return trace data.
 
-        Returns an ROI object with Traces, DataAnalysis, and Masks ready to commit,
-        or None if processing fails or ROI should be excluded.
+        Returns a tuple of (Traces, DataAnalysis, active, stimulated) ready to add
+        to an existing ROI, or None if processing fails or ROI should be excluded.
         """
         # Early exit if cancellation is requested
         if self._check_for_abort_requested():
@@ -686,7 +395,7 @@ class AnalysisRunner:
         # check if the roi is stimulated
         roi_stimulation_overlap_ratio = 0.0
         stimulated_area_mask = settings.stimulated_mask_area()
-        if evoked_exp and stimulated_area_mask is not None:
+        if stimulated_area_mask is not None:
             roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
                 stimulated_area_mask, label_mask
             )
@@ -820,34 +529,8 @@ class AnalysisRunner:
         # calculate the inter-event interval (IEI) of the peaks in the dec_dff trace
         iei = get_iei(peaks_dec_dff, elapsed_time_list)
 
-        # get mask coords and shape for the ROI
-        mask_coords, mask_shape = mask_to_coordinates(label_mask)
-
-        # get neuropil mask coords and shape if neuropil mask exists
-        neuropil_mask_coords = neuropil_mask_shape = None
-        if neuropil_mask is not None:
-            neuropil_mask_coords, neuropil_mask_shape = mask_to_coordinates(
-                neuropil_mask
-            )
-
-        # Create mask objects
-        roi_mask = Mask(
-            coords_y=mask_coords[0],
-            coords_x=mask_coords[1],
-            height=mask_shape[0],
-            width=mask_shape[1],
-            mask_type="roi",
-        )
-
-        neuropil_mask_obj = None
-        if neuropil_mask_coords and neuropil_mask_shape:
-            neuropil_mask_obj = Mask(
-                coords_y=neuropil_mask_coords[0],
-                coords_x=neuropil_mask_coords[1],
-                height=neuropil_mask_shape[0],
-                width=neuropil_mask_shape[1],
-                mask_type="neuropil",
-            )
+        # Note: We don't need to create mask objects here since we're working
+        # with existing ROIs from detection that already have masks
 
         # Create Traces object
         traces = Traces(
@@ -861,7 +544,6 @@ class AnalysisRunner:
             dff=cast("list[float]", dff.tolist()),
             dec_dff=dec_dff.tolist(),
             x_axis=elapsed_time_list,
-            analysis_result_id=analysis_result_id,
         )
 
         # Create DataAnalysis object
@@ -877,25 +559,13 @@ class AnalysisRunner:
             peaks_prominence_dec_dff=peaks_prominence_dec_dff,
             peaks_height_dec_dff=peaks_height_dec_dff,
             inferred_spikes_threshold=spike_detection_threshold,
-            analysis_result_id=analysis_result_id,
         )
 
-        # Create ROI object with all relationships
-        roi = ROI(
-            label_value=label_value,
-            active=len(peaks_dec_dff) > 0,
-            stimulated=is_roi_stimulated,
-            roi_mask=roi_mask,
-            neuropil_mask=neuropil_mask_obj,
-            fov_id=0,  # placeholder, will be set when committing
-            detection_settings_id=detection_settings_id,
-        )
+        # Return trace data to be added to existing ROI
+        active = len(peaks_dec_dff) > 0
+        stimulated = is_roi_stimulated
 
-        # Add traces and data_analysis to the relationship lists
-        roi.traces_history.append(traces)
-        roi.data_analysis_history.append(data_analysis)
-
-        return roi
+        return (traces, data_analysis, active, stimulated)
 
 
 def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:

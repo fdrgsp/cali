@@ -1,12 +1,12 @@
 from sqlmodel import Session, create_engine, select
-from cali.sqlmodel._model import AnalysisResult, DetectionSettings, AnalysisSettings
+from cali.sqlmodel._model import CaliResult, DetectionSettings, AnalysisSettings
 
 db_path = "/Users/fdrgsp/Desktop/cali_test/testcalidb"
 engine = create_engine(f"sqlite:///{db_path}")
 
 with Session(engine) as session:
     # Get all AnalysisResults
-    results = session.exec(select(AnalysisResult).order_by(AnalysisResult.id)).all()
+    results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
 
     print("\n" + "=" * 100)
     print("ALL ANALYSIS RESULTS - TABLE OF RUNS")
