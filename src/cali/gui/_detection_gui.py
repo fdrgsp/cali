@@ -410,15 +410,13 @@ class _DetectionGUI(QWidget):
         settings = self.value()
 
         if isinstance(settings, CellposeSettings):
-            model_type = (
-                settings.model_path
-                if settings.model_type == "custom" and settings.model_path is not None
-                else settings.model_type
-            )
             settings = DetectionSettings(
                 created_at=datetime.now(),
                 method="cellpose",
-                model_type=model_type,
+                model_type=settings.model_type,
+                custom_model=(
+                    settings.model_path if settings.model_type == "custom" else None
+                ),
                 diameter=None if settings.diameter == 0 else settings.diameter,
                 cellprob_threshold=settings.cellprob_threshold,
                 flow_threshold=settings.flow_threshold,

@@ -535,7 +535,9 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
     method : str
         Detection method ("cellpose" or "caiman")
     model_type : str
-        Cellpose model type ("cpsam", "cyto3", etc.) or path to custom model
+        Cellpose model type ("cpsam", "cyto3", "custom", etc.)
+    custom_model : str | None
+        Path to custom Cellpose model (only used when model_type is "custom")
     diameter : float | None
         Expected cell diameter in pixels (None for auto-detection)
     cellprob_threshold : float
@@ -560,6 +562,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Cellpose settings
     model_type: str = "cpsam"
+    custom_model: str | None = None
     diameter: float | None = None
     cellprob_threshold: float = 0.0
     flow_threshold: float = 0.4
@@ -580,6 +583,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         return (
             self.method == other.method
             and self.model_type == other.model_type
+            and self.custom_model == other.custom_model
             and self.diameter == other.diameter
             and self.cellprob_threshold == other.cellprob_threshold
             and self.flow_threshold == other.flow_threshold
@@ -594,6 +598,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
             (
                 self.method,
                 self.model_type,
+                self.custom_model,
                 self.diameter,
                 self.cellprob_threshold,
                 self.flow_threshold,

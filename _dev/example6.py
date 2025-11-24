@@ -74,7 +74,7 @@ cali.run(
     data_path,
     # detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
     detection_settings=DetectionSettings(
-        method="cellpose", model_type=custom_model, batch_size=3
+        method="cellpose", model_type="custom", custom_model=custom_model, batch_size=3
     ),
     analysis_settings=AnalysisSettings(dff_window=150, threads=5),
     overwrite=True,

@@ -184,10 +184,14 @@ class DetectionRunner:
         use_gpu = core.use_gpu()
         cali_logger.info(f"Use GPU: {use_gpu}")
 
-        cali_logger.info(f"Loading model from `{detection_settings.model_type}`.")
-        model = CellposeModel(
-            pretrained_model=str(detection_settings.model_type), gpu=use_gpu
+        # Use custom_model path if model_type is "custom", otherwise use model_type
+        model_path = (
+            detection_settings.custom_model
+            if detection_settings.model_type == "custom"
+            else detection_settings.model_type
         )
+        cali_logger.info(f"Loading model from `{model_path}`.")
+        model = CellposeModel(pretrained_model=str(model_path), gpu=use_gpu)  # type: ignore
 
         # Run detection and yield FOV results
         yield from self._run_cellpose_detection(

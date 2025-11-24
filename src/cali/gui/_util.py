@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
 from qtpy.QtGui import QIcon
+from qtpy.QtGui import QStandardItemModel
 from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
@@ -373,7 +374,11 @@ class _RunCaliWidget(QWidget):
         self._run_options_lbl = QLabel("Run Options:")
         self._run_options_lbl.setSizePolicy(*FIXED)
         self._run_options_combo = QComboBox()
-        items = ["Detection and Analysis", "Detection", "Analysis"]
+        items = [
+            "Detection and Analysis",
+            "Detection Only",
+            "Analysis Only (require at least one detection run in database)",
+        ]
         self._run_options_combo.addItems(items)
         self._run_options_combo.setToolTip(
             "Choose what to run:\n\n"
@@ -430,6 +435,9 @@ class _RunCaliWidget(QWidget):
         run_control_layout.addWidget(self._progress_pos_label)
         run_control_layout.addWidget(self._elapsed_time_label)
         main_layout.addLayout(run_control_layout)
+
+        # Initially disable "Analysis Only" option (no detections at init)
+        self._update_analysis_only_availability(has_detections=False)
 
     # PUBLIC METHODS --------------------------------------------------------------
 
@@ -490,13 +498,14 @@ class _RunCaliWidget(QWidget):
         option = self._run_options_combo.currentText()
         detection_settings_id = (
             self._detection_settings_combo.currentData()
-            if option == "Analysis"
+            if option
+            == "Analysis Only (require at least one detection run in database)"
             else None
         )
         return CaliRunSettings(
             positions=parse_lineedit_text(self._positions_wdg.value()),
-            run_detection=option in ("Detection", "Detection and Analysis"),
-            run_analysis=option in ("Detection and Analysis", "Analysis"),
+            run_detection="Detection" in option,
+            run_analysis="Analysis" in option,
             detection_settings_id=detection_settings_id,
         )
 
@@ -526,6 +535,37 @@ class _RunCaliWidget(QWidget):
             self._detection_settings_combo.addItem(
                 f"Detection ID {settings_id} ({method})", settings_id
             )
+        
+        # Enable/disable the "Analysis Only" option based on detection availability
+        self._update_analysis_only_availability(has_detections=len(settings_list) > 0)
+
+    def _update_analysis_only_availability(self, has_detections: bool) -> None:
+        """Enable or disable the Analysis Only option based on detection availability.
+
+        Parameters
+        ----------
+        has_detections : bool
+            Whether any detection settings exist in the database
+        """
+        from qtpy.QtCore import Qt
+
+        # Find the "Analysis Only" option (index 2)
+        analysis_only_index = 2
+        model = cast("QStandardItemModel", self._run_options_combo.model())
+        item = model.item(analysis_only_index)
+
+        if item is None:
+            return
+
+        if has_detections:
+            # Enable the item
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+        else:
+            # Disable the item
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            # If currently selected, switch to first option
+            if self._run_options_combo.currentIndex() == analysis_only_index:
+                self._run_options_combo.setCurrentIndex(0)
 
     def _on_run_option_changed(self, text: str) -> None:
         """Handle run option change to show/hide detection settings selector.
@@ -536,7 +576,9 @@ class _RunCaliWidget(QWidget):
             The selected run option text
         """
         # Show detection settings combo only for "Analysis" option (index 2)
-        is_analysis_only = text == "Analysis"
+        is_analysis_only = (
+            text == "Analysis Only (require at least one detection run in database)"
+        )
         self._detection_settings_lbl.setVisible(is_analysis_only)
         self._detection_settings_combo.setVisible(is_analysis_only)
         # if there is only one detection id, select it by default

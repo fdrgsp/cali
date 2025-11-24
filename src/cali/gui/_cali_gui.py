@@ -350,13 +350,13 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/evoked/results.cali"
-        self._output_path = "tests/test_data/evoked/"
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -609,10 +609,6 @@ class CaliGui(QMainWindow):
         analysis_settings = (
             self._analysis_wdg.to_model_settings() if value.run_analysis else None
         )
-
-        from rich import print
-
-        print(analysis_settings)
 
         # Validate evoked experiment settings
         if analysis_settings is not None:
@@ -880,23 +876,10 @@ class CaliGui(QMainWindow):
                 )
                 assert isinstance(d_settings, DetectionSettings)
                 if d_settings.method == "cellpose":
-                    cp_wdg = self._detection_wdg._cellpose_wdg
-                    model_options = [
-                        cp_wdg._models_combo.itemText(i)
-                        for i in range(cp_wdg._models_combo.count())
-                    ]
-                    model_path = (
-                        d_settings.model_type
-                        if d_settings.model_type not in model_options
-                        else None
-                    )
-                    model_type = (
-                        "custom" if model_path is not None else d_settings.model_type
-                    )
                     self._detection_wdg.setValue(
                         CellposeSettings(
-                            model_type=model_type,
-                            model_path=model_path,
+                            model_type=d_settings.model_type,
+                            model_path=d_settings.custom_model,
                             diameter=d_settings.diameter,
                             cellprob_threshold=d_settings.cellprob_threshold,
                             flow_threshold=d_settings.flow_threshold,
