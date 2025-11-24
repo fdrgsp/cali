@@ -350,13 +350,13 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        db_path = "tests/test_data/evoked/results.cali"
-        self._initialize_from_database(db_path, data_path)
+        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # db_path = "tests/test_data/evoked/results.cali"
+        # self._initialize_from_database(db_path, data_path)
 
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
+        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/evoked/results.cali"
+        self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -610,6 +610,9 @@ class CaliGui(QMainWindow):
             self._analysis_wdg.to_model_settings() if value.run_analysis else None
         )
 
+        from rich import print
+        print(analysis_settings)
+
         # Validate evoked experiment settings
         if analysis_settings is not None:
             from cali._constants import EVOKED
@@ -627,7 +630,8 @@ class CaliGui(QMainWindow):
                     missing_fields.append("LED pulse on frames")
                 if missing_fields:
                     msg = (
-                        "Evoked experiment type selected but required fields are missing:\n\n"
+                        "Evoked experiment type selected but required fields are "
+                        "missing:\n\n"
                         + "\n".join(f"  • {field}" for field in missing_fields)
                         + "\n\nPlease configure these settings in the Analysis tab."
                     )

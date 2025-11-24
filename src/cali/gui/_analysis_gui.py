@@ -1360,8 +1360,7 @@ class _AnalysisGUI(QWidget):
         spikes_data = settings.spikes_data
 
         experiment_type = SPONTANEOUS
-        if settings.experiment_type_data is not None:
-            exp_type_data = settings.experiment_type_data
+        if (exp_type_data:=settings.experiment_type_data) is not None:
             experiment_type = exp_type_data.experiment_type
 
         settings = AnalysisSettings(
@@ -1427,6 +1426,15 @@ class _AnalysisGUI(QWidget):
             ),
             led_power_equation=(
                 exp_type_data.led_power_equation if exp_type_data else None
+            ),
+            led_pulse_duration=(
+                exp_type_data.led_pulse_duration if exp_type_data else None
+            ),
+            led_pulse_powers=(
+                exp_type_data.led_pulse_powers if exp_type_data else None
+            ),
+            led_pulse_on_frames=(
+                exp_type_data.led_pulse_on_frames if exp_type_data else None
             ),
             stimulation_mask_path=(
                 exp_type_data.stimulation_area_path if exp_type_data else None
