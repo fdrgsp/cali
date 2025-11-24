@@ -611,6 +611,7 @@ class CaliGui(QMainWindow):
         )
 
         from rich import print
+
         print(analysis_settings)
 
         # Validate evoked experiment settings

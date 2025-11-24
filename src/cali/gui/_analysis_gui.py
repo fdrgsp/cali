@@ -1360,7 +1360,7 @@ class _AnalysisGUI(QWidget):
         spikes_data = settings.spikes_data
 
         experiment_type = SPONTANEOUS
-        if (exp_type_data:=settings.experiment_type_data) is not None:
+        if (exp_type_data := settings.experiment_type_data) is not None:
             experiment_type = exp_type_data.experiment_type
 
         settings = AnalysisSettings(
