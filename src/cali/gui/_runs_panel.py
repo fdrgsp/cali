@@ -412,5 +412,3 @@ class _RunsPanel(QGroupBox):
                 # Clicked on white area - deselect all
                 self._runs_list.clearSelection()
         return super().eventFilter(a0, a1)
-
-

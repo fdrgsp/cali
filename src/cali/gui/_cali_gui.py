@@ -613,6 +613,7 @@ class CaliGui(QMainWindow):
         # Validate evoked experiment settings
         if analysis_settings is not None:
             from cali._constants import EVOKED
+
             if analysis_settings.experiment_type == EVOKED:
                 missing_fields = []
                 # Check for required evoked experiment fields
