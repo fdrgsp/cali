@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
-from qtpy.QtGui import QIcon
-from qtpy.QtGui import QStandardItemModel
+from qtpy.QtGui import QIcon, QStandardItemModel
 from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
@@ -535,7 +534,7 @@ class _RunCaliWidget(QWidget):
             self._detection_settings_combo.addItem(
                 f"Detection ID {settings_id} ({method})", settings_id
             )
-        
+
         # Enable/disable the "Analysis Only" option based on detection availability
         self._update_analysis_only_availability(has_detections=len(settings_list) > 0)
 
