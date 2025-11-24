@@ -536,7 +536,6 @@ class CaliGui(QMainWindow):
 
     def _update_gui_settings(self, database_path: Path | str) -> None:
         """Update the GUI settings based on the latest analysis result."""
-        self._
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
         # populate detection settings combobox in run widget
