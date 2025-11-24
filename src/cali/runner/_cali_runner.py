@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlmodel import Session, create_engine, select
 
+from cali._constants import DEFAULT_CALI_DB_NAME
 from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.logger import cali_logger
@@ -111,8 +112,10 @@ class CaliRunner:
         output_path: Path | None = None,
         overwrite: bool = False,
         echo: bool = False,
-    ) -> None:
+    ) -> Generator[str, None, None]:
         """Run detection and/or analysis on the experiment.
+
+        Yields progress strings that can be displayed in a GUI.
 
         This method orchestrates the entire pipeline:
         0. Makes sure data are ready
@@ -173,7 +176,7 @@ class CaliRunner:
             )
             self._db_path = output_path / db_name
         else:
-            self._db_path = output_path / "results.cali"
+            self._db_path = output_path / DEFAULT_CALI_DB_NAME
         self._setup_database(self._db_path, experiment, overwrite)
 
         # 2. Get database engine and session
@@ -214,6 +217,7 @@ class CaliRunner:
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
+                    yield f"Starting detection on {len(positions_for_detection)} positions..."
                     fov_count = 0
                     for fov in self._run_detection(
                         dataset,
@@ -224,6 +228,12 @@ class CaliRunner:
                         roi_count = len(fov.rois)
                         total_rois_detected += roi_count
                         fov_count += 1
+
+                        # Yield progress
+                        yield (
+                            f"Detection: {fov_count}/{len(positions_for_detection)} "
+                            f"(Position {fov.position_index}, {roi_count} ROIs)"
+                        )
 
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
@@ -283,6 +293,7 @@ class CaliRunner:
 
                     # Load FOVs from database (only for positions needing analysis)
                     # After committing detection, the in-memory FOVs become detached
+                    yield f"Loading {len(positions_for_analysis)} FOVs for analysis..."
                     fovs_with_rois = self._load_fovs_from_database(
                         session,
                         detection_settings.id,
@@ -308,6 +319,7 @@ class CaliRunner:
 
                     # Now run analysis and commit FOVs one by one, setting
                     # analysis_result_id on Traces before committing
+                    yield f"Starting analysis on {len(positions_for_analysis)} positions..."
                     positions_processed = []
                     fov_count = 0
                     for fov in self._run_analysis(
@@ -327,6 +339,14 @@ class CaliRunner:
                                     trace.analysis_result_id = analysis_result_id
 
                         fov_count += 1
+
+                        # Yield progress
+                        total_rois = len(fov.rois)
+                        yield (
+                            f"Analysis: {fov_count}/{len(positions_for_analysis)} "
+                            f"(Position {fov.position_index}, {total_rois} ROIs)"
+                        )
+
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
                         commit_fov_result(
@@ -520,13 +540,12 @@ class CaliRunner:
                     db_exp = cast(
                         "Experiment", session.exec(select(Experiment)).first()
                     )
-                    # Check if they match using __eq__ (compares name + type)
+                    # Check if they match using __eq__ (compares name)
                     if experiment != db_exp:
                         msg = (
-                            f"The provided Experiment (name='{experiment.name}', "
-                            f"type='{experiment.experiment_type}') does not match the "
-                            f"one in the database (name='{db_exp.name}', "
-                            f"type='{db_exp.experiment_type}'). "
+                            f"The provided Experiment (name='{experiment.name}') "
+                            f"does not match the one in the database "
+                            f"(name='{db_exp.name}'). "
                             f"To run a different experiment, specify a unique "
                             f"`database_name` parameter in the run() method. "
                             f"To replace the existing database, set `overwrite=True`."

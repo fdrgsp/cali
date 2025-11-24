@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
@@ -16,7 +15,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QProgressBar,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -45,9 +43,7 @@ from cali._constants import (
     EVOKED,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
-    GREEN,
     MULTIPLIER,
-    RED,
     SPONTANEOUS,
 )
 
@@ -55,9 +51,7 @@ from cali._constants import (
 from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     _BrowseWidget,
-    _ChoosePositionsWidget,
     create_divider_line,
-    parse_lineedit_text,
 )
 
 if TYPE_CHECKING:
@@ -1194,26 +1188,19 @@ class _FrameRateWidget(QWidget):
         self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
 
 
-class _RunAnalysisWidget(QWidget):
-    """Widget to display the progress of the analysis."""
+class _AnalysisGUI(QWidget):
+    progress_bar_updated = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # progress bar
-        self._progress_bar = QProgressBar(self)
-        self._progress_pos_label = QLabel()
-        self._elapsed_time_label = QLabel("00:00:00")
+        # MAIN WIDGET -----------------------------------------------------------------
+        group_wdg = QGroupBox(self)
+        group_layout = QVBoxLayout(group_wdg)
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(5)
 
-        # buttons
-        self._run_btn = QPushButton("Run")
-        self._run_btn.setSizePolicy(*FIXED)
-        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setSizePolicy(*FIXED)
-        self._cancel_btn.setIcon(QIcon(icon(MDI6.stop, color=RED)))
-
-        # threads selector
+        # THREADS WIDGET -------------------------------------------------------------
         cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
         threads_wdg = QWidget()
         threads_wdg.setToolTip(
@@ -1229,10 +1216,9 @@ class _RunAnalysisWidget(QWidget):
             "system and GUI responsiveness.\n"
             "If your system becomes unresponsive, consider reducing this number."
         )
-        threads_lbl = QLabel("Threads:")
+        threads_lbl = QLabel("Number of Threads:")
         threads_lbl.setSizePolicy(*FIXED)
         self._threads = QSpinBox()
-        self._threads.setFixedWidth(60)
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
@@ -1240,67 +1226,6 @@ class _RunAnalysisWidget(QWidget):
         threads_layout.setSpacing(5)
         threads_layout.addWidget(threads_lbl)
         threads_layout.addWidget(self._threads)
-
-        # main layout
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(5)
-        main_layout.addWidget(self._run_btn)
-        main_layout.addWidget(self._cancel_btn)
-        main_layout.addWidget(threads_wdg)
-        main_layout.addWidget(self._progress_bar)
-        main_layout.addWidget(self._progress_pos_label)
-        main_layout.addWidget(self._elapsed_time_label)
-
-    def progress_bar_maximum(self) -> int:
-        """Return the maximum value of the progress bar."""
-        return cast("int", self._progress_bar.maximum())
-
-    def set_progress_bar_label(self, text: str) -> None:
-        """Update the progress label with elapsed time."""
-        self._progress_pos_label.setText(text)
-
-    def set_progress_bar_range(self, minimum: int, maximum: int) -> None:
-        """Set the range of the progress bar."""
-        self._progress_bar.setRange(minimum, maximum)
-
-    def reset_progress_bar(self) -> None:
-        """Reset the progress bar and elapsed time label."""
-        self._progress_bar.reset()
-        self._progress_bar.setValue(0)
-        self._progress_pos_label.setText("[0/0]")
-        self._elapsed_time_label.setText("00:00:00")
-
-    def set_time_label(self, elapsed_time: str) -> None:
-        """Update the elapsed time label."""
-        self._elapsed_time_label.setText(elapsed_time)
-
-    def update_progress_bar_plus_one(self) -> None:
-        """Automatically update the progress bar value and label.
-
-        The value is incremented by 1 each time this method is called.
-        """
-        value = self._progress_bar.value() + 1
-        self._progress_bar.setValue(value)
-        self._progress_pos_label.setText(f"[{value}/{self._progress_bar.maximum()}]")
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self.reset_progress_bar()
-        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
-
-
-class _AnalysisGUI(QWidget):
-    progress_bar_updated = Signal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
 
         # ANALYSIS WIDGETS -----------------------------------------------------------
         self._plate_map_wdg = _PlateMapWidget(self)
@@ -1335,28 +1260,16 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._calcium_peaks_wdg)
         group_layout.addWidget(create_divider_line("Spikes and Bursts"))
         group_layout.addWidget(self._spike_wdg)
-        # group_layout.addWidget(self._frame_rate_wdg)
+        group_layout.addWidget(create_divider_line("Threads"))
+        group_layout.addWidget(threads_wdg)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
-
-        # BOTTOM WIDGET ---------------------------------------------------------------
-
-        self._positions_wdg = _ChoosePositionsWidget(self)
-        self._run_analysis_wdg = _RunAnalysisWidget(self)
-        run_wdg = QGroupBox(self)
-        run_layout = QVBoxLayout(run_wdg)
-        run_layout.setContentsMargins(0, 0, 0, 0)
-        run_layout.setSpacing(5)
-        run_layout.addWidget(create_divider_line("Positions to Analyze"))
-        run_layout.addWidget(self._positions_wdg)
-        run_layout.addWidget(self._run_analysis_wdg)
 
         # MAIN LAYOUT -----------------------------------------------------------------
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(15)
         main_layout.addWidget(analysis_scroll_area)
-        main_layout.addWidget(run_wdg)
 
         # STYLING ---------------------------------------------------------------------
         fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
@@ -1366,20 +1279,8 @@ class _AnalysisGUI(QWidget):
         self._trace_extraction_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
-        self._positions_wdg.set_labels_width(fix_width)
+        threads_lbl.setFixedWidth(fix_width)
         # self._frame_rate_wdg.set_labels_width(fix_width)
-
-    # PROPERTIES ----------------------------------------------------------------------
-
-    @property
-    def run(self):  # noqa: ANN202
-        """Signal emitted when the run button is clicked."""
-        return self._run_analysis_wdg._run_btn.clicked
-
-    @property
-    def cancel(self):  # noqa: ANN202
-        """Signal emitted when the cancel button is clicked."""
-        return self._run_analysis_wdg._cancel_btn.clicked
 
     @property
     def from_metadata(self):  # noqa: ANN202
@@ -1419,14 +1320,6 @@ class _AnalysisGUI(QWidget):
         if value.spikes_data is not None:
             self._spike_wdg.setValue(value.spikes_data)
 
-    def positions(self) -> list[int]:
-        """Get the positions to analyze."""
-        return parse_lineedit_text(self._positions_wdg.value())
-
-    def set_positions(self, positions: list[int]) -> None:
-        """Set the positions to analyze."""
-        self._positions_wdg.setValue(",".join(map(str, positions)))
-
     def enable(self, enable: bool) -> None:
         """Enable or disable the widget."""
         self._plate_map_wdg.setEnabled(enable)
@@ -1436,7 +1329,6 @@ class _AnalysisGUI(QWidget):
         self._trace_extraction_wdg.setEnabled(enable)
         self._calcium_peaks_wdg.setEnabled(enable)
         self._spike_wdg.setEnabled(enable)
-        self._positions_wdg.setEnabled(enable)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -1447,8 +1339,6 @@ class _AnalysisGUI(QWidget):
         self._trace_extraction_wdg.reset()
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
-        self._positions_wdg.setValue("")
-        self._run_analysis_wdg.reset()
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
@@ -1468,11 +1358,16 @@ class _AnalysisGUI(QWidget):
         trace_data = settings.trace_extraction_data
         peaks_data = settings.calcium_peaks_data
         spikes_data = settings.spikes_data
-        exp_type_data = settings.experiment_type_data
+
+        experiment_type = SPONTANEOUS
+        if settings.experiment_type_data is not None:
+            exp_type_data = settings.experiment_type_data
+            experiment_type = exp_type_data.experiment_type
 
         settings = AnalysisSettings(
             created_at=datetime.now(),
-            threads=self._run_analysis_wdg._threads.value(),
+            threads=self._threads.value(),
+            experiment_type=experiment_type or SPONTANEOUS,
             neuropil_inner_radius=(
                 trace_data.neuropil_inner_radius if trace_data else 0
             ),
@@ -1540,7 +1435,3 @@ class _AnalysisGUI(QWidget):
         )
 
         return settings
-
-    def update_progress_label(self, elapsed_time: str) -> None:
-        """Update the progress label with elapsed time."""
-        self._run_analysis_wdg.set_time_label(elapsed_time)

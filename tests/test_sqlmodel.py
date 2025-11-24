@@ -212,7 +212,6 @@ def test_experiment_create_from_data(tmp_path: Path) -> None:
     assert len(exp.plate.wells) > 0
     assert exp.plate.wells[0].name == "B5"
     assert len(exp.plate.wells[0].fovs) > 0
-    assert exp.experiment_type == SPONTANEOUS
 
     # Verify plate maps were applied
     assert len(exp.plate.wells[0].conditions) == 2

@@ -178,7 +178,8 @@ def load_analysis_from_json(
         stimulation_mask_path = None
         stim_mask_file = Path(output_path) / "stimulation_mask.tif"
 
-        experiment.experiment_type = EVOKED if stim_mask_file.exists() else SPONTANEOUS
+        # Determine experiment type based on stimulation mask
+        experiment_type = EVOKED if stim_mask_file.exists() else SPONTANEOUS
 
         if stim_mask_file.exists():
             try:
@@ -208,6 +209,7 @@ def load_analysis_from_json(
                 print(f"Warning: Could not load stimulation mask: {e}")
 
         analysis_settings = AnalysisSettings(
+            experiment_type=experiment_type,
             dff_window=settings_data.get("dff_window", 30),
             decay_constant=settings_data.get("decay constant", 0.0),
             peaks_height_value=settings_data.get("peaks_height_value", 3.0),
@@ -373,7 +375,7 @@ def load_analysis_from_json(
                 continue
 
     # Update AnalysisSettings with LED info collected from ROI data (if available)
-    if analysis_settings and experiment.experiment_type == EVOKED:
+    if analysis_settings and analysis_settings.experiment_type == EVOKED:
         if led_pulse_duration_from_roi is not None:
             analysis_settings.led_pulse_duration = led_pulse_duration_from_roi
         if led_pulse_powers_from_roi is not None:

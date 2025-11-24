@@ -77,6 +77,14 @@ def add_analysis_settings_to_tree(
     )
     settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
 
+    # Show experiment type
+    exp_type_emoji = "⚡" if settings.experiment_type == "evoked" else "✨"
+    exp_type_color = "green" if settings.experiment_type == "evoked" else "magenta"
+    settings_node.add(
+        f"{exp_type_emoji} Experiment type: [{exp_type_color}]"
+        f"{settings.experiment_type}[/{exp_type_color}]"
+    )
+
     if show_details:
         # Threads
         settings_node.add(f"🧵 Threads: {settings.threads}")
@@ -163,7 +171,6 @@ def add_experiment_tree_to_node(
     """
     exp_node = parent_node.add(f"🧪 [bold]Experiment (ID: {experiment.id})[/bold]")
     exp_node.add(f"Name: {experiment.name}")
-    exp_node.add(f"Type: [magenta]{experiment.experiment_type}[/magenta]")
     if experiment.description:
         exp_node.add(f"Description: [dim]{experiment.description}[/dim]")
 
@@ -570,10 +577,6 @@ def print_experiment_tree(
         guide_style="cyan",
     )
 
-    tree.add(
-        f"Experiment Type: [bold magenta]{experiment.experiment_type}[/bold magenta]"
-    )
-
     if experiment.description:
         tree.add(f"[dim]{experiment.description}[/dim]")
 
@@ -892,7 +895,6 @@ def print_database_tree(
     # Add each experiment
     for exp in experiments:
         exp_tree = main_tree.add(f"🧪 [bold cyan]{exp.name} (ID: {exp.id})[/bold cyan]")
-        exp_tree.add(f"Type: [magenta]{exp.experiment_type}[/magenta]")
         if exp.description:
             exp_tree.add(f"Description: [dim]{exp.description}[/dim]")
         exp_tree.add(f"Created: [dim]{exp.created_at}[/dim]")

@@ -226,8 +226,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Unique experiment identifier
     description : str | None
         Optional experiment description
-    experiment_type : str
-        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     plate : Plate
         Related plate (back-populated by SQLModel)
     """
@@ -238,7 +236,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     created_at: datetime = Field(default_factory=datetime.now)
     name: str = Field(unique=True, index=True)
     description: str | None = None
-    experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
@@ -248,7 +245,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
 
         Two Experiments are considered equal if:
         1. Both have IDs and they match (same database record), OR
-        2. They have the same name and experiment_type (semantic match)
+        2. They have the same name (semantic match)
 
         The description field is excluded since it can change without
         affecting the experiment's identity.
@@ -259,7 +256,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         if self.id is not None and other.id is not None:
             return self.id == other.id
         # Otherwise compare by semantic fields
-        return self.name == other.name and self.experiment_type == other.experiment_type
+        return self.name == other.name
 
     def __hash__(self) -> int:
         """Custom hash based on ID for consistency with __eq__."""
@@ -330,7 +327,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         well_names: list[str] | None = None,
         fovs_per_well: int = 1,
         plate_maps: dict[str, dict[str, str]] | None = None,
-        experiment_type: str = SPONTANEOUS,
         description: str | None = None,
     ) -> Self:
         """Create a new experiment with plate structure ready for analysis.
@@ -356,9 +352,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             Plate map configuration mapping well positions to conditions.
             Format: {"genotype": {"A1": "WT", "A2": "KO"},
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
-        experiment_type : str, optional
-            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
-            by default SPONTANEOUS
         description : str | None, optional
             Optional experiment description, by default None
 
@@ -382,7 +375,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         ...         "genotype": {"B5": "WT", "B6": "KO", "C5": "WT"},
         ...         "treatment": {"B5": "Vehicle", "B6": "Vehicle", "C5": "Drug"},
         ...     },
-        ...     experiment_type=EVOKED,
         ... )
         >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
         """
@@ -393,7 +385,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment = cls(
             name=name,
             description=description,
-            experiment_type=experiment_type,
         )
 
         # Create useq WellPlate and WellPlatePlan
@@ -516,7 +507,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment = cls(
             name=name,
             description=description,
-            experiment_type=experiment_type,
         )
 
         # Load plate structure from data
@@ -747,6 +737,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         as `led_pulse_powers`.
     stimulation_mask_path : str | None
         Path to stimulation mask file (for GUI/reference)
+    experiment_type : str
+        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     threads : int
         Number of threads to use for analysis (default: 1)
     stimulation_mask_id : int | None
@@ -761,6 +753,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
+
+    experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     neuropil_inner_radius: int = 0
     neuropil_min_pixels: int = 0
@@ -830,7 +824,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         if not isinstance(other, AnalysisSettings):
             return False
         return (
-            self.neuropil_inner_radius == other.neuropil_inner_radius
+            self.experiment_type == other.experiment_type
+            and self.neuropil_inner_radius == other.neuropil_inner_radius
             and self.neuropil_min_pixels == other.neuropil_min_pixels
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant

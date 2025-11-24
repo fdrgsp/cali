@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fonticon_mdi6 import MDI6
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QEvent, QObject, Qt, Signal
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
 )
 from sqlmodel import select
 from superqt.fonticon import icon
+from superqt.utils import signals_blocked
 
 from cali._constants import RED
 from cali.logger import cali_logger
@@ -34,12 +35,15 @@ class _RunsPanel(QGroupBox):
     -------
     runSelected : int
         Emitted when a run is selected, passes the AnalysisResult ID
+    settingsChanged : None
+        Emitted when detection settings may have changed (e.g., after deletion)
     """
 
     runSelected = Signal(int)
+    settingsDeleted = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("Analysis Runs", parent=parent)
+        super().__init__("Cali Runs", parent=parent)
 
         # Database path
         self._database_path: Path | None = None
@@ -52,7 +56,7 @@ class _RunsPanel(QGroupBox):
         # List widget for runs
         self._runs_list = QListWidget()
         self._runs_list.setAlternatingRowColors(True)
-        self._runs_list.itemClicked.connect(self._on_run_clicked)
+        self._runs_list.itemClicked.connect(self._on_item_clicked)
         self._runs_list.setToolTip(
             "Click on a run to load its analysis and detection settings"
         )
@@ -82,6 +86,10 @@ class _RunsPanel(QGroupBox):
 
         # Connect selection change to enable/disable delete button
         self._runs_list.itemSelectionChanged.connect(self._on_selection_changed)
+        self._runs_list.itemClicked.connect(self._on_item_clicked)
+
+        # Allow deselecting by clicking empty area in list
+        self._runs_list.viewport().installEventFilter(self)
 
         # Set size policy
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -155,13 +163,13 @@ class _RunsPanel(QGroupBox):
 
         item_text = (
             f"Run #{result.id} - {created_at}\n"
-            f"  ✅ Detection ID: {d_id} - Method: {d_settings.method}\n"
+            f"  ✅ Detection ID: {d_id} ({d_settings.method})\n"
         )
         analysis_icon = "❌" if result.analysis_settings is None else "✅"
         item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings}"
 
         item = QListWidgetItem(item_text)
-        item.setIcon(icon(MDI6.run_fast))
+        # item.setIcon(icon(MDI6.run_fast))
         item.setData(Qt.ItemDataRole.UserRole, result.id)
 
         self._runs_list.addItem(item)
@@ -194,6 +202,7 @@ class _RunsPanel(QGroupBox):
         if reply == QMessageBox.StandardButton.Yes:
             self._delete_run_from_database(run_id)
             self.refresh_runs()
+            self.settingsDeleted.emit()  # Notify that settings may have changed
             cali_logger.info(f"🚮 Deleted Run #{run_id} from database.")
 
     def _clear_all_runs(self) -> None:
@@ -215,6 +224,7 @@ class _RunsPanel(QGroupBox):
         if reply == QMessageBox.StandardButton.Yes:
             self._clear_all_from_database()
             self.refresh_runs()
+            self.settingsDeleted.emit()  # Notify that settings may have changed
             cali_logger.info("🚮 Deleted ALL runs from database.")
 
     def _delete_run_from_database(self, run_id: int) -> None:
@@ -263,7 +273,7 @@ class _RunsPanel(QGroupBox):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to clear all runs: {e}")
 
-    def _on_run_clicked(self, item: QListWidgetItem) -> None:
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
         """Handle run item click.
 
         Parameters
@@ -274,3 +284,133 @@ class _RunsPanel(QGroupBox):
         run_id = item.data(Qt.ItemDataRole.UserRole)
         if run_id is not None:
             self.runSelected.emit(run_id)
+
+    def get_detection_settings_ids(self) -> list[int]:
+        """Get all unique detection settings IDs from runs.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique detection settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                # Get all unique detection settings IDs
+                results = session.exec(select(CaliResult)).all()
+                ids = {r.detection_settings for r in results if r.detection_settings}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get detection settings IDs: {e}")
+            return []
+
+    def get_analysis_settings_ids(self) -> list[int]:
+        """Get all unique analysis settings IDs from runs.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique analysis settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                # Get all unique analysis settings IDs
+                results = session.exec(select(CaliResult)).all()
+                ids = {r.analysis_settings for r in results if r.analysis_settings}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get analysis settings IDs: {e}")
+            return []
+
+    def highlight_run_by_settings(
+        self, detection_id: int | None, analysis_id: int | None
+    ) -> None:
+        """Highlight the run that matches both detection and analysis settings.
+
+        If no exact match is found, deselect all runs.
+
+        Parameters
+        ----------
+        detection_id : int | None
+            Detection settings ID to match
+        analysis_id : int | None
+            Analysis settings ID to match (None for detection-only runs)
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                # Find run with matching settings
+                query = select(CaliResult)
+                if detection_id is not None:
+                    query = query.where(CaliResult.detection_settings == detection_id)
+                if analysis_id is not None:
+                    query = query.where(CaliResult.analysis_settings == analysis_id)
+
+                results = session.exec(query).all()
+                # If we have multiple matches, take the most recent
+                matching_run = (
+                    max(results, key=lambda r: r.created_at) if results else None
+                )
+            engine.dispose(close=True)
+
+            # Find and select the matching item in the list
+            if matching_run:
+                for i in range(self._runs_list.count()):
+                    item = self._runs_list.item(i)
+                    if item and item.data(Qt.ItemDataRole.UserRole) == matching_run.id:
+                        with signals_blocked(self._runs_list):
+                            self._runs_list.setCurrentItem(item)
+                        return
+
+            # No match found - deselect all
+            self._runs_list.clearSelection()
+
+        except Exception as e:
+            cali_logger.error(f"Failed to highlight run by settings: {e}")
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        """Filter events to allow deselecting by clicking empty area in list.
+
+        Parameters
+        ----------
+        a0 : QObject | None
+            The object that received the event
+        a1 : QEvent | None
+            The event to filter
+
+        Returns
+        -------
+        bool
+            True if event was handled, False otherwise
+        """
+        if (
+            a0 == self._runs_list.viewport()
+            and a1
+            and a1.type() == QEvent.Type.MouseButtonPress
+        ):
+            # Check if click is on empty area
+            item = self._runs_list.itemAt(a1.pos())  # type: ignore
+            if item is None:
+                # Clicked on white area - deselect all
+                self._runs_list.clearSelection()
+        return super().eventFilter(a0, a1)
+
+

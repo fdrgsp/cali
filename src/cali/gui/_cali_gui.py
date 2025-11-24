@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import tifffile
@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QMainWindow,
     QMenuBar,
+    QMessageBox,
     QSizePolicy,
     QSplitter,
     QTabWidget,
@@ -31,11 +32,10 @@ from superqt.utils import create_worker
 from tqdm import tqdm
 
 from cali._constants import (
+    DEFAULT_CALI_DB_NAME,
     EVENT_KEY,
-    EVOKED,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
-    SPONTANEOUS,
     UNSELECTABLE_COLOR,
     WRITERS,
     ZARR_TESNSORSTORE,
@@ -72,6 +72,7 @@ from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._util import (
     _ElapsedTimer,
     _ProgressBarWidget,
+    _RunCaliWidget,
     show_error_dialog,
 )
 
@@ -103,11 +104,9 @@ class CaliGui(QMainWindow):
 
         # ELAPSED TIMER ---------------------------------------------------------------
         self._elapsed_timer = _ElapsedTimer()
-        # TODO: FIX ME...should update detection or analysis based on context
-        # self._elapsed_timer.elapsed_time_updated.connect(self._update_progress_label)
 
         # INTERNAL VARIABLES ---------------------------------------------------------
-        self._database_path: Path | None = None
+        self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
@@ -121,9 +120,9 @@ class CaliGui(QMainWindow):
         # MENU BAR -------------------------------------------------------------------
         self.menu_bar = QMenuBar(self)
         self.file_menu = self.menu_bar.addMenu("File")
-        open_action = QAction("Load Data and Set Directories...", self)
+        open_action = QAction("Select Data Source...", self)
         open_action.setToolTip(
-            "Load a zarr datastore and directories for labels and analysis data."
+            "Open a dialog to select zarr datastore and analysis database location."
         )
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
@@ -182,33 +181,62 @@ class CaliGui(QMainWindow):
 
         # RIGHT WIDGETS ---------------------------------------------------------------
 
-        # TABS FOR ANALYSIS AND VISUALIZATION -----------------------------------------
-        self._tab = QTabWidget(self)
-        self._tab.currentChanged.connect(self._on_tab_changed)
+        # MAIN TABS: Detection & Analysis | Visualization ----------------------------
+        self._main_tab = QTabWidget(self)
+        self._main_tab.currentChanged.connect(self._on_tab_changed)
 
-        # DETECTION TAB ---------------------------------------------------------------
+        # DETECTION & ANALYSIS TAB ----------------------------------------------------
+        self._detection_analysis_tab = QWidget()
+        self._main_tab.addTab(self._detection_analysis_tab, "Detection ＆ Analysis")
+        detection_analysis_layout = QVBoxLayout(self._detection_analysis_tab)
+        detection_analysis_layout.setContentsMargins(0, 0, 0, 0)
+        detection_analysis_layout.setSpacing(5)
+
+        # SUB-TABS FOR DETECTION AND ANALYSIS ----------------------------------------
+        self._sub_tab = QTabWidget(self)
+        self._sub_tab.setTabPosition(QTabWidget.TabPosition.North)
+
+        # DETECTION SUB-TAB -----------------------------------------------------------
         self._detection_tab = QWidget()
-        self._tab.addTab(self._detection_tab, "Detection Tab")
+        self._sub_tab.addTab(self._detection_tab, "Detection")
         detection_tab_layout = QVBoxLayout(self._detection_tab)
-        detection_tab_layout.setContentsMargins(0, 0, 0, 0)
+        detection_tab_layout.setContentsMargins(5, 5, 5, 5)
 
-        # DETECTION WIDGET ------------------------------------------------------------
         self._detection_wdg = _DetectionGUI(self)
         detection_tab_layout.addWidget(self._detection_wdg)
 
-        # ANALYSIS TAB ----------------------------------------------------------------
+        # ANALYSIS SUB-TAB ------------------------------------------------------------
         self._analysis_tab = QWidget()
-        self._tab.addTab(self._analysis_tab, "Analysis Tab")
+        self._sub_tab.addTab(self._analysis_tab, "Analysis")
         analysis_tab_layout = QVBoxLayout(self._analysis_tab)
-        analysis_tab_layout.setContentsMargins(0, 0, 0, 0)
+        analysis_tab_layout.setContentsMargins(5, 5, 5, 5)
 
-        # ANALYSIS WIDGET -------------------------------------------------------------
         self._analysis_wdg = _AnalysisGUI(self)
         analysis_tab_layout.addWidget(self._analysis_wdg)
 
+        # Add sub-tabs to the Detection & Analysis tab
+        detection_analysis_layout.addWidget(self._sub_tab)
+
+        # SHARED RUN WIDGET -----------------------------------------------------------
+        # This widget is shared between Detection and Analysis tabs
+        self._run_cali_wdg = _RunCaliWidget(self)
+        detection_analysis_layout.addWidget(self._run_cali_wdg)
+
+        # VISUALIZATION TAB -----------------------------------------------------------
+        self._visualization_tab = QWidget()
+        self._main_tab.addTab(self._visualization_tab, "Visualization")
+        visualization_layout = QVBoxLayout(self._visualization_tab)
+        visualization_layout.setContentsMargins(5, 5, 5, 5)
+        visualization_layout.setSpacing(5)
+
+        # Create sub-tabs for single and multi well visualizations
+        self._vis_sub_tab = QTabWidget()
+        self._vis_sub_tab.setTabPosition(QTabWidget.TabPosition.North)
+        visualization_layout.addWidget(self._vis_sub_tab)
+
         # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
-        self._tab.addTab(self._single_well_vis_tab, "Single Wells Visualization Tab")
+        self._vis_sub_tab.addTab(self._single_well_vis_tab, "Single Wells")
         single_well_vis_layout = QGridLayout(self._single_well_vis_tab)
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
@@ -216,22 +244,19 @@ class CaliGui(QMainWindow):
         self._single_well_graph_1 = _SingleWellGraphWidget(self)
         self._single_well_graph_2 = _SingleWellGraphWidget(self)
         self._single_well_graph_3 = _SingleWellGraphWidget(self)
-        # self._single_well_graph_4 = _SingleWellGraphWidget(self)
 
         single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
         single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
         single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
-        # single_well_vis_layout.addWidget(self._single_well_graph_4, 1, 1)
         self.SW_GRAPHS = [
             self._single_well_graph_1,
             self._single_well_graph_2,
             self._single_well_graph_3,
-            # self._single_well_graph_4,
         ]
 
         # MULTI WELL VISUALIZATION TAB ------------------------------------------------
         self._multi_well_vis_tab = QWidget()
-        self._tab.addTab(self._multi_well_vis_tab, "Multi Wells Visualization Tab")
+        self._vis_sub_tab.addTab(self._multi_well_vis_tab, "Multi Wells")
         multi_well_layout = QGridLayout(self._multi_well_vis_tab)
         multi_well_layout.setContentsMargins(5, 5, 5, 5)
         multi_well_layout.setSpacing(5)
@@ -249,8 +274,8 @@ class CaliGui(QMainWindow):
         # splitter between the tabs and the runs panel
         self.right_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.right_splitter.setContentsMargins(0, 0, 0, 0)
-        self.right_splitter.setChildrenCollapsible(False)
-        self.right_splitter.addWidget(self._tab)
+        self.right_splitter.setChildrenCollapsible(True)
+        self.right_splitter.addWidget(self._main_tab)
 
         # RUNS PANEL -------------------------------------------------------------------
         self._runs_panel = _RunsPanel()
@@ -275,7 +300,8 @@ class CaliGui(QMainWindow):
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
 
-        self._runs_panel.runSelected.connect(self._on_run_selected)
+        self._runs_panel.runSelected.connect(self._on_run_item_selected)
+        self._runs_panel.settingsDeleted.connect(self._on_settings_changed)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
@@ -284,15 +310,14 @@ class CaliGui(QMainWindow):
 
         # connect analysis from metadata button
         self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
-        # connect the run analysis button
-        self._analysis_wdg.run.connect(self._on_run_analysis_clicked)
-        self._analysis_wdg.cancel.connect(self._runner.cancel)
-        # connect analysis runner signal
-        # self._runner.analysisInfo.connect(self._on_analysis_info)
 
-        # connect the run detection button
-        self._detection_wdg.run.connect(self._on_run_detection_clicked)
-        self._detection_wdg.cancel.connect(self._runner.cancel)
+        # connect the shared run/cancel buttons to appropriate handlers
+        self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
+        self._run_cali_wdg._cancel_btn.clicked.connect(self._runner.cancel)
+
+        self._elapsed_timer.elapsed_time_updated.connect(
+            self._run_cali_wdg.set_time_label
+        )
 
         # TODO: FIX ME FOR NEW GUI
         # self._segmentation_wdg.segmentationFinished.connect(
@@ -322,18 +347,23 @@ class CaliGui(QMainWindow):
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
         # self.initialize_widget_from_directories(data, self._output_path)
 
-        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        db_path = "tests/test_data/evoked/results.cali"
-        self.initialize_from_database(db_path, data_path)
-
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        # fmt: on
-        # ____________________________________________________________________________
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
-    # PUBLIC METHODS-------------------------------------------------------------------
-    def initialize_from_database(
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
+
+        # fmt: on
+        # _____________________________________________________________________________
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _initialize_from_database(
         self, database_path: str | Path, data_path: str | Path
     ) -> None:
         """Initialize the widget with the given database path."""
@@ -343,10 +373,13 @@ class CaliGui(QMainWindow):
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
 
-        # OPEN THE DATABASE -----------------------------------------------------------
-        cali_logger.info(f"💿 Loading experiment from database at {database_path}")
-        # load the first experiment from the database (there should be only one)
-        exp = Experiment.load_from_db(database_path)
+        # CHECK IF DATABASE ACTUALLY EXISTS --------------------------------------------
+        if not Path(database_path).exists():
+            msg = f"Database file not found at:\n{database_path}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return
 
         # DATA-------------------------------------------------------------------------
         self._data = load_data(data_path)
@@ -370,8 +403,14 @@ class CaliGui(QMainWindow):
             self._loading_bar.hide()
             return
 
+        # OPEN THE DATABASE -----------------------------------------------------------
+        cali_logger.info(f"💿 Loading experiment from database at {database_path}")
+        # load the first experiment from the database (there should be only one)
+        exp = Experiment.load_from_db(database_path)
+
         # ASSIGN VARIABLES ------------------------------------------------------------
-        self._database_path = Path(database_path)
+        self._database_path = str(database_path)
+        self._output_path = str(Path(database_path).parent)
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_with_database_path(self._database_path)
@@ -389,25 +428,12 @@ class CaliGui(QMainWindow):
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
 
-    def _update_gui_settings(self, database_path: Path) -> None:
-        """Update the GUI settings based on the latest analysis result."""
-        # set the database path in the runs panel
-        self._runs_panel.set_database_path(database_path)
-        # select first run if available
-        if self._runs_panel._runs_list.count() > 0:
-            # select first run
-            self._runs_panel._runs_list.setCurrentRow(0)
-            # emit runSelected signal for the first run
-            if (first_item := self._runs_panel._runs_list.item(0)) is not None:
-                self._runs_panel._on_run_clicked(first_item)
-        # load plate plan data
-        exp = Experiment.load_from_db(database_path)
-        plate = experiment_to_useq_plate(exp)
-        plate_map_data = experiment_to_plate_map_data(exp)
-        if plate_map_data is not None and plate is not None:
-            self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
-
-    def initialize_from_directories(self, data_path: str, output_path: str) -> None:
+    def _initialize_from_directories(
+        self,
+        data_path: str,
+        output_path: str,
+        database_name: str = DEFAULT_CALI_DB_NAME,
+    ) -> None:
         """Initialize the widget with given datastore and analysis path."""
         # SHOW LOADING BAR ------------------------------------------------------------
         self._init_loading_bar("Initializing cali from directories...", False)
@@ -438,131 +464,294 @@ class CaliGui(QMainWindow):
 
         # ASSIGN VARIABLES ------------------------------------------------------------
         self._data_path = data_path
-        database_name = f"{Path(data_path).name}.db"
-        self._database_path = Path(output_path) / database_name
+        if not database_name.endswith(".cali"):
+            database_name += ".cali"
+        self._database_path = str(Path(output_path) / database_name)
+        self._output_path = output_path
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_with_database_path(self._database_path)
 
-        # CREATE THE EXPERIMENT BASED ON DATA -----------------------------------------
-        experiment = Experiment.create_from_data(
-            name="Cali Experiment",
-            data_path=data_path,
-            description=f"Experiment from data at {data_path}.",
-        )
+        # CHECK IF DATABASE EXISTS ----------------------------------------------------
+        if Path(self._database_path).exists():
+            # Database exists - ask user if they want to overwrite
+            reply = QMessageBox.question(
+                self,
+                "Database Exists",
+                f"Database already exists at:\n{self._database_path}\n\n"
+                "Do you want to overwrite it? All existing runs will be deleted.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
 
-        # SAVE THE EXPERIMENT TO A NEW DATABASE----------------------------------------
-        # TODO: ask the user to overwrite if the database already exists
-        cali_logger.info(f"💾 Creating new database at {self._database_path}")
-        save_experiment_to_database(experiment, output_path, overwrite=True)
+            if reply == QMessageBox.StandardButton.Yes:
+                # User chose to overwrite - create new database
+                cali_logger.info(f"💾 Overwriting database at {self._database_path}")
+                experiment = Experiment.create_from_data(
+                    name="Cali Experiment",
+                    data_path=data_path,
+                    description=f"Experiment from data at {data_path}.",
+                )
+                save_experiment_to_database(
+                    experiment, output_path, database_name=database_name, overwrite=True
+                )
+            else:
+                # User chose not to overwrite - load existing database
+                cali_logger.info(
+                    f"💿 Loading existing database at {self._database_path}"
+                )
+
+            # OPEN THE DATABASE -------------------------------------------------------
+            exp = Experiment.load_from_db(self._database_path)
+
+            # PLATE--------------------------------------------------------------------
+            # draw plate
+            plate_plan = experiment_to_useq_plate_plan(exp)
+            if plate_plan is not None:
+                self._draw_plate_with_selection(plate_plan)
+            else:
+                cali_logger.warning("❌ Plate plan not found in experiment.")
+        else:
+            # CREATE THE EXPERIMENT BASED ON DATA -------------------------------------
+            experiment = Experiment.create_from_data(
+                name="Cali Experiment",
+                data_path=data_path,
+                description=f"Experiment from data at {data_path}.",
+            )
+
+            # SAVE THE EXPERIMENT TO A NEW DATABASE------------------------------------
+            cali_logger.info(f"💾 Creating new database at {self._database_path}")
+            save_experiment_to_database(
+                experiment, output_path, database_name=database_name, overwrite=True
+            )
 
         # UPDATE GUI-------------------------------------------------------------------
         self._update_gui_plate_plan(self._data.sequence.stage_positions)
 
+        # UPDATE GUI SETTINGS ---------------------------------------------------------
+        self._update_gui_settings(self._database_path)
+
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
 
-    # RUNNING THE DETECTION------------------------------------------------------------
-    def _on_run_detection_clicked(self) -> None:
+    def _update_gui_settings(self, database_path: Path | str) -> None:
+        """Update the GUI settings based on the latest analysis result."""
+        self._
+        # set the database path in the runs panel
+        self._runs_panel.set_database_path(database_path)
+        # populate detection settings combobox in run widget
+        self._populate_detection_settings(database_path)
+        # select first run if available
+        if self._runs_panel._runs_list.count() > 0:
+            # select first run
+            self._runs_panel._runs_list.setCurrentRow(0)
+            # emit runSelected signal for the first run
+            if (first_item := self._runs_panel._runs_list.item(0)) is not None:
+                self._runs_panel._on_item_clicked(first_item)
+        # load plate plan data
+        exp = Experiment.load_from_db(database_path)
+        plate = experiment_to_useq_plate(exp)
+        plate_map_data = experiment_to_plate_map_data(exp)
+        if plate_map_data is not None and plate is not None:
+            self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
+
+    def _populate_detection_settings(self, database_path: Path | str) -> None:
+        """Populate the detection settings combobox in RunCaliWidget.
+
+        Parameters
+        ----------
+        database_path : Path | str
+            Path to the database
+        """
+        try:
+            # Get current selection if not specified
+            preserve_selection = self._run_cali_wdg.value().detection_settings_id
+
+            # Get all unique detection settings IDs
+            detection_ids = self._runs_panel.get_detection_settings_ids()
+            settings_list = []
+
+            for d_id in detection_ids:
+                d_settings = DetectionSettings.load_from_database(
+                    database_path, id=d_id
+                )
+                if isinstance(d_settings, DetectionSettings):
+                    settings_list.append((d_id, d_settings.method))
+
+            self._run_cali_wdg.populate_detection_settings(settings_list)
+
+            # Restore previous selection if it still exists
+            if preserve_selection is not None:
+                combo = self._run_cali_wdg._detection_settings_combo
+                for i in range(combo.count()):
+                    if combo.itemData(i) == preserve_selection:
+                        combo.setCurrentIndex(i)
+                        break
+
+        except Exception as e:
+            cali_logger.error(f"Failed to populate detection settings: {e}")
+
+    # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
+    def _on_cali_run_clicked(self) -> None:
+        """Handle run button - routes to detection/analysis based on current tab."""
         if (
             self._data is None
             or self._database_path is None
             or self._data.sequence is None
+            or self._sub_tab.currentIndex() not in {0, 1}
         ):
             return
 
         experiment = Experiment.load_from_db(self._database_path)
-        d_settings = self._detection_wdg.to_model_settings()
-        pos = self._detection_wdg.positions() or list(
-            range(len(self._data.sequence.stage_positions))
+
+        value = self._run_cali_wdg.value()
+
+        # Get analysis settings if needed
+        analysis_settings = (
+            self._analysis_wdg.to_model_settings() if value.run_analysis else None
         )
+
+        # Validate evoked experiment settings
+        if analysis_settings is not None:
+            from cali._constants import EVOKED
+            if analysis_settings.experiment_type == EVOKED:
+                missing_fields = []
+                # Check for required evoked experiment fields
+                if not analysis_settings.stimulation_mask_path:
+                    missing_fields.append("Stimulation mask")
+                if not analysis_settings.led_pulse_duration:
+                    missing_fields.append("LED pulse duration")
+                if not analysis_settings.led_pulse_powers:
+                    missing_fields.append("LED pulse powers")
+                if not analysis_settings.led_pulse_on_frames:
+                    missing_fields.append("LED pulse on frames")
+                if missing_fields:
+                    msg = (
+                        "Evoked experiment type selected but required fields are missing:\n\n"
+                        + "\n".join(f"  • {field}" for field in missing_fields)
+                        + "\n\nPlease configure these settings in the Analysis tab."
+                    )
+                    show_error_dialog(self, msg)
+                    return
+
+        # Get detection settings - either from GUI or from selected ID (analysis-only)
+        if value.run_analysis and not value.run_detection:
+            # Analysis-only mode: use existing detection settings ID
+            detection_settings_id = value.detection_settings_id
+            if detection_settings_id is None:
+                show_error_dialog(
+                    self, "Please select a Detection ID to run analysis-only mode."
+                )
+                return
+            detection_settings = detection_settings_id
+        else:
+            # Detection or Detection+Analysis mode: get from GUI
+            detection_settings = self._detection_wdg.to_model_settings()
+
+        pos = value.positions or list(range(len(self._data.sequence.stage_positions)))
+
+        # Initialize progress bar and timer
+        self._run_cali_wdg.reset_progress_bar()
+        self._run_cali_wdg.set_progress_bar_text("Initializing...")
+        self._elapsed_timer.start()
+
         create_worker(
             self._runner.run,
             experiment,
-            d_settings,
-            pos,
+            self._data.path,
+            detection_settings,
+            analysis_settings=analysis_settings,
+            global_position_indices=pos,
+            database_name=Path(self._database_path).name,
+            output_path=Path(self._output_path) if self._output_path else None,
             _start_thread=True,
             _connect={
                 "errored": self._on_worker_errored,
+                "yielded": self._on_worker_yield,
                 "finished": self._on_worker_finished,
             },
         )
 
-    # RUNNING THE ANALYSIS-------------------------------------------------------------
-    def _on_run_analysis_clicked(self) -> None:
-        if (
-            self._data is None
-            or self._database_path is None
-            or self._data.sequence is None
-        ):
-            return
+    def _on_worker_yield(self, progress: str) -> None:
+        """Update progress bar with yielded progress information."""
+        self._run_cali_wdg.set_progress_bar_text(progress)
 
-        experiment = Experiment.load_from_db(self._database_path)
-        a_settings = self._analysis_wdg.to_model_settings()
-        d_settings = self._detection_wdg.to_model_settings()
-        pos = self._analysis_wdg.positions() or list(
-            range(len(self._data.sequence.stage_positions))
+    def _on_worker_errored(self, error: Any) -> None:
+        self._elapsed_timer.stop()
+        cali_logger.error(
+            f"Analysis runner encountered an error during execution:\n {error}"
         )
-        create_worker(
-            self._runner.run,
-            experiment,
-            d_settings,
-            pos,
-            a_settings,  # Pass analysis_settings to run both detection + analysis
-            _start_thread=True,
-            _connect={
-                "errored": self._on_worker_errored,
-                "finished": self._on_worker_finished,
-            },
-        )
-
-    def _on_worker_errored(self) -> None:
-        cali_logger.error("Analysis runner encountered an error during execution.")
 
     def _on_worker_finished(self) -> None:
         cali_logger.info("✅ Runner finished successfully.")
+        self._elapsed_timer.stop()
+        self._run_cali_wdg.reset_progress_bar()
+        self._run_cali_wdg.set_progress_bar_text("Run Finished")
         # refresh the runs panel
         self._runs_panel.refresh_runs()
-        # select the last run
-        last_index = self._runs_panel._runs_list.count() - 1
-        if last_index >= 0:
-            self._runs_panel._runs_list.setCurrentRow(last_index)
-            if (last_item := self._runs_panel._runs_list.item(last_index)) is not None:
-                self._runs_panel._on_run_clicked(last_item)
+        # repopulate detection settings combobox
+        if self._database_path:
+            self._populate_detection_settings(self._database_path)
 
-    def _on_analysis_info(self, msg: str, type: str) -> None:
-        """Handle analysis info messages from the analysis runner."""
-        print(f"ANALYSIS INFO: {msg}")
-        # cannot do that...I need to accumulate and show when the work is done!
-        # if type == "error":
-        #     show_error_dialog(self, msg)
+        # Highlight the run that matches the settings just used
+        value = self._run_cali_wdg.value()
+        detection_id = None
+        analysis_id = None
+
+        # Get detection ID - either from analysis-only mode or from last created
+        if value.detection_settings_id is not None:
+            detection_id = value.detection_settings_id
+        else:
+            # Find the most recent detection settings ID
+            detection_ids = self._runs_panel.get_detection_settings_ids()
+            if detection_ids:
+                detection_id = detection_ids[-1]  # Most recent
+
+        # Get analysis ID if analysis was run
+        if value.run_analysis:
+            analysis_ids = self._runs_panel.get_analysis_settings_ids()
+            if analysis_ids:
+                analysis_id = analysis_ids[-1]  # Most recent
+
+        # Highlight matching run
+        self._runs_panel.highlight_run_by_settings(detection_id, analysis_id)
+
+    def _on_settings_changed(self) -> None:
+        """Handle settings changed signal from runs panel (e.g., after deletion)."""
+        if self._database_path:
+            # Repopulate detection settings, preserving current selection if possible
+            self._populate_detection_settings(self._database_path)
 
     # DATA INITIALIZATION--------------------------------------------------------------
 
     def _show_data_input_dialog(self) -> None:
         """Show dialog to select zarr datastore, segmentation and analysis path."""
+        db_path = Path(self._database_path) if self._database_path else None
         init_dialog = _InputDialog(
             self,
-            data_path=(str(self._data.path) if self._data is not None else None),
+            data_path=self._data_path,
             output_path=self._output_path,
+            database_path=self._database_path,
+            database_name=(db_path.name if db_path is not None else None),
         )
         init_dialog.resize(700, init_dialog.sizeHint().height())
         if init_dialog.exec():
             value = init_dialog.value()
             # input from database
-            if value.database_path is not None:
-                self.initialize_from_database(value.database_path)
+            if value.database_path is not None and value.data_path is not None:
+                self._initialize_from_database(value.database_path, value.data_path)
             # input from directories
             elif (data_path := value.data_path) is not None:
                 if value.output_path is None:
-                    msg = (
-                        "Analysis path must be provided to create the analysis "
-                        "database!"
-                    )
+                    msg = "Output path must be provided to create the cali database!"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
-                self.initialize_from_directories(data_path, value.output_path)
+                self._initialize_from_directories(
+                    data_path,
+                    value.output_path,
+                    value.database_name or DEFAULT_CALI_DB_NAME,
+                )
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
@@ -584,8 +773,12 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.reset()
         # reset detection widget gui
         self._detection_wdg.reset()
+        # reset run cali widget
+        self._run_cali_wdg.reset()
+        # reset runs panel
+        self._runs_panel.clear()
 
-    def _update_graph_with_database_path(self, database_path: Path) -> None:
+    def _update_graph_with_database_path(self, database_path: Path | str) -> None:
         """Update all graph widgets with the current database path."""
         for sw_graph in self.SW_GRAPHS:
             sw_graph.database_path = database_path
@@ -652,7 +845,12 @@ class CaliGui(QMainWindow):
 
     # ---------------------WIDGETS------------------------------------
 
-    def _on_run_selected(self, run_id: int) -> None:
+    def _update_progress_label(self, time_str: str) -> None:
+        """Update the progress label with elapsed time."""
+        print(f"--------------Elapsed time: {time_str}")
+        self._run_cali_wdg.set_time_label(time_str)
+
+    def _on_run_item_selected(self, run_id: int) -> None:
         """Handle run selection from the runs panel.
 
         Load the detection and analysis settings for the selected run.
@@ -687,9 +885,12 @@ class CaliGui(QMainWindow):
                         if d_settings.model_type not in model_options
                         else None
                     )
+                    model_type = (
+                        "custom" if model_path is not None else d_settings.model_type
+                    )
                     self._detection_wdg.setValue(
                         CellposeSettings(
-                            model_type=d_settings.model_type,
+                            model_type=model_type,
                             model_path=model_path,
                             diameter=d_settings.diameter,
                             cellprob_threshold=d_settings.cellprob_threshold,
@@ -713,14 +914,11 @@ class CaliGui(QMainWindow):
                     self._database_path, id=result.analysis_settings
                 )
                 assert isinstance(a_settings, AnalysisSettings)
+
                 self._analysis_wdg.setValue(
                     AnalysisSettingsData(
                         experiment_type_data=ExperimentTypeData(
-                            experiment_type=(
-                                EVOKED
-                                if a_settings.stimulated_mask_area() is not None
-                                else SPONTANEOUS
-                            ),
+                            experiment_type=a_settings.experiment_type,
                             led_power_equation=a_settings.led_power_equation,
                             led_pulse_duration=a_settings.led_pulse_duration,
                             led_pulse_on_frames=a_settings.led_pulse_on_frames,
@@ -848,9 +1046,9 @@ class CaliGui(QMainWindow):
         This function is called when a roi is selected in the image viewer and will
         update the graphs with the traces of the selected roi.
         """
-        # get the current tab index
-        idx = self._tab.currentIndex()
-        if idx == 0 or idx == 1:
+        # get the current main tab index (0=Detection & Analysis, 1=Visualization)
+        idx = self._main_tab.currentIndex()
+        if idx == 0:  # Detection & Analysis tab
             return
         for graph in self.SW_GRAPHS:
             if graph._combo.currentText() == "None":
@@ -861,20 +1059,16 @@ class CaliGui(QMainWindow):
 
     def _on_tab_changed(self, idx: int) -> None:
         """Update the graph combo boxes when the tab is changed."""
-        # skip if the tab is the segmentation tab or analysis tab
-        if idx == 0 or idx == 1:
+        # skip if the tab is the Detection & Analysis tab
+        if idx == 0:
             return
 
-        # if single wells tab is selected
+        # if visualization tab is selected
         if idx == 2:
             # get the current fov
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
                 return
-
-            from rich import print
-
-            print(f"ON TAB CHANGED - Selected FOV value: {value}")
 
             # check if the FOV has been analyzed (has ROIs with data)
             has_analysis = self._has_fov_analysis(value)

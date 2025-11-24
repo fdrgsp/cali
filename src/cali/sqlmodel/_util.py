@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlmodel import Session, create_engine
 
+from cali._constants import DEFAULT_CALI_DB_NAME
+
 from ._model import Experiment
 
 if TYPE_CHECKING:
@@ -45,7 +47,8 @@ def create_database_and_tables(engine: Engine) -> None:
 def save_experiment_to_database(
     experiment: Experiment,
     output_path: Path | str,
-    database_name: str = "results.cali",
+    *,
+    database_name: str = DEFAULT_CALI_DB_NAME,
     overwrite: bool = False,
     echo: bool = False,
 ) -> None:
@@ -79,7 +82,7 @@ def save_experiment_to_database(
     >>> exp = load_experiment_from_database(db_path)
     """
     # Determine database path
-    db_name = database_name if database_name is not None else "results.cali"
+    db_name = database_name if database_name is not None else DEFAULT_CALI_DB_NAME
     assert db_name is not None  # Guaranteed by the check above
     db_path = Path(output_path) / db_name
 

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from fonticon_mdi6 import MDI6
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
+from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -18,6 +22,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from superqt.fonticon import icon
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -298,9 +303,9 @@ class _ChoosePositionsWidget(QWidget):
         super().__init__(parent)
 
         self.setToolTip(
-            "Select the Positions to analyze. Leave blank to analyze all Positions. "
+            "Select the Positions to analyze. Leave blank to analyze all Positions.\n\n"
             "You can input single Positions (e.g. 30, 33), a range (e.g. 1-10), or a "
-            "mix of single Positions and ranges (e.g. 1-10, 30, 50-65). Leave empty "
+            "mix of single Positions and ranges (e.g. 1-10, 30, 50-65).\nLeave empty "
             "to analyze all Positions.\n\n"
             "NOTE: The Positions are 0-indexed."
         )
@@ -329,3 +334,211 @@ class _ChoosePositionsWidget(QWidget):
     def setValue(self, value: str) -> None:
         """Set the value of the positions line edit."""
         self._pos_le.setText(value)
+
+
+@dataclass(frozen=True)
+class CaliRunSettings:
+    positions: list[int]
+    run_detection: bool
+    run_analysis: bool
+    detection_settings_id: int | None
+
+
+class _RunCaliWidget(QWidget):
+    """Widget to display progress and control the execution of detection/analysis."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # progress bar
+        self._progress_bar = QProgressBar(self)
+        self._progress_pos_label = QLabel()
+        self._elapsed_time_label = QLabel("00:00:00")
+
+        # buttons
+        from cali._constants import GREEN, RED
+
+        self._run_btn = QPushButton("Run")
+        self._run_btn.setSizePolicy(*FIXED)
+        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setSizePolicy(*FIXED)
+        self._cancel_btn.setIcon(QIcon(icon(MDI6.stop, color=RED)))
+
+        # positions selector
+        self._positions_wdg = _ChoosePositionsWidget(self)
+
+        # run options selector
+        run_options_wdg = QWidget()
+        self._run_options_lbl = QLabel("Run Options:")
+        self._run_options_lbl.setSizePolicy(*FIXED)
+        self._run_options_combo = QComboBox()
+        items = ["Detection and Analysis", "Detection", "Analysis"]
+        self._run_options_combo.addItems(items)
+        self._run_options_combo.setToolTip(
+            "Choose what to run:\n\n"
+            "• Detection: Run detection only to identify ROIs\n"
+            "• Detection and Analysis: Run both detection and analysis\n"
+            "• Analysis: Run analysis only using existing detection results\n"
+            "  (requires selecting a Detection ID)\n\n"
+            "Smart Detection Skipping:\n"
+            "The system automatically detects which positions have already been \n"
+            "processed with the exact same settings. If you request detection, \n"
+            "analysis, or both for positions that have already been completed with \n"
+            "identical settings, those positions will be automatically skipped to \n"
+            "avoid redundant processing."
+        )
+        self._run_options_combo.currentTextChanged.connect(self._on_run_option_changed)
+
+        # Detection settings selector (for Analysis-only mode)
+        self._detection_settings_lbl = QLabel("Detection ID:")
+        self._detection_settings_lbl.setSizePolicy(*FIXED)
+        self._detection_settings_combo = QComboBox()
+        self._detection_settings_combo.setToolTip(
+            "Select which detection results to use for analysis.\n\n"
+            "Detection ID corresponds to the specific detection settings \n"
+            "(method, parameters) used to identify ROIs. You must select \n"
+            "an existing detection to run analysis-only mode."
+        )
+        self._detection_settings_lbl.setVisible(False)
+        self._detection_settings_combo.setVisible(False)
+
+        run_options_layout = QHBoxLayout(run_options_wdg)
+        run_options_layout.setContentsMargins(0, 0, 0, 0)
+        run_options_layout.setSpacing(5)
+        run_options_layout.addWidget(self._run_options_lbl)
+        run_options_layout.addWidget(self._run_options_combo)
+        run_options_layout.addWidget(self._detection_settings_lbl)
+        run_options_layout.addWidget(self._detection_settings_combo)
+
+        # main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(5)
+        main_layout.addWidget(create_divider_line("Positions to Analyze"))
+        main_layout.addWidget(self._positions_wdg)
+        main_layout.addWidget(create_divider_line("Run Options"))
+        main_layout.addWidget(run_options_wdg)
+
+        # run control layout
+        run_control_layout = QHBoxLayout()
+        run_control_layout.setContentsMargins(0, 0, 0, 0)
+        run_control_layout.setSpacing(5)
+        run_control_layout.addWidget(self._run_btn)
+        run_control_layout.addWidget(self._cancel_btn)
+        run_control_layout.addWidget(self._progress_bar)
+        run_control_layout.addWidget(self._progress_pos_label)
+        run_control_layout.addWidget(self._elapsed_time_label)
+        main_layout.addLayout(run_control_layout)
+
+    # PUBLIC METHODS --------------------------------------------------------------
+
+    def progress_bar_maximum(self) -> int:
+        """Return the maximum value of the progress bar."""
+        return cast("int", self._progress_bar.maximum())
+
+    def set_progress_bar_range(self, minimum: int, maximum: int) -> None:
+        """Set the range of the progress bar."""
+        self._progress_bar.setRange(minimum, maximum)
+
+    def set_progress_bar_text(self, text: str) -> None:
+        """Update the progress bar label with custom text.
+
+        Parameters
+        ----------
+        text : str
+            Progress text to display
+        """
+        self._progress_pos_label.setText(text)
+
+    def reset_progress_bar(self) -> None:
+        """Reset the progress bar and elapsed time label."""
+        self._progress_bar.reset()
+        self._progress_bar.setValue(0)
+        self._progress_pos_label.setText("[0/0]")
+        self._elapsed_time_label.setText("00:00:00")
+
+    def set_time_label(self, elapsed_time: str) -> None:
+        """Update the elapsed time label."""
+        self._elapsed_time_label.setText(elapsed_time)
+
+    def update_progress_bar_plus_one(self) -> None:
+        """Automatically update the progress bar value and label.
+
+        The value is incremented by 1 each time this method is called.
+        """
+        value = self._progress_bar.value() + 1
+        self._progress_bar.setValue(value)
+        self._progress_pos_label.setText(f"[{value}/{self._progress_bar.maximum()}]")
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self.reset_progress_bar()
+        self._positions_wdg.setValue("")
+        self._run_options_combo.setCurrentIndex(0)
+        self._detection_settings_combo.clear()
+
+    def value(self) -> CaliRunSettings:
+        """Get the current run settings.
+
+        Returns
+        -------
+        CaliRunSettings
+            Dataclass containing positions, run_detection, run_analysis,
+            and detection_settings_id
+        """
+        option = self._run_options_combo.currentText()
+        detection_settings_id = (
+            self._detection_settings_combo.currentData()
+            if option == "Analysis"
+            else None
+        )
+        return CaliRunSettings(
+            positions=parse_lineedit_text(self._positions_wdg.value()),
+            run_detection=option in ("Detection", "Detection and Analysis"),
+            run_analysis=option in ("Detection and Analysis", "Analysis"),
+            detection_settings_id=detection_settings_id,
+        )
+
+    def get_detection_settings_id(self) -> int | None:
+        """Get the selected detection settings ID.
+
+        Returns
+        -------
+        int | None
+            Selected detection settings ID or None if not selected/visible
+        """
+        if self._detection_settings_combo.isVisible():
+            return self._detection_settings_combo.currentData()
+        return None
+
+    def populate_detection_settings(self, settings_list: list[tuple[int, str]]) -> None:
+        """Populate the detection settings combobox.
+
+        Parameters
+        ----------
+        settings_list : list[tuple[int, str]]
+            List of (id, method) tuples for available detection settings
+        """
+        self._detection_settings_combo.clear()
+        self._detection_settings_combo.addItem("Select Detection ID...", None)
+        for settings_id, method in settings_list:
+            self._detection_settings_combo.addItem(
+                f"Detection ID {settings_id} ({method})", settings_id
+            )
+
+    def _on_run_option_changed(self, text: str) -> None:
+        """Handle run option change to show/hide detection settings selector.
+
+        Parameters
+        ----------
+        text : str
+            The selected run option text
+        """
+        # Show detection settings combo only for "Analysis" option (index 2)
+        is_analysis_only = text == "Analysis"
+        self._detection_settings_lbl.setVisible(is_analysis_only)
+        self._detection_settings_combo.setVisible(is_analysis_only)
+        # if there is only one detection id, select it by default
+        if is_analysis_only and self._detection_settings_combo.count() == 2:
+            self._detection_settings_combo.setCurrentIndex(1)

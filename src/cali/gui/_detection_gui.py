@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,23 +13,17 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
 from superqt.utils import signals_blocked
 
-from cali._constants import GREEN, RED
 from cali.gui._util import (
     _BrowseWidget,
-    _ChoosePositionsWidget,
     create_divider_line,
-    parse_lineedit_text,
 )
 
 if TYPE_CHECKING:
@@ -263,6 +255,9 @@ class _CellposeDetectionWidget(QGroupBox):
         self._models_combo.setCurrentText(value.model_type)
         if value.model_type == "custom" and value.model_path is not None:
             self._browse_custom_model.setValue(value.model_path)
+            self._browse_custom_model.show()
+        else:
+            self._browse_custom_model.hide()
         self._diameter_spin.setValue(0 if value.diameter is None else value.diameter)
         self._cellprob_threshold_spin.setValue(value.cellprob_threshold)
         self._flow_threshold_spin.setValue(value.flow_threshold)
@@ -302,72 +297,6 @@ class _CaimanDetectionWidget(QGroupBox):
         ...
 
 
-class _RunDetectionWidget(QWidget):
-    """Widget to display the progress of the analysis."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # progress bar
-        self._progress_bar = QProgressBar(self)
-        self._progress_pos_label = QLabel()
-        self._elapsed_time_label = QLabel("00:00:00")
-
-        # buttons
-        self._run_btn = QPushButton("Run")
-        self._run_btn.setSizePolicy(*FIXED)
-        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setSizePolicy(*FIXED)
-        self._cancel_btn.setIcon(QIcon(icon(MDI6.stop, color=RED)))
-
-        # main layout
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(5)
-        main_layout.addWidget(self._run_btn)
-        main_layout.addWidget(self._cancel_btn)
-        main_layout.addWidget(self._progress_bar)
-        main_layout.addWidget(self._progress_pos_label)
-        main_layout.addWidget(self._elapsed_time_label)
-
-    def progress_bar_maximum(self) -> int:
-        """Return the maximum value of the progress bar."""
-        return cast("int", self._progress_bar.maximum())
-
-    def set_progress_bar_label(self, text: str) -> None:
-        """Update the progress label with elapsed time."""
-        self._progress_pos_label.setText(text)
-
-    def set_progress_bar_range(self, minimum: int, maximum: int) -> None:
-        """Set the range of the progress bar."""
-        self._progress_bar.setRange(minimum, maximum)
-
-    def reset_progress_bar(self) -> None:
-        """Reset the progress bar and elapsed time label."""
-        self._progress_bar.reset()
-        self._progress_bar.setValue(0)
-        self._progress_pos_label.setText("[0/0]")
-        self._elapsed_time_label.setText("00:00:00")
-
-    def set_time_label(self, elapsed_time: str) -> None:
-        """Update the elapsed time label."""
-        self._elapsed_time_label.setText(elapsed_time)
-
-    def update_progress_bar_plus_one(self) -> None:
-        """Automatically update the progress bar value and label.
-
-        The value is incremented by 1 each time this method is called.
-        """
-        value = self._progress_bar.value() + 1
-        self._progress_bar.setValue(value)
-        self._progress_pos_label.setText(f"[{value}/{self._progress_bar.maximum()}]")
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self.reset_progress_bar()
-
-
 class _DetectionGUI(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -401,17 +330,6 @@ class _DetectionGUI(QWidget):
         group_layout.addStretch(1)
         detection_scroll_area.setWidget(group_wdg)
 
-        # BOTTOM WIDGET ---------------------------------------------------------------
-        self._positions_wdg = _ChoosePositionsWidget(self)
-        self._run_detection_wdg = _RunDetectionWidget(self)
-        run_wdg = QGroupBox(self)
-        run_layout = QVBoxLayout(run_wdg)
-        run_layout.setContentsMargins(0, 0, 0, 0)
-        run_layout.setSpacing(5)
-        run_layout.addWidget(create_divider_line("Positions to Analyze"))
-        run_layout.addWidget(self._positions_wdg)
-        run_layout.addWidget(self._run_detection_wdg)
-
         # CONNECTIONS -----------------------------------------------------------------
         self._cellpose_wdg.toggled.connect(self._on_detection_method_toggled)
         self._caiman_wdg.toggled.connect(self._on_detection_method_toggled)
@@ -421,7 +339,6 @@ class _DetectionGUI(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(15)
         main_layout.addWidget(detection_scroll_area)
-        main_layout.addWidget(run_wdg)
 
         # STYLING ---------------------------------------------------------------------
         cp = self._cellpose_wdg
@@ -434,19 +351,6 @@ class _DetectionGUI(QWidget):
         cp._min_size_label.setMinimumWidth(fixed_lbl_width)
         cp._batch_label.setMinimumWidth(fixed_lbl_width)
         cp._normalize_label.setMinimumWidth(fixed_lbl_width)
-        self._positions_wdg._pos_lbl.setMinimumWidth(fixed_lbl_width)
-
-    # PROPERTIES ----------------------------------------------------------------------
-
-    @property
-    def run(self):  # noqa: ANN202
-        """Signal emitted when the run button is clicked."""
-        return self._run_detection_wdg._run_btn.clicked
-
-    @property
-    def cancel(self):  # noqa: ANN202
-        """Signal emitted when the cancel button is clicked."""
-        return self._run_detection_wdg._cancel_btn.clicked
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -476,19 +380,10 @@ class _DetectionGUI(QWidget):
                 "Value must be an instance of CellposeSettings orCaimanSettings."
             )
 
-    def positions(self) -> list[int]:
-        """Get the positions to analyze."""
-        return parse_lineedit_text(self._positions_wdg.value())
-
-    def set_positions(self, positions: list[int]) -> None:
-        """Set the positions to analyze."""
-        self._positions_wdg.setValue(",".join(map(str, positions)))
-
     def enable(self, enabled: bool) -> None:
         """Enable or disable the detection GUI."""
         self._cellpose_wdg.setEnabled(enabled)
         self._caiman_wdg.setEnabled(enabled)
-        self._positions_wdg.setEnabled(enabled)
 
     def reset(self) -> None:
         """Reset the detection GUI to default values."""
@@ -498,8 +393,6 @@ class _DetectionGUI(QWidget):
             self._cellpose_wdg.setChecked(True)
         with signals_blocked(self._caiman_wdg):
             self._caiman_wdg.setChecked(False)
-        self._positions_wdg.setValue("")
-        self._run_detection_wdg.reset()
 
     def to_model_settings(self) -> DetectionSettings:
         """Convert current GUI settings to AnalysisSettings model.
@@ -562,7 +455,3 @@ class _DetectionGUI(QWidget):
             with signals_blocked(self._cellpose_wdg):
                 self._cellpose_wdg.setChecked(False)
             self._cellpose_wdg.blockSignals(False)
-
-    def update_progress_label(self, elapsed_time: str) -> None:
-        """Update the progress label with elapsed time."""
-        self._run_detection_wdg.set_time_label(elapsed_time)

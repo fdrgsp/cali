@@ -96,3 +96,6 @@ DEFAULT_NEUROPIL_INNER_RADIUS = 0
 DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
 DEFAULT_FRAME_RATE = 10.0  # in frames per second (fps)
+
+# ==================== Database ====================
+DEFAULT_CALI_DB_NAME = "results.cali"
