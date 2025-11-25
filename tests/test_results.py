@@ -175,7 +175,9 @@ def test_cali_result_with_none_values() -> None:
     )
 
 
-def test_cali_result_database_storage(test_db: Path, test_experiment: Experiment) -> None:
+def test_cali_result_database_storage(
+    test_db: Path, test_experiment: Experiment
+) -> None:
     """Test storing CaliResult in database."""
     from cali.sqlmodel import save_experiment_to_database
 
@@ -235,13 +237,17 @@ def test_detection_settings_database_deduplication(test_db: Path) -> None:
     try:
         with Session(engine) as session:
             # Create first detection settings
-            ds1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30.0)
+            ds1 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=30.0
+            )
             session.add(ds1)
             session.commit()
 
         with Session(engine) as session:
             # Try to create identical settings
-            ds2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30.0)
+            ds2 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=30.0
+            )
 
             # Check if it already exists
             existing = session.exec(
@@ -335,7 +341,9 @@ def test_analysis_settings_evoked_fields() -> None:
     assert settings.led_pulse_on_frames == [100, 200, 300]
 
 
-def test_cali_result_links_to_settings(test_db: Path, test_experiment: Experiment) -> None:
+def test_cali_result_links_to_settings(
+    test_db: Path, test_experiment: Experiment
+) -> None:
     """Test that CaliResult properly links to DetectionSettings and AnalysisSettings."""
     from cali.sqlmodel import save_experiment_to_database
 
@@ -374,7 +382,9 @@ def test_cali_result_links_to_settings(test_db: Path, test_experiment: Experimen
             assert result.analysis_settings == a_settings.id
 
             # Verify we can query back
-            loaded_d_settings = session.get(DetectionSettings, result.detection_settings)
+            loaded_d_settings = session.get(
+                DetectionSettings, result.detection_settings
+            )
             loaded_a_settings = session.get(AnalysisSettings, result.analysis_settings)
 
             assert loaded_d_settings is not None
@@ -479,8 +489,12 @@ def test_multiple_cali_results_same_experiment(
     try:
         with Session(engine) as session:
             # Create different detection settings
-            d_settings_1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
-            d_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=50)
+            d_settings_1 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=30
+            )
+            d_settings_2 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=50
+            )
             session.add_all([d_settings_1, d_settings_2])
             session.commit()
             session.refresh(d_settings_1)
@@ -543,7 +557,9 @@ def test_query_cali_results_by_settings(
     try:
         with Session(engine) as session:
             # Create settings
-            d_settings = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
+            d_settings = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=40
+            )
             a_settings = AnalysisSettings(dff_window=150)
             session.add_all([d_settings, a_settings])
             session.commit()
