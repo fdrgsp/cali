@@ -347,7 +347,7 @@ def load_analysis_from_json(
                         ]
 
                 # Use roi_from_roi_data helper
-                roi, trace, data_analysis, roi_mask, neuropil_mask = roi_from_roi_data(
+                roi, trace, data_analysis, roi_mask, _neuropil_mask = roi_from_roi_data(
                     roi_data,
                     fov_id=fov.id or 0,  # Placeholder, will be set via relationship
                     label_value=int(roi_label),
@@ -357,7 +357,6 @@ def load_analysis_from_json(
                 # Since we're not in DB session, manually set relationships
                 roi.fov = fov  # This automatically adds roi to fov.rois
                 roi.roi_mask = roi_mask
-                roi.neuropil_mask = neuropil_mask
                 roi.traces_history.append(trace)
                 roi.data_analysis_history.append(data_analysis)
 

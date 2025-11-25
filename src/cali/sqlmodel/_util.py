@@ -224,7 +224,6 @@ def _force_load_experiment_relationships(experiment: Experiment) -> None:
                     _ = len(roi.traces_history)
                     _ = len(roi.data_analysis_history)
                     _ = roi.roi_mask
-                    _ = roi.neuropil_mask
 
 
 def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:

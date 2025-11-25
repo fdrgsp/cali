@@ -162,7 +162,6 @@ def commit_fov_result(
                     fov_id=existing_fov.id,
                     detection_settings_id=detection_settings_id,
                     roi_mask=old_roi.roi_mask,
-                    neuropil_mask=old_roi.neuropil_mask,
                 )
                 session.add(new_roi)
 

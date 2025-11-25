@@ -1330,7 +1330,10 @@ def test_fov_metadata(temp_db: TempDB) -> None:
 
 
 def test_roi_with_masks(temp_db: TempDB) -> None:
-    """Test ROI with both ROI and neuropil masks."""
+    """Test ROI with both ROI and neuropil masks.
+
+    Neuropil masks are stored on Traces, not ROI.
+    """
     engine, _ = temp_db
 
     exp = Experiment(
@@ -1343,8 +1346,8 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
     roi_mask = Mask(
         coords_y=[0, 1], coords_x=[0, 1], height=10, width=10, mask_type="roi"
     )
-    neuropil_mask = Mask(
-        coords_y=[2, 3], coords_x=[2, 3], height=10, width=10, mask_type="neuropil"
+    trace_neuropil_mask = Mask(
+        coords_y=[4, 5], coords_x=[4, 5], height=10, width=10, mask_type="neuropil"
     )
 
     roi = ROI(fov=fov, label_value=1)
@@ -1352,28 +1355,39 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
     with Session(engine) as session:
         # Add masks first
         session.add(roi_mask)
-        session.add(neuropil_mask)
+        session.add(trace_neuropil_mask)
         session.flush()
 
         # Set mask IDs on ROI
         roi.roi_mask_id = roi_mask.id
-        roi.neuropil_mask_id = neuropil_mask.id
         roi.roi_mask = roi_mask
-        roi.neuropil_mask = neuropil_mask
+
+        # Create Traces with neuropil mask
+        traces = Traces(
+            roi=roi,
+            raw_trace=[1.0, 2.0, 3.0],
+            neuropil_mask_id=trace_neuropil_mask.id,
+            neuropil_mask=trace_neuropil_mask,
+        )
+        session.add(traces)
 
         session.add(exp)
         session.commit()
 
-        # Retrieve and verify
-        result = session.exec(select(ROI)).first()
-        assert result.roi_mask is not None
-        assert result.neuropil_mask is not None
-        assert result.roi_mask.mask_type == "roi"
-        assert result.neuropil_mask.mask_type == "neuropil"
+        # Verify ROI mask
+        result_roi = session.exec(select(ROI)).first()
+        assert result_roi.roi_mask is not None
+        assert result_roi.roi_mask.mask_type == "roi"
+
+        # Verify Traces neuropil mask
+        result_trace = session.exec(select(Traces)).first()
+        assert result_trace.neuropil_mask is not None
+        assert result_trace.neuropil_mask.mask_type == "neuropil"
+        assert result_trace.neuropil_mask.coords_y == [4, 5]
 
         # Force load mask relationships before expunging
-        _ = result.roi_mask
-        _ = result.neuropil_mask
+        _ = result_roi.roi_mask
+        _ = result_trace.neuropil_mask
 
         # Expunge to avoid lazy loading after session closes (Python 3.13)
         session.expunge_all()
