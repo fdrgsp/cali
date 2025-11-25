@@ -522,6 +522,8 @@ class AnalysisRunner:
         )
         peaks_dec_dff = cast("np.ndarray", peaks_dec_dff)
 
+        # TODO: find peaks also in spikes traces
+
         # Check for cancellation after peak finding
         if self._check_for_abort_requested():
             return None
