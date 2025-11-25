@@ -763,14 +763,18 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
             # Verify both use same settings IDs
             all_results = session.exec(select(CaliResult)).all()
             assert len(all_results) == 2
-            assert all_results[0].detection_settings == all_results[1].detection_settings
+            assert (
+                all_results[0].detection_settings == all_results[1].detection_settings
+            )
             assert all_results[0].analysis_settings == all_results[1].analysis_settings
 
     finally:
         engine.dispose(close=True)
 
 
-def test_cali_result_query_by_experiment(test_db: Path, test_experiment: Experiment) -> None:
+def test_cali_result_query_by_experiment(
+    test_db: Path, test_experiment: Experiment
+) -> None:
     """Test querying all CaliResults for a specific experiment."""
     from cali.sqlmodel import save_experiment_to_database
 
@@ -785,8 +789,12 @@ def test_cali_result_query_by_experiment(test_db: Path, test_experiment: Experim
     try:
         with Session(engine) as session:
             # Create multiple results for the experiment
-            d_settings1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
-            d_settings2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
+            d_settings1 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=30
+            )
+            d_settings2 = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=40
+            )
             session.add_all([d_settings1, d_settings2])
             session.commit()
             session.refresh(d_settings1)
@@ -918,7 +926,9 @@ def test_cali_result_empty_positions() -> None:
     assert isinstance(result.positions_analyzed, list)
 
 
-def test_database_concurrent_sessions(test_db: Path, test_experiment: Experiment) -> None:
+def test_database_concurrent_sessions(
+    test_db: Path, test_experiment: Experiment
+) -> None:
     """Test multiple sessions can read from database concurrently."""
     from cali.sqlmodel import save_experiment_to_database
 
@@ -976,7 +986,9 @@ def test_detection_settings_update_timestamp(test_db: Path) -> None:
         engine.dispose(close=True)
 
 
-def test_cali_result_cascade_behavior(test_db: Path, test_experiment: Experiment) -> None:
+def test_cali_result_cascade_behavior(
+    test_db: Path, test_experiment: Experiment
+) -> None:
     """Test that deleting referenced settings doesn't cascade delete CaliResult."""
     from cali.sqlmodel import save_experiment_to_database
 
@@ -1058,7 +1070,7 @@ def test_cali_result_load_from_database_by_id(
 
         # Load using the class method
         loaded = CaliResult.load_from_database(test_db, id=result_id)
-        
+
         assert isinstance(loaded, CaliResult)
         assert loaded.id == result_id
         assert loaded.experiment == test_experiment.id
@@ -1129,7 +1141,7 @@ def test_cali_result_load_from_database_by_experiment(
         loaded = CaliResult.load_from_database(
             test_db, experiment_id=test_experiment.id
         )
-        
+
         assert isinstance(loaded, list)
         assert len(loaded) == 2
         # Should be ordered by created_at desc (most recent first)
@@ -1172,7 +1184,7 @@ def test_cali_result_load_all(test_db: Path, test_experiment: Experiment) -> Non
 
         # Load all results (no filter)
         loaded = CaliResult.load_from_database(test_db)
-        
+
         assert isinstance(loaded, list)
         assert len(loaded) >= 1  # At least our result
 
@@ -1209,7 +1221,7 @@ def test_experiment_hash_with_id() -> None:
     """Test Experiment hash when ID is set."""
     exp1 = Experiment(id=1, name="Exp1")
     exp2 = Experiment(id=1, name="Exp2")  # Same ID
-    
+
     # Same ID should have same hash
     assert hash(exp1) == hash(exp2)
 
@@ -1218,7 +1230,7 @@ def test_experiment_hash_without_id() -> None:
     """Test Experiment hash when ID is None."""
     exp1 = Experiment(id=None, name="Exp1")
     exp2 = Experiment(id=None, name="Exp1")
-    
+
     # Without ID, hash uses object identity
     assert hash(exp1) != hash(exp2)  # Different objects
 
@@ -1226,7 +1238,7 @@ def test_experiment_hash_without_id() -> None:
 def test_experiment_inequality_with_other_type() -> None:
     """Test Experiment equality with non-Experiment object."""
     exp = Experiment(id=1, name="Test")
-    
+
     assert exp != "not an experiment"
     assert exp != 123
     assert exp is not None
