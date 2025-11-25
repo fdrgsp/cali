@@ -974,7 +974,7 @@ def test_visualize_experiment_functions(
 ) -> None:
     """Test visualization functions."""
     from cali.sqlmodel._visualize_experiment import (
-        print_all_analysis_results,
+        print_cali_results,
         print_experiment_tree,
         print_experiment_tree_from_engine,
     )
@@ -996,13 +996,13 @@ def test_visualize_experiment_functions(
         print_experiment_tree(exp, show_settings=False, session=session)
 
     # Test print_all_analysis_results
-    print_all_analysis_results(
+    print_cali_results(
         engine,
         experiment_name=simple_experiment.name,
         show_settings=False,
     )
 
-    print_all_analysis_results(
+    print_cali_results(
         engine,
         experiment_name=None,  # All experiments
         show_settings=True,

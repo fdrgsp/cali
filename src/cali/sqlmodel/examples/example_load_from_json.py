@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 
 from cali.sqlmodel import load_analysis_from_json
 from cali.sqlmodel._visualize_experiment import (
-    print_all_analysis_results,
+    print_cali_results,
     print_experiment_tree,
 )
 
@@ -31,4 +31,4 @@ print_experiment_tree(experiment, max_experiment_level="roi")
 
 # engine = create_engine(f"sqlite:///{output_path}/evk.tensorstore.zarr.db")
 engine = create_engine(f"sqlite:///{output_path}/spont.tensorstore.zarr.db")
-print_all_analysis_results(engine)
+print_cali_results(engine)

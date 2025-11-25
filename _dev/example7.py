@@ -7,7 +7,7 @@ from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment, CaliResult
 from cali.sqlmodel._model import DetectionSettings
-from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 
 def table(db_path: str):
@@ -94,4 +94,4 @@ cali.run(
 table(cali.database_path)
 
 engine = create_engine(f"sqlite:///{cali.database_path}")
-print_all_analysis_results(engine, show_settings=False)
+print_cali_results(engine, show_settings=False)

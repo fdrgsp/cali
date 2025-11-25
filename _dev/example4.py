@@ -8,7 +8,7 @@ from cali.detection import DetectionRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db
 from cali.sqlmodel._model import DetectionSettings
-from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 # ###########################################
 
@@ -75,7 +75,7 @@ analysis.run(exp1, settings, global_position_indices=list(range(len(plate_plan))
 
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")
-print_all_analysis_results(
+print_cali_results(
     engine,
     experiment_name=None,  # or experiment name string
     show_settings=False,  # show detailed settings

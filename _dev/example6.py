@@ -9,7 +9,7 @@ from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment, CaliResult
 from cali.sqlmodel._model import DetectionSettings
-from cali.sqlmodel._visualize_experiment import print_all_analysis_results
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 from cellpose import io
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import QEvent, QObject, Qt, Signal
@@ -24,6 +25,9 @@ from superqt.utils import signals_blocked
 from cali._constants import RED
 from cali.logger import cali_logger
 from cali.sqlmodel._model import CaliResult, DetectionSettings
+
+if TYPE_CHECKING:
+    from sqlmodel import Session
 
 
 class _RunsPanel(QGroupBox):
@@ -228,7 +232,11 @@ class _RunsPanel(QGroupBox):
             cali_logger.info("🚮 Deleted ALL runs from database.")
 
     def _delete_run_from_database(self, run_id: int) -> None:
-        """Delete a specific run from the database.
+        """Delete a specific run from the database with smart cascading.
+
+        Deletes the run and cleans up orphaned settings and ROIs:
+        - Deletes DetectionSettings if no other run uses them (and their ROIs)
+        - Deletes AnalysisSettings if no other run uses them
 
         Parameters
         ----------
@@ -243,18 +251,31 @@ class _RunsPanel(QGroupBox):
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
-                # Delete the analysis result (this should cascade to related data)
+                # Get the result before deleting to capture its settings IDs
                 result = session.get(CaliResult, run_id)
-                if result:
-                    session.delete(result)
-                    session.commit()
+                if not result:
+                    return
+
+                detection_id = result.detection_settings
+                analysis_id = result.analysis_settings
+
+                # Delete the analysis result (cascades to Traces via relationship)
+                session.delete(result)
+                session.commit()
+
+                # Clean up orphaned settings and ROIs
+                self._cleanup_orphaned_data(session, detection_id, analysis_id)
+
             engine.dispose(close=True)
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to delete run: {e}")
 
     def _clear_all_from_database(self) -> None:
-        """Delete all runs from the database."""
+        """Delete all runs from the database with smart cascading.
+
+        Deletes all runs and cleans up all orphaned settings and ROIs.
+        """
         if self._database_path is None:
             return
 
@@ -263,15 +284,118 @@ class _RunsPanel(QGroupBox):
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
-                # Delete all analysis results (this should cascade to related data)
+                # Collect all detection and analysis settings before deleting
                 results = session.exec(select(CaliResult)).all()
+                detection_ids = {
+                    r.detection_settings for r in results if r.detection_settings
+                }
+                analysis_ids = {
+                    r.analysis_settings for r in results if r.analysis_settings
+                }
+
+                # Delete all analysis results (cascades to Traces)
                 for result in results:
                     session.delete(result)
                 session.commit()
+
+                # Clean up all orphaned settings and ROIs
+                for detection_id in detection_ids:
+                    for analysis_id in analysis_ids:
+                        self._cleanup_orphaned_data(session, detection_id, analysis_id)
+
             engine.dispose(close=True)
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to clear all runs: {e}")
+
+    def _cleanup_orphaned_data(
+        self,
+        session: Session,
+        detection_id: int | None,
+        analysis_id: int | None,
+    ) -> None:
+        """Clean up orphaned settings and ROIs after deleting a run.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        detection_id : int | None
+            Detection settings ID to check
+        analysis_id : int | None
+            Analysis settings ID to check
+        """
+        from cali.sqlmodel._model import (
+            FOV,
+            ROI,
+            AnalysisSettings,
+            DetectionSettings,
+        )
+
+        # Check if DetectionSettings are orphaned (not used by any other run)
+        if detection_id is not None:
+            other_runs_using_detection = session.exec(
+                select(CaliResult).where(CaliResult.detection_settings == detection_id)
+            ).first()
+
+            if not other_runs_using_detection:
+                # No other runs use this detection - delete the settings and ROIs
+                cali_logger.info(
+                    f"🧹 Cleaning up orphaned DetectionSettings #{detection_id}"
+                )
+
+                # Delete all ROIs with this detection_settings_id
+                # These ROIs are deleted even if their FOV contains ROIs from other detections
+                # (This will cascade to delete Traces, DataAnalysis, and Masks)
+                rois_to_delete = session.exec(
+                    select(ROI).where(ROI.detection_settings_id == detection_id)
+                ).all()
+
+                roi_count = len(rois_to_delete)
+                fov_ids = {roi.fov_id for roi in rois_to_delete}
+
+                for roi in rois_to_delete:
+                    session.delete(roi)
+
+                # Delete the detection settings
+                detection_settings = session.get(DetectionSettings, detection_id)
+                if detection_settings:
+                    session.delete(detection_settings)
+
+                session.commit()
+
+                cali_logger.info(
+                    f"  Deleted {roi_count} ROIs from {len(fov_ids)} FOV(s)"
+                )
+
+                # Clean up empty FOVs
+                # (only delete FOVs that have NO ROIs left from any detection)
+                for fov_id in fov_ids:
+                    fov = session.get(FOV, fov_id)
+                    if fov:
+                        # Refresh to get updated relationships
+                        session.refresh(fov)
+                        if not fov.rois:
+                            cali_logger.info(f"  Deleting empty FOV {fov.name}")
+                            session.delete(fov)
+
+                session.commit()
+
+        # Check if AnalysisSettings are orphaned (not used by any other run)
+        if analysis_id is not None:
+            other_runs_using_analysis = session.exec(
+                select(CaliResult).where(CaliResult.analysis_settings == analysis_id)
+            ).first()
+
+            if not other_runs_using_analysis:
+                # No other runs use this analysis - delete the settings
+                cali_logger.info(
+                    f"🧹 Cleaning up orphaned AnalysisSettings #{analysis_id}"
+                )
+                analysis_settings = session.get(AnalysisSettings, analysis_id)
+                if analysis_settings:
+                    session.delete(analysis_settings)
+                    session.commit()
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         """Handle run item click.

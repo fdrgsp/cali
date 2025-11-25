@@ -8,6 +8,7 @@ from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel._model import (
     FOV,
+    ROI,
     Experiment,
     Plate,
     Well,
@@ -150,18 +151,27 @@ def commit_fov_result(
             # DETECTION MODE: Add new ROIs with detection_settings_id
             # Multiple detections can coexist on same FOV
 
-            # Add new ROIs from detection
-            # IMPORTANT: Iterate over a copy of the list because SQLAlchemy modifies
-            # fov_result.rois when we set roi.fov = existing_fov
-            for roi in list(fov_result.rois):
-                roi.fov_id = existing_fov.id
-                roi.fov = existing_fov
-                roi.detection_settings_id = detection_settings_id
-                session.add(roi)
+            # Create new ROI instances to avoid cascade-adding fov_result
+            # (ROIs from detection have roi.fov = fov_result, which would
+            # cause fov_result to be added to session via relationship cascade)
+            for old_roi in fov_result.rois:
+                new_roi = ROI(
+                    label_value=old_roi.label_value,
+                    active=old_roi.active,
+                    stimulated=old_roi.stimulated,
+                    fov_id=existing_fov.id,
+                    detection_settings_id=detection_settings_id,
+                    roi_mask=old_roi.roi_mask,
+                    neuropil_mask=old_roi.neuropil_mask,
+                )
+                session.add(new_roi)
+
+            # Flush to assign IDs to new ROIs
+            session.flush()
         else:
             # ANALYSIS MODE: Don't create new ROIs, only attach traces/analysis
             # to existing ROIs
-            # Match ROIs by label_value and detection_settings_id (from the ROI's analysis)
+            # Match ROIs by label_value and detection_settings_id
             for new_roi in fov_result.rois:
                 # Find matching existing ROI by label_value and detection_settings_id
                 matching_roi = None

@@ -13,7 +13,7 @@ Main Components
 - Migration: load_analysis_from_json, save_experiment_to_database
 - Import: useq_plate_plan_to_db
 - Export: experiment_to_useq_plate, experiment_to_useq_plate_plan
-- Visualization: print_experiment_tree, print_experiment_tree_from_engine
+- Visualization: print_experiment_tree
 """
 
 from ._data_to_plate import data_to_plate
@@ -43,12 +43,7 @@ from ._util import (
     load_experiment_from_database,
     save_experiment_to_database,
 )
-from ._visualize_experiment import (
-    print_all_analysis_results,
-    print_database_tree,
-    print_experiment_tree,
-    print_experiment_tree_from_engine,
-)
+from ._visualize_experiment import print_cali_results
 
 __all__ = [
     "FOV",
@@ -73,10 +68,7 @@ __all__ = [
     "has_fov_analysis",
     "load_analysis_from_json",
     "load_experiment_from_database",
-    "print_all_analysis_results",
-    "print_database_tree",
-    "print_experiment_tree",
-    "print_experiment_tree_from_engine",
+    "print_cali_results",
     "save_experiment_to_database",
     "useq_plate_plan_to_db",
     "useq_plate_to_db",

@@ -8,7 +8,7 @@ from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import DetectionSettings
 from cali.sqlmodel._visualize_experiment import (
-    print_all_analysis_results,
+    print_cali_results,
 )
 
 exp = Experiment.create_from_data(
@@ -52,7 +52,7 @@ analysis.run(exp, settings4, global_position_indices=[0])
 
 # Visualize the complete experiment tree with analysis results
 engine = create_engine(f"sqlite:///{exp.db_path}")
-print_all_analysis_results(
+print_cali_results(
     engine,
     experiment_name=None,
     show_settings=True,

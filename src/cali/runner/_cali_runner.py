@@ -109,13 +109,12 @@ class CaliRunner:
         analysis_settings: AnalysisSettings | int | None = None,
         global_position_indices: Sequence[int] | None = None,
         database_name: str | None = None,
-        output_path: Path | None = None,
+        output_path: str | Path | None = None,
         overwrite: bool = False,
         echo: bool = False,
-    ) -> Generator[str, None, None]:
+        as_generator: bool = False,
+    ) -> Generator[str, None, None] | None:
         """Run detection and/or analysis on the experiment.
-
-        Yields progress strings that can be displayed in a GUI.
 
         This method orchestrates the entire pipeline:
         0. Makes sure data are ready
@@ -155,17 +154,66 @@ class CaliRunner:
             Whether to overwrite existing database
         echo : bool
             Enable SQLAlchemy echo for database operations
+        as_generator : bool
+            If True, returns a Generator that yields progress strings.
+            If False (default), executes directly and silently consumes
+            the generator.
+
+        Returns
+        -------
+        Generator[str, None, None] | None
+            If as_generator=True, returns a generator yielding progress strings.
 
         Raises
         ------
         ValueError
             If no FOVs exist for the specified detection settings and positions
         """
+        generator = self._run_generator(
+            experiment=experiment,
+            dataset_path=dataset_path,
+            detection_settings=detection_settings,
+            analysis_settings=analysis_settings,
+            global_position_indices=global_position_indices,
+            database_name=database_name,
+            output_path=output_path,
+            overwrite=overwrite,
+            echo=echo,
+        )
+
+        # Return generator directly if requested
+        if as_generator:
+            return generator
+
+        # Otherwise, consume generator silently
+        for _ in generator:
+            pass
+        return None
+
+    def _run_generator(
+        self,
+        experiment: Experiment,
+        dataset_path: str | Path,
+        detection_settings: DetectionSettings | int,
+        *,
+        analysis_settings: AnalysisSettings | int | None = None,
+        global_position_indices: Sequence[int] | None = None,
+        database_name: str | None = None,
+        output_path: str | Path | None = None,
+        overwrite: bool = False,
+        echo: bool = False,
+    ) -> Generator[str, None, None]:
+        """Internal generator for run progress.
+
+        Yields progress strings during execution.
+        """
         # 0. Make sure data are ready
         dataset = load_data(dataset_path)
 
         if output_path is None:
             output_path = Path(dataset_path).parent
+        elif isinstance(output_path, str):
+            output_path = Path(output_path)
 
         # 1. Setup database
         if database_name is not None:
@@ -425,7 +473,8 @@ class CaliRunner:
             cali_logger.info(
                 f"⚠️  Detection exists for {len(existing_pos_set)} position(s) "
                 f"but missing for {len(positions_needing_detection)} position(s): "
-                f"{positions_needing_detection}. Running detection for missing positions."
+                f"{positions_needing_detection}. "
+                "Running detection for missing positions."
             )
 
         return positions_needing_detection
@@ -866,8 +915,12 @@ class CaliRunner:
                 )
                 continue
 
+            # Expunge FOV from session to prevent relationship modifications
+            # from affecting the database
+            session.expunge(fov)
+
             # Filter ROIs to only include those matching detection_settings_id
-            # (The query loads the FOV, but relationships load all ROIs)
+            # Safe to modify fov.rois now since it's detached from session
             fov.rois = [
                 roi
                 for roi in fov.rois

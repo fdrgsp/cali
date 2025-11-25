@@ -4,7 +4,7 @@ from cali._constants import EVOKED
 from cali.sqlmodel import Experiment
 from cali.sqlmodel._util import save_experiment_to_database
 from cali.sqlmodel._visualize_experiment import (
-    print_all_analysis_results,
+    print_cali_results,
     print_experiment_tree,
 )
 
@@ -23,7 +23,7 @@ exp = Experiment.create_from_data(
 save_experiment_to_database(exp, overwrite=True)
 
 engine = create_engine(f"sqlite:///{exp.db_path}")
-print_all_analysis_results(
+print_cali_results(
     engine,
     experiment_name=None,
     show_settings=True,
