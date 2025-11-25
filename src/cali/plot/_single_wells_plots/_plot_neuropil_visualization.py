@@ -4,17 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import mplcursors
-import numpy as np
-from matplotlib.patches import Polygon
-
-from cali.util import coordinates_to_mask
-
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 def _plot_neuropil_masks(
@@ -55,4 +46,3 @@ def _plot_neuropil_masks(
     ax.axis("off")
     widget.figure.tight_layout()
     widget.canvas.draw()
-

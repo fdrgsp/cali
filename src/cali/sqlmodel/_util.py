@@ -259,11 +259,7 @@ def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
             # Check if this specific FOV has any ROIs with Traces entries
             # (which indicates the FOV has been analyzed)
             statement = (
-                select(Traces)
-                .join(ROI)
-                .join(FOV)
-                .where(FOV.name == fov_name)
-                .limit(1)
+                select(Traces).join(ROI).join(FOV).where(FOV.name == fov_name).limit(1)
             )
             result = session.exec(statement).first()
             return result is not None

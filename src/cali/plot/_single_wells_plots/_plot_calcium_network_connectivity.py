@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 import mplcursors
 import numpy as np
 
@@ -67,7 +65,9 @@ def _plot_connectivity_network_data(
 
     # Calculate and display network statistics
     n_nodes = len(rois_idxs)
-    n_edges = (np.sum(connectivity_matrix) - n_nodes) // 2  # Exclude diagonal, divide by 2 for symmetry
+    n_edges = (
+        np.sum(connectivity_matrix) - n_nodes
+    ) // 2  # Exclude diagonal, divide by 2 for symmetry
     total_possible_edges = n_nodes * (n_nodes - 1) // 2
     network_density = n_edges / total_possible_edges if total_possible_edges > 0 else 0
 
@@ -101,7 +101,7 @@ def _get_network_threshold(
     """Get network threshold from AnalysisSettings."""
     from sqlmodel import Session, col, create_engine, select
 
-    from cali.sqlmodel._model import CaliResult, Experiment, FOV, Plate, Well
+    from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:

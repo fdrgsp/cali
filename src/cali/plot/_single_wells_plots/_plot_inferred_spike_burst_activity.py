@@ -5,14 +5,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from cali.plot._util import _get_spikes_over_threshold
-from cali.sqlmodel._model import CaliResult, DataAnalysis, ROI, Traces
+from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 from cali.logger import cali_logger
 
@@ -29,19 +27,27 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     return None
 
 
-def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+def _get_data_analysis_for_run(
+    roi_model: ROI, run_id: int | None
+) -> DataAnalysis | None:
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+        return (
+            roi_model.data_analysis_history[0]
+            if roi_model.data_analysis_history
+            else None
+        )
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    return (
+        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    )
 
 
 def _plot_inferred_spike_burst_activity(
@@ -78,7 +84,9 @@ def _plot_inferred_spike_burst_activity(
     burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
     # Get spike trains and calculate population activity
-    spike_trains, _, time_axis = _get_population_spike_data(db_path, fov_name, rois, run_id)
+    spike_trains, _, time_axis = _get_population_spike_data(
+        db_path, fov_name, rois, run_id
+    )
 
     if spike_trains is None or len(spike_trains) < 2:
         cali_logger.warning(
@@ -142,11 +150,15 @@ def _get_burst_parameters(
                         settings.burst_min_duration,
                         settings.burst_gaussian_sigma,
                     )
-        
+
         # Fallback: get settings from the first available run
-        stmt = select(CaliResult).where(
-            CaliResult.analysis_settings.is_not(None)  # type: ignore
-        ).limit(1)
+        stmt = (
+            select(CaliResult)
+            .where(
+                CaliResult.analysis_settings.is_not(None)  # type: ignore
+            )
+            .limit(1)
+        )
         result = session.exec(stmt).first()
         if result and result.analysis_settings is not None:
             settings = session.get(AnalysisSettings, result.analysis_settings)
@@ -156,7 +168,7 @@ def _get_burst_parameters(
                     settings.burst_min_duration,
                     settings.burst_gaussian_sigma,
                 )
-    
+
     cali_logger.warning("No valid analysis settings found for burst parameters.")
     return None
 

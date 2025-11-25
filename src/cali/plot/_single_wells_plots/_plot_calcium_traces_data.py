@@ -204,7 +204,9 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     return None
 
 
-def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+def _get_data_analysis_for_run(
+    roi_model: ROI, run_id: int | None
+) -> DataAnalysis | None:
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history.
 
     Parameters
@@ -224,7 +226,11 @@ def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalys
 
     if run_id is None:
         # Return the first analysis if no run_id specified (legacy behavior)
-        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+        return (
+            roi_model.data_analysis_history[0]
+            if roi_model.data_analysis_history
+            else None
+        )
 
     # Find the analysis matching the run_id
     for analysis in roi_model.data_analysis_history:
@@ -233,7 +239,9 @@ def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalys
 
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    return (
+        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    )
 
 
 def _get_trace_from_model(

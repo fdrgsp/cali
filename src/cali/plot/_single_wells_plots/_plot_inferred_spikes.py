@@ -4,11 +4,9 @@ from typing import TYPE_CHECKING
 
 import mplcursors
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.plot._util import _get_spikes_over_threshold
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -17,9 +15,6 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
-
-from cali.logger import cali_logger
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -34,19 +29,27 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     return None
 
 
-def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+def _get_data_analysis_for_run(
+    roi_model: ROI, run_id: int | None
+) -> DataAnalysis | None:
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+        return (
+            roi_model.data_analysis_history[0]
+            if roi_model.data_analysis_history
+            else None
+        )
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    return (
+        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    )
 
 
 def _plot_inferred_spikes(
@@ -336,20 +339,24 @@ def _plot_inferred_spikes_normalized_with_bursts(
     # Clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
-    
+
     # For now, delegate to the basic normalized spikes plot
     # TODO: Add burst detection overlay
     _plot_inferred_spikes(
         widget, db_path, fov_name, rois, run_id=run_id, normalize=True
     )
-    
+
     # Add note that burst overlay is not yet implemented
     ax.text(
-        0.5, 0.98, 
+        0.5,
+        0.98,
         "Note: Network burst overlay not yet implemented",
         transform=ax.transAxes,
-        ha="center", va="top",
-        fontsize=8, style="italic", color="gray"
+        ha="center",
+        va="top",
+        fontsize=8,
+        style="italic",
+        color="gray",
     )
 
 

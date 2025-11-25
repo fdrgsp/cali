@@ -110,8 +110,6 @@ def _plot_spike_synchrony_data(
     widget.canvas.draw()
 
 
-
-
 def _get_lag(
     db_path: str,
     fov_name: str,
@@ -121,7 +119,7 @@ def _get_lag(
     """Get the lag value for synchrony from AnalysisSettings."""
     from sqlmodel import Session, col, create_engine, select
 
-    from cali.sqlmodel._model import CaliResult, Experiment, FOV, Plate, Well
+    from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:

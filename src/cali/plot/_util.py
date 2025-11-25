@@ -127,8 +127,6 @@ def _get_calcium_peaks_events_from_rois(
     -------
         Dictionary mapping ROI names to binary peak event arrays
     """
-    from cali.sqlmodel._model import DataAnalysis, Traces
-    
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
@@ -149,7 +147,7 @@ def _get_calcium_peaks_events_from_rois(
         # Get traces and data_analysis for the specified run
         traces = _get_traces_for_run(roi, run_id)
         data_analysis = _get_data_analysis_for_run(roi, run_id)
-        
+
         if traces is None or data_analysis is None:
             continue
 
@@ -175,8 +173,6 @@ def _get_calcium_peaks_events_from_rois(
 
 def _get_traces_for_run(roi: ROI, run_id: int | None) -> "Traces | None":
     """Get the Traces object for a specific run from the ROI's traces_history."""
-    from cali.sqlmodel._model import Traces
-    
     if not roi.traces_history:
         return None
     if run_id is None:
@@ -192,8 +188,6 @@ def _get_traces_for_run(roi: ROI, run_id: int | None) -> "Traces | None":
 
 def _get_data_analysis_for_run(roi: ROI, run_id: int | None) -> "DataAnalysis | None":
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
-    from cali.sqlmodel._model import DataAnalysis
-    
     if not roi.data_analysis_history:
         return None
     if run_id is None:

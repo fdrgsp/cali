@@ -14,7 +14,7 @@ from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import CaliResult, DataAnalysis, FOV, ROI, Traces
+from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -37,19 +37,27 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     return None
 
 
-def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+def _get_data_analysis_for_run(
+    roi_model: ROI, run_id: int | None
+) -> DataAnalysis | None:
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+        return (
+            roi_model.data_analysis_history[0]
+            if roi_model.data_analysis_history
+            else None
+        )
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    return (
+        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    )
 
 
 def _calculate_cross_correlation(

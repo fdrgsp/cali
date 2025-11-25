@@ -29,19 +29,27 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     return None
 
 
-def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+def _get_data_analysis_for_run(
+    roi_model: ROI, run_id: int | None
+) -> DataAnalysis | None:
     """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+        return (
+            roi_model.data_analysis_history[0]
+            if roi_model.data_analysis_history
+            else None
+        )
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    return (
+        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    )
 
 
 def _plot_amplitude_and_frequency_data(
@@ -142,9 +150,7 @@ def _plot_metrics(
         ):
             return
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(
-            data_analysis.peaks_amplitudes_dec_dff, ddof=1
-        )  # sample std
+        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
         sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
         _plot_errorbars(
             ax,
@@ -159,9 +165,7 @@ def _plot_metrics(
 
         # plot mean amplitude +- sem of each ROI
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(
-            data_analysis.peaks_amplitudes_dec_dff, ddof=1
-        )  # sample std
+        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
         sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
         _plot_errorbars(
             ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
