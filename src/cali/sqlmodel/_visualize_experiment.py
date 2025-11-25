@@ -177,6 +177,7 @@ def print_cali_results(
 
         console.print(main_tree)
 
+
 def _add_detection_settings_to_tree(
     parent_node: Tree, settings: DetectionSettings, show_details: bool = True
 ) -> None:

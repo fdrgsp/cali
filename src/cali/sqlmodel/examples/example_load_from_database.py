@@ -1,6 +1,7 @@
 """Example script to load an experiment from a database and print its tree structure."""
 
 from sqlalchemy import create_engine
+
 from cali.sqlmodel import print_experiment_tree
 from cali.sqlmodel._model import Experiment
 from cali.sqlmodel._visualize_experiment import print_cali_results
