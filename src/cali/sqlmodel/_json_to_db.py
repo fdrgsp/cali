@@ -461,7 +461,7 @@ def load_analysis_from_json(
                     session.commit()
 
             cali_logger.info(
-                f"💾 Experiment analysis loaded and saved to database at " f"{db_path}."
+                f"💾 Experiment analysis loaded and saved to database at {db_path}."
             )
 
             # Load fresh from database to return
