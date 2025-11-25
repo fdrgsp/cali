@@ -12,21 +12,22 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from cali.plot._util import _get_spikes_over_threshold
+from cali.plot._util import _get_data_analysis_for_run
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 from cali.logger import cali_logger
 
 
 def _calculate_spike_cross_correlation(
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Calculate the cross-correlation matrix for spike trains from active ROIs.
 
@@ -36,10 +37,14 @@ def _calculate_spike_cross_correlation(
 
     Parameters
     ----------
-    data : dict[str, ROIData]
-        Dictionary of ROI data containing spike information
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of specific ROI indices to analyze, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
 
     Returns
     -------
@@ -47,27 +52,49 @@ def _calculate_spike_cross_correlation(
         Correlation matrix and corresponding ROI indices, or (None, None) if
         insufficient data
     """
+    from sqlalchemy.orm import selectinload
+    from sqlmodel import Session, col, create_engine, select
+
+    from cali.sqlmodel._model import FOV, ROI
+
     spike_trains: list[np.ndarray] = []
     rois_idxs: list[int] = []
 
+    # Query ROIs from database
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.data_analysis_history),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
     # Extract spike trains for the active ROIs
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
-            continue
-        if not roi_data.active:
+    for roi in roi_results:
+        # Get data_analysis for the specified run
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        if data_analysis is None:
             continue
 
-        # Get thresholded spike data using existing utility function
-        spike_probs = _get_spikes_over_threshold(roi_data)
-        if spike_probs is None or len(spike_probs) == 0:
+        # Get thresholded spike data
+        inferred_spikes = data_analysis.inferred_spikes
+        inferred_spikes_threshold = data_analysis.inferred_spikes_threshold
+
+        if inferred_spikes is None or inferred_spikes_threshold is None:
             continue
 
         # Convert spike probabilities to binary spike train
+        spike_probs = [
+            spike if spike > inferred_spikes_threshold else 0.0
+            for spike in inferred_spikes
+        ]
         spike_train = np.array(spike_probs) > 0.0
 
         # Only include ROIs that have at least one spike
         if np.sum(spike_train) > 0:
-            rois_idxs.append(int(roi_key))
+            rois_idxs.append(roi.id)
             spike_trains.append(spike_train.astype(float))
 
     if len(rois_idxs) <= 1:
@@ -115,8 +142,10 @@ def _calculate_spike_cross_correlation(
 
 def _plot_spike_cross_correlation_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot pairwise cross-correlation matrix for spike trains.
 
@@ -124,15 +153,21 @@ def _plot_spike_cross_correlation_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
+        db_path, fov_name, rois, run_id
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(
@@ -204,8 +239,10 @@ def _add_hover_functionality_spike_corr(
 
 def _plot_spike_hierarchical_clustering_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     use_dendrogram: bool = False,
 ) -> None:
     """Plot hierarchical clustering analysis for spike correlation data.
@@ -214,17 +251,23 @@ def _plot_spike_hierarchical_clustering_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
     use_dendrogram : bool
         If True, plot dendrogram; if False, plot clustered heatmap
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(data, rois)
+    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
+        db_path, fov_name, rois, run_id
+    )
 
     if correlation_matrix is None or rois_idxs is None:
         cali_logger.warning(

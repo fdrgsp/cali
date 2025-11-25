@@ -10,7 +10,7 @@ import numpy as np
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,11 +20,39 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _plot_neuropil_traces(
     widget: _SingleWellGraphWidget,
     db_path: str | Path,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot all raw and neuropil traces together on widget canvas.
 
@@ -43,6 +71,9 @@ def _plot_neuropil_traces(
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of specific ROI IDs to plot, or None for all
+    run_id : int | None
+        The CaliResult.id of the selected run. If provided, only data from this run
+        will be plotted.
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
@@ -51,16 +82,27 @@ def _plot_neuropil_traces(
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
             select(ROI)
             .join(FOV)
             .where(col(FOV.name) == fov_name)
             .options(
-                selectinload(ROI.traces),  # type: ignore
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.traces_history),
+                selectinload(ROI.data_analysis_history),
             )
         )
+
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Filter by specific ROIs if requested
         if rois is not None:
@@ -76,11 +118,12 @@ def _plot_neuropil_traces(
     # Filter ROIs that have both raw_trace and neuropil traces
     valid_rois = []
     for roi in roi_models:
+        traces = _get_traces_for_run(roi, run_id)
         if (
-            roi.traces is not None
-            and roi.traces.raw_trace is not None
-            and roi.traces.neuropil_trace is not None
-            and roi.traces.corrected_trace is not None
+            traces is not None
+            and traces.raw_trace is not None
+            and traces.neuropil_trace is not None
+            and traces.corrected_trace is not None
         ):
             valid_rois.append(roi)
 
@@ -116,17 +159,23 @@ def _plot_neuropil_traces(
     for idx, roi in enumerate(valid_rois):
         color = colors[idx]
 
-        raw_trace = np.array(roi.traces.raw_trace)
-        neuropil_trace = np.array(roi.traces.neuropil_trace)
-        corrected_trace = np.array(roi.traces.corrected_trace)
+        traces = _get_traces_for_run(roi, run_id)
+        # We already verified traces are valid in the loop above, but guard anyway
+        if traces is None:
+            continue
+
+        raw_trace = np.array(traces.raw_trace)
+        neuropil_trace = np.array(traces.neuropil_trace)
+        corrected_trace = np.array(traces.corrected_trace)
         frames = np.arange(len(raw_trace))
 
         # Collect recording time if available
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
         if (
-            roi.data_analysis is not None
-            and roi.data_analysis.total_recording_time_sec is not None
+            data_analysis is not None
+            and data_analysis.total_recording_time_sec is not None
         ):
-            rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         # Keep track of last trace for time axis calculation
         last_trace = raw_trace

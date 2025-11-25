@@ -6,6 +6,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from cali.plot._util import _get_spikes_over_threshold
+from cali.sqlmodel._model import CaliResult, DataAnalysis, ROI, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -16,11 +17,39 @@ if TYPE_CHECKING:
 from cali.logger import cali_logger
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _plot_inferred_spike_burst_activity(
     widget: _SingleWellGraphWidget,
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot burst detection and network state analysis for inferred spikes.
 
@@ -37,17 +66,19 @@ def _plot_inferred_spike_burst_activity(
         Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
     """
     widget.figure.clear()
 
-    burst_params = _get_burst_parameters(db_path, fov_name, rois)
+    burst_params = _get_burst_parameters(db_path, fov_name, rois, run_id)
     if burst_params is None:
         cali_logger.warning("Burst parameters not found in ROI data.")
         return
     burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
     # Get spike trains and calculate population activity
-    spike_trains, _, time_axis = _get_population_spike_data(db_path, fov_name, rois)
+    spike_trains, _, time_axis = _get_population_spike_data(db_path, fov_name, rois, run_id)
 
     if spike_trains is None or len(spike_trains) < 2:
         cali_logger.warning(
@@ -91,110 +122,120 @@ def _get_burst_parameters(
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> tuple[float, int, float] | None:
-    """Get burst detection parameters from database."""
-    from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, create_engine, select
+    """Get burst detection parameters from AnalysisSettings."""
+    from sqlmodel import Session, create_engine, select
 
-    from cali.sqlmodel._model import FOV, ROI
+    from cali.sqlmodel._model import AnalysisSettings
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-        if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
-        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.data_analysis),  # type: ignore
-        )
-        roi_results = session.exec(stmt).all()
-
-    if not roi_results:
-        cali_logger.warning("No valid ROIs found for burst parameter extraction.")
-        return None
-
-    # Use the first ROI since the burst parameters are the same for all ROIs
-    roi = roi_results[0]
-    if roi.data_analysis is None:
-        return None
-
-    burst_threshold = roi.data_analysis.burst_threshold
-    burst_min_duration = roi.data_analysis.burst_min_duration
-    burst_gaussian_sigma = roi.data_analysis.burst_gaussian_sigma
-
-    if (
-        burst_threshold is None
-        or burst_min_duration is None
-        or burst_gaussian_sigma is None
-    ):
-        cali_logger.warning("Burst parameters not set in ROI data.")
-        return None
-
-    return (
-        burst_threshold,
-        burst_min_duration,
-        burst_gaussian_sigma,
-    )
+        # Get the AnalysisSettings from the run
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result and result.analysis_settings is not None:
+                settings = session.get(AnalysisSettings, result.analysis_settings)
+                if settings:
+                    return (
+                        settings.burst_threshold,
+                        settings.burst_min_duration,
+                        settings.burst_gaussian_sigma,
+                    )
+        
+        # Fallback: get settings from the first available run
+        stmt = select(CaliResult).where(
+            CaliResult.analysis_settings.is_not(None)  # type: ignore
+        ).limit(1)
+        result = session.exec(stmt).first()
+        if result and result.analysis_settings is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings)
+            if settings:
+                return (
+                    settings.burst_threshold,
+                    settings.burst_min_duration,
+                    settings.burst_gaussian_sigma,
+                )
+    
+    cali_logger.warning("No valid analysis settings found for burst parameters.")
+    return None
 
 
 def _get_population_spike_data(
-    roi_data_dict: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[str], np.ndarray]:
-    """Extract population spike data from ROI data.
+    """Extract population spike data from database.
 
     Parameters
     ----------
-    roi_data_dict : dict[str, ROIData]
-        Dictionary of ROI data
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
 
     Returns
     -------
     tuple[np.ndarray | None, list[str], np.ndarray]
         Tuple of (spike_trains_array, roi_names, time_axis)
     """
+    from sqlalchemy.orm import selectinload
+    from sqlmodel import Session, col, create_engine, select
+
+    from cali.sqlmodel._model import FOV
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.data_analysis_history),  # type: ignore
+        )
+        roi_results = session.exec(stmt).all()
+
     spike_trains: list[np.ndarray] = []
     roi_names: list[str] = []
-    spikes_burst_threshold: float | None = None
-
-    if rois is None:
-        rois = [int(roi) for roi in roi_data_dict if roi.isdigit()]
-
-    if len(rois) < 2:
-        return None, [], np.array([])
-
     max_length = 0
     rois_rec_time: list[float] = []
 
-    for roi in rois:
-        roi_key = str(roi)
-        if roi_key not in roi_data_dict:
+    for roi in roi_results:
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        if data_analysis is None or not data_analysis.inferred_spikes:
             continue
-
-        roi_data = roi_data_dict[roi_key]
-        if not roi_data.active:
-            continue
-
-        if spikes_burst_threshold is None:
-            spikes_burst_threshold = roi_data.spikes_burst_threshold
 
         # Get thresholded spike data
-        spike_probs = _get_spikes_over_threshold(roi_data)
-        if spike_probs is None:
-            continue
+        threshold = data_analysis.inferred_spikes_threshold or 0
+        thresholded_spikes = [
+            s if s > threshold else 0 for s in data_analysis.inferred_spikes
+        ]
 
         # Convert spike probabilities to binary spike train
-        # _get_spikes_over_threshold already returns thresholded data
-        spike_train = (np.array(spike_probs) > 0.0).astype(float)
+        spike_train = (np.array(thresholded_spikes) > 0.0).astype(float)
         if np.sum(spike_train) > 0:  # Only include ROIs with at least one spike
             spike_trains.append(spike_train)
-            roi_names.append(roi_key)
+            roi_names.append(str(roi.label_value))
             max_length = max(max_length, len(spike_train))
 
             # Store recording time for time axis calculation
-            if roi_data.total_recording_time_sec is not None:
-                rois_rec_time.append(roi_data.total_recording_time_sec)
+            if data_analysis.total_recording_time_sec is not None:
+                rois_rec_time.append(data_analysis.total_recording_time_sec)
 
     if len(spike_trains) < 2:
         return None, [], np.array([])

@@ -19,6 +19,34 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
 from cali.logger import cali_logger
+from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
+
+
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
 
 
 def _plot_peak_event_synchrony_data(
@@ -26,6 +54,7 @@ def _plot_peak_event_synchrony_data(
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot peak event-based synchrony analysis.
 
@@ -39,11 +68,13 @@ def _plot_peak_event_synchrony_data(
         Name of the FOV
     rois: list[int] | None
         List of ROI indices to include, None for all
+    run_id: int | None
+        The run ID to filter by, None for latest
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    peak_trains = _get_calcium_peaks_events_from_rois(db_path, fov_name, rois)
+    peak_trains = _get_calcium_peaks_events_from_rois(db_path, fov_name, rois, run_id)
     if peak_trains is None or len(peak_trains) < 2:
         cali_logger.warning(
             "Insufficient peak data for synchrony analysis. "
@@ -51,7 +82,7 @@ def _plot_peak_event_synchrony_data(
         )
         return
 
-    jit = _get_jit(db_path, fov_name, rois)
+    jit = _get_jit(db_path, fov_name, rois, run_id)
     if jit is None:
         cali_logger.warning(
             "No valid jitter window value found for synchrony analysis."
@@ -107,35 +138,80 @@ def _plot_peak_event_synchrony_data(
 
     widget.figure.tight_layout()
     widget.canvas.draw()
+    # events with inherent timing uncertainty due to biology and frame rate limits
+    synchrony_matrix = _get_calcium_peaks_event_synchrony_matrix(
+        peak_event_data_dict, method="jitter_window", jitter_window=jit
+    )
+
+    if synchrony_matrix is None:
+        cali_logger.warning(
+            "Failed to calculate synchrony matrix. "
+            "Ensure peak event data is valid and contains sufficient data."
+        )
+        return
+
+    # Calculate global synchrony metric using peak event-specific function
+    global_synchrony = _get_calcium_peaks_event_synchrony(synchrony_matrix)
+    if global_synchrony is None:
+        global_synchrony = 0.0
+
+    title = (
+        f"Global Synchrony (Median: {global_synchrony:.4f})\n"
+        f"(Calcium Peaks Events - Jitter Window Method)\n"
+    )
+
+    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1)
+    cbar = widget.figure.colorbar(
+        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
+        ax=ax,
+    )
+    cbar.set_label("Peak Event Synchrony Index")
+
+    ax.set_title(title)
+    ax.set_ylabel("ROI")
+    ax.set_yticklabels([])
+    ax.set_yticks([])
+    ax.set_xlabel("ROI")
+    ax.set_xticklabels([])
+    ax.set_xticks([])
+
+    active_rois = list(peak_trains.keys())
+    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
+
+    widget.figure.tight_layout()
+    widget.canvas.draw()
 
 
-def _get_jit(db_path: str, fov_name: str, rois: list[int] | None) -> int | None:
+def _get_jit(
+    db_path: str, fov_name: str, rois: list[int] | None, run_id: int | None = None
+) -> int | None:
     """Get the jitter window value for synchrony from database."""
-    from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, create_engine, select
 
-    from cali.sqlmodel._model import FOV, ROI
+    from cali.sqlmodel._model import AnalysisSettings
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-        if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
-        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.data_analysis),  # type: ignore
-        )
-        roi_results = session.exec(stmt).all()
+        # Get the AnalysisSettings from the run
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result and result.analysis_settings is not None:
+                settings = session.get(AnalysisSettings, result.analysis_settings)
+                if settings:
+                    return settings.calcium_sync_jitter_window
 
-    if not roi_results:
-        cali_logger.warning("No valid ROIs found for synchrony analysis.")
-        return None
+        # Fallback: get settings from the first available run
+        stmt = select(CaliResult).where(
+            CaliResult.analysis_settings.is_not(None)  # type: ignore
+        ).limit(1)
+        result = session.exec(stmt).first()
+        if result and result.analysis_settings is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings)
+            if settings:
+                return settings.calcium_sync_jitter_window
 
-    # Use the first ROI since the jitter window is the same for all ROIs
-    roi = roi_results[0]
-    if roi.data_analysis is None:
-        return None
-
-    return roi.data_analysis.calcium_sync_jitter_window
+    cali_logger.warning("No valid analysis settings found for synchrony analysis.")
+    return None
 
 
 def _add_hover_functionality(

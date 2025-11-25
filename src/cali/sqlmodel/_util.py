@@ -251,20 +251,18 @@ def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
     """
     from sqlmodel import select
 
-    from ._model import FOV, ROI
+    from ._model import FOV, ROI, Traces
 
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:
-            # Query for FOVs with the given name that have ROIs with traces or data
+            # Check if this specific FOV has any ROIs with Traces entries
+            # (which indicates the FOV has been analyzed)
             statement = (
-                select(FOV)
+                select(Traces)
                 .join(ROI)
+                .join(FOV)
                 .where(FOV.name == fov_name)
-                .where(
-                    (ROI.traces_history is not None)
-                    | (ROI.data_analysis_history is not None)
-                )
                 .limit(1)
             )
             result = session.exec(statement).first()
@@ -296,17 +294,13 @@ def has_experiment_analysis(db_path: str | Path) -> bool:
     """
     from sqlmodel import select
 
-    from ._model import ROI
+    from ._model import Traces
 
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:
-            # Check if any ROI exists with traces or data_analysis
-            statement = (
-                select(ROI)
-                .where((ROI.traces != None) | (ROI.data_analysis != None))  # noqa: E711
-                .limit(1)
-            )
+            # Check if any Traces entries exist (indicates analysis has been run)
+            statement = select(Traces).limit(1)
             result = session.exec(statement).first()
             return result is not None
     finally:

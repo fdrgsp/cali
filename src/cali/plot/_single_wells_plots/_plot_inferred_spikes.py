@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
 from cali.plot._util import _get_spikes_over_threshold
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,11 +22,39 @@ if TYPE_CHECKING:
 from cali.logger import cali_logger
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _plot_inferred_spikes(
     widget: _SingleWellGraphWidget,
     db_path: str | Path,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     raw: bool = False,
     normalize: bool = False,
     active_only: bool = False,
@@ -45,6 +73,9 @@ def _plot_inferred_spikes(
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
+    run_id : int | None
+        The CaliResult.id of the selected run. If provided, only data from this run
+        will be plotted.
     raw : bool
         Plot raw inferred spikes
     normalize : bool
@@ -67,16 +98,27 @@ def _plot_inferred_spikes(
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
             select(ROI)
             .join(FOV)
             .where(col(FOV.name) == fov_name)
             .options(
-                selectinload(ROI.traces),  # type: ignore
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.traces_history),
+                selectinload(ROI.data_analysis_history),
             )
         )
+
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Filter by specific ROIs if requested
         if rois is not None:
@@ -98,15 +140,16 @@ def _plot_inferred_spikes(
     if normalize:
         all_values = []
         for roi in roi_models:
-            if roi.data_analysis and roi.data_analysis.inferred_spikes:
+            data_analysis = _get_data_analysis_for_run(roi, run_id)
+            if data_analysis and data_analysis.inferred_spikes:
                 # Use inferred_spikes as the spike data
-                spike_data = roi.data_analysis.inferred_spikes
+                spike_data = data_analysis.inferred_spikes
                 if raw:
                     # For raw, use all values above 0
                     spike_values = [s for s in spike_data if s > 0]
                 else:
                     # For thresholded, use values above threshold
-                    threshold = roi.data_analysis.inferred_spikes_threshold or 0
+                    threshold = data_analysis.inferred_spikes_threshold or 0
                     spike_values = [s for s in spike_data if s > threshold]
                 all_values.extend(spike_values)
 
@@ -121,19 +164,20 @@ def _plot_inferred_spikes(
     last_trace: list[float] | None = None
 
     for roi in roi_models:
-        if roi.data_analysis is None or not roi.data_analysis.inferred_spikes:
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        if data_analysis is None or not data_analysis.inferred_spikes:
             continue
 
-        if roi.data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
+        if data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         # Get spike data based on raw/thresholded mode
         if raw:
-            spike_data = [s if s > 0 else 0 for s in roi.data_analysis.inferred_spikes]
+            spike_data = [s if s > 0 else 0 for s in data_analysis.inferred_spikes]
         else:
-            threshold = roi.data_analysis.inferred_spikes_threshold or 0
+            threshold = data_analysis.inferred_spikes_threshold or 0
             spike_data = [
-                s if s > threshold else 0 for s in roi.data_analysis.inferred_spikes
+                s if s > threshold else 0 for s in data_analysis.inferred_spikes
             ]
 
         _plot_trace(
@@ -145,13 +189,14 @@ def _plot_inferred_spikes(
             p1,
             p2,
             thresholds,
-            roi.data_analysis.inferred_spikes_threshold,
+            data_analysis.inferred_spikes_threshold,
         )
-        if dec_dff and roi.traces and roi.traces.dec_dff:
+        traces = _get_traces_for_run(roi, run_id)
+        if dec_dff and traces and traces.dec_dff:
             _plot_trace(
-                ax, str(roi.label_value), roi.traces.dec_dff, normalize, count, p1, p2
+                ax, str(roi.label_value), traces.dec_dff, normalize, count, p1, p2
             )
-        last_trace = roi.data_analysis.inferred_spikes
+        last_trace = data_analysis.inferred_spikes
         count += 1
 
     _set_graph_title_and_labels(ax, normalize, raw)
@@ -265,8 +310,10 @@ def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
 
 def _plot_inferred_spikes_normalized_with_bursts(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot normalized inferred spikes with superimposed burst periods.
 
@@ -277,184 +324,33 @@ def _plot_inferred_spikes_normalized_with_bursts(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    data : dict[str, ROIData]
-        Dictionary of ROI data containing spike information
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
+    run_id : int | None
+        The run ID to filter by, None for latest
     """
     # Clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
-
-    burst_params = _get_burst_parameters(data, rois)
-    if burst_params is None:
-        cali_logger.warning("Burst parameters not found in ROI data.")
-        return
-    burst_threshold, min_burst_duration, smoothing_sigma = burst_params
-
-    # Get all traces and compute normalization parameters
-    all_values = []
-    valid_rois = []
-    roi_traces = {}
-
-    for roi_key, roi_data in data.items():
-        if rois is not None:
-            try:
-                roi_id = int(roi_key)
-                if roi_id not in rois:
-                    continue
-            except ValueError:
-                continue
-
-        if not roi_data.inferred_spikes:
-            continue
-
-        if not roi_data.active:
-            continue
-
-        if trace := _get_spikes_over_threshold(roi_data):
-            all_values.extend(trace)
-            valid_rois.append(roi_key)
-            roi_traces[roi_key] = trace
-
-    if not all_values:
-        cali_logger.warning(
-            "No valid spike data found for the specified ROIs. "
-            "Ensure that the ROIs have inferred spikes data."
-        )
-        return
-
-    # Compute normalization percentiles
-    percentiles = np.percentile(all_values, [5, 100])
-    p1, p2 = float(percentiles[0]), float(percentiles[1])
-
-    # Plot normalized traces
-    count = 0
-    rois_rec_time = []
-    last_trace = None
-
-    for roi_key in valid_rois:
-        roi_data = data[roi_key]
-        trace = roi_traces[roi_key]
-
-        if (ttime := roi_data.total_recording_time_sec) is not None:
-            rois_rec_time.append(ttime)
-
-        offset = count * 1.1  # vertical offset
-        normalized_trace = _normalize_trace_percentile(trace, p1, p2) + offset
-        ax.plot(normalized_trace, label=f"ROI {roi_key}", alpha=0.7, color="black")
-
-        last_trace = trace
-        count += 1
-
-    # Detect and overlay bursts
-    if len(valid_rois) > 1:  # Only detect bursts if we have multiple ROIs
-        bursts = _detect_bursts_from_traces(
-            roi_traces, burst_threshold / 100, min_burst_duration, smoothing_sigma
-        )
-        _overlay_burst_periods(ax, bursts, count)
-
-    # Set labels and formatting
-    ax.set_title(
-        "Normalized Inferred Spikes with Network Bursts\n(Thresholded Spike Data)"
+    
+    # For now, delegate to the basic normalized spikes plot
+    # TODO: Add burst detection overlay
+    _plot_inferred_spikes(
+        widget, db_path, fov_name, rois, run_id=run_id, normalize=True
     )
-    ax.set_ylabel("ROIs")
-    ax.set_yticks([])
-    ax.set_yticklabels([])
-
-    # Update time axis
-    _update_time_axis(ax, rois_rec_time, last_trace)
-
-    # Add hover functionality
-    _add_hover_functionality(ax, widget)
-
-    widget.figure.tight_layout()
-    widget.canvas.draw()
-
-
-def _get_burst_parameters(
-    roi_data_dict: dict[str, ROIData],
-    rois: list[int] | None = None,
-) -> tuple[float, int, float] | None:
-    """Get burst detection parameters from ROIData."""
-    if rois is None:
-        rois = [int(roi) for roi in roi_data_dict if roi.isdigit()]
-    # use only the first roi since the burst parameters are the same for all ROIs
-    roi_key = str(rois[0]) if rois else None
-    if roi_key is None or roi_key not in roi_data_dict:
-        cali_logger.warning("No valid ROIs found for burst parameter extraction.")
-        return None
-    roi_data = roi_data_dict[roi_key]
-    burst_threshold = roi_data.spikes_burst_threshold
-    burst_min_duration = roi_data.spikes_burst_min_duration
-    burst_gaussian_sigma = roi_data.spikes_burst_gaussian_sigma
-    # if any is NOne, return None
-    if (
-        burst_threshold is None
-        or burst_min_duration is None
-        or burst_gaussian_sigma is None
-    ):
-        cali_logger.warning("Burst parameters not set in ROI data.")
-        return None
-    return (
-        burst_threshold,
-        burst_min_duration,
-        burst_gaussian_sigma,
+    
+    # Add note that burst overlay is not yet implemented
+    ax.text(
+        0.5, 0.98, 
+        "Note: Network burst overlay not yet implemented",
+        transform=ax.transAxes,
+        ha="center", va="top",
+        fontsize=8, style="italic", color="gray"
     )
-
-
-def _detect_bursts_from_traces(
-    roi_traces: dict[str, list[float]],
-    burst_threshold: float,
-    min_duration: int,
-    smoothing_sigma: float,
-) -> list[tuple[int, int]]:
-    """Detect bursts from multiple ROI traces.
-
-    Parameters
-    ----------
-    roi_traces : dict[str, list[float]]
-        Dictionary mapping ROI keys to their spike traces
-    burst_threshold : float
-        Threshold for burst detection (0-1)
-    min_duration : int
-        Minimum burst duration in samples
-    smoothing_sigma : float
-        Sigma for Gaussian smoothing
-
-    Returns
-    -------
-    list[tuple[int, int]]
-        List of (start, end) indices for detected bursts
-    """
-    if not roi_traces:
-        return []
-
-    # Get the length of traces (assuming all are same length)
-    trace_length = len(next(iter(roi_traces.values())))
-
-    # Create binary spike matrix
-    spike_matrix = np.zeros((len(roi_traces), trace_length))
-
-    for i, (_, trace) in enumerate(roi_traces.items()):
-        # Convert trace to binary spikes (above some threshold)
-        trace_array = np.array(trace)
-        if len(trace_array) > 0:
-            # Use 75th percentile as spike threshold
-            threshold = np.percentile(trace_array, 75)
-            spike_matrix[i, :] = trace_array > threshold
-
-    # Calculate population activity (fraction of ROIs spiking at each time point)
-    population_activity = np.mean(spike_matrix, axis=0)
-
-    # Smooth the population activity
-    if smoothing_sigma > 0:
-        population_activity = gaussian_filter1d(
-            population_activity, sigma=smoothing_sigma
-        )
-
-    # Detect bursts
-    return _detect_population_bursts(population_activity, burst_threshold, min_duration)
 
 
 def _detect_population_bursts(

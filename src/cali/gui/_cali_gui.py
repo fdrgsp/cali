@@ -320,15 +320,6 @@ class CaliGui(QMainWindow):
             self._run_cali_wdg.set_time_label
         )
 
-        # TODO: FIX ME FOR NEW GUI
-        # self._segmentation_wdg.segmentationFinished.connect(
-        #     self._on_fov_table_selection_changed
-        #
-
-        # self._analysis_wdg._frame_rate_wdg._from_meta_btn.clicked.connect(
-        #     self._on_frame_rate_info_from_meta_clicked
-        # )
-
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
         self._set_splitter_sizes()
@@ -355,9 +346,13 @@ class CaliGui(QMainWindow):
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/evoked/results.cali"
-        self._output_path = "tests/test_data/evoked/"
+        data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
+        self._initialize_from_database(db_path, data_path)
+
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -597,51 +592,65 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
-        # Get plate map data from GUI
         plate_map_data = self._analysis_wdg._plate_map_wdg.value()
-
         _, genotype_data, treatment_data = plate_map_data
 
-        # Only save if there's actual data
         if not genotype_data and not treatment_data:
             return
 
         # Load experiment and update it with plate map data
-        from sqlmodel import Session, create_engine
+        from sqlmodel import Session, create_engine, select
 
         from cali.sqlmodel._model import Condition
 
         engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
         try:
             with Session(engine) as session:
-                exp = Experiment.load_from_db(self._database_path)
+                exp = Experiment.load_from_db(self._database_path, session=session)
                 if exp.plate is None or exp.plate.wells is None:
                     return
 
-                # Get or create conditions (reuse existing ones with same name)
+                # cache ensures we reuse the same Condition instance in-memory
+                condition_cache: dict[tuple[str, str], Condition] = {}
+
                 def get_or_create_condition(
                     name: str, color: str, condition_type: str
                 ) -> Condition:
-                    # Try to find existing condition with this name
-                    from sqlmodel import select
+                    key = (name, condition_type)
 
-                    stmt = select(Condition).where(Condition.name == name)
+                    # 1) Check local cache
+                    if key in condition_cache:
+                        cond = condition_cache[key]
+                        cond.color = color  # keep color latest from GUI
+                        return cond
+
+                    # 2) Check DB
+                    stmt = (
+                        select(Condition)
+                        .where(Condition.name == name)
+                        .where(Condition.condition_type == condition_type)
+                    )
                     existing = session.exec(stmt).first()
                     if existing:
-                        # Update color and type if needed
                         existing.color = color
-                        existing.condition_type = condition_type
+                        condition_cache[key] = existing
                         return existing
-                    # Create new condition
-                    return Condition(
-                        name=name, color=color, condition_type=condition_type
-                    )
 
-                # Clear existing conditions and add new ones
+                    # 3) Create new condition and add to session
+                    cond = Condition(
+                        name=name,
+                        color=color,
+                        condition_type=condition_type,
+                    )
+                    session.add(cond)
+                    condition_cache[key] = cond
+                    return cond
+
+                # Assign conditions per well
                 for well in exp.plate.wells:
                     well.conditions = []
 
-                    # Find matching genotype data
+                    # genotype
                     for plate_data in genotype_data:
                         if (well.row, well.column) == plate_data.row_col:
                             condition = get_or_create_condition(
@@ -652,7 +661,7 @@ class CaliGui(QMainWindow):
                             well.conditions.append(condition)
                             break
 
-                    # Find matching treatment data
+                    # treatment
                     for plate_data in treatment_data:
                         if (well.row, well.column) == plate_data.row_col:
                             condition = get_or_create_condition(
@@ -663,12 +672,88 @@ class CaliGui(QMainWindow):
                             well.conditions.append(condition)
                             break
 
-                # Merge the plate back into the session and commit
-                session.merge(exp.plate)
+                # Objects are already bound to this session; no need to merge plate
                 session.commit()
-                cali_logger.info("💾 Saved plate map data to database")
         finally:
             engine.dispose(close=True)
+
+    # def _save_plate_map_to_database(self) -> None:
+    #     """Save plate map data from GUI to database."""
+    #     if self._database_path is None:
+    #         return
+
+    #     # Get plate map data from GUI
+    #     plate_map_data = self._analysis_wdg._plate_map_wdg.value()
+
+    #     _, genotype_data, treatment_data = plate_map_data
+
+    #     # Only save if there's actual data
+    #     if not genotype_data and not treatment_data:
+    #         return
+
+    #     # Load experiment and update it with plate map data
+    #     from sqlmodel import Session, create_engine
+
+    #     from cali.sqlmodel._model import Condition
+
+    #     engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+    #     try:
+    #         with Session(engine) as session:
+    #             exp = Experiment.load_from_db(self._database_path)
+    #             if exp.plate is None or exp.plate.wells is None:
+    #                 return
+
+    #             # Get or create conditions (reuse existing ones with same name)
+    #             def get_or_create_condition(
+    #                 name: str, color: str, condition_type: str
+    #             ) -> Condition:
+    #                 # Try to find existing condition with this name
+    #                 from sqlmodel import select
+
+    #                 stmt = select(Condition).where(Condition.name == name)
+    #                 existing = session.exec(stmt).first()
+    #                 if existing:
+    #                     # Update color and type if needed
+    #                     existing.color = color
+    #                     existing.condition_type = condition_type
+    #                     return existing
+    #                 # Create new condition
+    #                 return Condition(
+    #                     name=name, color=color, condition_type=condition_type
+    #                 )
+
+    #             # Clear existing conditions and add new ones
+    #             for well in exp.plate.wells:
+    #                 well.conditions = []
+
+    #                 # Find matching genotype data
+    #                 for plate_data in genotype_data:
+    #                     if (well.row, well.column) == plate_data.row_col:
+    #                         condition = get_or_create_condition(
+    #                             name=plate_data.condition[0],
+    #                             color=plate_data.condition[1],
+    #                             condition_type="genotype",
+    #                         )
+    #                         well.conditions.append(condition)
+    #                         break
+
+    #                 # Find matching treatment data
+    #                 for plate_data in treatment_data:
+    #                     if (well.row, well.column) == plate_data.row_col:
+    #                         condition = get_or_create_condition(
+    #                             name=plate_data.condition[0],
+    #                             color=plate_data.condition[1],
+    #                             condition_type="treatment",
+    #                         )
+    #                         well.conditions.append(condition)
+    #                         break
+
+    #             # Merge the plate back into the session and commit
+    #             session.merge(exp.plate)
+    #             session.commit()
+    #             cali_logger.info("💾 Saved plate map data to database")
+    #     finally:
+    #         engine.dispose(close=True)
 
     def _on_cali_run_clicked(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
@@ -680,94 +765,110 @@ class CaliGui(QMainWindow):
         ):
             return
 
-        experiment = Experiment.load_from_db(self._database_path)
+        try:
+            experiment = Experiment.load_from_db(self._database_path)
 
-        value = self._run_cali_wdg.value()
+            value = self._run_cali_wdg.value()
 
-        # Get analysis settings if needed
-        analysis_settings = (
-            self._analysis_wdg.to_model_settings() if value.run_analysis else None
-        )
-
-        # Validate evoked experiment settings
-        if analysis_settings is not None:
-            from cali._constants import EVOKED
-
-            if analysis_settings.experiment_type == EVOKED:
-                missing_fields = []
-                # Check for required evoked experiment fields
-                if not analysis_settings.stimulation_mask_path:
-                    missing_fields.append("Stimulation mask")
-                if not analysis_settings.led_pulse_duration:
-                    missing_fields.append("LED pulse duration")
-                if not analysis_settings.led_pulse_powers:
-                    missing_fields.append("LED pulse powers")
-                if not analysis_settings.led_pulse_on_frames:
-                    missing_fields.append("LED pulse on frames")
-                if missing_fields:
-                    msg = (
-                        "Evoked experiment type selected but required fields are "
-                        "missing:\n\n"
-                        + "\n".join(f"  • {field}" for field in missing_fields)
-                        + "\n\nPlease configure these settings in the Analysis tab."
-                    )
-                    show_error_dialog(self, msg)
-                    return
-
-        # Get detection settings - either from GUI or from selected ID (analysis-only)
-        if value.run_analysis and not value.run_detection:
-            # Analysis-only mode: use existing detection settings ID
-            detection_settings_id = value.detection_settings_id
-            if detection_settings_id is None:
-                show_error_dialog(
-                    self, "Please select a Detection ID to run analysis-only mode."
-                )
-                return
-            detection_settings = detection_settings_id
-        else:
-            # Detection or Detection+Analysis mode: get from GUI
-            detection_settings = self._detection_wdg.to_model_settings()
-
-        pos = value.positions or list(range(len(self._data.sequence.stage_positions)))
-
-        # Initialize progress bar and timer
-        self._run_cali_wdg.reset_progress_bar()
-        self._run_cali_wdg.set_progress_bar_text("Initializing...")
-        self._elapsed_timer.start()
-
-        # Save plate map data to database before running
-        self._save_plate_map_to_database()
-
-        # Create a generator function wrapper for create_worker
-        def _run_generator() -> Generator[str, None, None]:
-            assert self._data is not None
-            assert self._database_path is not None
-            result = self._runner.run(
-                experiment,
-                self._data.path,
-                detection_settings,
-                analysis_settings=analysis_settings,
-                global_position_indices=pos,
-                database_name=Path(self._database_path).name,
-                output_path=Path(self._output_path) if self._output_path else None,
-                as_generator=True,
+            # Get analysis settings if needed
+            analysis_settings = (
+                self._analysis_wdg.to_model_settings() if value.run_analysis else None
             )
-            assert result is not None  # as_generator=True always returns a generator
-            yield from result
 
-        create_worker(
-            _run_generator,
-            _start_thread=True,
-            _connect={
-                "errored": self._on_worker_errored,
-                "yielded": self._on_worker_yield,
-                "finished": self._on_worker_finished,
-            },
-        )
+            # Validate evoked experiment settings
+            if analysis_settings is not None:
+                from cali._constants import EVOKED
+
+                if analysis_settings.experiment_type == EVOKED:
+                    missing_fields = []
+                    # Check for required evoked experiment fields
+                    if not analysis_settings.stimulation_mask_path:
+                        missing_fields.append("Stimulation mask")
+                    if not analysis_settings.led_pulse_duration:
+                        missing_fields.append("LED pulse duration")
+                    if not analysis_settings.led_pulse_powers:
+                        missing_fields.append("LED pulse powers")
+                    if not analysis_settings.led_pulse_on_frames:
+                        missing_fields.append("LED pulse on frames")
+                    if missing_fields:
+                        msg = (
+                            "Evoked experiment type selected but required fields are "
+                            "missing:\n\n"
+                            + "\n".join(f"  • {field}" for field in missing_fields)
+                            + "\n\nPlease configure these settings in the Analysis tab."
+                        )
+                        show_error_dialog(self, msg)
+                        return
+
+            # Get detection settings - either from GUI or selected ID (analysis-only)
+            if value.run_analysis and not value.run_detection:
+                # Analysis-only mode: use existing detection settings ID
+                detection_settings_id = value.detection_settings_id
+                if detection_settings_id is None:
+                    show_error_dialog(
+                        self, "Please select a Detection ID to run analysis-only mode."
+                    )
+                    return
+                detection_settings = detection_settings_id
+            else:
+                # Detection or Detection+Analysis mode: get from GUI
+                detection_settings = self._detection_wdg.to_model_settings()
+
+            pos = value.positions or list(
+                range(len(self._data.sequence.stage_positions))
+            )
+
+            # Initialize progress bar and timer
+            self._run_cali_wdg.reset_progress_bar()
+            self._run_cali_wdg.set_progress_bar_text("Initializing...")
+            # Set progress bar range based on number of positions
+            # Each position yields once during detection and once during analysis
+            max_yields = len(pos) * (
+                (1 if value.run_detection else 0) + (1 if value.run_analysis else 0)
+            )
+            self._run_cali_wdg.set_progress_bar_range(0, max_yields)
+            self._elapsed_timer.start()
+
+            # Save plate map data to database before running
+            self._save_plate_map_to_database()
+
+            # Create a generator function wrapper for create_worker
+            def _run_generator() -> Generator[str, None, None]:
+                assert self._data is not None
+                assert self._database_path is not None
+                result = self._runner.run(
+                    experiment,
+                    self._data.path,
+                    detection_settings,
+                    analysis_settings=analysis_settings,
+                    global_position_indices=pos,
+                    database_name=Path(self._database_path).name,
+                    output_path=Path(self._output_path) if self._output_path else None,
+                    as_generator=True,
+                )
+                assert (
+                    result is not None
+                )  # as_generator=True always returns a generator
+                yield from result
+
+            create_worker(
+                _run_generator,
+                _start_thread=True,
+                _connect={
+                    "errored": self._on_worker_errored,
+                    "yielded": self._on_worker_yield,
+                    "finished": self._on_worker_finished,
+                },
+            )
+        except Exception as e:
+            msg = f"Failed to run cali:\n{e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
 
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
         self._run_cali_wdg.set_progress_bar_text(progress)
+        self._run_cali_wdg.update_progress_bar_plus_one()
 
     def _on_worker_errored(self, error: Any) -> None:
         self._elapsed_timer.stop()
@@ -838,7 +939,14 @@ class CaliGui(QMainWindow):
             value = init_dialog.value()
             # input from database
             if value.database_path is not None and value.data_path is not None:
-                self._initialize_from_database(value.database_path, value.data_path)
+                try:
+                    self._initialize_from_database(value.database_path, value.data_path)
+                except Exception as e:
+                    msg = f"Failed to initialize from database:\n{e}"
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    return
+
             # input from directories
             elif (data_path := value.data_path) is not None:
                 if value.output_path is None:
@@ -846,11 +954,17 @@ class CaliGui(QMainWindow):
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
-                self._initialize_from_directories(
-                    data_path,
-                    value.output_path,
-                    value.database_name or DEFAULT_CALI_DB_NAME,
-                )
+                try:
+                    self._initialize_from_directories(
+                        data_path,
+                        value.output_path,
+                        value.database_name or DEFAULT_CALI_DB_NAME,
+                    )
+                except Exception as e:
+                    msg = f"Failed to initialize from directories:\n{e}"
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    return
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
@@ -883,6 +997,19 @@ class CaliGui(QMainWindow):
             sw_graph.database_path = database_path
         for mw_graph in self.MW_GRAPHS:
             mw_graph.database_path = database_path
+
+    def _update_graph_with_run_id(self, run_id: int | None) -> None:
+        """Update all graph widgets with the selected run ID.
+
+        Parameters
+        ----------
+        run_id : int | None
+            The CaliResult.id of the selected run, or None to clear
+        """
+        for sw_graph in self.SW_GRAPHS:
+            sw_graph.run_id = run_id
+        for mw_graph in self.MW_GRAPHS:
+            mw_graph.run_id = run_id
 
     def _update_gui_plate_plan(
         self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
@@ -1032,6 +1159,9 @@ class CaliGui(QMainWindow):
                 )
 
             cali_logger.info(f"✅ Loaded settings from Run #{run_id}")
+
+            # Update run_id in all graph widgets
+            self._update_graph_with_run_id(run_id)
 
             # Refresh the image viewer to update labels with the new detection settings
             self._on_fov_table_selection_changed()
@@ -1252,8 +1382,9 @@ class CaliGui(QMainWindow):
         """Set the FOV title for the graphs."""
         if value is None:
             return
+        # Use the FOV name directly - it already contains the full identifier
+        # (e.g., "B5_0000" for well B5, position 0000)
         title = value.fov.name or f"Position {value.pos_idx}"
-        title = f"{title}_p{value.pos_idx}"
         self._update_single_wells_graphs_combo(set_title=title)
 
     def _get_labels(

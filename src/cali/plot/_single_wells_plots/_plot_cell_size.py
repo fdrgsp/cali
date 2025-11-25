@@ -6,7 +6,7 @@ import mplcursors
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import CaliResult, DataAnalysis, FOV, ROI, Traces
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,11 +16,39 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _plot_cell_size_data(
     widget: _SingleWellGraphWidget,
     db_path: str | Path,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot cell size data by querying database directly.
 
@@ -34,6 +62,8 @@ def _plot_cell_size_data(
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
+    run_id : int | None
+        The run ID to filter by, None for latest
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
@@ -42,19 +72,30 @@ def _plot_cell_size_data(
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
             select(ROI)
             .join(FOV)
             .where(col(FOV.name) == fov_name)
             .options(
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.data_analysis_history),  # type: ignore
             )
         )
 
         # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
@@ -66,12 +107,13 @@ def _plot_cell_size_data(
     units = ""
 
     for roi in roi_models:
-        if roi.data_analysis is None or roi.data_analysis.cell_size is None:
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        if data_analysis is None or data_analysis.cell_size is None:
             continue
-        if not units and roi.data_analysis.cell_size_units:
-            units = roi.data_analysis.cell_size_units
+        if not units and data_analysis.cell_size_units:
+            units = data_analysis.cell_size_units
         ax.scatter(
-            roi.label_value, roi.data_analysis.cell_size, label=f"ROI {roi.label_value}"
+            roi.label_value, data_analysis.cell_size, label=f"ROI {roi.label_value}"
         )
 
     ax.set_xlabel("ROI")

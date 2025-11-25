@@ -72,13 +72,14 @@ class AnalysisGroup(Enum):
 
 
 # Type aliases for better type hints
-# Single-well analyzers now accept (widget, db_path, fov_name, rois)
+# Single-well analyzers accept (widget, db_path, fov_name, rois, run_id)
+# Using Any for analyzer since functions may have additional keyword arguments
 SingleWellAnalyzer: TypeAlias = (
-    "Callable[[_SingleWellGraphWidget, str | Path, str, list[int] | None], Any]"
+    "Callable[..., Any]"  # Flexible signature for partial functions
 )
-# Multi-well analyzers accept (widget, text, db_path)
+# Multi-well analyzers accept (widget, text, db_path, run_id)
 MultiWellAnalyzer: TypeAlias = (
-    "Callable[[_MultilWellGraphWidget, str, str | Path], None]"
+    "Callable[..., None]"  # Flexible signature for partial functions
 )
 AnyAnalyzer: TypeAlias = "SingleWellAnalyzer | MultiWellAnalyzer"
 
@@ -158,15 +159,15 @@ CROSS_CORRELATION = "Calcium Peaks Cross-Correlation"
 CLUSTERING = "Calcium Peaks Hierarchical Clustering"
 CLUSTERING_DENDROGRAM = "Calcium Peaks Hierarchical Clustering (Dendrogram)"
 CELL_SIZE = "Cell Size"
-STIMULATED_AREA = "Stim Area"
-STIMULATED_ROIS = "Stim vs Non-Stim ROIs"
-STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stim vs Non-Stim ROIs with Stim Area"
-STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stim vs Non-Stim Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stim vs Non-Stim Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
-STIMULATED_PEAKS_AMP = "Stim Calcium Peaks Amplitudes"
-NON_STIMULATED_PEAKS_AMP = "Non-Stim Calcium Peaks Amplitudes"
-STIMULATED_PEAKS_FREQ = "Stim Calcium Peaks Frequencies"
-NON_STIMULATED_PEAKS_FREQ = "Non-Stim Calcium Peaks Frequencies"
+STIMULATED_AREA = "Stimulated Area"
+STIMULATED_ROIS = "Stimulated vs Non-Stimulated ROIs"
+STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with Stimulated Area"  # noqa: E501
+STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
+STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stimulated vs Non-Stimulated Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
+STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
+NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
+STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
+NON_STIMULATED_PEAKS_FREQ = "Non-Stimulated Calcium Peaks Frequencies"
 NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
 NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
@@ -684,7 +685,7 @@ def _get_combo_options_dict(group: AnalysisGroup) -> dict[str, list[str]]:
 
     # Format with dividers for the combobox
     result = {}
-    for category, names in sorted(categories.items()):
+    for category, names in categories.items():
         # Create a divider key that won't be selectable
         divider_key = f"----------{category}".ljust(60, "-")
         result[divider_key] = names
@@ -759,6 +760,7 @@ def plot_single_well_data(
     fov_name: str,
     text: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot single-well analysis data using registry pattern with database queries.
 
@@ -774,6 +776,8 @@ def plot_single_well_data(
         The name of the analysis to plot (matches AnalysisProduct.name)
     rois : list[int] | None, optional
         List of ROI indices to plot, by default None
+    run_id : int | None, optional
+        The CaliResult.id of the selected run to filter by, by default None
     """
     try:
         # Look up the analysis in the registry
@@ -781,7 +785,9 @@ def plot_single_well_data(
             if product.name == text and product.group == AnalysisGroup.SINGLE_WELL:
                 # Type narrowing: we know this is a SingleWellAnalyzer
                 analyzer = cast("SingleWellAnalyzer", product.analyzer)
-                return analyzer(widget, db_path, fov_name, rois)
+                # Pass run_id as keyword argument to avoid positional conflicts
+                # with other keyword args in the analyzer functions
+                return analyzer(widget, db_path, fov_name, rois, run_id=run_id)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Analysis '{text}' not found in registry")
@@ -795,6 +801,7 @@ def plot_multi_well_data(
     widget: _MultilWellGraphWidget,
     text: str,
     db_path: str | Path,
+    run_id: int | None = None,
 ) -> None:
     """Plot multi-well data using registry pattern with database queries.
 
@@ -806,6 +813,8 @@ def plot_multi_well_data(
         The name of the analysis to plot (matches AnalysisProduct.name)
     db_path : str | Path
         Path to the SQLite database file
+    run_id : int | None, optional
+        The CaliResult.id of the selected run to filter by, by default None
     """
     # Handle empty/invalid selection
     if not text or text == "None" or text in MULTI_WELL_COMBO_OPTIONS_DICT.keys():
@@ -818,7 +827,7 @@ def plot_multi_well_data(
             if product.name == text and product.group == AnalysisGroup.MULTI_WELL:
                 # Type narrowing: we know this is a MultiWellAnalyzer
                 analyzer = cast("MultiWellAnalyzer", product.analyzer)
-                return analyzer(widget, text, db_path)
+                return analyzer(widget, text, db_path, run_id)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Multi-well analysis '{text}' not found in registry")

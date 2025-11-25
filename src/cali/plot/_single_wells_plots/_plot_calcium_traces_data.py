@@ -7,7 +7,7 @@ import numpy as np
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,6 +27,7 @@ def _plot_traces_data(
     db_path: str | Path,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     raw: bool = False,
     dff: bool = False,
     dec: bool = False,
@@ -47,6 +48,9 @@ def _plot_traces_data(
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
+    run_id : int | None
+        The CaliResult.id of the selected run. If provided, only ROIs and traces
+        from this run will be plotted.
     raw : bool
         Plot raw traces
     dff : bool
@@ -73,6 +77,13 @@ def _plot_traces_data(
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
             select(ROI)
@@ -80,9 +91,13 @@ def _plot_traces_data(
             .where(col(FOV.name) == fov_name)
             .options(
                 selectinload(ROI.traces_history),
-                selectinload(ROI.data_analysis),
+                selectinload(ROI.data_analysis_history),
             )
         )
+
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Filter by specific ROIs if requested
         if rois is not None:
@@ -109,7 +124,7 @@ def _plot_traces_data(
     if normalize:
         all_values = []
         for roi_model in roi_models:
-            if trace := _get_trace_from_model(roi_model, dff, dec, raw):
+            if trace := _get_trace_from_model(roi_model, run_id, dff, dec, raw):
                 all_values.extend(trace)
         if all_values:
             percentiles = np.percentile(all_values, [P1, P2])
@@ -122,17 +137,15 @@ def _plot_traces_data(
     last_trace: list[float] | None = None
 
     for roi_model in roi_models:
-        trace = _get_trace_from_model(roi_model, dff, dec, raw)
+        trace = _get_trace_from_model(roi_model, run_id, dff, dec, raw)
 
         if not trace:
             continue
 
         # Get recording time from data_analysis if available
-        if (
-            roi_model.data_analysis
-            and (ttime := roi_model.data_analysis.total_recording_time_sec) is not None
-        ):
-            rois_rec_time.append(ttime)
+        data_analysis = _get_data_analysis_for_run(roi_model, run_id)
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         _plot_trace(
             ax,
@@ -141,6 +154,7 @@ def _plot_traces_data(
             normalize,
             with_peaks,
             roi_model,
+            run_id,
             count,
             p1,
             p2,
@@ -159,22 +173,86 @@ def _plot_traces_data(
     widget.canvas.draw()
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history.
+
+    Parameters
+    ----------
+    roi_model : ROI
+        The ROI model with traces_history loaded
+    run_id : int | None
+        The CaliResult.id to filter by. If None, returns the first/latest trace.
+
+    Returns
+    -------
+    Traces | None
+        The Traces object for this run, or None if not found
+    """
+    if not roi_model.traces_history:
+        return None
+
+    if run_id is None:
+        # Return the first trace if no run_id specified (legacy behavior)
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+
+    # Find the trace matching the run_id
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+
+    # If no exact match, return None
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history.
+
+    Parameters
+    ----------
+    roi_model : ROI
+        The ROI model with data_analysis_history loaded
+    run_id : int | None
+        The CaliResult.id to filter by. If None, returns the first/latest analysis.
+
+    Returns
+    -------
+    DataAnalysis | None
+        The DataAnalysis object for this run, or None if not found
+    """
+    if not roi_model.data_analysis_history:
+        return None
+
+    if run_id is None:
+        # Return the first analysis if no run_id specified (legacy behavior)
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+    # Find the analysis matching the run_id
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _get_trace_from_model(
-    roi_model: ROI, dff: bool, dec: bool, raw: bool
+    roi_model: ROI, run_id: int | None, dff: bool, dec: bool, raw: bool
 ) -> list[float] | None:
     """Get the appropriate trace from ROI model based on the flags."""
-    if not roi_model.traces:
+    traces = _get_traces_for_run(roi_model, run_id)
+    if traces is None:
         return None
 
     try:
         if dff:
-            data = roi_model.traces.dff
+            data = traces.dff
         elif dec:
-            data = roi_model.traces.dec_dff
+            data = traces.dec_dff
         elif raw:
-            data = roi_model.traces.raw_trace
+            data = traces.raw_trace
         else:
-            data = roi_model.traces.corrected_trace
+            data = traces.corrected_trace
         return data or None
     except AttributeError:
         return None
@@ -187,6 +265,7 @@ def _plot_trace(
     normalize: bool,
     with_peaks: bool,
     roi_model: ROI,
+    run_id: int | None,
     count: int,
     p1: float,
     p2: float,
@@ -204,15 +283,16 @@ def _plot_trace(
         ax.plot(trace, label=f"ROI {roi_key}")
 
     # Get peaks data from data_analysis if available
-    if with_peaks and roi_model.data_analysis and roi_model.data_analysis.peaks_dec_dff:
-        peaks_indices = [int(p) for p in roi_model.data_analysis.peaks_dec_dff]
+    data_analysis = _get_data_analysis_for_run(roi_model, run_id)
+    if with_peaks and data_analysis and data_analysis.peaks_dec_dff:
+        peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
         ax.plot(peaks_indices, np.array(trace)[peaks_indices], "x")
 
         # Add vertical lines for peaks height and prominence thresholds
         if thresholds:
-            if roi_model.data_analysis.peaks_height_dec_dff is not None:
+            if data_analysis.peaks_height_dec_dff is not None:
                 # Horizontal dashed line for height threshold
-                ph = roi_model.data_analysis.peaks_height_dec_dff
+                ph = data_analysis.peaks_height_dec_dff
                 ax.axhline(
                     y=ph,
                     color="black",
@@ -221,9 +301,9 @@ def _plot_trace(
                     alpha=0.6,
                     label=f"Peaks Height threshold\n(ROI {roi_key} - {ph:.4f})",
                 )
-            if roi_model.data_analysis.peaks_prominence_dec_dff is not None:
+            if data_analysis.peaks_prominence_dec_dff is not None:
                 # Vertical line from 0 to prominence threshold value
-                pp = roi_model.data_analysis.peaks_prominence_dec_dff
+                pp = data_analysis.peaks_prominence_dec_dff
                 ax.plot(
                     [-3, -3],
                     [0, pp],

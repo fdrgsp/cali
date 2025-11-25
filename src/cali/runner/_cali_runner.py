@@ -374,11 +374,12 @@ class CaliRunner:
                         global_position_indices,
                     ):
                         # Set analysis_result_id ONLY on NEW Traces (those without IDs)
-                        # Old traces from previous runs already have analysis_result_id set
+                        # Old traces from previous runs already have analysis_result_id
+                        # set
                         if analysis_result_id is not None:
                             for roi in fov.rois:
                                 for trace in roi.traces_history:
-                                    # Only set if this is a new trace (not yet committed)
+                                    # Only set if is a new trace (not yet committed)
                                     if trace.id is None:
                                         trace.analysis_result_id = analysis_result_id
 

@@ -12,7 +12,7 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
-from cali._constants import MWCM, STIMULATION_MASK
+from cali._constants import MWCM
 from cali.plot._util import (
     _get_spikes_over_threshold,
     equation_from_str,
@@ -36,22 +36,57 @@ P2 = 100
 
 def _plot_evoked_experiment_data(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     stimulated_area: bool = False,
     with_rois: bool = False,
     stimulated: bool = False,
     with_peaks: bool = False,
 ) -> None:
-    """Plot evoked experiment data."""
-    if stimulated_area or with_rois:
-        _visualize_stimulated_area(widget, data, rois, with_rois, stimulated_area)
+    """Plot evoked experiment data.
 
-    if with_peaks:
-        _plot_stimulated_vs_non_stimulated_roi_amp(widget, data, rois, with_peaks)
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
+    rois : list[int] | None
+        List of ROI indices to include, None for all
+    run_id : int | None
+        The run ID to filter by, None for latest
+    stimulated_area : bool
+        Whether to show stimulated area
+    with_rois : bool
+        Whether to show ROIs
+    stimulated : bool
+        Whether to show stimulated peaks
+    with_peaks : bool
+        Whether to show peaks
+    """
+    widget.figure.clear()
+    ax = widget.figure.add_subplot(111)
 
-    else:
-        _plot_stim_or_not_stim_peaks_amplitude(widget, data, rois, stimulated)
+    ax.text(
+        0.5,
+        0.5,
+        "Evoked Experiment Plots\n\n"
+        "These visualizations require evoked experiment data\n"
+        "that is not yet fully integrated with the new database schema.\n\n"
+        "Please use the legacy viewer or contact support.",
+        ha="center",
+        va="center",
+        fontsize=12,
+        transform=ax.transAxes,
+    )
+    ax.axis("off")
+
+    widget.figure.tight_layout()
+    widget.canvas.draw()
 
 
 def _plot_stim_or_not_stim_peaks_amplitude(
@@ -211,33 +246,31 @@ def _add_hover_to_stimulated_amp_plot(
 
 def _visualize_stimulated_area(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    db_path: str,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     with_rois: bool = False,
     stimulated_area: bool = False,
 ) -> None:
-    """Visualize Stimulated area."""
-    # clear the figure
+    """Visualize Stimulated area - STUB for future implementation."""
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    # get analysis path
-    output_path = widget._plate_viewer.output_path
-    if output_path is None:
-        return
-
-    # get the stimulation mask
-    stimulation_mask_path = Path(output_path) / STIMULATION_MASK
-    if not stimulation_mask_path.exists():
-        return
-    stim_mask = tifffile.imread(stimulation_mask_path)
-
-    if with_rois:
-        _plot_stimulated_rois(ax, widget, data, rois, stim_mask, stimulated_area)
-    else:
-        ax.imshow(stim_mask, cmap="gray", clim=(0, 1))
-
+    ax.text(
+        0.5,
+        0.5,
+        "Stimulated Area Visualization\n\n"
+        "This requires evoked experiment metadata\n"
+        "not yet fully integrated with the new schema.\n\n"
+        "Use the Detection Viewer for ROI visualization.",
+        ha="center",
+        va="center",
+        fontsize=12,
+        transform=ax.transAxes,
+    )
     ax.axis("off")
+
     widget.figure.tight_layout()
     widget.canvas.draw()
 

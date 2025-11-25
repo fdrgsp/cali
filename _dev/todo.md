@@ -1,9 +1,10 @@
 # TODO
 
 - fix plot
-- find a way to better exchange info beyween analysis signal and cali gui
-- fix csv export of analysis results
-- connect cali gui progress bar to analysis progress signal
-- separate segmentation gui from actual segmentation code
 - plate builder from list of tiff files
 - numba?
+- fix csv export of analysis results
+
+- Cascade (instead of OASIS)
+    - https://github.com/HelmchenLabSoftware/Cascade
+    - https://www.scientifica.uk.com/learning-zone/how-to-compute-δf-f-from-calcium-imaging-data?utm_source=chatgpt.com

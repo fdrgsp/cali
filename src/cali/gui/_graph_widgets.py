@@ -136,7 +136,14 @@ class _DisplaySingleWellTraces(QGroupBox):
         if rois is None or (db_path := self._graph._database_path) is None:
             return
 
-        plot_single_well_data(self._graph, db_path, self._graph._fov, text, rois=rois)
+        plot_single_well_data(
+            self._graph,
+            db_path,
+            self._graph._fov,
+            text,
+            rois=rois,
+            run_id=self._graph._run_id,
+        )
 
     def _parse_roi_selection(self) -> list[int] | None:
         """Return the list of ROIs to be displayed."""
@@ -220,6 +227,7 @@ class _SingleWellGraphWidget(QWidget):
 
         self._plate_viewer: CaliGui = parent
         self._database_path: str | None = None
+        self._run_id: int | None = None
 
         self._fov: str = ""
 
@@ -238,8 +246,6 @@ class _SingleWellGraphWidget(QWidget):
             model.appendRow(section)
             for item in value:
                 model.appendRow(QStandardItem(item))
-
-        self._combo.currentTextChanged.connect(self._on_combo_changed)
 
         self._save_btn = QPushButton("Save Image", self)
         self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
@@ -274,6 +280,8 @@ class _SingleWellGraphWidget(QWidget):
 
         self.set_combo_text_red(True)
 
+        self._combo.currentTextChanged.connect(self._on_combo_changed)
+
     @property
     def database_path(self) -> str | None:
         return self._database_path
@@ -289,6 +297,17 @@ class _SingleWellGraphWidget(QWidget):
     @fov.setter
     def fov(self, fov: str) -> None:
         self._fov = fov
+        self._on_combo_changed(self._combo.currentText())
+
+    @property
+    def run_id(self) -> int | None:
+        """Return the current run ID (CaliResult.id)."""
+        return self._run_id
+
+    @run_id.setter
+    def run_id(self, run_id: int | None) -> None:
+        """Set the current run ID and refresh the plot."""
+        self._run_id = run_id
         self._on_combo_changed(self._combo.currentText())
 
     def clear_plot(self) -> None:
@@ -310,7 +329,9 @@ class _SingleWellGraphWidget(QWidget):
         if text == "None" or not self._fov or not self._database_path:
             return
 
-        plot_single_well_data(self, self._database_path, self._fov, text, rois=None)
+        plot_single_well_data(
+            self, self._database_path, self._fov, text, rois=None, run_id=self._run_id
+        )
         if self._choose_dysplayed_traces.isChecked():
             self._choose_dysplayed_traces._update()
 
@@ -335,6 +356,7 @@ class _MultilWellGraphWidget(QWidget):
 
         self._plate_viewer: CaliGui = parent
         self._database_path: str | None = None
+        self._run_id: int | None = None
 
         self._fov: str = ""
 
@@ -355,8 +377,6 @@ class _MultilWellGraphWidget(QWidget):
             model.appendRow(section)
             for item in value:
                 model.appendRow(QStandardItem(item))
-
-        self._combo.currentTextChanged.connect(self._on_combo_changed)
 
         self._conditions_btn = QPushButton("Conditions...", self)
         self._conditions_btn.setEnabled(False)
@@ -392,6 +412,8 @@ class _MultilWellGraphWidget(QWidget):
 
         self.set_combo_text_red(True)
 
+        self._combo.currentTextChanged.connect(self._on_combo_changed)
+
     @property
     def database_path(self) -> str | None:
         return self._database_path
@@ -417,6 +439,17 @@ class _MultilWellGraphWidget(QWidget):
     @conditions.setter
     def conditions(self, conditions: dict[str, bool]) -> None:
         self._conditions = conditions
+
+    @property
+    def run_id(self) -> int | None:
+        """Return the current run ID (CaliResult.id)."""
+        return self._run_id
+
+    @run_id.setter
+    def run_id(self, run_id: int | None) -> None:
+        """Set the current run ID and refresh the plot."""
+        self._run_id = run_id
+        self._on_combo_changed(self._combo.currentText())
 
     def clear_plot(self) -> None:
         """Clear the plot."""

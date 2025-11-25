@@ -10,7 +10,7 @@ from matplotlib.colors import Normalize
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import CaliResult, DataAnalysis, FOV, ROI, Traces
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -21,11 +21,39 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _generate_raster_plot(
     widget: _SingleWellGraphWidget,
     db_path: str | Path,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     amplitude_colors: bool = False,
     colorbar: bool = False,
 ) -> None:
@@ -41,6 +69,8 @@ def _generate_raster_plot(
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
+    run_id : int | None
+        The run ID to filter by, None for latest
     amplitude_colors : bool
         Whether to color by amplitude
     colorbar : bool
@@ -60,20 +90,31 @@ def _generate_raster_plot(
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
             select(ROI)
             .join(FOV)
             .where(col(FOV.name) == fov_name)
             .options(
-                selectinload(ROI.traces),  # type: ignore
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.traces_history),  # type: ignore
+                selectinload(ROI.data_analysis_history),  # type: ignore
             )
         )
 
         # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
@@ -94,12 +135,14 @@ def _generate_raster_plot(
     active_rois = []
     # loop over the ROI models and get the peaks and their colors for each ROI
     for roi in roi_models:
-        if roi.data_analysis is None or roi.traces is None:
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        traces = _get_traces_for_run(roi, run_id)
+        if data_analysis is None or traces is None:
             continue
 
         if (
-            not roi.data_analysis.peaks_dec_dff
-            or not roi.data_analysis.peaks_amplitudes_dec_dff
+            not data_analysis.peaks_dec_dff
+            or not data_analysis.peaks_amplitudes_dec_dff
         ):
             continue
 
@@ -107,27 +150,27 @@ def _generate_raster_plot(
         active_rois.append(roi.label_value)
 
         # convert the x-axis frames to seconds
-        if roi.data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(roi.data_analysis.total_recording_time_sec)
+        if data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         # assuming all traces have the same number of frames
-        if not total_frames and roi.traces.corrected_trace is not None:
-            total_frames = len(roi.traces.corrected_trace)
+        if not total_frames and traces.corrected_trace is not None:
+            total_frames = len(traces.corrected_trace)
 
         # store event data
-        event_data.append(roi.data_analysis.peaks_dec_dff)
+        event_data.append(data_analysis.peaks_dec_dff)
 
         if amplitude_colors:
             # calculate min and max amplitudes for color normalization
-            min_amp = min(min_amp, min(roi.data_analysis.peaks_amplitudes_dec_dff))
-            max_amp = max(max_amp, max(roi.data_analysis.peaks_amplitudes_dec_dff))
+            min_amp = min(min_amp, min(data_analysis.peaks_amplitudes_dec_dff))
+            max_amp = max(max_amp, max(data_analysis.peaks_amplitudes_dec_dff))
         else:
             # assign default color if not using amplitude-based coloring
             colors.append(f"C{roi.label_value - 1}")
 
     # create the color palette for the raster plot
     if amplitude_colors:
-        _generate_amplitude_colors(roi_models, min_amp, max_amp, colors)
+        _generate_amplitude_colors(roi_models, min_amp, max_amp, colors, run_id)
 
     # plot the raster plot
     ax.eventplot(event_data, colors=colors)
@@ -140,8 +183,9 @@ def _generate_raster_plot(
     # use any trace to get total number of frames (they should all be the same)
     sample_trace = None
     for roi in roi_models:
-        if roi.traces and roi.traces.corrected_trace is not None:
-            sample_trace = roi.traces.corrected_trace
+        traces = _get_traces_for_run(roi, run_id)
+        if traces and traces.corrected_trace is not None:
+            sample_trace = traces.corrected_trace
             break
 
     _update_time_axis(ax, rois_rec_time, sample_trace)
@@ -171,6 +215,7 @@ def _generate_amplitude_colors(
     min_amp: float,
     max_amp: float,
     colors: list,
+    run_id: int | None = None,
 ) -> None:
     """Assign colors based on amplitude for raster plot."""
     # Ensure valid normalization range
@@ -186,9 +231,10 @@ def _generate_amplitude_colors(
     norm_amp_color = Normalize(vmin=min_amp, vmax=vmax)
     cmap = colormaps.get_cmap("viridis")
     for roi in roi_models:
-        if roi.data_analysis and roi.data_analysis.peaks_amplitudes_dec_dff:
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        if data_analysis and data_analysis.peaks_amplitudes_dec_dff:
             # Use average amplitude for ROI color
-            avg_amp = np.mean(roi.data_analysis.peaks_amplitudes_dec_dff)
+            avg_amp = np.mean(data_analysis.peaks_amplitudes_dec_dff)
             color = cmap(norm_amp_color(avg_amp))
             colors.append(color)
 

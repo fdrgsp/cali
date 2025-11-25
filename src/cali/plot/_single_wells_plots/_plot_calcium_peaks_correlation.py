@@ -14,7 +14,7 @@ from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import CaliResult, DataAnalysis, FOV, ROI, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -25,19 +25,57 @@ if TYPE_CHECKING:
 from cali.logger import cali_logger
 
 
+def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
+    """Get the Traces object for a specific run from the ROI's traces_history."""
+    if not roi_model.traces_history:
+        return None
+    if run_id is None:
+        return roi_model.traces_history[0] if roi_model.traces_history else None
+    for trace in roi_model.traces_history:
+        if trace.analysis_result_id == run_id:
+            return trace
+    return None
+
+
+def _get_data_analysis_for_run(roi_model: ROI, run_id: int | None) -> DataAnalysis | None:
+    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    if not roi_model.data_analysis_history:
+        return None
+    if run_id is None:
+        return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+    # First try to find exact match
+    for analysis in roi_model.data_analysis_history:
+        if analysis.analysis_result_id == run_id:
+            return analysis
+    # Fall back to first entry (for backwards compatibility with data that has
+    # analysis_result_id=None)
+    return roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
+
+
 def _calculate_cross_correlation(
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Calculate the cross-correlation matrix for the active ROIs."""
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
+        # Get detection_settings_id from the run if run_id is provided
+        detection_settings_id: int | None = None
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result:
+                detection_settings_id = result.detection_settings
+
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
         if rois is not None:
             stmt = stmt.where(col(ROI.id).in_(rois))
+        # Filter by detection settings if we have a run_id
+        if detection_settings_id is not None:
+            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces),  # type: ignore
+            selectinload(ROI.traces_history),  # type: ignore
         )
         roi_results = session.exec(stmt).all()
 
@@ -45,10 +83,11 @@ def _calculate_cross_correlation(
     rois_idxs: list[int] = []
 
     for roi in roi_results:
-        if roi.traces is None or roi.traces.dec_dff is None or roi.id is None:
+        roi_traces = _get_traces_for_run(roi, run_id)
+        if roi_traces is None or roi_traces.dec_dff is None or roi.id is None:
             continue
         rois_idxs.append(roi.id)
-        traces.append(roi.traces.dec_dff)
+        traces.append(roi_traces.dec_dff)
 
     if len(rois_idxs) <= 1:
         cali_logger.warning(
@@ -77,12 +116,13 @@ def _plot_cross_correlation_data(
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois
+        db_path, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
@@ -137,13 +177,14 @@ def _plot_hierarchical_clustering_data(
     db_path: str,
     fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     use_dendrogram: bool = False,
 ) -> None:
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois
+        db_path, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
