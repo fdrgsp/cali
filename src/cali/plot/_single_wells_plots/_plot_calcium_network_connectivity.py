@@ -428,6 +428,8 @@ def _plot_connectivity_matrix_data(
     rois : list[int] | None
         List of ROI indices to include, None for all active ROIs
     """
+
+
 #     widget.figure.clear()
 #     ax = widget.figure.add_subplot(111)
 

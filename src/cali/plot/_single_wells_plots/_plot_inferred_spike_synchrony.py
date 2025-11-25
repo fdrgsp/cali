@@ -1,25 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-import mplcursors
-import numpy as np
-
-from cali.plot._util import (
-    _get_spike_synchrony,
-    _get_spike_synchrony_matrix,
-    _get_spikes_over_threshold,
-)
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from matplotlib.image import AxesImage
-
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
-
-from cali.logger import cali_logger
 
 
 def _plot_spike_synchrony_data(
@@ -41,6 +25,8 @@ def _plot_spike_synchrony_data(
     rois: list[int] | None
         List of ROI indices to include, None for all
     """
+
+
 #     widget.figure.clear()
 #     ax = widget.figure.add_subplot(111)
 

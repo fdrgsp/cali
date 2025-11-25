@@ -110,7 +110,7 @@ class CaliGui(QMainWindow):
         self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
-        self._labels_path: str | None = None   #  TO REMOVE
+        self._labels_path: str | None = None  #  TO REMOVE
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
         # RUNNER ----------------------------------------------------------------------
@@ -853,7 +853,7 @@ class CaliGui(QMainWindow):
         self._database_path = None
         self._data_path = None
         self._output_path = None
-        self._labels_path = None   #  TO REMOVE
+        self._labels_path = None  #  TO REMOVE
         # clear the datastore
         self._data = None
         # clear fov table
