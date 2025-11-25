@@ -153,77 +153,79 @@ def _plot_connectivity_network_data(
 
     #                 # Color based on correlation sign
     #                 color = (
+
+
 #                       "green" if correlation_matrix[orig_i, orig_j] > 0 else "magenta"
-    #                 )
-    #                 x1, y1 = image_centroids[roi_i]
-    #                 x2, y2 = image_centroids[roi_j]
+#                 )
+#                 x1, y1 = image_centroids[roi_i]
+#                 x2, y2 = image_centroids[roi_j]
 
-    #                 ax.plot(
-    #                     [x1, x2],
-    #                     [y1, y2],
-    #                     color=color,
-    #                     linewidth=linewidth,
-    #                     alpha=alpha,
-    #                     zorder=3,  # Above image, below labels
-    #                 )
-    #                 edge_count += 1
+#                 ax.plot(
+#                     [x1, x2],
+#                     [y1, y2],
+#                     color=color,
+#                     linewidth=linewidth,
+#                     alpha=alpha,
+#                     zorder=3,  # Above image, below labels
+#                 )
+#                 edge_count += 1
 
-    # # Display the ROI image
-    # im = ax.imshow(roi_display_image, alpha=1.0, zorder=2)
+# # Display the ROI image
+# im = ax.imshow(roi_display_image, alpha=1.0, zorder=2)
 
-    # # Collect ROI centroids for hover functionality (no visual labels)
-    # drawn_rois = []
-    # for roi_idx in valid_roi_labels:
-    #     if roi_idx in image_centroids:
-    #         x, y = image_centroids[roi_idx]
-    #         drawn_rois.append((roi_idx, x, y))
+# # Collect ROI centroids for hover functionality (no visual labels)
+# drawn_rois = []
+# for roi_idx in valid_roi_labels:
+#     if roi_idx in image_centroids:
+#         x, y = image_centroids[roi_idx]
+#         drawn_rois.append((roi_idx, x, y))
 
-    # # Calculate network statistics
-    # total_possible_edges = n_valid * (n_valid - 1) // 2
-    # if total_possible_edges > 0:
-    #     network_density = edge_count / total_possible_edges
-    # else:
-    #     network_density = 0
+# # Calculate network statistics
+# total_possible_edges = n_valid * (n_valid - 1) // 2
+# if total_possible_edges > 0:
+#     network_density = edge_count / total_possible_edges
+# else:
+#     network_density = 0
 
-    # # Set plot properties
-    # ax.set_aspect("equal")
-    # ax.set_title(
-    #     f"Calcium Peaks Functional Connectivity Network\n"
-    #     f"Threshold: {network_threshold:.1f}% | "
-    #     f"Edges: {edge_count}/{total_possible_edges} | "
-    #     f"Density: {network_density * 100:.1f}%",
-    #     fontsize=12,
-    #     pad=20,
-    # )
-    # ax.axis("off")
-    # ax.set_xticks([])
-    # ax.set_yticks([])
+# # Set plot properties
+# ax.set_aspect("equal")
+# ax.set_title(
+#     f"Calcium Peaks Functional Connectivity Network\n"
+#     f"Threshold: {network_threshold:.1f}% | "
+#     f"Edges: {edge_count}/{total_possible_edges} | "
+#     f"Density: {network_density * 100:.1f}%",
+#     fontsize=12,
+#     pad=20,
+# )
+# ax.axis("off")
+# ax.set_xticks([])
+# ax.set_yticks([])
 
-    # # Add simple hover functionality using the composite image
-    # _add_hover_functionality(im, composite_image, widget)
+# # Add simple hover functionality using the composite image
+# _add_hover_functionality(im, composite_image, widget)
 
-    # # Set axis limits with some padding
-    # if drawn_rois:
-    #     all_x = [x for _, x, _ in drawn_rois]
-    #     all_y = [y for _, _, y in drawn_rois]
-    #     x_min, x_max = min(all_x), max(all_x)
-    #     y_min, y_max = min(all_y), max(all_y)
+# # Set axis limits with some padding
+# if drawn_rois:
+#     all_x = [x for _, x, _ in drawn_rois]
+#     all_y = [y for _, _, y in drawn_rois]
+#     x_min, x_max = min(all_x), max(all_x)
+#     y_min, y_max = min(all_y), max(all_y)
 
-    #     # Add padding (10% of range or minimum 10 pixels)
-    #     x_range = x_max - x_min
-    #     y_range = y_max - y_min
-    #     x_pad = max(x_range * 0.1, 10)
-    #     y_pad = max(y_range * 0.1, 10)
+#     # Add padding (10% of range or minimum 10 pixels)
+#     x_range = x_max - x_min
+#     y_range = y_max - y_min
+#     x_pad = max(x_range * 0.1, 10)
+#     y_pad = max(y_range * 0.1, 10)
 
-    #     ax.set_xlim(x_min - x_pad, x_max + x_pad)
-    #     ax.set_ylim(y_min - y_pad, y_max + y_pad)
+#     ax.set_xlim(x_min - x_pad, x_max + x_pad)
+#     ax.set_ylim(y_min - y_pad, y_max + y_pad)
 
-    # # Invert y-axis to match image coordinates (origin at top-left)
-    # ax.invert_yaxis()
-    # ax.set_aspect("equal", adjustable="box")
+# # Invert y-axis to match image coordinates (origin at top-left)
+# ax.invert_yaxis()
+# ax.set_aspect("equal", adjustable="box")
 
-    # widget.figure.tight_layout()
-    # widget.canvas.draw()
+# widget.figure.tight_layout()
+# widget.canvas.draw()
 
 
 # def _create_connectivity_matrix(
