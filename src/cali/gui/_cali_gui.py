@@ -351,9 +351,9 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        db_path = "tests/test_data/evoked/results.cali"
-        self._initialize_from_database(db_path, data_path)
+        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # db_path = "tests/test_data/evoked/results.cali"
+        # self._initialize_from_database(db_path, data_path)
 
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"

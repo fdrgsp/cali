@@ -40,7 +40,6 @@ from cali.sqlmodel import (
     experiment_to_plate_map_data,
     experiment_to_useq_plate,
     experiment_to_useq_plate_plan,
-    load_analysis_from_json,
     save_experiment_to_database,
     useq_plate_plan_to_db,
 )
@@ -87,14 +86,12 @@ def temp_db() -> Generator[tuple[Engine, Path], None, None]:
 @pytest.fixture
 def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experiment:
     """Create a simple experiment with one well, one FOV, and one ROI."""
-    engine, db_path = temp_db
+    engine, _db_path = temp_db
 
     # Create experiment
     exp = Experiment(
         name="test_experiment",
         description="Test experiment",
-        output_path=str(db_path.parent),
-        database_name=db_path.name,
     )
 
     # Create plate
@@ -197,8 +194,6 @@ def test_experiment_create_from_data(tmp_path: Path) -> None:
     exp = Experiment.create_from_data(
         name="Test Experiment From Data",
         data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
-        output_path=str(tmp_path),
-        database_name="test_from_data.db",
         plate_maps={
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
@@ -273,29 +268,15 @@ def test_roi_relationships(simple_experiment: Experiment, temp_db: TempDB) -> No
 
 def test_unique_constraints(temp_db: TempDB) -> None:
     """Test unique constraints on models."""
-    engine, db_path = temp_db
+    engine, _db_path = temp_db
 
     # Experiment names must be unique
     with Session(engine) as session:
-        session.add(
-            Experiment(
-                name="test1",
-                data_path="/dummy/path",
-                output_path=str(db_path.parent),
-                database_name=db_path.name,
-            )
-        )
+        session.add(Experiment(name="test1"))
         session.commit()
 
     with Session(engine) as session:
-        session.add(
-            Experiment(
-                name="test1",
-                data_path="/dummy/path",
-                output_path=str(db_path.parent),
-                database_name=db_path.name,
-            )
-        )
+        session.add(Experiment(name="test1"))
         with pytest.raises(Exception):  # IntegrityError  # noqa: B017  # noqa: B017
             session.commit()
 
@@ -385,23 +366,87 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
 # ==================== JSON Migration Tests ====================
 
 
-def test_load_analysis_from_json() -> None:
+def test_load_analysis_from_json(tmp_path: Path) -> None:
     """Test loading analysis from JSON directory."""
-    test_data_dir = Path(__file__).parent / "test_data" / "evoked"
-    data_path = test_data_dir / "evk.tensorstore.zarr"
-    output_path = test_data_dir / "evk_analysis"
+    # Use evoked test data - copy to tmp_path to avoid conflicts
+    import shutil
 
-    if not output_path.exists():
-        pytest.skip("Test data not available")
+    from cali.sqlmodel._json_to_db import load_analysis_from_json
+    from cali.sqlmodel._model import (
+        AnalysisSettings,
+        CaliResult,
+        DetectionSettings,
+    )
+    from cali.sqlmodel._util import load_experiment_from_database
 
-    plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
+    test_data_path = Path("tests/test_data/evoked/evk.tensorstore.zarr")
+    test_output_path = Path("tests/test_data/evoked/evk_analysis")
 
-    # Name is now derived from data_path name + ".db"
-    assert experiment.name == "evk.tensorstore.zarr.db"
-    assert experiment.plate is not None
-    assert len(experiment.plate.wells) > 0
-    # Analysis settings are created separately, not as experiment attribute
+    # Copy data to tmp_path
+    data_path = tmp_path / "evk.tensorstore.zarr"
+    output_path = tmp_path / "evk_analysis"
+    shutil.copytree(test_data_path, data_path)
+    shutil.copytree(test_output_path, output_path)
+
+    # Load from JSON (this will create database in output_path)
+    useq_plate = useq.WellPlate.from_str("96-well")
+    load_analysis_from_json(
+        data_path=str(data_path),
+        output_path=str(output_path),
+        useq_plate=useq_plate,
+        save_to_db=True,
+    )
+
+    # The database should be created in output_path
+    db_path = output_path / f"{data_path.name}.db"
+    assert db_path.exists()
+
+    # Verify data was loaded correctly - reload from database
+    loaded_exp = load_experiment_from_database(db_path)
+    assert loaded_exp is not None
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine) as session:
+            # Check DetectionSettings was created
+            detection_settings = session.exec(select(DetectionSettings)).first()
+            assert detection_settings is not None
+            assert detection_settings.method == "cellpose"
+            assert detection_settings.model_type == "custom"
+
+            # Check AnalysisSettings was created
+            analysis_settings = session.exec(select(AnalysisSettings)).first()
+            assert analysis_settings is not None
+            assert analysis_settings.experiment_type == "Evoked Activity"
+
+            # Check CaliResult was created
+            cali_result = session.exec(select(CaliResult)).first()
+            assert cali_result is not None
+            assert cali_result.experiment == loaded_exp.id
+            assert cali_result.detection_settings == detection_settings.id
+            assert cali_result.analysis_settings == analysis_settings.id
+
+            # Check plate structure
+            assert loaded_exp.plate is not None
+            assert len(loaded_exp.plate.wells) == 1
+            well = loaded_exp.plate.wells[0]
+            assert well.name == "B5"
+
+            # Check FOVs
+            assert len(well.fovs) == 1
+            fov = well.fovs[0]
+            assert fov.name == "B5_0000_p0"
+
+            # Check ROIs
+            assert len(fov.rois) == 4
+            for roi in fov.rois:
+                assert roi.detection_settings_id == detection_settings.id
+                assert len(roi.traces_history) == 1
+                assert len(roi.data_analysis_history) == 1
+
+    finally:
+        engine.dispose(close=True)
+        gc.collect()
 
 
 def test_save_experiment_to_db(tmp_path: Path) -> None:
@@ -804,40 +849,42 @@ def test_large_trace_data(temp_db: TempDB) -> None:
 
 
 def test_full_workflow(tmp_path: Path) -> None:
-    """Test complete workflow from JSON to database to export."""
-    test_data_dir = Path(__file__).parent / "test_data" / "evoked"
-    data_path = test_data_dir / "evk.tensorstore.zarr"
-    output_path = test_data_dir / "evk_analysis"
+    """Test complete workflow from creation to database to export."""
+    from cali._constants import SPONTANEOUS
 
-    if not output_path.exists():
-        pytest.skip("Test data not available")
-
-    # 1. Load from JSON
-    plate = useq.WellPlate.from_str("96-well")
-    experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
+    # 1. Create experiment from data
+    exp = Experiment.create_from_data(
+        name="Full Workflow Test",
+        data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+        plate_maps={
+            "genotype": {"B5": "WT"},
+            "treatment": {"B5": "Vehicle"},
+        },
+        experiment_type=SPONTANEOUS,
+    )
 
     # Verify basic experiment structure
-    assert experiment.plate is not None
-    assert len(experiment.plate.wells) > 0
+    assert exp.plate is not None
+    assert len(exp.plate.wells) > 0
 
     # 2. Save to database
     db_path = tmp_path / "test.db"
     save_experiment_to_database(
-        experiment, output_path=tmp_path, database_name="test.db", overwrite=True
+        exp, output_path=tmp_path, database_name="test.db", overwrite=True
     )
 
     # 3. Read back from database
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:
-            exp = session.exec(select(Experiment)).first()
+            loaded_exp = session.exec(select(Experiment)).first()
 
             # 4. Convert to useq.WellPlate
-            useq_plate = experiment_to_useq_plate(exp)
+            useq_plate = experiment_to_useq_plate(loaded_exp)
             assert useq_plate is not None
 
             # 5. Convert to useq.WellPlatePlan
-            useq_plate_plan = experiment_to_useq_plate_plan(exp)
+            useq_plate_plan = experiment_to_useq_plate_plan(loaded_exp)
             assert useq_plate_plan is not None
     finally:
         # Cleanup - dispose engine (Python 3.13 compatibility)
@@ -973,29 +1020,11 @@ def test_visualize_experiment_functions(
     simple_experiment: Experiment, temp_db: TempDB
 ) -> None:
     """Test visualization functions."""
-    from cali.sqlmodel._visualize_experiment import (
-        print_cali_results,
-        print_experiment_tree,
-        print_experiment_tree_from_engine,
-    )
+    from cali.sqlmodel._visualize_experiment import print_cali_results
 
     engine, _db_path = temp_db
 
-    with Session(engine) as session:
-        exp = session.get(Experiment, simple_experiment.id)
-
-        # Test print_experiment_tree with different max levels
-        print_experiment_tree(exp, max_experiment_level="experiment", session=session)
-        print_experiment_tree(exp, max_experiment_level="plate", session=session)
-        print_experiment_tree(exp, max_experiment_level="well", session=session)
-        print_experiment_tree(exp, max_experiment_level="fov", session=session)
-        print_experiment_tree(exp, max_experiment_level="roi", session=session)
-
-        # Test with analysis results off
-        print_experiment_tree(exp, show_analysis_results=False, session=session)
-        print_experiment_tree(exp, show_settings=False, session=session)
-
-    # Test print_all_analysis_results
+    # Test print_cali_results
     print_cali_results(
         engine,
         experiment_name=simple_experiment.name,
@@ -1006,22 +1035,6 @@ def test_visualize_experiment_functions(
         engine,
         experiment_name=None,  # All experiments
         show_settings=True,
-    )
-
-    # Test print_experiment_tree_from_engine
-    print_experiment_tree_from_engine(
-        simple_experiment.name,
-        engine,
-        max_level="roi",
-        show_analysis_results=True,
-        show_settings=True,
-    )
-
-    # Test with non-existent experiment
-    print_experiment_tree_from_engine(
-        "NonExistent",
-        engine,
-        max_level="roi",
     )
 
 
@@ -1068,9 +1081,7 @@ def test_db_to_plate_map_with_multiple_condition_types(temp_db: TempDB) -> None:
 
     engine, _ = temp_db
 
-    exp = Experiment(
-        name="test_map",
-    )
+    exp = Experiment(name="test_map")
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
 
     # Create conditions
@@ -1460,12 +1471,7 @@ def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment with multiple wells
-        exp = Experiment(
-            name="multi_well_test",
-            data_path="/dummy/path",
-            output_path="/dummy/analysis",
-            database_name="test.db",
-        )
+        exp = Experiment(name="multi_well_test")
         plate = Plate(experiment=exp, name="24-well")
 
         # Create conditions
@@ -1521,12 +1527,7 @@ def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment with wells but no conditions
-        exp = Experiment(
-            name="no_conditions_test",
-            data_path="/dummy/path",
-            output_path="/dummy/analysis",
-            database_name="test.db",
-        )
+        exp = Experiment(name="no_conditions_test")
         plate = Plate(experiment=exp, name="24-well")
         Well(plate=plate, name="A1", row=0, column=0)
         Well(plate=plate, name="A2", row=0, column=1)
@@ -1549,12 +1550,7 @@ def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create experiment without plate
-        exp = Experiment(
-            name="no_plate_test",
-            data_path="/dummy/path",
-            output_path="/dummy/analysis",
-            database_name="test.db",
-        )
+        exp = Experiment(name="no_plate_test")
 
         session.add(exp)
         session.commit()

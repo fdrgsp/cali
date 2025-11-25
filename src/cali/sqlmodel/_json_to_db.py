@@ -30,6 +30,7 @@ from ._model import (
     CaliResult,
     Condition,
     DataAnalysis,
+    DetectionSettings,
     Experiment,
     Mask,
     Plate,
@@ -98,18 +99,13 @@ def load_analysis_from_json(
     # 1. Create experiment
     db_name = f"{Path(data_path).name}.db"
     experiment = Experiment(
-        id=0,  # placeholder, will be set when saved. Needed for relationships.
         name=db_name,
         description=f"Imported from {output_path}",
-        data_path=data_path,
-        output_path=output_path,
-        database_name=db_name,
     )
-    assert experiment.id is not None
 
     # 2. Create plate
     plate = Plate(
-        experiment_id=experiment.id,
+        experiment_id=0,  # Placeholder - will be updated by SQLModel relationship
         experiment=experiment,
         name=useq_plate.name,
         plate_type=useq_plate.name,
@@ -389,7 +385,7 @@ def load_analysis_from_json(
 
         from ._util import create_database_and_tables
 
-        db_path = Path(experiment.output_path) / experiment.database_name
+        db_path = Path(output_path) / f"{Path(data_path).name}.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         if db_path.exists():
@@ -399,13 +395,27 @@ def load_analysis_from_json(
         create_database_and_tables(engine)
 
         saved_exp_id = None
+        saved_analysis_settings_id = None
+        saved_detection_settings_id = None
         try:
             with Session(engine) as session:
-                # First merge analysis_settings if it exists
+                # Create default detection settings for legacy JSON imports
+                # (we don't know what settings were used)
+                detection_settings = DetectionSettings(
+                    method="cellpose",
+                    model_type="custom",  # Legacy imports don't track this
+                    custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",
+                )
+                session.add(detection_settings)
+                session.commit()
+                saved_detection_settings_id = detection_settings.id
+
+                # Add analysis_settings if it exists
                 # (it's not part of experiment tree)
                 if analysis_settings:
                     session.add(analysis_settings)
-                    session.flush()  # Get the ID without committing
+                    session.commit()  # Commit settings first
+                    saved_analysis_settings_id = analysis_settings.id
 
                 # Merge handles add/update for the entire object tree with cascade
                 session.merge(experiment)
@@ -419,34 +429,39 @@ def load_analysis_from_json(
                 if saved_exp:
                     saved_exp_id = saved_exp.id
 
-                    # Now create AnalysisResult to track this analysis run
-                    if analysis_settings:
-                        analysis_result = CaliResult(
-                            experiment=saved_exp.id,
-                            # Legacy JSON imports don't have detection settings
-                            detection_settings=None,
-                            analysis_settings=analysis_settings.id,
-                            positions_analyzed=sorted(positions_analyzed),
-                        )
-                        session.add(analysis_result)
-                        session.flush()  # Get analysis_result.id
+                # Update all ROIs with the detection_settings_id
+                # (ROIs were created before DetectionSettings was saved)
+                all_rois = session.exec(select(ROI)).all()
+                for roi in all_rois:
+                    roi.detection_settings_id = saved_detection_settings_id
+                session.commit()
 
-                        # Link all Traces and DataAnalysis to this AnalysisResult
-                        from sqlmodel import select
+            # Now create AnalysisResult to track this analysis run (in new session)
+            # For legacy JSON imports, we always create a CaliResult to track the import
+            if saved_exp_id and saved_detection_settings_id:
+                with Session(engine) as session:
+                    analysis_result = CaliResult(
+                        experiment=saved_exp_id,
+                        detection_settings=saved_detection_settings_id,
+                        analysis_settings=saved_analysis_settings_id,  # May be None
+                        positions_analyzed=sorted(positions_analyzed),
+                    )
+                    session.add(analysis_result)
+                    session.flush()  # Get analysis_result.id
 
-                        all_traces = session.exec(select(Traces)).all()
-                        all_data_analysis = session.exec(select(DataAnalysis)).all()
+                    # Link all Traces and DataAnalysis to this AnalysisResult
+                    all_traces = session.exec(select(Traces)).all()
+                    all_data_analysis = session.exec(select(DataAnalysis)).all()
 
-                        for trace in all_traces:
-                            trace.analysis_result_id = analysis_result.id
-                        for data_analysis in all_data_analysis:
-                            data_analysis.analysis_result_id = analysis_result.id
+                    for trace in all_traces:
+                        trace.analysis_result_id = analysis_result.id
+                    for data_analysis in all_data_analysis:
+                        data_analysis.analysis_result_id = analysis_result.id
 
-                        session.commit()
+                    session.commit()
 
             cali_logger.info(
-                f"💾 Experiment analysis loaded and saved to database at "
-                f"{experiment.output_path}/{experiment.database_name}."
+                f"💾 Experiment analysis loaded and saved to database at " f"{db_path}."
             )
 
             # Load fresh from database to return
@@ -574,6 +589,7 @@ def roi_from_roi_data(
     fov_id: int | None,
     label_value: int,
     settings_id: int | None = None,
+    detection_settings_id: int | None = None,
 ) -> tuple[ROI, Traces, DataAnalysis, Mask, Mask | None]:
     """Convert ROIData dataclass to SQLModel entities.
 
@@ -592,6 +608,8 @@ def roi_from_roi_data(
         ROI label number
     settings_id : int | None
         Analysis settings ID to associate with this ROI
+    detection_settings_id : int | None
+        Detection settings ID that created this ROI (None for legacy imports)
 
     Returns
     -------
@@ -633,6 +651,7 @@ def roi_from_roi_data(
         label_value=label_value,
         active=roi_data.active,
         stimulated=roi_data.stimulated,
+        detection_settings_id=detection_settings_id,
     )
 
     # Create Trace (roi_id will be set after ROI is added to session)
