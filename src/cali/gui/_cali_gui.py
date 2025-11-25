@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QMainWindow,
+    QMenu,
     QMenuBar,
     QMessageBox,
     QSizePolicy,
@@ -119,7 +120,7 @@ class CaliGui(QMainWindow):
 
         # MENU BAR -------------------------------------------------------------------
         self.menu_bar = QMenuBar(self)
-        self.file_menu = self.menu_bar.addMenu("File")
+        self.file_menu = cast("QMenu", self.menu_bar.addMenu("File"))
         open_action = QAction("Select Data Source...", self)
         open_action.setToolTip(
             "Open a dialog to select zarr datastore and analysis database location."

@@ -338,13 +338,9 @@ class AnalysisRunner:
             # Add traces and analysis to the existing ROI if processing succeeded
             if trace_data is not None:
                 traces, data_analysis, active, stimulated = trace_data
-                # Don't use .append() which triggers lazy load - instead add to
-                # in-memory list and let commit_fov_result handle database merge
-                if not hasattr(existing_roi, "_new_traces"):
-                    existing_roi._new_traces = []  # type: ignore
-                    existing_roi._new_data_analysis = []  # type: ignore
-                existing_roi._new_traces.append(traces)  # type: ignore
-                existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
+                # Append directly to relationships (eagerly loaded by caller)
+                existing_roi.traces_history.append(traces)
+                existing_roi.data_analysis_history.append(data_analysis)
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 

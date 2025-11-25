@@ -180,21 +180,12 @@ def commit_fov_result(
                     matching_roi.stimulated = new_roi.stimulated
 
                     # Add traces and data_analysis to existing ROI
-                    # Check for both regular relationship and temp in-memory list
-                    traces_to_add = (
-                        getattr(new_roi, "_new_traces", []) or new_roi.traces_history
-                    )
-                    data_analysis_to_add = (
-                        getattr(new_roi, "_new_data_analysis", [])
-                        or new_roi.data_analysis_history
-                    )
-
-                    for trace in traces_to_add:
+                    for trace in new_roi.traces_history:
                         trace.roi_id = matching_roi.id
                         trace.roi = matching_roi
                         session.add(trace)
 
-                    for data_analysis in data_analysis_to_add:
+                    for data_analysis in new_roi.data_analysis_history:
                         data_analysis.roi_id = matching_roi.id
                         data_analysis.roi = matching_roi
                         session.add(data_analysis)

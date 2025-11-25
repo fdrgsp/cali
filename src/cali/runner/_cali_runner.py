@@ -217,7 +217,6 @@ class CaliRunner:
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
-                    yield f"Starting detection on {len(positions_for_detection)} positions..."
                     fov_count = 0
                     for fov in self._run_detection(
                         dataset,
@@ -232,7 +231,7 @@ class CaliRunner:
                         # Yield progress
                         yield (
                             f"Detection: {fov_count}/{len(positions_for_detection)} "
-                            f"(Position {fov.position_index}, {roi_count} ROIs)"
+                            f"({fov.name} - {roi_count} ROIs)"
                         )
 
                         # Commit in batches
@@ -293,7 +292,6 @@ class CaliRunner:
 
                     # Load FOVs from database (only for positions needing analysis)
                     # After committing detection, the in-memory FOVs become detached
-                    yield f"Loading {len(positions_for_analysis)} FOVs for analysis..."
                     fovs_with_rois = self._load_fovs_from_database(
                         session,
                         detection_settings.id,
@@ -319,7 +317,6 @@ class CaliRunner:
 
                     # Now run analysis and commit FOVs one by one, setting
                     # analysis_result_id on Traces before committing
-                    yield f"Starting analysis on {len(positions_for_analysis)} positions..."
                     positions_processed = []
                     fov_count = 0
                     for fov in self._run_analysis(
@@ -331,11 +328,7 @@ class CaliRunner:
                         # Set analysis_result_id on all Traces before committing
                         if analysis_result_id is not None:
                             for roi in fov.rois:
-                                traces = (
-                                    getattr(roi, "_new_traces", [])
-                                    or roi.traces_history
-                                )
-                                for trace in traces:
+                                for trace in roi.traces_history:
                                     trace.analysis_result_id = analysis_result_id
 
                         fov_count += 1
@@ -344,7 +337,7 @@ class CaliRunner:
                         total_rois = len(fov.rois)
                         yield (
                             f"Analysis: {fov_count}/{len(positions_for_analysis)} "
-                            f"(Position {fov.position_index}, {total_rois} ROIs)"
+                            f"({fov.name} - {total_rois} ROIs)"
                         )
 
                         # Commit in batches
@@ -849,6 +842,8 @@ class CaliRunner:
         for pos_idx in global_position_indices:
             # Query for FOV at this position that has ROIs with
             # matching detection_settings_id
+            # Eagerly load relationships to avoid lazy loading during analysis
+            roi_chain = selectinload(FOV.rois)  # type: ignore
             fov_stmt = (
                 select(FOV)
                 .join(ROI)
@@ -857,7 +852,9 @@ class CaliRunner:
                     ROI.detection_settings_id == detection_settings_id,
                 )
                 .options(
-                    selectinload(FOV.rois).selectinload(ROI.roi_mask),
+                    roi_chain.selectinload(ROI.roi_mask),  # type: ignore
+                    roi_chain.selectinload(ROI.traces_history),  # type: ignore
+                    roi_chain.selectinload(ROI.data_analysis_history),  # type: ignore
                 )
             )
             fov = session.exec(fov_stmt).first()
