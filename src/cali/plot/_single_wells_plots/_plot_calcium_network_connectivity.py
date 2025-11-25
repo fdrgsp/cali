@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-import mplcursors
-import numpy as np
-
-from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
-    _calculate_cross_correlation,
-)
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from matplotlib.image import AxesImage
-
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
-
-from cali.logger import cali_logger
 
 
 def _plot_connectivity_network_data(
