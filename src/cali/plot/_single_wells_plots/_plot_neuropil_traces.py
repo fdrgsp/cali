@@ -26,8 +26,9 @@ def _plot_neuropil_traces(
     fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
-    """Plot all raw and neuropil traces together on widget canvas
-    by querying database directly.
+    """Plot all raw and neuropil traces together on widget canvas.
+
+    ...by querying database directly.
 
     Raw traces and neuropil traces are plotted on the same axes,
     allowing the filtering logic to isolate specific ROI pairs.

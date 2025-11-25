@@ -102,7 +102,8 @@
 #         self._browse_custom_model.hide()
 
 #         button_box = QDialogButtonBox(
-#             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+#             QDialogButtonBox.StandardButton.Ok |
+#             QDialogButtonBox.StandardButton.Cancel
 #         )
 #         # add icons to the buttons
 #         button_box.button(QDialogButtonBox.StandardButton.Ok).setIcon(

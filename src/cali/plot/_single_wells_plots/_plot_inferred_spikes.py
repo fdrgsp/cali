@@ -10,12 +10,14 @@ from sqlmodel import Session, col, create_engine, select
 
 from cali.sqlmodel._model import FOV, ROI
 
+from cali.plot._util import _get_spikes_over_threshold,
 if TYPE_CHECKING:
     from pathlib import Path
 
     from matplotlib.axes import Axes
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._util import ROIData
 
 from cali.logger import cali_logger
 

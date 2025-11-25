@@ -32,8 +32,9 @@ def _generate_spike_raster_plot(
     amplitude_colors: bool = False,
     colorbar: bool = False,
 ) -> None:
-    """Generate a spike raster plot using thresholded spike data
-    by querying database directly.
+    """Generate a spike raster plot using thresholded spike data.
+
+    ...by querying database directly.
 
     Parameters
     ----------

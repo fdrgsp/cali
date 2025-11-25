@@ -186,9 +186,9 @@ class CaliGui(QMainWindow):
         self._main_tab = QTabWidget(self)
         self._main_tab.currentChanged.connect(self._on_tab_changed)
 
-        # DETECTION & ANALYSIS TAB ----------------------------------------------------
+        # DETECTION AND ANALYSIS TAB ----------------------------------------------------
         self._detection_analysis_tab = QWidget()
-        self._main_tab.addTab(self._detection_analysis_tab, "Detection ＆ Analysis")
+        self._main_tab.addTab(self._detection_analysis_tab, "Detection and Analysis")
         detection_analysis_layout = QVBoxLayout(self._detection_analysis_tab)
         detection_analysis_layout.setContentsMargins(0, 0, 0, 0)
         detection_analysis_layout.setSpacing(5)

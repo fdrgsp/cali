@@ -344,8 +344,8 @@ class _RunsPanel(QGroupBox):
                     f"🧹 Cleaning up orphaned DetectionSettings #{detection_id}"
                 )
 
-                # Delete all ROIs with this detection_settings_id
-                # These ROIs are deleted even if their FOV contains ROIs from other detections
+                # Delete all ROIs with this detection_settings_id. These ROIs are
+                # deleted even if their FOV contains ROIs from other detections
                 # (This will cascade to delete Traces, DataAnalysis, and Masks)
                 rois_to_delete = session.exec(
                     select(ROI).where(ROI.detection_settings_id == detection_id)

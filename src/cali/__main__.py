@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 # CRITICAL: Import torch before Qt on Windows to avoid DLL conflicts
-# When PyQt6 initializes before PyTorch on Windows, it can cause c10.dll loading failures
+# When PyQt6 initializes before PyTorch on Windows, it can cause c10.dll failures
 if sys.platform == "win32":
     try:
         import torch  # noqa: F401

@@ -19,7 +19,7 @@ from scipy.ndimage import gaussian_filter, maximum_filter1d, minimum_filter1d
 
 @njit(
     [
-        "float32[:], float32[:], float32[:], int64[:], float32[:], float32[:], float32, float32"
+        "float32[:], float32[:], float32[:], int64[:], float32[:], float32[:], float32, float32"  # noqa: E501
     ],
     cache=True,
 )
@@ -28,7 +28,7 @@ def oasis_trace(
     v: np.ndarray,
     w: np.ndarray,
     t: np.ndarray,
-    l: np.ndarray,
+    l: np.ndarray,  # noqa: E741
     s: np.ndarray,
     tau: float,
     fs: float,
@@ -72,7 +72,7 @@ def oasis_matrix(
     v: np.ndarray,
     w: np.ndarray,
     t: np.ndarray,
-    l: np.ndarray,
+    l: np.ndarray,  # noqa: E741
     s: np.ndarray,
     tau: float,
     fs: float,
@@ -111,7 +111,7 @@ def oasis(F: np.ndarray, batch_size: int, tau: float, fs: float) -> np.ndarray:
         v = np.zeros((f.shape[0], NT), dtype=np.float32)
         w = np.zeros((f.shape[0], NT), dtype=np.float32)
         t = np.zeros((f.shape[0], NT), dtype=np.int64)
-        l = np.zeros((f.shape[0], NT), dtype=np.float32)
+        l = np.zeros((f.shape[0], NT), dtype=np.float32)  # noqa: E741
         s = np.zeros((f.shape[0], NT), dtype=np.float32)
         oasis_matrix(f, v, w, t, l, s, tau, fs)
         S[i : i + batch_size] = s

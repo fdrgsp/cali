@@ -499,7 +499,7 @@
 #     category="Evoked Experiment",
 # )
 
-# # Multi-Well Analysis Products --------------------------------------------------------
+# # Multi-Well Analysis Products ------------------------------------------------------
 # # These plot CSV bar plots from grouped analysis data
 
 # # Helper function that all multi-well products use
