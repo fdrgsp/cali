@@ -6,7 +6,6 @@ from sqlalchemy import create_engine
 from cali.sqlmodel import load_analysis_from_json
 from cali.sqlmodel._visualize_experiment import (
     print_cali_results,
-    print_experiment_tree,
 )
 
 # Set paths for data, labels, and analysis directory
@@ -25,9 +24,6 @@ plate = useq.WellPlate.from_str("96-well")
 
 # Load experiment from JSON files and save to database (with AnalysisResult tracking)
 experiment = load_analysis_from_json(str(data_path), str(output_path), plate)
-
-# view experiment tree
-print_experiment_tree(experiment, max_experiment_level="roi")
 
 # engine = create_engine(f"sqlite:///{output_path}/evk.tensorstore.zarr.db")
 engine = create_engine(f"sqlite:///{output_path}/spont.tensorstore.zarr.db")

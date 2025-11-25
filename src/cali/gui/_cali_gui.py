@@ -351,13 +351,13 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/evoked/results.cali"
-        self._output_path = "tests/test_data/evoked/"
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -592,6 +592,84 @@ class CaliGui(QMainWindow):
             cali_logger.error(f"Failed to populate detection settings: {e}")
 
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
+    def _save_plate_map_to_database(self) -> None:
+        """Save plate map data from GUI to database."""
+        if self._database_path is None:
+            return
+
+        # Get plate map data from GUI
+        plate_map_data = self._analysis_wdg._plate_map_wdg.value()
+
+        _, genotype_data, treatment_data = plate_map_data
+
+        # Only save if there's actual data
+        if not genotype_data and not treatment_data:
+            return
+
+        # Load experiment and update it with plate map data
+        from sqlmodel import Session, create_engine
+
+        from cali.sqlmodel._model import Condition
+
+        engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+        try:
+            with Session(engine) as session:
+                exp = Experiment.load_from_db(self._database_path)
+                if exp.plate is None or exp.plate.wells is None:
+                    return
+
+                # Get or create conditions (reuse existing ones with same name)
+                def get_or_create_condition(
+                    name: str, color: str, condition_type: str
+                ) -> Condition:
+                    # Try to find existing condition with this name
+                    from sqlmodel import select
+
+                    stmt = select(Condition).where(Condition.name == name)
+                    existing = session.exec(stmt).first()
+                    if existing:
+                        # Update color and type if needed
+                        existing.color = color
+                        existing.condition_type = condition_type
+                        return existing
+                    # Create new condition
+                    return Condition(
+                        name=name, color=color, condition_type=condition_type
+                    )
+
+                # Clear existing conditions and add new ones
+                for well in exp.plate.wells:
+                    well.conditions = []
+
+                    # Find matching genotype data
+                    for plate_data in genotype_data:
+                        if (well.row, well.column) == plate_data.row_col:
+                            condition = get_or_create_condition(
+                                name=plate_data.condition[0],
+                                color=plate_data.condition[1],
+                                condition_type="genotype",
+                            )
+                            well.conditions.append(condition)
+                            break
+
+                    # Find matching treatment data
+                    for plate_data in treatment_data:
+                        if (well.row, well.column) == plate_data.row_col:
+                            condition = get_or_create_condition(
+                                name=plate_data.condition[0],
+                                color=plate_data.condition[1],
+                                condition_type="treatment",
+                            )
+                            well.conditions.append(condition)
+                            break
+
+                # Merge the plate back into the session and commit
+                session.merge(exp.plate)
+                session.commit()
+                cali_logger.info("💾 Saved plate map data to database")
+        finally:
+            engine.dispose(close=True)
+
     def _on_cali_run_clicked(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
         if (
@@ -657,16 +735,28 @@ class CaliGui(QMainWindow):
         self._run_cali_wdg.set_progress_bar_text("Initializing...")
         self._elapsed_timer.start()
 
+        # Save plate map data to database before running
+        self._save_plate_map_to_database()
+
+        # Create a generator function wrapper for create_worker
+        def _run_generator() -> Generator[str, None, None]:
+            assert self._data is not None
+            assert self._database_path is not None
+            result = self._runner.run(
+                experiment,
+                self._data.path,
+                detection_settings,
+                analysis_settings=analysis_settings,
+                global_position_indices=pos,
+                database_name=Path(self._database_path).name,
+                output_path=Path(self._output_path) if self._output_path else None,
+                as_generator=True,
+            )
+            assert result is not None  # as_generator=True always returns a generator
+            yield from result
+
         create_worker(
-            self._runner.run,
-            experiment,
-            self._data.path,
-            detection_settings,
-            analysis_settings=analysis_settings,
-            global_position_indices=pos,
-            database_name=Path(self._database_path).name,
-            output_path=Path(self._output_path) if self._output_path else None,
-            as_generator=True,
+            _run_generator,
             _start_thread=True,
             _connect={
                 "errored": self._on_worker_errored,
@@ -1005,7 +1095,7 @@ class CaliGui(QMainWindow):
                     )
                     cali_logger.info(
                         f"Loaded stimulation metadata from datastore: "
-                        f"led_pulse_duration={led_duration}"
+                        f"led_pulse_duration={led_duration} "
                         f"led_powers={wdg._led_powers_le.text()}, "
                         f"led_pulse_on_frames={wdg._led_pulse_on_frames_le.text()}"
                     )
