@@ -62,7 +62,7 @@ def oasis_trace(
 
 @njit(
     [
-        "float32[:,:], float32[:,:], float32[:,:], int64[:,:], float32[:,:], float32[:,:], float32, float32"
+        "float32[:,:], float32[:,:], float32[:,:], int64[:,:], float32[:,:], float32[:,:], float32, float32"  # noqa: E501
     ],
     parallel=True,
     cache=True,

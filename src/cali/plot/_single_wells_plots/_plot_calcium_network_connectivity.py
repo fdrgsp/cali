@@ -153,7 +153,7 @@ def _plot_connectivity_network_data(
 
     #                 # Color based on correlation sign
     #                 color = (
-    #                     "green" if correlation_matrix[orig_i, orig_j] > 0 else "magenta"
+#                       "green" if correlation_matrix[orig_i, orig_j] > 0 else "magenta"
     #                 )
     #                 x1, y1 = image_centroids[roi_i]
     #                 x2, y2 = image_centroids[roi_j]
@@ -256,7 +256,7 @@ def _plot_connectivity_network_data(
 #     threshold = np.percentile(off_diagonal_values, threshold_percentile)
 
 #     # Create binary connectivity matrix
-#     return (correlation_matrix >= threshold).astype(int)  # type: ignore [no-any-return]
+#     return (correlation_matrix >= threshold).astype(int)  # type: ignore
 
 
 # def _get_roi_shapes_from_mask_data(
@@ -485,7 +485,9 @@ def _plot_connectivity_matrix_data(
 #     n_nodes = len(rois_idxs)
 #     n_edges = np.sum(connectivity_matrix) - n_nodes  # Exclude diagonal
 #     total_possible_edges = n_nodes * (n_nodes - 1)
-#     network_density = n_edges / total_possible_edges if total_possible_edges > 0 else 0
+#     network_density = (
+#       n_edges / total_possible_edges if total_possible_edges > 0 else 0
+#     )
 
 #     # Plot connectivity matrix
 #     img = ax.imshow(connectivity_matrix, vmin=0, vmax=1)
