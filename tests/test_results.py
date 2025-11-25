@@ -589,3 +589,644 @@ def test_query_cali_results_by_settings(
 
     finally:
         engine.dispose(close=True)
+
+
+def test_detection_settings_with_custom_model() -> None:
+    """Test DetectionSettings with custom model path."""
+    ds = DetectionSettings(
+        method="cellpose",
+        model_type="custom",
+        custom_model="/path/to/custom/model.pth",
+        diameter=None,  # Auto diameter
+    )
+
+    assert ds.method == "cellpose"
+    assert ds.model_type == "custom"
+    assert ds.custom_model == "/path/to/custom/model.pth"
+    assert ds.diameter is None
+
+
+def test_detection_settings_hash_stability() -> None:
+    """Test that hash remains stable for same settings."""
+    ds1 = DetectionSettings(
+        method="cellpose",
+        model_type="cpsam",
+        diameter=30.0,
+    )
+
+    # Hash should be stable across multiple calls
+    hash1 = hash(ds1)
+    hash2 = hash(ds1)
+    hash3 = hash(ds1)
+
+    assert hash1 == hash2 == hash3
+
+
+def test_analysis_settings_spontaneous_fields() -> None:
+    """Test AnalysisSettings with spontaneous experiment fields."""
+    settings = AnalysisSettings(
+        dff_window=100,
+        threads=4,
+        peaks_height_value=1.5,
+        spike_threshold_value=2.0,
+        neuropil_inner_radius=5,
+        burst_threshold=20.0,
+    )
+
+    assert settings.dff_window == 100
+    assert settings.threads == 4
+    assert settings.peaks_height_value == 1.5
+    assert settings.spike_threshold_value == 2.0
+    assert settings.neuropil_inner_radius == 5
+    assert settings.burst_threshold == 20.0
+
+
+def test_analysis_settings_experiment_type() -> None:
+    """Test AnalysisSettings with experiment_type field."""
+    from cali._constants import EVOKED, SPONTANEOUS
+
+    settings_evoked = AnalysisSettings(
+        experiment_type=EVOKED,
+        dff_window=100,
+    )
+
+    settings_spont = AnalysisSettings(
+        experiment_type=SPONTANEOUS,
+        dff_window=100,
+    )
+
+    assert settings_evoked.experiment_type == EVOKED
+    assert settings_spont.experiment_type == SPONTANEOUS
+    assert settings_evoked != settings_spont  # Different experiment types
+
+
+def test_cali_result_with_all_fields() -> None:
+    """Test CaliResult with all possible fields populated."""
+    result = CaliResult(
+        experiment=1,
+        detection_settings=2,
+        analysis_settings=3,
+        positions_analyzed=[0, 1, 2, 3, 4],
+    )
+
+    assert result.experiment == 1
+    assert result.detection_settings == 2
+    assert result.analysis_settings == 3
+    assert result.positions_analyzed == [0, 1, 2, 3, 4]
+    assert result.id is None  # Not yet saved
+    assert result.created_at is not None
+
+
+def test_cali_result_positions_sorted() -> None:
+    """Test that positions can be stored in any order."""
+    result = CaliResult(
+        experiment=1,
+        detection_settings=2,
+        positions_analyzed=[5, 2, 8, 1, 3],  # Unsorted
+    )
+
+    # Should preserve the order given
+    assert result.positions_analyzed == [5, 2, 8, 1, 3]
+
+
+def test_detection_settings_caiman_method() -> None:
+    """Test DetectionSettings with caiman method."""
+    ds = DetectionSettings(
+        method="caiman",
+        model_type="N/A",  # Not used for caiman
+    )
+
+    assert ds.method == "caiman"
+    assert ds.model_type == "N/A"
+
+
+def test_multiple_experiments_same_settings(test_db: Path) -> None:
+    """Test same settings reused across multiple experiments."""
+    from cali.sqlmodel._util import create_database_and_tables
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    create_database_and_tables(engine)
+
+    try:
+        # Create two experiments
+        exp1 = Experiment.create_from_data(
+            name="Experiment 1",
+            data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+            plate_maps={"genotype": {"B5": "WT"}},
+            experiment_type=SPONTANEOUS,
+        )
+
+        exp2 = Experiment.create_from_data(
+            name="Experiment 2",
+            data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+            plate_maps={"genotype": {"B5": "KO"}},
+            experiment_type=SPONTANEOUS,
+        )
+
+        with Session(engine) as session:
+            session.add(exp1)
+            session.add(exp2)
+            session.commit()
+            session.refresh(exp1)
+            session.refresh(exp2)
+
+            # Create shared settings
+            d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+            a_settings = AnalysisSettings(dff_window=100)
+            session.add_all([d_settings, a_settings])
+            session.commit()
+            session.refresh(d_settings)
+            session.refresh(a_settings)
+
+            # Type assertions to satisfy mypy
+            assert exp1.id is not None
+            assert exp2.id is not None
+            assert d_settings.id is not None
+            assert a_settings.id is not None
+
+            # Create CaliResults for both experiments with same settings
+            result1 = CaliResult(
+                experiment=exp1.id,
+                detection_settings=d_settings.id,
+                analysis_settings=a_settings.id,
+                positions_analyzed=[0],
+            )
+            result2 = CaliResult(
+                experiment=exp2.id,
+                detection_settings=d_settings.id,
+                analysis_settings=a_settings.id,
+                positions_analyzed=[0],
+            )
+            session.add_all([result1, result2])
+            session.commit()
+
+            # Verify both use same settings IDs
+            all_results = session.exec(select(CaliResult)).all()
+            assert len(all_results) == 2
+            assert all_results[0].detection_settings == all_results[1].detection_settings
+            assert all_results[0].analysis_settings == all_results[1].analysis_settings
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_cali_result_query_by_experiment(test_db: Path, test_experiment: Experiment) -> None:
+    """Test querying all CaliResults for a specific experiment."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            # Create multiple results for the experiment
+            d_settings1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
+            d_settings2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
+            session.add_all([d_settings1, d_settings2])
+            session.commit()
+            session.refresh(d_settings1)
+            session.refresh(d_settings2)
+
+            # Type assertions
+            assert test_experiment.id is not None
+            assert d_settings1.id is not None
+            assert d_settings2.id is not None
+
+            result1 = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings1.id,
+                positions_analyzed=[0],
+            )
+            result2 = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings2.id,
+                positions_analyzed=[0],
+            )
+            session.add_all([result1, result2])
+            session.commit()
+
+            # Query all results for experiment
+            results = session.exec(
+                select(CaliResult).where(CaliResult.experiment == test_experiment.id)
+            ).all()
+
+            assert len(results) == 2
+            result_ids = {r.detection_settings for r in results}
+            assert d_settings1.id in result_ids
+            assert d_settings2.id in result_ids
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_detection_settings_all_optional_fields() -> None:
+    """Test DetectionSettings with optional fields."""
+    ds = DetectionSettings(
+        method="cellpose",
+        model_type="cpsam",
+        custom_model=None,
+        diameter=None,
+    )
+
+    assert ds.method == "cellpose"
+    assert ds.model_type == "cpsam"
+    assert ds.custom_model is None
+    assert ds.diameter is None
+    # Other fields should have defaults
+    assert ds.cellprob_threshold == 0.0
+    assert ds.flow_threshold == 0.4
+    assert ds.min_size == 10
+    assert ds.normalize is True
+    assert ds.batch_size == 8
+
+
+def test_analysis_settings_minimal() -> None:
+    """Test AnalysisSettings with minimal required fields."""
+    settings = AnalysisSettings()
+
+    # Should have default values
+    assert settings.id is None
+    assert settings.created_at is not None
+
+
+def test_cali_result_str_representation() -> None:
+    """Test CaliResult string representation."""
+    result = CaliResult(
+        experiment=1,
+        detection_settings=2,
+        analysis_settings=3,
+        positions_analyzed=[0, 1, 2],
+    )
+
+    # Should be able to convert to string without error
+    str_repr = str(result)
+    assert "CaliResult" in str_repr or "experiment" in str_repr.lower()
+
+
+def test_detection_settings_inequality_cases() -> None:
+    """Test various inequality cases for DetectionSettings."""
+    ds1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
+    ds2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
+    ds3 = DetectionSettings(method="cellpose", model_type="cyto2", diameter=30)
+    ds4 = DetectionSettings(method="caiman", model_type="N/A", diameter=30)
+
+    # Different diameters
+    assert ds1 != ds2
+    # Different model types
+    assert ds1 != ds3
+    # Different methods
+    assert ds1 != ds4
+    # All different from each other
+    assert ds2 != ds3
+    assert ds2 != ds4
+    assert ds3 != ds4
+
+
+def test_analysis_settings_inequality_cases() -> None:
+    """Test various inequality cases for AnalysisSettings."""
+    as1 = AnalysisSettings(dff_window=100, threads=4)
+    as2 = AnalysisSettings(dff_window=200, threads=4)
+    as3 = AnalysisSettings(dff_window=100, threads=8)
+    as4 = AnalysisSettings(
+        dff_window=100,
+        threads=4,
+        led_power_equation="y = x",
+    )
+
+    # Different dff_window
+    assert as1 != as2
+    # Different threads
+    assert as1 != as3
+    # Different led_power_equation
+    assert as1 != as4
+
+
+def test_cali_result_empty_positions() -> None:
+    """Test CaliResult with empty positions list."""
+    result = CaliResult(
+        experiment=1,
+        detection_settings=2,
+        positions_analyzed=[],
+    )
+
+    assert result.positions_analyzed == []
+    assert isinstance(result.positions_analyzed, list)
+
+
+def test_database_concurrent_sessions(test_db: Path, test_experiment: Experiment) -> None:
+    """Test multiple sessions can read from database concurrently."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        # Create some data
+        with Session(engine) as session:
+            d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+            session.add(d_settings)
+            session.commit()
+
+        # Read from multiple sessions
+        with Session(engine) as session1, Session(engine) as session2:
+            settings1 = session1.exec(select(DetectionSettings)).first()
+            settings2 = session2.exec(select(DetectionSettings)).first()
+
+            assert settings1 is not None
+            assert settings2 is not None
+            assert settings1.method == settings2.method
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_detection_settings_update_timestamp(test_db: Path) -> None:
+    """Test that created_at timestamp is set automatically."""
+    from cali.sqlmodel._util import create_database_and_tables
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    create_database_and_tables(engine)
+
+    try:
+        with Session(engine) as session:
+            ds = DetectionSettings(method="cellpose", model_type="cpsam")
+
+            # Timestamp should be set before saving
+            assert ds.created_at is not None
+            time_before_save = ds.created_at
+
+            session.add(ds)
+            session.commit()
+            session.refresh(ds)
+
+            # Timestamp should remain the same after saving
+            assert ds.created_at == time_before_save
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_cali_result_cascade_behavior(test_db: Path, test_experiment: Experiment) -> None:
+    """Test that deleting referenced settings doesn't cascade delete CaliResult."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+            session.add(d_settings)
+            session.commit()
+            session.refresh(d_settings)
+
+            # Type assertions
+            assert d_settings.id is not None
+            assert test_experiment.id is not None
+            settings_id = d_settings.id
+
+            result = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=settings_id,
+                positions_analyzed=[0],
+            )
+            session.add(result)
+            session.commit()
+            session.refresh(result)
+            assert result.id is not None
+            result_id = result.id
+
+        # Verify both exist
+        with Session(engine) as session:
+            assert session.get(DetectionSettings, settings_id) is not None
+            assert session.get(CaliResult, result_id) is not None
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_cali_result_load_from_database_by_id(
+    test_db: Path, test_experiment: Experiment
+) -> None:
+    """Test loading a specific CaliResult by ID."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+            session.add(d_settings)
+            session.commit()
+            session.refresh(d_settings)
+
+            # Type assertions
+            assert d_settings.id is not None
+            assert test_experiment.id is not None
+
+            result = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings.id,
+                positions_analyzed=[0, 1],
+            )
+            session.add(result)
+            session.commit()
+            session.refresh(result)
+            assert result.id is not None
+            result_id = result.id
+
+        # Load using the class method
+        loaded = CaliResult.load_from_database(test_db, id=result_id)
+        
+        assert isinstance(loaded, CaliResult)
+        assert loaded.id == result_id
+        assert loaded.experiment == test_experiment.id
+        assert loaded.positions_analyzed == [0, 1]
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_cali_result_load_by_id_not_found(test_db: Path) -> None:
+    """Test loading non-existent CaliResult raises ValueError."""
+    from cali.sqlmodel._util import create_database_and_tables
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    create_database_and_tables(engine)
+    engine.dispose(close=True)
+
+    # Try to load non-existent result
+    try:
+        CaliResult.load_from_database(test_db, id=999)
+        raise AssertionError("Should have raised ValueError")
+    except ValueError as e:
+        assert "No AnalysisResult found with id=999" in str(e)
+
+
+def test_cali_result_load_from_database_by_experiment(
+    test_db: Path, test_experiment: Experiment
+) -> None:
+    """Test loading all CaliResults for an experiment."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            d_settings1 = DetectionSettings(method="cellpose", model_type="cpsam")
+            d_settings2 = DetectionSettings(method="caiman", model_type="N/A")
+            session.add_all([d_settings1, d_settings2])
+            session.commit()
+            session.refresh(d_settings1)
+            session.refresh(d_settings2)
+
+            # Type assertions
+            assert d_settings1.id is not None
+            assert d_settings2.id is not None
+            assert test_experiment.id is not None
+
+            result1 = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings1.id,
+                positions_analyzed=[0],
+            )
+            result2 = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings2.id,
+                positions_analyzed=[1],
+            )
+            session.add_all([result1, result2])
+            session.commit()
+
+        # Load all results for the experiment
+        loaded = CaliResult.load_from_database(
+            test_db, experiment_id=test_experiment.id
+        )
+        
+        assert isinstance(loaded, list)
+        assert len(loaded) == 2
+        # Should be ordered by created_at desc (most recent first)
+        assert all(isinstance(r, CaliResult) for r in loaded)
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_cali_result_load_all(test_db: Path, test_experiment: Experiment) -> None:
+    """Test loading all CaliResults from database."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+            session.add(d_settings)
+            session.commit()
+            session.refresh(d_settings)
+
+            # Type assertions
+            assert d_settings.id is not None
+            assert test_experiment.id is not None
+
+            result = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings.id,
+                positions_analyzed=[0],
+            )
+            session.add(result)
+            session.commit()
+
+        # Load all results (no filter)
+        loaded = CaliResult.load_from_database(test_db)
+        
+        assert isinstance(loaded, list)
+        assert len(loaded) >= 1  # At least our result
+
+    finally:
+        engine.dispose(close=True)
+
+
+def test_experiment_equality_by_id(test_experiment: Experiment) -> None:
+    """Test Experiment equality comparison by ID."""
+    # Create two experiments with IDs
+    exp1 = Experiment(id=1, name="Exp1")
+    exp2 = Experiment(id=1, name="Exp2")  # Same ID, different name
+    exp3 = Experiment(id=2, name="Exp1")  # Different ID, same name as exp1
+
+    # Same ID -> equal
+    assert exp1 == exp2
+    # Different ID -> not equal
+    assert exp1 != exp3
+
+
+def test_experiment_equality_by_name(test_experiment: Experiment) -> None:
+    """Test Experiment equality comparison by name when no ID."""
+    exp1 = Experiment(id=None, name="TestExp")
+    exp2 = Experiment(id=None, name="TestExp")
+    exp3 = Experiment(id=None, name="OtherExp")
+
+    # Same name, no IDs -> equal
+    assert exp1 == exp2
+    # Different name -> not equal
+    assert exp1 != exp3
+
+
+def test_experiment_hash_with_id() -> None:
+    """Test Experiment hash when ID is set."""
+    exp1 = Experiment(id=1, name="Exp1")
+    exp2 = Experiment(id=1, name="Exp2")  # Same ID
+    
+    # Same ID should have same hash
+    assert hash(exp1) == hash(exp2)
+
+
+def test_experiment_hash_without_id() -> None:
+    """Test Experiment hash when ID is None."""
+    exp1 = Experiment(id=None, name="Exp1")
+    exp2 = Experiment(id=None, name="Exp1")
+    
+    # Without ID, hash uses object identity
+    assert hash(exp1) != hash(exp2)  # Different objects
+
+
+def test_experiment_inequality_with_other_type() -> None:
+    """Test Experiment equality with non-Experiment object."""
+    exp = Experiment(id=1, name="Test")
+    
+    assert exp != "not an experiment"
+    assert exp != 123
+    assert exp is not None

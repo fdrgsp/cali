@@ -7,7 +7,7 @@ A Gui for Calcium Imaging Data Visualization, Segmentation and Analysis
 
 [🚧 WIP 🚧]
 
-Update of the analysis and vizualization code of [micromanager-gui](https://github.com/fdrgsp/micromanager-gui).
+Update of the analysis and visualization code of [micromanager-gui](https://github.com/fdrgsp/micromanager-gui).
 
 ## To Run
 
