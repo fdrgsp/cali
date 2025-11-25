@@ -142,9 +142,9 @@ class AnalysisRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         # Execute analysis in parallel and yield results
         for fov_result in exec_(
