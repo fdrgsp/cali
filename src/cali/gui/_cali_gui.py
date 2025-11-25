@@ -110,7 +110,6 @@ class CaliGui(QMainWindow):
         self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
-        self._labels_path: str | None = None  #  TO REMOVE
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
         # RUNNER ----------------------------------------------------------------------
@@ -853,7 +852,6 @@ class CaliGui(QMainWindow):
         self._database_path = None
         self._data_path = None
         self._output_path = None
-        self._labels_path = None  #  TO REMOVE
         # clear the datastore
         self._data = None
         # clear fov table
@@ -927,23 +925,9 @@ class CaliGui(QMainWindow):
 
         for r, c in wells.keys():
             if (r, c) not in selected_indices:
-                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)  # type: ignore[arg-type]
+                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)  # type: ignore
 
-    def _update_gui(self, plate: useq.WellPlate | None = None) -> None:
-        """Update the analysis widgets gui."""
-        # analysis widget
-        # self._update_analysis_gui_settings(plate)
-
-        # # segmentation widget - TO REMOVE
-        # self._segmentation_wdg.data = self._data
-        # self._segmentation_wdg.labels_path = self._labels_path
-
-    # ---------------------WIDGETS------------------------------------
-
-    def _update_progress_label(self, time_str: str) -> None:
-        """Update the progress label with elapsed time."""
-        print(f"--------------Elapsed time: {time_str}")
-        self._run_cali_wdg.set_time_label(time_str)
+    # WIDGETS -------------------------------------------------------------------------
 
     def _on_run_item_selected(self, run_id: int) -> None:
         """Handle run selection from the runs panel.
@@ -1042,6 +1026,9 @@ class CaliGui(QMainWindow):
                 )
 
             cali_logger.info(f"✅ Loaded settings from Run #{run_id}")
+
+            # Refresh the image viewer to update labels with the new detection settings
+            self._on_fov_table_selection_changed()
 
         except Exception as e:
             show_error_dialog(self, f"Failed to load run settings: {e}")
@@ -1145,8 +1132,8 @@ class CaliGui(QMainWindow):
         if idx == 0:
             return
 
-        # if visualization tab is selected
-        if idx == 2:
+        # if visualization tab is selected (main tab index 1)
+        if idx == 1:
             # get the current fov
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
@@ -1157,10 +1144,6 @@ class CaliGui(QMainWindow):
 
             # update the graphs combo boxes
             self._update_single_wells_graphs_combo(combo_red=(not has_analysis))
-
-        # if multi wells tab is selected
-        elif idx == 3:
-            self._update_multi_wells_graphs_combo()
 
     def _highlight_roi(self, roi: str | list[str]) -> None:
         """Highlight the selected roi in the image viewer."""
@@ -1265,26 +1248,78 @@ class CaliGui(QMainWindow):
         self._update_single_wells_graphs_combo(set_title=title)
 
     def _get_labels(self, value: WellInfo) -> np.ndarray | None:
-        """Get the labels for the given FOV."""
-        if self._labels_path is None:
+        """Get the labels (ROI masks) for the given FOV from the database."""
+        if self._database_path is None:
             return None
 
-        if not Path(self._labels_path).is_dir():
-            show_error_dialog(
-                self,
-                f"Error while loading the labels. Path {self._labels_path} is not a "
-                "directory!",
-            )
+        # Get FOV name
+        fov_name = value.fov.name
+        if not fov_name:
             return None
-        # the labels tif file should have the same name as the position
-        # and should end with _pn where n is the position number (e.g. C3_0000_p0.tif)
-        pos_idx = f"p{value.pos_idx}"
-        pos_name = value.fov.name
-        for f in Path(self._labels_path).iterdir():
-            name = f.name.replace(f.suffix, "")
-            if pos_name and pos_name in f.name and name.endswith(f"_{pos_idx}"):
-                return tifffile.imread(f)  # type: ignore
-        return None
+
+        # Get detection settings ID from currently selected run
+        detection_settings_id = self._runs_panel.get_selected_detection_settings_id()
+
+        try:
+            from sqlalchemy.orm import selectinload
+            from sqlmodel import Session, create_engine, select
+
+            from cali.sqlmodel._model import FOV, ROI
+            from cali.util import coordinates_to_mask
+
+            engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+            with Session(engine) as session:
+                # Query FOV with ROIs and their masks
+                stmt = (
+                    select(FOV)
+                    .where(FOV.name == fov_name)
+                    .options(
+                        selectinload(FOV.rois).selectinload(ROI.roi_mask)  # type: ignore
+                    )
+                )
+                fov = session.exec(stmt).first()
+
+                if not fov or not fov.rois:
+                    return None
+
+                # Filter ROIs by detection settings ID if one is selected
+                rois = fov.rois
+                if detection_settings_id is not None:
+                    rois = [
+                        roi
+                        for roi in fov.rois
+                        if roi.detection_settings_id == detection_settings_id
+                    ]
+
+                if not rois:
+                    return None
+
+                # Get the shape from the first mask
+                first_mask = rois[0].roi_mask
+                if (
+                    not first_mask
+                    or first_mask.height is None
+                    or first_mask.width is None
+                ):
+                    return None
+
+                shape = (first_mask.height, first_mask.width)
+                # Create a combined label mask with all ROIs
+                label_mask = np.zeros(shape, dtype=np.uint16)
+
+                for roi in rois:
+                    if roi.roi_mask and roi.roi_mask.coords_y and roi.roi_mask.coords_x:
+                        # Create mask for this ROI
+                        coords = (roi.roi_mask.coords_y, roi.roi_mask.coords_x)
+                        roi_binary_mask = coordinates_to_mask(coords, shape)
+                        # Assign the label value to this ROI's pixels
+                        label_mask[roi_binary_mask] = roi.label_value
+
+                return label_mask if label_mask.max() > 0 else None
+
+        except Exception as e:
+            cali_logger.warning(f"Failed to load ROI masks from database: {e}")
+            return None
 
     def _on_fov_double_click(self) -> None:
         """Open the selected FOV in a new StackViewer window."""

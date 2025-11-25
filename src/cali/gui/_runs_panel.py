@@ -409,6 +409,35 @@ class _RunsPanel(QGroupBox):
         if run_id is not None:
             self.runSelected.emit(run_id)
 
+    def get_selected_detection_settings_id(self) -> int | None:
+        """Get the detection settings ID from the currently selected run.
+
+        Returns
+        -------
+        int | None
+            Detection settings ID of the selected run, or None if no run selected
+        """
+        current_item = self._runs_list.currentItem()
+        if current_item is None or self._database_path is None:
+            return None
+
+        run_id = current_item.data(Qt.ItemDataRole.UserRole)
+        if run_id is None:
+            return None
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                result = session.get(CaliResult, run_id)
+                detection_id = result.detection_settings if result else None
+            engine.dispose(close=True)
+            return detection_id
+        except Exception as e:
+            cali_logger.error(f"Failed to get detection settings ID: {e}")
+            return None
+
     def get_detection_settings_ids(self) -> list[int]:
         """Get all unique detection settings IDs from runs.
 
