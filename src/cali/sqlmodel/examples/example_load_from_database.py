@@ -1,11 +1,7 @@
 """Example script to load an experiment from a database and print its tree structure."""
 
-import matplotlib.pyplot as plt
 from sqlalchemy import create_engine
-from sqlmodel import Session, select
 
-from cali.sqlmodel import Traces
-from cali.sqlmodel._model import CaliResult
 from cali.sqlmodel._visualize_experiment import print_cali_results
 
 database_path = "tests/test_data/evoked/results.cali"

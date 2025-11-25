@@ -24,8 +24,10 @@ with Session(engine) as session:
     results = session.exec(select(CaliResult)).all()
     print(f"Found {len(results)} CaliResult entries:")
     for result in results:
-        print(f"  ID={result.id}, detection_settings_id={result.detection_settings}, "
-              f"analysis_settings_id={result.analysis_settings}")
+        print(
+            f"  ID={result.id}, detection_settings_id={result.detection_settings}, "
+            f"analysis_settings_id={result.analysis_settings}"
+        )
 
     print()
 
@@ -35,9 +37,11 @@ with Session(engine) as session:
     ).all()
     print(f"Found {len(all_traces)} Traces total:")
     for trace in all_traces:
-        print(f"  Trace ID={trace.id}, ROI ID={trace.roi_id}, "
-              f"analysis_result_id={trace.analysis_result_id}, "
-              f"has_neuropil_mask={trace.neuropil_mask_id is not None}")
+        print(
+            f"  Trace ID={trace.id}, ROI ID={trace.roi_id}, "
+            f"analysis_result_id={trace.analysis_result_id}, "
+            f"has_neuropil_mask={trace.neuropil_mask_id is not None}"
+        )
 
     print()
 

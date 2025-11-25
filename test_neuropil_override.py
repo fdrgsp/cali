@@ -11,7 +11,6 @@ from cali.sqlmodel import (
     Experiment,
     save_experiment_to_database,
 )
-from cali.sqlmodel._model import FOV, ROI, CaliResult
 
 data_path = (
     "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
@@ -77,7 +76,7 @@ with Session(engine) as session:
         )
     ).all()
 
-    print(f"\nAfter Run 1 - Neuropil mask pixel counts:")
+    print("\nAfter Run 1 - Neuropil mask pixel counts:")
     run1_neuropil_sizes = {}
     for trace in traces:
         if trace.neuropil_mask and trace.neuropil_mask.coords_y:
@@ -131,7 +130,7 @@ with Session(engine) as session:
         )
     ).all()
 
-    print(f"\nAfter Run 2 - Neuropil mask pixel counts:")
+    print("\nAfter Run 2 - Neuropil mask pixel counts:")
     run2_neuropil_sizes = {}
     for trace in traces:
         if trace.neuropil_mask and trace.neuropil_mask.coords_y:
@@ -140,7 +139,7 @@ with Session(engine) as session:
             print(f"  ROI {trace.roi.label_value}: {pixel_count} pixels")
 
     # Check if sizes changed
-    print(f"\nComparison:")
+    print("\nComparison:")
     for label in run1_neuropil_sizes:
         size1 = run1_neuropil_sizes[label]
         size2 = run2_neuropil_sizes.get(label, 0)
@@ -150,12 +149,10 @@ with Session(engine) as session:
                 f"(Different as expected with different settings)"
             )
         else:
-            print(
-                f"  ROI {label}: UNEXPECTED - both runs have {size1} pixels"
-            )
+            print(f"  ROI {label}: UNEXPECTED - both runs have {size1} pixels")
 
     # Verify Run 1 masks are still accessible
-    print(f"\nVerifying Run 1 masks are still in database:")
+    print("\nVerifying Run 1 masks are still in database:")
     traces_run1 = session.exec(
         select(Traces)
         .where(Traces.analysis_result_id == 1)
@@ -164,12 +161,14 @@ with Session(engine) as session:
             selectinload(Traces.neuropil_mask),  # type: ignore
         )
     ).all()
-    
+
     print(f"  Found {len(traces_run1)} traces from Run 1")
     for trace in traces_run1:
         if trace.neuropil_mask and trace.neuropil_mask.coords_y:
             pixel_count = len(trace.neuropil_mask.coords_y)
-            print(f"  ✅ Run 1, ROI {trace.roi.label_value}: {pixel_count} pixels (PRESERVED)")
+            print(
+                f"  ✅ Run 1, ROI {trace.roi.label_value}: {pixel_count} pixels (PRESERVED)"
+            )
         else:
             print(f"  ❌ Run 1, ROI {trace.roi.label_value}: No neuropil mask found")
 

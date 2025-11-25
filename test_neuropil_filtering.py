@@ -160,7 +160,9 @@ with Session(engine) as session:
         )
 
         rois = session.exec(stmt).all()
-        print(f"  Found {len(rois)} ROIs with detection_settings_id={result.detection_settings}")
+        print(
+            f"  Found {len(rois)} ROIs with detection_settings_id={result.detection_settings}"
+        )
 
         # Check which ROIs have traces from THIS specific run
         from cali.sqlmodel._model import Traces
@@ -196,9 +198,15 @@ print("TEST COMPLETE")
 print("=" * 80)
 print("\nISSUE TO VERIFY:")
 print("When clicking Run 1 in GUI: Should show NO neuropil masks")
-print("When clicking Run 2 in GUI: Should show neuropil masks (same detection_settings_id=1)")
-print("When clicking Run 3 in GUI: Should show neuropil masks (detection_settings_id=2)")
+print(
+    "When clicking Run 2 in GUI: Should show neuropil masks (same detection_settings_id=1)"
+)
+print(
+    "When clicking Run 3 in GUI: Should show neuropil masks (detection_settings_id=2)"
+)
 print("\nThe problem is: If ROIs from detection_settings_id=1 have neuropil masks")
-print("(added by Run 2), they will ALWAYS show when filtering by detection_settings_id=1,")
+print(
+    "(added by Run 2), they will ALWAYS show when filtering by detection_settings_id=1,"
+)
 print("even if we're looking at Run 1 (which didn't have neuropil).")
 print("\nWe need to filter by BOTH detection_settings_id AND analysis_result_id!")
