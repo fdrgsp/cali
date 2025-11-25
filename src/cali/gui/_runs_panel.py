@@ -60,7 +60,6 @@ class _RunsPanel(QGroupBox):
         # List widget for runs
         self._runs_list = QListWidget()
         self._runs_list.setAlternatingRowColors(True)
-        self._runs_list.itemClicked.connect(self._on_item_clicked)
         self._runs_list.setToolTip(
             "Click on a run to load its analysis and detection settings"
         )

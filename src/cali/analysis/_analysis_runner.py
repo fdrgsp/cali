@@ -2,7 +2,7 @@ import threading
 from collections.abc import Generator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import Callable, cast
 
 import numpy as np
 from oasis.functions import deconvolve
@@ -11,12 +11,13 @@ from tqdm import tqdm
 
 from cali._constants import (
     EVENT_KEY,
-    EXCLUDE_AREA_SIZE_THRESHOLD,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
     RUNNER_TIME_KEY,
     STIMULATION_AREA_THRESHOLD,
 )
+from cali.logger import cali_logger
+from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
@@ -24,20 +25,14 @@ from cali.sqlmodel._model import (
     Mask,
     Traces,
 )
-from cali.util import load_data, mask_to_coordinates
+from cali.util import coordinates_to_mask, load_data, mask_to_coordinates
 
+from ._neuropil import create_neuropil_from_dilation
 from ._util import (
     calculate_dff,
     get_iei,
     get_overlap_roi_with_stimulated_area,
 )
-
-if TYPE_CHECKING:
-    import useq
-
-
-from cali.logger import cali_logger
-from cali.readers import OMEZarrReader, TensorstoreZarrReader
 
 
 def exec_(
@@ -141,9 +136,9 @@ class AnalysisRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
-                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
-            )
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
         # Execute analysis in parallel and yield results
         for fov_result in exec_(
@@ -183,6 +178,17 @@ class AnalysisRunner:
             fovs_with_rois,
         )
 
+    def _get_fov_to_analyze(
+        self,
+        global_pos_idx: int,
+        fovs_with_rois: list[FOV],
+    ) -> FOV | None:
+        """Get the FOV to analyze for the given position index."""
+        for fov in fovs_with_rois:
+            if fov.position_index == global_pos_idx:
+                return fov
+        return None
+
     # These are module-level functions that work with the OriginalAnalysisRunner
     def _extract_trace_data_per_position(
         self,
@@ -196,8 +202,6 @@ class AnalysisRunner:
         Returns a FOV with all its ROIs, Traces, DataAnalysis, and Masks
         ready to be committed to the database.
         """
-        from cali.util import coordinates_to_mask
-
         # if runner._data is None or runner._check_for_abort_requested():
         if self._check_for_abort_requested():
             return None
@@ -208,39 +212,17 @@ class AnalysisRunner:
         fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
         # Find the FOV with matching position index in the provided list
-        fov_to_analyze = None
-        for fov in fovs_with_rois:
-            if fov.position_index == global_pos_idx:
-                fov_to_analyze = fov
-                break
+        fov_to_analyze = self._get_fov_to_analyze(global_pos_idx, fovs_with_rois)
 
         if fov_to_analyze is None or not fov_to_analyze.rois:
             cali_logger.error(
-                f"No ROI masks found for FOV at position {global_pos_idx}. "
+                f"No ROI masks found for FOV {fov_name} at position {global_pos_idx}. "
                 "Run detection first."
             )
             return None
 
-        # Convert ROI masks to numpy arrays
-        # { label_value -> np.ndarray mask }
-        labels_masks = {}
-        for roi in fov_to_analyze.rois:
-            if (
-                roi.roi_mask
-                and roi.roi_mask.coords_y is not None
-                and roi.roi_mask.coords_x is not None
-                and roi.roi_mask.height is not None
-                and roi.roi_mask.width is not None
-            ):
-                mask_array = coordinates_to_mask(
-                    (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
-                    (roi.roi_mask.height, roi.roi_mask.width),
-                )
-                labels_masks[roi.label_value] = mask_array
-            else:
-                cali_logger.warning(
-                    f"ROI {roi.label_value} in {fov_name} has no mask data"
-                )
+        # Convert ROI masks to numpy arrays: {label_value: np.ndarray mask}
+        labels_masks = self._get_label_mask(fov_to_analyze, fov_name)
 
         if not labels_masks:
             cali_logger.error(
@@ -248,47 +230,20 @@ class AnalysisRunner:
             )
             return None
 
-        # Check for cancellation
-        if self._check_for_abort_requested():
-            return None
-
-        sequence = cast("useq.MDASequence", dataset.sequence)
-
         # Check for cancellation after loading and processing labels
         if self._check_for_abort_requested():
             return None
 
         # Prepare masks for neuropil correction if enabled
-        from ._util import create_neuropil_from_dilation
+        labels_masks, neuropil_masks_dict = self._prepare_neuropil_masks(
+            settings, data, labels_masks
+        )
 
-        eroded_masks = labels_masks
-        neuropil_masks_dict = {}
-        if settings.neuropil_inner_radius > 0 and settings.neuropil_min_pixels > 0:
-            # Get list of masks in order
-            sorted_labels = sorted(labels_masks.keys())
-            cell_masks = [labels_masks[label] for label in sorted_labels]
-            height, width = data.shape[1], data.shape[2]  # assuming data is (t, y, x)
-            cell_masks_eroded, neuropil_masks = create_neuropil_from_dilation(
-                cell_masks,
-                height,
-                width,
-                inner_neuropil_radius=settings.neuropil_inner_radius,
-                min_neuropil_pixels=settings.neuropil_min_pixels,
-            )
-            # Create dicts
-            eroded_masks = dict(zip(sorted_labels, cell_masks_eroded))
-            neuropil_masks_dict = dict(zip(sorted_labels, neuropil_masks))
-
-        # get the exposure time from the metadata
-        exp_time = meta[0][EVENT_KEY].get("exposure", 0.0)
-        # get timepoints
-        timepoints = sequence.sizes["t"]
         # get the elapsed time from the metadata to calculate the total time in seconds
-        elapsed_time_list = _get_elapsed_time_list(meta)
-        # if the elapsed time is not available or for any reason is different from
-        # the number of timepoints, set it as list of timepoints every exp_time
-        if len(elapsed_time_list) != timepoints:
-            elapsed_time_list = [i * exp_time for i in range(timepoints)]
+        # assumes data shape is (time, height, width)
+        exposure_ms = None  # TODO: expose frame rate/exp time in the gui
+        elapsed_time_list = _get_elapsed_time_list(meta, exposure_ms, data.shape[0])
+
         # get the total time in seconds for the recording
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
@@ -316,24 +271,25 @@ class AnalysisRunner:
                 continue
 
             # Process the trace and get Traces + DataAnalysis objects
+            neuropil_correction_factor = (
+                settings.neuropil_correction_factor
+                if (
+                    settings.neuropil_inner_radius > 0
+                    and settings.neuropil_min_pixels > 0
+                )
+                else None
+            )
             trace_data = self._process_roi_trace(
                 data,
                 meta,
                 fov_name,
                 settings,
                 label_value,
-                eroded_masks[label_value],
+                labels_masks[label_value],
                 tot_time_sec,
                 elapsed_time_list,
                 neuropil_masks_dict.get(label_value),
-                (
-                    settings.neuropil_correction_factor
-                    if (
-                        settings.neuropil_inner_radius > 0
-                        and settings.neuropil_min_pixels > 0
-                    )
-                    else None
-                ),
+                neuropil_correction_factor,
             )
 
             # Add traces and analysis to the existing ROI if processing succeeded
@@ -367,6 +323,56 @@ class AnalysisRunner:
         # Return the FOV with updated ROIs (will be committed by caller)
         return fov_to_analyze
 
+    def _prepare_neuropil_masks(
+        self,
+        settings: AnalysisSettings,
+        data: np.ndarray,
+        labels_masks: dict[int, np.ndarray],
+    ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
+        """Prepare masks for neuropil correction if enabled."""
+        eroded_masks = labels_masks
+        neuropil_masks_dict = {}
+        if settings.neuropil_inner_radius > 0 and settings.neuropil_min_pixels > 0:
+            # Get list of masks in order
+            sorted_labels = sorted(labels_masks.keys())
+            cell_masks = [labels_masks[label] for label in sorted_labels]
+            height, width = data.shape[1], data.shape[2]  # assuming data is (t, y, x)
+            cell_masks_eroded, neuropil_masks = create_neuropil_from_dilation(
+                cell_masks,
+                height,
+                width,
+                inner_neuropil_radius=settings.neuropil_inner_radius,
+                min_neuropil_pixels=settings.neuropil_min_pixels,
+            )
+            # Create dicts
+            eroded_masks = dict(zip(sorted_labels, cell_masks_eroded))
+            neuropil_masks_dict = dict(zip(sorted_labels, neuropil_masks))
+        return eroded_masks, neuropil_masks_dict
+
+    def _get_label_mask(
+        self, fov_to_analyze: FOV, fov_name: str
+    ) -> dict[int, np.ndarray]:
+        labels_masks = {}
+        for roi in fov_to_analyze.rois:
+            if (
+                roi.roi_mask
+                and roi.roi_mask.coords_y is not None
+                and roi.roi_mask.coords_x is not None
+                and roi.roi_mask.height is not None
+                and roi.roi_mask.width is not None
+            ):
+                mask_array = coordinates_to_mask(
+                    (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
+                    (roi.roi_mask.height, roi.roi_mask.width),
+                )
+                labels_masks[roi.label_value] = mask_array
+            else:
+                cali_logger.warning(
+                    f"ROI {roi.label_value} in {fov_name} has no mask data"
+                )
+
+        return labels_masks
+
     def _process_roi_trace(
         self,
         data: np.ndarray,
@@ -394,19 +400,14 @@ class AnalysisRunner:
 
         # get the size of the roi in µm or px if µm is not available
         roi_size_pixel = masked_data.shape[1]  # area
-        px_keys = ["pixel_size_um", "PixelSizeUm"]
-        px_size = None
-        for key in px_keys:
-            px_size = meta[0].get(key, None)
-            if px_size:
-                break
+        px_size = meta[0].get("pixel_size_um", None)
         # calculate the size of the roi in µm if px_size is available or not 0,
         # otherwise use the size is in pixels
         roi_size = roi_size_pixel * (px_size**2) if px_size else roi_size_pixel
 
-        # exclude small rois
-        if px_size and roi_size < EXCLUDE_AREA_SIZE_THRESHOLD:
-            return None
+        # # exclude small rois
+        # if px_size and roi_size < EXCLUDE_AREA_SIZE_THRESHOLD:
+        #     return None
 
         # check if the roi is stimulated
         roi_stimulation_overlap_ratio = 0.0
@@ -416,13 +417,12 @@ class AnalysisRunner:
                 stimulated_area_mask, label_mask
             )
 
-        # compute the mean for each frame
-        roi_trace_uncorrected: np.ndarray = masked_data.mean(axis=1)
-        win = settings.dff_window
-
         # Check for cancellation before DFF calculation
         if self._check_for_abort_requested():
             return None
+
+        # compute the mean for each frame
+        roi_trace_uncorrected: np.ndarray = masked_data.mean(axis=1)
 
         # Apply neuropil correction if enabled
         neuropil_trace = None
@@ -440,12 +440,13 @@ class AnalysisRunner:
 
         # calculate the dff of the roi trace
         # (using corrected trace if neuropil is enabled)
-        dff = calculate_dff(roi_trace, window=win, plot=False)
+        dff = calculate_dff(roi_trace, window=settings.dff_window, plot=False)
 
         # Check for cancellation after DFF calculation
         if self._check_for_abort_requested():
             return None
 
+        # run OASIS deconvolution on the dff trace
         # compute the decay constant
         tau = settings.decay_constant
         g: float | None = None
@@ -545,9 +546,6 @@ class AnalysisRunner:
         # calculate the inter-event interval (IEI) of the peaks in the dec_dff trace
         iei = get_iei(peaks_dec_dff, elapsed_time_list)
 
-        # Note: We don't need to create mask objects here since we're working
-        # with existing ROIs from detection that already have masks
-
         # Create Traces object
         traces = Traces(
             raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
@@ -609,13 +607,29 @@ def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:
     return f"pos_{p}"
 
 
-def _get_elapsed_time_list(meta: list[dict]) -> list[float]:
+def _get_elapsed_time_list(
+    meta: list[dict], exposure_ms: float | None, num_timepoints: int
+) -> list[float]:
     """Get elapsed time list from metadata."""
     elapsed_time_list: list[float] = []
-    # get the elapsed time for each timepoint to calculate tot_time_sec
+
+    # from metadata get the exposure time in ms
+    if exposure_ms is None:
+        exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
+
+    # if in metadata, get the elapsed time list from RUNNER_TIME_KEY
     if RUNNER_TIME_KEY in meta[0]:  # new metadata format
         for m in meta:
             rt = m[RUNNER_TIME_KEY]
             if rt is not None:
                 elapsed_time_list.append(float(rt))
+
+        # if the elapsed time list is different from the number of timepoints, set it
+        # as list of timepoints every exp_time
+        if len(elapsed_time_list) != num_timepoints:
+            elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
+
+    # otherwise use exposure time and number of timepoints to create elapsed time list
+    else:
+        elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
     return elapsed_time_list
