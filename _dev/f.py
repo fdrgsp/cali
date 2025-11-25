@@ -31,11 +31,6 @@ save_experiment_to_database(
     exp, output_path, database_name="results_2.cali", overwrite=True
 )
 
-# Print initial state (no analysis results yet)
-engine = create_engine(f"sqlite:///{Path(output_path) / 'results_2.cali'}")
-print_cali_results(engine, show_settings=False)
-# engine.dispose()
-
 # initialize CaliRunner
 runner = CaliRunner()
 
@@ -47,9 +42,9 @@ detection_settings = DetectionSettings(
 )
 analysis_settings = AnalysisSettings(
     dff_window=130,
-    neuropil_min_pixels=100,
-    neuropil_correction_factor=0.7,
-    neuropil_inner_radius=2,
+    # neuropil_min_pixels=100,
+    # neuropil_correction_factor=0.7,
+    # neuropil_inner_radius=2,
 )
 
 # run analysis using new settings on existing detected ROIs (detection_id parameter)
@@ -65,8 +60,8 @@ runner.run(
 )
 
 # Create a fresh engine connection to see the results
-# engine = create_engine(f"sqlite:///{Path(output_path) / 'results_2.cali'}")
-print_cali_results(engine, show_settings=True)
+engine = create_engine(f"sqlite:///{Path(output_path) / 'results_2.cali'}")
+print_cali_results(engine, show_settings=False)
 # engine.dispose()
 
 analysis_settings = AnalysisSettings(
@@ -86,4 +81,5 @@ runner.run(
     database_name="results_2.cali",
 )
 
-print_cali_results(engine, show_settings=True)
+
+print_cali_results(engine, show_settings=False)

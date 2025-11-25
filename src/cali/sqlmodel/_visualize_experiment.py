@@ -104,7 +104,6 @@ def print_cali_results(
                     plate_chain.selectinload(ROI.traces_history),
                     plate_chain.selectinload(ROI.data_analysis_history),
                     plate_chain.selectinload(ROI.roi_mask),
-                    plate_chain.selectinload(ROI.neuropil_mask),
                 )
             ).first()
 
@@ -173,6 +172,7 @@ def print_cali_results(
                     result_experiment,
                     max_level=max_experiment_level,
                     detection_settings_id=result.detection_settings,
+                    analysis_result_id=result.id,
                 )
 
         console.print(main_tree)
@@ -307,6 +307,7 @@ def _add_experiment_tree_to_node(
     experiment: Experiment,
     max_level: MaxTreeLevel = "roi",
     detection_settings_id: int | None = None,
+    analysis_result_id: int | None = None,
 ) -> None:
     """Add experiment hierarchy (plate/well/fov/roi) to a tree node.
 
@@ -321,6 +322,8 @@ def _add_experiment_tree_to_node(
     detection_settings_id : int | None
         If provided, only show ROIs matching this detection_settings_id
         (useful when showing ROIs for a specific AnalysisResult)
+    analysis_result_id : int | None
+        If provided, only check for neuropil masks in traces from this analysis result
     """
     exp_node = parent_node.add(f"🧪 [bold]Experiment (ID: {experiment.id})[/bold]")
     exp_node.add(f"Name: {experiment.name}")
@@ -407,11 +410,19 @@ def _add_experiment_tree_to_node(
                 # Add related data if present
                 if roi.roi_mask:
                     roi_node.add("🎭 [dim]ROI mask available[/dim]")
-                # Check if any traces have neuropil masks
-                if roi.traces_history and any(
-                    trace.neuropil_mask for trace in roi.traces_history
-                ):
-                    roi_node.add("👺 [dim]Neuropil mask available[/dim]")
+                # Check if traces have neuropil masks (filter by analysis_result)
+                if roi.traces_history:
+                    traces_to_check = (
+                        [
+                            t
+                            for t in roi.traces_history
+                            if t.analysis_result_id == analysis_result_id
+                        ]
+                        if analysis_result_id is not None
+                        else roi.traces_history
+                    )
+                    if any(trace.neuropil_mask for trace in traces_to_check):
+                        roi_node.add("👺 [dim]Neuropil mask available[/dim]")
                 if roi.traces_history:
                     roi_node.add("📊 [dim]Trace data available[/dim]")
                 if roi.data_analysis_history:
