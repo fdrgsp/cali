@@ -809,6 +809,8 @@ class CaliGui(QMainWindow):
         # Highlight matching run
         self._runs_panel.highlight_run_by_settings(detection_id, analysis_id)
 
+        self._on_fov_table_selection_changed()
+
     def _on_settings_changed(self) -> None:
         """Handle settings changed signal from runs panel (e.g., after deletion)."""
         if self._database_path:
