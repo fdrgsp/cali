@@ -444,7 +444,7 @@ class _ImageCanvas(QWidget):
         if neuropil is not None and neuropil.max() > 0:
             self.neuropil_image = self._imcls(
                 neuropil,
-                cmap="cyan",
+                cmap=self._neuropil_custom_cmap(neuropil.max()),
                 clim=(neuropil.min(), neuropil.max()),
                 parent=self.view.scene,
             )
@@ -460,7 +460,7 @@ class _ImageCanvas(QWidget):
 
             self.neuropil_contours_image = self._imcls(
                 self._contour_cache[neuropil_contour_key],
-                cmap="cyan",
+                cmap=self._neuropil_custom_cmap(neuropil.max()),
                 clim=(neuropil.min(), neuropil.max()),
                 parent=self.view.scene,
             )
