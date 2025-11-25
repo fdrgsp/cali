@@ -407,6 +407,8 @@ def _add_experiment_tree_to_node(
                 # Add related data if present
                 if roi.roi_mask:
                     roi_node.add("🎭 [dim]ROI mask available[/dim]")
+                if roi.neuropil_mask:
+                    roi_node.add("👺 [dim]Neuropil mask available[/dim]")
                 if roi.traces_history:
                     roi_node.add("📊 [dim]Trace data available[/dim]")
                 if roi.data_analysis_history:

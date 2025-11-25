@@ -409,6 +409,20 @@ class _RunsPanel(QGroupBox):
         if run_id is not None:
             self.runSelected.emit(run_id)
 
+    def get_selected_run_id(self) -> int | None:
+        """Get the ID of the currently selected run.
+
+        Returns
+        -------
+        int | None
+            CaliResult ID of the selected run, or None if no run selected
+        """
+        current_item = self._runs_list.currentItem()
+        if current_item is None:
+            return None
+
+        return current_item.data(Qt.ItemDataRole.UserRole)
+
     def get_selected_detection_settings_id(self) -> int | None:
         """Get the detection settings ID from the currently selected run.
 

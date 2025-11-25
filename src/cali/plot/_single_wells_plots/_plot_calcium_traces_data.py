@@ -79,7 +79,7 @@ def _plot_traces_data(
             .join(FOV)
             .where(col(FOV.name) == fov_name)
             .options(
-                selectinload(ROI.traces),
+                selectinload(ROI.traces_history),
                 selectinload(ROI.data_analysis),
             )
         )

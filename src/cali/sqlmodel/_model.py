@@ -301,9 +301,12 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
 
             # Load experiment with all relationships eagerly loaded
             statement = select(Experiment).options(
-                plate_chain.selectinload(ROI.traces_history),
+                plate_chain.selectinload(ROI.traces_history).selectinload(
+                    Traces.neuropil_mask  # type: ignore
+                ),
                 plate_chain.selectinload(ROI.data_analysis_history),
                 plate_chain.selectinload(ROI.roi_mask),
+                # Legacy: ROI.neuropil_mask kept for backward compatibility
                 plate_chain.selectinload(ROI.neuropil_mask),
             )
 
@@ -1170,7 +1173,8 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     roi_mask_id : int | None
         Foreign key to ROI mask
     neuropil_mask_id : int | None
-        Foreign key to neuropil mask
+        **DEPRECATED**: Legacy field kept for backward compatibility.
+        Neuropil masks are now stored per-analysis-run in Traces.neuropil_mask.
     fov : FOV
         Parent FOV
     traces_history : list[Traces]
@@ -1180,7 +1184,8 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     roi_mask : Mask | None
         ROI mask (cell boundary)
     neuropil_mask : Mask | None
-        Neuropil mask (background region)
+        **DEPRECATED**: Legacy relationship kept for backward compatibility.
+        Neuropil masks are now stored per-analysis-run in Traces.neuropil_mask.
     """
 
     __tablename__ = "roi"
@@ -1239,6 +1244,8 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to parent ROI
     analysis_result_id : int | None
         Foreign key to the analysis run that created this trace
+    neuropil_mask_id : int | None
+        Foreign key to neuropil mask created for this analysis run
     raw_trace : list[float] | None
         Raw fluorescence trace
     corrected_trace : list[float] | None
@@ -1255,6 +1262,8 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Parent ROI
     analysis_result : AnalysisResult
         The analysis run that created this trace
+    neuropil_mask : Mask | None
+        Neuropil mask used for this analysis run
     """
 
     __tablename__ = "trace"
@@ -1276,10 +1285,19 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     analysis_result_id: int | None = Field(
         default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
     )
+    neuropil_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="traces_history")
     analysis_result: "CaliResult" = Relationship(back_populates="traces")
+    neuropil_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[Traces.neuropil_mask_id]",
+            "lazy": "selectin",
+        }
+    )
 
 
 class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]

@@ -351,13 +351,13 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        db_path = "tests/test_data/evoked/results.cali"
-        self._initialize_from_database(db_path, data_path)
+        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # db_path = "tests/test_data/evoked/results.cali"
+        # self._initialize_from_database(db_path, data_path)
 
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
+        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/evoked/results.cali"
+        self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -815,6 +815,10 @@ class CaliGui(QMainWindow):
             # Repopulate detection settings, preserving current selection if possible
             self._populate_detection_settings(self._database_path)
 
+            # Refresh the FOV table selection to update the display
+            # This will reload labels if the FOV still exists with remaining data
+            self._on_fov_table_selection_changed()
+
     # DATA INITIALIZATION--------------------------------------------------------------
 
     def _show_data_input_dialog(self) -> None:
@@ -1200,12 +1204,15 @@ class CaliGui(QMainWindow):
         # get a single frame for the selected FOV (at 2/3 of the time points)
         t = int(len(self._data.sequence.stage_positions) / 3 * 2)
         data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
-        # get labels if they exist
-        labels = self._get_labels(value)
+        # get labels and neuropil masks if they exist
+        roi_labels, neuropil_labels = self._get_labels(value)
         # flip data and labels vertically or will look different from the StackViewer
         data = np.flip(data, axis=0)
-        labels = np.flip(labels, axis=0) if labels is not None else None
-        self._image_viewer.setData(data, labels)
+        roi_labels = np.flip(roi_labels, axis=0) if roi_labels is not None else None
+        neuropil_labels = (
+            np.flip(neuropil_labels, axis=0) if neuropil_labels is not None else None
+        )
+        self._image_viewer.setData(data, roi_labels, neuropil_labels)
         self._set_graphs_fov(value)
 
         # Check if the FOV has been analyzed (has ROIs with data)
@@ -1247,79 +1254,118 @@ class CaliGui(QMainWindow):
         title = f"{title}_p{value.pos_idx}"
         self._update_single_wells_graphs_combo(set_title=title)
 
-    def _get_labels(self, value: WellInfo) -> np.ndarray | None:
-        """Get the labels (ROI masks) for the given FOV from the database."""
+    def _get_labels(
+        self, value: WellInfo
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """Get the labels (ROI and neuropil masks) for the given FOV from the database.
+
+        Returns
+        -------
+        tuple[np.ndarray | None, np.ndarray | None]
+            Tuple of (roi_mask, neuropil_mask) arrays, or (None, None) if not available
+        """
         if self._database_path is None:
-            return None
+            return None, None
 
         # Get FOV name
         fov_name = value.fov.name
         if not fov_name:
-            return None
+            return None, None
 
-        # Get detection settings ID from currently selected run
+        # Get selected run ID and detection settings ID from currently selected run
+        run_id = self._runs_panel.get_selected_run_id()
         detection_settings_id = self._runs_panel.get_selected_detection_settings_id()
 
         try:
             from sqlalchemy.orm import selectinload
             from sqlmodel import Session, create_engine, select
 
-            from cali.sqlmodel._model import FOV, ROI
+            from cali.sqlmodel._model import FOV, ROI, Traces
             from cali.util import coordinates_to_mask
 
             engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
             with Session(engine) as session:
-                # Query FOV with ROIs and their masks
+                # Query ROIs with detection_settings_id filter
                 stmt = (
-                    select(FOV)
+                    select(ROI)
+                    .join(FOV)
                     .where(FOV.name == fov_name)
-                    .options(
-                        selectinload(FOV.rois).selectinload(ROI.roi_mask)  # type: ignore
-                    )
+                    .options(selectinload(ROI.roi_mask))  # type: ignore
                 )
-                fov = session.exec(stmt).first()
 
-                if not fov or not fov.rois:
-                    return None
-
-                # Filter ROIs by detection settings ID if one is selected
-                rois = fov.rois
+                # Add detection_settings_id filter if available
                 if detection_settings_id is not None:
-                    rois = [
-                        roi
-                        for roi in fov.rois
-                        if roi.detection_settings_id == detection_settings_id
-                    ]
+                    stmt = stmt.where(
+                        ROI.detection_settings_id == detection_settings_id
+                    )
+
+                rois = session.exec(stmt).all()
 
                 if not rois:
-                    return None
+                    return None, None
 
-                # Get the shape from the first mask
+                # Get the shape from the first ROI mask
                 first_mask = rois[0].roi_mask
                 if (
                     not first_mask
                     or first_mask.height is None
                     or first_mask.width is None
                 ):
-                    return None
+                    return None, None
 
                 shape = (first_mask.height, first_mask.width)
-                # Create a combined label mask with all ROIs
-                label_mask = np.zeros(shape, dtype=np.uint16)
 
+                # Create combined label masks
+                roi_mask = np.zeros(shape, dtype=np.uint16)
+                neuropil_mask = np.zeros(shape, dtype=np.uint16)
+
+                # Build ROI mask
                 for roi in rois:
                     if roi.roi_mask and roi.roi_mask.coords_y and roi.roi_mask.coords_x:
-                        # Create mask for this ROI
                         coords = (roi.roi_mask.coords_y, roi.roi_mask.coords_x)
                         roi_binary_mask = coordinates_to_mask(coords, shape)
-                        # Assign the label value to this ROI's pixels
-                        label_mask[roi_binary_mask] = roi.label_value
+                        roi_mask[roi_binary_mask] = roi.label_value
 
-                return label_mask if label_mask.max() > 0 else None
+                # Query neuropil masks from Traces for the selected run
+                # Neuropil masks are now stored per-Trace (per analysis run)
+                if run_id is not None:
+                    traces_stmt = (
+                        select(Traces)
+                        .where(Traces.analysis_result_id == run_id)
+                        .options(
+                            selectinload(Traces.roi),  # type: ignore
+                            selectinload(Traces.neuropil_mask),  # type: ignore
+                        )
+                    )
+                    traces = session.exec(traces_stmt).all()
+
+                    # Build neuropil mask from Traces
+                    for trace in traces:
+                        # Only include traces from ROIs matching detection_settings_id
+                        if (
+                            trace.roi
+                            and trace.roi.detection_settings_id == detection_settings_id
+                            and trace.neuropil_mask
+                            and trace.neuropil_mask.coords_y
+                            and trace.neuropil_mask.coords_x
+                        ):
+                            coords = (
+                                trace.neuropil_mask.coords_y,
+                                trace.neuropil_mask.coords_x,
+                            )
+                            neuropil_binary_mask = coordinates_to_mask(coords, shape)
+                            # Use the ROI's label_value
+                            neuropil_mask[neuropil_binary_mask] = trace.roi.label_value
+
+                # Return masks (None if empty)
+                roi_result = roi_mask if roi_mask.max() > 0 else None
+                neuropil_result = neuropil_mask if neuropil_mask.max() > 0 else None
+
+                return roi_result, neuropil_result
 
         except Exception as e:
             cali_logger.warning(f"Failed to load ROI masks from database: {e}")
-            return None
+            return None, None
 
     def _on_fov_double_click(self) -> None:
         """Open the selected FOV in a new StackViewer window."""

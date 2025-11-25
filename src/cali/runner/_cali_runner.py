@@ -373,11 +373,14 @@ class CaliRunner:
                         fovs_with_rois,
                         global_position_indices,
                     ):
-                        # Set analysis_result_id on all Traces before committing
+                        # Set analysis_result_id ONLY on NEW Traces (those without IDs)
+                        # Old traces from previous runs already have analysis_result_id set
                         if analysis_result_id is not None:
                             for roi in fov.rois:
                                 for trace in roi.traces_history:
-                                    trace.analysis_result_id = analysis_result_id
+                                    # Only set if this is a new trace (not yet committed)
+                                    if trace.id is None:
+                                        trace.analysis_result_id = analysis_result_id
 
                         fov_count += 1
 

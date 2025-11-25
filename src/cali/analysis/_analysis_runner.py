@@ -21,9 +21,10 @@ from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
     DataAnalysis,
+    Mask,
     Traces,
 )
-from cali.util import load_data
+from cali.util import load_data, mask_to_coordinates
 
 from ._util import (
     calculate_dff,
@@ -338,6 +339,25 @@ class AnalysisRunner:
             # Add traces and analysis to the existing ROI if processing succeeded
             if trace_data is not None:
                 traces, data_analysis, active, stimulated = trace_data
+
+                # Save neuropil mask to the Traces object if it exists for this ROI
+                neuropil_mask_array = neuropil_masks_dict.get(label_value)
+                if neuropil_mask_array is not None and neuropil_mask_array.any():
+                    # Convert mask to sparse coordinates
+                    neuropil_coords, neuropil_shape = mask_to_coordinates(
+                        neuropil_mask_array
+                    )
+                    # Create Mask object
+                    neuropil_mask_obj = Mask(
+                        coords_y=neuropil_coords[0],
+                        coords_x=neuropil_coords[1],
+                        height=neuropil_shape[0],
+                        width=neuropil_shape[1],
+                        mask_type="neuropil",
+                    )
+                    # Assign to Traces (will be saved via relationship cascade)
+                    traces.neuropil_mask = neuropil_mask_obj
+
                 # Append directly to relationships (eagerly loaded by caller)
                 existing_roi.traces_history.append(traces)
                 existing_roi.data_analysis_history.append(data_analysis)

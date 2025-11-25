@@ -146,8 +146,23 @@ class _ImageViewer(QGroupBox):
         main_layout.addWidget(self._viewer)
         main_layout.addWidget(bottom_wdg)
 
-    def setData(self, data: np.ndarray | None, labels: np.ndarray | None) -> None:
-        """Set the image data."""
+    def setData(
+        self,
+        data: np.ndarray | None,
+        labels: np.ndarray | None,
+        neuropil: np.ndarray | None = None,
+    ) -> None:
+        """Set the image data.
+
+        Parameters
+        ----------
+        data : np.ndarray | None
+            The image data to display
+        labels : np.ndarray | None
+            ROI mask labels
+        neuropil : np.ndarray | None
+            Neuropil mask labels (optional)
+        """
         self._clear()
         if data is None:
             return
@@ -157,7 +172,7 @@ class _ImageViewer(QGroupBox):
             return
 
         self._clims.setRange(data.min(), data.max())
-        self._viewer.update_image(data, labels)
+        self._viewer.update_image(data, labels, neuropil)
         self._auto_clim.setChecked(True)
 
         if labels is None:
@@ -167,6 +182,9 @@ class _ImageViewer(QGroupBox):
             and self._viewer.contours_image is not None
         ):
             self._viewer.contours_image.visible = self._labels.isChecked()
+            # Show neuropil contours if available
+            if self._viewer.neuropil_contours_image is not None:
+                self._viewer.neuropil_contours_image.visible = self._labels.isChecked()
 
     def data(self) -> np.ndarray | None:
         """Return the image data."""
@@ -200,6 +218,12 @@ class _ImageViewer(QGroupBox):
         if self._viewer.contours_image is not None:
             self._viewer.contours_image.parent = None
             self._viewer.contours_image = None
+        if self._viewer.neuropil_image is not None:
+            self._viewer.neuropil_image.parent = None
+            self._viewer.neuropil_image = None
+        if self._viewer.neuropil_contours_image is not None:
+            self._viewer.neuropil_contours_image.parent = None
+            self._viewer.neuropil_contours_image = None
         self._viewer.view.camera.set_range(margin=0)
 
     def _clear_highlight(self) -> None:
@@ -210,7 +234,7 @@ class _ImageViewer(QGroupBox):
         self._roi_number_le.setText("")
 
     def _show_labels(self, state: bool) -> None:
-        """Show the labels."""
+        """Show the labels and neuropil masks."""
         self._clear_highlight()
 
         if (
@@ -218,6 +242,10 @@ class _ImageViewer(QGroupBox):
             and self._viewer.contours_image is not None
         ):
             self._viewer.contours_image.visible = state
+
+        # Also toggle neuropil contours if available
+        if self._viewer.neuropil_contours_image is not None:
+            self._viewer.neuropil_contours_image.visible = state
 
     def _highlight_rois(self, roi: int | bool | None = None) -> None:
         """Highlight the label set in the spinbox."""
@@ -322,6 +350,8 @@ class _ImageCanvas(QWidget):
         self.image: scene.visuals.Image | None = None
         self.labels_image: scene.visuals.Image | None = None
         self.contours_image: scene.visuals.Image | None = None
+        self.neuropil_image: scene.visuals.Image | None = None
+        self.neuropil_contours_image: scene.visuals.Image | None = None
         self.highlight_roi: scene.visuals.Image | None = None
 
         self._contour_cache: dict[str, np.ndarray] = {}
@@ -368,7 +398,13 @@ class _ImageCanvas(QWidget):
             self.image.cmap = cmap
         self._cmap = cmap
 
-    def update_image(self, img: np.ndarray, labels: np.ndarray | None = None) -> None:
+    def update_image(
+        self,
+        img: np.ndarray,
+        labels: np.ndarray | None = None,
+        neuropil: np.ndarray | None = None,
+    ) -> None:
+        """Update the images data."""
         clim = (img.min(), img.max())
         self.image = self._imcls(
             img, cmap=self._cmap, clim=clim, parent=self.view.scene
@@ -404,6 +440,34 @@ class _ImageCanvas(QWidget):
         self.contours_image.interactive = True
         self.contours_image.visible = False
 
+        # Add neuropil masks if provided
+        if neuropil is not None and neuropil.max() > 0:
+            self.neuropil_image = self._imcls(
+                neuropil,
+                cmap="cyan",
+                clim=(neuropil.min(), neuropil.max()),
+                parent=self.view.scene,
+            )
+            self.neuropil_image.set_gl_state("additive", depth_test=False)
+            self.neuropil_image.interactive = True
+            self.neuropil_image.visible = False
+
+            neuropil_contour_key = self._hash_labels(neuropil)
+            if neuropil_contour_key not in self._contour_cache:
+                self._contour_cache[neuropil_contour_key] = (
+                    self._extract_label_contours(neuropil)
+                )
+
+            self.neuropil_contours_image = self._imcls(
+                self._contour_cache[neuropil_contour_key],
+                cmap="cyan",
+                clim=(neuropil.min(), neuropil.max()),
+                parent=self.view.scene,
+            )
+            self.neuropil_contours_image.set_gl_state("additive", depth_test=False)
+            self.neuropil_contours_image.interactive = True
+            self.neuropil_contours_image.visible = False
+
     def _hash_labels(self, labels: np.ndarray) -> str:
         """Generate a unique hash for a given labels array."""
         return hashlib.sha256(labels.tobytes()).hexdigest()
@@ -423,6 +487,23 @@ class _ImageCanvas(QWidget):
             colors[0] = [0, 0, 0, 1]  # black for background (0)
             for i in range(1, n_labels + 1):
                 colors[i] = [1, 1, 0, 1]  # yellow for labels
+        return Colormap(colors)
+
+    def _neuropil_custom_cmap(self, n_labels: int) -> Colormap:
+        """Create a custom colormap for the neuropil masks."""
+        if n_labels == 0:
+            # Fallback to a valid colormap with two entries: background and dummy
+            colors = np.array(
+                [
+                    [0, 0, 0, 1],  # background (0)
+                    [1, 1, 1, 1],  # dummy label color (white)
+                ]
+            )
+        else:
+            colors = np.zeros((n_labels + 1, 4))
+            colors[0] = [0, 0, 0, 1]  # black for background (0)
+            for i in range(1, n_labels + 1):
+                colors[i] = [0, 1, 1, 1]  # cyan for neuropil masks
         return Colormap(colors)
 
     def _extract_label_contours(
