@@ -28,19 +28,19 @@ def _plot_spike_synchrony_data(
     fov_name: str,
     rois: list[int] | None = None,
 ) -> None:
-#     """Plot spike-based synchrony analysis.
+    """Plot spike-based synchrony analysis.
 
-#     Parameters
-#     ----------
-#     widget: _SingleWellGraphWidget
-#         widget to plot on
-#     db_path: str
-#         Path to the database file
-#     fov_name: str
-#         Name of the FOV
-#     rois: list[int] | None
-#         List of ROI indices to include, None for all
-#     """
+    Parameters
+    ----------
+    widget: _SingleWellGraphWidget
+        widget to plot on
+    db_path: str
+        Path to the database file
+    fov_name: str
+        Name of the FOV
+    rois: list[int] | None
+        List of ROI indices to include, None for all
+    """
 #     widget.figure.clear()
 #     ax = widget.figure.add_subplot(111)
 

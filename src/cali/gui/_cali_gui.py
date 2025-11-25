@@ -110,6 +110,7 @@ class CaliGui(QMainWindow):
         self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
+        self._labels_path: str | None = None   #  TO REMOVE
         self._data: TensorstoreZarrReader | OMEZarrReader | None = None
 
         # RUNNER ----------------------------------------------------------------------
@@ -182,11 +183,11 @@ class CaliGui(QMainWindow):
 
         # RIGHT WIDGETS ---------------------------------------------------------------
 
-        # MAIN TABS: Detection & Analysis | Visualization ----------------------------
+        # MAIN TABS: Detection & Analysis | Visualization ----------
         self._main_tab = QTabWidget(self)
         self._main_tab.currentChanged.connect(self._on_tab_changed)
 
-        # DETECTION AND ANALYSIS TAB ----------------------------------------------------
+        # DETECTION AND ANALYSIS TAB --------------------------------
         self._detection_analysis_tab = QWidget()
         self._main_tab.addTab(self._detection_analysis_tab, "Detection and Analysis")
         detection_analysis_layout = QVBoxLayout(self._detection_analysis_tab)
@@ -351,9 +352,9 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"
@@ -852,6 +853,7 @@ class CaliGui(QMainWindow):
         self._database_path = None
         self._data_path = None
         self._output_path = None
+        self._labels_path = None   #  TO REMOVE
         # clear the datastore
         self._data = None
         # clear fov table
@@ -925,7 +927,7 @@ class CaliGui(QMainWindow):
 
         for r, c in wells.keys():
             if (r, c) not in selected_indices:
-                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)
+                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)  # type: ignore[arg-type]
 
     def _update_gui(self, plate: useq.WellPlate | None = None) -> None:
         """Update the analysis widgets gui."""
@@ -1251,9 +1253,6 @@ class CaliGui(QMainWindow):
         # Use the FOV name from the value
         if not (fov_name := value.fov.name):
             return False
-
-        # the FOV name in the database includes the position index suffix
-        fov_name = f"{fov_name}_p{value.pos_idx}"
 
         return has_fov_analysis(self._database_path, fov_name)
 

@@ -8,9 +8,9 @@ from scipy.ndimage import gaussian_filter1d
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, create_engine, select
 
+from cali.plot._util import _get_spikes_over_threshold
 from cali.sqlmodel._model import FOV, ROI
 
-from cali.plot._util import _get_spikes_over_threshold,
 if TYPE_CHECKING:
     from pathlib import Path
 

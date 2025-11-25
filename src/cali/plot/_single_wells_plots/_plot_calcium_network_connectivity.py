@@ -409,25 +409,25 @@ def _plot_connectivity_network_data(
 #             sel.annotation.set_visible(False)
 
 
-# def _plot_connectivity_matrix_data(
-#     widget: _SingleWellGraphWidget,
-#     db_path: str,
-#     fov_name: str,
-#     rois: list[int] | None = None,
-# ) -> None:
-#     """Plot the binary connectivity matrix as a heatmap.
+def _plot_connectivity_matrix_data(
+    widget: _SingleWellGraphWidget,
+    db_path: str,
+    fov_name: str,
+    rois: list[int] | None = None,
+) -> None:
+    """Plot the binary connectivity matrix as a heatmap.
 
-#     Parameters
-#     ----------
-#     widget : _SingleWellGraphWidget
-#         Widget to plot on
-#     db_path : str
-#         Path to the database file
-#     fov_name : str
-#         Name of the FOV
-#     rois : list[int] | None
-#         List of ROI indices to include, None for all active ROIs
-#     """
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    db_path : str
+        Path to the database file
+    fov_name : str
+        Name of the FOV
+    rois : list[int] | None
+        List of ROI indices to include, None for all active ROIs
+    """
 #     widget.figure.clear()
 #     ax = widget.figure.add_subplot(111)
 

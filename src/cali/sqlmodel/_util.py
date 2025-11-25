@@ -262,7 +262,10 @@ def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
                 select(FOV)
                 .join(ROI)
                 .where(FOV.name == fov_name)
-                .where((ROI.traces != None) | (ROI.data_analysis != None))  # noqa: E711
+                .where(
+                    (ROI.traces_history is not None)
+                    | (ROI.data_analysis_history is not None)
+                )
                 .limit(1)
             )
             result = session.exec(statement).first()
