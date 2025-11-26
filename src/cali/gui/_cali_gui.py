@@ -608,95 +608,6 @@ class CaliGui(QMainWindow):
             cali_logger.error(f"Failed to populate detection settings: {e}")
 
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
-    def _save_plate_map_to_database(self) -> None:
-        """Save plate map data from GUI to database."""
-        if self._database_path is None:
-            return
-
-        plate_map_data = self._analysis_wdg._plate_map_wdg.value()
-        _, genotype_data, treatment_data = plate_map_data
-
-        if not genotype_data and not treatment_data:
-            return
-
-        # Load experiment and update it with plate map data
-        from sqlmodel import Session, create_engine, select
-
-        from cali.sqlmodel._model import Condition
-
-        engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
-        try:
-            with Session(engine) as session:
-                exp = Experiment.load_from_db(self._database_path, session=session)
-                if exp.plate is None or exp.plate.wells is None:
-                    return
-
-                # cache ensures we reuse the same Condition instance in-memory
-                condition_cache: dict[tuple[str, str], Condition] = {}
-
-                def get_or_create_condition(
-                    name: str, color: str, condition_type: str
-                ) -> Condition:
-                    key = (name, condition_type)
-
-                    # 1) Check local cache
-                    if key in condition_cache:
-                        cond = condition_cache[key]
-                        cond.color = color  # keep color latest from GUI
-                        return cond
-
-                    # 2) Check DB
-                    stmt = (
-                        select(Condition)
-                        .where(Condition.name == name)
-                        .where(Condition.condition_type == condition_type)
-                    )
-                    existing = session.exec(stmt).first()
-                    if existing:
-                        existing.color = color
-                        condition_cache[key] = existing
-                        return existing
-
-                    # 3) Create new condition and add to session
-                    cond = Condition(
-                        name=name,
-                        color=color,
-                        condition_type=condition_type,
-                    )
-                    session.add(cond)
-                    condition_cache[key] = cond
-                    return cond
-
-                # Assign conditions per well
-                for well in exp.plate.wells:
-                    well.conditions = []
-
-                    # genotype
-                    for plate_data in genotype_data:
-                        if (well.row, well.column) == plate_data.row_col:
-                            condition = get_or_create_condition(
-                                name=plate_data.condition[0],
-                                color=plate_data.condition[1],
-                                condition_type="genotype",
-                            )
-                            well.conditions.append(condition)
-                            break
-
-                    # treatment
-                    for plate_data in treatment_data:
-                        if (well.row, well.column) == plate_data.row_col:
-                            condition = get_or_create_condition(
-                                name=plate_data.condition[0],
-                                color=plate_data.condition[1],
-                                condition_type="treatment",
-                            )
-                            well.conditions.append(condition)
-                            break
-
-                # Objects are already bound to this session; no need to merge plate
-                session.commit()
-        finally:
-            engine.dispose(close=True)
 
     def _on_cali_run_clicked(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
@@ -802,7 +713,17 @@ class CaliGui(QMainWindow):
 
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
-        self._run_cali_wdg.set_progress_bar_text(progress)
+        if progress.startswith("PROGRESS:RESET"):
+            try:
+                total = int(progress.split(":")[2])
+                self._run_cali_wdg.reset_progress_value()
+                self._run_cali_wdg.set_progress_bar_range(0, total)
+            except ValueError:
+                pass
+        elif progress.startswith("PROGRESS:UPDATE"):
+            self._run_cali_wdg.update_progress_bar_plus_one()
+        else:
+            self._run_cali_wdg.set_progress_bar_text(progress)
 
     def _on_worker_errored(self, error: Any) -> None:
         self._elapsed_timer.stop()
@@ -846,6 +767,96 @@ class CaliGui(QMainWindow):
         self._runs_panel.highlight_run_by_settings(detection_id, analysis_id)
 
         self._on_fov_table_selection_changed()
+
+    def _save_plate_map_to_database(self) -> None:
+        """Save plate map data from GUI to database."""
+        if self._database_path is None:
+            return
+
+        plate_map_data = self._analysis_wdg._plate_map_wdg.value()
+        _, genotype_data, treatment_data = plate_map_data
+
+        if not genotype_data and not treatment_data:
+            return
+
+        # Load experiment and update it with plate map data
+        from sqlmodel import Session, create_engine, select
+
+        from cali.sqlmodel._model import Condition
+
+        engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+        try:
+            with Session(engine) as session:
+                exp = Experiment.load_from_db(self._database_path, session=session)
+                if exp.plate is None or exp.plate.wells is None:
+                    return
+
+                # cache ensures we reuse the same Condition instance in-memory
+                condition_cache: dict[tuple[str, str], Condition] = {}
+
+                def get_or_create_condition(
+                    name: str, color: str, condition_type: str
+                ) -> Condition:
+                    key = (name, condition_type)
+
+                    # 1) Check local cache
+                    if key in condition_cache:
+                        cond = condition_cache[key]
+                        cond.color = color  # keep color latest from GUI
+                        return cond
+
+                    # 2) Check DB
+                    stmt = (
+                        select(Condition)
+                        .where(Condition.name == name)
+                        .where(Condition.condition_type == condition_type)
+                    )
+                    existing = session.exec(stmt).first()
+                    if existing:
+                        existing.color = color
+                        condition_cache[key] = existing
+                        return existing
+
+                    # 3) Create new condition and add to session
+                    cond = Condition(
+                        name=name,
+                        color=color,
+                        condition_type=condition_type,
+                    )
+                    session.add(cond)
+                    condition_cache[key] = cond
+                    return cond
+
+                # Assign conditions per well
+                for well in exp.plate.wells:
+                    well.conditions = []
+
+                    # genotype
+                    for plate_data in genotype_data:
+                        if (well.row, well.column) == plate_data.row_col:
+                            condition = get_or_create_condition(
+                                name=plate_data.condition[0],
+                                color=plate_data.condition[1],
+                                condition_type="genotype",
+                            )
+                            well.conditions.append(condition)
+                            break
+
+                    # treatment
+                    for plate_data in treatment_data:
+                        if (well.row, well.column) == plate_data.row_col:
+                            condition = get_or_create_condition(
+                                name=plate_data.condition[0],
+                                color=plate_data.condition[1],
+                                condition_type="treatment",
+                            )
+                            well.conditions.append(condition)
+                            break
+
+                # Objects are already bound to this session; no need to merge plate
+                session.commit()
+        finally:
+            engine.dispose(close=True)
 
     def _on_settings_changed(self) -> None:
         """Handle settings changed signal from runs panel (e.g., after deletion)."""

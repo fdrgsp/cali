@@ -267,11 +267,13 @@ class CaliRunner:
                     session, det_id, global_position_indices
                 )
 
+                yield "🔍 Running Detection..."
+
                 # 5. Run detection if needed
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
-                    yield "🔍 Running Detection..."
+                    yield f"PROGRESS:RESET:{len(positions_for_detection)}"
                     fov_count = 0
                     for fov in self._run_detection(
                         dataset,
@@ -282,6 +284,7 @@ class CaliRunner:
                         roi_count = len(fov.rois)
                         total_rois_detected += roi_count
                         fov_count += 1
+                        yield "PROGRESS:UPDATE"
 
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
@@ -355,6 +358,8 @@ class CaliRunner:
 
                     if not positions_for_analysis:
                         return
+
+                    yield f"PROGRESS:RESET:{len(positions_for_analysis)}"
 
                     # Create CaliResult FIRST with expected positions so we have the ID
                     analysis_result_id = None
@@ -438,6 +443,7 @@ class CaliRunner:
                                         delattr(roi, "_new_data_analysis")
 
                             fov_count += 1
+                            yield "PROGRESS:UPDATE"
                             should_commit = fov_count % self.commit_batch_size == 0
                             commit_fov_result(
                                 session, experiment, fov, commit=should_commit
@@ -462,7 +468,6 @@ class CaliRunner:
 
                     # Log completion
                     if positions_processed:
-                        cali_logger.info("✅ Analysis complete!")
                         cali_logger.info(f"✅ Analysis committed: {fov_count} FOVs")
         finally:
             engine.dispose(close=True)

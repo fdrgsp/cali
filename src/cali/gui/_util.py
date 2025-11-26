@@ -465,6 +465,11 @@ class _RunCaliWidget(QWidget):
         self._progress_pos_label.setText("")
         self._elapsed_time_label.setText("00:00:00")
 
+    def reset_progress_value(self) -> None:
+        """Reset only the progress bar value."""
+        self._progress_bar.reset()
+        self._progress_bar.setValue(0)
+
     def set_time_label(self, elapsed_time: str) -> None:
         """Update the elapsed time label."""
         self._elapsed_time_label.setText(elapsed_time)
