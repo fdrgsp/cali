@@ -677,84 +677,6 @@ class CaliGui(QMainWindow):
         finally:
             engine.dispose(close=True)
 
-    # def _save_plate_map_to_database(self) -> None:
-    #     """Save plate map data from GUI to database."""
-    #     if self._database_path is None:
-    #         return
-
-    #     # Get plate map data from GUI
-    #     plate_map_data = self._analysis_wdg._plate_map_wdg.value()
-
-    #     _, genotype_data, treatment_data = plate_map_data
-
-    #     # Only save if there's actual data
-    #     if not genotype_data and not treatment_data:
-    #         return
-
-    #     # Load experiment and update it with plate map data
-    #     from sqlmodel import Session, create_engine
-
-    #     from cali.sqlmodel._model import Condition
-
-    #     engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
-    #     try:
-    #         with Session(engine) as session:
-    #             exp = Experiment.load_from_db(self._database_path)
-    #             if exp.plate is None or exp.plate.wells is None:
-    #                 return
-
-    #             # Get or create conditions (reuse existing ones with same name)
-    #             def get_or_create_condition(
-    #                 name: str, color: str, condition_type: str
-    #             ) -> Condition:
-    #                 # Try to find existing condition with this name
-    #                 from sqlmodel import select
-
-    #                 stmt = select(Condition).where(Condition.name == name)
-    #                 existing = session.exec(stmt).first()
-    #                 if existing:
-    #                     # Update color and type if needed
-    #                     existing.color = color
-    #                     existing.condition_type = condition_type
-    #                     return existing
-    #                 # Create new condition
-    #                 return Condition(
-    #                     name=name, color=color, condition_type=condition_type
-    #                 )
-
-    #             # Clear existing conditions and add new ones
-    #             for well in exp.plate.wells:
-    #                 well.conditions = []
-
-    #                 # Find matching genotype data
-    #                 for plate_data in genotype_data:
-    #                     if (well.row, well.column) == plate_data.row_col:
-    #                         condition = get_or_create_condition(
-    #                             name=plate_data.condition[0],
-    #                             color=plate_data.condition[1],
-    #                             condition_type="genotype",
-    #                         )
-    #                         well.conditions.append(condition)
-    #                         break
-
-    #                 # Find matching treatment data
-    #                 for plate_data in treatment_data:
-    #                     if (well.row, well.column) == plate_data.row_col:
-    #                         condition = get_or_create_condition(
-    #                             name=plate_data.condition[0],
-    #                             color=plate_data.condition[1],
-    #                             condition_type="treatment",
-    #                         )
-    #                         well.conditions.append(condition)
-    #                         break
-
-    #             # Merge the plate back into the session and commit
-    #             session.merge(exp.plate)
-    #             session.commit()
-    #             cali_logger.info("💾 Saved plate map data to database")
-    #     finally:
-    #         engine.dispose(close=True)
-
     def _on_cali_run_clicked(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
         if (
@@ -826,7 +748,7 @@ class CaliGui(QMainWindow):
             max_yields = len(pos) * (
                 (1 if value.run_detection else 0) + (1 if value.run_analysis else 0)
             )
-            self._run_cali_wdg.set_progress_bar_range(0, max_yields)
+            self._run_cali_wdg.set_progress_bar_range(-1, max_yields)
             self._elapsed_timer.start()
 
             # Save plate map data to database before running
@@ -846,9 +768,7 @@ class CaliGui(QMainWindow):
                     output_path=Path(self._output_path) if self._output_path else None,
                     as_generator=True,
                 )
-                assert (
-                    result is not None
-                )  # as_generator=True always returns a generator
+                assert result is not None
                 yield from result
 
             create_worker(
@@ -868,7 +788,6 @@ class CaliGui(QMainWindow):
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
         self._run_cali_wdg.set_progress_bar_text(progress)
-        self._run_cali_wdg.update_progress_bar_plus_one()
 
     def _on_worker_errored(self, error: Any) -> None:
         self._elapsed_timer.stop()
@@ -879,7 +798,7 @@ class CaliGui(QMainWindow):
     def _on_worker_finished(self) -> None:
         cali_logger.info("✅ Runner finished successfully.")
         self._elapsed_timer.stop()
-        self._run_cali_wdg.reset_progress_bar()
+        # self._run_cali_wdg.reset_progress_bar()
         self._run_cali_wdg.set_progress_bar_text("Run Finished")
         # refresh the runs panel
         self._runs_panel.refresh_runs()
@@ -889,8 +808,7 @@ class CaliGui(QMainWindow):
 
         # Highlight the run that matches the settings just used
         value = self._run_cali_wdg.value()
-        detection_id = None
-        analysis_id = None
+        detection_id = analysis_id = None
 
         # Get detection ID - either from analysis-only mode or from last created
         if value.detection_settings_id is not None:

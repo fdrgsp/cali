@@ -265,6 +265,7 @@ class CaliRunner:
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
+                    yield "Running Detection..."
                     fov_count = 0
                     for fov in self._run_detection(
                         dataset,
@@ -275,12 +276,6 @@ class CaliRunner:
                         roi_count = len(fov.rois)
                         total_rois_detected += roi_count
                         fov_count += 1
-
-                        # Yield progress
-                        yield (
-                            f"Detection: {fov_count}/{len(positions_for_detection)} "
-                            f"({fov.name} - {roi_count} ROIs)"
-                        )
 
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
@@ -327,6 +322,8 @@ class CaliRunner:
                 if analysis_settings is not None:
                     assert analysis_settings.id is not None
 
+                    yield "Running Analysis..."
+
                     # Determine which positions need analysis
                     positions_for_analysis = self._get_positions_for_analysis(
                         session,
@@ -371,7 +368,7 @@ class CaliRunner:
                         dataset,
                         analysis_settings,
                         fovs_with_rois,
-                        global_position_indices,
+                        positions_for_analysis,
                     ):
                         # Set analysis_result_id ONLY on NEW Traces (those without IDs)
                         # Old traces from previous runs already have analysis_result_id
@@ -384,13 +381,6 @@ class CaliRunner:
                                         trace.analysis_result_id = analysis_result_id
 
                         fov_count += 1
-
-                        # Yield progress
-                        total_rois = len(fov.rois)
-                        yield (
-                            f"Analysis: {fov_count}/{len(positions_for_analysis)} "
-                            f"({fov.name} - {total_rois} ROIs)"
-                        )
 
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0

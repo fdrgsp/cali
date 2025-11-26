@@ -17,6 +17,7 @@ from cali.sqlmodel._model import (
 
 def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader:
     """Load data from the given path using the appropriate reader."""
+    cali_logger.info(f"Loading data from path: {data_path}")
     data_path = str(data_path)
     # select which reader to use for the datastore
     if data_path.endswith(TS):
