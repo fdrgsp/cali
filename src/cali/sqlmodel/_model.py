@@ -134,6 +134,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         id: int | None = None,
         experiment_id: int | None = None,
         session: Session | None = None,
+        load_data: bool = True,
     ) -> Self | list[Self]:
         """Load analysis result(s) from database with related settings.
 
@@ -148,6 +149,9 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
             Filter by experiment ID. If None and id is None, loads all results.
         session : Session | None
             Optional existing session to use. If None, creates a new one.
+        load_data : bool
+            Whether to load heavy data (traces, analysis results).
+            Defaults to True for backward compatibility.
 
         Returns
         -------
@@ -180,11 +184,12 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
 
         try:
             # Build query with eager loading of settings
-            statement = (
-                select(cls)
-                .options(selectinload(cls.traces))
-                .options(selectinload(cls.data_analysis_results))
-            )
+            statement = select(cls)
+            if load_data:
+                statement = statement.options(
+                    selectinload(cls.traces),
+                    selectinload(cls.data_analysis_results),
+                )
 
             # Filter by id or experiment_id
             if id is not None:
@@ -266,7 +271,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
 
     @classmethod
     def load_from_db(
-        cls, db_path: str | Path, id: int | None = None, session: Session | None = None
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        session: Session | None = None,
+        load_data: bool = True,
     ) -> Self:
         """Load experiment from database with all relationships eagerly loaded.
 
@@ -278,6 +287,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             ID of the experiment to load. If None, loads the first experiment.
         session : Session | None
             Optional existing session to use. If None, creates a new one.
+        load_data : bool
+            Whether to load heavy data (traces, masks, analysis results).
+            Defaults to True.
 
         Returns
         -------
@@ -291,22 +303,29 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             our_session = None
 
         try:
-            # Build the base chain for plate -> wells -> fovs -> rois
-            plate_chain = (
-                selectinload(Experiment.plate)
-                .selectinload(Plate.wells)
-                .selectinload(Well.fovs)
-                .selectinload(FOV.rois)
-            )
-
             # Load experiment with all relationships eagerly loaded
-            statement = select(Experiment).options(
-                plate_chain.selectinload(ROI.traces_history).selectinload(
-                    Traces.neuropil_mask  # type: ignore
-                ),
-                plate_chain.selectinload(ROI.data_analysis_history),
-                plate_chain.selectinload(ROI.roi_mask),
-            )
+            if load_data:
+                # Build the base chain for plate -> wells -> fovs -> rois
+                plate_chain = (
+                    selectinload(Experiment.plate)
+                    .selectinload(Plate.wells)
+                    .selectinload(Well.fovs)
+                    .selectinload(FOV.rois)
+                )
+                statement = select(Experiment).options(
+                    plate_chain.selectinload(ROI.traces_history).selectinload(
+                        Traces.neuropil_mask  # type: ignore
+                    ),
+                    plate_chain.selectinload(ROI.data_analysis_history),
+                    plate_chain.selectinload(ROI.roi_mask),
+                )
+            else:
+                # Only load plate and wells (skip FOVs and ROIs)
+                plate_chain = (
+                    selectinload(Experiment.plate)
+                    .selectinload(Plate.wells)
+                )
+                statement = select(Experiment).options(plate_chain)
 
             # Filter by ID if provided, otherwise get first experiment
             if id is not None:

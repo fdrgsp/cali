@@ -402,24 +402,25 @@ class CaliGui(QMainWindow):
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
         # load the first experiment from the database (there should be only one)
-        exp = Experiment.load_from_db(database_path)
+        experiment = Experiment.load_from_db(database_path, load_data=False)
 
         # ASSIGN VARIABLES ------------------------------------------------------------
         self._database_path = str(database_path)
+        self._data_path = str(data_path)
         self._output_path = str(Path(database_path).parent)
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_with_database_path(self._database_path)
 
         # PLATE------------------------------------------------------------------------
-        plate_plan = experiment_to_useq_plate_plan(exp)
+        plate_plan = experiment_to_useq_plate_plan(experiment)
         if plate_plan is not None:
             self._draw_plate_with_selection(plate_plan)
         else:
             cali_logger.warning("❌ Plate plan not found in experiment.")
 
         # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_settings(self._database_path)
+        self._update_gui_settings(self._database_path, experiment=experiment)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
@@ -497,12 +498,14 @@ class CaliGui(QMainWindow):
                     f"💿 Loading existing database at {self._database_path}"
                 )
 
-            # OPEN THE DATABASE -------------------------------------------------------
-            exp = Experiment.load_from_db(self._database_path)
+                # OPEN THE DATABASE -------------------------------------------------------
+                experiment = Experiment.load_from_db(
+                    self._database_path, load_data=False
+                )
 
             # PLATE--------------------------------------------------------------------
             # draw plate
-            plate_plan = experiment_to_useq_plate_plan(exp)
+            plate_plan = experiment_to_useq_plate_plan(experiment)
             if plate_plan is not None:
                 self._draw_plate_with_selection(plate_plan)
             else:
@@ -525,12 +528,14 @@ class CaliGui(QMainWindow):
         self._update_gui_plate_plan(self._data.sequence.stage_positions)
 
         # UPDATE GUI SETTINGS ---------------------------------------------------------
-        self._update_gui_settings(self._database_path)
+        self._update_gui_settings(self._database_path, experiment=experiment)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()
 
-    def _update_gui_settings(self, database_path: Path | str) -> None:
+    def _update_gui_settings(
+        self, database_path: Path | str, experiment: Experiment | None = None
+    ) -> None:
         """Update the GUI settings based on the latest analysis result."""
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
@@ -544,9 +549,11 @@ class CaliGui(QMainWindow):
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
                 self._runs_panel._on_item_clicked(first_item)
         # load plate plan data
-        exp = Experiment.load_from_db(database_path)
-        plate = experiment_to_useq_plate(exp)
-        plate_map_data = experiment_to_plate_map_data(exp)
+        if experiment is None:
+            experiment = Experiment.load_from_db(database_path, load_data=False)
+
+        plate = experiment_to_useq_plate(experiment)
+        plate_map_data = experiment_to_plate_map_data(experiment)
         if plate_map_data is not None and plate is not None:
             self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
@@ -564,14 +571,28 @@ class CaliGui(QMainWindow):
 
             # Get all unique detection settings IDs
             detection_ids = self._runs_panel.get_detection_settings_ids()
+
+            if not detection_ids:
+                self._run_cali_wdg.populate_detection_settings([])
+                return
+
             settings_list = []
 
-            for d_id in detection_ids:
-                d_settings = DetectionSettings.load_from_database(
-                    database_path, id=d_id
+            # Optimize: Load all settings in one query
+            from sqlmodel import Session, create_engine, select
+
+            engine = create_engine(f"sqlite:///{database_path}")
+            with Session(engine) as session:
+                statement = select(DetectionSettings).where(
+                    DetectionSettings.id.in_(detection_ids)  # type: ignore
                 )
-                if isinstance(d_settings, DetectionSettings):
-                    settings_list.append((d_id, d_settings.method))
+                results = session.exec(statement).all()
+                for d_settings in results:
+                    if d_settings.id is not None:
+                        settings_list.append((d_settings.id, d_settings.method))
+
+            # Sort by ID to maintain order
+            settings_list.sort(key=lambda x: x[0])
 
             self._run_cali_wdg.populate_detection_settings(settings_list)
 
@@ -688,7 +709,7 @@ class CaliGui(QMainWindow):
             return
 
         try:
-            experiment = Experiment.load_from_db(self._database_path)
+            experiment = Experiment.load_from_db(self._database_path, load_data=False)
 
             value = self._run_cali_wdg.value()
 
@@ -743,12 +764,6 @@ class CaliGui(QMainWindow):
             # Initialize progress bar and timer
             self._run_cali_wdg.reset_progress_bar()
             self._run_cali_wdg.set_progress_bar_text("Initializing...")
-            # Set progress bar range based on number of positions
-            # Each position yields once during detection and once during analysis
-            max_yields = len(pos) * (
-                (1 if value.run_detection else 0) + (1 if value.run_analysis else 0)
-            )
-            self._run_cali_wdg.set_progress_bar_range(-1, max_yields)
             self._elapsed_timer.start()
 
             # Save plate map data to database before running
@@ -995,7 +1010,9 @@ class CaliGui(QMainWindow):
 
         try:
             # Load the selected analysis result
-            result = CaliResult.load_from_database(self._database_path, id=run_id)
+            result = CaliResult.load_from_database(
+                self._database_path, id=run_id, load_data=False
+            )
             assert isinstance(result, CaliResult)
 
             # Load and apply detection settings
@@ -1382,7 +1399,12 @@ class CaliGui(QMainWindow):
                 if run_id is not None:
                     traces_stmt = (
                         select(Traces)
-                        .where(Traces.analysis_result_id == run_id)
+                        .join(ROI)
+                        .join(FOV)
+                        .where(
+                            Traces.analysis_result_id == run_id,
+                            FOV.name == fov_name,
+                        )
                         .options(
                             selectinload(Traces.roi),  # type: ignore
                             selectinload(Traces.neuropil_mask),  # type: ignore

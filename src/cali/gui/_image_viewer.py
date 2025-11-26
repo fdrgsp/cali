@@ -119,6 +119,11 @@ class _ImageViewer(QGroupBox):
         self._labels.setCheckable(True)
         self._labels.setChecked(False)
         self._labels.toggled.connect(self._show_labels)
+        # neuropil
+        self._neuropil = QPushButton("Neuropil")
+        self._neuropil.setCheckable(True)
+        self._neuropil.setChecked(False)
+        self._neuropil.toggled.connect(self._show_neuropil)
         # reset view button
         self._reset_view = QPushButton()
         self._reset_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -135,9 +140,11 @@ class _ImageViewer(QGroupBox):
         bottom_wdg = QWidget()
         bottom_wdg_layout = QHBoxLayout(bottom_wdg)
         bottom_wdg_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_wdg_layout.setSpacing(3)
         bottom_wdg_layout.addWidget(self._clims)
         bottom_wdg_layout.addWidget(self._auto_clim)
         bottom_wdg_layout.addWidget(self._labels)
+        bottom_wdg_layout.addWidget(self._neuropil)
         bottom_wdg_layout.addWidget(self._reset_view)
         bottom_wdg_layout.addWidget(self._save_image_btn)
 
@@ -182,9 +189,11 @@ class _ImageViewer(QGroupBox):
             and self._viewer.contours_image is not None
         ):
             self._viewer.contours_image.visible = self._labels.isChecked()
-            # Show neuropil contours if available
-            if self._viewer.neuropil_contours_image is not None:
-                self._viewer.neuropil_contours_image.visible = self._labels.isChecked()
+
+        if neuropil is None:
+            self._neuropil.setChecked(False)
+        elif self._viewer.neuropil_contours_image is not None:
+            self._viewer.neuropil_contours_image.visible = self._neuropil.isChecked()
 
     def data(self) -> np.ndarray | None:
         """Return the image data."""
@@ -234,7 +243,7 @@ class _ImageViewer(QGroupBox):
         self._roi_number_le.setText("")
 
     def _show_labels(self, state: bool) -> None:
-        """Show the labels and neuropil masks."""
+        """Show the labels."""
         self._clear_highlight()
 
         if (
@@ -243,7 +252,10 @@ class _ImageViewer(QGroupBox):
         ):
             self._viewer.contours_image.visible = state
 
-        # Also toggle neuropil contours if available
+    def _show_neuropil(self, state: bool) -> None:
+        """Show the neuropil masks."""
+        self._clear_highlight()
+
         if self._viewer.neuropil_contours_image is not None:
             self._viewer.neuropil_contours_image.visible = state
 
