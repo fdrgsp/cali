@@ -77,9 +77,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         if detection_settings.method == "cellpose":
             yield from self._run_cellpose(
@@ -217,9 +217,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         # Process images in batches
         n_positions = len(position_indices)
@@ -417,7 +417,9 @@ class DetectionRunner:
             fov.rois.append(roi)
         return fov
 
-    def _get_fov_name(self, event_key: str, meta: list[dict], global_pos_idx: int) -> str:
+    def _get_fov_name(
+        self, event_key: str, meta: list[dict], global_pos_idx: int
+    ) -> str:
         """Get the FOV name from metadata."""
         try:
             # Try to get pos_name first (e.g., "B5_0000")

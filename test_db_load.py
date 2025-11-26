@@ -1,5 +1,5 @@
 from pathlib import Path
-from sqlmodel import create_engine
+
 from cali.runner import CaliRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings
 from cali.sqlmodel._model import Experiment
@@ -9,7 +9,7 @@ runner = CaliRunner()
 database_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
 dataset = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
 
-exp = Experiment.create_from_data('exp', dataset)
+exp = Experiment.create_from_data("exp", dataset)
 detection_settings = DetectionSettings(
     method="cellpose",
     model_type="custom",

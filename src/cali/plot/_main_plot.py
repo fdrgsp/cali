@@ -31,7 +31,6 @@ from ._single_wells_plots._plot_neuropil_traces import _plot_neuropil_traces
 from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
 
 if TYPE_CHECKING:
-
     from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget

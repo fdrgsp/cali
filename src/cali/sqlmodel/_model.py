@@ -166,9 +166,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         >>> print(result.analysis_settings_obj.dff_window)
         >>>
         >>> # Load all results for an experiment
-        >>> results = CaliResult.load_from_database(
-        ...     "path/to/db.db", experiment_id=1
-        ... )
+        >>> results = CaliResult.load_from_database("path/to/db.db", experiment_id=1)
         >>> for r in results:
         ...     print(f"Analysis {r.id}: {r.positions_analyzed}")
         >>>

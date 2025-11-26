@@ -9,7 +9,6 @@ from sqlmodel import Session, col, select
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-
     from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
 

@@ -133,7 +133,9 @@ class AnalysisRunner:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Check for cancellation before submitting futures
             if cancel_event.is_set():
-                cali_logger.info("🚮 Cancellation requested before starting thread pool")
+                cali_logger.info(
+                    "🚮 Cancellation requested before starting thread pool"
+                )
                 return
 
             futures = (
@@ -150,7 +152,9 @@ class AnalysisRunner:
             for future in as_completed(futures):
                 # Check for cancellation at the start of each iteration
                 if cancel_event.is_set():
-                    cali_logger.info("🚮 Cancellation requested, shutting down executor...")
+                    cali_logger.info(
+                        "🚮 Cancellation requested, shutting down executor..."
+                    )
                     # Cancel pending futures and shutdown executor
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
@@ -316,7 +320,7 @@ class AnalysisRunner:
                 # This avoids SQLAlchemy warnings about modifying collections
                 # during threaded execution. The commit function will handle
                 # proper attachment.
-                if not hasattr(existing_roi, '_new_traces'):
+                if not hasattr(existing_roi, "_new_traces"):
                     existing_roi._new_traces = []  # type: ignore
                     existing_roi._new_data_analysis = []  # type: ignore
                 existing_roi._new_traces.append(traces)  # type: ignore
@@ -598,7 +602,6 @@ class AnalysisRunner:
 
         return (traces, data_analysis, active, stimulated)
 
-
     def _get_fov_name(self, event_key: str, meta: list[dict], p: int) -> str:
         """Retrieve the fov name from metadata.
 
@@ -622,7 +625,6 @@ class AnalysisRunner:
 
         # Final fallback
         return f"pos_{p}"
-
 
     def _get_elapsed_time_list(
         self, meta: list[dict], exposure_ms: float | None, num_timepoints: int

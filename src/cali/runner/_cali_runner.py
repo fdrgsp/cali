@@ -405,18 +405,20 @@ class CaliRunner:
                         if analysis_result_id is not None:
                             for roi in fov.rois:
                                 # Process temporary new traces
-                                if hasattr(roi, '_new_traces'):
+                                if hasattr(roi, "_new_traces"):
                                     for trace in roi._new_traces:  # type: ignore
                                         trace.analysis_result_id = analysis_result_id
                                         roi.traces_history.append(trace)
-                                    delattr(roi, '_new_traces')
+                                    delattr(roi, "_new_traces")
 
                                 # Process temporary new data analysis
-                                if hasattr(roi, '_new_data_analysis'):
+                                if hasattr(roi, "_new_data_analysis"):
                                     for data_analysis in roi._new_data_analysis:  # type: ignore
-                                        data_analysis.analysis_result_id = analysis_result_id
+                                        data_analysis.analysis_result_id = (
+                                            analysis_result_id
+                                        )
                                         roi.data_analysis_history.append(data_analysis)
-                                    delattr(roi, '_new_data_analysis')
+                                    delattr(roi, "_new_data_analysis")
 
                         fov_count += 1
                         should_commit = fov_count % self.commit_batch_size == 0
@@ -443,9 +445,7 @@ class CaliRunner:
                     # Log completion
                     if positions_processed:
                         cali_logger.info("✅ Analysis complete!")
-                        cali_logger.info(
-                            f"✅ Analysis committed: {fov_count} FOVs"
-                        )
+                        cali_logger.info(f"✅ Analysis committed: {fov_count} FOVs")
         finally:
             engine.dispose(close=True)
 
@@ -820,18 +820,19 @@ class CaliRunner:
         """
         from sqlalchemy.orm import joinedload
 
-        fovs = session.exec(
-            select(FOV)
-            .where(FOV.position_index.in_(position_indices))  # type: ignore
-            .options(
-                joinedload(FOV.rois)  # type: ignore
-                .joinedload(ROI.roi_mask),  # type: ignore
-                joinedload(FOV.rois)  # type: ignore
-                .joinedload(ROI.traces_history),  # type: ignore
-                joinedload(FOV.rois)  # type: ignore
-                .joinedload(ROI.data_analysis_history),  # type: ignore
+        fovs = (
+            session.exec(
+                select(FOV)
+                .where(FOV.position_index.in_(position_indices))  # type: ignore
+                .options(
+                    joinedload(FOV.rois).joinedload(ROI.roi_mask),  # type: ignore  # type: ignore
+                    joinedload(FOV.rois).joinedload(ROI.traces_history),  # type: ignore  # type: ignore
+                    joinedload(FOV.rois).joinedload(ROI.data_analysis_history),  # type: ignore  # type: ignore
+                )
             )
-        ).unique().all()
+            .unique()
+            .all()
+        )
 
         # Filter to only include ROIs with matching detection_settings_id
         filtered_fovs = []
