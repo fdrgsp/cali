@@ -55,15 +55,15 @@ from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data
 
-from ._analysis_gui import (
-    AnalysisSettingsData,
+from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
+from ._extraction_gui import (
     CalciumPeaksData,
     ExperimentTypeData,
+    ExtractionSettingsData,
     SpikeData,
     TraceExtractionData,
-    _AnalysisGUI,
+    _ExtractionGUI,
 )
-from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
@@ -186,14 +186,16 @@ class CaliGui(QMainWindow):
         self._main_tab = QTabWidget(self)
         self._main_tab.currentChanged.connect(self._on_tab_changed)
 
-        # DETECTION AND ANALYSIS TAB --------------------------------
-        self._detection_analysis_tab = QWidget()
-        self._main_tab.addTab(self._detection_analysis_tab, "Detection and Analysis")
-        detection_analysis_layout = QVBoxLayout(self._detection_analysis_tab)
-        detection_analysis_layout.setContentsMargins(0, 0, 0, 0)
-        detection_analysis_layout.setSpacing(5)
+        # DETECTION AND EXTRACTION TAB --------------------------------
+        self._detection_extraction_tab = QWidget()
+        self._main_tab.addTab(
+            self._detection_extraction_tab, "Detection and Extraction"
+        )
+        detection_extraction_layout = QVBoxLayout(self._detection_extraction_tab)
+        detection_extraction_layout.setContentsMargins(0, 0, 0, 0)
+        detection_extraction_layout.setSpacing(5)
 
-        # SUB-TABS FOR DETECTION AND ANALYSIS ----------------------------------------
+        # SUB-TABS FOR DETECTION AND EXTRACTION ----------------------------------------
         self._sub_tab = QTabWidget(self)
         self._sub_tab.setTabPosition(QTabWidget.TabPosition.North)
 
@@ -206,22 +208,22 @@ class CaliGui(QMainWindow):
         self._detection_wdg = _DetectionGUI(self)
         detection_tab_layout.addWidget(self._detection_wdg)
 
-        # ANALYSIS SUB-TAB ------------------------------------------------------------
-        self._analysis_tab = QWidget()
-        self._sub_tab.addTab(self._analysis_tab, "Analysis")
-        analysis_tab_layout = QVBoxLayout(self._analysis_tab)
-        analysis_tab_layout.setContentsMargins(5, 5, 5, 5)
+        # EXTRACTION SUB-TAB ------------------------------------------------------------
+        self._extraction_tab = QWidget()
+        self._sub_tab.addTab(self._extraction_tab, "Extraction")
+        extraction_tab_layout = QVBoxLayout(self._extraction_tab)
+        extraction_tab_layout.setContentsMargins(5, 5, 5, 5)
 
-        self._analysis_wdg = _AnalysisGUI(self)
-        analysis_tab_layout.addWidget(self._analysis_wdg)
+        self._extraction_wdg = _ExtractionGUI(self)
+        extraction_tab_layout.addWidget(self._extraction_wdg)
 
-        # Add sub-tabs to the Detection & Analysis tab
-        detection_analysis_layout.addWidget(self._sub_tab)
+        # Add sub-tabs to the Detection & Extraction tab
+        detection_extraction_layout.addWidget(self._sub_tab)
 
         # SHARED RUN WIDGET -----------------------------------------------------------
-        # This widget is shared between Detection and Analysis tabs
+        # This widget is shared between Detection and Extraction tabs
         self._run_cali_wdg = _RunCaliWidget(self)
-        detection_analysis_layout.addWidget(self._run_cali_wdg)
+        detection_extraction_layout.addWidget(self._run_cali_wdg)
 
         # VISUALIZATION TAB -----------------------------------------------------------
         self._visualization_tab = QWidget()
@@ -310,7 +312,7 @@ class CaliGui(QMainWindow):
             graph.roiSelected.connect(self._highlight_roi)
 
         # connect analysis from metadata button
-        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
+        self._extraction_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
@@ -555,7 +557,7 @@ class CaliGui(QMainWindow):
         plate = experiment_to_useq_plate(experiment)
         plate_map_data = experiment_to_plate_map_data(experiment)
         if plate_map_data is not None and plate is not None:
-            self._analysis_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
+            self._extraction_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
     def _populate_detection_settings(self, database_path: Path | str) -> None:
         """Populate the detection settings combobox in RunCaliWidget.
@@ -628,48 +630,52 @@ class CaliGui(QMainWindow):
 
             value = self._run_cali_wdg.value()
 
-            # Get analysis settings if needed
-            analysis_settings = (
-                self._analysis_wdg.to_model_settings() if value.run_analysis else None
+            # Get extraction settings if needed
+            extraction_settings = (
+                self._extraction_wdg.to_model_settings()
+                if value.run_extraction
+                else None
             )
 
             # Validate evoked experiment settings
-            if analysis_settings is not None:
+            if extraction_settings is not None:
                 from cali._constants import EVOKED
 
-                if analysis_settings.experiment_type == EVOKED:
+                if extraction_settings.experiment_type == EVOKED:
                     missing_fields = []
                     # Check for required evoked experiment fields
-                    if not analysis_settings.stimulation_mask_path:
+                    if not extraction_settings.stimulation_mask_path:
                         missing_fields.append("Stimulation mask")
-                    if not analysis_settings.led_pulse_duration:
+                    if not extraction_settings.led_pulse_duration:
                         missing_fields.append("LED pulse duration")
-                    if not analysis_settings.led_pulse_powers:
+                    if not extraction_settings.led_pulse_powers:
                         missing_fields.append("LED pulse powers")
-                    if not analysis_settings.led_pulse_on_frames:
+                    if not extraction_settings.led_pulse_on_frames:
                         missing_fields.append("LED pulse on frames")
                     if missing_fields:
                         msg = (
                             "Evoked experiment type selected but required fields are "
                             "missing:\n\n"
                             + "\n".join(f"  • {field}" for field in missing_fields)
-                            + "\n\nPlease configure these settings in the Analysis tab."
+                            + "\n\nPlease configure these settings in the "
+                            "Extraction tab."
                         )
                         show_error_dialog(self, msg)
                         return
 
-            # Get detection settings - either from GUI or selected ID (analysis-only)
-            if value.run_analysis and not value.run_detection:
-                # Analysis-only mode: use existing detection settings ID
+            # Get detection settings - either from GUI or selected ID (extraction-only)
+            if value.run_extraction and not value.run_detection:
+                # Extraction-only mode: use existing detection settings ID
                 detection_settings_id = value.detection_settings_id
                 if detection_settings_id is None:
                     show_error_dialog(
-                        self, "Please select a Detection ID to run analysis-only mode."
+                        self,
+                        "Please select a Detection ID to run extraction-only mode.",
                     )
                     return
                 detection_settings = detection_settings_id
             else:
-                # Detection or Detection+Analysis mode: get from GUI
+                # Detection or Detection+Extraction mode: get from GUI
                 detection_settings = self._detection_wdg.to_model_settings()
 
             pos = value.positions or list(
@@ -692,7 +698,7 @@ class CaliGui(QMainWindow):
                     experiment,
                     self._data.path,
                     detection_settings,
-                    analysis_settings=analysis_settings,
+                    analysis_settings=extraction_settings,
                     global_position_indices=pos,
                     database_name=Path(self._database_path).name,
                     output_path=Path(self._output_path) if self._output_path else None,
@@ -728,7 +734,7 @@ class CaliGui(QMainWindow):
             tab_bar.setEnabled(state)
         # Disable input widgets in Detection & Analysis tab
         self._detection_wdg.setEnabled(state)
-        self._analysis_wdg.setEnabled(state)
+        self._extraction_wdg.setEnabled(state)
         self._run_cali_wdg.enable(state)
         # Disable other GUI components
         self._fov_table.setEnabled(state)
@@ -787,7 +793,7 @@ class CaliGui(QMainWindow):
                 detection_id = detection_ids[-1]  # Most recent
 
         # Get analysis ID if analysis was run
-        if value.run_analysis:
+        if value.run_extraction:
             analysis_ids = self._runs_panel.get_analysis_settings_ids()
             if analysis_ids:
                 analysis_id = analysis_ids[-1]  # Most recent
@@ -802,7 +808,7 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
-        plate_map_data = self._analysis_wdg._plate_map_wdg.value()
+        plate_map_data = self._extraction_wdg._plate_map_wdg.value()
         _, genotype_data, treatment_data = plate_map_data
 
         if not genotype_data and not treatment_data:
@@ -963,7 +969,7 @@ class CaliGui(QMainWindow):
         # no plate flag
         self._default_plate_plan = False
         # reset analysis widget gui
-        self._analysis_wdg.reset()
+        self._extraction_wdg.reset()
         # reset detection widget gui
         self._detection_wdg.reset()
         # reset run cali widget
@@ -1108,8 +1114,8 @@ class CaliGui(QMainWindow):
                 )
                 assert isinstance(a_settings, AnalysisSettings)
 
-                self._analysis_wdg.setValue(
-                    AnalysisSettingsData(
+                self._extraction_wdg.setValue(
+                    ExtractionSettingsData(
                         experiment_type_data=ExperimentTypeData(
                             experiment_type=a_settings.experiment_type,
                             led_power_equation=a_settings.led_power_equation,
@@ -1192,7 +1198,7 @@ class CaliGui(QMainWindow):
             meta = sequence.metadata.get(PYMMCW_METADATA_KEY, {})
             led_meta = cast("dict", meta.get("stimulation", {}))
             if led_meta:
-                wdg = self._analysis_wdg._experiment_type_wdg
+                wdg = self._extraction_wdg._experiment_type_wdg
 
                 # pulse duration
                 if led_duration := led_meta.get("led_pulse_duration", None):

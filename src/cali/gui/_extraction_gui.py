@@ -57,14 +57,14 @@ from ._util import (
 if TYPE_CHECKING:
     import useq
 
-    from cali.sqlmodel import AnalysisSettings
+    from cali.sqlmodel import ExtractionSettings
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 
 @dataclass(frozen=True)
-class AnalysisSettingsData:
-    """Data structure to hold the analysis settings."""
+class ExtractionSettingsData:
+    """Data structure to hold the extraction settings."""
 
     plate_map_data: (
         tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]] | None
@@ -1188,7 +1188,7 @@ class _FrameRateWidget(QWidget):
         self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
 
 
-class _AnalysisGUI(QWidget):
+class _ExtractionGUI(QWidget):
     progress_bar_updated = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -1289,9 +1289,9 @@ class _AnalysisGUI(QWidget):
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
-    def value(self) -> AnalysisSettingsData:
+    def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
-        return AnalysisSettingsData(
+        return ExtractionSettingsData(
             self._plate_map_wdg.value(),
             self._experiment_type_wdg.value(),
             self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
@@ -1299,7 +1299,7 @@ class _AnalysisGUI(QWidget):
             self._spike_wdg.value(),
         )
 
-    def setValue(self, value: AnalysisSettingsData) -> None:
+    def setValue(self, value: ExtractionSettingsData) -> None:
         """Set the values of the widget."""
         if value.plate_map_data is not None:
             plate, genotype_map, treatment_map = value.plate_map_data

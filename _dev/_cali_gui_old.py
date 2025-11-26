@@ -53,7 +53,7 @@ from cali.sqlmodel import (
 )
 from cali.util import load_data
 
-from ..src.cali.gui._analysis_gui import (
+from ..src.cali.gui._extraction_gui import (
     AnalysisSettingsData,
     CalciumPeaksData,
     ExperimentTypeData,

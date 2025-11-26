@@ -340,7 +340,7 @@ class _ChoosePositionsWidget(QWidget):
 class CaliRunSettings:
     positions: list[int]
     run_detection: bool
-    run_analysis: bool
+    run_extraction: bool
     detection_settings_id: int | None
 
 
@@ -374,21 +374,21 @@ class _RunCaliWidget(QWidget):
         self._run_options_lbl.setSizePolicy(*FIXED)
         self._run_options_combo = QComboBox()
         items = [
-            "Detection and Analysis",
+            "Detection and Extraction",
             "Detection Only",
-            "Analysis Only (require at least one detection run in database)",
+            "Extraction Only (require at least one detection run in database)",
         ]
         self._run_options_combo.addItems(items)
         self._run_options_combo.setToolTip(
             "Choose what to run:\n\n"
             "• Detection: Run detection only to identify ROIs\n"
-            "• Detection and Analysis: Run both detection and analysis\n"
-            "• Analysis: Run analysis only using existing detection results\n"
+            "• Detection and Extraction: Run both detection and extraction\n"
+            "• Extraction: Run extraction only using existing detection results\n"
             "  (requires selecting a Detection ID)\n\n"
             "Smart Detection Skipping:\n"
             "The system automatically detects which positions have already been \n"
             "processed with the exact same settings. If you request detection, \n"
-            "analysis, or both for positions that have already been completed with \n"
+            "extraction, or both for positions that have already been completed with \n"
             "identical settings, those positions will be automatically skipped to \n"
             "avoid redundant processing."
         )
@@ -399,10 +399,10 @@ class _RunCaliWidget(QWidget):
         self._detection_settings_lbl.setSizePolicy(*FIXED)
         self._detection_settings_combo = QComboBox()
         self._detection_settings_combo.setToolTip(
-            "Select which detection results to use for analysis.\n\n"
+            "Select which detection results to use for extraction.\n\n"
             "Detection ID corresponds to the specific detection settings \n"
             "(method, parameters) used to identify ROIs. You must select \n"
-            "an existing detection to run analysis-only mode."
+            "an existing detection to run extraction-only mode."
         )
         self._detection_settings_lbl.setVisible(False)
         self._detection_settings_combo.setVisible(False)
@@ -419,7 +419,7 @@ class _RunCaliWidget(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(5)
-        main_layout.addWidget(create_divider_line("Positions to Analyze"))
+        main_layout.addWidget(create_divider_line("Positions to Extract"))
         main_layout.addWidget(self._positions_wdg)
         main_layout.addWidget(create_divider_line("Run Options"))
         main_layout.addWidget(run_options_wdg)
@@ -435,8 +435,8 @@ class _RunCaliWidget(QWidget):
         run_control_layout.addWidget(self._elapsed_time_label)
         main_layout.addLayout(run_control_layout)
 
-        # Initially disable "Analysis Only" option (no detections at init)
-        self._update_analysis_only_availability(has_detections=False)
+        # Initially disable "Extraction Only" option (no detections at init)
+        self._update_extraction_only_availability(has_detections=False)
 
     # PUBLIC METHODS --------------------------------------------------------------
 
@@ -515,7 +515,7 @@ class _RunCaliWidget(QWidget):
         return CaliRunSettings(
             positions=parse_lineedit_text(self._positions_wdg.value()),
             run_detection="Detection" in option,
-            run_analysis="Analysis" in option,
+            run_extraction="Extraction" in option,
             detection_settings_id=detection_settings_id,
         )
 
@@ -546,11 +546,11 @@ class _RunCaliWidget(QWidget):
                 f"Detection ID {settings_id} ({method})", settings_id
             )
 
-        # Enable/disable the "Analysis Only" option based on detection availability
-        self._update_analysis_only_availability(has_detections=len(settings_list) > 0)
+        # Enable/disable the "Extraction Only" option based on detection availability
+        self._update_extraction_only_availability(has_detections=len(settings_list) > 0)
 
-    def _update_analysis_only_availability(self, has_detections: bool) -> None:
-        """Enable or disable the Analysis Only option based on detection availability.
+    def _update_extraction_only_availability(self, has_detections: bool) -> None:
+        """Enable or disable the Extraction Only option based on detection availability.
 
         Parameters
         ----------
@@ -559,10 +559,10 @@ class _RunCaliWidget(QWidget):
         """
         from qtpy.QtCore import Qt
 
-        # Find the "Analysis Only" option (index 2)
-        analysis_only_index = 2
+        # Find the "Extraction Only" option (index 2)
+        extraction_only_index = 2
         model = cast("QStandardItemModel", self._run_options_combo.model())
-        item = model.item(analysis_only_index)
+        item = model.item(extraction_only_index)
 
         if item is None:
             return
@@ -574,7 +574,7 @@ class _RunCaliWidget(QWidget):
             # Disable the item
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             # If currently selected, switch to first option
-            if self._run_options_combo.currentIndex() == analysis_only_index:
+            if self._run_options_combo.currentIndex() == extraction_only_index:
                 self._run_options_combo.setCurrentIndex(0)
 
     def _on_run_option_changed(self, text: str) -> None:
@@ -585,12 +585,12 @@ class _RunCaliWidget(QWidget):
         text : str
             The selected run option text
         """
-        # Show detection settings combo only for "Analysis" option (index 2)
-        is_analysis_only = (
-            text == "Analysis Only (require at least one detection run in database)"
+        # Show detection settings combo only for "Extraction" option (index 2)
+        is_extraction_only = (
+            text == "Extraction Only (require at least one detection run in database)"
         )
-        self._detection_settings_lbl.setVisible(is_analysis_only)
-        self._detection_settings_combo.setVisible(is_analysis_only)
+        self._detection_settings_lbl.setVisible(is_extraction_only)
+        self._detection_settings_combo.setVisible(is_extraction_only)
         # if there is only one detection id, select it by default
-        if is_analysis_only and self._detection_settings_combo.count() == 2:
+        if is_extraction_only and self._detection_settings_combo.count() == 2:
             self._detection_settings_combo.setCurrentIndex(1)
