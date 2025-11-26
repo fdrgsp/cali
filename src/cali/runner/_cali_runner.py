@@ -398,7 +398,7 @@ class CaliRunner:
                         batch_fovs = []
 
                         cali_logger.info(
-                            f"📥 Loading {len(batch_positions)} FOVs from database..."
+                            f"💿 Loading {len(batch_positions)} FOVs from database..."
                         )
                         loaded_fovs = self._load_fovs_from_db(
                             session, det_id, batch_positions
