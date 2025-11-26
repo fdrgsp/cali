@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import matplotlib
@@ -12,6 +13,10 @@ matplotlib.use("Agg")  # Use non-interactive backend for testing
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
+from sqlmodel import create_engine
+
+if TYPE_CHECKING:
+    from sqlalchemy import Engine
 
 from cali.plot._main_plot import (
     CALCIUM_CONNECTIVITY_MATRIX,
@@ -58,6 +63,17 @@ def db_path() -> Path:
     """Path to test database."""
     return Path(__file__).parent / "test_data" / "evoked" / "results.cali"
 
+@pytest.fixture
+def db_engine(db_path: Path):  # type: ignore[misc]
+    """Create a database engine for testing."""
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
+    yield engine
+    engine.dispose()
+
 
 @pytest.fixture
 def widget() -> MockGraphWidget:
@@ -82,12 +98,12 @@ class TestCalciumPeaksSynchrony:
     """Tests for calcium peaks synchrony plot."""
 
     def test_synchrony_with_run_id(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine
     ) -> None:
         """Test synchrony plot with specific run_id."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
             rois=None,
@@ -96,12 +112,12 @@ class TestCalciumPeaksSynchrony:
         assert _has_plot_content(widget), "Synchrony plot should have content"
 
     def test_synchrony_without_run_id(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine
     ) -> None:
         """Test synchrony plot without run_id (fallback)."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
             rois=None,
@@ -113,11 +129,13 @@ class TestCalciumPeaksSynchrony:
 class TestNetworkConnectivity:
     """Tests for network connectivity plots."""
 
-    def test_connectivity_network(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_connectivity_network(
+        self, widget: MockGraphWidget, db_engine: Engine
+    ) -> None:
         """Test network connectivity plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             CALCIUM_NETWORK_CONNECTIVITY,
             rois=None,
@@ -126,11 +144,13 @@ class TestNetworkConnectivity:
         # This plot may be stubbed out, so just check it doesn't crash
         assert widget.figure is not None
 
-    def test_connectivity_matrix(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_connectivity_matrix(
+        self, widget: MockGraphWidget, db_engine: Engine
+    ) -> None:
         """Test connectivity matrix plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             CALCIUM_CONNECTIVITY_MATRIX,
             rois=None,
@@ -143,11 +163,11 @@ class TestNetworkConnectivity:
 class TestInferredSpikeSynchrony:
     """Tests for inferred spike synchrony plots."""
 
-    def test_spike_synchrony(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_spike_synchrony(self, widget: MockGraphWidget, db_engine: Engine) -> None:
         """Test spike synchrony plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
             rois=None,
@@ -157,12 +177,12 @@ class TestInferredSpikeSynchrony:
         assert widget.figure is not None
 
     def test_spike_cross_correlation(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine
     ) -> None:
         """Test spike cross-correlation plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKE_CROSS_CORRELATION,
             rois=None,
@@ -171,11 +191,11 @@ class TestInferredSpikeSynchrony:
         # This plot may be stubbed out, so just check it doesn't crash
         assert widget.figure is not None
 
-    def test_spike_clustering(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_spike_clustering(self, widget: MockGraphWidget, db_engine: Engine) -> None:
         """Test spike hierarchical clustering plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKE_CLUSTERING,
             rois=None,
@@ -185,12 +205,12 @@ class TestInferredSpikeSynchrony:
         assert widget.figure is not None
 
     def test_spike_clustering_dendrogram(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine
     ) -> None:
         """Test spike clustering dendrogram plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
             rois=None,
@@ -203,11 +223,11 @@ class TestInferredSpikeSynchrony:
 class TestBurstActivity:
     """Tests for burst activity plots."""
 
-    def test_burst_analysis(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_burst_analysis(self, widget: MockGraphWidget, db_engine: Engine) -> None:
         """Test burst activity analysis plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKE_BURST_ANALYSIS,
             rois=None,
@@ -215,11 +235,13 @@ class TestBurstActivity:
         )
         assert _has_plot_content(widget), "Burst analysis should have content"
 
-    def test_spikes_with_bursts(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_spikes_with_bursts(
+        self, widget: MockGraphWidget, db_engine: Engine
+    ) -> None:
         """Test inferred spikes with network bursts plot."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
             rois=None,
@@ -231,11 +253,11 @@ class TestBurstActivity:
 class TestNeuropilVisualization:
     """Tests for neuropil visualization."""
 
-    def test_neuropil_masks(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_neuropil_masks(self, widget: MockGraphWidget, db_engine: Engine) -> None:
         """Test neuropil and ROI masks visualization."""
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             NEUROPIL_ROI_MASKS,
             rois=None,
@@ -248,12 +270,14 @@ class TestNeuropilVisualization:
 class TestEvokedExperiment:
     """Tests for evoked experiment plots."""
 
-    def test_stimulated_area(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_stimulated_area(
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
+    ) -> None:
         """Test stimulated area visualization."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_AREA,
             rois=None,
@@ -262,12 +286,14 @@ class TestEvokedExperiment:
         # Should not crash
         assert widget.figure is not None
 
-    def test_stimulated_rois(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_stimulated_rois(
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
+    ) -> None:
         """Test stimulated vs non-stimulated ROIs visualization."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_ROIS,
             rois=None,
@@ -276,13 +302,13 @@ class TestEvokedExperiment:
         assert widget.figure is not None
 
     def test_stimulated_rois_with_area(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
     ) -> None:
         """Test stimulated ROIs with stimulated area."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_ROIS_WITH_STIMULATED_AREA,
             rois=None,
@@ -290,12 +316,14 @@ class TestEvokedExperiment:
         )
         assert widget.figure is not None
 
-    def test_stimulated_peaks_amp(self, widget: MockGraphWidget, db_path: Path) -> None:
+    def test_stimulated_peaks_amp(
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
+    ) -> None:
         """Test stimulated calcium peaks amplitudes."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_PEAKS_AMP,
             rois=None,
@@ -304,13 +332,13 @@ class TestEvokedExperiment:
         assert widget.figure is not None
 
     def test_non_stimulated_peaks_amp(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
     ) -> None:
         """Test non-stimulated calcium peaks amplitudes."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             NON_STIMULATED_PEAKS_AMP,
             rois=None,
@@ -319,13 +347,13 @@ class TestEvokedExperiment:
         assert widget.figure is not None
 
     def test_stim_vs_non_stim_traces(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
     ) -> None:
         """Test stimulated vs non-stimulated normalized calcium traces."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
             rois=None,
@@ -334,13 +362,13 @@ class TestEvokedExperiment:
         assert widget.figure is not None
 
     def test_stim_vs_non_stim_traces_with_peaks(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
     ) -> None:
         """Test stimulated vs non-stimulated traces with peaks."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
             rois=None,
@@ -349,13 +377,13 @@ class TestEvokedExperiment:
         assert widget.figure is not None
 
     def test_stim_vs_non_stim_spike_traces(
-        self, widget: MockGraphWidget, db_path: Path
+        self, widget: MockGraphWidget, db_engine: Engine, db_path: Path
     ) -> None:
         """Test stimulated vs non-stimulated spike traces."""
         widget._plate_viewer.output_path = db_path.parent / "evk_analysis"
         plot_single_well_data(
-            widget,
-            str(db_path),
+            widget,  # type: ignore[arg-type]
+            db_engine,
             "B5_0000",
             STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
             rois=None,

@@ -16,12 +16,33 @@ from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
 from ._single_wells_plots._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )
+from ._single_wells_plots._plot_calcium_network_connectivity import (
+    _plot_connectivity_matrix_data,
+    _plot_connectivity_network_data,
+)
+from ._single_wells_plots._plot_calcium_peaks_correlation import (
+    _plot_cross_correlation_data,
+    _plot_hierarchical_clustering_data,
+)
 from ._single_wells_plots._plot_calcium_peaks_iei_data import _plot_iei_data
 from ._single_wells_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
+from ._single_wells_plots._plot_calcium_peaks_synchrony import (
+    _plot_peak_event_synchrony_data,
+)
 from ._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
 from ._single_wells_plots._plot_cell_size import _plot_cell_size_data
+from ._single_wells_plots._plot_inferred_spike_burst_activity import (
+    _plot_inferred_spike_burst_activity,
+)
+from ._single_wells_plots._plot_inferred_spike_correlation import (
+    _plot_spike_cross_correlation_data,
+    _plot_spike_hierarchical_clustering_data,
+)
 from ._single_wells_plots._plot_inferred_spike_raster_plots import (
     _generate_spike_raster_plot,
+)
+from ._single_wells_plots._plot_inferred_spike_synchrony import (
+    _plot_spike_synchrony_data,
 )
 from ._single_wells_plots._plot_inferred_spikes import (
     _plot_inferred_spikes,
@@ -355,73 +376,73 @@ AnalysisProduct(
     category="Cell Size",
 )
 
-# # Correlation Analysis Group
-# AnalysisProduct(
-#     name=CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_peak_event_synchrony_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=CALCIUM_NETWORK_CONNECTIVITY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_connectivity_network_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=CALCIUM_CONNECTIVITY_MATRIX,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_connectivity_matrix_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=CROSS_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_cross_correlation_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=CLUSTERING,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_hierarchical_clustering_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=CLUSTERING_DENDROGRAM,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_hierarchical_clustering_data, use_dendrogram=True),
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_spike_synchrony_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_CROSS_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_spike_cross_correlation_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_CLUSTERING,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_spike_hierarchical_clustering_data,
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_hierarchical_clustering_data, use_dendrogram=True),
-#     category="Correlation Analysis",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_BURST_ANALYSIS,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_inferred_spike_burst_activity,
-#     category="Correlation Analysis",
-# )
+# Correlation Analysis Group
+AnalysisProduct(
+    name=CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_peak_event_synchrony_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=CALCIUM_NETWORK_CONNECTIVITY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_connectivity_network_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=CALCIUM_CONNECTIVITY_MATRIX,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_connectivity_matrix_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=CROSS_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cross_correlation_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=CLUSTERING,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_hierarchical_clustering_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=CLUSTERING_DENDROGRAM,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_hierarchical_clustering_data, use_dendrogram=True),
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_synchrony_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_CROSS_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_cross_correlation_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_CLUSTERING,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_hierarchical_clustering_data,
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_hierarchical_clustering_data, use_dendrogram=True),
+    category="Correlation Analysis",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_BURST_ANALYSIS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_inferred_spike_burst_activity,
+    category="Correlation Analysis",
+)
 
 # Evoked Experiment Group
 AnalysisProduct(
@@ -736,7 +757,7 @@ def plot_single_well_data(
     engine: Engine,
     fov_name: str,
     text: str,
-    run_id: int,
+    run_id: int | None,
     rois: list[int] | None = None,
 ) -> None:
     """Plot single-well analysis data using registry pattern with database queries.
@@ -751,8 +772,8 @@ def plot_single_well_data(
         Name of the FOV to query (e.g., "B5_0000")
     text : str
         The name of the analysis to plot (matches AnalysisProduct.name)
-    run_id : int
-        The CaliResult.id of the selected run to filter by
+    run_id : int | None
+        The CaliResult.id of the selected run to filter by, or None for default
     rois : list[int] | None, optional
         List of ROI indices to plot, by default None
     """
