@@ -46,7 +46,8 @@ class DetectionRunner:
         dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
-    ) -> Generator[FOV, None, None]:
+        as_generator: bool = False,
+    ) -> Generator[FOV, None, None] | list[FOV]:
         """Run detection and yield FOV results with ROIs and masks.
 
         Automatically selects the appropriate detection method based on
@@ -64,12 +65,30 @@ class DetectionRunner:
             Detection parameters (method field determines which algorithm to use)
         global_position_indices : Sequence[int]
             Position indices to process
+        as_generator : bool
+            If True, returns a Generator that yields FOVs.
+            If False (default), returns a list of FOVs.
 
-        Yields
-        ------
-        FOV
+        Returns
+        -------
+        Generator[FOV, None, None] | list[FOV]
             FOV objects with ROIs and masks, ready to be saved to database
         """
+        generator = self._run_generator(
+            dataset=dataset,
+            detection_settings=detection_settings,
+            global_position_indices=global_position_indices,
+        )
+
+        return generator if as_generator else list(generator)
+
+    def _run_generator(
+        self,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        detection_settings: DetectionSettings,
+        global_position_indices: Sequence[int],
+    ) -> Generator[FOV, None, None]:
+        """Internal generator for detection process."""
         # Reset cancellation event
         self._cancellation_event.clear()
 
@@ -95,7 +114,7 @@ class DetectionRunner:
             )
         else:
             msg = (
-                f"Unknown detection method: {detection_settings.method}. "
+                f"❌ Unknown detection method: {detection_settings.method}. "
                 "Supported methods: 'cellpose', 'caiman'"
             )
             cali_logger.error(msg)

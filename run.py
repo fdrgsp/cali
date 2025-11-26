@@ -1,8 +1,10 @@
 from pathlib import Path
 
+from sqlmodel import Session, create_engine, select
+
 from cali.runner import CaliRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings
-from cali.sqlmodel._model import Experiment
+from cali.sqlmodel._model import FOV, Experiment
 
 runner = CaliRunner()
 
@@ -37,6 +39,31 @@ runner.run(
     output_path=Path(database_path).parent,
     database_name="results.cali",
 )
+
+# Add assertions
+engine = create_engine(f"sqlite:///{database_path}")
+with Session(engine) as session:
+    for pos in [17, 18]:
+        fov = session.exec(select(FOV).where(FOV.position_index == pos)).first()
+        assert fov is not None, f"FOV for position {pos} not found"
+        assert len(fov.rois) > 0, f"No ROIs found for FOV {pos}"
+
+        for roi in fov.rois:
+            assert len(roi.traces_history) > 0, f"No traces found for ROI {roi.id}"
+            assert (
+                len(roi.data_analysis_history) > 0
+            ), f"No data analysis found for ROI {roi.id}"
+
+            # Check if traces are populated
+            trace = roi.traces_history[-1]
+            assert trace.dff is not None
+            assert trace.dec_dff is not None
+
+            # Check data analysis
+            da = roi.data_analysis_history[-1]
+            assert da.peaks_dec_dff is not None
+
+print("✅ All assertions passed!")
 
 # engine = create_engine(f"sqlite:///{database_path}")
 # print_cali_results(engine, show_settings=False, max_experiment_level="fov")

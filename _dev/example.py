@@ -8,10 +8,7 @@ from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
 from cali.sqlmodel._model import CaliResult
-from cali.sqlmodel._visualize_experiment import (
-    print_cali_results,
-    print_experiment_tree_from_engine,
-)
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 
 def _table(db_path: str):
@@ -102,6 +99,7 @@ analysis.run(exp, a_settings_1, d_settings_2, global_position_indices=[0])
 _table(exp.db_path)
 
 import time
+
 time.sleep(3)
 
 # RUN5 D1 A2 (overwrite RUN 2)
@@ -110,7 +108,6 @@ analysis.run(exp, a_settings_2, d_settings_1, global_position_indices=[0])
 # TODO: assert
 # det id = 1 and analysis id = 2
 _table(exp.db_path)
-
 
 
 # Visualize the complete experiment tree with analysis results

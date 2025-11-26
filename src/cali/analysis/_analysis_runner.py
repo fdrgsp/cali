@@ -1,5 +1,5 @@
 import threading
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, cast
@@ -53,10 +53,9 @@ class AnalysisRunner:
         self,
         dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
-        fovs_with_rois: list[FOV],
-        global_position_indices: Sequence[int],
-        detection_settings_id: int | None = None,
-    ) -> Generator[FOV, None, None]:
+        fovs: Iterable[FOV],
+        as_generator: bool = False,
+    ) -> Generator[FOV, None, None] | list[FOV]:
         """Run analysis and yield FOV results with traces and analysis data.
 
         This method performs pure computation - it takes FOVs with ROIs and adds
@@ -68,17 +67,16 @@ class AnalysisRunner:
             Path to imaging data (zarr store) or a data reader instance
         settings : AnalysisSettings
             Analysis parameters
-        fovs_with_rois : list[FOV]
+        fovs : Iterable[FOV]
             FOVs with ROIs to analyze. These typically come from DetectionRunner
             or are loaded from the database by the caller.
-        global_position_indices : Sequence[int]
-            Position indices to analyze
-        detection_settings_id : int | None, optional
-            Detection settings ID (for compatibility, currently unused)
+        as_generator : bool
+            If True, returns a Generator that yields FOVs.
+            If False (default), returns a list of FOVs.
 
-        Yields
-        ------
-        FOV
+        Returns
+        -------
+        Generator[FOV, None, None] | list[FOV]
             FOV objects with ROIs containing traces and analysis data,
             ready to be saved to database
 
@@ -87,6 +85,17 @@ class AnalysisRunner:
         ValueError
             If no ROI masks are found in the provided FOVs
         """
+        generator = self._run_generator(dataset, settings, fovs)
+
+        return generator if as_generator else list(generator)
+
+    def _run_generator(
+        self,
+        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        settings: AnalysisSettings,
+        fovs: Iterable[FOV],
+    ) -> Generator[FOV, None, None]:
+        """Internal generator for analysis process."""
         # Reset cancellation event
         self._cancellation_event.clear()
 
@@ -103,9 +112,8 @@ class AnalysisRunner:
             analyze=self._analyze_position,
             dataset=dataset,
             cancel_event=self._cancellation_event,
-            global_position_indices=global_position_indices,
+            fovs=fovs,
             settings=settings,
-            fovs_with_rois=fovs_with_rois,
             max_workers=settings.threads,
         ):
             if fov_result is not None:
@@ -124,9 +132,8 @@ class AnalysisRunner:
         analyze: Callable,
         dataset: TensorstoreZarrReader | OMEZarrReader,
         cancel_event: threading.Event,
-        global_position_indices: Sequence[int],
+        fovs: Iterable[FOV],
         settings: AnalysisSettings,
-        fovs_with_rois: list[FOV],
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
         """Execute analysis in parallel and yield FOV results."""
@@ -143,10 +150,9 @@ class AnalysisRunner:
                     analyze,
                     dataset,
                     settings,
-                    p,
-                    fovs_with_rois,
+                    fov,
                 )
-                for p in global_position_indices
+                for fov in fovs
             )
 
             for future in as_completed(futures):
@@ -177,8 +183,7 @@ class AnalysisRunner:
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
-        global_pos_idx: int,
-        fovs_with_rois: list[FOV],
+        fov: FOV,
     ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
 
@@ -188,16 +193,14 @@ class AnalysisRunner:
         return self._extract_trace_data_per_position(
             dataset,
             settings,
-            global_pos_idx,
-            fovs_with_rois,
+            fov,
         )
 
     def _extract_trace_data_per_position(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
         settings: AnalysisSettings,
-        global_pos_idx: int,
-        fovs_with_rois: list[FOV],
+        fov_to_analyze: FOV,
     ) -> FOV | None:
         """Extract trace data for a position and return FOV objects (not committed).
 
@@ -208,13 +211,12 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return None
 
+        global_pos_idx = fov_to_analyze.position_index
+
         # get the data and metadata for the position
         data, meta = dataset.isel(p=global_pos_idx, metadata=True)
         # get the fov_name name from metadata
         fov_name = self._get_fov_name(EVENT_KEY, meta, global_pos_idx)
-
-        # Find the FOV with matching position index in the provided list
-        fov_to_analyze = self._get_fov_to_analyze(global_pos_idx, fovs_with_rois)
 
         if fov_to_analyze is None or not fov_to_analyze.rois:
             cali_logger.error(

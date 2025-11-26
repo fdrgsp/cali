@@ -17,7 +17,7 @@ from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
 from cali.util import commit_fov_result, load_data
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Sequence
+    from collections.abc import Generator, Iterable, Sequence
 
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
@@ -84,10 +84,10 @@ class CaliRunner:
             Number of FOVs to accumulate before committing to database.
             Default is 5. Set to 1 for immediate commits (safest but slowest).
         """
-        # database path
         self._db_path: Path | None = None
         self.commit_batch_size = commit_batch_size
 
+        # Internal runners
         self._detection_runner = DetectionRunner()
         self._analysis_runner = AnalysisRunner()
 
@@ -372,75 +372,107 @@ class CaliRunner:
                             positions_analyzed=positions_for_analysis,
                         )
 
-                    # Load FOVs from database if not already in memory
-                    if not fovs_with_rois or {
-                        f.position_index for f in fovs_with_rois
-                    } != set(positions_for_analysis):
-                        cali_logger.info(
-                            "📥 Loading FOVs from database for analysis..."
-                        )
-                        fovs_with_rois = self._load_fovs_from_db(
-                            session,
-                            detection_settings.id,
-                            positions_for_analysis,
-                        )
-
                     # Always use threaded processing
                     cali_logger.info(
                         f"⚡️ Running analysis with {analysis_settings.threads} threads"
                     )
 
-                    # Run analysis and commit FOVs
+                    # Map of existing FOVs from detection (in memory)
+                    # These are transient objects
+                    existing_fovs_map = {f.position_index: f for f in fovs_with_rois}
+
+                    # Process in batches
+                    # Use a batch size that is at least the number of threads to ensure utilization
+                    # but not too large to consume too much memory.
+                    # Default to commit_batch_size, but ensure min of threads * 2
+                    batch_size = max(
+                        self.commit_batch_size, analysis_settings.threads * 2
+                    )
+
                     positions_processed = []
                     fov_count = 0
-                    for fov in self._run_analysis(
-                        dataset,
-                        analysis_settings,
-                        detection_settings.id,
-                        positions_for_analysis,
-                        fovs_with_rois=fovs_with_rois,
-                    ):
-                        # Move new traces/analysis from temporary storage to actual collections
-                        # and set analysis_result_id
-                        if analysis_result_id is not None:
-                            for roi in fov.rois:
-                                # Process temporary new traces
-                                if hasattr(roi, "_new_traces"):
-                                    for trace in roi._new_traces:  # type: ignore
-                                        trace.analysis_result_id = analysis_result_id
-                                        roi.traces_history.append(trace)
-                                    delattr(roi, "_new_traces")
 
-                                # Process temporary new data analysis
-                                if hasattr(roi, "_new_data_analysis"):
-                                    for data_analysis in roi._new_data_analysis:  # type: ignore
-                                        data_analysis.analysis_result_id = (
-                                            analysis_result_id
-                                        )
-                                        roi.data_analysis_history.append(data_analysis)
-                                    delattr(roi, "_new_data_analysis")
+                    for i in range(0, len(positions_for_analysis), batch_size):
+                        batch_positions = positions_for_analysis[i : i + batch_size]
 
-                        fov_count += 1
-                        should_commit = fov_count % self.commit_batch_size == 0
-                        commit_fov_result(
-                            session, experiment, fov, commit=should_commit
-                        )
-                        if should_commit:
+                        # Prepare FOVs for this batch
+                        batch_fovs = []
+                        positions_to_load = []
+
+                        for pos in batch_positions:
+                            if pos in existing_fovs_map:
+                                batch_fovs.append(existing_fovs_map[pos])
+                            else:
+                                positions_to_load.append(pos)
+
+                        # Load missing FOVs from DB
+                        if positions_to_load:
                             cali_logger.info(
-                                f"💾 Committed batch of "
-                                f"{self.commit_batch_size} FOVs "
-                                f"(total: {fov_count}/"
-                                f"{len(positions_for_analysis)})"
+                                f"📥 Loading {len(positions_to_load)} FOVs from database..."
                             )
-                        positions_processed.append(fov.position_index)
+                            loaded_fovs = self._load_fovs_from_db(
+                                session,
+                                detection_settings.id,
+                                positions_to_load,
+                            )
+                            batch_fovs.extend(loaded_fovs)
 
-                    # Final commit for any remaining FOVs
-                    if fov_count % self.commit_batch_size != 0:
+                        if not batch_fovs:
+                            continue
+
+                        # Run analysis on this batch
+                        for fov in self._run_analysis(
+                            dataset,
+                            analysis_settings,
+                            fovs=batch_fovs,
+                        ):
+                            # Move new traces/analysis from temporary storage to actual
+                            # collections and set analysis_result_id
+                            if analysis_result_id is not None:
+                                for roi in fov.rois:
+                                    # Process temporary new traces
+                                    if hasattr(roi, "_new_traces"):
+                                        for trace in roi._new_traces:  # type: ignore
+                                            trace.analysis_result_id = (
+                                                analysis_result_id
+                                            )
+                                            roi.traces_history.append(trace)
+                                        delattr(roi, "_new_traces")
+
+                                    # Process temporary new data analysis
+                                    if hasattr(roi, "_new_data_analysis"):
+                                        for data_analysis in roi._new_data_analysis:  # type: ignore
+                                            data_analysis.analysis_result_id = (
+                                                analysis_result_id
+                                            )
+                                            roi.data_analysis_history.append(
+                                                data_analysis
+                                            )
+                                        delattr(roi, "_new_data_analysis")
+
+                            fov_count += 1
+                            should_commit = fov_count % self.commit_batch_size == 0
+                            commit_fov_result(
+                                session, experiment, fov, commit=should_commit
+                            )
+                            if should_commit:
+                                cali_logger.info(
+                                    f"💾 Committed batch of "
+                                    f"{self.commit_batch_size} FOVs "
+                                    f"(total: {fov_count}/"
+                                    f"{len(positions_for_analysis)})"
+                                )
+                            positions_processed.append(fov.position_index)
+
+                        # Commit any remaining in this batch and clear memory
                         session.commit()
-                        remaining = fov_count % self.commit_batch_size
-                        cali_logger.info(
-                            f"💾 Final commit for remaining {remaining} FOVs"
-                        )
+                        for fov in batch_fovs:
+                            # Expunge to free memory, but only if attached to session
+                            # FOVs from existing_fovs_map are transient, so expunge might fail or do nothing
+                            try:
+                                session.expunge(fov)
+                            except Exception:
+                                pass
 
                     # Log completion
                     if positions_processed:
@@ -760,15 +792,14 @@ class CaliRunner:
             dataset=dataset,
             detection_settings=detection_settings,
             global_position_indices=global_position_indices,
+            as_generator=True,
         )
 
     def _run_analysis(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
         analysis_settings: AnalysisSettings,
-        detection_settings_id: int,
-        global_position_indices: Sequence[int],
-        fovs_with_rois: list[FOV],
+        fovs: Iterable[FOV],
     ) -> Generator[FOV, None, None]:
         """Run analysis using AnalysisRunner.
 
@@ -780,20 +811,15 @@ class CaliRunner:
             Dataset reader
         analysis_settings : AnalysisSettings
             Analysis configuration
-        detection_settings_id : int
-            Detection settings ID
-        global_position_indices : Sequence[int]
-            Positions to analyze
-        fovs_with_rois : list[FOV]
+        fovs : Iterable[FOV]
             FOVs with ROIs to analyze (from detection or loaded from DB)
         """
         cali_logger.info("📊 Running analysis...")
         yield from self._analysis_runner.run(
             dataset=dataset,
             settings=analysis_settings,
-            fovs_with_rois=fovs_with_rois,
-            global_position_indices=global_position_indices,
-            detection_settings_id=detection_settings_id,
+            fovs=fovs,
+            as_generator=True,
         )
 
     def _load_fovs_from_db(
@@ -818,7 +844,7 @@ class CaliRunner:
         list[FOV]
             FOVs with ROIs and masks eagerly loaded from database
         """
-        from sqlalchemy.orm import joinedload
+        from sqlalchemy.orm import selectinload
 
         fovs = (
             session.exec(
@@ -835,6 +861,8 @@ class CaliRunner:
         )
 
         # Filter to only include ROIs with matching detection_settings_id
+        # Note: We can't easily filter eager loaded collections in the query with selectinload
+        # so we filter in Python.
         filtered_fovs = []
         for fov in fovs:
             # Keep only ROIs with matching detection settings
