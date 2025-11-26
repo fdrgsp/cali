@@ -63,6 +63,7 @@ def db_path() -> Path:
     """Path to test database."""
     return Path(__file__).parent / "test_data" / "evoked" / "results.cali"
 
+
 @pytest.fixture
 def db_engine(db_path: Path):  # type: ignore[misc]
     """Create a database engine for testing."""
