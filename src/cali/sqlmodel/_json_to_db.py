@@ -390,7 +390,11 @@ def load_analysis_from_json(
         if db_path.exists():
             db_path.unlink()
 
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
         create_database_and_tables(engine)
 
         saved_exp_id = None

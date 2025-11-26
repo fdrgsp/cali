@@ -440,6 +440,13 @@ class _RunCaliWidget(QWidget):
 
     # PUBLIC METHODS --------------------------------------------------------------
 
+    def enable(self, state: bool) -> None:
+        """Enable or disable the widget but the cancel button."""
+        self._positions_wdg.setEnabled(state)
+        self._run_options_combo.setEnabled(state)
+        self._detection_settings_combo.setEnabled(state)
+        self._run_btn.setEnabled(state)
+
     def progress_bar_maximum(self) -> int:
         """Return the maximum value of the progress bar."""
         return cast("int", self._progress_bar.maximum())

@@ -290,7 +290,11 @@ class _RunsPanel(QGroupBox):
 
             from cali.sqlmodel._model import ROI
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 # Collect all detection and analysis settings before deleting
                 # We only need the IDs
@@ -461,13 +465,17 @@ class _RunsPanel(QGroupBox):
             return None
 
         run_id = current_item.data(Qt.ItemDataRole.UserRole)
-        if run_id is None:
+        if self._database_path is None:
             return None
 
         try:
             from sqlmodel import Session, create_engine
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 result = session.get(CaliResult, run_id)
                 detection_id = result.detection_settings if result else None
@@ -491,7 +499,11 @@ class _RunsPanel(QGroupBox):
         try:
             from sqlmodel import Session, create_engine, select
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 # Get all unique detection settings IDs
                 stmt = select(CaliResult.detection_settings).distinct()
@@ -517,7 +529,11 @@ class _RunsPanel(QGroupBox):
         try:
             from sqlmodel import Session, create_engine, select
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 # Get all unique analysis settings IDs
                 stmt = select(CaliResult.analysis_settings).distinct()
@@ -550,7 +566,11 @@ class _RunsPanel(QGroupBox):
             from sqlalchemy import desc
             from sqlmodel import Session, create_engine, select
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 # Find run with matching settings
                 query = select(CaliResult)

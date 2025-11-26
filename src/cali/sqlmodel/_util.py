@@ -92,7 +92,12 @@ def save_experiment_to_database(
     if overwrite and db_path.exists():
         db_path.unlink()
 
-    engine = create_engine(f"sqlite:///{db_path}", echo=echo)
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        echo=echo,
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
     create_database_and_tables(engine)
 
     try:
@@ -166,7 +171,12 @@ def load_experiment_from_database(
 
     # Convert to string for consistency
     db_path_str = str(db_path)
-    engine = create_engine(f"sqlite:///{db_path_str}", echo=echo)
+    engine = create_engine(
+        f"sqlite:///{db_path_str}",
+        echo=echo,
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
 
     try:
         # Use context manager to ensure session is properly closed
@@ -253,7 +263,11 @@ def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
 
     from ._model import FOV, ROI, Traces
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
     try:
         with Session(engine) as session:
             # Check if this specific FOV has any ROIs with Traces entries
@@ -292,7 +306,11 @@ def has_experiment_analysis(db_path: str | Path) -> bool:
 
     from ._model import Traces
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
     try:
         with Session(engine) as session:
             # Check if any Traces entries exist (indicates analysis has been run)

@@ -229,7 +229,12 @@ class CaliRunner:
         self._setup_database(self._db_path, experiment, overwrite)
 
         # 2. Get database engine and session
-        engine = create_engine(f"sqlite:///{self._db_path}", echo=echo)
+        engine = create_engine(
+            f"sqlite:///{self._db_path}",
+            echo=echo,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
 
         # Enable foreign keys for SQLite
         @event.listens_for(engine, "connect")
@@ -628,7 +633,12 @@ class CaliRunner:
             # experiment.id is now set by save_experiment_to_database
         else:
             # Validate experiment ID matches database
-            engine = create_engine(f"sqlite:///{db_path}", echo=False)
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                echo=False,
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             try:
                 with Session(engine) as session:
                     from cali.sqlmodel._model import Experiment

@@ -581,7 +581,11 @@ class CaliGui(QMainWindow):
             # Optimize: Load all settings in one query
             from sqlmodel import Session, create_engine, select
 
-            engine = create_engine(f"sqlite:///{database_path}")
+            engine = create_engine(
+                f"sqlite:///{database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 statement = select(DetectionSettings).where(
                     DetectionSettings.id.in_(detection_ids)  # type: ignore
@@ -710,17 +714,27 @@ class CaliGui(QMainWindow):
                 },
             )
         except Exception as e:
+            self._enable(True)
             msg = f"❌ Failed to run cali:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
 
     def _enable(self, state: bool) -> None:
         """Enable or disable the GUI during a run."""
-        # set main tab to index 0
+        # Switch to Detection & Analysis tab and prevent tab changes
         self._main_tab.setCurrentIndex(0)
-        # TODO: disable the widget inside the sub tab of analysis and
-        # detection and keep enabled only the cancel button.
-        # the visualization tab should not be available to clock on.
+        # Enable/disable tab bar to prevent switching (but keep tab content viewable)
+        if tab_bar := self._main_tab.tabBar():
+            tab_bar.setEnabled(state)
+        # Disable input widgets in Detection & Analysis tab
+        self._detection_wdg.setEnabled(state)
+        self._analysis_wdg.setEnabled(state)
+        self._run_cali_wdg.enable(state)
+        # Disable other GUI components
+        self._fov_table.setEnabled(state)
+        self._plate_view.setEnabled(state)
+        self._image_viewer.setEnabled(state)
+        self._runs_panel.setEnabled(state)
 
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
@@ -799,7 +813,12 @@ class CaliGui(QMainWindow):
 
         from cali.sqlmodel._model import Condition
 
-        engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            echo=False,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
         try:
             with Session(engine) as session:
                 exp = Experiment.load_from_db(self._database_path, session=session)
@@ -957,7 +976,12 @@ class CaliGui(QMainWindow):
         from sqlmodel import create_engine
 
         # Create SQLAlchemy engine for database queries
-        engine = create_engine(f"sqlite:///{database_path}", echo=False)
+        engine = create_engine(
+            f"sqlite:///{database_path}",
+            echo=False,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
 
         for sw_graph in self.SW_GRAPHS:
             sw_graph.database_path = database_path
@@ -1388,7 +1412,12 @@ class CaliGui(QMainWindow):
             from cali.sqlmodel._model import FOV, ROI, Traces
             from cali.util import coordinates_to_mask
 
-            engine = create_engine(f"sqlite:///{self._database_path}", echo=False)
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                echo=False,
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             with Session(engine) as session:
                 # Query ROIs with detection_settings_id filter
                 stmt = (

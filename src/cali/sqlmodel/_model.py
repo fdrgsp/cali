@@ -175,7 +175,11 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         >>> latest = results[-1]  # Ordered by id (creation order)
         """
         if session is None:
-            engine = create_engine(f"sqlite:///{db_path}")
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             our_session = session = Session(engine)
         else:
             our_session = None
@@ -295,7 +299,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             Experiment instance with all relationships loaded and detached
         """
         if session is None:
-            engine = create_engine(f"sqlite:///{db_path}")
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             our_session = session = Session(engine)
         else:
             our_session = None
@@ -668,7 +676,11 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         >>> latest = all_settings[-1]
         """
         if session is None:
-            engine = create_engine(f"sqlite:///{db_path}")
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             our_session = session = Session(engine)
         else:
             our_session = None
@@ -937,7 +949,11 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         >>> latest = all_settings[-1]
         """
         if session is None:
-            engine = create_engine(f"sqlite:///{db_path}")
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
             our_session = session = Session(engine)
         else:
             our_session = None
