@@ -24,6 +24,7 @@ from cali.util import (
     load_data,
     save_results_to_database,
 )
+from cali.util._util import commit_fov_result
 
 # 1. Setup paths and data
 # -----------------------
@@ -60,16 +61,6 @@ fovs_detected = detection_runner.run(
     global_position_indices=positions_to_process,
 )
 
-# Save detection results to database
-save_results_to_database(
-    db_path,
-    "manual_exp",
-    fovs_detected,
-    detection_settings=detection_settings,
-)
-detection_id = detection_settings.id
-assert detection_id is not None
-
 print("✅ Saved FOVs to database.")
 
 
@@ -78,9 +69,6 @@ print("✅ Saved FOVs to database.")
 print("📈 Running Analysis...")
 
 # Load FOVs from database
-with Session(engine) as session:
-    fovs_to_analyze = get_fovs_by_detection_id(session, detection_id)
-
 analysis_runner = AnalysisRunner()
 analysis_settings = AnalysisSettings(
     dff_window=150, threads=10, peaks_height_value=2

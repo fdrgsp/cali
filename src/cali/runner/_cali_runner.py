@@ -250,7 +250,7 @@ class CaliRunner:
                         session, analysis_settings
                     )
 
-                assert detection_settings.id is not None
+                assert (det_id := detection_settings.id) is not None
 
                 # 4. Determine which positions need detection
                 if global_position_indices is None:
@@ -264,13 +264,10 @@ class CaliRunner:
                     )
 
                 positions_for_detection = self._get_positions_for_detection(
-                    session,
-                    detection_settings.id,
-                    global_position_indices,
+                    session, det_id, global_position_indices
                 )
 
                 # 5. Run detection if needed
-                fovs_with_rois = []
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
@@ -292,7 +289,7 @@ class CaliRunner:
                             session,
                             experiment,
                             fov,
-                            detection_settings.id,
+                            det_id,
                             commit=should_commit,
                         )
                         if should_commit:
@@ -300,25 +297,14 @@ class CaliRunner:
                                 f"💾 Committed batch of {self.commit_batch_size} FOVs "
                                 f"(total: {fov_count}/{len(positions_for_detection)})"
                             )
-
-                        # Make FOV transient to keep it in memory after commit
-                        # This allows us to use the threaded path for analysis
-                        from sqlalchemy.orm import make_transient
-
-                        # Save detection_settings_id before making transient
-                        # (make_transient clears foreign keys)
-                        detection_id = detection_settings.id
-
-                        make_transient(fov)
-                        for roi in fov.rois:
-                            make_transient(roi)
-                            # Restore detection_settings_id after make_transient
-                            roi.detection_settings_id = detection_id
-                            if roi.roi_mask:
-                                make_transient(roi.roi_mask)
+                            # Clear session to free memory
+                            session.expunge_all()
+                            # Re-attach settings objects for next iteration
+                            detection_settings = session.merge(detection_settings)
+                            if analysis_settings:
+                                analysis_settings = session.merge(analysis_settings)
 
                         positions_processed_detection.append(fov.position_index)
-                        fovs_with_rois.append(fov)
 
                     # Final commit for any remaining FOVs
                     if fov_count % self.commit_batch_size != 0:
@@ -327,6 +313,11 @@ class CaliRunner:
                         cali_logger.info(
                             f"💾 Final commit for remaining {remaining} FOVs"
                         )
+                        session.expunge_all()
+                        # Re-attach settings objects
+                        detection_settings = session.merge(detection_settings)
+                        if analysis_settings:
+                            analysis_settings = session.merge(analysis_settings)
 
                     # Log detection completion
                     if positions_processed_detection:
@@ -339,7 +330,7 @@ class CaliRunner:
                             self._create_or_update_analysis_result(
                                 session=session,
                                 experiment_id=experiment.id,
-                                detection_settings_id=detection_settings.id,
+                                detection_settings_id=det_id,
                                 analysis_settings_id=None,
                                 positions_analyzed=positions_processed_detection,
                             )
@@ -348,14 +339,18 @@ class CaliRunner:
                 if analysis_settings is not None:
                     assert analysis_settings.id is not None
 
+                    # Ensure stimulation_mask is loaded and detach settings for thread
+                    # safety. This prevents "session is in committed state" errors in
+                    # threads
+                    if analysis_settings.stimulation_mask:
+                        session.expunge(analysis_settings.stimulation_mask)
+                    session.expunge(analysis_settings)
+
                     yield "📊 Running Analysis..."
 
                     # Determine which positions need analysis
                     positions_for_analysis = self._get_positions_for_analysis(
-                        session,
-                        detection_settings.id,
-                        analysis_settings.id,
-                        global_position_indices,
+                        session, det_id, analysis_settings.id, global_position_indices
                     )
 
                     if not positions_for_analysis:
@@ -367,7 +362,7 @@ class CaliRunner:
                         analysis_result_id = self._create_or_update_analysis_result(
                             session=session,
                             experiment_id=experiment.id,
-                            detection_settings_id=detection_settings.id,
+                            detection_settings_id=det_id,
                             analysis_settings_id=analysis_settings.id,
                             positions_analyzed=positions_for_analysis,
                         )
@@ -377,17 +372,11 @@ class CaliRunner:
                         f"⚡️ Running analysis with {analysis_settings.threads} threads"
                     )
 
-                    # Map of existing FOVs from detection (in memory)
-                    # These are transient objects
-                    existing_fovs_map = {f.position_index: f for f in fovs_with_rois}
-
                     # Process in batches
-                    # Use a batch size that is at least the number of threads to ensure utilization
-                    # but not too large to consume too much memory.
-                    # Default to commit_batch_size, but ensure min of threads * 2
-                    batch_size = max(
-                        self.commit_batch_size, analysis_settings.threads * 2
-                    )
+                    # Use a batch size that is at least the number of threads to ensure
+                    # utilization but not too large to consume too much memory.
+                    # Default to commit_batch_size, but ensure min of threads
+                    batch_size = max(self.commit_batch_size, analysis_settings.threads)
 
                     positions_processed = []
                     fov_count = 0
@@ -397,25 +386,23 @@ class CaliRunner:
 
                         # Prepare FOVs for this batch
                         batch_fovs = []
-                        positions_to_load = []
 
-                        for pos in batch_positions:
-                            if pos in existing_fovs_map:
-                                batch_fovs.append(existing_fovs_map[pos])
-                            else:
-                                positions_to_load.append(pos)
+                        cali_logger.info(
+                            f"📥 Loading {len(batch_positions)} FOVs from database..."
+                        )
+                        loaded_fovs = self._load_fovs_from_db(
+                            session, det_id, batch_positions
+                        )
 
-                        # Load missing FOVs from DB
-                        if positions_to_load:
-                            cali_logger.info(
-                                f"📥 Loading {len(positions_to_load)} FOVs from database..."
-                            )
-                            loaded_fovs = self._load_fovs_from_db(
-                                session,
-                                detection_settings.id,
-                                positions_to_load,
-                            )
-                            batch_fovs.extend(loaded_fovs)
+                        # Detach FOVs from session to allow safe threading
+                        # We must do this because SQLAlchemy objects are not thread-safe
+                        # and _run_analysis uses a ThreadPoolExecutor.
+                        # Since we used selectinload in _load_fovs_from_db, all needed
+                        # data (ROIs, masks, traces) is already loaded.
+                        for fov in loaded_fovs:
+                            session.expunge(fov)
+
+                        batch_fovs.extend(loaded_fovs)
 
                         if not batch_fovs:
                             continue
@@ -467,8 +454,7 @@ class CaliRunner:
                         # Commit any remaining in this batch and clear memory
                         session.commit()
                         for fov in batch_fovs:
-                            # Expunge to free memory, but only if attached to session
-                            # FOVs from existing_fovs_map are transient, so expunge might fail or do nothing
+                            # Expunge to free memory
                             try:
                                 session.expunge(fov)
                             except Exception:
@@ -861,8 +847,8 @@ class CaliRunner:
         )
 
         # Filter to only include ROIs with matching detection_settings_id
-        # Note: We can't easily filter eager loaded collections in the query with selectinload
-        # so we filter in Python.
+        # Note: We can't easily filter eager loaded collections in the query
+        # with selectinload so we filter in Python.
         filtered_fovs = []
         for fov in fovs:
             # Keep only ROIs with matching detection settings
