@@ -53,9 +53,9 @@ with Session(engine) as session:
 
         for roi in fov.rois:
             assert len(roi.traces_history) > 0, f"No traces found for ROI {roi.id}"
-            assert (
-                len(roi.data_analysis_history) > 0
-            ), f"No data analysis found for ROI {roi.id}"
+            assert len(roi.data_analysis_history) > 0, (
+                f"No data analysis found for ROI {roi.id}"
+            )
 
             # Check if traces are populated
             trace = roi.traces_history[-1]

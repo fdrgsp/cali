@@ -57,7 +57,6 @@ from ._util import (
 if TYPE_CHECKING:
     import useq
 
-    from cali.sqlmodel import ExtractionSettings
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
