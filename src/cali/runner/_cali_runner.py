@@ -9,8 +9,8 @@ from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME
-from cali.extraction import ExtractionRunner
 from cali.detection import DetectionRunner
+from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
@@ -846,7 +846,7 @@ class CaliRunner:
         list[FOV]
             FOVs with ROIs and masks eagerly loaded from database
         """
-        from sqlalchemy.orm import selectinload
+        from sqlalchemy.orm import joinedload
 
         fovs = (
             session.exec(

@@ -5,6 +5,7 @@ from sqlmodel import Session, create_engine, select
 from cali.runner import CaliRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings
 from cali.sqlmodel._model import FOV, Experiment
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 runner = CaliRunner()
 
@@ -17,25 +18,27 @@ detection_settings = DetectionSettings(
     model_type="custom",
     custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",
 )
+analysis_settings = AnalysisSettings(dff_window=150, threads=3, peaks_height_value=2)
 
 runner.run(
     exp,
     dataset,
     detection_settings,
-    global_position_indices=[17, 18],
+    analysis_settings=analysis_settings,
+    global_position_indices=[17],
     output_path=Path(database_path).parent,
     database_name="results.cali",
     overwrite=True,
 )
 
 # run again
-analysis_settings = AnalysisSettings(dff_window=150, threads=10, peaks_height_value=2)
+analysis_settings = AnalysisSettings(dff_window=150, threads=3, peaks_height_value=2)
 runner.run(
     exp,
     dataset,
     1,
     analysis_settings=analysis_settings,
-    global_position_indices=[17, 18],
+    global_position_indices=[18],
     output_path=Path(database_path).parent,
     database_name="results.cali",
 )
@@ -65,5 +68,5 @@ with Session(engine) as session:
 
 print("✅ All assertions passed!")
 
-# engine = create_engine(f"sqlite:///{database_path}")
-# print_cali_results(engine, show_settings=False, max_experiment_level="fov")
+engine = create_engine(f"sqlite:///{database_path}")
+print_cali_results(engine, show_settings=False, max_experiment_level="fov")
