@@ -1,7 +1,7 @@
-"""Example queries demonstrating the fixed AnalysisResult linking.
+"""Example queries demonstrating the fixed CaliResult linking.
 
 This shows practical examples of how to query your data now that
-Traces and DataAnalysis are properly linked to AnalysisResult.
+Traces and DataAnalysis are properly linked to CaliResult.
 """
 
 from sqlmodel import Session, create_engine, select
@@ -22,7 +22,7 @@ def example_1_get_traces_by_settings(
     session: Session, detection_id: int, analysis_id: int
 ) -> list[Traces]:
     """Get all traces from a specific DetectionSettings + AnalysisSettings combo."""
-    # First find the AnalysisResult with these settings
+    # First find the CaliResult with these settings
     ar = session.exec(
         select(CaliResult).where(
             CaliResult.detection_settings == detection_id,
@@ -31,7 +31,7 @@ def example_1_get_traces_by_settings(
     ).first()
 
     if not ar:
-        print(f"No AnalysisResult found for Det={detection_id}, Ana={analysis_id}")
+        print(f"No CaliResult found for Det={detection_id}, Ana={analysis_id}")
         return []
 
     # Get all traces from this analysis run
@@ -82,7 +82,7 @@ def example_4_get_analysis_metadata(session: Session, trace_id: int) -> dict[str
     if not trace or not trace.analysis_result_id:
         return {}
 
-    # Get the AnalysisResult
+    # Get the CaliResult
     ar = session.exec(
         select(CaliResult).where(CaliResult.id == trace.analysis_result_id)
     ).first()
@@ -126,7 +126,7 @@ def example_5_filter_by_analysis_params(
     if not settings:
         return []
 
-    # Get all AnalysisResults using these settings
+    # Get all CaliResults using these settings
     results = []
     for setting in settings:
         ars = session.exec(
@@ -134,7 +134,7 @@ def example_5_filter_by_analysis_params(
         ).all()
         results.extend(ars)
 
-    # Get all traces from these AnalysisResults
+    # Get all traces from these CaliResults
     all_traces = []
     for ar in results:
         traces = session.exec(

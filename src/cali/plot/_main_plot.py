@@ -7,7 +7,26 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from typing_extensions import TypeAlias
 
+from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    _plot_stim_or_not_stim_peaks_amplitude,
+    _plot_stimulated_vs_non_stimulated_roi_amp,
+    _plot_stimulated_vs_non_stimulated_spike_traces,
+    _visualize_stimulated_area,
+)
+from ._single_wells_plots._plot_calcium_amplitudes_and_frequencies_data import (
+    _plot_amplitude_and_frequency_data,
+)
+from ._single_wells_plots._plot_calcium_peaks_iei_data import _plot_iei_data
+from ._single_wells_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
 from ._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
+from ._single_wells_plots._plot_cell_size import _plot_cell_size_data
+from ._single_wells_plots._plot_inferred_spike_raster_plots import (
+    _generate_spike_raster_plot,
+)
+from ._single_wells_plots._plot_inferred_spikes import (
+    _plot_inferred_spikes,
+    _plot_inferred_spikes_normalized_with_bursts,
+)
 from ._single_wells_plots._plot_neuropil_traces import _plot_neuropil_traces
 from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
 
@@ -217,125 +236,125 @@ AnalysisProduct(
     category="Neuropil Correction",
 )
 
-# # Inferred Spikes Group
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_RAW,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_inferred_spikes, raw=True),
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_THRESHOLDED,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_inferred_spikes,
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_RAW_WITH_THRESHOLD,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_THRESHOLDED_NORMALIZED,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_inferred_spikes, normalize=True),
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_inferred_spikes_normalized_with_bursts,
-#     category="Inferred Spikes Traces",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
-#     category="Inferred Spikes Traces",
-# )
+# Inferred Spikes Group
+AnalysisProduct(
+    name=INFERRED_SPIKES_RAW,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, raw=True),
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_inferred_spikes,
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_RAW_WITH_THRESHOLD,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_NORMALIZED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, normalize=True),
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_inferred_spikes_normalized_with_bursts,
+    category="Inferred Spikes Traces",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, dec_dff=True),
+    category="Inferred Spikes Traces",
+)
 
-# # Amplitude and Frequency Group
-# AnalysisProduct(
-#     name=DEC_DFF_AMPLITUDE,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
-#     category="Calcium Peaks Amplitude and Frequency",
-# )
-# AnalysisProduct(
-#     name=DEC_DFF_FREQUENCY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
-#     category="Calcium Peaks Amplitude and Frequency",
-# )
-# AnalysisProduct(
-#     name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
-#     category="Calcium Peaks Amplitude and Frequency",
-# )
+# Amplitude and Frequency Group
+AnalysisProduct(
+    name=DEC_DFF_AMPLITUDE,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
+    category="Calcium Peaks Amplitude and Frequency",
+)
+AnalysisProduct(
+    name=DEC_DFF_FREQUENCY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
+    category="Calcium Peaks Amplitude and Frequency",
+)
+AnalysisProduct(
+    name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
+    category="Calcium Peaks Amplitude and Frequency",
+)
 
-# # Raster Plots Group
-# AnalysisProduct(
-#     name=RASTER_PLOT,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_generate_raster_plot,
-#     category="Raster Plots",
-# )
-# AnalysisProduct(
-#     name=RASTER_PLOT_AMP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=False),
-#     category="Raster Plots",
-# )
-# AnalysisProduct(
-#     name=RASTER_PLOT_AMP_WITH_COLORBAR,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=True),
-#     category="Raster Plots",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_RASTER_PLOT,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_generate_spike_raster_plot,
-#     category="Raster Plots",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_RASTER_PLOT_AMP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(
-#         _generate_spike_raster_plot, amplitude_colors=True, colorbar=False
-#     ),
-#     category="Raster Plots",
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=True),
-#     category="Raster Plots",
-# )
+# Raster Plots Group
+AnalysisProduct(
+    name=RASTER_PLOT,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_generate_raster_plot,
+    category="Raster Plots",
+)
+AnalysisProduct(
+    name=RASTER_PLOT_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=False),
+    category="Raster Plots",
+)
+AnalysisProduct(
+    name=RASTER_PLOT_AMP_WITH_COLORBAR,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=True),
+    category="Raster Plots",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_RASTER_PLOT,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_generate_spike_raster_plot,
+    category="Raster Plots",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_RASTER_PLOT_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(
+        _generate_spike_raster_plot, amplitude_colors=True, colorbar=False
+    ),
+    category="Raster Plots",
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=True),
+    category="Raster Plots",
+)
 
-# # Inter-event Interval Group
-# AnalysisProduct(
-#     name=DEC_DFF_IEI,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_iei_data,
-#     category="Calcium Peaks Interevent Interval",
-# )
+# Inter-event Interval Group
+AnalysisProduct(
+    name=DEC_DFF_IEI,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_iei_data,
+    category="Calcium Peaks Interevent Interval",
+)
 
-# # Cell Size Group
-# AnalysisProduct(
-#     name=CELL_SIZE,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_cell_size_data,
-#     category="Cell Size",
-# )
+# Cell Size Group
+AnalysisProduct(
+    name=CELL_SIZE,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cell_size_data,
+    category="Cell Size",
+)
 
 # # Correlation Analysis Group
 # AnalysisProduct(
@@ -405,55 +424,55 @@ AnalysisProduct(
 #     category="Correlation Analysis",
 # )
 
-# # Evoked Experiment Group
-# AnalysisProduct(
-#     name=STIMULATED_AREA,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_visualize_stimulated_area, stimulated_area=False),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_ROIS,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_visualize_stimulated_area, with_rois=True),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_ROIS_WITH_STIMULATED_AREA,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_visualize_stimulated_area, with_rois=True, stimulated_area=True),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_PEAKS_AMP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_PEAKS_AMP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stim_or_not_stim_peaks_amplitude,
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_vs_non_stimulated_roi_amp,
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_amp, with_peaks=True),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name=STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
-#     category="Evoked Experiment",
-# )
+# Evoked Experiment Group
+AnalysisProduct(
+    name=STIMULATED_AREA,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_visualize_stimulated_area, stimulated_area=False),
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_ROIS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_visualize_stimulated_area, with_rois=True),
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_ROIS_WITH_STIMULATED_AREA,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_visualize_stimulated_area, with_rois=True, stimulated_area=True),
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_PEAKS_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=NON_STIMULATED_PEAKS_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stim_or_not_stim_peaks_amplitude,
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_vs_non_stimulated_roi_amp,
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_amp, with_peaks=True),
+    category="Evoked Experiment",
+)
+AnalysisProduct(
+    name=STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
+    category="Evoked Experiment",
+)
 
 # # Multi-Well Analysis Products ------------------------------------------------------
 # # These plot CSV bar plots from grouped analysis data

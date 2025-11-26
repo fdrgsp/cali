@@ -13,7 +13,7 @@ from cali.sqlmodel._visualize_experiment import print_cali_results
 def table(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        # Get all AnalysisResults
+        # Get all CaliResults
         results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
 
         # Get experiment name

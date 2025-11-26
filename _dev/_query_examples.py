@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from src.cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
 # ============================================================================
-# Query Pattern 1: Get results for a specific AnalysisResult
+# Query Pattern 1: Get results for a specific CaliResult
 # ============================================================================
 
 
@@ -22,7 +22,7 @@ def get_traces_for_analysis_result(
     session : Session
         Database session
     analysis_result_id : int
-        ID of the AnalysisResult to query
+        ID of the CaliResult to query
 
     Returns
     -------
@@ -51,7 +51,7 @@ def get_data_analysis_for_analysis_result(
     session : Session
         Database session
     analysis_result_id : int
-        ID of the AnalysisResult to query
+        ID of the CaliResult to query
 
     Returns
     -------
@@ -169,7 +169,7 @@ def get_traces_by_settings(
     ...     session, experiment_id=1, analysis_settings_id=3
     ... )
     """
-    # First find matching AnalysisResults
+    # First find matching CaliResults
     query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:
@@ -180,7 +180,7 @@ def get_traces_by_settings(
 
     analysis_results = session.exec(query).all()
 
-    # Get traces for those AnalysisResults
+    # Get traces for those CaliResults
     if not analysis_results:
         return []
 
@@ -267,7 +267,7 @@ def compare_analysis_results(
     roi_id : int
         ID of the ROI to compare
     analysis_result_ids : list[int]
-        List of AnalysisResult IDs to compare
+        List of CaliResult IDs to compare
 
     Returns
     -------
@@ -420,7 +420,7 @@ def compare_roi_across_analyses(
     label_value : int
         The label value of the ROI (e.g., 1, 2, 3...)
     analysis_result_ids : list[int]
-        List of AnalysisResult IDs to compare
+        List of CaliResult IDs to compare
     detection_settings_id : int | None
         Optional: specify which detection run if multiple exist
 
@@ -467,7 +467,7 @@ def compare_all_rois_in_fov_across_analyses(
     fov_id : int
         ID of the FOV
     analysis_result_ids : list[int]
-        List of AnalysisResult IDs to compare
+        List of CaliResult IDs to compare
     detection_settings_id : int | None
         Optional: specify which detection run if multiple exist
 
@@ -736,7 +736,7 @@ def get_latest_results_for_experiment(
     """
     from sqlalchemy import desc
 
-    # Find latest AnalysisResult for this experiment
+    # Find latest CaliResult for this experiment
     query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:

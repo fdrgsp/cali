@@ -17,7 +17,7 @@ from cali.sqlmodel._visualize_experiment import (
 def _table(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        # Get all AnalysisResults
+        # Get all CaliResults
         results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
 
         print("\n" + "=" * 100)
@@ -45,7 +45,7 @@ def _table(db_path: str):
             )
 
         print("=" * 100)
-        print(f"\nTotal AnalysisResults: {len(results)}")
+        print(f"\nTotal CaliResults: {len(results)}")
 
 
 exp = Experiment.create_from_data(

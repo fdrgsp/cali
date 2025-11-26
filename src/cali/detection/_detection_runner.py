@@ -21,27 +21,6 @@ if TYPE_CHECKING:
     from cellpose.models import CellposeModel
 
 
-def _get_fov_name(event_key: str, meta: list[dict], global_pos_idx: int) -> str:
-    """Get the FOV name from metadata."""
-    try:
-        # Try to get pos_name first (e.g., "B5_0000")
-        pos_name = meta[0][event_key].get("pos_name")
-        if pos_name:
-            return pos_name
-    except (KeyError, IndexError, AttributeError):
-        pass
-
-    # Fallback to constructing from axes
-    try:
-        well = meta[0][event_key]["axes"]["p"]
-        return f"{well}_{global_pos_idx:04d}"
-    except (KeyError, IndexError):
-        pass
-
-    # Final fallback
-    return f"pos_{global_pos_idx}"
-
-
 class DetectionRunner:
     """Runner for neuron detection that saves masks directly to database.
 
@@ -54,6 +33,8 @@ class DetectionRunner:
         super().__init__()
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
+
+    # ---------------------PUBLIC METHODS --------------------- #
 
     def cancel(self) -> None:
         """Request cancellation of the detection process."""
@@ -96,9 +77,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
-                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
-            )
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
         if detection_settings.method == "cellpose":
             yield from self._run_cellpose(
@@ -119,6 +100,8 @@ class DetectionRunner:
             )
             cali_logger.error(msg)
             raise ValueError(msg)
+
+    # ---------------------PRIVATE METHODS --------------------- #
 
     def _run_caiman(
         self,
@@ -234,9 +217,9 @@ class DetectionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
-                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
-            )
+            assert isinstance(
+                dataset, (TensorstoreZarrReader, OMEZarrReader)
+            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
 
         # Process images in batches
         n_positions = len(position_indices)
@@ -248,7 +231,6 @@ class DetectionRunner:
 
         for batch_idx in tqdm(range(n_batches), desc="Running Cellpose"):
             if self._check_for_abort_requested():
-                cali_logger.info("🗑️ Detection cancelled")
                 return
 
             # Load one batch of images
@@ -299,7 +281,6 @@ class DetectionRunner:
                 batch_pos_indices, batch_metadata, batch_masks
             ):
                 if self._check_for_abort_requested():
-                    cali_logger.info("🗑️ Detection cancelled during FOV creation")
                     return
 
                 fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)
@@ -309,7 +290,10 @@ class DetectionRunner:
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
-        return self._cancellation_event.is_set()
+        if self._cancellation_event.is_set():
+            cali_logger.info("🚮 Cancellation requested")
+            return True
+        return False
 
     def _process_single_batch(
         self,
@@ -373,7 +357,7 @@ class DetectionRunner:
             FOV object with ROIs and Masks, ready to commit
         """
         # Get FOV name from metadata
-        fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
+        fov_name = self._get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
         # Get unique label values (excluding background 0)
         label_values = np.unique(masks_2d)
@@ -432,3 +416,23 @@ class DetectionRunner:
 
             fov.rois.append(roi)
         return fov
+
+    def _get_fov_name(self, event_key: str, meta: list[dict], global_pos_idx: int) -> str:
+        """Get the FOV name from metadata."""
+        try:
+            # Try to get pos_name first (e.g., "B5_0000")
+            pos_name = meta[0][event_key].get("pos_name")
+            if pos_name:
+                return pos_name
+        except (KeyError, IndexError, AttributeError):
+            pass
+
+        # Fallback to constructing from axes
+        try:
+            well = meta[0][event_key]["axes"]["p"]
+            return f"{well}_{global_pos_idx:04d}"
+        except (KeyError, IndexError):
+            pass
+
+        # Final fallback
+        return f"pos_{global_pos_idx}"

@@ -1093,7 +1093,7 @@ def test_cali_result_load_by_id_not_found(test_db: Path) -> None:
         CaliResult.load_from_database(test_db, id=999)
         raise AssertionError("Should have raised ValueError")
     except ValueError as e:
-        assert "No AnalysisResult found with id=999" in str(e)
+        assert "No CaliResult found with id=999" in str(e)
 
 
 def test_cali_result_load_from_database_by_experiment(

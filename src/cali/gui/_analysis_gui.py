@@ -1212,8 +1212,8 @@ class _AnalysisGUI(QWidget):
             "• More threads beyond CPU count creates context switching overhead\n"
             "• Each thread processes memory-intensive data\n"
             "• Optimal performance occurs when threads match available CPU cores.\n"
-            "By default using CPU count - 2 to reserves 2 CPUs for the operating "
-            "system and GUI responsiveness.\n"
+            "By default using CPU count - 2 to reserve some of the CPUs for the "
+            "operating system and GUI responsiveness.\n"
             "If your system becomes unresponsive, consider reducing this number."
         )
         threads_lbl = QLabel("Number of Threads:")

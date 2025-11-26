@@ -126,7 +126,7 @@ class CaliRunner:
         5. Commits detection results to database
         6. Runs analysis (if settings provided)
         7. Commits analysis results to database
-        8. Creates AnalysisResult entry (always new, never overwrites)
+        8. Creates CaliResult entry (always new, never overwrites)
 
         Parameters
         ----------
@@ -300,6 +300,23 @@ class CaliRunner:
                                 f"💾 Committed batch of {self.commit_batch_size} FOVs "
                                 f"(total: {fov_count}/{len(positions_for_detection)})"
                             )
+
+                        # Make FOV transient to keep it in memory after commit
+                        # This allows us to use the threaded path for analysis
+                        from sqlalchemy.orm import make_transient
+
+                        # Save detection_settings_id before making transient
+                        # (make_transient clears foreign keys)
+                        detection_id = detection_settings.id
+
+                        make_transient(fov)
+                        for roi in fov.rois:
+                            make_transient(roi)
+                            # Restore detection_settings_id after make_transient
+                            roi.detection_settings_id = detection_id
+                            if roi.roi_mask:
+                                make_transient(roi.roi_mask)
+
                         positions_processed_detection.append(fov.position_index)
                         fovs_with_rois.append(fov)
 
@@ -344,20 +361,6 @@ class CaliRunner:
                     if not positions_for_analysis:
                         return
 
-                    # Load FOVs from database (only for positions needing analysis)
-                    # After committing detection, the in-memory FOVs become detached
-                    fovs_with_rois = self._load_fovs_from_database(
-                        session,
-                        detection_settings.id,
-                        positions_for_analysis,
-                    )
-
-                    if not fovs_with_rois:
-                        cali_logger.error(
-                            "No FOVs with ROIs found. Run detection first."
-                        )
-                        return
-
                     # Create CaliResult FIRST with expected positions so we have the ID
                     analysis_result_id = None
                     if experiment.id is not None:
@@ -369,43 +372,63 @@ class CaliRunner:
                             positions_analyzed=positions_for_analysis,
                         )
 
-                    # Now run analysis and commit FOVs one by one, setting
-                    # analysis_result_id on Traces before committing
+                    # Load FOVs from database if not already in memory
+                    if not fovs_with_rois or {
+                        f.position_index for f in fovs_with_rois
+                    } != set(positions_for_analysis):
+                        cali_logger.info(
+                            "📥 Loading FOVs from database for analysis..."
+                        )
+                        fovs_with_rois = self._load_fovs_from_db(
+                            session,
+                            detection_settings.id,
+                            positions_for_analysis,
+                        )
+
+                    # Always use threaded processing
+                    cali_logger.info(
+                        f"⚡️ Running analysis with {analysis_settings.threads} threads"
+                    )
+
+                    # Run analysis and commit FOVs
                     positions_processed = []
                     fov_count = 0
                     for fov in self._run_analysis(
                         dataset,
                         analysis_settings,
-                        fovs_with_rois,
+                        detection_settings.id,
                         positions_for_analysis,
+                        fovs_with_rois=fovs_with_rois,
                     ):
-                        # Set analysis_result_id ONLY on NEW Traces and DataAnalysis
-                        # (those without IDs). Old records from previous runs already
-                        # have analysis_result_id set
+                        # Move new traces/analysis from temporary storage to actual collections
+                        # and set analysis_result_id
                         if analysis_result_id is not None:
                             for roi in fov.rois:
-                                for trace in roi.traces_history:
-                                    # Only set if is a new trace (not yet committed)
-                                    if trace.id is None:
+                                # Process temporary new traces
+                                if hasattr(roi, '_new_traces'):
+                                    for trace in roi._new_traces:  # type: ignore
                                         trace.analysis_result_id = analysis_result_id
-                                for data_analysis in roi.data_analysis_history:
-                                    # Only set if new (not yet committed)
-                                    if data_analysis.id is None:
-                                        data_analysis.analysis_result_id = (
-                                            analysis_result_id
-                                        )
+                                        roi.traces_history.append(trace)
+                                    delattr(roi, '_new_traces')
+
+                                # Process temporary new data analysis
+                                if hasattr(roi, '_new_data_analysis'):
+                                    for data_analysis in roi._new_data_analysis:  # type: ignore
+                                        data_analysis.analysis_result_id = analysis_result_id
+                                        roi.data_analysis_history.append(data_analysis)
+                                    delattr(roi, '_new_data_analysis')
 
                         fov_count += 1
-
-                        # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
                         commit_fov_result(
                             session, experiment, fov, commit=should_commit
                         )
                         if should_commit:
                             cali_logger.info(
-                                f"💾 Committed batch of {self.commit_batch_size} FOVs "
-                                f"(total: {fov_count}/{len(positions_for_analysis)})"
+                                f"💾 Committed batch of "
+                                f"{self.commit_batch_size} FOVs "
+                                f"(total: {fov_count}/"
+                                f"{len(positions_for_analysis)})"
                             )
                         positions_processed.append(fov.position_index)
 
@@ -419,10 +442,9 @@ class CaliRunner:
 
                     # Log completion
                     if positions_processed:
-                        total_rois = sum(len(fov.rois) for fov in fovs_with_rois)
+                        cali_logger.info("✅ Analysis complete!")
                         cali_logger.info(
-                            f"✅ Analysis committed: {total_rois} "
-                            f"ROIs across {len(positions_processed)} FOVs"
+                            f"✅ Analysis committed: {fov_count} FOVs"
                         )
         finally:
             engine.dispose(close=True)
@@ -542,7 +564,7 @@ class CaliRunner:
 
         if not positions_needing_analysis:
             cali_logger.info(
-                "✓ Analysis already exists for all positions with DetectionSettings ID "
+                "ℹ️ Analysis already exists for all positions with DetectionSettings ID "
                 f"{detection_settings_id} and AnalysisSettings ID "
                 f"{analysis_settings_id}. Skipping analysis."
             )
@@ -550,7 +572,7 @@ class CaliRunner:
 
         if existing_pos_set:
             cali_logger.info(
-                f"⚠️  Analysis exists for {len(existing_pos_set)} position(s) "
+                f"ℹ️ Analysis exists for {len(existing_pos_set)} position(s) "
                 f"but missing for {len(positions_needing_analysis)} position(s): "
                 f"{positions_needing_analysis}. Running analysis for missing positions."
             )
@@ -744,12 +766,26 @@ class CaliRunner:
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
         analysis_settings: AnalysisSettings,
-        fovs_with_rois: list[FOV],
+        detection_settings_id: int,
         global_position_indices: Sequence[int],
+        fovs_with_rois: list[FOV],
     ) -> Generator[FOV, None, None]:
-        """Run analysis using AnalysisRunner (pure computation).
+        """Run analysis using AnalysisRunner.
 
-        Yields FOV results from AnalysisRunner.
+        Yields FOV results from AnalysisRunner using threaded processing.
+
+        Parameters
+        ----------
+        dataset : TensorstoreZarrReader | OMEZarrReader
+            Dataset reader
+        analysis_settings : AnalysisSettings
+            Analysis configuration
+        detection_settings_id : int
+            Detection settings ID
+        global_position_indices : Sequence[int]
+            Positions to analyze
+        fovs_with_rois : list[FOV]
+            FOVs with ROIs to analyze (from detection or loaded from DB)
         """
         cali_logger.info("📊 Running analysis...")
         yield from self._analysis_runner.run(
@@ -757,7 +793,60 @@ class CaliRunner:
             settings=analysis_settings,
             fovs_with_rois=fovs_with_rois,
             global_position_indices=global_position_indices,
+            detection_settings_id=detection_settings_id,
         )
+
+    def _load_fovs_from_db(
+        self,
+        session: Session,
+        detection_settings_id: int,
+        position_indices: Sequence[int],
+    ) -> list[FOV]:
+        """Load FOVs with ROIs from database.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        detection_settings_id : int
+            Detection settings ID to filter ROIs
+        position_indices : Sequence[int]
+            Position indices to load
+
+        Returns
+        -------
+        list[FOV]
+            FOVs with ROIs and masks eagerly loaded from database
+        """
+        from sqlalchemy.orm import joinedload
+
+        fovs = session.exec(
+            select(FOV)
+            .where(FOV.position_index.in_(position_indices))  # type: ignore
+            .options(
+                joinedload(FOV.rois)  # type: ignore
+                .joinedload(ROI.roi_mask),  # type: ignore
+                joinedload(FOV.rois)  # type: ignore
+                .joinedload(ROI.traces_history),  # type: ignore
+                joinedload(FOV.rois)  # type: ignore
+                .joinedload(ROI.data_analysis_history),  # type: ignore
+            )
+        ).unique().all()
+
+        # Filter to only include ROIs with matching detection_settings_id
+        filtered_fovs = []
+        for fov in fovs:
+            # Keep only ROIs with matching detection settings
+            matching_rois = [
+                roi
+                for roi in fov.rois
+                if roi.detection_settings_id == detection_settings_id
+            ]
+            if matching_rois:
+                fov.rois = matching_rois
+                filtered_fovs.append(fov)
+
+        return filtered_fovs
 
     def _create_or_update_analysis_result(
         self,
@@ -767,7 +856,7 @@ class CaliRunner:
         analysis_settings_id: int | None,
         positions_analyzed: list[int],
     ) -> int:
-        """Create or update an AnalysisResult entry.
+        """Create or update an CaliResult entry.
 
         If a CaliResult with the same experiment, detection_settings, and
         analysis_settings already exists, update its positions_analyzed list
@@ -801,7 +890,7 @@ class CaliRunner:
                 "detection-only" if analysis_settings_id is None else "full analysis"
             )
             cali_logger.info(
-                f"📝 Updated {result_type} AnalysisResult ID {existing_result.id} "
+                f"📝 Updated {result_type} CaliResult ID {existing_result.id} "
                 f"(DetectionSettings={detection_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
                 f"positions={merged_positions})"
@@ -843,134 +932,10 @@ class CaliRunner:
                 "detection-only" if analysis_settings_id is None else "full analysis"
             )
             cali_logger.info(
-                f"📊 Created {result_type} AnalysisResult ID {result.id} "
+                f"📊 Created {result_type} CaliResult ID {result.id} "
                 f"(DetectionSettings={detection_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
                 f"positions={positions_analyzed})"
             )
             assert result.id is not None
             return result.id
-
-    def _cascade_delete_analysis_results(
-        self,
-        session: Session,
-        experiment: Experiment,
-        detection_settings_id: int,
-    ) -> None:
-        """Delete all AnalysisResults using these DetectionSettings.
-
-        This cascades to delete Traces, DataAnalysis, and other related data.
-        ROIs will be replaced during the new detection run.
-        """
-        # Find all AnalysisResults using these detection settings
-        results_to_delete = session.exec(
-            select(CaliResult).where(
-                CaliResult.experiment == experiment.id,
-                CaliResult.detection_settings == detection_settings_id,
-            )
-        ).all()
-
-        if results_to_delete:
-            count = len(results_to_delete)
-            result_ids = [r.id for r in results_to_delete]
-            cali_logger.warning(
-                f"🗑️  force=True: Deleting {count} AnalysisResult(s) "
-                f"(IDs: {result_ids}) and associated analysis data "
-                f"for DetectionSettings ID {detection_settings_id}"
-            )
-
-            for result in results_to_delete:
-                session.delete(result)
-            session.commit()
-
-    def _load_fovs_from_database(
-        self,
-        session: Session,
-        detection_settings_id: int,
-        global_position_indices: Sequence[int],
-    ) -> list[FOV]:
-        """Load FOVs with ROIs from database for analysis.
-
-        Used when skip_detection=True to load existing ROIs.
-        Only loads ROIs matching the specified detection_settings_id.
-        """
-        from sqlalchemy.orm import selectinload
-
-        fovs = []
-        for pos_idx in global_position_indices:
-            # Query for FOV at this position that has ROIs with
-            # matching detection_settings_id
-            # Eagerly load relationships to avoid lazy loading during analysis
-            roi_chain = selectinload(FOV.rois)  # type: ignore
-            traces_chain = roi_chain.selectinload(ROI.traces_history)  # type: ignore
-            fov_stmt = (
-                select(FOV)
-                .join(ROI)
-                .where(
-                    FOV.position_index == pos_idx,
-                    ROI.detection_settings_id == detection_settings_id,
-                )
-                .options(
-                    roi_chain.selectinload(ROI.roi_mask),  # type: ignore
-                    traces_chain,
-                    traces_chain.selectinload(Traces.neuropil_mask),  # type: ignore
-                    roi_chain.selectinload(ROI.data_analysis_history),  # type: ignore
-                )
-            )
-            fov = session.exec(fov_stmt).first()
-
-            if fov is None:
-                cali_logger.warning(
-                    f"No FOV found at position {pos_idx} with "
-                    f"detection_settings_id={detection_settings_id}. Skipping."
-                )
-                continue
-
-            # Force load all relationships before expunging to prevent lazy-load errors
-            # This is critical for multi-threaded analysis where detached objects
-            # can't access the session
-            for roi in fov.rois:
-                # Access roi_mask and its attributes to ensure they're fully loaded
-                if roi.roi_mask:
-                    _ = roi.roi_mask.coords_y
-                    _ = roi.roi_mask.coords_x
-                    _ = roi.roi_mask.height
-                    _ = roi.roi_mask.width
-                # Access traces_history and load neuropil_mask on each trace
-                for trace in roi.traces_history:
-                    if trace.neuropil_mask:
-                        _ = trace.neuropil_mask.coords_y
-                        _ = trace.neuropil_mask.coords_x
-                        _ = trace.neuropil_mask.height
-                        _ = trace.neuropil_mask.width
-                # Access data_analysis_history
-                _ = roi.data_analysis_history
-
-            # Expunge FOV from session to prevent relationship modifications
-            # from affecting the database
-            session.expunge(fov)
-
-            # Filter ROIs to only include those matching detection_settings_id
-            # Safe to modify fov.rois now since it's detached from session
-            fov.rois = [
-                roi
-                for roi in fov.rois
-                if roi.detection_settings_id == detection_settings_id
-            ]
-
-            if not fov.rois:
-                cali_logger.warning(
-                    f"FOV at position {pos_idx} has no ROIs with "
-                    f"detection_settings_id={detection_settings_id}. Skipping."
-                )
-                continue
-
-            fovs.append(fov)
-
-        if not fovs:
-            cali_logger.error(
-                f"No FOVs found for detection_settings_id="
-                f"{detection_settings_id} at positions {list(global_position_indices)}"
-            )
-
-        return fovs

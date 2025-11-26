@@ -1,4 +1,4 @@
-"""Check if Traces and DataAnalysis are properly linked to AnalysisResult."""
+"""Check if Traces and DataAnalysis are properly linked to CaliResult."""
 
 from sqlmodel import Session, create_engine, select
 
@@ -15,14 +15,14 @@ DB_PATH = "/Users/fdrgsp/Desktop/cali_test/evk.tensorstore.zarr.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 with Session(engine) as session:
-    # Get all AnalysisResults
+    # Get all CaliResults
     analysis_results = session.exec(select(CaliResult)).all()
 
     print("=" * 80)
-    print("AnalysisResult Records:")
+    print("CaliResult Records:")
     print("=" * 80)
     for ar in analysis_results:
-        print(f"\nAnalysisResult ID: {ar.id}")
+        print(f"\nCaliResult ID: {ar.id}")
         print(f"  Experiment: {ar.experiment}")
         print(f"  DetectionSettings: {ar.detection_settings}")
         print(f"  AnalysisSettings: {ar.analysis_settings}")
@@ -88,16 +88,16 @@ with Session(engine) as session:
     )
     print("\nExpected behavior:")
     print(
-        "  - Each Trace should have analysis_result_id pointing to the AnalysisResult"
+        "  - Each Trace should have analysis_result_id pointing to the CaliResult"
     )
     print(
-        "  - Each DataAnalysis should have analysis_result_id pointing to the AnalysisResult"
+        "  - Each DataAnalysis should have analysis_result_id pointing to the CaliResult"
     )
     print(
         "  - This allows you to query which traces/analysis came from which analysis run"
     )
     print("\nCurrent issue:")
     if traces_without_analysis_result or da_without_analysis_result:
-        print("  ❌ Traces and DataAnalysis are NOT linked to AnalysisResult")
+        print("  ❌ Traces and DataAnalysis are NOT linked to CaliResult")
         print("  ❌ You cannot determine which analysis run produced which results")
         print("  ❌ Multiple analysis runs will overwrite each other's data")

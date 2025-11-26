@@ -84,5 +84,5 @@ _table(cali.database_path)
 _table(cali.database_path)
 
 print("\n✅ Test complete! Check that:")
-print("  - Run 1 created AnalysisResult with positions=[0]")
-print("  - Run 2 created AnalysisResult with positions=[1] only (not [0, 1])")
+print("  - Run 1 created CaliResult with positions=[0]")
+print("  - Run 2 created CaliResult with positions=[1] only (not [0, 1])")

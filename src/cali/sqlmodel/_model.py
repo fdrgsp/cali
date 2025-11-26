@@ -98,7 +98,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes created_at for semantic comparison.
 
-        Two AnalysisResults are considered equal if they have the same:
+        Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, analysis_settings, positions_analyzed
 
         The created_at field is excluded since it's automatically generated
@@ -156,24 +156,24 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         Returns
         -------
         Self | list[Self]
-            Single AnalysisResult if id specified, otherwise list of results.
+            Single CaliResult if id specified, otherwise list of results.
             All instances are detached from session.
 
         Examples
         --------
         >>> # Load specific analysis result
-        >>> result = AnalysisResult.load_from_database("path/to/db.db", id=1)
+        >>> result = CaliResult.load_from_database("path/to/db.db", id=1)
         >>> print(result.analysis_settings_obj.dff_window)
         >>>
         >>> # Load all results for an experiment
-        >>> results = AnalysisResult.load_from_database(
+        >>> results = CaliResult.load_from_database(
         ...     "path/to/db.db", experiment_id=1
         ... )
         >>> for r in results:
         ...     print(f"Analysis {r.id}: {r.positions_analyzed}")
         >>>
         >>> # Load most recent analysis result
-        >>> results = AnalysisResult.load_from_database("path/to/db.db")
+        >>> results = CaliResult.load_from_database("path/to/db.db")
         >>> latest = results[-1]  # Ordered by id (creation order)
         """
         if session is None:
@@ -196,7 +196,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
                 statement = statement.where(cls.id == id)
                 obj = session.exec(statement).first()
                 if obj is None:
-                    raise ValueError(f"No AnalysisResult found with id={id}")
+                    raise ValueError(f"No CaliResult found with id={id}")
                 session.expunge_all()
                 return obj
             elif experiment_id is not None:
@@ -566,7 +566,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
     normalize : bool
         Whether to normalize images before detection
     batch_size : int
-        Number of images to process per batch
+        Number of images to process per batch. By default, 8.
     """
 
     __tablename__ = "detection_settings"
@@ -1259,7 +1259,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Frame numbers or frame timestamps (milliseconds)
     roi : ROI
         Parent ROI
-    analysis_result : AnalysisResult
+    analysis_result : CaliResult
         The analysis run that created this trace
     neuropil_mask : Mask | None
         Neuropil mask used for this analysis run
@@ -1340,7 +1340,7 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Spike detection threshold used for this ROI (calculated)
     roi : ROI
         Parent ROI
-    analysis_result : AnalysisResult
+    analysis_result : CaliResult
         The analysis run that created this result
     """
 

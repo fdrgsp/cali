@@ -43,7 +43,7 @@ analysis.run(exp, settings1, global_position_indices=[0])
 settings2 = AnalysisSettings(threads=4, dff_window=150, id=54)
 analysis.run(exp, settings2, global_position_indices=[0])
 
-# Run 3: Back to 100 frames - should REUSE settings1 and UPDATE AnalysisResult #1
+# Run 3: Back to 100 frames - should REUSE settings1 and UPDATE CaliResult #1
 settings3 = AnalysisSettings(threads=4, dff_window=100)
 analysis.run(exp, settings3, global_position_indices=[0])
 # Run 4: Even wider dff_window (200 frames) - New

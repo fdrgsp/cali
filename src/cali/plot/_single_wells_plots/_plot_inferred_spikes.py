@@ -332,6 +332,9 @@ def _plot_inferred_spikes_normalized_with_bursts(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    burst_threshold_multiplier: float = 2.0,
+    min_burst_duration_ms: float = 50.0,
+    smoothing_window_ms: float = 100.0,
 ) -> None:
     """Plot normalized inferred spikes with superimposed burst periods.
 
@@ -350,27 +353,123 @@ def _plot_inferred_spikes_normalized_with_bursts(
         List of ROI indices to include, None for all active ROIs
     run_id : int | None
         The run ID to filter by, None for latest
+    burst_threshold_multiplier : float
+        Multiplier of baseline activity to detect bursts (default 2.0)
+    min_burst_duration_ms : float
+        Minimum burst duration in milliseconds (default 50ms)
+    smoothing_window_ms : float
+        Smoothing window for population activity in milliseconds (default 100ms)
     """
     # Clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    # For now, delegate to the basic normalized spikes plot
-    # TODO: Add burst detection overlay
+    # Query database for ROI data
+    with Session(engine) as session:
+        roi_data = []
+
+        if run_id is not None:
+            stmt = (
+                select(ROI, Traces, DataAnalysis)
+                .join(FOV, ROI.fov_id == FOV.id)
+                .join(
+                    Traces,
+                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+                )
+                .join(
+                    DataAnalysis,
+                    (DataAnalysis.roi_id == ROI.id)
+                    & (DataAnalysis.analysis_result_id == run_id),
+                )
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.active) == True)  # noqa: E712
+            )
+
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+            stmt = stmt.order_by(col(ROI.label_value))
+            results = session.exec(stmt).all()
+            roi_data = results
+        else:
+            # Legacy fallback
+            stmt = (
+                select(ROI)
+                .join(FOV)
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.active) == True)  # noqa: E712
+                .options(
+                    selectinload(ROI.traces_history),
+                    selectinload(ROI.data_analysis_history),
+                )
+            )
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
+            stmt = stmt.order_by(col(ROI.label_value))
+            roi_models = session.exec(stmt).all()
+            for r in roi_models:
+                t = _get_traces_for_run(r, None)
+                da = _get_data_analysis_for_run(r, None)
+                if t and da:
+                    roi_data.append((r, t, da))
+
+    if not roi_data:
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
+
+    # Collect spike data for burst detection
+    spike_trains = []
+    recording_time_sec = 0.0
+
+    for _, _, data_analysis in roi_data:
+        if data_analysis and data_analysis.inferred_spikes:
+            threshold = data_analysis.inferred_spikes_threshold or 0
+            spike_data = [
+                s if s > threshold else 0 for s in data_analysis.inferred_spikes
+            ]
+            spike_trains.append(spike_data)
+            if data_analysis.total_recording_time_sec:
+                recording_time_sec = data_analysis.total_recording_time_sec
+
+    # Detect bursts from population activity
+    bursts = []
+    if spike_trains and recording_time_sec > 0:
+        # Compute population activity (sum across all ROIs at each timepoint)
+        population_activity = np.sum(spike_trains, axis=0)
+
+        # Smooth the population activity
+        num_frames = len(population_activity)
+        frame_duration_ms = (recording_time_sec * 1000) / num_frames
+        smoothing_window_frames = int(smoothing_window_ms / frame_duration_ms)
+        if smoothing_window_frames > 0:
+            kernel = np.ones(smoothing_window_frames) / smoothing_window_frames
+            population_activity = np.convolve(population_activity, kernel, mode="same")
+
+        # Set burst threshold
+        baseline = np.median(population_activity)
+        burst_threshold = baseline * burst_threshold_multiplier
+
+        # Convert min duration from ms to frames
+        min_duration_frames = int(min_burst_duration_ms / frame_duration_ms)
+
+        # Detect bursts
+        bursts = _detect_population_bursts(
+            population_activity, burst_threshold, min_duration_frames
+        )
+
+    # Plot the normalized spikes (reuse existing logic)
     _plot_inferred_spikes(widget, engine, fov_name, rois, run_id=run_id, normalize=True)
 
-    # Add note that burst overlay is not yet implemented
-    ax.text(
-        0.5,
-        0.98,
-        "Note: Network burst overlay not yet implemented",
-        transform=ax.transAxes,
-        ha="center",
-        va="top",
-        fontsize=8,
-        style="italic",
-        color="gray",
-    )
+    # Overlay burst periods on the existing axes
+    if bursts:
+        # Get the axes from the widget's figure
+        axes = widget.figure.get_axes()
+        if axes:
+            ax = axes[0]
+            _overlay_burst_periods(ax, bursts, len(roi_data))
+            widget.figure.tight_layout()
+            widget.canvas.draw()
 
 
 def _detect_population_bursts(

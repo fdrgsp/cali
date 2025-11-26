@@ -1,4 +1,4 @@
-"""Verify that Traces and DataAnalysis are properly linked to AnalysisResult.
+"""Verify that Traces and DataAnalysis are properly linked to CaliResult.
 
 This script demonstrates that the fix allows you to:
 1. Query traces/analysis by specific DetectionSettings + AnalysisSettings combination
@@ -22,15 +22,15 @@ engine = create_engine(f"sqlite:///{DB_PATH}")
 
 with Session(engine) as session:
     print("=" * 80)
-    print("VERIFICATION: AnalysisResult Links")
+    print("VERIFICATION: CaliResult Links")
     print("=" * 80)
 
-    # Get all AnalysisResults
+    # Get all CaliResults
     analysis_results = session.exec(select(CaliResult)).all()
 
-    print(f"\nFound {len(analysis_results)} AnalysisResult(s):\n")
+    print(f"\nFound {len(analysis_results)} CaliResult(s):\n")
     for ar in analysis_results:
-        print(f"AnalysisResult ID: {ar.id}")
+        print(f"CaliResult ID: {ar.id}")
         print(f"  Experiment: {ar.experiment}")
         print(f"  DetectionSettings: {ar.detection_settings}")
         print(f"  AnalysisSettings: {ar.analysis_settings}")
@@ -62,7 +62,7 @@ with Session(engine) as session:
             select(Traces).where(Traces.analysis_result_id == ar.id)
         ).all()
         print(
-            f"\nExample 1: Traces from AnalysisResult {ar.id} "
+            f"\nExample 1: Traces from CaliResult {ar.id} "
             f"(DetectionSettings={ar.detection_settings}, "
             f"AnalysisSettings={ar.analysis_settings})"
         )
@@ -75,7 +75,7 @@ with Session(engine) as session:
         for trace in roi.traces_history:
             print(
                 f"  Trace ID {trace.id}: "
-                f"AnalysisResult={trace.analysis_result_id}, "
+                f"CaliResult={trace.analysis_result_id}, "
                 f"created {trace.created_at}"
             )
 

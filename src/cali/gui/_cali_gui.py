@@ -371,7 +371,7 @@ class CaliGui(QMainWindow):
 
         # CHECK IF DATABASE ACTUALLY EXISTS --------------------------------------------
         if not Path(database_path).exists():
-            msg = f"Database file not found at:\n{database_path}"
+            msg = f"❌ Database file not found at:\n{database_path}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
             self._loading_bar.hide()
@@ -381,7 +381,7 @@ class CaliGui(QMainWindow):
         self._data = load_data(data_path)
         if self._data is None:
             msg = (
-                f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
+                f"❌ Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
                 f" {WRITERS[OME_ZARR][0]} are supported."
             )
             show_error_dialog(self, msg)
@@ -391,7 +391,7 @@ class CaliGui(QMainWindow):
 
         if self._data.sequence is None:
             msg = (
-                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
                 "the useq.MDASequence in the datastore metadata!"
             )
             show_error_dialog(self, msg)
@@ -442,7 +442,7 @@ class CaliGui(QMainWindow):
         self._data = load_data(data_path)
         if self._data is None:
             msg = (
-                f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
+                f"❌ Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
                 f" {WRITERS[OME_ZARR][0]} are supported."
             )
             show_error_dialog(self, msg)
@@ -807,7 +807,7 @@ class CaliGui(QMainWindow):
     def _on_worker_errored(self, error: Any) -> None:
         self._elapsed_timer.stop()
         cali_logger.error(
-            f"Analysis runner encountered an error during execution:\n {error}"
+            f"❌ Analysis runner encountered an error during execution:\n {error}"
         )
 
     def _on_worker_finished(self) -> None:
@@ -820,6 +820,8 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_detection_settings(self._database_path)
+            # Refresh the engine to see newly written data
+            self._update_graph_with_database_path(self._database_path)
 
         # Highlight the run that matches the settings just used
         value = self._run_cali_wdg.value()
@@ -875,7 +877,7 @@ class CaliGui(QMainWindow):
                 try:
                     self._initialize_from_database(value.database_path, value.data_path)
                 except Exception as e:
-                    msg = f"Failed to initialize from database:\n{e}"
+                    msg = f"❌ Failed to initialize from database:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
@@ -883,7 +885,7 @@ class CaliGui(QMainWindow):
             # input from directories
             elif (data_path := value.data_path) is not None:
                 if value.output_path is None:
-                    msg = "Output path must be provided to create the cali database!"
+                    msg = "❌ Output path must be provided to create the cali database!"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
@@ -894,7 +896,7 @@ class CaliGui(QMainWindow):
                         value.database_name or DEFAULT_CALI_DB_NAME,
                     )
                 except Exception as e:
-                    msg = f"Failed to initialize from directories:\n{e}"
+                    msg = f"❌ Failed to initialize from directories:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
@@ -1010,7 +1012,7 @@ class CaliGui(QMainWindow):
         Parameters
         ----------
         run_id : int
-            The ID of the selected AnalysisResult
+            The ID of the selected CaliResult
         """
         if self._database_path is None:
             return
@@ -1044,7 +1046,7 @@ class CaliGui(QMainWindow):
                 elif d_settings.method == "caiman":
                     self._detection_wdg.setValue(CaimanSettings())
                 else:
-                    msg = f"Unknown detection method: {d_settings.method}."
+                    msg = f"❌ Unknown detection method: {d_settings.method}."
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
                     return
@@ -1132,7 +1134,7 @@ class CaliGui(QMainWindow):
 
         try:
             if (sequence := self._data.sequence) is None:
-                msg = "useq.MDASequence not found! Cannot retrieve metadata!"
+                msg = "❌ useq.MDASequence not found! Cannot retrieve metadata!"
                 show_error_dialog(self, msg)
                 cali_logger.error(msg)
                 return
@@ -1168,12 +1170,12 @@ class CaliGui(QMainWindow):
                     )
 
             else:
-                msg = "No stimulation metadata found in the datastore!"
+                msg = "⚠️ No stimulation metadata found in the datastore!"
                 show_error_dialog(self, msg)
                 cali_logger.warning(msg)
 
         except Exception as e:
-            msg = f"Failed to load metadata from datastore!\n\nError: {e}"
+            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
             return
@@ -1446,7 +1448,7 @@ class CaliGui(QMainWindow):
                 return roi_result, neuropil_result
 
         except Exception as e:
-            cali_logger.warning(f"Failed to load ROI masks from database: {e}")
+            cali_logger.warning(f"❌ Failed to load ROI masks from database: {e}")
             return None, None
 
     def _on_fov_double_click(self) -> None:

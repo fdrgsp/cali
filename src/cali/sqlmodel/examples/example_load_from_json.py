@@ -15,7 +15,7 @@ output_path = "tests/test_data/evoked/evk_analysis"
 # Create useq.WellPlate that matches the experiment
 plate = useq.WellPlate.from_str("96-well")
 
-# Load experiment from JSON files and save to database (with AnalysisResult tracking)
+# Load experiment from JSON files and save to database (with CaliResult tracking)
 experiment = load_analysis_from_json(data_path, output_path, plate)
 
 # engine = create_engine(f"sqlite:///{output_path}/evk.tensorstore.zarr.db")

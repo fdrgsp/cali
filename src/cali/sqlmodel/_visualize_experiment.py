@@ -321,7 +321,7 @@ def _add_experiment_tree_to_node(
         Maximum depth level to display
     detection_settings_id : int | None
         If provided, only show ROIs matching this detection_settings_id
-        (useful when showing ROIs for a specific AnalysisResult)
+        (useful when showing ROIs for a specific CaliResult)
     analysis_result_id : int | None
         If provided, only check for neuropil masks in traces from this analysis result
     """

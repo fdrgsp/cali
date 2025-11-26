@@ -35,62 +35,14 @@ from ._util import (
 )
 
 
-def exec_(
-    analyze: Callable,
-    dataset: TensorstoreZarrReader | OMEZarrReader,
-    cancel_event: threading.Event,
-    global_position_indices: Sequence[int],
-    settings: AnalysisSettings,
-    fovs_with_rois: list[FOV],
-    max_workers: int | None = None,
-) -> Iterable[FOV]:
-    """Execute analysis in parallel and yield FOV results."""
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Check for cancellation before submitting futures
-        if cancel_event.is_set():
-            cali_logger.info("🚮 Cancellation requested before starting thread pool")
-            return
-
-        futures = (
-            executor.submit(
-                analyze,
-                dataset,
-                settings,
-                p,
-                fovs_with_rois,
-            )
-            for p in global_position_indices
-        )
-
-        for future in as_completed(futures):
-            # Check for cancellation at the start of each iteration
-            if cancel_event.is_set():
-                cali_logger.info("🚮 Cancellation requested, shutting down executor...")
-                # Cancel pending futures and shutdown executor
-                executor.shutdown(wait=False, cancel_futures=True)
-                break
-
-            try:
-                # Commit the results to database if we got any
-                if (fov_result := future.result()) is not None:
-                    yield fov_result
-            except Exception:
-                import traceback
-
-                full_tb = traceback.format_exc()
-                cali_logger.error(f"Exception in analysis thread: {full_tb}")
-
-    # Check if cancelled before finishing
-    if cancel_event.is_set():
-        cali_logger.info("❌ Run Cancelled")
-
-
 class AnalysisRunner:
     def __init__(self) -> None:
         super().__init__()
 
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
+
+    # -------------------------PUBLIC METHODS-----------------------------------
 
     def cancel(self) -> None:
         """Request cancellation of the analysis process."""
@@ -103,6 +55,7 @@ class AnalysisRunner:
         settings: AnalysisSettings,
         fovs_with_rois: list[FOV],
         global_position_indices: Sequence[int],
+        detection_settings_id: int | None = None,
     ) -> Generator[FOV, None, None]:
         """Run analysis and yield FOV results with traces and analysis data.
 
@@ -120,6 +73,8 @@ class AnalysisRunner:
             or are loaded from the database by the caller.
         global_position_indices : Sequence[int]
             Position indices to analyze
+        detection_settings_id : int | None, optional
+            Detection settings ID (for compatibility, currently unused)
 
         Yields
         ------
@@ -144,7 +99,7 @@ class AnalysisRunner:
             )
 
         # Execute analysis in parallel and yield results
-        for fov_result in exec_(
+        for fov_result in self._exec_in_threadpool(
             analyze=self._analyze_position,
             dataset=dataset,
             cancel_event=self._cancellation_event,
@@ -158,9 +113,61 @@ class AnalysisRunner:
 
         cali_logger.info("✅ Analysis complete!")
 
+    # -------------------------PRIVATE METHODS-----------------------------------
+
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
         return self._cancellation_event.is_set()
+
+    def _exec_in_threadpool(
+        self,
+        analyze: Callable,
+        dataset: TensorstoreZarrReader | OMEZarrReader,
+        cancel_event: threading.Event,
+        global_position_indices: Sequence[int],
+        settings: AnalysisSettings,
+        fovs_with_rois: list[FOV],
+        max_workers: int | None = None,
+    ) -> Iterable[FOV]:
+        """Execute analysis in parallel and yield FOV results."""
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Check for cancellation before submitting futures
+            if cancel_event.is_set():
+                cali_logger.info("🚮 Cancellation requested before starting thread pool")
+                return
+
+            futures = (
+                executor.submit(
+                    analyze,
+                    dataset,
+                    settings,
+                    p,
+                    fovs_with_rois,
+                )
+                for p in global_position_indices
+            )
+
+            for future in as_completed(futures):
+                # Check for cancellation at the start of each iteration
+                if cancel_event.is_set():
+                    cali_logger.info("🚮 Cancellation requested, shutting down executor...")
+                    # Cancel pending futures and shutdown executor
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+
+                try:
+                    # Commit the results to database if we got any
+                    if (fov_result := future.result()) is not None:
+                        yield fov_result
+                except Exception:
+                    import traceback
+
+                    full_tb = traceback.format_exc()
+                    cali_logger.error(f"Exception in analysis thread: {full_tb}")
+
+        # Check if cancelled before finishing
+        if cancel_event.is_set():
+            cali_logger.info("❌ Run Cancelled")
 
     def _analyze_position(
         self,
@@ -181,18 +188,6 @@ class AnalysisRunner:
             fovs_with_rois,
         )
 
-    def _get_fov_to_analyze(
-        self,
-        global_pos_idx: int,
-        fovs_with_rois: list[FOV],
-    ) -> FOV | None:
-        """Get the FOV to analyze for the given position index."""
-        for fov in fovs_with_rois:
-            if fov.position_index == global_pos_idx:
-                return fov
-        return None
-
-    # These are module-level functions that work with the OriginalAnalysisRunner
     def _extract_trace_data_per_position(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
@@ -212,7 +207,7 @@ class AnalysisRunner:
         # get the data and metadata for the position
         data, meta = dataset.isel(p=global_pos_idx, metadata=True)
         # get the fov_name name from metadata
-        fov_name = _get_fov_name(EVENT_KEY, meta, global_pos_idx)
+        fov_name = self._get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
         # Find the FOV with matching position index in the provided list
         fov_to_analyze = self._get_fov_to_analyze(global_pos_idx, fovs_with_rois)
@@ -244,8 +239,8 @@ class AnalysisRunner:
 
         # get the elapsed time from the metadata to calculate the total time in seconds
         # assumes data shape is (time, height, width)
-        exposure_ms = None  # TODO: expose frame rate/exp time in the gui
-        elapsed_time_list = _get_elapsed_time_list(meta, exposure_ms, data.shape[0])
+        exp_ms = None  # TODO: expose frame rate/exp time in the gui
+        elapsed_time_list = self._get_elapsed_time_list(meta, exp_ms, data.shape[0])
 
         # get the total time in seconds for the recording
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
@@ -317,14 +312,31 @@ class AnalysisRunner:
                     # Assign to Traces (will be saved via relationship cascade)
                     traces.neuropil_mask = neuropil_mask_obj
 
-                # Append directly to relationships (eagerly loaded by caller)
-                existing_roi.traces_history.append(traces)
-                existing_roi.data_analysis_history.append(data_analysis)
+                # Store new traces/analysis in temporary list on ROI
+                # This avoids SQLAlchemy warnings about modifying collections
+                # during threaded execution. The commit function will handle
+                # proper attachment.
+                if not hasattr(existing_roi, '_new_traces'):
+                    existing_roi._new_traces = []  # type: ignore
+                    existing_roi._new_data_analysis = []  # type: ignore
+                existing_roi._new_traces.append(traces)  # type: ignore
+                existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 
         # Return the FOV with updated ROIs (will be committed by caller)
         return fov_to_analyze
+
+    def _get_fov_to_analyze(
+        self,
+        global_pos_idx: int,
+        fovs_with_rois: list[FOV],
+    ) -> FOV | None:
+        """Get the FOV to analyze for the given position index."""
+        for fov in fovs_with_rois:
+            if fov.position_index == global_pos_idx:
+                return fov
+        return None
 
     def _prepare_neuropil_masks(
         self,
@@ -587,54 +599,54 @@ class AnalysisRunner:
         return (traces, data_analysis, active, stimulated)
 
 
-def _get_fov_name(event_key: str, meta: list[dict], p: int) -> str:
-    """Retrieve the fov name from metadata.
+    def _get_fov_name(self, event_key: str, meta: list[dict], p: int) -> str:
+        """Retrieve the fov name from metadata.
 
-    Should match the naming used in DetectionRunner to ensure
-    analysis can find the FOV created during detection.
-    """
-    try:
-        # Try to get pos_name first (e.g., "B5_0000")
-        pos_name = meta[0][event_key].get("pos_name")
-        if pos_name:
-            return pos_name
-    except (KeyError, IndexError, AttributeError):
-        pass
+        Should match the naming used in DetectionRunner to ensure
+        analysis can find the FOV created during detection.
+        """
+        try:
+            # Try to get pos_name first (e.g., "B5_0000")
+            pos_name = meta[0][event_key].get("pos_name")
+            if pos_name:
+                return pos_name
+        except (KeyError, IndexError, AttributeError):
+            pass
 
-    # Fallback to constructing from axes
-    try:
-        well = meta[0][event_key]["axes"]["p"]
-        return f"{well}_{p:04d}"
-    except (KeyError, IndexError):
-        pass
+        # Fallback to constructing from axes
+        try:
+            well = meta[0][event_key]["axes"]["p"]
+            return f"{well}_{p:04d}"
+        except (KeyError, IndexError):
+            pass
 
-    # Final fallback
-    return f"pos_{p}"
+        # Final fallback
+        return f"pos_{p}"
 
 
-def _get_elapsed_time_list(
-    meta: list[dict], exposure_ms: float | None, num_timepoints: int
-) -> list[float]:
-    """Get elapsed time list from metadata."""
-    elapsed_time_list: list[float] = []
+    def _get_elapsed_time_list(
+        self, meta: list[dict], exposure_ms: float | None, num_timepoints: int
+    ) -> list[float]:
+        """Get elapsed time list from metadata."""
+        elapsed_time_list: list[float] = []
 
-    # from metadata get the exposure time in ms
-    if exposure_ms is None:
-        exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
+        # from metadata get the exposure time in ms
+        if exposure_ms is None:
+            exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
 
-    # if in metadata, get the elapsed time list from RUNNER_TIME_KEY
-    if RUNNER_TIME_KEY in meta[0]:  # new metadata format
-        for m in meta:
-            rt = m[RUNNER_TIME_KEY]
-            if rt is not None:
-                elapsed_time_list.append(float(rt))
+        # if in metadata, get the elapsed time list from RUNNER_TIME_KEY
+        if RUNNER_TIME_KEY in meta[0]:  # new metadata format
+            for m in meta:
+                rt = m[RUNNER_TIME_KEY]
+                if rt is not None:
+                    elapsed_time_list.append(float(rt))
 
-        # if the elapsed time list is different from the number of timepoints, set it
-        # as list of timepoints every exp_time
-        if len(elapsed_time_list) != num_timepoints:
+            # if the elapsed time list is different from the number of timepoints, set it
+            # as list of timepoints every exp_time
+            if len(elapsed_time_list) != num_timepoints:
+                elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
+
+        # otherwise use exposure time and number of timepoints to create elapsed time list
+        else:
             elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
-
-    # otherwise use exposure time and number of timepoints to create elapsed time list
-    else:
-        elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
-    return elapsed_time_list
+        return elapsed_time_list

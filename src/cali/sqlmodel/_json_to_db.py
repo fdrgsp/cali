@@ -61,7 +61,7 @@ def load_analysis_from_json(
     in the analysis directory, they will be loaded and stored in plate.plate_maps.
 
     If save_to_db is True (default), the experiment will be saved to the database
-    and an AnalysisResult entry will be created to track which positions were
+    and an CaliResult entry will be created to track which positions were
     analyzed with which settings.
 
     Parameters
@@ -94,7 +94,7 @@ def load_analysis_from_json(
     >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
     >>> plate = useq.WellPlate.from_str("96-well")
     >>> experiment = load_analysis_from_json(data_dir, analysis_dir, useq_plate=plate)
-    >>> # Experiment is now saved in database with AnalysisResult tracking
+    >>> # Experiment is now saved in database with CaliResult tracking
     """
     # 1. Create experiment
     db_name = f"{Path(data_path).name}.db"
@@ -435,7 +435,7 @@ def load_analysis_from_json(
                     roi.detection_settings_id = saved_detection_settings_id
                 session.commit()
 
-            # Now create AnalysisResult to track this analysis run (in new session)
+            # Now create CaliResult to track this analysis run (in new session)
             # For legacy JSON imports, we always create a CaliResult to track the import
             if saved_exp_id and saved_detection_settings_id:
                 with Session(engine) as session:
@@ -448,7 +448,7 @@ def load_analysis_from_json(
                     session.add(analysis_result)
                     session.flush()  # Get analysis_result.id
 
-                    # Link all Traces and DataAnalysis to this AnalysisResult
+                    # Link all Traces and DataAnalysis to this CaliResult
                     all_traces = session.exec(select(Traces)).all()
                     all_data_analysis = session.exec(select(DataAnalysis)).all()
 

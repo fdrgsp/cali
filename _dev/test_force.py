@@ -42,7 +42,7 @@ engine = create_engine(f"sqlite:///{exp.db_path}")
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
     results = session.exec(select(CaliResult)).all()
-    print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
+    print(f"ROIs: {len(rois)}, CaliResults: {len(results)}")
     first_roi_ids = {roi.id for roi in rois}
     first_result_ids = {r.id for r in results}
 
@@ -54,7 +54,7 @@ detection.run(exp, d_settings, global_position_indices=[0])
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
     results = session.exec(select(CaliResult)).all()
-    print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
+    print(f"ROIs: {len(rois)}, CaliResults: {len(results)}")
     assert {roi.id for roi in rois} == first_roi_ids, "ROIs should be unchanged"
     assert {r.id for r in results} == first_result_ids, "Results should be unchanged"
     print("✅ Correctly skipped - ROIs and results unchanged")
@@ -67,9 +67,9 @@ detection.run(exp, d_settings, global_position_indices=[0], force=True)
 with Session(engine) as session:
     rois = session.exec(select(ROI)).all()
     results = session.exec(select(CaliResult)).all()
-    print(f"ROIs: {len(rois)}, AnalysisResults: {len(results)}")
+    print(f"ROIs: {len(rois)}, CaliResults: {len(results)}")
     # ROIs are replaced (deleted then recreated, may have same IDs in SQLite)
-    # AnalysisResults should be deleted (full analysis)
+    # CaliResults should be deleted (full analysis)
     assert len(rois) == len(first_roi_ids), "Should have same number of ROIs"
     assert len(results) == 1, "Should only have detection-only result"
     assert results[0].analysis_settings is None, "Should be detection-only"

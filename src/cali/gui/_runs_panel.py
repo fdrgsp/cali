@@ -38,7 +38,7 @@ class _RunsPanel(QGroupBox):
     Signals
     -------
     runSelected : int
-        Emitted when a run is selected, passes the AnalysisResult ID
+        Emitted when a run is selected, passes the CaliResult ID
     settingsChanged : None
         Emitted when detection settings may have changed (e.g., after deletion)
     """
@@ -162,7 +162,7 @@ class _RunsPanel(QGroupBox):
 
         Parameters
         ----------
-        result : AnalysisResult
+        result : CaliResult
             The analysis result to add
         detection_settings : DetectionSettings
             The detection settings associated with the result
@@ -247,7 +247,7 @@ class _RunsPanel(QGroupBox):
         Parameters
         ----------
         run_id : int
-            The ID of the AnalysisResult to delete
+            The ID of the CaliResult to delete
         """
         if self._database_path is None:
             return

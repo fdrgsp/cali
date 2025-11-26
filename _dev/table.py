@@ -5,7 +5,7 @@ db_path = "/Users/fdrgsp/Desktop/cali_test/testcalidb"
 engine = create_engine(f"sqlite:///{db_path}")
 
 with Session(engine) as session:
-    # Get all AnalysisResults
+    # Get all CaliResults
     results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
 
     print("\n" + "=" * 100)
@@ -33,7 +33,7 @@ with Session(engine) as session:
         )
 
     print("=" * 100)
-    print(f"\nTotal AnalysisResults: {len(results)}")
+    print(f"\nTotal CaliResults: {len(results)}")
 
     # # Now show details of each detection and analysis settings
     # print("\n" + "=" * 100)
