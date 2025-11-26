@@ -697,6 +697,9 @@ class CaliGui(QMainWindow):
                 assert result is not None
                 yield from result
 
+            # disable gui before running
+            self._enable(False)
+
             create_worker(
                 _run_generator,
                 _start_thread=True,
@@ -707,9 +710,17 @@ class CaliGui(QMainWindow):
                 },
             )
         except Exception as e:
-            msg = f"Failed to run cali:\n{e}"
+            msg = f"❌ Failed to run cali:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
+
+    def _enable(self, state: bool) -> None:
+        """Enable or disable the GUI during a run."""
+        # set main tab to index 0
+        self._main_tab.setCurrentIndex(0)
+        # TODO: disable the widget inside the sub tab of analysis and
+        # detection and keep enabled only the cancel button.
+        # the visualization tab should not be available to clock on.
 
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
@@ -726,12 +737,16 @@ class CaliGui(QMainWindow):
             self._run_cali_wdg.set_progress_bar_text(progress)
 
     def _on_worker_errored(self, error: Any) -> None:
+        """Handle errors from the runner."""
         self._elapsed_timer.stop()
+        self._enable(True)
         cali_logger.error(
             f"❌ Analysis runner encountered an error during execution:\n {error}"
         )
 
     def _on_worker_finished(self) -> None:
+        """Handle completion of the runner."""
+        self._enable(True)
         cali_logger.info("✅ Runner finished successfully.")
         self._elapsed_timer.stop()
         # self._run_cali_wdg.reset_progress_bar()
