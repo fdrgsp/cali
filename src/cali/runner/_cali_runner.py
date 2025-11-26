@@ -9,7 +9,7 @@ from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME
-from cali.analysis import AnalysisRunner
+from cali.extraction import ExtractionRunner
 from cali.detection import DetectionRunner
 from cali.logger import cali_logger
 from cali.sqlmodel import save_experiment_to_database
@@ -89,7 +89,7 @@ class CaliRunner:
 
         # Internal runners
         self._detection_runner = DetectionRunner()
-        self._analysis_runner = AnalysisRunner()
+        self._extraction_runner = ExtractionRunner()
 
     @property
     def database_path(self) -> str | None:
@@ -97,9 +97,9 @@ class CaliRunner:
         return str(self._db_path) if self._db_path is not None else None
 
     def cancel(self) -> None:
-        """Cancel both detection and analysis processes."""
+        """Cancel both detection and extraction processes."""
         self._detection_runner.cancel()
-        self._analysis_runner.cancel()
+        self._extraction_runner.cancel()
 
     def run(
         self,
@@ -343,7 +343,7 @@ class CaliRunner:
                                 positions_analyzed=positions_processed_detection,
                             )
 
-                # 7. Run analysis if settings provided
+                # 7. Run extraction if settings provided
                 if analysis_settings is not None:
                     assert analysis_settings.id is not None
 
@@ -354,7 +354,7 @@ class CaliRunner:
                         session.expunge(analysis_settings.stimulation_mask)
                     session.expunge(analysis_settings)
 
-                    yield "📊 Running Analysis..."
+                    yield "📈 Running Extraction..."
 
                     # Determine which positions need analysis
                     positions_for_analysis = self._get_positions_for_analysis(
@@ -379,7 +379,8 @@ class CaliRunner:
 
                     # Always use threaded processing
                     cali_logger.info(
-                        f"⚡️ Running analysis with {analysis_settings.threads} threads"
+                        f"⚡️ Running extraction with {analysis_settings.threads} "
+                        f"threads"
                     )
 
                     # Process in batches
@@ -417,7 +418,7 @@ class CaliRunner:
                         if not batch_fovs:
                             continue
 
-                        # Run analysis on this batch
+                        # Run extraction on this batch
                         for fov in self._run_analysis(
                             dataset,
                             analysis_settings,
@@ -473,7 +474,7 @@ class CaliRunner:
 
                     # Log completion
                     if positions_processed:
-                        cali_logger.info(f"✅ Analysis committed: {fov_count} FOVs")
+                        cali_logger.info(f"✅ Extraction committed: {fov_count} FOVs")
         finally:
             engine.dispose(close=True)
 
@@ -802,9 +803,9 @@ class CaliRunner:
         analysis_settings: AnalysisSettings,
         fovs: Iterable[FOV],
     ) -> Generator[FOV, None, None]:
-        """Run analysis using AnalysisRunner.
+        """Run extraction using ExtractionRunner.
 
-        Yields FOV results from AnalysisRunner using threaded processing.
+        Yields FOV results from ExtractionRunner using threaded processing.
 
         Parameters
         ----------
@@ -815,8 +816,8 @@ class CaliRunner:
         fovs : Iterable[FOV]
             FOVs with ROIs to analyze (from detection or loaded from DB)
         """
-        cali_logger.info("📊 Running analysis...")
-        yield from self._analysis_runner.run(
+        cali_logger.info("📊 Running extraction...")
+        yield from self._extraction_runner.run(
             dataset=dataset,
             settings=analysis_settings,
             fovs=fovs,

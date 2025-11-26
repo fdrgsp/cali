@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class DetectionRunner:
     """Runner for neuron detection that saves masks directly to database.
 
-    Similar to AnalysisRunner but for the detection/segmentation phase.
+    Similar to ExtractionRunner but for the detection/segmentation phase.
     Supports both Cellpose and CaImAn detection methods.
     Creates FOV and ROI objects with masks in the database.
     """

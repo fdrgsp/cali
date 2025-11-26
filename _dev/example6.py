@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlmodel import create_engine, Session, select
 
 from cali.runner import CaliRunner
-from cali.analysis import AnalysisRunner
+from cali.extraction import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, Experiment, CaliResult
 from cali.sqlmodel._model import DetectionSettings

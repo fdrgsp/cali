@@ -6,7 +6,7 @@ import mplcursors
 import numpy as np
 from skimage import measure
 
-from cali.analysis._util import coordinates_to_mask
+from cali.extraction._util import coordinates_to_mask
 from cali.logger import cali_logger
 from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,

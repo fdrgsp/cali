@@ -11,7 +11,7 @@ from pathlib import Path
 from rich import print
 from sqlmodel import Session, create_engine
 
-from cali.analysis._analysis_runner import AnalysisRunner
+from cali.extraction._analysis_runner import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import (
     DetectionSettings,

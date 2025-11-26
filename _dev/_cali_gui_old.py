@@ -39,7 +39,7 @@ from cali._constants import (
     WRITERS,
     ZARR_TESNSORSTORE,
 )
-from cali.analysis import AnalysisRunner
+from cali.extraction import AnalysisRunner
 from cali.detection._detection_runner import DetectionRunner
 from cali.logger import cali_logger
 from cali.sqlmodel import (

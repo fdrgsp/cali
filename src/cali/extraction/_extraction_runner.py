@@ -35,7 +35,7 @@ from ._util import (
 )
 
 
-class AnalysisRunner:
+class ExtractionRunner:
     def __init__(self) -> None:
         super().__init__()
 
@@ -45,7 +45,7 @@ class AnalysisRunner:
     # -------------------------PUBLIC METHODS-----------------------------------
 
     def cancel(self) -> None:
-        """Request cancellation of the analysis process."""
+        """Request cancellation of the extraction process."""
         cali_logger.info("🗑️ Cancellation requested...")
         self._cancellation_event.set()
 
@@ -56,7 +56,7 @@ class AnalysisRunner:
         fovs: Iterable[FOV],
         as_generator: bool = False,
     ) -> Generator[FOV, None, None] | list[FOV]:
-        """Run analysis and yield FOV results with traces and analysis data.
+        """Run extraction and yield FOV results with traces and analysis data.
 
         This method performs pure computation - it takes FOVs with ROIs and adds
         traces and analysis data to them. It does not interact with the database.
@@ -119,7 +119,7 @@ class AnalysisRunner:
             if fov_result is not None:
                 yield fov_result
 
-        cali_logger.info("✅ Analysis complete!")
+        cali_logger.info("✅ Extraction complete!")
 
     # -------------------------PRIVATE METHODS-----------------------------------
 
@@ -136,7 +136,7 @@ class AnalysisRunner:
         settings: AnalysisSettings,
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
-        """Execute analysis in parallel and yield FOV results."""
+        """Execute extraction in parallel and yield FOV results."""
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Check for cancellation before submitting futures
             if cancel_event.is_set():
@@ -173,7 +173,7 @@ class AnalysisRunner:
                     import traceback
 
                     full_tb = traceback.format_exc()
-                    cali_logger.error(f"Exception in analysis thread: {full_tb}")
+                    cali_logger.error(f"Exception in extraction thread: {full_tb}")
 
         # Check if cancelled before finishing
         if cancel_event.is_set():

@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlmodel import Session, create_engine, select
 
 from cali._constants import EVOKED
-from cali.analysis import AnalysisRunner
+from cali.extraction import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
 from cali.sqlmodel._model import CaliResult, ROI

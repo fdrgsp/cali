@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlmodel import create_engine
 
-from cali.analysis import AnalysisRunner
+from cali.extraction import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.readers import TensorstoreZarrReader
 from cali.sqlmodel import AnalysisSettings, Experiment, useq_plate_plan_to_db

@@ -25,7 +25,7 @@ print("OLD API - Using DetectionRunner and AnalysisRunner separately")
 print("=" * 80)
 
 from cali.detection import DetectionRunner
-from cali.analysis import AnalysisRunner
+from cali.extraction import AnalysisRunner
 
 # OLD WAY: Create separate runners
 detection = DetectionRunner()
