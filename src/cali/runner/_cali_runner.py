@@ -21,7 +21,12 @@ if TYPE_CHECKING:
 
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
-    from cali.sqlmodel import AnalysisSettings, DetectionSettings, Experiment
+    from cali.sqlmodel import (
+        AnalysisSettings,
+        DetectionSettings,
+        Experiment,
+        ExtractionSettings,
+    )
 
 
 class CaliRunner:
@@ -107,6 +112,7 @@ class CaliRunner:
         dataset_path: str | Path,
         detection_settings: DetectionSettings | int,
         *,
+        extraction_settings: ExtractionSettings | int | None = None,
         analysis_settings: AnalysisSettings | int | None = None,
         global_position_indices: Sequence[int] | None = None,
         database_name: str | None = None,
@@ -138,11 +144,14 @@ class CaliRunner:
             Detection parameters (required to specify which ROIs to analyze). It can be
             either a DetectionSettings instance or an integer ID referencing
             an existing DetectionSettings in the database.
+        extraction_settings : ExtractionSettings | int | None
+            Extraction parameters (neuropil, dff_window, decay_constant, etc.).
+            Required if analysis_settings is provided. Can be an ExtractionSettings
+            instance or integer ID referencing existing settings in the database.
         analysis_settings : AnalysisSettings | int | None
-            Analysis parameters. It can be either an AnalysisSettings instance,
-            an integer ID referencing an existing AnalysisSettings in the database,
-            or None. If None, only detection is run. If provided, both detection and
-            analysis are run.
+            Analysis parameters (peak detection, thresholds, etc.).
+            If None, only extraction (traces) is performed. If provided,
+            both extraction and analysis are run.
         global_position_indices : Sequence[int] | None
             Position indices to process. If None, processes all positions
             in the dataset.
@@ -174,6 +183,7 @@ class CaliRunner:
             experiment=experiment,
             dataset_path=dataset_path,
             detection_settings=detection_settings,
+            extraction_settings=extraction_settings,
             analysis_settings=analysis_settings,
             global_position_indices=global_position_indices,
             database_name=database_name,
@@ -197,6 +207,7 @@ class CaliRunner:
         dataset_path: str | Path,
         detection_settings: DetectionSettings | int,
         *,
+        extraction_settings: ExtractionSettings | int | None = None,
         analysis_settings: AnalysisSettings | int | None = None,
         global_position_indices: Sequence[int] | None = None,
         database_name: str | None = None,
@@ -250,12 +261,35 @@ class CaliRunner:
                     session, detection_settings
                 )
 
+                # Validate extraction/analysis settings combination
+                if analysis_settings is not None and extraction_settings is None:
+                    raise ValueError(
+                        "extraction_settings is required when "
+                        "analysis_settings is provided"
+                    )
+
+                if extraction_settings is not None:
+                    extraction_settings = self._get_or_create_extraction_settings(
+                        session, extraction_settings
+                    )
+                    extraction_settings_id = extraction_settings.id
+                    extraction_threads = extraction_settings.threads
+                    assert extraction_settings_id is not None
+                else:
+                    extraction_settings_id = None
+                    extraction_threads = None
+
                 if analysis_settings is not None:
                     analysis_settings = self._get_or_create_analysis_settings(
                         session, analysis_settings
                     )
+                    analysis_settings_id = analysis_settings.id
+                    assert analysis_settings_id is not None
+                else:
+                    analysis_settings_id = None
 
-                assert (det_id := detection_settings.id) is not None
+                det_id = detection_settings.id
+                assert det_id is not None
 
                 # 4. Determine which positions need detection
                 if global_position_indices is None:
@@ -309,7 +343,9 @@ class CaliRunner:
                             session.expunge_all()
                             # Re-attach settings objects for next iteration
                             detection_settings = session.merge(detection_settings)
-                            if analysis_settings:
+                            if extraction_settings is not None:
+                                extraction_settings = session.merge(extraction_settings)
+                            if analysis_settings is not None:
                                 analysis_settings = session.merge(analysis_settings)
 
                         positions_processed_detection.append(fov.position_index)
@@ -324,7 +360,9 @@ class CaliRunner:
                         session.expunge_all()
                         # Re-attach settings objects
                         detection_settings = session.merge(detection_settings)
-                        if analysis_settings:
+                        if extraction_settings is not None:
+                            extraction_settings = session.merge(extraction_settings)
+                        if analysis_settings is not None:
                             analysis_settings = session.merge(analysis_settings)
 
                     # Log detection completion
@@ -339,32 +377,45 @@ class CaliRunner:
                                 session=session,
                                 experiment_id=experiment.id,
                                 detection_settings_id=det_id,
+                                extraction_settings_id=None,
                                 analysis_settings_id=None,
                                 positions_analyzed=positions_processed_detection,
                             )
 
                 # 7. Run extraction if settings provided
-                if analysis_settings is not None:
-                    assert analysis_settings.id is not None
-
+                if extraction_settings is not None:
                     # Ensure stimulation_mask is loaded and detach settings for thread
                     # safety. This prevents "session is in committed state" errors in
                     # threads
-                    if analysis_settings.stimulation_mask:
-                        session.expunge(analysis_settings.stimulation_mask)
-                    session.expunge(analysis_settings)
+                    if extraction_settings.stimulation_mask:
+                        session.expunge(extraction_settings.stimulation_mask)
+                    session.expunge(extraction_settings)
+
+                    if analysis_settings is not None:
+                        session.expunge(analysis_settings)
 
                     yield "📈 Running Extraction..."
 
-                    # Determine which positions need analysis
-                    positions_for_analysis = self._get_positions_for_analysis(
-                        session, det_id, analysis_settings.id, global_position_indices
+                    # Determine which positions need extraction/analysis
+                    # Use analysis_settings_id if doing analysis,
+                    # otherwise None for extraction-only
+                    analysis_id_for_check = analysis_settings_id
+
+                    positions_for_extraction = (
+                        self._get_positions_for_analysis(
+                            session,
+                            det_id,
+                            analysis_id_for_check,
+                            global_position_indices,
+                        )
+                        if analysis_id_for_check is not None
+                        else global_position_indices
                     )
 
-                    if not positions_for_analysis:
+                    if not positions_for_extraction:
                         return
 
-                    yield f"PROGRESS:RESET:{len(positions_for_analysis)}"
+                    yield f"PROGRESS:RESET:{len(positions_for_extraction)}"
 
                     # Create CaliResult FIRST with expected positions so we have the ID
                     analysis_result_id = None
@@ -373,27 +424,25 @@ class CaliRunner:
                             session=session,
                             experiment_id=experiment.id,
                             detection_settings_id=det_id,
-                            analysis_settings_id=analysis_settings.id,
-                            positions_analyzed=positions_for_analysis,
+                            extraction_settings_id=extraction_settings_id,
+                            analysis_settings_id=analysis_id_for_check,
+                            positions_analyzed=list(positions_for_extraction),
                         )
 
-                    # Always use threaded processing
-                    cali_logger.info(
-                        f"⚡️ Running extraction with {analysis_settings.threads} "
-                        f"threads"
-                    )
-
                     # Process in batches
-                    # Use a batch size that is at least the number of threads to ensure
-                    # utilization but not too large to consume too much memory.
+                    # Use a batch size that is at least the number of threads to
+                    # ensure utilization but not too large to consume too much memory.
                     # Default to commit_batch_size, but ensure min of threads
-                    batch_size = max(self.commit_batch_size, analysis_settings.threads)
+                    assert extraction_threads is not None
+                    batch_size = max(
+                        self.commit_batch_size, extraction_threads
+                    )
 
                     positions_processed = []
                     fov_count = 0
 
-                    for i in range(0, len(positions_for_analysis), batch_size):
-                        batch_positions = positions_for_analysis[i : i + batch_size]
+                    for i in range(0, len(positions_for_extraction), batch_size):
+                        batch_positions = positions_for_extraction[i : i + batch_size]
 
                         # Prepare FOVs for this batch
                         batch_fovs = []
@@ -419,8 +468,9 @@ class CaliRunner:
                             continue
 
                         # Run extraction on this batch
-                        for fov in self._run_analysis(
+                        for fov in self._run_extraction(
                             dataset,
+                            extraction_settings,
                             analysis_settings,
                             fovs=batch_fovs,
                         ):
@@ -459,7 +509,7 @@ class CaliRunner:
                                     f"💾 Committed batch of "
                                     f"{self.commit_batch_size} FOVs "
                                     f"(total: {fov_count}/"
-                                    f"{len(positions_for_analysis)})"
+                                    f"{len(positions_for_extraction)})"
                                 )
                             positions_processed.append(fov.position_index)
 
@@ -730,6 +780,67 @@ class CaliRunner:
             )
             return detection_settings
 
+    def _get_or_create_extraction_settings(
+        self, session: Session, extraction_settings: ExtractionSettings | int
+    ) -> ExtractionSettings:
+        """Get existing or create new ExtractionSettings in database.
+
+        This implements settings deduplication - if identical settings exist,
+        reuse them via pointer (foreign key) instead of creating duplicates.
+        """
+        from cali.sqlmodel._model import ExtractionSettings
+
+        if isinstance(extraction_settings, int):
+            # Load existing settings by ID
+            existing = session.get(ExtractionSettings, extraction_settings)
+            if existing is None:
+                msg = (
+                    f"ExtractionSettings ID {extraction_settings} not found "
+                    "in database"
+                )
+                cali_logger.error(msg)
+                raise ValueError(msg)
+            cali_logger.info(
+                f"♻️ Reusing existing ExtractionSettings ID {existing.id}"
+            )
+            return existing
+
+        elif extraction_settings.id is None:
+            # Check if identical settings already exist
+            all_settings = session.exec(select(ExtractionSettings)).all()
+            for candidate in all_settings:
+                if extraction_settings == candidate:
+                    cali_logger.info(
+                        f"♻️ Reusing existing ExtractionSettings ID {candidate.id}"
+                    )
+                    return candidate
+
+            # New settings - create them
+            session.add(extraction_settings)
+            session.commit()
+            session.refresh(extraction_settings)
+            cali_logger.info(
+                f"⚙️ Created new ExtractionSettings ID {extraction_settings.id}"
+            )
+            return extraction_settings
+        else:
+            # Settings has ID - check if exists in database
+            existing = session.get(ExtractionSettings, extraction_settings.id)
+            if existing is not None:
+                cali_logger.info(
+                    f"♻️ Reusing existing ExtractionSettings ID {existing.id}"
+                )
+                return existing
+
+            # ID doesn't exist - create it
+            session.add(extraction_settings)
+            session.commit()
+            session.refresh(extraction_settings)
+            cali_logger.info(
+                f"⚙️ Created new ExtractionSettings ID {extraction_settings.id}"
+            )
+            return extraction_settings
+
     def _get_or_create_analysis_settings(
         self, session: Session, analysis_settings: AnalysisSettings | int
     ) -> AnalysisSettings:
@@ -797,10 +908,11 @@ class CaliRunner:
             as_generator=True,
         )
 
-    def _run_analysis(
+    def _run_extraction(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
-        analysis_settings: AnalysisSettings,
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
     ) -> Generator[FOV, None, None]:
         """Run extraction using ExtractionRunner.
@@ -811,16 +923,20 @@ class CaliRunner:
         ----------
         dataset : TensorstoreZarrReader | OMEZarrReader
             Dataset reader
-        analysis_settings : AnalysisSettings
-            Analysis configuration
+        extraction_settings : ExtractionSettings
+            Extraction configuration (neuropil, dff, deconvolution)
+        analysis_settings : AnalysisSettings | None
+            Analysis configuration (peak detection, thresholds)
+            If None, only extraction is performed
         fovs : Iterable[FOV]
             FOVs with ROIs to analyze (from detection or loaded from DB)
         """
         cali_logger.info("📊 Running extraction...")
         yield from self._extraction_runner.run(
             dataset=dataset,
-            settings=analysis_settings,
+            extraction_settings=extraction_settings,
             fovs=fovs,
+            analysis_settings=analysis_settings,
             as_generator=True,
         )
 
@@ -884,14 +1000,15 @@ class CaliRunner:
         session: Session,
         experiment_id: int,
         detection_settings_id: int,
+        extraction_settings_id: int | None,
         analysis_settings_id: int | None,
         positions_analyzed: list[int],
     ) -> int:
         """Create or update an CaliResult entry.
 
-        If a CaliResult with the same experiment, detection_settings, and
-        analysis_settings already exists, update its positions_analyzed list
-        by merging new positions. Otherwise create a new entry.
+        If a CaliResult with the same experiment, detection_settings,
+        extraction_settings, and analysis_settings already exists, update its
+        positions_analyzed list by merging new positions. Otherwise create a new entry.
 
         Returns
         -------
@@ -902,6 +1019,7 @@ class CaliRunner:
             select(CaliResult).where(
                 CaliResult.experiment == experiment_id,
                 CaliResult.detection_settings == detection_settings_id,
+                CaliResult.extraction_settings == extraction_settings_id,
                 CaliResult.analysis_settings == analysis_settings_id,
             )
         ).first()
@@ -923,6 +1041,7 @@ class CaliRunner:
             cali_logger.info(
                 f"📝 Updated {result_type} CaliResult ID {existing_result.id} "
                 f"(DetectionSettings={detection_settings_id}, "
+                f"ExtractionSettings={extraction_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
                 f"positions={merged_positions})"
             )
@@ -936,6 +1055,7 @@ class CaliRunner:
                     select(CaliResult).where(
                         CaliResult.experiment == experiment_id,
                         CaliResult.detection_settings == detection_settings_id,
+                        CaliResult.extraction_settings.is_(None),  # type: ignore
                         CaliResult.analysis_settings.is_(None),  # type: ignore
                     )
                 ).first()
@@ -952,6 +1072,7 @@ class CaliRunner:
             result = CaliResult(
                 experiment=experiment_id,
                 detection_settings=detection_settings_id,
+                extraction_settings=extraction_settings_id,
                 analysis_settings=analysis_settings_id,
                 positions_analyzed=positions_analyzed,
             )
@@ -965,6 +1086,7 @@ class CaliRunner:
             cali_logger.info(
                 f"📊 Created {result_type} CaliResult ID {result.id} "
                 f"(DetectionSettings={detection_settings_id}, "
+                f"ExtractionSettings={extraction_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
                 f"positions={positions_analyzed})"
             )

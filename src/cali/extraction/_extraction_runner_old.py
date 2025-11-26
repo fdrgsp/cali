@@ -6,11 +6,15 @@ from typing import Callable, cast
 
 import numpy as np
 from oasis.functions import deconvolve
+from scipy.signal import find_peaks
 from tqdm import tqdm
 
 from cali._constants import (
     EVENT_KEY,
+    GLOBAL_HEIGHT,
+    GLOBAL_SPIKE_THRESHOLD,
     RUNNER_TIME_KEY,
+    STIMULATION_AREA_THRESHOLD,
 )
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
@@ -18,7 +22,6 @@ from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
     DataAnalysis,
-    ExtractionSettings,
     Mask,
     Traces,
 )
@@ -27,6 +30,7 @@ from cali.util import coordinates_to_mask, load_data, mask_to_coordinates
 from ._neuropil import create_neuropil_from_dilation
 from ._util import (
     calculate_dff,
+    get_iei,
     get_overlap_roi_with_stimulated_area,
 )
 
@@ -48,30 +52,24 @@ class ExtractionRunner:
     def run(
         self,
         dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
-        extraction_settings: ExtractionSettings,
+        settings: AnalysisSettings,
         fovs: Iterable[FOV],
-        *,
-        analysis_settings: AnalysisSettings | None = None,
         as_generator: bool = False,
     ) -> Generator[FOV, None, None] | list[FOV]:
-        """Run extraction and optionally analysis on FOVs with ROIs.
+        """Run extraction and yield FOV results with traces and analysis data.
 
         This method performs pure computation - it takes FOVs with ROIs and adds
-        traces and optionally analysis data to them.
-        It does not interact with the database.
+        traces and analysis data to them. It does not interact with the database.
 
         Parameters
         ----------
         dataset : str | Path | TensorstoreZarrReader | OMEZarrReader
             Path to imaging data (zarr store) or a data reader instance
-        extraction_settings : ExtractionSettings
-            Extraction parameters (neuropil, dff_window, decay_constant, etc.)
+        settings : AnalysisSettings
+            Analysis parameters
         fovs : Iterable[FOV]
             FOVs with ROIs to analyze. These typically come from DetectionRunner
             or are loaded from the database by the caller.
-        analysis_settings : AnalysisSettings | None
-            Analysis parameters (peak detection, thresholds, etc.)
-            If set, perform peak analysis after extraction.
         as_generator : bool
             If True, returns a Generator that yields FOVs.
             If False (default), returns a list of FOVs.
@@ -79,27 +77,22 @@ class ExtractionRunner:
         Returns
         -------
         Generator[FOV, None, None] | list[FOV]
-            FOV objects with ROIs containing traces and optionally analysis data,
+            FOV objects with ROIs containing traces and analysis data,
             ready to be saved to database
 
         Raises
         ------
         ValueError
             If no ROI masks are found in the provided FOVs
-        ValueError
-            If run_analysis=True but analysis_settings is None
         """
-        generator = self._run_generator(
-            dataset, extraction_settings, analysis_settings, fovs
-        )
+        generator = self._run_generator(dataset, settings, fovs)
 
         return generator if as_generator else list(generator)
 
     def _run_generator(
         self,
         dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
-        extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
+        settings: AnalysisSettings,
         fovs: Iterable[FOV],
     ) -> Generator[FOV, None, None]:
         """Internal generator for analysis process."""
@@ -110,9 +103,9 @@ class ExtractionRunner:
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
         else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
+                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+            )
 
         # Execute analysis in parallel and yield results
         for fov_result in self._exec_in_threadpool(
@@ -120,9 +113,8 @@ class ExtractionRunner:
             dataset=dataset,
             cancel_event=self._cancellation_event,
             fovs=fovs,
-            extraction_settings=extraction_settings,
-            analysis_settings=analysis_settings,
-            max_workers=extraction_settings.threads,
+            settings=settings,
+            max_workers=settings.threads,
         ):
             if fov_result is not None:
                 yield fov_result
@@ -141,8 +133,7 @@ class ExtractionRunner:
         dataset: TensorstoreZarrReader | OMEZarrReader,
         cancel_event: threading.Event,
         fovs: Iterable[FOV],
-        extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
+        settings: AnalysisSettings,
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
         """Execute extraction in parallel and yield FOV results."""
@@ -158,8 +149,7 @@ class ExtractionRunner:
                 executor.submit(
                     analyze,
                     dataset,
-                    extraction_settings,
-                    analysis_settings,
+                    settings,
                     fov,
                 )
                 for fov in fovs
@@ -192,8 +182,7 @@ class ExtractionRunner:
     def _analyze_position(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
-        extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
+        settings: AnalysisSettings,
         fov: FOV,
     ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
@@ -203,16 +192,14 @@ class ExtractionRunner:
         """
         return self._extract_trace_data_per_position(
             dataset,
-            extraction_settings,
-            analysis_settings,
+            settings,
             fov,
         )
 
     def _extract_trace_data_per_position(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader,
-        extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
+        settings: AnalysisSettings,
         fov_to_analyze: FOV,
     ) -> FOV | None:
         """Extract trace data for a position and return FOV objects (not committed).
@@ -253,7 +240,7 @@ class ExtractionRunner:
 
         # Prepare masks for neuropil correction if enabled
         labels_masks, neuropil_masks_dict = self._prepare_neuropil_masks(
-            extraction_settings, data, labels_masks
+            settings, data, labels_masks
         )
 
         # get the elapsed time from the metadata to calculate the total time in seconds
@@ -289,10 +276,10 @@ class ExtractionRunner:
 
             # Process the trace and get Traces + DataAnalysis objects
             neuropil_correction_factor = (
-                extraction_settings.neuropil_correction_factor
+                settings.neuropil_correction_factor
                 if (
-                    extraction_settings.neuropil_inner_radius > 0
-                    and extraction_settings.neuropil_min_pixels > 0
+                    settings.neuropil_inner_radius > 0
+                    and settings.neuropil_min_pixels > 0
                 )
                 else None
             )
@@ -300,8 +287,7 @@ class ExtractionRunner:
                 data,
                 meta,
                 fov_name,
-                extraction_settings,
-                analysis_settings,
+                settings,
                 label_value,
                 labels_masks[label_value],
                 tot_time_sec,
@@ -313,19 +299,7 @@ class ExtractionRunner:
 
             # Add traces and analysis to the existing ROI if processing succeeded
             if trace_data is not None:
-                (
-                    traces,
-                    data_analysis,
-                    active,
-                    stimulated,
-                    roi_size,
-                    roi_size_units,
-                ) = trace_data
-
-                # Store cell size in ROI (calculated once during extraction)
-                if existing_roi.cell_size is None:
-                    existing_roi.cell_size = roi_size
-                    existing_roi.cell_size_units = roi_size_units
+                traces, data_analysis, active, stimulated = trace_data
 
                 # Save neuropil mask to the Traces object if it exists for this ROI
                 neuropil_mask_array = neuropil_masks_dict.get(label_value)
@@ -353,9 +327,7 @@ class ExtractionRunner:
                     existing_roi._new_traces = []  # type: ignore
                     existing_roi._new_data_analysis = []  # type: ignore
                 existing_roi._new_traces.append(traces)  # type: ignore
-                # Only add data_analysis if it was computed
-                if data_analysis is not None:
-                    existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
+                existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 
@@ -375,17 +347,14 @@ class ExtractionRunner:
 
     def _prepare_neuropil_masks(
         self,
-        extraction_settings: ExtractionSettings,
+        settings: AnalysisSettings,
         data: np.ndarray,
         labels_masks: dict[int, np.ndarray],
     ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
         """Prepare masks for neuropil correction if enabled."""
         eroded_masks = labels_masks
         neuropil_masks_dict = {}
-        if (
-            extraction_settings.neuropil_inner_radius > 0
-            and extraction_settings.neuropil_min_pixels > 0
-        ):
+        if settings.neuropil_inner_radius > 0 and settings.neuropil_min_pixels > 0:
             # Get list of masks in order
             sorted_labels = sorted(labels_masks.keys())
             cell_masks = [labels_masks[label] for label in sorted_labels]
@@ -394,8 +363,8 @@ class ExtractionRunner:
                 cell_masks,
                 height,
                 width,
-                inner_neuropil_radius=extraction_settings.neuropil_inner_radius,
-                min_neuropil_pixels=extraction_settings.neuropil_min_pixels,
+                inner_neuropil_radius=settings.neuropil_inner_radius,
+                min_neuropil_pixels=settings.neuropil_min_pixels,
             )
             # Create dicts
             eroded_masks = dict(zip(sorted_labels, cell_masks_eroded))
@@ -431,8 +400,7 @@ class ExtractionRunner:
         data: np.ndarray,
         meta: list[dict],
         fov_name: str,
-        extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
+        settings: AnalysisSettings,
         label_value: int,
         label_mask: np.ndarray,
         tot_time_sec: float,
@@ -440,44 +408,11 @@ class ExtractionRunner:
         x_unit: str,
         neuropil_mask: np.ndarray | None = None,
         neuropil_correction_factor: float | None = None,
-    ) -> tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None:
+    ) -> tuple[Traces, DataAnalysis, bool, bool] | None:
         """Process individual ROI trace and return trace data.
 
-        Parameters
-        ----------
-        data : np.ndarray
-            Imaging data array (time, height, width)
-        meta : list[dict]
-            Metadata for the imaging data
-        fov_name : str
-            Name of the field of view
-        extraction_settings : ExtractionSettings
-            Settings for extraction (neuropil, dff_window, decay_constant)
-        analysis_settings : AnalysisSettings | None
-            Settings for analysis (peak detection, thresholds). If provided,
-            peak detection and analysis will be performed.
-        label_value : int
-            ROI label value
-        label_mask : np.ndarray
-            Boolean mask for the ROI
-        tot_time_sec : float
-            Total recording time in seconds
-        elapsed_time_list : list[float]
-            List of elapsed times for each frame
-        x_unit : str
-            Unit for x-axis (e.g., "ms")
-        neuropil_mask : np.ndarray | None
-            Neuropil mask for correction
-        neuropil_correction_factor : float | None
-            Factor for neuropil correction
-
-        Returns
-        -------
-        tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None
-            Tuple of (Traces, DataAnalysis | None, active, stimulated,
-            roi_size, roi_size_units) ready to add to an existing ROI,
-            or None if processing fails or ROI should be excluded.
-            DataAnalysis will be None if run_analysis=False.
+        Returns a tuple of (Traces, DataAnalysis, active, stimulated) ready to add
+        to an existing ROI, or None if processing fails or ROI should be excluded.
         """
         # Early exit if cancellation is requested
         if self._check_for_abort_requested():
@@ -489,9 +424,21 @@ class ExtractionRunner:
         # get the size of the roi in µm or px if µm is not available
         roi_size_pixel = masked_data.shape[1]  # area
         px_size = meta[0].get("pixel_size_um", None)
-        # Convert to µm² if pixel size is available, otherwise use pixels
+        # calculate the size of the roi in µm if px_size is available or not 0,
+        # otherwise use the size is in pixels
         roi_size = roi_size_pixel * (px_size**2) if px_size else roi_size_pixel
-        roi_size_units = "µm" if px_size is not None else "pixel"
+
+        # # exclude small rois
+        # if px_size and roi_size < EXCLUDE_AREA_SIZE_THRESHOLD:
+        #     return None
+
+        # check if the roi is stimulated
+        roi_stimulation_overlap_ratio = 0.0
+        stimulated_area_mask = settings.stimulated_mask_area()
+        if stimulated_area_mask is not None:
+            roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
+                stimulated_area_mask, label_mask
+            )
 
         # Check for cancellation before DFF calculation
         if self._check_for_abort_requested():
@@ -516,9 +463,7 @@ class ExtractionRunner:
 
         # calculate the dff of the roi trace
         # (using corrected trace if neuropil is enabled)
-        dff = calculate_dff(
-            roi_trace, window=extraction_settings.dff_window, plot=False
-        )
+        dff = calculate_dff(roi_trace, window=settings.dff_window, plot=False)
 
         # Check for cancellation after DFF calculation
         if self._check_for_abort_requested():
@@ -526,17 +471,13 @@ class ExtractionRunner:
 
         # run OASIS deconvolution on the dff trace
         # compute the decay constant
-        tau = extraction_settings.decay_constant
-        penalty = 1  # TODO: expose penalty in gui
+        tau = settings.decay_constant
         g: float | None = None
         if tau > 0.0:
             fs = len(dff) / tot_time_sec  # Sampling frequency (Hz)
             g = np.exp(-1 / (fs * tau))
         # deconvolve the dff trace with adaptive penalty
-        if g is not None:
-            dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))  # type: ignore
-        else:
-            dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(1,))  # type: ignore
+        dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=1, g=(g,))
         dec_dff = cast("np.ndarray", dec_dff)
         spikes = cast("np.ndarray", spikes)
 
@@ -544,18 +485,93 @@ class ExtractionRunner:
         if self._check_for_abort_requested():
             return None
 
-        # check if the roi is stimulated
-        # STIMULATION_AREA_THRESHOLD = 0.5
-        roi_stimulation_overlap_ratio = 0.0
-        stimulated_area_mask = extraction_settings.stimulated_mask_area()
-        if stimulated_area_mask is not None:
-            roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                stimulated_area_mask, label_mask
-            )
-        # consider the roi stimulated if more than 10% of the roi overlaps
-        is_roi_stimulated = roi_stimulation_overlap_ratio > 0.1
+        # Use the spike threshold widget to get the spike detection threshold
+        spike_threshold_value = settings.spike_threshold_value
+        spike_threshold_mode = settings.spike_threshold_mode
 
-        # Create Traces object (extraction product)
+        if spike_threshold_mode == GLOBAL_SPIKE_THRESHOLD:
+            spike_detection_threshold = spike_threshold_value
+        else:  # MULTIPLIER
+            # for spike amp use percentile-based approach to determine noise level
+            non_zero_spikes = spikes[spikes > 0]
+            # need sufficient data for reliable percentile
+            if len(non_zero_spikes) > 5:
+                spike_noise_reference = float(np.percentile(non_zero_spikes, 5))
+            else:
+                cali_logger.warning(
+                    "Not enough data to determine spike noise reference "
+                    "(< 5 non-zero spikes), using fallback value of 0.01."
+                )
+                spike_noise_reference = 0.01  # fallback value if not enough data
+            spike_detection_threshold = spike_noise_reference * spike_threshold_value
+
+        # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
+        noise_level_dec_dff = float(
+            np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745
+        )
+
+        # Check for cancellation after noise level calculation
+        if self._check_for_abort_requested():
+            return None
+
+        # Set prominence threshold (how much peaks must stand out from surroundings)
+        # Use a fraction of noise level to be less restrictive than height threshold
+        prom_multiplier = settings.peaks_prominence_multiplier
+        peaks_prominence_dec_dff: float = noise_level_dec_dff * prom_multiplier
+
+        # use the peaks height widget to get the height threshold
+        # if the mode is GLOBAL_HEIGHT, use the value directly, otherwise
+        # use the value as a multiplier of the noise level
+        peaks_height_value = settings.peaks_height_value
+        peaks_height_mode = settings.peaks_height_mode
+        if peaks_height_mode == GLOBAL_HEIGHT:
+            peaks_height_dec_dff = peaks_height_value
+        else:  # MULTIPLIER
+            peaks_height_dec_dff = noise_level_dec_dff * peaks_height_value
+
+        # Get minimum distance between peaks from user-specified value
+        min_distance_frames = settings.peaks_distance
+
+        # Check for cancellation before peak finding
+        if self._check_for_abort_requested():
+            return None
+
+        # find peaks in the deconvolved trace
+        peaks_dec_dff, _ = find_peaks(
+            dec_dff,
+            prominence=peaks_prominence_dec_dff,
+            height=peaks_height_dec_dff,
+            distance=min_distance_frames,
+        )
+        peaks_dec_dff = cast("np.ndarray", peaks_dec_dff)
+
+        # TODO: find peaks also in spikes traces
+
+        # Check for cancellation after peak finding
+        if self._check_for_abort_requested():
+            return None
+
+        # get the amplitudes of the peaks in the dec_dff trace
+        peaks_amplitudes_dec_dff = [float(dec_dff[p]) for p in peaks_dec_dff]
+
+        # check if the roi is stimulated
+        is_roi_stimulated = roi_stimulation_overlap_ratio > STIMULATION_AREA_THRESHOLD
+
+        # calculate the frequency of the peaks in the dec_dff trace
+        frequency = (
+            len(peaks_dec_dff) / tot_time_sec
+            if tot_time_sec and len(peaks_dec_dff) > 0
+            else None
+        )
+
+        # Check for cancellation before final data processing and storage
+        if self._check_for_abort_requested():
+            return None
+
+        # calculate the inter-event interval (IEI) of the peaks in the dec_dff trace
+        iei = get_iei(peaks_dec_dff, elapsed_time_list)
+
+        # Create Traces object
         traces = Traces(
             raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
             corrected_trace=cast("list[float]", roi_trace.tolist()),
@@ -568,66 +584,28 @@ class ExtractionRunner:
             dec_dff=dec_dff.tolist(),
             inferred_spikes=spikes.tolist(),
             x_axis=elapsed_time_list,
-            x_axis_units=x_unit,
+            x_axis_units=x_unit
         )
 
-        # Optionally perform analysis (peak detection, IEI, frequency)
-        data_analysis = None
-        active = False
+        # Create DataAnalysis object
+        data_analysis = DataAnalysis(
+            cell_size=roi_size,
+            cell_size_units="µm" if px_size is not None else "pixel",
+            total_recording_time_sec=tot_time_sec,
+            dec_dff_frequency=frequency,
+            peaks_dec_dff=peaks_dec_dff.tolist(),
+            peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
+            iei=iei,
+            peaks_prominence_dec_dff=peaks_prominence_dec_dff,
+            peaks_height_dec_dff=peaks_height_dec_dff,
+            inferred_spikes_threshold=spike_detection_threshold,
+        )
+
+        # Return trace data to be added to existing ROI
+        active = len(peaks_dec_dff) > 0
         stimulated = is_roi_stimulated
 
-        if analysis_settings is not None:
-            # Import analysis functions
-            from cali.analysis._trace_analysis import (
-                calculate_frequency,
-                calculate_inter_event_intervals,
-                compute_peak_detection_thresholds,
-                detect_peaks_in_trace,
-            )
-
-            # Compute thresholds
-            (
-                peaks_height_dec_dff,
-                peaks_prominence_dec_dff,
-                spike_detection_threshold,
-            ) = compute_peak_detection_thresholds(dec_dff, spikes, analysis_settings)
-
-            if self._check_for_abort_requested():
-                return None
-
-            # Detect peaks
-            min_distance_frames = analysis_settings.peaks_distance
-            peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
-                dec_dff,
-                peaks_height_dec_dff,
-                peaks_prominence_dec_dff,
-                min_distance_frames,
-            )
-
-            if self._check_for_abort_requested():
-                return None
-
-            # Calculate frequency
-            frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
-
-            # Calculate IEI
-            iei = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
-
-            # Create DataAnalysis object (analysis product)
-            data_analysis = DataAnalysis(
-                total_recording_time_sec=tot_time_sec,
-                dec_dff_frequency=frequency,
-                peaks_dec_dff=peaks_dec_dff.tolist(),
-                peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
-                iei=iei,
-                peaks_prominence_dec_dff=peaks_prominence_dec_dff,
-                peaks_height_dec_dff=peaks_height_dec_dff,
-                inferred_spikes_threshold=spike_detection_threshold,
-            )
-
-            active = len(peaks_dec_dff) > 0
-
-        return (traces, data_analysis, active, stimulated, roi_size, roi_size_units)
+        return (traces, data_analysis, active, stimulated)
 
     def _get_fov_name(self, event_key: str, meta: list[dict], p: int) -> str:
         """Retrieve the fov name from metadata.
@@ -670,13 +648,12 @@ class ExtractionRunner:
                 if rt is not None:
                     elapsed_time_list.append(float(rt))
 
-            # if the elapsed time list is different from the number of
-            # timepoints, set it as list of timepoints every exp_time
+            # if the elapsed time list is different from the number of timepoints, set it
+            # as list of timepoints every exp_time
             if len(elapsed_time_list) != num_timepoints:
                 elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
 
-        # otherwise use exposure time and number of timepoints to create
-        # elapsed time list
+        # otherwise use exposure time and number of timepoints to create elapsed time list
         else:
             elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
         return elapsed_time_list

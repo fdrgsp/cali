@@ -64,8 +64,10 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to experiment
     detection_settings : int | None
         Foreign key to detection settings used
+    extraction_settings : int | None
+        Foreign key to extraction settings used (None for detection-only runs)
     analysis_settings : int | None
-        Foreign key to analysis settings used (None for detection-only runs)
+        Foreign key to analysis settings used (None for extraction-only runs)
     positions_analyzed : list[int] | None
         List of position indices that were analyzed
     traces : list[Traces]
@@ -84,6 +86,9 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
     detection_settings: int | None = Field(
         default=None, foreign_key="detection_settings.id"
     )
+    extraction_settings: int | None = Field(
+        default=None, foreign_key="extraction_settings.id"
+    )
     analysis_settings: int | None = Field(
         default=None, foreign_key="analysis_settings.id"
     )
@@ -99,7 +104,8 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         """Custom equality that excludes created_at for semantic comparison.
 
         Two CaliResults are considered equal if they have the same:
-        - experiment, detection_settings, analysis_settings, positions_analyzed
+        - experiment, detection_settings, extraction_settings,
+          analysis_settings, positions_analyzed
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -109,6 +115,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
         return (
             self.experiment == other.experiment
             and self.detection_settings == other.detection_settings
+            and self.extraction_settings == other.extraction_settings
             and self.analysis_settings == other.analysis_settings
             and self.positions_analyzed == other.positions_analyzed
         )
@@ -122,6 +129,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
             (
                 self.experiment,
                 self.detection_settings,
+                self.extraction_settings,
                 self.analysis_settings,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
             )
@@ -476,7 +484,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         name: str,
         data_path: str,
         plate_maps: dict[str, dict[str, str]] | None = None,
-        experiment_type: str = SPONTANEOUS,
         description: str | None = None,
     ) -> Self:
         """Create a new experiment by loading plate structure from data's useq metadata.
@@ -495,9 +502,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             Plate map configuration mapping well positions to conditions.
             Format: {"genotype": {"A1": "WT", "A2": "KO"},
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
-        experiment_type : str, optional
-            Type of experiment: "Spontaneous Activity" or "Evoked Activity",
-            by default SPONTANEOUS
         description : str | None, optional
             Optional experiment description, by default None
 
@@ -520,7 +524,6 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         ...         "genotype": {"B5": "WT"},
         ...         "treatment": {"B5": "Vehicle"},
         ...     },
-        ...     experiment_type=EVOKED,
         ... )
         >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
         """
@@ -712,6 +715,121 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 engine.dispose(close=True)  # type: ignore[possibly-undefined]
 
 
+class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
+    """Trace extraction parameter settings.
+
+    Stores the trace extraction parameters used for a specific extraction run.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        When these settings were created
+    method : str
+        Extraction method. "cali" by default.
+    neuropil_inner_radius : int
+        Inner radius for neuropil mask (pixels)
+    neuropil_min_pixels : int
+        Minimum pixels required for neuropil mask
+    neuropil_correction_factor : float
+        Neuropil correction factor (0-1)
+    decay_constant : float
+        Decay constant for deconvolution
+    dff_window : int
+        Window size for ΔF/F baseline calculation
+    stimulation_mask_path : str | None
+        Path to stimulation mask file (for GUI/reference)
+    experiment_type : str
+        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
+    threads : int
+        Number of threads to use for analysis (default: 1)
+    experiment_id : int
+        Foreign key to parent experiment
+    """
+
+    __tablename__ = "extraction_settings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    experiment_type: str = Field(default=SPONTANEOUS, index=True)
+
+    neuropil_inner_radius: int = 0
+    neuropil_min_pixels: int = 0
+    neuropil_correction_factor: float = 0.0
+
+    decay_constant: float = 0.0
+    dff_window: int = DEFAULT_DFF_WINDOW
+
+    stimulation_mask_path: str | None = None
+
+    threads: int = Field(default=1)
+
+    # Foreign keys
+    stimulation_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
+
+    # Relationships
+
+    stimulation_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[ExtractionSettings.stimulation_mask_id]",
+            "lazy": "selectin",
+        }
+    )
+
+    def __eq__(self, other: object) -> bool:
+        """Custom equality that excludes id and created_at for semantic comparison.
+
+        Two ExtractionSettings are considered equal if they have the same extraction
+        parameters, regardless of when they were created or their database IDs.
+        """
+        if not isinstance(other, ExtractionSettings):
+            return False
+        return (
+            self.experiment_type == other.experiment_type
+            and self.neuropil_inner_radius == other.neuropil_inner_radius
+            and self.neuropil_min_pixels == other.neuropil_min_pixels
+            and self.neuropil_correction_factor == other.neuropil_correction_factor
+            and self.decay_constant == other.decay_constant
+            and self.dff_window == other.dff_window
+            and self.stimulation_mask_path == other.stimulation_mask_path
+            # and self.threads == other.threads
+        )
+
+    def __hash__(self) -> int:
+        """Custom hash that excludes id and created_at for consistency with __eq__."""
+        return hash(
+            (
+                self.experiment_type,
+                self.neuropil_inner_radius,
+                self.neuropil_min_pixels,
+                self.neuropil_correction_factor,
+                self.decay_constant,
+                self.dff_window,
+                self.stimulation_mask_path,
+                # self.threads,
+            )
+        )
+
+    def stimulated_mask_area(self) -> np.ndarray | None:
+        from cali.util import coordinates_to_mask
+
+        if (
+            (stim_mask := self.stimulation_mask)
+            and stim_mask.coords_y is not None
+            and stim_mask.coords_x is not None
+            and stim_mask.height is not None
+            and stim_mask.width is not None
+        ):
+            return coordinates_to_mask(
+                (stim_mask.coords_y, stim_mask.coords_x),
+                (stim_mask.height, stim_mask.width),
+            )
+        return None
+
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
 
@@ -723,16 +841,6 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Primary key, auto-generated
     created_at : datetime
         When these settings were created
-    neuropil_inner_radius : int
-        Inner radius for neuropil mask (pixels)
-    neuropil_min_pixels : int
-        Minimum pixels required for neuropil mask
-    neuropil_correction_factor : float
-        Neuropil correction factor (0-1)
-    decay_constant : float
-        Decay constant for deconvolution
-    dff_window : int
-        Window size for ΔF/F baseline calculation
     peaks_height_value : float
         Peak height threshold value
     peaks_height_mode : str
@@ -767,16 +875,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     led_pulse_on_frames : list[int] | None
         List of LED pulse on frames (evoked experiments). Should have the same length
         as `led_pulse_powers`.
-    stimulation_mask_path : str | None
-        Path to stimulation mask file (for GUI/reference)
-    experiment_type : str
-        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     threads : int
         Number of threads to use for analysis (default: 1)
-    stimulation_mask_id : int | None
-        Foreign key to stimulation mask data
-    stimulation_mask : Mask | None
-        Stimulation mask data (spatial pattern of stimulation)
     experiment_id : int
         Foreign key to parent experiment
     """
@@ -785,15 +885,6 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
-
-    experiment_type: str = Field(default=SPONTANEOUS, index=True)
-
-    neuropil_inner_radius: int = 0
-    neuropil_min_pixels: int = 0
-    neuropil_correction_factor: float = 0.0
-
-    decay_constant: float = 0.0
-    dff_window: int = DEFAULT_DFF_WINDOW
 
     peaks_height_value: float = DEFAULT_HEIGHT
     peaks_height_mode: str = MULTIPLIER
@@ -813,39 +904,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     led_pulse_duration: float | None = None
     led_pulse_powers: list[float] | None = Field(default=None, sa_column=Column(JSON))
     led_pulse_on_frames: list[int] | None = Field(default=None, sa_column=Column(JSON))
-    stimulation_mask_path: str | None = None
 
     threads: int = Field(default=1)
-
-    # Foreign keys
-    stimulation_mask_id: int | None = Field(
-        default=None, foreign_key="mask.id", index=True
-    )
-
-    # Relationships
-
-    stimulation_mask: Optional["Mask"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
-            "lazy": "selectin",
-        }
-    )
-
-    def stimulated_mask_area(self) -> np.ndarray | None:
-        from cali.util import coordinates_to_mask
-
-        if (
-            (stim_mask := self.stimulation_mask)
-            and stim_mask.coords_y is not None
-            and stim_mask.coords_x is not None
-            and stim_mask.height is not None
-            and stim_mask.width is not None
-        ):
-            return coordinates_to_mask(
-                (stim_mask.coords_y, stim_mask.coords_x),
-                (stim_mask.height, stim_mask.width),
-            )
-        return None
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
@@ -856,13 +916,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         if not isinstance(other, AnalysisSettings):
             return False
         return (
-            self.experiment_type == other.experiment_type
-            and self.neuropil_inner_radius == other.neuropil_inner_radius
-            and self.neuropil_min_pixels == other.neuropil_min_pixels
-            and self.neuropil_correction_factor == other.neuropil_correction_factor
-            and self.decay_constant == other.decay_constant
-            and self.dff_window == other.dff_window
-            and self.peaks_height_value == other.peaks_height_value
+            self.peaks_height_value == other.peaks_height_value
             and self.peaks_height_mode == other.peaks_height_mode
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
@@ -878,20 +932,13 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
             and self.led_pulse_duration == other.led_pulse_duration
             and self.led_pulse_powers == other.led_pulse_powers
             and self.led_pulse_on_frames == other.led_pulse_on_frames
-            and self.stimulation_mask_path == other.stimulation_mask_path
-            and self.threads == other.threads
-            and self.stimulation_mask_id == other.stimulation_mask_id
+            # and self.threads == other.threads
         )
 
     def __hash__(self) -> int:
         """Custom hash that excludes id and created_at for consistency with __eq__."""
         return hash(
             (
-                self.neuropil_inner_radius,
-                self.neuropil_min_pixels,
-                self.neuropil_correction_factor,
-                self.decay_constant,
-                self.dff_window,
                 self.peaks_height_value,
                 self.peaks_height_mode,
                 self.peaks_distance,
@@ -908,9 +955,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 self.led_pulse_duration,
                 tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
                 tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
-                self.stimulation_mask_path,
-                self.threads,
-                self.stimulation_mask_id,
+                # self.threads,
             )
         )
 
@@ -1194,6 +1239,10 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to detection settings that created this ROI
     label_value : int
         ROI label number from segmentation (e.g., 1, 2, 3...)
+    cell_size : float | None
+        ROI area (µm² or pixels), computed once during detection
+    cell_size_units : str | None
+        Units for cell_size ("µm" or "pixel")
     active : bool | None
         Whether ROI shows calcium activity (from latest analysis)
     stimulated : bool | None
@@ -1214,6 +1263,9 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: int | None = Field(default=None, primary_key=True)
     label_value: int = Field(index=True)
+
+    cell_size: float | None = None
+    cell_size_units: str | None = None
 
     active: bool | None = None
     stimulated: bool | None = None
@@ -1269,8 +1321,12 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         ΔF/F normalized trace
     dec_dff : list[float] | None
         Deconvolved ΔF/F trace
+    inferred_spikes : list[float] | None
+        Inferred spike trace (time-series of spike probabilities)
     x_axis : list[float] | None
         Frame numbers or frame timestamps (milliseconds)
+    x_axis_units : str | None
+        Units for x_axis ("frames" or "ms")
     roi : ROI
         Parent ROI
     analysis_result : CaliResult
@@ -1289,7 +1345,9 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     neuropil_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
     dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    x_axis_units: str | None = Field(default=None)  # "frames" or "ms"
 
     # Foreign keys - roi_id is no longer unique to allow multiple versions
     roi_id: int | None = Field(
@@ -1330,10 +1388,6 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to parent ROI
     analysis_result_id : int | None
         Foreign key to the analysis run that created this result
-    cell_size : float | None
-        ROI area (µm² or pixels)
-    cell_size_units : str | None
-        Units for cell_size
     total_recording_time_sec : float | None
         Total recording duration (seconds)
     dec_dff_frequency : float | None
@@ -1344,8 +1398,6 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Peak amplitudes
     iei : list[float] | None
         Inter-event intervals (seconds)
-    inferred_spikes : list[float] | None
-        Inferred spike probabilities
     peaks_prominence_dec_dff : float | None
         Peak prominence threshold used for this ROI (calculated)
     peaks_height_dec_dff : float | None
@@ -1371,8 +1423,6 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
     )
 
-    cell_size: float | None = None
-    cell_size_units: str | None = None
     total_recording_time_sec: float | None = None
     dec_dff_frequency: float | None = None
     peaks_dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
@@ -1382,7 +1432,6 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
-    inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes_threshold: float | None = None
 
     # Relationships

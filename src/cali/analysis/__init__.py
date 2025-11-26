@@ -1,5 +1,13 @@
-"""Initialization code for the cali.analysis package."""
+"""Analysis module for computing metrics from extracted calcium imaging traces.
 
-from ._extraction_runner import ExtractionRunner
+This module provides tools for analyzing extracted trace data:
+- AnalysisRunner: Main class for running analysis on FOVs with existing Traces
+- Peak detection in deconvolved traces
+- Inter-event interval (IEI) calculation
+- Event frequency computation
+- Amplitude extraction
+"""
 
-__all__ = ["ExtractionRunner"]
+from ._analysis_runner import AnalysisRunner
+
+__all__ = ["AnalysisRunner"]

@@ -18,6 +18,7 @@ from ._model import (
     CaliResult,
     DetectionSettings,
     Experiment,
+    ExtractionSettings,
     Plate,
     Well,
 )
@@ -153,6 +154,18 @@ def print_cali_results(
                         result_tree, detection_settings, show_details=show_settings
                     )
 
+            # Extraction settings (if available)
+            if result.extraction_settings:
+                extraction_settings = session.exec(
+                    select(ExtractionSettings).where(
+                        ExtractionSettings.id == result.extraction_settings
+                    )
+                ).first()
+                if extraction_settings:
+                    _add_extraction_settings_to_tree(
+                        result_tree, extraction_settings, show_details=show_settings
+                    )
+
             # Analysis settings
             settings = session.exec(
                 select(AnalysisSettings).where(
@@ -193,7 +206,7 @@ def _add_detection_settings_to_tree(
         Whether to show detailed parameter values (default: True)
     """
     settings_node = parent_node.add(
-        f"⚙️ [bold green]Detection Settings (ID: {settings.id})[/bold green]"
+        f"🔍 [bold green]Detection Settings (ID: {settings.id})[/bold green]"
     )
     settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
     settings_node.add(f"🔬 Method: [cyan]{settings.method}[/cyan]")
@@ -211,6 +224,55 @@ def _add_detection_settings_to_tree(
         cellpose_node.add(f"Batch size: {settings.batch_size}")
 
 
+def _add_extraction_settings_to_tree(
+    parent_node: Tree, settings: ExtractionSettings, show_details: bool = True
+) -> None:
+    """Add extraction settings information to a tree node.
+
+    Parameters
+    ----------
+    parent_node : Tree
+        Parent node to add settings information to
+    settings : ExtractionSettings
+        Settings object to display
+    show_details : bool
+        Whether to show detailed parameter values (default: True)
+    """
+    settings_node = parent_node.add(
+        f"📈 [bold blue]Extraction Settings (ID: {settings.id})[/bold blue]"
+    )
+    settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
+
+    # Show experiment type
+    exp_type_emoji = "⚡" if settings.experiment_type == "Evoked Activity" else "✨"
+    exp_type_color = (
+        "green" if settings.experiment_type == "Evoked Activity" else "magenta"
+    )
+    settings_node.add(
+        f"{exp_type_emoji} Experiment type: [{exp_type_color}]"
+        f"{settings.experiment_type}[/{exp_type_color}]"
+    )
+
+    if show_details:
+        # Neuropil correction
+        neuropil_node = settings_node.add("🔵 [blue]Neuropil Correction[/blue]")
+        neuropil_node.add(f"Inner radius: {settings.neuropil_inner_radius} px")
+        neuropil_node.add(f"Min pixels: {settings.neuropil_min_pixels}")
+        neuropil_node.add(f"Correction factor: {settings.neuropil_correction_factor}")
+
+        # Signal processing
+        processing_node = settings_node.add("📈 [blue]Signal Processing[/blue]")
+        processing_node.add(f"ΔF/F window: {settings.dff_window}")
+        processing_node.add(f"Decay constant: {settings.decay_constant}")
+
+        # Stimulation mask (if present)
+        if settings.stimulation_mask_id is not None:
+            stim_node = settings_node.add("⚡ [blue]Stimulation[/blue]")
+            stim_node.add("🎭 Stimulation mask: True")
+            if settings.stimulation_mask_path:
+                stim_node.add(f"Mask path: {settings.stimulation_mask_path}")
+
+
 def _add_analysis_settings_to_tree(
     parent_node: Tree, settings: AnalysisSettings, show_details: bool = True
 ) -> None:
@@ -226,33 +288,11 @@ def _add_analysis_settings_to_tree(
         Whether to show detailed parameter values (default: True)
     """
     settings_node = parent_node.add(
-        f"⚙️ [bold yellow]Analysis Settings (ID: {settings.id})[/bold yellow]"
+        f"📊 [bold yellow]Analysis Settings (ID: {settings.id})[/bold yellow]"
     )
     settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
 
-    # Show experiment type
-    exp_type_emoji = "⚡" if settings.experiment_type == "evoked" else "✨"
-    exp_type_color = "green" if settings.experiment_type == "evoked" else "magenta"
-    settings_node.add(
-        f"{exp_type_emoji} Experiment type: [{exp_type_color}]"
-        f"{settings.experiment_type}[/{exp_type_color}]"
-    )
-
     if show_details:
-        # Threads
-        settings_node.add(f"🧵 Threads: {settings.threads}")
-
-        # Neuropil correction
-        neuropil_node = settings_node.add("🔵 [green]Neuropil Correction[/green]")
-        neuropil_node.add(f"Inner radius: {settings.neuropil_inner_radius} px")
-        neuropil_node.add(f"Min pixels: {settings.neuropil_min_pixels}")
-        neuropil_node.add(f"Correction factor: {settings.neuropil_correction_factor}")
-
-        # Signal processing
-        processing_node = settings_node.add("📈 [green]Signal Processing[/green]")
-        processing_node.add(f"ΔF/F window: {settings.dff_window}")
-        processing_node.add(f"Decay constant: {settings.decay_constant}")
-
         # Peak detection
         peaks_node = settings_node.add("🔍 [green]Peak Detection[/green]")
         peaks_node.add(

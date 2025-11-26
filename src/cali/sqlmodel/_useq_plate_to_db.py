@@ -255,7 +255,7 @@ def useq_plate_plan_to_db(
                 wells_data[well_name].append((0, pos.x or 0.0, pos.y or 0.0))
 
     # Create Wells and FOVs
-    for well_name, fov_data in sorted(wells_data.items()):
+    for well_name, _ in wells_data.items():
         # Parse well name to get row and column
         # Well names like "B5" -> row=1 (B), col=4 (5-1)
         row_label = "".join(c for c in well_name if c.isalpha())
@@ -287,6 +287,15 @@ def useq_plate_plan_to_db(
             conditions=well_conditions,
         )
 
+    # Create FOVs for all wells with sequential position indices
+    global_position_index = 0
+    for well_name in sorted(wells_data.keys()):
+        # Get the well object we created
+        well = next((w for w in plate.wells if w.name == well_name), None)
+        if well is None:
+            continue
+
+        fov_data = wells_data[well_name]
         # Create FOVs for this well
         # Sort by fov_index to ensure consistent ordering
         for fov_index, _, _ in sorted(fov_data):
@@ -294,8 +303,9 @@ def useq_plate_plan_to_db(
                 well_id=0,  # placeholder, will be set by relationship
                 well=well,
                 name=f"{well_name}_{fov_index:04d}",
-                position_index=fov_index,
+                position_index=global_position_index,
                 fov_number=fov_index,
             )
+            global_position_index += 1
 
     return plate
