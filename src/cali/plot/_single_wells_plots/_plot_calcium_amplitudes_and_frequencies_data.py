@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, Any, cast
 import mplcursors
 import numpy as np
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
-from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -54,7 +54,7 @@ def _get_data_analysis_for_run(
 
 def _plot_amplitude_and_frequency_data(
     widget: _SingleWellGraphWidget,
-    db_path: str | Path,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -67,8 +67,8 @@ def _plot_amplitude_and_frequency_data(
     ----------
     widget : _SingleWellGraphWidget
         Graph widget to plot on
-    db_path : str | Path
-        Path to the SQLite database
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
@@ -85,46 +85,59 @@ def _plot_amplitude_and_frequency_data(
     ax = widget.figure.add_subplot(111)
 
     # Query database for ROI data
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
-
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
-        detection_settings_id: int | None = None
+        roi_data = []  # List of (ROI, DataAnalysis)
+
         if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
-
-        # Build query to get ROIs for this FOV with eager loading of related data
-        stmt = (
-            select(ROI)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .options(
-                selectinload(ROI.data_analysis_history),  # type: ignore
+            # Optimized query
+            stmt = (
+                select(ROI, DataAnalysis)
+                .join(FOV, ROI.fov_id == FOV.id)
+                .join(
+                    DataAnalysis,
+                    (DataAnalysis.roi_id == ROI.id)
+                    & (DataAnalysis.analysis_result_id == run_id),
+                )
+                .where(col(FOV.name) == fov_name)
             )
-        )
 
-        # Filter by specific ROIs if requested
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
+            # Filter by specific ROIs if requested
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Filter by detection settings if we have a run_id
-        if detection_settings_id is not None:
-            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+            # Order by label_value for consistent plotting
+            stmt = stmt.order_by(col(ROI.label_value))
 
-        # Order by label_value for consistent plotting
-        stmt = stmt.order_by(col(ROI.label_value))
+            results = session.exec(stmt).all()
+            roi_data = results
+        else:
+            # Legacy behavior
+            # Build query to get ROIs for this FOV with eager loading of related data
+            stmt = (
+                select(ROI)
+                .join(FOV)
+                .where(col(FOV.name) == fov_name)
+                .options(
+                    selectinload(ROI.data_analysis_history),  # type: ignore
+                )
+            )
 
-        roi_models = session.exec(stmt).all()
+            # Filter by specific ROIs if requested
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-    engine.dispose(close=True)
+            # Order by label_value for consistent plotting
+            stmt = stmt.order_by(col(ROI.label_value))
+
+            roi_models = session.exec(stmt).all()
+
+            for r in roi_models:
+                da = _get_data_analysis_for_run(r, None)
+                if da:
+                    roi_data.append((r, da))
 
     # Plot the data
-    for roi in roi_models:
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-        if data_analysis is None:
-            continue
+    for roi, data_analysis in roi_data:
         _plot_metrics(ax, roi, data_analysis, amp, freq)
 
     _set_graph_title_and_labels(ax, amp, freq)

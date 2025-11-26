@@ -763,7 +763,7 @@ class CaliGui(QMainWindow):
 
             # Initialize progress bar and timer
             self._run_cali_wdg.reset_progress_bar()
-            self._run_cali_wdg.set_progress_bar_text("Initializing...")
+            self._run_cali_wdg.set_progress_bar_text("🏁 Initializing...")
             self._elapsed_timer.start()
 
             # Save plate map data to database before running
@@ -925,11 +925,18 @@ class CaliGui(QMainWindow):
         self._runs_panel.clear()
 
     def _update_graph_with_database_path(self, database_path: Path | str) -> None:
-        """Update all graph widgets with the current database path."""
+        """Update all graph widgets with the current database path and engine."""
+        from sqlmodel import create_engine
+
+        # Create SQLAlchemy engine for database queries
+        engine = create_engine(f"sqlite:///{database_path}", echo=False)
+
         for sw_graph in self.SW_GRAPHS:
             sw_graph.database_path = database_path
+            sw_graph.engine = engine
         for mw_graph in self.MW_GRAPHS:
             mw_graph.database_path = database_path
+            mw_graph.engine = engine
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
@@ -1154,7 +1161,7 @@ class CaliGui(QMainWindow):
                         )
                     )
                     cali_logger.info(
-                        f"Loaded stimulation metadata from datastore: "
+                        f"🗒️ Loaded stimulation metadata from datastore: "
                         f"led_pulse_duration={led_duration} "
                         f"led_powers={wdg._led_powers_le.text()}, "
                         f"led_pulse_on_frames={wdg._led_pulse_on_frames_le.text()}"
@@ -1176,7 +1183,7 @@ class CaliGui(QMainWindow):
         self._loading_bar.setEnabled(True)
         self._loading_bar.setText(text)
         self._loading_bar.setValue(0)
-        self._loading_bar.showPercentage(True)
+        self._loading_bar.showPercentage(show_progress_bar)
         self._loading_bar.show_progress_bar(show_progress_bar)
         self._loading_bar.show()
 
@@ -1259,7 +1266,9 @@ class CaliGui(QMainWindow):
 
         if value is None:
             self._image_viewer.setData(None, None)
-            self._update_single_wells_graphs_combo(combo_red=True, clear=True)
+            self._update_single_wells_graphs_combo(
+                combo_red=True, clear=True, set_title=""
+            )
             return
 
         if self._data is None:

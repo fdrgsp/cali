@@ -5,12 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
 
 def _plot_neuropil_masks(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -21,8 +23,8 @@ def _plot_neuropil_masks(
     ----------
     widget : _SingleWellGraphWidget
         The widget containing the matplotlib figure and canvas
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None

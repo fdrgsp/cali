@@ -15,6 +15,7 @@ from cali.plot._util import (
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -59,7 +60,7 @@ def _get_data_analysis_for_run(
 
 def _plot_peak_event_synchrony_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -70,8 +71,8 @@ def _plot_peak_event_synchrony_data(
     ----------
     widget: _SingleWellGraphWidget
         widget to plot on
-    db_path: str
-        Path to the database file
+    engine: Engine
+        Database engine
     fov_name: str
         Name of the FOV
     rois: list[int] | None
@@ -82,7 +83,7 @@ def _plot_peak_event_synchrony_data(
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    peak_trains = _get_calcium_peaks_events_from_rois(db_path, fov_name, rois, run_id)
+    peak_trains = _get_calcium_peaks_events_from_rois(engine, fov_name, rois, run_id)
     if peak_trains is None or len(peak_trains) < 2:
         cali_logger.warning(
             "Insufficient peak data for synchrony analysis. "
@@ -90,7 +91,7 @@ def _plot_peak_event_synchrony_data(
         )
         return
 
-    jit = _get_jit(db_path, fov_name, rois, run_id)
+    jit = _get_jit(engine, fov_name, rois, run_id)
     if jit is None:
         cali_logger.warning(
             "No valid jitter window value found for synchrony analysis."
@@ -191,14 +192,13 @@ def _plot_peak_event_synchrony_data(
 
 
 def _get_jit(
-    db_path: str, fov_name: str, rois: list[int] | None, run_id: int | None = None
+    engine: Engine, fov_name: str, rois: list[int] | None, run_id: int | None = None
 ) -> int | None:
     """Get the jitter window value for synchrony from database."""
-    from sqlmodel import Session, create_engine, select
+    from sqlmodel import Session, select
 
     from cali.sqlmodel._model import AnalysisSettings
 
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         # Get the AnalysisSettings from the run
         if run_id is not None:
@@ -211,9 +211,7 @@ def _get_jit(
         # Fallback: get settings from the first available run
         stmt = (
             select(CaliResult)
-            .where(
-                CaliResult.analysis_settings.is_not(None)  # type: ignore
-            )
+            .where(CaliResult.analysis_settings.is_not(None))  # type: ignore
             .limit(1)
         )
         result = session.exec(stmt).first()

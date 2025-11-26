@@ -24,7 +24,7 @@ from superqt.utils import signals_blocked
 
 from cali._constants import RED
 from cali.logger import cali_logger
-from cali.sqlmodel._model import CaliResult, DetectionSettings
+from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -133,40 +133,47 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            # Load all analysis results ordered by creation time (most recent first)
-            results = CaliResult.load_from_database(self._database_path)
+            from sqlalchemy import desc
+            from sqlmodel import Session, create_engine, select
 
-            if not isinstance(results, list):
-                results = [results]
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                # Join CaliResult with DetectionSettings to avoid N+1 queries
+                # Order by created_at descending (most recent first)
+                stmt = (
+                    select(CaliResult, DetectionSettings)
+                    .where(CaliResult.detection_settings == DetectionSettings.id)
+                    .order_by(desc(CaliResult.created_at))  # type: ignore
+                )
+                results = session.exec(stmt).all()
 
-            for result in sorted(results, key=lambda r: r.created_at):
-                self._add_run_item(result)
+                for result, detection_settings in results:
+                    self._add_run_item(result, detection_settings)
+
+            engine.dispose(close=True)
 
         except Exception as e:
             cali_logger.error(f"Error loading runs: {e}")
 
-    def _add_run_item(self, result: CaliResult) -> None:
+    def _add_run_item(
+        self, result: CaliResult, detection_settings: DetectionSettings
+    ) -> None:
         """Add a run item to the list.
 
         Parameters
         ----------
         result : AnalysisResult
             The analysis result to add
+        detection_settings : DetectionSettings
+            The detection settings associated with the result
         """
-        if self._database_path is None:
-            return
-
         # Format the display text
         created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Get detection settings id and method
         d_id = result.detection_settings
-        d_settings = DetectionSettings.load_from_database(self._database_path, id=d_id)
-        assert isinstance(d_settings, DetectionSettings)  # cannot be a list here
-
         item_text = (
             f"Run #{result.id} - {created_at}\n"
-            f"  ✅ Detection ID: {d_id} ({d_settings.method})\n"
+            f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
         )
         analysis_icon = "❌" if result.analysis_settings is None else "✅"
         item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings}"
@@ -279,28 +286,47 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session, create_engine, delete, select
+
+            from cali.sqlmodel._model import ROI
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Collect all detection and analysis settings before deleting
-                results = session.exec(select(CaliResult)).all()
-                detection_ids = {
-                    r.detection_settings for r in results if r.detection_settings
-                }
-                analysis_ids = {
-                    r.analysis_settings for r in results if r.analysis_settings
-                }
+                # We only need the IDs
+                stmt = select(
+                    CaliResult.detection_settings, CaliResult.analysis_settings
+                )
+                rows = session.exec(stmt).all()
+
+                det_ids = {r[0] for r in rows if r[0] is not None}
+                ana_ids = {r[1] for r in rows if r[1] is not None}
 
                 # Delete all analysis results (cascades to Traces)
-                for result in results:
-                    session.delete(result)
-                session.commit()
+                session.exec(delete(CaliResult))
 
-                # Clean up all orphaned settings and ROIs
-                for detection_id in detection_ids:
-                    for analysis_id in analysis_ids:
-                        self._cleanup_orphaned_data(session, detection_id, analysis_id)
+                # Clean up orphaned settings and ROIs
+                if det_ids:
+                    # Delete ROIs associated with these detection settings
+                    session.exec(
+                        delete(ROI).where(ROI.detection_settings_id.in_(det_ids))  # type: ignore
+                    )
+                    # Delete DetectionSettings
+                    session.exec(
+                        delete(DetectionSettings).where(
+                            DetectionSettings.id.in_(det_ids)  # type: ignore
+                        )
+                    )
+
+                if ana_ids:
+                    # Delete AnalysisSettings
+                    session.exec(
+                        delete(AnalysisSettings).where(
+                            AnalysisSettings.id.in_(ana_ids)  # type: ignore
+                        )
+                    )
+
+                session.commit()
 
             engine.dispose(close=True)
 
@@ -463,13 +489,14 @@ class _RunsPanel(QGroupBox):
             return []
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session, create_engine, select
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Get all unique detection settings IDs
-                results = session.exec(select(CaliResult)).all()
-                ids = {r.detection_settings for r in results if r.detection_settings}
+                stmt = select(CaliResult.detection_settings).distinct()
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
             engine.dispose(close=True)
             return sorted(ids)
         except Exception as e:
@@ -488,13 +515,14 @@ class _RunsPanel(QGroupBox):
             return []
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session, create_engine, select
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Get all unique analysis settings IDs
-                results = session.exec(select(CaliResult)).all()
-                ids = {r.analysis_settings for r in results if r.analysis_settings}
+                stmt = select(CaliResult.analysis_settings).distinct()
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
             engine.dispose(close=True)
             return sorted(ids)
         except Exception as e:
@@ -519,7 +547,8 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlalchemy import desc
+            from sqlmodel import Session, create_engine, select
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
@@ -530,11 +559,10 @@ class _RunsPanel(QGroupBox):
                 if analysis_id is not None:
                     query = query.where(CaliResult.analysis_settings == analysis_id)
 
-                results = session.exec(query).all()
-                # If we have multiple matches, take the most recent
-                matching_run = (
-                    max(results, key=lambda r: r.created_at) if results else None
-                )
+                # Order by created_at desc and take first
+                query = query.order_by(desc(CaliResult.created_at))  # type: ignore
+                matching_run = session.exec(query).first()
+
             engine.dispose(close=True)
 
             # Find and select the matching item in the list

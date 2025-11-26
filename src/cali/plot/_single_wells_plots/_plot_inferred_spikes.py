@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 import mplcursors
 import numpy as np
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
-from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -54,7 +54,7 @@ def _get_data_analysis_for_run(
 
 def _plot_inferred_spikes(
     widget: _SingleWellGraphWidget,
-    db_path: str | Path,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -70,8 +70,8 @@ def _plot_inferred_spikes(
     ----------
     widget : _SingleWellGraphWidget
         Graph widget to plot on
-    db_path : str | Path
-        Path to the SQLite database
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
@@ -98,52 +98,69 @@ def _plot_inferred_spikes(
     thresholds = thresholds if rois and len(rois) == 1 else False
 
     # Query database for ROI data
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
-
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
-        detection_settings_id: int | None = None
+        roi_data = []  # List of (ROI, Traces, DataAnalysis)
+
         if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
-
-        # Build query to get ROIs for this FOV with eager loading of related data
-        stmt = (
-            select(ROI)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .options(
-                selectinload(ROI.traces_history),
-                selectinload(ROI.data_analysis_history),
+            # Optimized query
+            stmt = (
+                select(ROI, Traces, DataAnalysis)
+                .join(FOV, ROI.fov_id == FOV.id)
+                .join(
+                    Traces,
+                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+                )
+                .join(
+                    DataAnalysis,
+                    (DataAnalysis.roi_id == ROI.id)
+                    & (DataAnalysis.analysis_result_id == run_id),
+                )
+                .where(col(FOV.name) == fov_name)
             )
-        )
 
-        # Filter by detection settings if we have a run_id
-        if detection_settings_id is not None:
-            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Filter by specific ROIs if requested
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
+            if active_only:
+                stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
 
-        # Filter by active if requested
-        if active_only:
-            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+            stmt = stmt.order_by(col(ROI.label_value))
 
-        # Order by label_value for consistent plotting
-        stmt = stmt.order_by(col(ROI.label_value))
+            results = session.exec(stmt).all()
+            roi_data = results
+        else:
+            # Legacy behavior
+            stmt = (
+                select(ROI)
+                .join(FOV)
+                .where(col(FOV.name) == fov_name)
+                .options(
+                    selectinload(ROI.traces_history),
+                    selectinload(ROI.data_analysis_history),
+                )
+            )
 
-        roi_models = session.exec(stmt).all()
+            if rois is not None:
+                stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-    engine.dispose(close=True)
+            if active_only:
+                stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+
+            stmt = stmt.order_by(col(ROI.label_value))
+
+            roi_models = session.exec(stmt).all()
+
+            for r in roi_models:
+                t = _get_traces_for_run(r, None)
+                da = _get_data_analysis_for_run(r, None)
+                if t and da:
+                    roi_data.append((r, t, da))
 
     # compute percentiles for normalization if needed
     p1 = p2 = 0.0
     if normalize:
         all_values = []
-        for roi in roi_models:
-            data_analysis = _get_data_analysis_for_run(roi, run_id)
+        for _, _, data_analysis in roi_data:
             if data_analysis and data_analysis.inferred_spikes:
                 # Use inferred_spikes as the spike data
                 spike_data = data_analysis.inferred_spikes
@@ -166,8 +183,7 @@ def _plot_inferred_spikes(
     rois_rec_time: list[float] = []
     last_trace: list[float] | None = None
 
-    for roi in roi_models:
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
+    for roi, traces, data_analysis in roi_data:
         if data_analysis is None or not data_analysis.inferred_spikes:
             continue
 
@@ -194,7 +210,6 @@ def _plot_inferred_spikes(
             thresholds,
             data_analysis.inferred_spikes_threshold,
         )
-        traces = _get_traces_for_run(roi, run_id)
         if dec_dff and traces and traces.dec_dff:
             _plot_trace(
                 ax, str(roi.label_value), traces.dec_dff, normalize, count, p1, p2
@@ -313,7 +328,7 @@ def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
 
 def _plot_inferred_spikes_normalized_with_bursts(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -327,8 +342,8 @@ def _plot_inferred_spikes_normalized_with_bursts(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -342,9 +357,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
 
     # For now, delegate to the basic normalized spikes plot
     # TODO: Add burst detection overlay
-    _plot_inferred_spikes(
-        widget, db_path, fov_name, rois, run_id=run_id, normalize=True
-    )
+    _plot_inferred_spikes(widget, engine, fov_name, rois, run_id=run_id, normalize=True)
 
     # Add note that burst overlay is not yet implemented
     ax.text(

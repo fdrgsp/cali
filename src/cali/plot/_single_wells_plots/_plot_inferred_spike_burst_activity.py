@@ -9,6 +9,7 @@ from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -52,7 +53,7 @@ def _get_data_analysis_for_run(
 
 def _plot_inferred_spike_burst_activity(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -66,8 +67,8 @@ def _plot_inferred_spike_burst_activity(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -77,7 +78,7 @@ def _plot_inferred_spike_burst_activity(
     """
     widget.figure.clear()
 
-    burst_params = _get_burst_parameters(db_path, fov_name, rois, run_id)
+    burst_params = _get_burst_parameters(engine, fov_name, rois, run_id)
     if burst_params is None:
         cali_logger.warning("Burst parameters not found in ROI data.")
         return
@@ -85,7 +86,7 @@ def _plot_inferred_spike_burst_activity(
 
     # Get spike trains and calculate population activity
     spike_trains, _, time_axis = _get_population_spike_data(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if spike_trains is None or len(spike_trains) < 2:
@@ -127,17 +128,16 @@ def _plot_inferred_spike_burst_activity(
 
 
 def _get_burst_parameters(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[float, int, float] | None:
     """Get burst detection parameters from AnalysisSettings."""
-    from sqlmodel import Session, create_engine, select
+    from sqlmodel import Session, select
 
     from cali.sqlmodel._model import AnalysisSettings
 
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         # Get the AnalysisSettings from the run
         if run_id is not None:
@@ -154,9 +154,7 @@ def _get_burst_parameters(
         # Fallback: get settings from the first available run
         stmt = (
             select(CaliResult)
-            .where(
-                CaliResult.analysis_settings.is_not(None)  # type: ignore
-            )
+            .where(CaliResult.analysis_settings.is_not(None))  # type: ignore
             .limit(1)
         )
         result = session.exec(stmt).first()
@@ -174,7 +172,7 @@ def _get_burst_parameters(
 
 
 def _get_population_spike_data(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -183,8 +181,8 @@ def _get_population_spike_data(
 
     Parameters
     ----------
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -198,11 +196,10 @@ def _get_population_spike_data(
         Tuple of (spike_trains_array, roi_names, time_axis)
     """
     from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV
 
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None

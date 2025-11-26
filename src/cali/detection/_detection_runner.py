@@ -58,7 +58,7 @@ class DetectionRunner:
     def cancel(self) -> None:
         """Request cancellation of the detection process."""
         self._cancellation_event.set()
-        cali_logger.info("Cancellation requested...")
+        cali_logger.info("🚮 Cancellation requested...")
 
     def run(
         self,
@@ -89,6 +89,9 @@ class DetectionRunner:
         FOV
             FOV objects with ROIs and masks, ready to be saved to database
         """
+        # Reset cancellation event
+        self._cancellation_event.clear()
+
         # Load data
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
@@ -182,7 +185,7 @@ class DetectionRunner:
             io.logger_setup()
 
         use_gpu = core.use_gpu()
-        cali_logger.info(f"Use GPU: {use_gpu}")
+        cali_logger.info(f"🖥️ Use GPU: {use_gpu}")
 
         # Use custom_model path if model_type is "custom", otherwise use model_type
         model_path = (
@@ -190,7 +193,7 @@ class DetectionRunner:
             if detection_settings.model_type == "custom"
             else detection_settings.model_type
         )
-        cali_logger.info(f"Loading model from `{model_path}`.")
+        cali_logger.info(f"💿 Loading model from `{model_path}`.")
         model = CellposeModel(pretrained_model=str(model_path), gpu=use_gpu)  # type: ignore
 
         # Run detection and yield FOV results
@@ -240,12 +243,12 @@ class DetectionRunner:
         n_batches = (n_positions + batch_size - 1) // batch_size
 
         cali_logger.info(
-            f"Processing {n_positions} positions in {n_batches} batches of {batch_size}"
+            f"🧮 Processing {n_positions} positions in {n_batches} batches of {batch_size}"
         )
 
         for batch_idx in tqdm(range(n_batches), desc="Running Cellpose"):
             if self._check_for_abort_requested():
-                cali_logger.info("Detection cancelled")
+                cali_logger.info("🗑️ Detection cancelled")
                 return
 
             # Load one batch of images
@@ -296,7 +299,7 @@ class DetectionRunner:
                 batch_pos_indices, batch_metadata, batch_masks
             ):
                 if self._check_for_abort_requested():
-                    cali_logger.info("Detection cancelled during FOV creation")
+                    cali_logger.info("🗑️ Detection cancelled during FOV creation")
                     return
 
                 fov_result = self._create_fov_with_rois(pos_idx, meta, masks_2d)

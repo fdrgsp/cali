@@ -21,6 +21,7 @@ from cali.plot._util import (
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
@@ -36,7 +37,7 @@ P2 = 100
 
 def _plot_evoked_experiment_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -51,8 +52,8 @@ def _plot_evoked_experiment_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -246,7 +247,7 @@ def _add_hover_to_stimulated_amp_plot(
 
 def _visualize_stimulated_area(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,

@@ -8,9 +8,12 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from typing_extensions import TypeAlias
 
 from ._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
+from ._single_wells_plots._plot_neuropil_traces import _plot_neuropil_traces
+from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
 
 if TYPE_CHECKING:
-    from pathlib import Path
+
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 
@@ -28,12 +31,12 @@ class AnalysisGroup(Enum):
 
 
 # Type aliases for better type hints
-# Single-well analyzers accept (widget, db_path, fov_name, rois, run_id)
+# Single-well analyzers accept (widget, engine, fov_name, rois, run_id)
 # Using Any for analyzer since functions may have additional keyword arguments
 SingleWellAnalyzer: TypeAlias = (
     "Callable[..., Any]"  # Flexible signature for partial functions
 )
-# Multi-well analyzers accept (widget, text, db_path, run_id)
+# Multi-well analyzers accept (widget, text, engine, run_id)
 MultiWellAnalyzer: TypeAlias = (
     "Callable[..., None]"  # Flexible signature for partial functions
 )
@@ -200,19 +203,19 @@ AnalysisProduct(
     category="Calcium Traces",
 )
 
-# # Neuropil Group
-# AnalysisProduct(
-#     name=NEUROPIL_ROI_MASKS,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_neuropil_masks,
-#     category="Neuropil Correction",
-# )
-# AnalysisProduct(
-#     name=NEUROPIL_TRACES,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_neuropil_traces,
-#     category="Neuropil Correction",
-# )
+# Neuropil Group
+AnalysisProduct(
+    name=NEUROPIL_ROI_MASKS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_neuropil_masks,
+    category="Neuropil Correction",
+)
+AnalysisProduct(
+    name=NEUROPIL_TRACES,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_neuropil_traces,
+    category="Neuropil Correction",
+)
 
 # # Inferred Spikes Group
 # AnalysisProduct(
@@ -712,11 +715,11 @@ def requires_active_rois(plot_name: str) -> bool:
 
 def plot_single_well_data(
     widget: _SingleWellGraphWidget,
-    db_path: str | Path,
+    engine: Engine,
     fov_name: str,
     text: str,
+    run_id: int,
     rois: list[int] | None = None,
-    run_id: int | None = None,
 ) -> None:
     """Plot single-well analysis data using registry pattern with database queries.
 
@@ -724,16 +727,16 @@ def plot_single_well_data(
     ----------
     widget : _SingleWellGraphWidget
         The widget to plot into
-    db_path : str | Path
-        Path to the SQLite database file
+    engine : Engine
+        SQLAlchemy Engine connected to the database
     fov_name : str
         Name of the FOV to query (e.g., "B5_0000")
     text : str
         The name of the analysis to plot (matches AnalysisProduct.name)
+    run_id : int
+        The CaliResult.id of the selected run to filter by
     rois : list[int] | None, optional
         List of ROI indices to plot, by default None
-    run_id : int | None, optional
-        The CaliResult.id of the selected run to filter by, by default None
     """
     try:
         # Look up the analysis in the registry
@@ -743,7 +746,7 @@ def plot_single_well_data(
                 analyzer = cast("SingleWellAnalyzer", product.analyzer)
                 # Pass run_id as keyword argument to avoid positional conflicts
                 # with other keyword args in the analyzer functions
-                return analyzer(widget, db_path, fov_name, rois, run_id=run_id)
+                return analyzer(widget, engine, fov_name, rois, run_id=run_id)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Analysis '{text}' not found in registry")
@@ -756,7 +759,7 @@ def plot_single_well_data(
 def plot_multi_well_data(
     widget: _MultilWellGraphWidget,
     text: str,
-    db_path: str | Path,
+    engine: Engine,
     run_id: int | None = None,
 ) -> None:
     """Plot multi-well data using registry pattern with database queries.
@@ -767,8 +770,8 @@ def plot_multi_well_data(
         The widget to plot into
     text : str
         The name of the analysis to plot (matches AnalysisProduct.name)
-    db_path : str | Path
-        Path to the SQLite database file
+    engine : Engine
+        SQLAlchemy Engine connected to the database
     run_id : int | None, optional
         The CaliResult.id of the selected run to filter by, by default None
     """
@@ -783,7 +786,7 @@ def plot_multi_well_data(
             if product.name == text and product.group == AnalysisGroup.MULTI_WELL:
                 # Type narrowing: we know this is a MultiWellAnalyzer
                 analyzer = cast("MultiWellAnalyzer", product.analyzer)
-                return analyzer(widget, text, db_path, run_id)
+                return analyzer(widget, text, engine, run_id)
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Multi-well analysis '{text}' not found in registry")

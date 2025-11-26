@@ -182,17 +182,33 @@ class _ImageViewer(QGroupBox):
         self._viewer.update_image(data, labels, neuropil)
         self._auto_clim.setChecked(True)
 
+        # Enable/disable labels button based on whether labels data is available
         if labels is None:
             self._labels.setChecked(False)
+            self._labels.setEnabled(False)
+            self._labels.setToolTip(
+                "No labels data available for the selected run. "
+                "Labels are only shown for runs with ROI detection."
+            )
         elif (
             self._viewer.labels_image is not None
             and self._viewer.contours_image is not None
         ):
+            self._labels.setEnabled(True)
+            self._labels.setToolTip("Toggle ROI labels visibility")
             self._viewer.contours_image.visible = self._labels.isChecked()
 
+        # Enable/disable neuropil button based on whether neuropil data is available
         if neuropil is None:
             self._neuropil.setChecked(False)
+            self._neuropil.setEnabled(False)
+            self._neuropil.setToolTip(
+                "No neuropil data available for the selected run. "
+                "Neuropil is only shown for runs with neuropil correction enabled."
+            )
         elif self._viewer.neuropil_contours_image is not None:
+            self._neuropil.setEnabled(True)
+            self._neuropil.setToolTip("Toggle neuropil mask visibility")
             self._viewer.neuropil_contours_image.visible = self._neuropil.isChecked()
 
     def data(self) -> np.ndarray | None:

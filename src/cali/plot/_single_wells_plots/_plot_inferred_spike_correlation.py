@@ -17,6 +17,7 @@ from cali.plot._util import _get_data_analysis_for_run
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -24,7 +25,7 @@ from cali.logger import cali_logger
 
 
 def _calculate_spike_cross_correlation(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -37,8 +38,8 @@ def _calculate_spike_cross_correlation(
 
     Parameters
     ----------
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -53,7 +54,7 @@ def _calculate_spike_cross_correlation(
         insufficient data
     """
     from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, ROI
 
@@ -61,7 +62,6 @@ def _calculate_spike_cross_correlation(
     rois_idxs: list[int] = []
 
     # Query ROIs from database
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
         if rois is not None:
@@ -142,7 +142,7 @@ def _calculate_spike_cross_correlation(
 
 def _plot_spike_cross_correlation_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -153,8 +153,8 @@ def _plot_spike_cross_correlation_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -166,7 +166,7 @@ def _plot_spike_cross_correlation_data(
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
@@ -239,7 +239,7 @@ def _add_hover_functionality_spike_corr(
 
 def _plot_spike_hierarchical_clustering_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -251,8 +251,8 @@ def _plot_spike_hierarchical_clustering_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -266,7 +266,7 @@ def _plot_spike_hierarchical_clustering_data(
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:

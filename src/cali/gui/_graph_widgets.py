@@ -24,7 +24,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 from superqt.fonticon import icon
 
 from cali.plot._main_plot import (
@@ -39,6 +39,8 @@ from cali.sqlmodel._model import FOV, ROI
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import ClassVar
+
+    from sqlalchemy.engine import Engine
 
     from ._cali_gui import CaliGui
 
@@ -133,12 +135,16 @@ class _DisplaySingleWellTraces(QGroupBox):
         # Get ROI selection
         rois = self._parse_roi_selection()
 
-        if rois is None or (db_path := self._graph._database_path) is None:
+        if (
+            rois is None
+            or not self._graph._engine
+            or self._graph._run_id is None
+        ):
             return
 
         plot_single_well_data(
             self._graph,
-            db_path,
+            self._graph._engine,
             self._graph._fov,
             text,
             rois=rois,
@@ -164,36 +170,32 @@ class _DisplaySingleWellTraces(QGroupBox):
             active_only = requires_active_rois(plot_name)
 
             # Query database to get all available ROI label values for this FOV
-            engine = create_engine(
-                f"sqlite:///{self._graph._database_path}", echo=False
-            )
+            if not self._graph._engine:
+                return None
 
-            try:
-                with Session(engine) as session:
-                    # Get all ROI label values for this FOV
-                    stmt = (
-                        select(ROI.label_value)
-                        .join(FOV)
-                        .where(col(FOV.name) == self._graph._fov)
-                        .order_by(col(ROI.label_value))
-                    )
+            with Session(self._graph._engine) as session:
+                # Get all ROI label values for this FOV
+                stmt = (
+                    select(ROI.label_value)
+                    .join(FOV)
+                    .where(col(FOV.name) == self._graph._fov)
+                    .order_by(col(ROI.label_value))
+                )
 
-                    # Filter for active ROIs if the plot requires it
-                    if active_only:
-                        stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+                # Filter for active ROIs if the plot requires it
+                if active_only:
+                    stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
 
-                    roi_label_values = session.exec(stmt).all()
+                roi_label_values = session.exec(stmt).all()
 
-                    if not roi_label_values:
-                        return None
+                if not roi_label_values:
+                    return None
 
-                    # Randomly select the requested number of ROIs
-                    selected_rois = random.sample(
-                        roi_label_values, min(num_rois, len(roi_label_values))
-                    )
-                    return sorted(selected_rois)
-            finally:
-                engine.dispose(close=True)
+                # Randomly select the requested number of ROIs
+                selected_rois = random.sample(
+                    roi_label_values, min(num_rois, len(roi_label_values))
+                )
+                return sorted(selected_rois)
 
         # Parse the input string for specific ROI numbers
         rois = self._parse_input(text)
@@ -227,6 +229,7 @@ class _SingleWellGraphWidget(QWidget):
 
         self._plate_viewer: CaliGui = parent
         self._database_path: str | None = None
+        self._engine: Engine | None = None
         self._run_id: int | None = None
 
         self._fov: str = ""
@@ -310,6 +313,14 @@ class _SingleWellGraphWidget(QWidget):
         self._run_id = run_id
         self._on_combo_changed(self._combo.currentText())
 
+    @property
+    def engine(self) -> Engine | None:
+        return self._engine
+
+    @engine.setter
+    def engine(self, engine: Engine | None) -> None:
+        self._engine = engine
+
     def clear_plot(self) -> None:
         """Clear the plot."""
         self.figure.clear()
@@ -326,11 +337,16 @@ class _SingleWellGraphWidget(QWidget):
         """Update the graph when the combo box is changed."""
         # clear the plot
         self.clear_plot()
-        if text == "None" or not self._fov or not self._database_path:
+        if (
+            text == "None"
+            or not self._fov
+            or not self._engine
+            or self._run_id is None
+        ):
             return
 
         plot_single_well_data(
-            self, self._database_path, self._fov, text, rois=None, run_id=self._run_id
+            self, self._engine, self._fov, text, rois=None, run_id=self._run_id
         )
         if self._choose_dysplayed_traces.isChecked():
             self._choose_dysplayed_traces._update()
@@ -356,6 +372,7 @@ class _MultilWellGraphWidget(QWidget):
 
         self._plate_viewer: CaliGui = parent
         self._database_path: str | None = None
+        self._engine: Engine | None = None
         self._run_id: int | None = None
 
         self._fov: str = ""
@@ -451,6 +468,14 @@ class _MultilWellGraphWidget(QWidget):
         self._run_id = run_id
         self._on_combo_changed(self._combo.currentText())
 
+    @property
+    def engine(self) -> Engine | None:
+        return self._engine
+
+    @engine.setter
+    def engine(self, engine: Engine | None) -> None:
+        self._engine = engine
+
     def clear_plot(self) -> None:
         """Clear the plot."""
         self.figure.clear()
@@ -468,10 +493,10 @@ class _MultilWellGraphWidget(QWidget):
         # clear the plot
         self.clear_plot()
         self._conditions_btn.setEnabled(text != "None")
-        if text == "None" or not self._database_path:
+        if text == "None" or not self._engine:
             return
 
-        plot_multi_well_data(self, text, self._database_path)
+        plot_multi_well_data(self, text, self._engine, run_id=self._run_id)
 
     def _on_save(self) -> None:
         """Save the current plot as a .png file."""

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME
@@ -229,6 +230,14 @@ class CaliRunner:
 
         # 2. Get database engine and session
         engine = create_engine(f"sqlite:///{self._db_path}", echo=echo)
+
+        # Enable foreign keys for SQLite
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
         try:
             with Session(engine) as session:
                 # 3. Deduplicate and persist settings
@@ -265,7 +274,7 @@ class CaliRunner:
                 positions_processed_detection = []
                 total_rois_detected = 0
                 if positions_for_detection:
-                    yield "Running Detection..."
+                    yield "🔍 Running Detection..."
                     fov_count = 0
                     for fov in self._run_detection(
                         dataset,
@@ -322,7 +331,7 @@ class CaliRunner:
                 if analysis_settings is not None:
                     assert analysis_settings.id is not None
 
-                    yield "Running Analysis..."
+                    yield "📊 Running Analysis..."
 
                     # Determine which positions need analysis
                     positions_for_analysis = self._get_positions_for_analysis(
@@ -370,15 +379,21 @@ class CaliRunner:
                         fovs_with_rois,
                         positions_for_analysis,
                     ):
-                        # Set analysis_result_id ONLY on NEW Traces (those without IDs)
-                        # Old traces from previous runs already have analysis_result_id
-                        # set
+                        # Set analysis_result_id ONLY on NEW Traces and DataAnalysis
+                        # (those without IDs). Old records from previous runs already
+                        # have analysis_result_id set
                         if analysis_result_id is not None:
                             for roi in fov.rois:
                                 for trace in roi.traces_history:
                                     # Only set if is a new trace (not yet committed)
                                     if trace.id is None:
                                         trace.analysis_result_id = analysis_result_id
+                                for data_analysis in roi.data_analysis_history:
+                                    # Only set if new (not yet committed)
+                                    if data_analysis.id is None:
+                                        data_analysis.analysis_result_id = (
+                                            analysis_result_id
+                                        )
 
                         fov_count += 1
 
@@ -887,6 +902,7 @@ class CaliRunner:
             # matching detection_settings_id
             # Eagerly load relationships to avoid lazy loading during analysis
             roi_chain = selectinload(FOV.rois)  # type: ignore
+            traces_chain = roi_chain.selectinload(ROI.traces_history)  # type: ignore
             fov_stmt = (
                 select(FOV)
                 .join(ROI)
@@ -896,7 +912,8 @@ class CaliRunner:
                 )
                 .options(
                     roi_chain.selectinload(ROI.roi_mask),  # type: ignore
-                    roi_chain.selectinload(ROI.traces_history),  # type: ignore
+                    traces_chain,
+                    traces_chain.selectinload(Traces.neuropil_mask),  # type: ignore
                     roi_chain.selectinload(ROI.data_analysis_history),  # type: ignore
                 )
             )
@@ -908,6 +925,26 @@ class CaliRunner:
                     f"detection_settings_id={detection_settings_id}. Skipping."
                 )
                 continue
+
+            # Force load all relationships before expunging to prevent lazy-load errors
+            # This is critical for multi-threaded analysis where detached objects
+            # can't access the session
+            for roi in fov.rois:
+                # Access roi_mask and its attributes to ensure they're fully loaded
+                if roi.roi_mask:
+                    _ = roi.roi_mask.coords_y
+                    _ = roi.roi_mask.coords_x
+                    _ = roi.roi_mask.height
+                    _ = roi.roi_mask.width
+                # Access traces_history and load neuropil_mask on each trace
+                for trace in roi.traces_history:
+                    if trace.neuropil_mask:
+                        _ = trace.neuropil_mask.coords_y
+                        _ = trace.neuropil_mask.coords_x
+                        _ = trace.neuropil_mask.height
+                        _ = trace.neuropil_mask.width
+                # Access data_analysis_history
+                _ = roi.data_analysis_history
 
             # Expunge FOV from session to prevent relationship modifications
             # from affecting the database

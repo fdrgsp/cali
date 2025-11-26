@@ -15,6 +15,7 @@ from cali.plot._util import (
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -23,7 +24,7 @@ from cali.logger import cali_logger
 
 def _plot_spike_synchrony_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -34,8 +35,8 @@ def _plot_spike_synchrony_data(
     ----------
     widget: _SingleWellGraphWidget
         widget to plot on
-    db_path: str
-        Path to the database file
+    engine: Engine
+        Database engine
     fov_name: str
         Name of the FOV
     rois: list[int] | None
@@ -46,7 +47,7 @@ def _plot_spike_synchrony_data(
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
 
-    spike_trains = _get_spike_trains_from_rois(db_path, fov_name, rois, run_id)
+    spike_trains = _get_spike_trains_from_rois(engine, fov_name, rois, run_id)
     if spike_trains is None or len(spike_trains) < 2:
         cali_logger.warning(
             "Insufficient spike data for synchrony analysis. "
@@ -54,7 +55,7 @@ def _plot_spike_synchrony_data(
         )
         return
 
-    lag = _get_lag(db_path, fov_name, rois, run_id)
+    lag = _get_lag(engine, fov_name, rois, run_id)
     if lag is None:
         cali_logger.warning("No valid lag value found for synchrony analysis.")
         return
@@ -111,17 +112,16 @@ def _plot_spike_synchrony_data(
 
 
 def _get_lag(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> int | None:
     """Get the lag value for synchrony from AnalysisSettings."""
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment -> CaliResult
         stmt = (
@@ -146,7 +146,7 @@ def _get_lag(
 
 
 def _get_spike_trains_from_rois(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -154,7 +154,7 @@ def _get_spike_trains_from_rois(
     """Extract spike trains from ROI data.
 
     Args:
-        db_path: Path to the database file
+        engine: Database engine
         fov_name: Name of the FOV
         rois: List of ROI indices to include, None for all
         run_id: The run ID to filter by, None for latest
@@ -164,14 +164,13 @@ def _get_spike_trains_from_rois(
         Dictionary mapping ROI names to binary spike arrays
     """
     from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, ROI
 
     spike_trains: dict[str, np.ndarray] = {}
 
     # Query ROIs from database
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
         if rois is not None:

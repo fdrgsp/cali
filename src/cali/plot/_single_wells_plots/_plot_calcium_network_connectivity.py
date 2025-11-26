@@ -12,6 +12,7 @@ from cali.plot._util import _create_connectivity_matrix
 
 if TYPE_CHECKING:
     from matplotlib.image import AxesImage
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -20,7 +21,7 @@ from cali.logger import cali_logger
 
 def _plot_connectivity_network_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -31,8 +32,8 @@ def _plot_connectivity_network_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -45,7 +46,7 @@ def _plot_connectivity_network_data(
 
     # Calculate correlation matrix
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
@@ -56,7 +57,7 @@ def _plot_connectivity_network_data(
         return
 
     # Get network threshold from AnalysisSettings
-    network_threshold = _get_network_threshold(db_path, fov_name, run_id)
+    network_threshold = _get_network_threshold(engine, fov_name, run_id)
 
     # Create connectivity matrix
     connectivity_matrix = _create_connectivity_matrix(
@@ -94,16 +95,15 @@ def _plot_connectivity_network_data(
 
 
 def _get_network_threshold(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     run_id: int | None = None,
 ) -> float:
     """Get network threshold from AnalysisSettings."""
-    from sqlmodel import Session, col, create_engine, select
+    from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         stmt = (
             select(CaliResult)
@@ -126,7 +126,7 @@ def _get_network_threshold(
 
 def _plot_connectivity_matrix_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -137,8 +137,8 @@ def _plot_connectivity_matrix_data(
     ----------
     widget : _SingleWellGraphWidget
         Widget to plot on
-    db_path : str
-        Path to the database file
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV
     rois : list[int] | None
@@ -151,7 +151,7 @@ def _plot_connectivity_matrix_data(
 
     # Calculate correlation matrix
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
@@ -162,7 +162,7 @@ def _plot_connectivity_matrix_data(
         return
 
     # Get network threshold
-    network_threshold = _get_network_threshold(db_path, fov_name, run_id)
+    network_threshold = _get_network_threshold(engine, fov_name, run_id)
 
     # Create connectivity matrix
     connectivity_matrix = _create_connectivity_matrix(

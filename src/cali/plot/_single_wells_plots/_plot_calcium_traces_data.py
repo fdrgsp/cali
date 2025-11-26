@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
-from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
-from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -24,10 +23,11 @@ P2 = 100
 
 def _plot_traces_data(
     widget: _SingleWellGraphWidget,
-    db_path: str | Path,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
-    run_id: int | None = None,
+    *,
+    run_id: int,
     raw: bool = False,
     dff: bool = False,
     dec: bool = False,
@@ -42,15 +42,14 @@ def _plot_traces_data(
     ----------
     widget : _SingleWellGraphWidget
         Graph widget to plot on
-    db_path : str | Path
-        Path to the SQLite database
+    engine : Engine
+        SQLAlchemy Engine connected to the database
     fov_name : str
         Name of the FOV (e.g., "B5_0000")
+    run_id : int
+        The CaliResult.id of the selected run.
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
-    run_id : int | None
-        The CaliResult.id of the selected run. If provided, only ROIs and traces
-        from this run will be plotted.
     raw : bool
         Plot raw traces
     dff : bool
@@ -74,47 +73,40 @@ def _plot_traces_data(
     thresholds = thresholds if rois and len(rois) == 1 else False
 
     # Query database for ROI data
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
-
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
-        detection_settings_id: int | None = None
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
+        roi_data = []  # List of (ROI, Traces, DataAnalysis|None)
 
-        # Build query to get ROIs for this FOV with eager loading of related data
+        # Optimized query: fetch only the specific run's data
         stmt = (
-            select(ROI)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .options(
-                selectinload(ROI.traces_history),
-                selectinload(ROI.data_analysis_history),
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
+            .outerjoin(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
         )
-
-        # Filter by detection settings if we have a run_id
-        if detection_settings_id is not None:
-            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
         # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
         # Filter by active if requested
-        if active_only or with_peaks:
+        if active_only:
             stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
 
         # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
 
-        roi_models = session.exec(stmt).all()
+        results = session.exec(stmt).all()
+        roi_data = results
 
-    engine.dispose(close=True)
-
-    if not roi_models:
+    if not roi_data:
         widget.figure.tight_layout()
         widget.canvas.draw()
         return
@@ -123,9 +115,21 @@ def _plot_traces_data(
     p1 = p2 = 0.0
     if normalize:
         all_values = []
-        for roi_model in roi_models:
-            if trace := _get_trace_from_model(roi_model, run_id, dff, dec, raw):
+        for _, trace_obj, _ in roi_data:
+            trace = None
+            if trace_obj:
+                if dff:
+                    trace = trace_obj.dff
+                elif dec:
+                    trace = trace_obj.dec_dff
+                elif raw:
+                    trace = trace_obj.raw_trace
+                else:
+                    trace = trace_obj.corrected_trace
+
+            if trace:
                 all_values.extend(trace)
+
         if all_values:
             percentiles = np.percentile(all_values, [P1, P2])
             p1, p2 = float(percentiles[0]), float(percentiles[1])
@@ -136,14 +140,16 @@ def _plot_traces_data(
     rois_rec_time: list[float] = []
     last_trace: list[float] | None = None
 
-    for roi_model in roi_models:
-        trace = _get_trace_from_model(roi_model, run_id, dff, dec, raw)
+    for roi_model, trace_obj, data_analysis in roi_data:
+        # Extract trace data
+        trace = None
+        if trace_obj:
+            trace = _get_trace(raw, dff, dec, trace_obj)
 
         if not trace:
             continue
 
         # Get recording time from data_analysis if available
-        data_analysis = _get_data_analysis_for_run(roi_model, run_id)
         if data_analysis and data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
@@ -153,8 +159,7 @@ def _plot_traces_data(
             trace,
             normalize,
             with_peaks,
-            roi_model,
-            run_id,
+            data_analysis,
             count,
             p1,
             p2,
@@ -173,97 +178,18 @@ def _plot_traces_data(
     widget.canvas.draw()
 
 
-def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
-    """Get the Traces object for a specific run from the ROI's traces_history.
-
-    Parameters
-    ----------
-    roi_model : ROI
-        The ROI model with traces_history loaded
-    run_id : int | None
-        The CaliResult.id to filter by. If None, returns the first/latest trace.
-
-    Returns
-    -------
-    Traces | None
-        The Traces object for this run, or None if not found
-    """
-    if not roi_model.traces_history:
-        return None
-
-    if run_id is None:
-        # Return the first trace if no run_id specified (legacy behavior)
-        return roi_model.traces_history[0] if roi_model.traces_history else None
-
-    # Find the trace matching the run_id
-    for trace in roi_model.traces_history:
-        if trace.analysis_result_id == run_id:
-            return trace
-
-    # If no exact match, return None
-    return None
-
-
-def _get_data_analysis_for_run(
-    roi_model: ROI, run_id: int | None
-) -> DataAnalysis | None:
-    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history.
-
-    Parameters
-    ----------
-    roi_model : ROI
-        The ROI model with data_analysis_history loaded
-    run_id : int | None
-        The CaliResult.id to filter by. If None, returns the first/latest analysis.
-
-    Returns
-    -------
-    DataAnalysis | None
-        The DataAnalysis object for this run, or None if not found
-    """
-    if not roi_model.data_analysis_history:
-        return None
-
-    if run_id is None:
-        # Return the first analysis if no run_id specified (legacy behavior)
-        return (
-            roi_model.data_analysis_history[0]
-            if roi_model.data_analysis_history
-            else None
-        )
-
-    # Find the analysis matching the run_id
-    for analysis in roi_model.data_analysis_history:
-        if analysis.analysis_result_id == run_id:
-            return analysis
-
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
-    return (
-        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
-    )
-
-
-def _get_trace_from_model(
-    roi_model: ROI, run_id: int | None, dff: bool, dec: bool, raw: bool
-) -> list[float] | None:
-    """Get the appropriate trace from ROI model based on the flags."""
-    traces = _get_traces_for_run(roi_model, run_id)
-    if traces is None:
-        return None
-
-    try:
-        if dff:
-            data = traces.dff
-        elif dec:
-            data = traces.dec_dff
-        elif raw:
-            data = traces.raw_trace
-        else:
-            data = traces.corrected_trace
-        return data or None
-    except AttributeError:
-        return None
+def _get_trace(
+    raw: bool, dff: bool, dec: bool, trace_obj: Traces
+) -> list[float] | np.ndarray | None:
+    if dff:
+        trace = trace_obj.dff
+    elif dec:
+        trace = trace_obj.dec_dff
+    elif raw:
+        trace = trace_obj.raw_trace
+    else:
+        trace = trace_obj.corrected_trace
+    return trace
 
 
 def _plot_trace(
@@ -272,8 +198,7 @@ def _plot_trace(
     trace: list[float] | np.ndarray,
     normalize: bool,
     with_peaks: bool,
-    roi_model: ROI,
-    run_id: int | None,
+    data_analysis: DataAnalysis | None,
     count: int,
     p1: float,
     p2: float,
@@ -291,7 +216,6 @@ def _plot_trace(
         ax.plot(trace, label=f"ROI {roi_key}")
 
     # Get peaks data from data_analysis if available
-    data_analysis = _get_data_analysis_for_run(roi_model, run_id)
     if with_peaks and data_analysis and data_analysis.peaks_dec_dff:
         peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
         ax.plot(peaks_indices, np.array(trace)[peaks_indices], "x")

@@ -152,10 +152,21 @@ def commit_fov_result(
             # DETECTION MODE: Add new ROIs with detection_settings_id
             # Multiple detections can coexist on same FOV
 
+            # Check if ROIs with this detection_settings_id already exist
+            # to avoid duplicates if run multiple times
+            existing_rois_map = {
+                r.label_value: r
+                for r in existing_fov.rois
+                if r.detection_settings_id == detection_settings_id
+            }
+
             # Create new ROI instances to avoid cascade-adding fov_result
             # (ROIs from detection have roi.fov = fov_result, which would
             # cause fov_result to be added to session via relationship cascade)
             for old_roi in fov_result.rois:
+                if old_roi.label_value in existing_rois_map:
+                    continue
+
                 new_roi = ROI(
                     label_value=old_roi.label_value,
                     active=old_roi.active,
@@ -189,13 +200,45 @@ def commit_fov_result(
                     matching_roi.active = new_roi.active
                     matching_roi.stimulated = new_roi.stimulated
 
-                    # Add traces and data_analysis to existing ROI
+                    # Check if traces/analysis already exist for this analysis_result_id
+                    # to avoid duplicates if analysis is run multiple times
+                    existing_analysis_ids = set()
                     for trace in new_roi.traces_history:
+                        if trace.analysis_result_id is not None:
+                            # Check if trace with this analysis_result_id already exists
+                            existing_trace = next(
+                                (
+                                    t
+                                    for t in matching_roi.traces_history
+                                    if t.analysis_result_id == trace.analysis_result_id
+                                ),
+                                None,
+                            )
+                            if existing_trace:
+                                # Skip - trace already exists
+                                existing_analysis_ids.add(trace.analysis_result_id)
+                                continue
+
                         trace.roi_id = matching_roi.id
                         trace.roi = matching_roi
                         session.add(trace)
 
+                    # Only add new data_analysis if not already exists
                     for data_analysis in new_roi.data_analysis_history:
+                        if data_analysis.analysis_result_id is not None:
+                            existing_data_analysis = next(
+                                (
+                                    da
+                                    for da in matching_roi.data_analysis_history
+                                    if da.analysis_result_id
+                                    == data_analysis.analysis_result_id
+                                ),
+                                None,
+                            )
+                            if existing_data_analysis:
+                                # Skip - data_analysis already exists
+                                continue
+
                         data_analysis.roi_id = matching_roi.id
                         data_analysis.roi = matching_roi
                         session.add(data_analysis)

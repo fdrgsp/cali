@@ -2,12 +2,13 @@ import re
 from typing import Callable
 
 import numpy as np
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
 from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 from cali.sqlmodel._util import ROIData
 
 
@@ -110,7 +111,7 @@ def _get_calcium_peaks_event_synchrony(
 
 
 def _get_calcium_peaks_events_from_rois(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -118,7 +119,7 @@ def _get_calcium_peaks_events_from_rois(
     """Extract binary peak event trains from ROI data.
 
     Args:
-        db_path: Path to the database file
+        engine: Database engine
         fov_name: Name of the FOV
         rois: List of ROI indices to include, None for all
         run_id: The run ID to filter by, None for latest
@@ -127,27 +128,55 @@ def _get_calcium_peaks_events_from_rois(
     -------
         Dictionary mapping ROI names to binary peak event arrays
     """
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-        if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
-        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.data_analysis_history),  # type: ignore
-            selectinload(ROI.traces_history),  # type: ignore
-        )
-        roi_results = session.exec(stmt).all()
+        roi_data = []  # List of (ROI, Traces, DataAnalysis)
+
+        if run_id is not None:
+            # Optimized query
+            stmt = (
+                select(ROI, Traces, DataAnalysis)
+                .join(FOV, ROI.fov_id == FOV.id)
+                .join(
+                    Traces,
+                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+                )
+                .join(
+                    DataAnalysis,
+                    (DataAnalysis.roi_id == ROI.id)
+                    & (DataAnalysis.analysis_result_id == run_id),
+                )
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.active) == True)  # noqa: E712
+            )
+
+            if rois is not None:
+                stmt = stmt.where(col(ROI.id).in_(rois))
+
+            results = session.exec(stmt).all()
+            roi_data = results
+        else:
+            # Legacy behavior
+            stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+            if rois is not None:
+                stmt = stmt.where(col(ROI.id).in_(rois))
+            stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+                selectinload(ROI.data_analysis_history),  # type: ignore
+                selectinload(ROI.traces_history),  # type: ignore
+            )
+            roi_results = session.exec(stmt).all()
+
+            for r in roi_results:
+                t = _get_traces_for_run(r, None)
+                da = _get_data_analysis_for_run(r, None)
+                if t and da:
+                    roi_data.append((r, t, da))
 
     peak_trains: dict[str, np.ndarray] = {}
 
-    if len(roi_results) < 2:
+    if len(roi_data) < 2:
         return None
 
-    for roi in roi_results:
-        # Get traces and data_analysis for the specified run
-        traces = _get_traces_for_run(roi, run_id)
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-
+    for roi, traces, data_analysis in roi_data:
         if traces is None or data_analysis is None:
             continue
 
@@ -412,10 +441,9 @@ def separate_stimulated_vs_non_stimulated_peaks(
 
 
 def _get_spikes_over_threshold(
-    db_path: str, fov_name: str, roi_id: int, raw: bool = False
+    engine: Engine, fov_name: str, roi_id: int, raw: bool = False
 ) -> list[float] | None:
     """Get spikes over threshold from ROI data."""
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         stmt = (
             select(ROI)

@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING, cast
 
 import mplcursors
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from matplotlib.axes import Axes
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -53,7 +53,7 @@ def _get_data_analysis_for_run(
 
 def _plot_cell_size_data(
     widget: _SingleWellGraphWidget,
-    db_path: str | Path,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -64,8 +64,8 @@ def _plot_cell_size_data(
     ----------
     widget : _SingleWellGraphWidget
         Graph widget to plot on
-    db_path : str | Path
-        Path to the SQLite database
+    engine : Engine
+        Database engine
     fov_name : str
         Name of the FOV (e.g., "B5_0000")
     rois : list[int] | None
@@ -77,8 +77,6 @@ def _plot_cell_size_data(
     ax = widget.figure.add_subplot(111)
 
     # Query database for ROI data
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
-
     with Session(engine) as session:
         # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None
@@ -109,8 +107,6 @@ def _plot_cell_size_data(
         stmt = stmt.order_by(col(ROI.label_value))
 
         roi_models = session.exec(stmt).all()
-
-    engine.dispose(close=True)
 
     units = ""
 

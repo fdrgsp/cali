@@ -48,7 +48,7 @@ def exec_(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Check for cancellation before submitting futures
         if cancel_event.is_set():
-            cali_logger.info("Cancellation requested before starting thread pool")
+            cali_logger.info("🚮 Cancellation requested before starting thread pool")
             return
 
         futures = (
@@ -65,7 +65,7 @@ def exec_(
         for future in as_completed(futures):
             # Check for cancellation at the start of each iteration
             if cancel_event.is_set():
-                cali_logger.info("Cancellation requested, shutting down executor...")
+                cali_logger.info("🚮 Cancellation requested, shutting down executor...")
                 # Cancel pending futures and shutdown executor
                 executor.shutdown(wait=False, cancel_futures=True)
                 break
@@ -82,7 +82,7 @@ def exec_(
 
     # Check if cancelled before finishing
     if cancel_event.is_set():
-        cali_logger.info("Run Cancelled")
+        cali_logger.info("❌ Run Cancelled")
 
 
 class AnalysisRunner:
@@ -94,7 +94,7 @@ class AnalysisRunner:
 
     def cancel(self) -> None:
         """Request cancellation of the analysis process."""
-        cali_logger.info("Cancellation requested...")
+        cali_logger.info("🗑️ Cancellation requested...")
         self._cancellation_event.set()
 
     def run(
@@ -132,6 +132,9 @@ class AnalysisRunner:
         ValueError
             If no ROI masks are found in the provided FOVs
         """
+        # Reset cancellation event
+        self._cancellation_event.clear()
+
         # Load data
         if isinstance(dataset, (str, Path)):
             dataset = load_data(dataset)
@@ -249,7 +252,7 @@ class AnalysisRunner:
 
         # Use the existing FOV from detection (don't create a new one)
         # We'll add traces to the existing ROIs
-        msg = f"Extracting Traces Data from {fov_name}."
+        msg = f"📈 Extracting Traces Data from {fov_name}."
         cali_logger.info(msg)
 
         # Create a map of label_value -> ROI for quick lookup
@@ -258,7 +261,7 @@ class AnalysisRunner:
         for label_value in tqdm(labels_masks.keys(), desc=msg):
             if self._check_for_abort_requested():
                 cali_logger.info(
-                    f"Cancellation requested during processing of {fov_name}"
+                    f"🚮 Cancellation requested during processing of {fov_name}"
                 )
                 break
 

@@ -12,13 +12,14 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, select
 
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
+    from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
 
@@ -61,37 +62,64 @@ def _get_data_analysis_for_run(
 
 
 def _calculate_cross_correlation(
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Calculate the cross-correlation matrix for the active ROIs."""
-    engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
-        detection_settings_id: int | None = None
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
+        roi_data = []  # List of (ROI, Traces)
 
-        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-        if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
-        # Filter by detection settings if we have a run_id
-        if detection_settings_id is not None:
-            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
-        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),  # type: ignore
-        )
-        roi_results = session.exec(stmt).all()
+        if run_id is not None:
+            # Optimized query
+            stmt = (
+                select(ROI, Traces)
+                .join(FOV, ROI.fov_id == FOV.id)
+                .join(
+                    Traces,
+                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+                )
+                .where(col(FOV.name) == fov_name)
+                .where(col(ROI.active) == True)  # noqa: E712
+            )
+
+            if rois is not None:
+                stmt = stmt.where(col(ROI.id).in_(rois))
+
+            results = session.exec(stmt).all()
+            roi_data = results
+        else:
+            # Legacy behavior
+            # Get detection_settings_id from the run if run_id is provided
+            detection_settings_id: int | None = None
+            if run_id is not None:
+                result = session.get(CaliResult, run_id)
+                if result:
+                    detection_settings_id = result.detection_settings
+
+            stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+            if rois is not None:
+                stmt = stmt.where(col(ROI.id).in_(rois))
+            # Filter by detection settings if we have a run_id
+            if detection_settings_id is not None:
+                stmt = stmt.where(
+                    col(ROI.detection_settings_id) == detection_settings_id
+                )
+            stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+                selectinload(ROI.traces_history),  # type: ignore
+            )
+            roi_results = session.exec(stmt).all()
+
+            for r in roi_results:
+                t = _get_traces_for_run(r, None)
+                if t:
+                    roi_data.append((r, t))
 
     traces: list[list[float]] = []
     rois_idxs: list[int] = []
 
-    for roi in roi_results:
-        roi_traces = _get_traces_for_run(roi, run_id)
+    for roi, roi_traces in roi_data:
         if roi_traces is None or roi_traces.dec_dff is None or roi.id is None:
             continue
         rois_idxs.append(roi.id)
@@ -121,7 +149,7 @@ def _calculate_cross_correlation(
 
 def _plot_cross_correlation_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -130,7 +158,7 @@ def _plot_cross_correlation_data(
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
@@ -182,7 +210,7 @@ def _add_hover_functionality_cross_corr(
 
 def _plot_hierarchical_clustering_data(
     widget: _SingleWellGraphWidget,
-    db_path: str,
+    engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
@@ -192,7 +220,7 @@ def _plot_hierarchical_clustering_data(
     ax = widget.figure.add_subplot(111)
 
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        db_path, fov_name, rois, run_id
+        engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
