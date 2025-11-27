@@ -69,5 +69,5 @@ print(data_p0t0.shape)
 
 # Get metadata for a specific position
 data_p0, meta = reader.isel(p=0, metadata=True)
-print(meta[0])
+print(meta)
 

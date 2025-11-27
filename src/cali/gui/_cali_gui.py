@@ -64,6 +64,7 @@ from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
+from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
     _ElapsedTimer,
     _ProgressBarWidget,
@@ -134,6 +135,10 @@ class CaliGui(QMainWindow):
         self.file_menu.addAction(save_as_tiff_action)
         self.file_menu.addAction(save_as_csv_action)
         self.setMenuBar(self.menu_bar)
+
+        # TIFF COLLECTION WIDGET ------------------------------------------------------
+        self._tiff_collection_widget = TiffCollectionWidget(parent=self)
+        self._tiff_collection_widget.hide()
 
         # PLATE PLAN WIZARD -----------------------------------------------------------
         self._plate_plan_wizard = PlatePlanWizard(self)
@@ -357,13 +362,16 @@ class CaliGui(QMainWindow):
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
-        self._initialize_from_database(db_path, data_path)
+        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
+        # self._initialize_from_database(db_path, data_path)
 
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
+        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
+        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -472,18 +480,7 @@ class CaliGui(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
 
-            if reply == QMessageBox.StandardButton.Yes:
-                # User chose to overwrite - create new database
-                cali_logger.info(f"💾 Overwriting database at {self._database_path}")
-                experiment = Experiment.create_from_data(
-                    name="Cali Experiment",
-                    data_path=data_path,
-                    description=f"Experiment from data at {data_path}.",
-                )
-                save_experiment_to_database(
-                    experiment, output_path, database_name=database_name, overwrite=True
-                )
-            else:
+            if reply == QMessageBox.StandardButton.No:
                 # User chose not to overwrite - load existing database
                 cali_logger.info(
                     f"💿 Loading existing database at {self._database_path}"
@@ -494,6 +491,87 @@ class CaliGui(QMainWindow):
                     self._database_path, load_data=False
                 )
 
+                # DATA-----------------------------------------------------------------
+                self._data = load_data(data_path, experiment=experiment)
+                if self._data is None:
+                    msg = (
+                        f"❌ Unsupported file format! Currently, Only "
+                        f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                        "TiffCollectionReader are supported."
+                    )
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    self._loading_bar.hide()
+                    return
+
+                if self._data.sequence is None:
+                    show_error_dialog(
+                        self,
+                        "useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                        "the useq.MDASequence in the datastore metadata!",
+                    )
+                    self._loading_bar.hide()
+                    return
+
+            else:
+                self._data = load_data(data_path)
+                tiff_file_map = tiff_plate_type = tiff_metadata = None
+
+                # if data is None and the data_path is a tiff folder, try to create
+                # a TiffCollectionReader
+                if self._data is None:
+                    d_path = Path(data_path)
+                    tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
+                    if tiff_list:
+                        # Show TiffCollectionWidget to configure TIFF files
+                        self._tiff_collection_widget.set_tiff_files(tiff_list)
+                        if self._tiff_collection_widget.exec():
+                            (
+                                tiff_file_map,
+                                plate,
+                                tiff_metadata,
+                            ) = self._tiff_collection_widget.value()
+                            tiff_plate_type = plate.name
+                            cali_logger.info(
+                                f"📋 Configured {len(tiff_file_map)} TIFF files "
+                                f"for plate {tiff_plate_type}"
+                            )
+                        else:
+                            self._loading_bar.hide()
+                            return
+                    else:
+                        msg = (
+                            f"❌ No valid data found at {data_path}! "
+                            "Expected zarr datastore or TIFF file folder."
+                        )
+                        show_error_dialog(self, msg)
+                        cali_logger.error(msg)
+                        self._loading_bar.hide()
+                        return
+                else:
+                    msg = (
+                        f"❌ No valid data found at {data_path}! "
+                        "Expected zarr datastore or TIFF file folder."
+                    )
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    self._loading_bar.hide()
+                    return
+
+                # User chose to overwrite - create new database
+                cali_logger.info(f"💾 Overwriting database at {self._database_path}")
+                experiment = Experiment.create_from_data(
+                    name="Cali Experiment",
+                    data_path=data_path,
+                    description=f"Experiment from data at {data_path}.",
+                    tiff_file_map=tiff_file_map,
+                    tiff_plate_type=tiff_plate_type,
+                    tiff_metadata=tiff_metadata,
+                )
+                save_experiment_to_database(
+                    experiment, output_path, database_name=database_name, overwrite=True
+                )
+
             # PLATE--------------------------------------------------------------------
             # draw plate
             plate_plan = experiment_to_useq_plate_plan(experiment)
@@ -502,11 +580,50 @@ class CaliGui(QMainWindow):
             else:
                 cali_logger.warning("❌ Plate plan not found in experiment.")
         else:
+
+            # DATA -----------------------------------------------------------------
+            self._data = load_data(data_path)
+            tiff_file_map = tiff_plate_type = tiff_metadata = None
+            # if data is None and the data_path is a tiff folder, try to create
+            # a TiffCollectionReader
+            if self._data is None:
+                d_path = Path(data_path)
+                tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
+                if tiff_list:
+                    # Show TiffCollectionWidget to configure TIFF files
+                    self._tiff_collection_widget.set_tiff_files(tiff_list)
+                    if self._tiff_collection_widget.exec():
+                        (
+                            tiff_file_map,
+                            plate,
+                            tiff_metadata,
+                        ) = self._tiff_collection_widget.value()
+                        tiff_plate_type = plate.name
+                        cali_logger.info(
+                            f"📋 Configured {len(tiff_file_map)} TIFF files "
+                            f"for plate {tiff_plate_type}"
+                        )
+                    else:
+                        self._loading_bar.hide()
+                        return
+                else:
+                    msg = (
+                        f"❌ No valid data found at {data_path}! "
+                        "Expected zarr datastore or TIFF file folder."
+                    )
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    self._loading_bar.hide()
+                    return
+
             # CREATE THE EXPERIMENT BASED ON DATA -------------------------------------
             experiment = Experiment.create_from_data(
                 name="Cali Experiment",
                 data_path=data_path,
                 description=f"Experiment from data at {data_path}.",
+                tiff_file_map=tiff_file_map,
+                tiff_plate_type=tiff_plate_type,
+                tiff_metadata=tiff_metadata,
             )
 
             # SAVE THE EXPERIMENT TO A NEW DATABASE------------------------------------

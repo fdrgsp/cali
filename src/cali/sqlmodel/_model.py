@@ -11,6 +11,7 @@ The schema enables:
 - Relationship navigation (e.g., all ROIs for a condition)
 """
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Self
@@ -372,9 +373,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         fovs_per_well: int = 1,
         plate_maps: dict[str, dict[str, str]] | None = None,
         description: str | None = None,
-        tiff_file_map_json: dict[str, str] | None = None,
+        tiff_file_map: Mapping[str, Sequence[str | Path]] | None = None,
         tiff_plate_type: str | None = None,
-        tiff_metadata_json: dict[str, Any] | None = None,
+        tiff_metadata: dict[str, Any] | None = None,
     ) -> Self:
         """Create a new experiment with plate structure ready for analysis.
 
@@ -401,11 +402,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
         description : str | None, optional
             Optional experiment description, by default None
-        tiff_file_map_json : dict[str, str] | None, optional
+        tiff_file_map : Mapping[str, Sequence[str | Path]] | None, optional
             Dictionary representing file_map for TIFF collection, by default None
         tiff_plate_type : str | None, optional
             Plate type for TIFF files (from useq-schema database), by default None
-        tiff_metadata_json : dict[str, Any] | None, optional
+        tiff_metadata : dict[str, Any] | None, optional
             Dictionary with TIFF metadata, by default None
 
         Returns
@@ -440,14 +441,14 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             description=description,
             tiff_file_map_json=(
                 None
-                if tiff_file_map_json is None
-                else str(tiff_file_map_json)
+                if tiff_file_map is None
+                else str(tiff_file_map)
             ),
             tiff_plate_type=tiff_plate_type,
             tiff_metadata_json=(
                 None
-                if tiff_metadata_json is None
-                else str(tiff_metadata_json)
+                if tiff_metadata is None
+                else str(tiff_metadata)
             ),
         )
 
@@ -518,7 +519,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         data_path: str,
         plate_maps: dict[str, dict[str, str]] | None = None,
         description: str | None = None,
-        tiff_file_map: dict[str, list[str]] | None = None,
+        tiff_file_map: Mapping[str, Sequence[str | Path]] | None = None,
         tiff_plate_type: str | None = None,
         tiff_metadata: dict[str, Any] | None = None,
     ) -> Self:
@@ -544,9 +545,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
         description : str | None, optional
             Optional experiment description, by default None
-        tiff_file_map : dict[str, list[str]] | None, optional
-            For TIFF collections: mapping from well names to lists of TIFF file paths.
-            Format: {"A1": ["path1.tif", "path2.tif"], "A2": [...], ...}
+        tiff_file_map : Mapping[str, Sequence[str | Path]] | None, optional
+            For TIFF collections: mapping from well names to sequences of TIFF
+            file paths. Format: {"A1": ["path1.tif", "path2.tif"], "A2": [...]}
             If provided, a TiffCollectionReader will be created.
         tiff_plate_type : str | None, optional
             For TIFF collections: plate type (e.g., "96-well", "coverslip-22mm-square")
@@ -604,6 +605,12 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         else:
             # Load data normally (zarr or existing TiffCollectionReader)
             data = load_data(data_path)
+
+        if data is None:
+            raise ValueError(
+                f"Failed to load data from {data_path}. "
+                "Ensure the path is correct and contains valid imaging data."
+            )
 
         # Create experiment
         experiment = cls(

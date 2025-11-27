@@ -94,6 +94,15 @@ class TiffCollectionReader:
         if not file_map:
             raise ValueError("file_map cannot be empty")
 
+        # Verify all wells have the same number of FOVs
+        fov_counts = {well: len(files) for well, files in file_map.items()}
+        unique_counts = set(fov_counts.values())
+        if len(unique_counts) > 1:
+            raise ValueError(
+                f"All wells must have the same number of FOVs. "
+                f"Found varying counts: {fov_counts}"
+            )
+
         # Verify all files exist
         missing_files = self._check_for_missing_files(file_map, data_path)
         if missing_files:
@@ -105,6 +114,30 @@ class TiffCollectionReader:
         # Store original file_map for later export
         self._original_file_map = file_map
 
+        # Inspect first TIFF to determine structure (time, channel, z dimensions)
+        first_file = Path(next(iter(next(iter(file_map.values())))))
+        with tifffile.TiffFile(first_file) as tif:
+            shape = tif.asarray().shape
+            # Assume shape is (T, Y, X), (T, C, Y, X), or (T, Z, Y, X), etc.
+            # For now, handle (T, Y, X) - multi-frame time series
+            if len(shape) == 3:
+                # (T, Y, X) - time series
+                num_frames = shape[0]
+                self._max_t = num_frames
+                self._max_c = 1
+                self._max_z = 1
+            elif len(shape) == 2:
+                # (Y, X) - single frame
+                self._max_t = 1
+                self._max_c = 1
+                self._max_z = 1
+            else:
+                # More complex - would need metadata to determine axis order
+                raise NotImplementedError(
+                    f"TIFF shape {shape} not yet supported. "
+                    "Only (T, Y, X) and (Y, X) formats are currently supported."
+                )
+
         # Convert to Path objects and build position mapping
         self._file_mapping: dict[tuple[int, ...], Path] = {}
         self._well_to_position: dict[str, list[int]] = {}
@@ -113,9 +146,12 @@ class TiffCollectionReader:
         for well_name, tiff_files in file_map.items():
             position_indices = []
             for tiff_file in tiff_files:
-                # Map (p, t, c, z) to file path
-                # For now, assume single timepoint, channel, z-slice per file
-                self._file_mapping[(position_idx, 0, 0, 0)] = Path(tiff_file)
+                # Each TIFF file represents one position
+                # Store mapping from (p, t, c, z) to file path
+                # File contains all timepoints, map each t to same file
+                tiff_path = Path(tiff_file)
+                for t in range(self._max_t):
+                    self._file_mapping[(position_idx, t, 0, 0)] = tiff_path
                 position_indices.append(position_idx)
                 position_idx += 1
             self._well_to_position[well_name] = position_indices
@@ -130,14 +166,10 @@ class TiffCollectionReader:
         # Build metadata
         self._metadata = self._build_metadata(metadata)
 
-        # Store time/z/channel info for sequence building
-        indices = list(self._file_mapping.keys())
-        self._max_t = max(idx[1] for idx in indices) + 1
-        self._max_c = max(idx[2] for idx in indices) + 1
-        self._max_z = max(idx[3] for idx in indices) + 1
-
         # Construct plate plan and sequence
-        self._plate_plan = self._build_plate_plan()
+        self._plate_plan, self._time_plan, self._z_plan, self._channels = (
+            self._build_plate_plan()
+        )
         self._sequence = self._build_sequence_from_plan()
 
         # Virtual path
@@ -200,14 +232,15 @@ class TiffCollectionReader:
                     "kwargs must be a mapping from strings to integers (e.g. p=0, t=1)!"
                 )
 
-        # Find the TIFF file matching these indexers
-        tiff_path = self._find_tiff_for_index(indexers)
+        # Find the TIFF file and frame index matching these indexers
+        result = self._find_tiff_for_index(indexers)
 
-        if tiff_path is None:
+        if result is None:
             raise ValueError(f"No TIFF file found for indexers: {indexers}")
 
-        # Lazy load only the requested file
-        data = self._load_tiff(tiff_path)
+        tiff_path, frame_idx = result
+        # Lazy load only the requested frame
+        data = self._load_tiff(tiff_path, frame_idx)
 
         if metadata:
             meta = self._get_metadata_from_index(indexers)
@@ -321,24 +354,19 @@ class TiffCollectionReader:
 
         return meta_list
 
-    def _build_plate_plan(self) -> useq.WellPlatePlan:
-        """Build a useq.WellPlatePlan from the file collection."""
-        # Determine which wells are used
-        well_indices = []
-        for well_name in self._well_to_position.keys():
-            row = ord(well_name[0]) - ord("A")  # Convert A->0, B->1, etc.
-            col = int(well_name[1:]) - 1  # Convert 1->0, 2->1, etc.
-            well_indices.append((row, col))
+    def _build_plate_plan(
+        self,
+    ) -> tuple[useq.WellPlatePlan, Any, Any, Any]:
+        """Build a useq.WellPlatePlan from the file collection.
 
-        # Find max FOVs per well to create a consistent grid
-        max_fovs = max(len(positions) for positions in self._well_to_position.values())
-
-        # Create a grid plan for the FOVs using GridRowsColumns
-        grid_plan = useq.GridRowsColumns(rows=1, columns=max_fovs)
-
+        Returns
+        -------
+        tuple[useq.WellPlatePlan, Any, Any, Any]
+            (plate_plan, time_plan, z_plan, channels)
+        """
         # Build time/z/channel plans
         time_plan = (
-            useq.TIntervalLoops(interval=timedelta(seconds=1), loops=self._max_t)
+            useq.TIntervalLoops(interval=timedelta(seconds=0), loops=self._max_t)
             if self._max_t > 1
             else None
         )
@@ -355,6 +383,15 @@ class TiffCollectionReader:
         )
 
         # Create WellPlatePlan
+        # Determine which wells are used
+        well_indices = []
+        for well_name in self._well_to_position.keys():
+            row = ord(well_name[0]) - ord("A")  # Convert A->0, B->1, etc.
+            col = int(well_name[1:]) - 1  # Convert 1->0, 2->1, etc.
+            well_indices.append((row, col))
+        # Find FOVs per well (all wells have same number of FOVs due to validation)
+        max_fovs = len(next(iter(self._original_file_map.values())))
+        well_points_plan = useq.RandomPoints(num_points=max_fovs)
         plan_kwargs: dict[str, Any] = {
             "plate": self._plate,
             "a1_center_xy": (0, 0),
@@ -362,7 +399,7 @@ class TiffCollectionReader:
                 tuple(w[0] for w in well_indices),
                 tuple(w[1] for w in well_indices),
             ),
-            "well_points_plan": grid_plan,
+            "well_points_plan": well_points_plan,
         }
         if time_plan:
             plan_kwargs["time_plan"] = time_plan
@@ -371,37 +408,72 @@ class TiffCollectionReader:
         if channels:
             plan_kwargs["channels"] = channels
 
-        return useq.WellPlatePlan(**plan_kwargs)
+        return useq.WellPlatePlan(**plan_kwargs), time_plan, z_plan, channels
 
     def _build_sequence_from_plan(self) -> useq.MDASequence:
         """Build MDASequence from the plate plan with properly named positions."""
         # Generate the sequence from the plate plan
-        # This will create positions with well-based names
-        return useq.MDASequence(stage_positions=self._plate_plan)
+        # Include time_plan, z_plan, and channels
+        sequence_kwargs: dict[str, Any] = {
+            "stage_positions": self._plate_plan,
+        }
+        if self._time_plan:
+            sequence_kwargs["time_plan"] = self._time_plan
+        if self._z_plan:
+            sequence_kwargs["z_plan"] = self._z_plan
+        if self._channels:
+            sequence_kwargs["channels"] = self._channels
 
-    def _find_tiff_for_index(self, indexers: Mapping[str, int]) -> Path | None:
-        """Find the TIFF file corresponding to the given index."""
+        return useq.MDASequence(**sequence_kwargs)
+
+    def _find_tiff_for_index(
+        self, indexers: Mapping[str, int]
+    ) -> tuple[Path, int] | None:
+        """Find the TIFF file and frame index for the given indexers.
+
+        Returns
+        -------
+        tuple[Path, int] | None
+            (file_path, frame_index) or None if not found.
+            For multi-frame TIFFs, frame_index is the timepoint within the file.
+        """
         # Build index tuple
         p = indexers.get("p", 0)
         t = indexers.get("t", 0)
         c = indexers.get("c", 0)
         z = indexers.get("z", 0)
 
-        return self._file_mapping.get((p, t, c, z))
+        tiff_path = self._file_mapping.get((p, t, c, z))
+        if tiff_path is None:
+            return None
+        # Return the path and the frame index (timepoint)
+        return tiff_path, t
 
-    def _load_tiff(self, tiff_path: Path) -> np.ndarray:
-        """Load a single TIFF file using memory mapping for lazy loading.
+    def _load_tiff(self, tiff_path: Path, frame_idx: int = 0) -> np.ndarray:
+        """Load a specific frame from a TIFF file using memory mapping.
 
         Uses tifffile.memmap to create a memory-mapped array that only loads
-        data from disk when accessed. This is much more memory-efficient than
-        loading the entire file into RAM.
+        data from disk when accessed. For multi-frame TIFFs, extracts the
+        requested frame (timepoint).
+
+        Parameters
+        ----------
+        tiff_path : Path
+            Path to the TIFF file.
+        frame_idx : int
+            Frame index to load (for time series). Default is 0.
 
         Returns
         -------
         np.ndarray
-            Memory-mapped array that loads data on-demand.
+            Memory-mapped array for the requested frame.
         """
-        return tifffile.memmap(tiff_path, mode="r")
+        data = tifffile.memmap(tiff_path, mode="r")
+        # If multi-frame (3D: T, Y, X), extract the requested frame
+        if len(data.shape) == 3:
+            return data[frame_idx]
+        # If single frame (2D: Y, X), return as-is
+        return data
 
     def _get_metadata_from_index(self, indexers: Mapping[str, int]) -> list[dict]:
         """Return the metadata for the given indexers."""

@@ -54,7 +54,8 @@ class _InputDialog(QDialog):
             directories_tab,
             "Data Path",
             data_path,
-            "The path to the zarr datastore.",
+            "The path to the data. It can be a directory containing tiff files or a "
+            "zarr datastore.",
         )
 
         # output_path
@@ -101,7 +102,7 @@ class _InputDialog(QDialog):
             database_tab,
             "Data Path",
             data_path,
-            "The path to the zarr datastore.",
+            "The path to the data associated with the database.",
         )
 
         # database_path
