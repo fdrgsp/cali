@@ -55,8 +55,8 @@ from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data
 
-from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
+from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
@@ -347,9 +347,9 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        db_path = "tests/test_data/evoked/results.cali"
-        self._initialize_from_database(db_path, data_path)
+        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # db_path = "tests/test_data/evoked/results.cali"
+        # self._initialize_from_database(db_path, data_path)
 
         # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"

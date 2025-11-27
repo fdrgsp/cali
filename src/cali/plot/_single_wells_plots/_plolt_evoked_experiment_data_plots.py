@@ -92,123 +92,29 @@ def _plot_evoked_experiment_data(
 
 def _plot_stim_or_not_stim_peaks_amplitude(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    engine: Engine,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     stimulated: bool = False,
 ) -> None:
     """Visualize stimulated peak amplitudes per ROI per stimulation parameters."""
-    # clear the figure
+    # TODO: Integrate with new database schema
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
-
-    # get analysis path
-    output_path = widget._plate_viewer.output_path
-    if output_path is None:
-        return
-
-    pulse: str = ""
-    led_power_equation_str: str = ""
-    led_power_equation: Callable | None = None
-    # {power_pulselength: [(ROI1, amp1), (ROI2, amp2), ...]}
-    # e.g. {"10_100": [(1, 0.5), (2, 0.6)], "20_200": [(3, 0.7)]}
-    # or {"1mW/cm²_100": [(1, 0.5), (2, 0.6)], ...}
-    power_pulse_and_amps: dict[str, list[tuple[int, float]]] = {}
-    for roi_key, roi_data in data.items():
-        if rois is not None and int(roi_key) not in rois:
-            continue
-
-        if not led_power_equation_str:
-            led_power_equation_str = roi_data.led_power_equation or ""
-            led_power_equation = equation_from_str(led_power_equation_str)
-
-        # Compute amplitudes on-demand
-        amps_stim, amps_non_stim = get_stimulated_amplitudes_from_roi_data(
-            roi_data, led_power_equation=led_power_equation
-        )
-
-        amplitudes = amps_stim if stimulated else amps_non_stim
-
-        if not amplitudes:
-            continue
-
-        if not pulse:
-            pulse = next(iter(amplitudes.keys())).split("_")[1]
-
-        # power_pulse is f"{power}_{pulse_len}"
-        for power_pulse, amp_list in amplitudes.items():
-            for amp_val in amp_list:
-                power_pulse_and_amps.setdefault(power_pulse, []).append(
-                    (int(roi_key), amp_val)
-                )
-
-    # sort the power_pulse_and_amps dictionary by power
-    power_pulse_and_amps = dict(
-        sorted(power_pulse_and_amps.items(), key=lambda x: extract_leading_number(x[0]))
+    ax.text(
+        0.5,
+        0.5,
+        "Evoked Experiment Amplitude Analysis\n\n"
+        "This feature requires integration with the new\n"
+        "three-stage pipeline (Detection → Extraction → Analysis).\n\n"
+        "Coming soon!",
+        ha="center",
+        va="center",
+        fontsize=12,
+        transform=ax.transAxes,
     )
-    x_axis_label = ""
-    # rename as power_pulse = "10_100" -> "10% 100ms"
-    renamed_power_pulse_and_amps: dict[str, list[tuple[int, float]]] = {}
-    # e.g. {"10% 100ms": [(1, 0.5), (2, 0.6)], "20% 200ms": [(3, 0.7)]}
-    for power_pulse in power_pulse_and_amps:
-        power_pulse_spit = power_pulse.split("_")
-        # x_name = f"{power_pulse_spit[0]}% {power_pulse_spit[1]}ms"
-        x_name = f"{power_pulse_spit[0]}"
-        if MWCM in x_name:  # e.g. "30mW/cm²"
-            x_name = x_name.split(MWCM)[0]
-            if not x_axis_label:
-                x_axis_label = "Irradiance (mW/cm²)"
-        elif not x_axis_label:
-            x_axis_label = "Power (%)"
-        renamed_power_pulse_and_amps[x_name] = power_pulse_and_amps[power_pulse]
-
-    # plot each power_pulse group as a scatter
-    all_artists: list = []
-    all_metadata: list[tuple[list[int], list[float]]] = []
-    for power_pulse_label, roi_amp_pairs in renamed_power_pulse_and_amps.items():
-        amps = np.array([amp for _, amp in roi_amp_pairs])
-        rois_ = [roi for roi, _ in roi_amp_pairs]
-
-        mean_amp = np.mean(amps)
-        std_amp = np.std(amps)
-        n = len(amps)
-        error = std_amp / np.sqrt(n)
-        errorbar = ax.errorbar(
-            power_pulse_label,
-            mean_amp,
-            yerr=error,
-            fmt="o",
-            capsize=5,
-            label=power_pulse_label,
-        )
-        all_artists.append(errorbar)
-        all_metadata.append((rois_, [mean_amp]))
-        scatter = ax.scatter(
-            [power_pulse_label] * len(amps),
-            amps,
-            label=power_pulse_label,
-            color="lightgray",
-            s=30,
-        )
-        all_artists.append(scatter)
-        all_metadata.append((rois_, cast("list[float]", amps.tolist())))
-
-    _add_hover_to_stimulated_amp_plot(widget, all_artists, all_metadata)
-
-    ax.set_ylabel("Mean Amplitude ± SEM")
-    ax.set_xlabel(x_axis_label)
-    if x_axis_label == "Irradiance (mW/cm²)":
-        ticks = ax.get_xticks()
-        ax.set_xticks(ticks)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    title = (
-        "Stimulated" if stimulated else "Non-Stimulated"
-    ) + " Calcium Peaks Mean Amplitudes ± SEM"
-    title += "\n("
-    title += "Per LED Intensity - "
-    if pulse:
-        title += f"{pulse} ms pulses - "
-    title += "Deconvolved ΔF/F)"
-    ax.set_title(title)
+    ax.axis("off")
     widget.figure.tight_layout()
     widget.canvas.draw()
 
@@ -402,102 +308,29 @@ def _add_hover_functionality_plot_stim_roi(
 
 def _plot_stimulated_vs_non_stimulated_roi_amp(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    engine: Engine,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
     with_peaks: bool = False,
 ) -> None:
     """Plot dec ΔF/F traces with global percentile normalization (5th-100th)."""
+    # TODO: Integrate with new database schema
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
-
-    trace: list[float] | None = None
-    rois_rec_time: list[float] = []
-
-    # Filter and sort ROIs: non-stimulated first
-    sorted_items = sorted(
-        [
-            (roi_key, roi_data)
-            for roi_key, roi_data in data.items()
-            if roi_data.active
-            and roi_data.dec_dff is not None
-            and roi_data.peaks_dec_dff is not None
-            and (rois is None or int(roi_key) in rois)
-        ],
-        key=lambda item: item[1].stimulated,
+    ax.text(
+        0.5,
+        0.5,
+        "Stimulated vs Non-Stimulated Traces\n\n"
+        "This feature requires integration with the new\n"
+        "three-stage pipeline (Detection → Extraction → Analysis).\n\n"
+        "Coming soon!",
+        ha="center",
+        va="center",
+        fontsize=12,
+        transform=ax.transAxes,
     )
-
-    # gather all dec_dff values from included ROIs
-    all_values: list[float] = []
-    for _, roi_data in sorted_items:
-        if roi_data.dec_dff is None:
-            continue
-        all_values.extend(roi_data.dec_dff)
-
-    # compute nth and nth percentiles globally
-    if all_values:
-        percentiles = np.percentile(all_values, [P1, P2])
-        p1, p2 = float(percentiles[0]), float(percentiles[1])
-    else:
-        p1, p2 = 0.0, 1.0
-
-    stimulations_frames_and_powers: dict[str, int] = {}
-    # plot each ROI trace with normalized and vertically offset values
-    for count, (roi_key, roi_data) in enumerate(sorted_items):
-        if roi_data.dec_dff is None:
-            continue
-        if not stimulations_frames_and_powers:
-            stimulations_frames_and_powers = (
-                roi_data.stimulations_frames_and_powers or {}
-            )
-        trace = _normalize_trace_percentile(roi_data.dec_dff, p1, p2)
-        offset = count * 1.1
-        trace_offset = np.array(trace) + offset
-
-        if (ttime := roi_data.total_recording_time_sec) is not None:
-            rois_rec_time.append(ttime)
-
-        color = STIMULATED_COLOR if roi_data.stimulated else NON_STIMULATED_COLOR
-        ax.plot(trace_offset, label=f"ROI {roi_key}", color=color)
-
-        if with_peaks and roi_data.peaks_dec_dff is not None:
-            peaks_indices = [int(p) for p in roi_data.peaks_dec_dff]
-            ax.plot(
-                peaks_indices,
-                np.array(trace)[peaks_indices] + offset,
-                "x",
-                color="k",
-            )
-
-    # plot the stimulation frames as vertical lines
-    for frame in stimulations_frames_and_powers:
-        ax.axvline(x=float(frame) - 0.5, color="blue", linestyle="--", alpha=0.5)
-
-    ax.set_title(
-        "Stimulated vs Non-Stimulated ROIs Calcium Traces \n"
-        "(Normalized Deconvolved ΔF/F)"
-    )
-    ax.set_yticklabels([])
-    ax.set_yticks([])
-    ax.set_ylabel("ROIs")
-
-    legend_patches = [
-        Patch(facecolor=STIMULATED_COLOR, label="Stimulated ROIs"),
-        Patch(facecolor=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
-        Patch(facecolor="blue", label="Stimulation Pulse"),
-    ]
-    ax.legend(
-        handles=legend_patches,
-        loc="upper left",
-        frameon=True,
-        fontsize="small",
-        edgecolor="black",
-        facecolor="white",
-    )
-
-    _update_time_axis(ax, rois_rec_time, trace)
-
-    _add_hover_functionality_stim_vs_non_stim(ax, widget)
-
+    ax.axis("off")
     widget.figure.tight_layout()
     widget.canvas.draw()
 
@@ -558,106 +391,29 @@ def _add_hover_functionality_stim_vs_non_stim(
 
 def _plot_stimulated_vs_non_stimulated_spike_traces(
     widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
+    engine: Engine,
+    fov_name: str,
     rois: list[int] | None = None,
+    run_id: int | None = None,
 ) -> None:
     """Plot thresholded spike traces: green=stimulated, magenta=non-stimulated."""
+    # TODO: Integrate with new database schema
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
-
-    rois_rec_time: list[float] = []
-    sample_trace = None
-
-    # Filter and sort ROIs: non-stimulated first, then stimulated
-    sorted_items = sorted(
-        [
-            (roi_key, roi_data)
-            for roi_key, roi_data in data.items()
-            if roi_data.active
-            and roi_data.inferred_spikes is not None
-            and roi_data.inferred_spikes_threshold is not None
-            and (rois is None or int(roi_key) in rois)
-        ],
-        key=lambda item: item[1].stimulated,
+    ax.text(
+        0.5,
+        0.5,
+        "Stimulated vs Non-Stimulated Spike Traces\n\n"
+        "This feature requires integration with the new\n"
+        "three-stage pipeline (Detection → Extraction → Analysis).\n\n"
+        "Coming soon!",
+        ha="center",
+        va="center",
+        fontsize=12,
+        transform=ax.transAxes,
     )
-
-    if not sorted_items:
-        cali_logger.warning(
-            "No active ROIs with inferred spikes found for stimulated/non-stimulated "
-            "analysis."
-        )
-        return
-
-    # Get stimulation frames from first ROI
-    stimulations_frames_and_powers: dict[str, int] = {}
-
-    # Plot each ROI trace with thresholded spikes and vertical offset
-    for count, (roi_key, roi_data) in enumerate(sorted_items):
-        if (
-            roi_data.inferred_spikes is None
-            or roi_data.inferred_spikes_threshold is None
-        ):
-            continue
-
-        if not stimulations_frames_and_powers:
-            stimulations_frames_and_powers = (
-                roi_data.stimulations_frames_and_powers or {}
-            )
-
-        # Get thresholded spikes (values above threshold, 0 otherwise)
-        thresholded_spikes = _get_spikes_over_threshold(roi_data)
-        if not thresholded_spikes:
-            continue
-
-        # Store a sample trace for time axis update
-        if sample_trace is None:
-            sample_trace = thresholded_spikes
-
-        # Create vertical offset for each ROI
-        offset = count * 1.1
-        trace_offset = np.array(thresholded_spikes) + offset
-
-        if (ttime := roi_data.total_recording_time_sec) is not None:
-            rois_rec_time.append(ttime)
-
-        # Color based on stimulation status
-        color = STIMULATED_COLOR if roi_data.stimulated else NON_STIMULATED_COLOR
-        ax.plot(trace_offset, label=f"ROI {roi_key}", color=color, linewidth=1.5)
-
-    # Plot stimulation frames as vertical lines
-    for frame in stimulations_frames_and_powers:
-        ax.axvline(
-            x=float(frame) - 0.5, color="blue", linestyle="--", alpha=0.7, linewidth=2
-        )
-
-    ax.set_title(
-        "Stimulated vs Non-Stimulated ROIs Spike Traces\n(Thresholded Inferred Spikes)"
-    )
-    ax.set_yticklabels([])
-    ax.set_yticks([])
-    ax.set_ylabel("ROIs")
-
-    # Create legend
-    legend_patches = [
-        Patch(facecolor=STIMULATED_COLOR, label="Stimulated ROIs"),
-        Patch(facecolor=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
-        Patch(facecolor="blue", label="Stimulation Pulse"),
-    ]
-    ax.legend(
-        handles=legend_patches,
-        loc="upper left",
-        frameon=True,
-        fontsize="small",
-        edgecolor="black",
-        facecolor="white",
-    )
-
-    # Update time axis using the utility function
-    _update_time_axis_spike_traces(ax, rois_rec_time, sample_trace)
-
+    ax.axis("off")
     widget.figure.tight_layout()
-    active_roi_ids = [int(roi_key) for roi_key, _ in sorted_items]
-    _add_hover_functionality_spike_traces(ax, widget, active_roi_ids)
     widget.canvas.draw()
 
 

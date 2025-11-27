@@ -47,6 +47,7 @@ from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_
 from cali.sqlmodel._model import (
     AnalysisSettings,
     DataAnalysis,
+    ExtractionSettings,
     Mask,
     Traces,
 )
@@ -138,6 +139,8 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
         label_value=1,
         active=True,
         stimulated=False,
+        cell_size=100.5,
+        cell_size_units="pixels",
     )
 
     # Create traces
@@ -150,8 +153,6 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
     # Create data analysis
     DataAnalysis(
         roi=roi,
-        cell_size=100.5,
-        cell_size_units="pixels",
     )
 
     # Save to database
@@ -198,7 +199,6 @@ def test_experiment_create_from_data(tmp_path: Path) -> None:
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
         },
-        experiment_type=SPONTANEOUS,
     )
 
     # Verify experiment structure was loaded from data
@@ -263,7 +263,7 @@ def test_roi_relationships(simple_experiment: Experiment, temp_db: TempDB) -> No
         assert len(roi.traces_history) > 0
         assert roi.traces_history[0].raw_trace == [1.0, 2.0, 3.0]
         assert len(roi.data_analysis_history) > 0
-        assert roi.data_analysis_history[0].cell_size == 100.5
+        assert roi.cell_size == 100.5
 
 
 def test_unique_constraints(temp_db: TempDB) -> None:
@@ -750,14 +750,15 @@ def test_roi_from_roi_data(temp_db: TempDB) -> None:
     assert roi.label_value == 1
     assert roi.active is True
     assert roi.stimulated is False
+    assert roi.cell_size == 100.0
+    assert roi.cell_size_units == "pixels"
 
     # Verify Trace
     assert trace.raw_trace == [1.0, 2.0, 3.0]
     assert trace.dff == [0.0, 0.1, 0.2]
 
-    # Verify DataAnalysis
-    assert data_analysis.cell_size == 100.0
-    assert data_analysis.cell_size_units == "pixels"
+    # Verify DataAnalysis (cell_size moved to ROI)
+    assert data_analysis is not None
 
     # Verify masks
     assert roi_mask is not None
@@ -860,7 +861,6 @@ def test_full_workflow(tmp_path: Path) -> None:
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
         },
-        experiment_type=SPONTANEOUS,
     )
 
     # Verify basic experiment structure
@@ -1257,29 +1257,33 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
     plate = Plate(experiment=exp, name="96-well", plate_type="96-well")
     well = Well(plate=plate, name="A1", row=0, column=0)
     fov = FOV(well=well, name="A1_0000_p0", position_index=0)
-    roi = ROI(fov=fov, label_value=1)
+    roi = ROI(
+        fov=fov,
+        label_value=1,
+        cell_size=150.5,
+        cell_size_units="μm²",
+    )
 
     DataAnalysis(
         roi=roi,
-        cell_size=150.5,
-        cell_size_units="μm²",
         total_recording_time_sec=600.0,
         dec_dff_frequency=2.5,
         peaks_dec_dff=[10.0, 20.0, 30.0],
         peaks_amplitudes_dec_dff=[0.5, 0.6, 0.7],
         iei=[10.0, 10.0],
-        inferred_spikes=[0.1, 0.2, 0.3],
     )
 
     with Session(engine) as session:
         session.add(exp)
         session.commit()
 
-        result = session.exec(select(DataAnalysis)).first()
+        result = session.exec(select(ROI)).first()
         assert result.cell_size_units == "μm²"
-        assert result.total_recording_time_sec == 600.0
-        assert result.peaks_amplitudes_dec_dff == [0.5, 0.6, 0.7]
-        assert result.iei == [10.0, 10.0]
+        
+        data_analysis = session.exec(select(DataAnalysis)).first()
+        assert data_analysis.total_recording_time_sec == 600.0
+        assert data_analysis.peaks_amplitudes_dec_dff == [0.5, 0.6, 0.7]
+        assert data_analysis.iei == [10.0, 10.0]
 
 
 def test_mask_neuropil_type(temp_db: TempDB) -> None:
@@ -1394,7 +1398,7 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
 
 
 def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
-    """Test AnalysisSettings with stimulation mask."""
+    """Test ExtractionSettings with stimulation mask."""
     engine, _ = temp_db
 
     with Session(engine) as session:
@@ -1407,8 +1411,8 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
             mask_type="stimulation",
         )
 
-        # Create analysis settings with stimulation mask
-        settings = AnalysisSettings(
+        # Create extraction settings with stimulation mask
+        settings = ExtractionSettings(
             stimulation_mask_path="/path/to/stimulation_mask.tif",
             stimulation_mask=stim_mask,
         )
@@ -1417,7 +1421,7 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
         session.commit()
 
         # Retrieve and verify
-        result = session.exec(select(AnalysisSettings)).first()
+        result = session.exec(select(ExtractionSettings)).first()
         assert result is not None
         assert result.stimulation_mask_path == "/path/to/stimulation_mask.tif"
         assert result.stimulation_mask is not None
@@ -1429,18 +1433,18 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
 
 
 def test_analysis_settings_without_stimulation_mask(temp_db: TempDB) -> None:
-    """Test AnalysisSettings without stimulation mask (optional field)."""
+    """Test ExtractionSettings without stimulation mask (optional field)."""
     engine, _ = temp_db
 
     with Session(engine) as session:
-        # Create analysis settings without stimulation mask
-        settings = AnalysisSettings()
+        # Create extraction settings without stimulation mask
+        settings = ExtractionSettings()
 
         session.add(settings)
         session.commit()
 
         # Retrieve and verify
-        result = session.exec(select(AnalysisSettings)).first()
+        result = session.exec(select(ExtractionSettings)).first()
         assert result is not None
         assert result.stimulation_mask_path is None
         assert result.stimulation_mask is None

@@ -15,6 +15,7 @@ from cali.sqlmodel import AnalysisSettings, Experiment
 from cali.sqlmodel._model import (
     CaliResult,
     DetectionSettings,
+    ExtractionSettings,
 )
 
 
@@ -34,7 +35,6 @@ def test_experiment(test_db: Path) -> Experiment:
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
         },
-        experiment_type=SPONTANEOUS,
     )
     return exp
 
@@ -199,7 +199,7 @@ def test_cali_result_database_storage(
             session.refresh(d_settings)
 
             # Create analysis settings
-            a_settings = AnalysisSettings(dff_window=100)
+            a_settings = AnalysisSettings()
             session.add(a_settings)
             session.commit()
             session.refresh(a_settings)
@@ -275,13 +275,13 @@ def test_analysis_settings_database_deduplication(test_db: Path) -> None:
     try:
         with Session(engine) as session:
             # Create first analysis settings
-            as1 = AnalysisSettings(dff_window=100, threads=4)
+            as1 = AnalysisSettings(threads=4)
             session.add(as1)
             session.commit()
 
         with Session(engine) as session:
             # Try to create identical settings
-            as2 = AnalysisSettings(dff_window=100, threads=4)
+            as2 = AnalysisSettings(threads=4)
 
             # Check if it already exists
             existing = session.exec(
@@ -359,7 +359,7 @@ def test_cali_result_links_to_settings(
         with Session(engine) as session:
             # Create settings
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-            a_settings = AnalysisSettings(dff_window=100)
+            a_settings = AnalysisSettings()
             session.add(d_settings)
             session.add(a_settings)
             session.commit()
@@ -501,8 +501,8 @@ def test_multiple_cali_results_same_experiment(
             session.refresh(d_settings_2)
 
             # Create different analysis settings
-            a_settings_1 = AnalysisSettings(dff_window=100)
-            a_settings_2 = AnalysisSettings(dff_window=200)
+            a_settings_1 = AnalysisSettings()
+            a_settings_2 = AnalysisSettings()
             session.add_all([a_settings_1, a_settings_2])
             session.commit()
             session.refresh(a_settings_1)
@@ -560,7 +560,7 @@ def test_query_cali_results_by_settings(
             d_settings = DetectionSettings(
                 method="cellpose", model_type="cpsam", diameter=40
             )
-            a_settings = AnalysisSettings(dff_window=150)
+            a_settings = AnalysisSettings()
             session.add_all([d_settings, a_settings])
             session.commit()
             session.refresh(d_settings)
@@ -642,15 +642,15 @@ def test_analysis_settings_spontaneous_fields() -> None:
 
 
 def test_analysis_settings_experiment_type() -> None:
-    """Test AnalysisSettings with experiment_type field."""
+    """Test ExtractionSettings with experiment_type field."""
     from cali._constants import EVOKED, SPONTANEOUS
 
-    settings_evoked = AnalysisSettings(
+    settings_evoked = ExtractionSettings(
         experiment_type=EVOKED,
         dff_window=100,
     )
 
-    settings_spont = AnalysisSettings(
+    settings_spont = ExtractionSettings(
         experiment_type=SPONTANEOUS,
         dff_window=100,
     )
@@ -713,14 +713,12 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
             name="Experiment 1",
             data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
             plate_maps={"genotype": {"B5": "WT"}},
-            experiment_type=SPONTANEOUS,
         )
 
         exp2 = Experiment.create_from_data(
             name="Experiment 2",
             data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
             plate_maps={"genotype": {"B5": "KO"}},
-            experiment_type=SPONTANEOUS,
         )
 
         with Session(engine) as session:
@@ -732,7 +730,7 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
 
             # Create shared settings
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-            a_settings = AnalysisSettings(dff_window=100)
+            a_settings = AnalysisSettings()
             session.add_all([d_settings, a_settings])
             session.commit()
             session.refresh(d_settings)
@@ -897,9 +895,9 @@ def test_detection_settings_inequality_cases() -> None:
 
 def test_analysis_settings_inequality_cases() -> None:
     """Test various inequality cases for AnalysisSettings."""
-    as1 = AnalysisSettings(dff_window=100, threads=4)
-    as2 = AnalysisSettings(dff_window=200, threads=4)
-    as3 = AnalysisSettings(dff_window=100, threads=8)
+    as1 = AnalysisSettings(threads=4)
+    as2 = AnalysisSettings(threads=4)
+    as3 = AnalysisSettings(threads=8)
     as4 = AnalysisSettings(
         dff_window=100,
         threads=4,

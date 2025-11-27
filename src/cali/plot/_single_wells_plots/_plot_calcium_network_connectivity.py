@@ -102,25 +102,42 @@ def _get_network_threshold(
     """Get network threshold from AnalysisSettings."""
     from sqlmodel import Session, col, select
 
-    from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
+    from cali.sqlmodel._model import (
+        FOV,
+        AnalysisSettings,
+        CaliResult,
+        Experiment,
+        Plate,
+        Well,
+    )
 
     with Session(engine) as session:
         stmt = (
-            select(CaliResult)
+            select(CaliResult, AnalysisSettings)
             .join(Experiment, CaliResult.experiment == Experiment.id)
             .join(Plate, Experiment.id == Plate.experiment_id)
             .join(Well, Plate.id == Well.plate_id)
             .join(FOV, Well.id == FOV.well_id)
+            .join(
+                AnalysisSettings,
+                CaliResult.analysis_settings == AnalysisSettings.id,
+                isouter=True,
+            )
             .where(col(FOV.name) == fov_name)
         )
         if run_id is not None:
             stmt = stmt.where(col(CaliResult.id) == run_id)
-        result = session.exec(stmt).first()
+        result_tuple = session.exec(stmt).first()
 
-        if result is None or result.analysis_settings is None:
+        if result_tuple is None:
             return 90.0  # Default value
 
-        threshold = result.analysis_settings.calcium_network_threshold
+        _, analysis_settings = result_tuple
+
+        if analysis_settings is None:
+            return 90.0  # Default value
+
+        threshold = analysis_settings.calcium_network_threshold
         return threshold if threshold is not None else 90.0
 
 

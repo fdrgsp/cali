@@ -654,6 +654,8 @@ def roi_from_roi_data(
         label_value=label_value,
         active=roi_data.active,
         stimulated=roi_data.stimulated,
+        cell_size=roi_data.cell_size,
+        cell_size_units=roi_data.cell_size_units,
         detection_settings_id=detection_settings_id,
     )
 
@@ -664,20 +666,18 @@ def roi_from_roi_data(
         neuropil_trace=roi_data.neuropil_trace,
         dff=roi_data.dff,
         dec_dff=roi_data.dec_dff,
+        inferred_spikes=roi_data.inferred_spikes,
         x_axis=roi_data.elapsed_time_list_ms,
         roi=roi,  # Use relationship instead
     )
 
     # Create DataAnalysis
     data_analysis = DataAnalysis(
-        cell_size=roi_data.cell_size,
-        cell_size_units=roi_data.cell_size_units,
         total_recording_time_sec=roi_data.total_recording_time_sec,
         peaks_dec_dff=roi_data.peaks_dec_dff,
         peaks_amplitudes_dec_dff=roi_data.peaks_amplitudes_dec_dff,
         dec_dff_frequency=roi_data.dec_dff_frequency,
         iei=roi_data.iei,
-        inferred_spikes=roi_data.inferred_spikes,
         # ROI-specific thresholds calculated during analysis
         peaks_prominence_dec_dff=roi_data.peaks_prominence_dec_dff,
         peaks_height_dec_dff=roi_data.peaks_height_dec_dff,
