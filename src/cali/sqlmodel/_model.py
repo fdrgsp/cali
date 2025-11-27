@@ -241,6 +241,14 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Unique experiment identifier
     description : str | None
         Optional experiment description
+    tiff_file_map_json : str | None
+        JSON-serialized file_map for TiffCollectionReader
+        Format: {"A1": ["path1.tif", "path2.tif"], "A2": [...], ...}
+    tiff_plate_type : str | None
+        Plate type for TiffCollectionReader (e.g., "96-well", "coverslip-22mm-square")
+    tiff_metadata_json : str | None
+        JSON-serialized metadata for TiffCollectionReader
+        Must include "exposure_ms" and "pixel_size_um"
     plate : Plate
         Related plate (back-populated by SQLModel)
     """
@@ -251,6 +259,11 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     created_at: datetime = Field(default_factory=datetime.now)
     name: str = Field(unique=True, index=True)
     description: str | None = None
+
+    # TIFF collection configuration (for TiffCollectionReader)
+    tiff_file_map_json: str | None = None
+    tiff_plate_type: str | None = None
+    tiff_metadata_json: str | None = None
 
     # Relationships
     plate: "Plate" = Relationship(back_populates="experiment")
@@ -359,6 +372,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         fovs_per_well: int = 1,
         plate_maps: dict[str, dict[str, str]] | None = None,
         description: str | None = None,
+        tiff_file_map_json: dict[str, str] | None = None,
+        tiff_plate_type: str | None = None,
+        tiff_metadata_json: dict[str, Any] | None = None,
     ) -> Self:
         """Create a new experiment with plate structure ready for analysis.
 
@@ -385,6 +401,12 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
         description : str | None, optional
             Optional experiment description, by default None
+        tiff_file_map_json : dict[str, str] | None, optional
+            Dictionary representing file_map for TIFF collection, by default None
+        tiff_plate_type : str | None, optional
+            Plate type for TIFF files (from useq-schema database), by default None
+        tiff_metadata_json : dict[str, Any] | None, optional
+            Dictionary with TIFF metadata, by default None
 
         Returns
         -------
@@ -416,6 +438,17 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment = cls(
             name=name,
             description=description,
+            tiff_file_map_json=(
+                None
+                if tiff_file_map_json is None
+                else str(tiff_file_map_json)
+            ),
+            tiff_plate_type=tiff_plate_type,
+            tiff_metadata_json=(
+                None
+                if tiff_metadata_json is None
+                else str(tiff_metadata_json)
+            ),
         )
 
         # Create useq WellPlate and WellPlatePlan
@@ -485,12 +518,19 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         data_path: str,
         plate_maps: dict[str, dict[str, str]] | None = None,
         description: str | None = None,
+        tiff_file_map: dict[str, list[str]] | None = None,
+        tiff_plate_type: str | None = None,
+        tiff_metadata: dict[str, Any] | None = None,
     ) -> Self:
         """Create a new experiment by loading plate structure from data's useq metadata.
 
         This method automatically extracts the plate configuration (wells, FOVs)
         from the imaging data's useq metadata, making it ideal for datasets that
         already contain plate information.
+
+        For TIFF collections, provide tiff_file_map, tiff_plate_type, and
+        tiff_metadata to create a TiffCollectionReader that will be validated
+        against data_path.
 
         Parameters
         ----------
@@ -504,6 +544,14 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                      "treatment": {"A1": "Vehicle", "A2": "Drug"}}, by default None
         description : str | None, optional
             Optional experiment description, by default None
+        tiff_file_map : dict[str, list[str]] | None, optional
+            For TIFF collections: mapping from well names to lists of TIFF file paths.
+            Format: {"A1": ["path1.tif", "path2.tif"], "A2": [...], ...}
+            If provided, a TiffCollectionReader will be created.
+        tiff_plate_type : str | None, optional
+            For TIFF collections: plate type (e.g., "96-well", "coverslip-22mm-square")
+        tiff_metadata : dict[str, Any] | None, optional
+            For TIFF collections: metadata with "exposure_ms" and "pixel_size_um"
 
         Returns
         -------
@@ -513,21 +561,49 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         Example
         -------
         >>> from cali.sqlmodel import Experiment
-        >>> from cali._constants import EVOKED
         >>>
-        >>> # Create experiment from data with useq metadata
+        >>> # Create from zarr data
         >>> exp = Experiment.create_from_data(
         ...     name="My Experiment",
         ...     data_path="path/to/data.zarr",
-        ...     output_path="path/to/analysis",
-        ...     plate_maps={
-        ...         "genotype": {"B5": "WT"},
-        ...         "treatment": {"B5": "Vehicle"},
-        ...     },
+        ...     plate_maps={"genotype": {"B5": "WT"}},
         ... )
-        >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
+        >>>
+        >>> # Create from TIFF collection
+        >>> exp = Experiment.create_from_data(
+        ...     name="TIFF Experiment",
+        ...     data_path="/path/to/tiffs",
+        ...     tiff_file_map={"A1": ["A1_fov1.tif", "A1_fov2.tif"]},
+        ...     tiff_plate_type="96-well",
+        ...     tiff_metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
+        ... )
         """
+        import json
+
+        from cali.readers import TiffCollectionReader
+        from cali.util import load_data
+
         from ._data_to_plate import data_to_plate
+
+        # If TIFF parameters provided, create TiffCollectionReader
+        if (
+            tiff_file_map is not None
+            and tiff_plate_type is not None
+            and tiff_metadata is not None
+        ):
+            # Create TiffCollectionReader from provided parameters
+            # Cast is safe: list[str] is valid input for list[Path | str]
+            from typing import cast
+
+            data = TiffCollectionReader(
+                file_map=cast("dict[str, list[Path | str]]", tiff_file_map),
+                plate=tiff_plate_type,
+                metadata=tiff_metadata,
+                data_path=data_path,
+            )
+        else:
+            # Load data normally (zarr or existing TiffCollectionReader)
+            data = load_data(data_path)
 
         # Create experiment
         experiment = cls(
@@ -535,8 +611,15 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             description=description,
         )
 
+        # If data is TiffCollectionReader, save its configuration
+        if isinstance(data, TiffCollectionReader):
+            file_map, plate_type, metadata = data.to_experiment_tiff_config()
+            experiment.tiff_file_map_json = json.dumps(file_map)
+            experiment.tiff_plate_type = plate_type
+            experiment.tiff_metadata_json = json.dumps(metadata)
+
         # Load plate structure from data
-        plate = data_to_plate(data_path, experiment, plate_maps=plate_maps)
+        plate = data_to_plate(data, experiment, plate_maps=plate_maps)
         if plate is None:
             raise ValueError(
                 f"Failed to load plate structure from data at {data_path}. "

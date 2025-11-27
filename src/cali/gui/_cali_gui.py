@@ -74,7 +74,11 @@ from ._util import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from cali.readers import OMEZarrReader, TensorstoreZarrReader
+    from cali.readers import (
+        OMEZarrReader,
+        TensorstoreZarrReader,
+        TiffCollectionReader,
+    )
 
 from cali.logger import cali_logger
 
@@ -104,7 +108,9 @@ class CaliGui(QMainWindow):
         self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
-        self._data: TensorstoreZarrReader | OMEZarrReader | None = None
+        self._data: (
+            TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        ) = None
 
         # RUNNER ----------------------------------------------------------------------
         self._runner = CaliRunner()
@@ -351,9 +357,9 @@ class CaliGui(QMainWindow):
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
-        # self._initialize_from_database(db_path, data_path)
+        data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"
@@ -382,12 +388,18 @@ class CaliGui(QMainWindow):
             self._loading_bar.hide()
             return
 
+        # OPEN THE DATABASE -----------------------------------------------------------
+        cali_logger.info(f"💿 Loading experiment from database at {database_path}")
+        # load the first experiment from the database (there should be only one)
+        experiment = Experiment.load_from_db(database_path, load_data=False)
+
         # DATA-------------------------------------------------------------------------
-        self._data = load_data(data_path)
+        self._data = load_data(data_path, experiment=experiment)
         if self._data is None:
             msg = (
-                f"❌ Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
-                f" {WRITERS[OME_ZARR][0]} are supported."
+                f"❌ Unsupported file format! Currently, Only "
+                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                "TiffCollectionReader are supported."
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
@@ -403,11 +415,6 @@ class CaliGui(QMainWindow):
             cali_logger.error(msg)
             self._loading_bar.hide()
             return
-
-        # OPEN THE DATABASE -----------------------------------------------------------
-        cali_logger.info(f"💿 Loading experiment from database at {database_path}")
-        # load the first experiment from the database (there should be only one)
-        experiment = Experiment.load_from_db(database_path, load_data=False)
 
         # ASSIGN VARIABLES ------------------------------------------------------------
         self._database_path = str(database_path)
@@ -442,27 +449,6 @@ class CaliGui(QMainWindow):
 
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
-
-        # DATASTORE--------------------------------------------------------------------
-        self._data = load_data(data_path)
-        if self._data is None:
-            msg = (
-                f"❌ Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
-                f" {WRITERS[OME_ZARR][0]} are supported."
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
-
-        if self._data.sequence is None:
-            show_error_dialog(
-                self,
-                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                "the useq.MDASequence in the datastore metadata!",
-            )
-            self._loading_bar.hide()
-            return
 
         # ASSIGN VARIABLES ------------------------------------------------------------
         self._data_path = data_path
@@ -503,7 +489,7 @@ class CaliGui(QMainWindow):
                     f"💿 Loading existing database at {self._database_path}"
                 )
 
-                # OPEN THE DATABASE -------------------------------------------------------
+                # OPEN THE DATABASE ---------------------------------------------------
                 experiment = Experiment.load_from_db(
                     self._database_path, load_data=False
                 )
@@ -528,6 +514,28 @@ class CaliGui(QMainWindow):
             save_experiment_to_database(
                 experiment, output_path, database_name=database_name, overwrite=True
             )
+
+        # DATA---------------------------------------------------------------------
+        self._data = load_data(data_path, experiment=experiment)
+        if self._data is None:
+            msg = (
+                f"❌ Unsupported file format! Currently, Only "
+                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                "TiffCollectionReader are supported."
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return
+
+        if self._data.sequence is None:
+            show_error_dialog(
+                self,
+                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "the useq.MDASequence in the datastore metadata!",
+            )
+            self._loading_bar.hide()
+            return
 
         # UPDATE GUI-------------------------------------------------------------------
         self._update_gui_plate_plan(self._data.sequence.stage_positions)
@@ -667,13 +675,14 @@ class CaliGui(QMainWindow):
                     missing_fields = []
                     # Check for required evoked experiment fields
                     if not extraction_settings.stimulation_mask_path:
-                        missing_fields.append("Stimulation mask")
-                    if not extraction_settings.led_pulse_duration:
-                        missing_fields.append("LED pulse duration")
-                    if not extraction_settings.led_pulse_powers:
-                        missing_fields.append("LED pulse powers")
-                    if not extraction_settings.led_pulse_on_frames:
-                        missing_fields.append("LED pulse on frames")
+                        missing_fields.append("Stimulation mask (Extraction tab)")
+                    if analysis_settings is not None:
+                        if not analysis_settings.led_pulse_duration:
+                            missing_fields.append("LED pulse duration (Analysis tab)")
+                        if not analysis_settings.led_pulse_powers:
+                            missing_fields.append("LED pulse powers (Analysis tab)")
+                        if not analysis_settings.led_pulse_on_frames:
+                            missing_fields.append("LED pulse on frames (Analysis tab)")
                     if missing_fields:
                         msg = (
                             "Evoked experiment type selected but required fields are "
@@ -1623,6 +1632,10 @@ class CaliGui(QMainWindow):
                     self, f"The path {path} is not a directory! Cannot save the data."
                 )
                 return
+
+            # If no positions specified, use all positions
+            if not positions:
+                positions = list(range(len(sequence.stage_positions)))
 
             # start the waiting progress bar
             self._init_loading_bar("Saving as tiff...")

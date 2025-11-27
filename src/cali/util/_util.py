@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ from tqdm import tqdm
 from cali._constants import TS, ZR
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -18,21 +20,61 @@ from cali.sqlmodel._model import (
 )
 
 
-def load_data(data_path: str | Path) -> TensorstoreZarrReader | OMEZarrReader:
-    """Load data from the given path using the appropriate reader."""
+def load_data(
+    data_path: str | Path,
+    experiment: "Experiment | None" = None,
+) -> TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None:
+    """Load data from the given path using the appropriate reader.
+
+    Parameters
+    ----------
+    data_path : str | Path
+        Path to the data directory or file
+    experiment : Experiment | None, optional
+        Experiment object containing TIFF collection configuration.
+        If provided and contains TIFF config, creates TiffCollectionReader.
+
+    Returns
+    -------
+    TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        The appropriate reader for the data format, or None if unsupported
+    """
     cali_logger.info(f"💿 Loading data from path: {data_path}")
-    data_path = str(data_path)
+    data_path_str = str(data_path)
+
+    # Check if experiment has TIFF collection configuration
+    if (
+        experiment is not None
+        and experiment.tiff_file_map_json
+        and experiment.tiff_plate_type
+        and experiment.tiff_metadata_json
+    ):
+        cali_logger.info("📁 Creating TiffCollectionReader from experiment config")
+        try:
+            return TiffCollectionReader(
+                file_map=json.loads(experiment.tiff_file_map_json),
+                plate=experiment.tiff_plate_type,
+                metadata=json.loads(experiment.tiff_metadata_json),
+                data_path=data_path,
+            )
+        except (FileNotFoundError, ValueError) as e:
+            cali_logger.error(
+                f"❌ Failed to create TiffCollectionReader from experiment: {e}."
+            )
+            return None
+
     # select which reader to use for the datastore
-    if data_path.endswith(TS):
+    if data_path_str.endswith(TS):
         # read tensorstore
         return TensorstoreZarrReader(data_path)
-    elif data_path.endswith(ZR):
+    elif data_path_str.endswith(ZR):
         # read ome zarr
         return OMEZarrReader(data_path)
-    else:
-        msg = f"Unsupported data format for path: {data_path}"
-        cali_logger.error(msg)
-        raise ValueError(msg)
+    return None
+    # else:
+    #     msg = f"Unsupported data format for path: {data_path}"
+    #     cali_logger.error(msg)
+    #     raise ValueError(msg)
 
 
 def mask_to_coordinates(

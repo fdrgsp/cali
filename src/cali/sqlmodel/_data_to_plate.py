@@ -8,14 +8,18 @@ import useq
 from cali.sqlmodel._useq_plate_to_db import useq_plate_plan_to_db
 
 if TYPE_CHECKING:
-    from cali.readers import OMEZarrReader, TensorstoreZarrReader
+    from cali.readers import (
+        OMEZarrReader,
+        TensorstoreZarrReader,
+        TiffCollectionReader,
+    )
     from cali.sqlmodel import Experiment, Plate
 
 from cali.logger import cali_logger
 
 
 def data_to_plate(
-    data: str | Path | TensorstoreZarrReader | OMEZarrReader,
+    data: str | Path | TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
     experiment: Experiment,
     plate_maps: dict[str, dict[str, str]] | None = None,
 ) -> Plate | None:
@@ -24,18 +28,18 @@ def data_to_plate(
 
         dataset = load_data(data)
         if dataset is None:
-            cali_logger.error(f"Could not load data from path: {data}")
+            cali_logger.error(f"❌ Could not load data from path: {data}")
             return None
     else:
         dataset = data
 
     if dataset.sequence is None:
-        cali_logger.error("Dataset does not contain sequence information.")
+        cali_logger.error("❌  Dataset does not contain sequence information.")
         return None
 
     plate_plan = dataset.sequence.stage_positions
     if not isinstance(plate_plan, useq.WellPlatePlan):
-        cali_logger.error("Dataset does not contain a WellPlatePlan.")
+        cali_logger.error("❌  Dataset does not contain a WellPlatePlan.")
         return None
 
     return useq_plate_plan_to_db(plate_plan, experiment, plate_maps)
