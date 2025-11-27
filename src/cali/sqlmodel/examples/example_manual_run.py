@@ -49,7 +49,7 @@ engine = create_engine(
     pool_pre_ping=True,
 )
 
-# positions to process
+# set the positions (fovs) to process
 # positions_to_process = [17, 18]
 data = load_data(dataset_path)
 positions_to_process = list(range(len(data.sequence.stage_positions)))

@@ -77,7 +77,8 @@ with Session(engine) as session:
                 .where(ROI.fov_id == fov.id)
             ).one()
             print(
-                f"{fov.name}: {len(fov.rois)} ROIs, {trace_count} Traces, {analysis_count} DataAnalysis"
+                f"{fov.name}: {len(fov.rois)} ROIs, {trace_count} Traces, "
+                f"{analysis_count} DataAnalysis"
             )
 
 # Clean up engine
