@@ -69,6 +69,14 @@ class AnalysisGroup(Enum):
     MULTI_WELL = "multi_well"
 
 
+class PipelineStage(Enum):
+    """Enum for three-stage pipeline stages."""
+
+    DETECTION = "detection"  # Requires Detection only (ROI masks, cell size)
+    EXTRACTION = "extraction"  # Requires Detection + Extraction (traces, neuropil)
+    ANALYSIS = "analysis"  # Requires Detection + Extraction + Analysis (peaks, spikes)
+
+
 # Type aliases for better type hints
 # Single-well analyzers accept (widget, engine, fov_name, rois, run_id)
 # Using Any for analyzer since functions may have additional keyword arguments
@@ -96,12 +104,15 @@ class AnalysisProduct:
         The plotting function to call
     category : str
         Category for grouping in the UI (e.g., "Calcium Traces", "Evoked Experiment")
+    pipeline_stage : PipelineStage
+        Minimum pipeline stage required to generate this plot
     """
 
     name: str
     group: AnalysisGroup
     analyzer: AnyAnalyzer
     category: str = "General"
+    pipeline_stage: PipelineStage = PipelineStage.ANALYSIS
 
     def __post_init__(self) -> None:
         """Register this product in the global registry."""
@@ -180,66 +191,77 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, raw=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=CORRECTED_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_traces_data,
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=NORMALIZED_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, normalize=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=DFF,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dff=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dff=True, normalize=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=DEC_DFF,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=DEC_DFF_WITH_PEAKS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=DEC_DFF_WITH_PEAKS_AND_THRESHOLDS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True, thresholds=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=DEC_DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=DEC_DFF_NORMALIZED_ACTIVE_ONLY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, active_only=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=DEC_DFF_NORMALIZED_WITH_PEAKS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, with_peaks=True),
     category="Calcium Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Neuropil Group
@@ -248,12 +270,14 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_neuropil_masks,
     category="Neuropil Correction",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=NEUROPIL_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_neuropil_traces,
     category="Neuropil Correction",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 
 # Inferred Spikes Group
@@ -262,42 +286,49 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True),
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes,
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_RAW_WITH_THRESHOLD,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True),
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes_normalized_with_bursts,
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
     category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Amplitude and Frequency Group
@@ -306,18 +337,21 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
     category="Calcium Peaks Amplitude and Frequency",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=DEC_DFF_FREQUENCY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
     category="Calcium Peaks Amplitude and Frequency",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
     category="Calcium Peaks Amplitude and Frequency",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Raster Plots Group
@@ -326,24 +360,28 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_raster_plot,
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=RASTER_PLOT_AMP,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=False),
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=RASTER_PLOT_AMP_WITH_COLORBAR,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=True),
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT_AMP,
@@ -352,12 +390,14 @@ AnalysisProduct(
         _generate_spike_raster_plot, amplitude_colors=True, colorbar=False
     ),
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=True),
     category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Inter-event Interval Group
@@ -366,6 +406,7 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_iei_data,
     category="Calcium Peaks Interevent Interval",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Cell Size Group
@@ -374,6 +415,7 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_cell_size_data,
     category="Cell Size",
+    pipeline_stage=PipelineStage.DETECTION,
 )
 
 # Correlation Analysis Group
@@ -382,66 +424,77 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_peak_event_synchrony_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CALCIUM_NETWORK_CONNECTIVITY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_connectivity_network_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CALCIUM_CONNECTIVITY_MATRIX,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_connectivity_matrix_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_cross_correlation_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CLUSTERING,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_hierarchical_clustering_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CLUSTERING_DENDROGRAM,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_hierarchical_clustering_data, use_dendrogram=True),
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_CLUSTERING,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_hierarchical_clustering_data,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_spike_hierarchical_clustering_data, use_dendrogram=True),
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_BURST_ANALYSIS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_burst_activity,
     category="Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Evoked Experiment Group
@@ -450,48 +503,56 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, stimulated_area=False),
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_ROIS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, with_rois=True),
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_ROIS_WITH_STIMULATED_AREA,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, with_rois=True, stimulated_area=True),
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_PEAKS_AMP,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=NON_STIMULATED_PEAKS_AMP,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stim_or_not_stim_peaks_amplitude,
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_roi_amp,
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_amp, with_peaks=True),
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
     category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # # Multi-Well Analysis Products ------------------------------------------------------
@@ -694,6 +755,59 @@ def _get_combo_options_dict(group: AnalysisGroup) -> dict[str, list[str]]:
 # Generate the dictionaries on module load
 SINGLE_WELL_COMBO_OPTIONS_DICT = _get_combo_options_dict(AnalysisGroup.SINGLE_WELL)
 MULTI_WELL_COMBO_OPTIONS_DICT = _get_combo_options_dict(AnalysisGroup.MULTI_WELL)
+
+
+def get_available_plots(
+    group: AnalysisGroup,
+    has_detection: bool = False,
+    has_extraction: bool = False,
+    has_analysis: bool = False,
+) -> dict[str, list[str]]:
+    """Filter available plots based on completed pipeline stages.
+
+    Parameters
+    ----------
+    group : AnalysisGroup
+        Whether to return single-well or multi-well plots
+    has_detection : bool
+        Whether detection has been completed
+    has_extraction : bool
+        Whether extraction has been completed
+    has_analysis : bool
+        Whether analysis has been completed
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Dictionary mapping category headers to list of available plot names
+    """
+    # Group products by category, filtering by pipeline stage
+    categories: dict[str, list[str]] = {}
+    for product in ANALYSIS_PRODUCTS:
+        if product.group != group:
+            continue
+
+        # Check if this plot is available based on pipeline stages
+        if product.pipeline_stage == PipelineStage.DETECTION and not has_detection:
+            continue
+        if product.pipeline_stage == PipelineStage.EXTRACTION and not has_extraction:
+            continue
+        if product.pipeline_stage == PipelineStage.ANALYSIS and not has_analysis:
+            continue
+
+        # Add to categories
+        if product.category not in categories:
+            categories[product.category] = []
+        categories[product.category].append(product.name)
+
+    # Format with dividers for the combobox
+    result = {}
+    for category, names in categories.items():
+        # Create a divider key that won't be selectable
+        divider_key = f"----------{category}".ljust(60, "-")
+        result[divider_key] = names
+
+    return result
 
 
 # Plots that require active ROIs only (for random selection filtering)

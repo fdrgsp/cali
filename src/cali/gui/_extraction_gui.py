@@ -70,8 +70,6 @@ class ExtractionSettingsData:
     ) = None
     experiment_type_data: ExperimentTypeData | None = None
     trace_extraction_data: TraceExtractionData | None = None
-    calcium_peaks_data: CalciumPeaksData | None = None
-    spikes_data: SpikeData | None = None
 
 
 @dataclass(frozen=True)
@@ -1226,13 +1224,11 @@ class _ExtractionGUI(QWidget):
         threads_layout.addWidget(threads_lbl)
         threads_layout.addWidget(self._threads)
 
-        # ANALYSIS WIDGETS -----------------------------------------------------------
+        # EXTRACTION WIDGETS ---------------------------------------------------------
         self._plate_map_wdg = _PlateMapWidget(self)
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
-        self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
-        self._spike_wdg = _SpikeWidget(self)
         # self._frame_rate_wdg = _FrameRateWidget(self)
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
@@ -1244,7 +1240,7 @@ class _ExtractionGUI(QWidget):
         analysis_scroll_area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
-        # add cellpose and caiman widgets to scroll area
+        # add extraction widgets to scroll area
         group_layout.addWidget(create_divider_line("Plate Map"))
         group_layout.addWidget(self._plate_map_wdg)
         group_layout.addWidget(create_divider_line("Type of Experiment"))
@@ -1255,10 +1251,6 @@ class _ExtractionGUI(QWidget):
         group_layout.addWidget(self._neuropil_wdg)
         group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
         group_layout.addWidget(self._trace_extraction_wdg)
-        group_layout.addWidget(create_divider_line("Calcium Peaks"))
-        group_layout.addWidget(self._calcium_peaks_wdg)
-        group_layout.addWidget(create_divider_line("Spikes and Bursts"))
-        group_layout.addWidget(self._spike_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
         group_layout.addStretch(1)
@@ -1271,13 +1263,11 @@ class _ExtractionGUI(QWidget):
         main_layout.addWidget(analysis_scroll_area)
 
         # STYLING ---------------------------------------------------------------------
-        fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
+        fix_width = self._trace_extraction_wdg._dff_lbl.sizeHint().width()
         self._plate_map_wdg.set_labels_width(fix_width)
         self._experiment_type_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
-        self._calcium_peaks_wdg.set_labels_width(fix_width)
-        self._spike_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
         # self._frame_rate_wdg.set_labels_width(fix_width)
 
@@ -1294,8 +1284,6 @@ class _ExtractionGUI(QWidget):
             self._plate_map_wdg.value(),
             self._experiment_type_wdg.value(),
             self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
-            self._calcium_peaks_wdg.value(),
-            self._spike_wdg.value(),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -1314,10 +1302,6 @@ class _ExtractionGUI(QWidget):
                 value.trace_extraction_data.neuropil_correction_factor,
             )
             self._neuropil_wdg.setValue(neuropil_data)
-        if value.calcium_peaks_data is not None:
-            self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
-        if value.spikes_data is not None:
-            self._spike_wdg.setValue(value.spikes_data)
 
     def enable(self, enable: bool) -> None:
         """Enable or disable the widget."""
@@ -1326,8 +1310,6 @@ class _ExtractionGUI(QWidget):
         # self._frame_rate_wdg.setEnabled(enable)
         self._neuropil_wdg.setEnabled(enable)
         self._trace_extraction_wdg.setEnabled(enable)
-        self._calcium_peaks_wdg.setEnabled(enable)
-        self._spike_wdg.setEnabled(enable)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -1336,33 +1318,29 @@ class _ExtractionGUI(QWidget):
         # self._frame_rate_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
-        self._calcium_peaks_wdg.reset()
-        self._spike_wdg.reset()
 
-    def to_model_settings(self) -> AnalysisSettings:
-        """Convert current GUI settings to AnalysisSettings model.
+    def to_model_settings(self) -> ExtractionSettings:
+        """Convert current GUI settings to ExtractionSettings model.
 
         Returns
         -------
-        AnalysisSettings
-            The AnalysisSettings model populated with current GUI values.
+        ExtractionSettings
+            The ExtractionSettings model populated with current GUI values.
         """
         from datetime import datetime
 
-        from cali.sqlmodel import AnalysisSettings
+        from cali.sqlmodel import ExtractionSettings
 
         settings = self.value()
 
         # Extract nested data with defaults
         trace_data = settings.trace_extraction_data
-        peaks_data = settings.calcium_peaks_data
-        spikes_data = settings.spikes_data
 
         experiment_type = SPONTANEOUS
         if (exp_type_data := settings.experiment_type_data) is not None:
             experiment_type = exp_type_data.experiment_type
 
-        settings = AnalysisSettings(
+        settings = ExtractionSettings(
             created_at=datetime.now(),
             threads=self._threads.value(),
             experiment_type=experiment_type or SPONTANEOUS,
@@ -1376,64 +1354,6 @@ class _ExtractionGUI(QWidget):
             decay_constant=trace_data.decay_constant if trace_data else 0.0,
             dff_window=(
                 trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
-            ),
-            peaks_height_value=(
-                peaks_data.peaks_height if peaks_data else DEFAULT_HEIGHT
-            ),
-            peaks_height_mode=(
-                peaks_data.peaks_height_mode if peaks_data else MULTIPLIER
-            ),
-            peaks_distance=(
-                peaks_data.peaks_distance if peaks_data else DEFAULT_PEAKS_DISTANCE
-            ),
-            peaks_prominence_multiplier=(
-                peaks_data.peaks_prominence_multiplier if peaks_data else 1.0
-            ),
-            calcium_sync_jitter_window=(
-                peaks_data.calcium_synchrony_jitter
-                if peaks_data
-                else DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
-            ),
-            calcium_network_threshold=(
-                peaks_data.calcium_network_threshold
-                if peaks_data
-                else DEFAULT_CALCIUM_NETWORK_THRESHOLD
-            ),
-            spike_threshold_value=(
-                spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD
-            ),
-            spike_threshold_mode=(
-                spikes_data.spike_threshold_mode if spikes_data else MULTIPLIER
-            ),
-            burst_threshold=(
-                spikes_data.burst_threshold if spikes_data else DEFAULT_BURST_THRESHOLD
-            ),
-            burst_min_duration=(
-                spikes_data.burst_min_duration
-                if spikes_data
-                else DEFAULT_MIN_BURST_DURATION
-            ),
-            burst_gaussian_sigma=(
-                spikes_data.burst_blur_sigma
-                if spikes_data
-                else DEFAULT_BURST_GAUSS_SIGMA
-            ),
-            spikes_sync_cross_corr_lag=(
-                spikes_data.synchrony_lag
-                if spikes_data
-                else DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
-            ),
-            led_power_equation=(
-                exp_type_data.led_power_equation if exp_type_data else None
-            ),
-            led_pulse_duration=(
-                exp_type_data.led_pulse_duration if exp_type_data else None
-            ),
-            led_pulse_powers=(
-                exp_type_data.led_pulse_powers if exp_type_data else None
-            ),
-            led_pulse_on_frames=(
-                exp_type_data.led_pulse_on_frames if exp_type_data else None
             ),
             stimulation_mask_path=(
                 exp_type_data.stimulation_area_path if exp_type_data else None

@@ -56,14 +56,8 @@ from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data
 
 from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
-from ._extraction_gui import (
-    CalciumPeaksData,
-    ExperimentTypeData,
-    ExtractionSettingsData,
-    SpikeData,
-    TraceExtractionData,
-    _ExtractionGUI,
-)
+from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
+from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
@@ -208,7 +202,7 @@ class CaliGui(QMainWindow):
         self._detection_wdg = _DetectionGUI(self)
         detection_tab_layout.addWidget(self._detection_wdg)
 
-        # EXTRACTION SUB-TAB ------------------------------------------------------------
+        # EXTRACTION SUB-TAB ----------------------------------------------------------
         self._extraction_tab = QWidget()
         self._sub_tab.addTab(self._extraction_tab, "Extraction")
         extraction_tab_layout = QVBoxLayout(self._extraction_tab)
@@ -216,6 +210,15 @@ class CaliGui(QMainWindow):
 
         self._extraction_wdg = _ExtractionGUI(self)
         extraction_tab_layout.addWidget(self._extraction_wdg)
+
+        # ANALYSIS SUB-TAB ------------------------------------------------------------
+        self._analysis_tab = QWidget()
+        self._sub_tab.addTab(self._analysis_tab, "Analysis")
+        analysis_tab_layout = QVBoxLayout(self._analysis_tab)
+        analysis_tab_layout.setContentsMargins(5, 5, 5, 5)
+
+        self._analysis_wdg = _AnalysisGUI(self)
+        analysis_tab_layout.addWidget(self._analysis_wdg)
 
         # Add sub-tabs to the Detection & Extraction tab
         detection_extraction_layout.addWidget(self._sub_tab)
@@ -344,9 +347,9 @@ class CaliGui(QMainWindow):
         # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
         # self.initialize_widget_from_database(data)
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
+        data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        db_path = "tests/test_data/evoked/results.cali"
+        self._initialize_from_database(db_path, data_path)
 
         # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
@@ -542,7 +545,7 @@ class CaliGui(QMainWindow):
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
         # populate detection settings combobox in run widget
-        self._populate_detection_settings(database_path)
+        self._populate_settings(database_path)
         # select first run if available
         if self._runs_panel._runs_list.count() > 0:
             # select first run
@@ -559,8 +562,8 @@ class CaliGui(QMainWindow):
         if plate_map_data is not None and plate is not None:
             self._extraction_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
 
-    def _populate_detection_settings(self, database_path: Path | str) -> None:
-        """Populate the detection settings combobox in RunCaliWidget.
+    def _populate_settings(self, database_path: Path | str) -> None:
+        """Populate the settings combobox in the run widget.
 
         Parameters
         ----------
@@ -568,8 +571,10 @@ class CaliGui(QMainWindow):
             Path to the database
         """
         try:
-            # Get current selection if not specified
-            preserve_selection = self._run_cali_wdg.value().detection_settings_id
+            # Get current selections to preserve them
+            current_value = self._run_cali_wdg.value()
+            preserve_detection_selection = current_value.detection_settings_id
+            preserve_extraction_selection = current_value.extraction_settings_id
 
             # Get all unique detection settings IDs
             detection_ids = self._runs_panel.get_detection_settings_ids()
@@ -602,11 +607,23 @@ class CaliGui(QMainWindow):
 
             self._run_cali_wdg.populate_detection_settings(settings_list)
 
-            # Restore previous selection if it still exists
-            if preserve_selection is not None:
+            # Restore detection selection if it still exists
+            if preserve_detection_selection is not None:
                 combo = self._run_cali_wdg._detection_settings_combo
                 for i in range(combo.count()):
-                    if combo.itemData(i) == preserve_selection:
+                    if combo.itemData(i) == preserve_detection_selection:
+                        combo.setCurrentIndex(i)
+                        break
+
+            # Populate extraction settings
+            extraction_ids = self._runs_panel.get_extraction_settings_ids()
+            self._run_cali_wdg.populate_extraction_settings(extraction_ids)
+
+            # Restore extraction selection if it still exists
+            if preserve_extraction_selection is not None:
+                combo = self._run_cali_wdg._extraction_settings_combo
+                for i in range(combo.count()):
+                    if combo.itemData(i) == preserve_extraction_selection:
                         combo.setCurrentIndex(i)
                         break
 
@@ -634,6 +651,13 @@ class CaliGui(QMainWindow):
             extraction_settings = (
                 self._extraction_wdg.to_model_settings()
                 if value.run_extraction
+                else None
+            )
+
+            # Get analysis settings if needed
+            analysis_settings = (
+                self._analysis_wdg.to_model_settings()
+                if value.run_analysis
                 else None
             )
 
@@ -698,7 +722,8 @@ class CaliGui(QMainWindow):
                     experiment,
                     self._data.path,
                     detection_settings,
-                    analysis_settings=extraction_settings,
+                    extraction_settings=extraction_settings,
+                    analysis_settings=analysis_settings,
                     global_position_indices=pos,
                     database_name=Path(self._database_path).name,
                     output_path=Path(self._output_path) if self._output_path else None,
@@ -775,15 +800,15 @@ class CaliGui(QMainWindow):
         self._runs_panel.refresh_runs()
         # repopulate detection settings combobox
         if self._database_path:
-            self._populate_detection_settings(self._database_path)
+            self._populate_settings(self._database_path)
             # Refresh the engine to see newly written data
             self._update_graph_with_database_path(self._database_path)
 
         # Highlight the run that matches the settings just used
         value = self._run_cali_wdg.value()
-        detection_id = analysis_id = None
+        detection_id = extraction_id = analysis_id = None
 
-        # Get detection ID - either from analysis-only mode or from last created
+        # Get detection ID - either from run or from last created
         if value.detection_settings_id is not None:
             detection_id = value.detection_settings_id
         else:
@@ -792,14 +817,25 @@ class CaliGui(QMainWindow):
             if detection_ids:
                 detection_id = detection_ids[-1]  # Most recent
 
-        # Get analysis ID if analysis was run
+        # Get extraction ID if extraction was run
         if value.run_extraction:
+            if value.extraction_settings_id is not None:
+                extraction_id = value.extraction_settings_id
+            else:
+                extraction_ids = self._runs_panel.get_extraction_settings_ids()
+                if extraction_ids:
+                    extraction_id = extraction_ids[-1]  # Most recent
+
+        # Get analysis ID if analysis was run
+        if value.run_analysis:
             analysis_ids = self._runs_panel.get_analysis_settings_ids()
             if analysis_ids:
                 analysis_id = analysis_ids[-1]  # Most recent
 
         # Highlight matching run
-        self._runs_panel.highlight_run_by_settings(detection_id, analysis_id)
+        self._runs_panel.highlight_run_by_settings(
+            detection_id, extraction_id, analysis_id
+        )
 
         self._on_fov_table_selection_changed()
 
@@ -902,7 +938,7 @@ class CaliGui(QMainWindow):
         """Handle settings changed signal from runs panel (e.g., after deletion)."""
         if self._database_path:
             # Repopulate detection settings, preserving current selection if possible
-            self._populate_detection_settings(self._database_path)
+            self._populate_settings(self._database_path)
 
             # Refresh the FOV table selection to update the display
             # This will reload labels if the FOV still exists with remaining data
@@ -1107,32 +1143,53 @@ class CaliGui(QMainWindow):
                     cali_logger.error(msg)
                     return
 
+            # Load and apply extraction settings
+            if result.extraction_settings:
+                from cali.gui._extraction_gui import (
+                    ExperimentTypeData,
+                    ExtractionSettingsData,
+                    TraceExtractionData,
+                )
+                from cali.sqlmodel import ExtractionSettings
+
+                e_settings = ExtractionSettings.load_from_database(
+                    self._database_path, id=result.extraction_settings
+                )
+                assert isinstance(e_settings, ExtractionSettings)
+
+                self._extraction_wdg.setValue(
+                    ExtractionSettingsData(
+                        experiment_type_data=ExperimentTypeData(
+                            experiment_type=e_settings.experiment_type,
+                            led_power_equation=None,
+                            led_pulse_duration=None,
+                            led_pulse_on_frames=None,
+                            led_pulse_powers=None,
+                            stimulation_area_path=e_settings.stimulation_mask_path,
+                        ),
+                        trace_extraction_data=TraceExtractionData(
+                            dff_window_size=e_settings.dff_window,
+                            decay_constant=e_settings.decay_constant,
+                            neuropil_inner_radius=e_settings.neuropil_inner_radius,
+                            neuropil_min_pixels=e_settings.neuropil_min_pixels,
+                            neuropil_correction_factor=(
+                                e_settings.neuropil_correction_factor
+                            ),
+                        ),
+                    )
+                )
+
             # Load and apply analysis settings
             if result.analysis_settings:
+                from cali.gui._extraction_gui import CalciumPeaksData, SpikeData
+
                 a_settings = AnalysisSettings.load_from_database(
                     self._database_path, id=result.analysis_settings
                 )
                 assert isinstance(a_settings, AnalysisSettings)
 
-                self._extraction_wdg.setValue(
-                    ExtractionSettingsData(
-                        experiment_type_data=ExperimentTypeData(
-                            experiment_type=a_settings.experiment_type,
-                            led_power_equation=a_settings.led_power_equation,
-                            led_pulse_duration=a_settings.led_pulse_duration,
-                            led_pulse_on_frames=a_settings.led_pulse_on_frames,
-                            led_pulse_powers=a_settings.led_pulse_powers,
-                            stimulation_area_path=a_settings.stimulation_mask_path,
-                        ),
-                        trace_extraction_data=TraceExtractionData(
-                            dff_window_size=a_settings.dff_window,
-                            decay_constant=a_settings.decay_constant,
-                            neuropil_inner_radius=a_settings.neuropil_inner_radius,
-                            neuropil_min_pixels=a_settings.neuropil_min_pixels,
-                            neuropil_correction_factor=(
-                                a_settings.neuropil_correction_factor
-                            ),
-                        ),
+                self._analysis_wdg.setValue(
+                    AnalysisSettingsData(
                         calcium_peaks_data=CalciumPeaksData(
                             peaks_height=a_settings.peaks_height_value,
                             peaks_height_mode=a_settings.peaks_height_mode,

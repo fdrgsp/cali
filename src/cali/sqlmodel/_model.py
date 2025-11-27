@@ -830,6 +830,75 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
             )
         return None
 
+    @classmethod
+    def load_from_database(
+        cls,
+        db_path: str | Path,
+        id: int | None = None,
+        session: Session | None = None,
+    ) -> Self | list[Self]:
+        """Load extraction settings from database.
+
+        Parameters
+        ----------
+        db_path : str | Path
+            Path to the SQLite database file
+        id : int | None
+            ID of specific extraction settings to load. If None, loads all settings.
+        session : Session | None
+            Optional existing session to use. If None, creates a new one.
+
+        Returns
+        -------
+        Self | list[Self]
+            Single ExtractionSettings if id specified, otherwise list of settings.
+            All instances are detached from session.
+
+        Examples
+        --------
+        >>> # Load specific extraction settings
+        >>> settings = ExtractionSettings.load_from_database("db.db", id=1)
+        >>> print(settings.dff_window)
+        >>>
+        >>> # Load most recent settings
+        >>> all_settings = ExtractionSettings.load_from_database("db.db")
+        >>> latest = all_settings[-1]
+        """
+        if session is None:
+            engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            our_session = session = Session(engine)
+        else:
+            our_session = None
+
+        try:
+            statement = select(cls)
+
+            # Filter by id if provided
+            if id is not None:
+                statement = statement.where(cls.id == id)
+                obj = session.exec(statement).first()
+                if obj is None:
+                    raise ValueError(f"No ExtractionSettings found with id={id}")
+                session.expunge_all()
+                return obj
+
+            # Order by creation time to get most recent first
+            statement = statement.order_by(cls.created_at.desc())
+
+            results = list(session.exec(statement).all())
+            session.expunge_all()
+            return results
+
+        finally:
+            if our_session is not None:
+                our_session.close()
+                engine.dispose(close=True)
+
+
 class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Analysis parameter settings for an experiment.
 

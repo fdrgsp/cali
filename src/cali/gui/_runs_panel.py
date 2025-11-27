@@ -175,6 +175,12 @@ class _RunsPanel(QGroupBox):
             f"Run #{result.id} - {created_at}\n"
             f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
         )
+        
+        # Extraction status
+        extraction_icon = "❌" if result.extraction_settings is None else "✅"
+        item_text += f"  {extraction_icon} Extraction ID: {result.extraction_settings}\n"
+        
+        # Analysis status
         analysis_icon = "❌" if result.analysis_settings is None else "✅"
         item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings}"
 
@@ -515,6 +521,36 @@ class _RunsPanel(QGroupBox):
             cali_logger.error(f"Failed to get detection settings IDs: {e}")
             return []
 
+    def get_extraction_settings_ids(self) -> list[int]:
+        """Get all unique extraction settings IDs from runs.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique extraction settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine, select
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Get all unique extraction settings IDs
+                stmt = select(CaliResult.extraction_settings).distinct()
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get extraction settings IDs: {e}")
+            return []
+
     def get_analysis_settings_ids(self) -> list[int]:
         """Get all unique analysis settings IDs from runs.
 
@@ -546,9 +582,12 @@ class _RunsPanel(QGroupBox):
             return []
 
     def highlight_run_by_settings(
-        self, detection_id: int | None, analysis_id: int | None
+        self,
+        detection_id: int | None,
+        extraction_id: int | None,
+        analysis_id: int | None,
     ) -> None:
-        """Highlight the run that matches both detection and analysis settings.
+        """Highlight the run that matches detection, extraction, and analysis settings.
 
         If no exact match is found, deselect all runs.
 
@@ -556,8 +595,10 @@ class _RunsPanel(QGroupBox):
         ----------
         detection_id : int | None
             Detection settings ID to match
+        extraction_id : int | None
+            Extraction settings ID to match (None for detection-only runs)
         analysis_id : int | None
-            Analysis settings ID to match (None for detection-only runs)
+            Analysis settings ID to match (None for runs without analysis)
         """
         if self._database_path is None:
             return
@@ -576,6 +617,8 @@ class _RunsPanel(QGroupBox):
                 query = select(CaliResult)
                 if detection_id is not None:
                     query = query.where(CaliResult.detection_settings == detection_id)
+                if extraction_id is not None:
+                    query = query.where(CaliResult.extraction_settings == extraction_id)
                 if analysis_id is not None:
                     query = query.where(CaliResult.analysis_settings == analysis_id)
 
