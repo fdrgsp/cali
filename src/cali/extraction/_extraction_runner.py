@@ -1,4 +1,7 @@
 import threading
+
+# ignore deprecation warnings from oasis
+import warnings
 from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -29,6 +32,8 @@ from ._util import (
     calculate_dff,
     get_overlap_roi_with_stimulated_area,
 )
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class ExtractionRunner:
@@ -113,6 +118,8 @@ class ExtractionRunner:
             assert isinstance(
                 dataset, (TensorstoreZarrReader, OMEZarrReader)
             ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+
+        cali_logger.info(f"⚡️ Using {extraction_settings.threads} threads")
 
         # Execute analysis in parallel and yield results
         for fov_result in self._exec_in_threadpool(
@@ -533,10 +540,7 @@ class ExtractionRunner:
             fs = len(dff) / tot_time_sec  # Sampling frequency (Hz)
             g = np.exp(-1 / (fs * tau))
         # deconvolve the dff trace with adaptive penalty
-        if g is not None:
-            dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))  # type: ignore
-        else:
-            dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(1,))  # type: ignore
+        dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))  # type: ignore
         dec_dff = cast("np.ndarray", dec_dff)
         spikes = cast("np.ndarray", spikes)
 

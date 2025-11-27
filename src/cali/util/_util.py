@@ -1,7 +1,10 @@
 from pathlib import Path
 
 import numpy as np
-from sqlmodel import Session, select
+import tifffile
+from sqlalchemy.engine import Engine
+from sqlmodel import Session, create_engine, select
+from tqdm import tqdm
 
 from cali._constants import TS, ZR
 from cali.logger import cali_logger
@@ -259,3 +262,329 @@ def commit_fov_result(
 
     if commit:
         session.commit()
+
+
+def update_fovs_in_database(
+    db_path: Path | str | Engine,
+    fovs: list[FOV] | FOV,
+    *,
+    echo: bool = False,
+) -> None:
+    """Update FOVs in database, saving all related ROIs, Traces, and DataAnalysis.
+
+    This function enables manual pipeline workflows where you can run detection,
+    extraction, and analysis steps separately and save results after each step.
+
+    **Important**: After calling this function, reload the FOVs from the database
+    before passing them to the next pipeline step. This ensures relationships
+    are properly populated.
+
+    Parameters
+    ----------
+    db_path : Path | str | Engine
+        Path to SQLite database file or existing SQLAlchemy engine
+    fovs : list[FOV] | FOV
+        Single FOV or list of FOVs to update in database
+    echo : bool, optional
+        Whether to enable SQLAlchemy engine echo for debugging, by default False
+    """
+    # Handle single FOV or list
+    fov_list = [fovs] if isinstance(fovs, FOV) else fovs
+
+    # Get or create engine
+    if isinstance(db_path, Engine):
+        engine = db_path
+        should_dispose = False
+    else:
+        engine = create_engine(
+            f"sqlite:///{db_path}",
+            echo=echo,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        should_dispose = True
+
+    try:
+        with Session(engine) as session:
+            for fov in fov_list:
+                # Transfer temporary attributes to relationships
+                # (ExtractionRunner stores traces in _new_traces temporarily)
+                for roi in fov.rois:
+                    if hasattr(roi, "_new_traces"):
+                        for trace in roi._new_traces:  # type: ignore
+                            roi.traces_history.append(trace)
+                        delattr(roi, "_new_traces")
+
+                    if hasattr(roi, "_new_data_analysis"):
+                        for data_analysis in roi._new_data_analysis:  # type: ignore
+                            roi.data_analysis_history.append(data_analysis)
+                        delattr(roi, "_new_data_analysis")
+
+                # Load existing FOV from database by position_index to get the ID
+                from sqlmodel import select
+
+                db_fov = session.exec(
+                    select(FOV).where(FOV.position_index == fov.position_index)
+                ).first()
+
+                if db_fov:
+                    # Update existing - set the ID so merge updates instead of inserting
+                    fov.id = db_fov.id
+                    fov.well_id = db_fov.well_id
+
+                    # Match and update ROIs by label_value
+                    for roi in fov.rois:
+                        db_roi = next(
+                            (
+                                r
+                                for r in db_fov.rois
+                                if r.label_value == roi.label_value
+                            ),
+                            None,
+                        )
+                        if db_roi:
+                            roi.id = db_roi.id
+                            roi.fov_id = db_roi.fov_id
+
+                session.merge(fov)
+            session.commit()
+    finally:
+        if should_dispose:
+            engine.dispose(close=True)
+
+
+def load_fovs_from_database(
+    db_path: Path | str | Engine,
+    position_indices: list[int] | int | None = None,
+    *,
+    echo: bool = False,
+) -> list["FOV"]:
+    """Load FOVs from database by position indices.
+
+    This function is typically used after update_fovs_in_database() to reload
+    FOVs with all relationships properly populated before passing to the next
+    pipeline step.
+
+    Parameters
+    ----------
+    db_path : Path | str | Engine
+        Path to SQLite database file or existing SQLAlchemy engine
+    position_indices : list[int] | int | None
+        Single position index or list of position indices to load. If None,
+        loads all FOVs in database, by default None
+    echo : bool, optional
+        Whether to enable SQLAlchemy engine echo for debugging, by default False
+
+    Returns
+    -------
+    list[FOV]
+        List of FOVs with all relationships loaded and detached from session
+
+    Example
+    -------
+    >>> from cali.util import load_fovs_from_database, update_fovs_in_database
+    >>>
+    >>> # Manual pipeline workflow
+    >>> # 1. Detection
+    >>> fovs = detection_runner.run(dataset, detection_settings, [17, 18])
+    >>> update_fovs_in_database("results.cali", fovs)
+    >>>
+    >>> # 2. Reload for extraction
+    >>> fovs = load_fovs_from_database("results.cali", [17, 18])
+    >>> fovs = extraction_runner.run(dataset, extraction_settings, fovs)
+    >>> update_fovs_in_database("results.cali", fovs)
+    >>>
+    >>> # 3. Reload for analysis
+    >>> fovs = load_fovs_from_database("results.cali", [17, 18])
+    >>> fovs = analysis_runner.run(fovs, analysis_settings)
+    >>> update_fovs_in_database("results.cali", fovs)
+    """
+    from sqlalchemy.engine import Engine
+    from sqlmodel import Session, create_engine, select
+
+    from cali.sqlmodel._model import FOV
+
+    # Handle single position index or list
+    pos_list = None
+    if position_indices is not None:
+        pos_list = (
+            [position_indices]
+            if isinstance(position_indices, int)
+            else position_indices
+        )
+
+    # Get or create engine
+    if isinstance(db_path, Engine):
+        engine = db_path
+        should_dispose = False
+    else:
+        engine = create_engine(
+            f"sqlite:///{db_path}",
+            echo=echo,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        should_dispose = True
+
+    try:
+        with Session(engine) as session:
+            from sqlalchemy.orm import selectinload
+
+            # Eager load all relationships to avoid lazy-loading after detachment
+            query = select(FOV).options(
+                selectinload(FOV.rois).selectinload(ROI.traces_history),  # type: ignore
+                selectinload(FOV.rois).selectinload(ROI.data_analysis_history),  # type: ignore
+            )
+
+            if pos_list is not None:
+                query = query.where(FOV.position_index.in_(pos_list))  # type: ignore
+
+            fovs = list(session.exec(query).all())
+            session.expunge_all()  # Detach from session
+            return fovs
+    finally:
+        if should_dispose:
+            engine.dispose(close=True)
+
+
+def save_labeled_images(
+    db_path: Path | str | Engine,
+    output_dir: str | Path,
+    *,
+    position_indices: list[int] | int | None = None,
+    detection_settings_id: int | None = None,
+    overwrite: bool = False,
+    echo: bool = False,
+) -> None:
+    """Save labeled images for FOVs loaded from database.
+
+    Loads FOVs from database by position indices and saves labeled images.
+
+    Parameters
+    ----------
+    db_path : Path | str | Engine
+        Path to SQLite database file or existing SQLAlchemy engine
+    output_dir : str | Path
+        Directory to save labeled images
+    position_indices : list[int] | int | None
+        Single position index or list of position indices to load. If None,
+        loads all FOVs in database, by default None
+    overwrite : bool, optional
+        Whether to overwrite existing files, by default False
+    echo : bool, optional
+        Whether to enable SQLAlchemy engine echo for debugging, by default False
+    detection_settings_id : int | None, optional
+        If provided, only include ROIs with this detection_settings_id.
+        If None, include all ROIs, by default None
+    """
+    fovs = load_fovs_from_database(db_path, position_indices, echo=echo)
+    save_labeled_images_from_fovs(
+        fovs,
+        output_dir,
+        overwrite=overwrite,
+        detection_settings_id=detection_settings_id,
+    )
+
+
+def save_labeled_images_from_fovs(
+    fovs: list[FOV] | FOV,
+    output_dir: str | Path,
+    *,
+    overwrite: bool = False,
+    detection_settings_id: int | None = None,
+) -> None:
+    """Save labeled images for FOVs to disk.
+
+    Creates labeled TIFF images where each ROI is assigned its label_value
+    as pixel intensity. Background pixels are 0.
+
+    Parameters
+    ----------
+    fovs : list[FOV] | FOV
+        Single FOV or list of FOVs to save labeled images for
+    output_dir : str | Path
+        Directory to save labeled images
+    overwrite : bool, optional
+        Whether to overwrite existing files, by default False
+    detection_settings_id : int | None, optional
+        If provided, only include ROIs with this detection_settings_id.
+        If None, include all ROIs, by default None
+
+    Raises
+    ------
+    FileExistsError
+        If output file exists and overwrite=False
+    ValueError
+        If ROI mask data is missing or invalid
+    """
+    # Handle single FOV or list
+    fov_list = [fovs] if isinstance(fovs, FOV) else fovs
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    for fov in tqdm(fov_list, desc="Saving labeled images"):
+        if not fov.rois:
+            cali_logger.warning(f"⚠️ No ROIs found in FOV {fov.name}, skipping")
+            continue
+
+        # Get image dimensions from first ROI mask
+        first_roi = fov.rois[0]
+        if not first_roi.roi_mask:
+            cali_logger.warning(
+                f"⚠️ ROI {first_roi.label_value} in {fov.name} has no mask, skipping FOV"
+            )
+            continue
+
+        height = first_roi.roi_mask.height
+        width = first_roi.roi_mask.width
+
+        if height is None or width is None:
+            cali_logger.warning(
+                f"⚠️ Invalid mask dimensions for FOV {fov.name}, skipping"
+            )
+            continue
+
+        # Create labeled image
+        labeled_image = np.zeros((height, width), dtype=np.uint16)
+
+        # Filter ROIs by detection_settings_id if provided
+        filtered_rois = fov.rois
+        if detection_settings_id is not None:
+            filtered_rois = [
+                roi
+                for roi in fov.rois
+                if roi.detection_settings_id == detection_settings_id
+            ]
+
+        for roi in filtered_rois:
+            if not roi.roi_mask:
+                cali_logger.warning(
+                    f"⚠️ ROI {roi.label_value} in {fov.name} has no mask, skipping"
+                )
+                continue
+
+            # Convert mask coordinates to boolean mask
+            coords_y = roi.roi_mask.coords_y
+            coords_x = roi.roi_mask.coords_x
+
+            if coords_y is None or coords_x is None:
+                cali_logger.warning(
+                    f"⚠️ ROI {roi.label_value} in {fov.name} "
+                    "has invalid mask coordinates, skipping"
+                )
+                continue
+
+            # Set pixels for this ROI to its label value
+            labeled_image[coords_y, coords_x] = roi.label_value
+
+        # Save labeled image
+        filename = f"{fov.name}_labeled.tif"
+        output_file = output_path / filename
+
+        if output_file.exists() and not overwrite:
+            raise FileExistsError(
+                f"Output file {output_file} exists and overwrite=False"
+            )
+
+        tifffile.imwrite(output_file, labeled_image)

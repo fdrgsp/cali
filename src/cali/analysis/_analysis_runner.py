@@ -12,12 +12,11 @@ from typing import TYPE_CHECKING, Callable
 import numpy as np
 from tqdm import tqdm
 
-from cali._constants import STIMULATION_AREA_THRESHOLD
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
 
 if TYPE_CHECKING:
-    from cali.sqlmodel._model import ROI, Traces
+    from cali.sqlmodel._model import Traces
 
 from ._trace_analysis import (
     calculate_frequency,
@@ -52,7 +51,7 @@ class AnalysisRunner:
     def run(
         self,
         fovs: Iterable[FOV],
-        settings: AnalysisSettings,
+        analysis_settings: AnalysisSettings,
         as_generator: bool = False,
     ) -> Generator[FOV, None, None] | list[FOV]:
         """Run analysis on FOVs with existing Traces data.
@@ -61,7 +60,7 @@ class AnalysisRunner:
         ----------
         fovs : Iterable[FOV]
             FOVs with ROIs containing Traces to analyze
-        settings : AnalysisSettings
+        analysis_settings : AnalysisSettings
             Analysis parameters (peak detection thresholds, etc.)
         as_generator : bool
             If True, returns a Generator that yields FOVs.
@@ -73,24 +72,26 @@ class AnalysisRunner:
             FOV objects with ROIs containing DataAnalysis results,
             ready to be saved to database
         """
-        generator = self._run_generator(fovs, settings)
+        generator = self._run_generator(fovs, analysis_settings)
         return generator if as_generator else list(generator)
 
     def _run_generator(
         self,
         fovs: Iterable[FOV],
-        settings: AnalysisSettings,
+        analysis_settings: AnalysisSettings,
     ) -> Generator[FOV, None, None]:
         """Internal generator for analysis process."""
         self._cancellation_event.clear()
+
+        cali_logger.info(f"⚡️ Using {analysis_settings.threads} threads")
 
         # Execute analysis in parallel and yield results
         for fov_result in self._exec_in_threadpool(
             analyze=self._analyze_fov,
             cancel_event=self._cancellation_event,
             fovs=fovs,
-            settings=settings,
-            max_workers=settings.threads,
+            analysis_settings=analysis_settings,
+            max_workers=analysis_settings.threads,
         ):
             if fov_result is not None:
                 yield fov_result
@@ -106,7 +107,7 @@ class AnalysisRunner:
         analyze: Callable,
         cancel_event: threading.Event,
         fovs: Iterable[FOV],
-        settings: AnalysisSettings,
+        analysis_settings: AnalysisSettings,
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
         """Execute analysis in parallel and yield FOV results."""
@@ -118,7 +119,7 @@ class AnalysisRunner:
             futures = (
                 executor.submit(
                     analyze,
-                    settings,
+                    analysis_settings,
                     fov,
                 )
                 for fov in fovs
@@ -146,14 +147,14 @@ class AnalysisRunner:
 
     def _analyze_fov(
         self,
-        settings: AnalysisSettings,
+        analysis_settings: AnalysisSettings,
         fov: FOV,
     ) -> FOV | None:
         """Analyze all ROIs in a FOV.
 
         Parameters
         ----------
-        settings : AnalysisSettings
+        analysis_settings : AnalysisSettings
             Analysis parameters
         fov : FOV
             FOV with ROIs containing Traces
@@ -189,53 +190,40 @@ class AnalysisRunner:
 
             # Analyze the traces
             analysis_data = self._analyze_roi_traces(
-                traces=traces,
-                settings=settings,
-                roi=roi,
-                stimulated_area_mask=settings.stimulated_mask_area(),
-                # Would need to reconstruct from roi.roi_mask if needed
-                label_mask=None,
+                traces=traces, analysis_settings=analysis_settings
             )
 
             if analysis_data is not None:
-                data_analysis, active, stimulated = analysis_data
+                data_analysis, active = analysis_data
 
                 # Store analysis in temporary list (similar to extraction pattern)
                 if not hasattr(roi, "_new_data_analysis"):
                     roi._new_data_analysis = []  # type: ignore
                 roi._new_data_analysis.append(data_analysis)  # type: ignore
                 roi.active = active
-                roi.stimulated = stimulated
+                # roi.stimulated is already set during extraction, don't override
 
         return fov
 
     def _analyze_roi_traces(
         self,
         traces: "Traces",
-        settings: AnalysisSettings,
-        roi: "ROI",
-        stimulated_area_mask: np.ndarray | None,
-        label_mask: np.ndarray | None,
-    ) -> tuple[DataAnalysis, bool, bool] | None:
+        analysis_settings: AnalysisSettings,
+    ) -> tuple[DataAnalysis, bool] | None:
         """Analyze traces for a single ROI.
 
         Parameters
         ----------
         traces : Traces
             Traces object with dec_dff, inferred_spikes, etc.
-        settings : AnalysisSettings
+        analysis_settings : AnalysisSettings
             Analysis parameters
-        roi : ROI
-            ROI object containing cell_size and cell_size_units
-        stimulated_area_mask : np.ndarray | None
-            Mask indicating stimulated area
-        label_mask : np.ndarray | None
-            ROI mask (for stimulation overlap calculation)
 
         Returns
         -------
-        tuple[DataAnalysis, bool, bool] | None
-            (DataAnalysis, active, stimulated) or None if processing fails
+        tuple[DataAnalysis, bool] | None
+            (DataAnalysis, active) or None if processing fails.
+            Note: roi.stimulated is already set during extraction.
         """
         if self._check_for_abort_requested():
             return None
@@ -258,13 +246,13 @@ class AnalysisRunner:
             peaks_height_dec_dff,
             peaks_prominence_dec_dff,
             spike_detection_threshold,
-        ) = compute_peak_detection_thresholds(dec_dff, spikes, settings)
+        ) = compute_peak_detection_thresholds(dec_dff, spikes, analysis_settings)
 
         if self._check_for_abort_requested():
             return None
 
         # Detect peaks
-        min_distance_frames = settings.peaks_distance
+        min_distance_frames = analysis_settings.peaks_distance
         peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
             dec_dff,
             peaks_height_dec_dff,
@@ -281,18 +269,6 @@ class AnalysisRunner:
         # Calculate IEI
         iei = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
 
-        # Check stimulation (placeholder - would need label_mask to calculate properly)
-        is_roi_stimulated = False
-        if stimulated_area_mask is not None and label_mask is not None:
-            from cali.extraction._util import get_overlap_roi_with_stimulated_area
-
-            roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                stimulated_area_mask, label_mask
-            )
-            is_roi_stimulated = (
-                roi_stimulation_overlap_ratio > STIMULATION_AREA_THRESHOLD
-            )
-
         # Create DataAnalysis object
         data_analysis = DataAnalysis(
             total_recording_time_sec=tot_time_sec,
@@ -306,6 +282,5 @@ class AnalysisRunner:
         )
 
         active = len(peaks_dec_dff) > 0
-        stimulated = is_roi_stimulated
 
-        return (data_analysis, active, stimulated)
+        return (data_analysis, active)

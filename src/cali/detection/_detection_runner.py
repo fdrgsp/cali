@@ -144,6 +144,8 @@ class DetectionRunner:
         list[FOV]
             List of FOV objects with ROIs and masks
         """
+        cali_logger.info("🔍 Running CaImAn detection...")
+
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
         raise NotImplementedError("CaImAn detection coming soon!")
@@ -182,6 +184,8 @@ class DetectionRunner:
                 "Cellpose detection: `uv sync --extra cp4`."
             )
             raise e
+
+        cali_logger.info("🔍 Running Cellpose detection...")
 
         if cellpose_debug:
             io.logger_setup()

@@ -5,14 +5,22 @@ from ._util import (
     commit_fov_result,
     coordinates_to_mask,
     load_data,
+    load_fovs_from_database,
     mask_to_coordinates,
+    save_labeled_images,
+    save_labeled_images_from_fovs,
+    update_fovs_in_database,
 )
 
 __all__ = [
     "commit_fov_result",
     "coordinates_to_mask",
     "load_data",
+    "load_fovs_from_database",
     "mask_to_coordinates",
     "save_analysis_data_to_csv",
+    "save_labeled_images",
+    "save_labeled_images_from_fovs",
     "save_trace_data_to_csv",
+    "update_fovs_in_database",
 ]
