@@ -14,9 +14,9 @@ import numpy as np
 import tifffile
 from rich import print
 
-from cali.readers import TiffCollectionReader
+from cali.readers import TiffCollectionReader, TiffCollectionSettings
 from cali.sqlmodel import Experiment, save_experiment_to_database
-from cali.util import load_data
+from cali.util import load_data_from_path
 
 # Create temporary directory for this example
 with tempfile.TemporaryDirectory() as tmpdir:
@@ -42,12 +42,13 @@ with tempfile.TemporaryDirectory() as tmpdir:
     print("STEP 2: Creating TiffCollectionReader")
     print("=" * 70)
 
-    reader = TiffCollectionReader(
+    settings = TiffCollectionSettings(
         file_map=file_map,
         plate="96-well",
         metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
-        data_path=str(tmp_path),
+        tiff_folder_path=list(tmp_path.glob("*.tif")),
     )
+    reader = TiffCollectionReader(settings)
 
     print(f"  Reader created with {len(reader.sequence.stage_positions)} positions")
     print(f"  Wells: {list(file_map.keys())}")
@@ -90,7 +91,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     print(f"  Has TIFF config: {experiment_loaded.tiff_file_map_json is not None}")
 
     # Recreate reader using load_data with experiment
-    data_loaded = load_data(tmp_path, experiment=experiment_loaded)
+    data_loaded = load_data_from_path(tmp_path, experiment=experiment_loaded)
     print(f"  Reader type: {type(data_loaded).__name__}")
 
     print("\n" + "=" * 70)

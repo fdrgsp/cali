@@ -1,49 +1,51 @@
 from pathlib import Path
 
-from qtpy.QtWidgets import QApplication
+from cali.readers import TiffCollectionReader
 
-from cali.gui._init_dialog import _InputDialog
-from cali.readers import TensorstoreZarrReader
-from cali.readers._tiff_collection_reader import TiffCollectionReader
+tiff_dir = Path("/Users/fdrgsp/Desktop/cali_test/tiffs")
+tiff_files = sorted(tiff_dir.glob("*.tiff"))
 
-app = QApplication([])
-init_dialog = _InputDialog(data_path="/Users/fdrgsp/Desktop/cali_test/tiffs")
-# init_dialog = _InputDialog(data_path="/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr")
+# Create file map from TIFF files
+# Files are named like B2_0000.tiff, B2_0001.tiff, B3_0000.tiff, etc.
+file_map = {}
+for tiff_file in tiff_files:
+    well_name = tiff_file.stem.split("_")[0]  # Extract "B2", "B3", etc.
+    if well_name not in file_map:
+        file_map[well_name] = []
+    file_map[well_name].append(str(tiff_file))
 
-init_dialog.resize(700, init_dialog.sizeHint().height())
-if init_dialog.exec():
-    value = init_dialog.value()
-    # input from database
-    if value.data_path is not None:
-        data = None
-        if (d_path := Path(value.data_path)).is_dir():
-            try:
-                data = TensorstoreZarrReader(d_path)
-                print("✅ Successfully initialized from database")
-            except Exception:
-                try:
-                    custom_files = sorted(
-                        list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
-                    )
-                    file_map = {}
-                    for i in sorted(custom_files):
-                        well, fov = i.stem.split("_")
-                        if well not in file_map:
-                            file_map[well] = []
-                        if i not in file_map[well]:
-                            file_map[well].append(i)
-                        data = TiffCollectionReader(
-                            file_map=file_map,
-                            plate="96-well",
-                            metadata={
-                                "exposure_ms": 100.0,
-                                "pixel_size_um": 0.65,
-                            },
-                        )
-                except Exception as e:
-                    print(f"❌ Failed to initialize from database:\n{e}")
-        print(data)
-        app.quit()
+print(f"File map: {list(file_map.keys())}")
+print(f"Files per well: {[(k, len(v)) for k, v in file_map.items()]}")
 
-app.exec()
+# Create reader
+reader = TiffCollectionReader(
+    file_map=file_map,
+    plate="96-well",
+    metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
+    data_path=tiff_dir,
+)
 
+print("\n=== Reader Info ===")
+print(f"Sequence axis order: {reader.sequence.axis_order}")
+print(f"Number of positions: {len(reader.sequence.stage_positions)}")
+print(f"Time plan: {reader.sequence.time_plan}")
+print(f"Max T: {reader._max_t}")
+
+# Test isel
+print("\n=== Testing isel ===")
+img1 = reader.isel({"p": 0, "t": 0, "c": 0})
+print(f"Shape for p=0, t=0, c=0: {img1.shape}")
+
+img2, meta2 = reader.isel({"p": 0, "t": 5, "c": 0}, metadata=True)
+print(f"\nShape for p=0, t=5, c=0: {img2.shape}")
+print(f"Metadata index: {meta2[0]['mda_event']['index']}")
+
+# Test without 't' - should return full time series
+img3 = reader.isel({"p": 0, "c": 0})
+print(f"\nShape for p=0, c=0 (no t): {img3.shape}")
+print(f"Expected: (2000, 1024, 1024)")
+
+# Test with just p
+img4 = reader.isel(p=1)
+print(f"\nShape for p=1 (no t): {img4.shape}")
+print(f"Expected: (2000, 1024, 1024)")

@@ -24,9 +24,9 @@ def data_to_plate(
     plate_maps: dict[str, dict[str, str]] | None = None,
 ) -> Plate | None:
     if isinstance(data, (str, Path)):
-        from cali.util import load_data
+        from cali.util import load_data_from_path
 
-        dataset = load_data(data)
+        dataset = load_data_from_path(data)
         if dataset is None:
             cali_logger.error(f"❌ Could not load data from path: {data}")
             return None

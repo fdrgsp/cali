@@ -7,6 +7,7 @@ and provides lazy array-like access without loading everything into memory.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -20,77 +21,92 @@ if TYPE_CHECKING:
     import numpy as np
 
 
+@dataclass
+class TiffCollectionSettings:
+    """Settings for TiffCollectionReader.
+
+    This dataclass encapsulates all configuration needed to create a
+    TiffCollectionReader. It can be used to easily pass configuration
+    between functions or store it for later reconstruction.
+
+    Attributes
+    ----------
+    file_map : dict[str, list[Path | str]]
+        Mapping from well names to lists of TIFF file paths
+    plate : useq.WellPlate | str
+        Plate definition
+    metadata : dict[str, Any]
+        Metadata with 'exposure_ms' and 'pixel_size_um'
+    tiff_folder_path : str | Path
+        The path to the folder(s) containing the TIFF files.
+    """
+
+    file_map: Mapping[str, list[Path | str]]
+    plate: useq.WellPlate | str
+    metadata: dict[str, Any]
+    tiff_folder_path: str | Path
+
+
 class TiffCollectionReader:
-    r"""Virtual zarr-like reader for collections of TIFF files.
+    """Virtual zarr-like reader for collections of TIFF files.
 
     Maps TIFF files to wells/FOVs and provides lazy array-like access
     without loading everything into memory. Compatible with the cali pipeline.
 
+    Can be called in two ways:
+    Pass the settings as a `TiffCollectionSettings` instance or as individual
+    parameters dictionary.
+
     Parameters
     ----------
-    file_map : dict[str, list[Path | str]]
-        Mapping from well names to lists of TIFF file paths.
-        For multi-well plates: {"A1": [fov1.tif, fov2.tif], "A2": [...], ...}
-        For single coverslip: {"A1": [fov1.tif, fov2.tif, ...]}
-    plate : useq.WellPlate | str
-        Plate definition. Can be a WellPlate instance or a plate name string
-        (e.g., "96-well", "coverslip-22mm-square").
-    metadata : dict
-        Metadata to apply to all positions. Must include:
-        - exposure_ms: float
-        - pixel_size_um: float
-    data_path : str | Path
-        Base path to verify and resolve file paths. Files are validated
-        against this path during initialization.
+    settings : TiffCollectionSettings | dict[str, list[Path | str]] | None
+        Either a TiffCollectionSettings instance, a file_map dict, or None.
+        If TiffCollectionSettings, other parameters are ignored.
+        If dict, this is treated as file_map and other params must be provided.
 
-    Attributes
-    ----------
-    path : Path
-        Virtual path representing this collection.
-    sequence : useq.MDASequence
-        The constructed MDASequence from the TIFF collection.
-    metadata : list[dict]
-        Full metadata for all frames.
-
-    Methods
-    -------
-    isel(indexers, metadata=False)
-        Select data from the collection by index (lazy loading).
-    write_tiff(path, indexers=None)
-        Write selected data to a TIFF file.
-
-    Examples
-    --------
-    >>> # Multi-well plate
-    >>> file_map = {
-    ...     "A1": ["A1_fov1.tif", "A1_fov2.tif"],
-    ...     "A2": ["A2_fov1.tif", "A2_fov2.tif"],
-    ... }
-    >>> reader = TiffCollectionReader(
+    Example:
+    >>> settings = TiffCollectionSettings(
     ...     file_map=file_map,
     ...     plate="96-well",
-    ...     metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65}
+    ...     metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
+    ...      "tiff_folder_path": "/path/to/tiff_folder",
     ... )
-    >>>
-    >>> # Single coverslip
-    >>> file_map = {"A1": ["fov1.tif", "fov2.tif", "fov3.tif"]}
+    >>> reader = TiffCollectionReader(settings)
+    Or:
     >>> reader = TiffCollectionReader(
-    ...     file_map=file_map,
-    ...     plate="coverslip-22mm-square",
-    ...     metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65}
-    ... )
-    >>>
-    >>> # Access data lazily (only loads when needed)
-    >>> data = reader.isel({"p": 0, "t": 0})
+    ...     {
+    ...      "file_map": file_map,
+    ...      "plate": "96-well",
+    ...      "metadata": {"exposure_ms": 100.0, "pixel_size_um": 0.65},
+    ...      "tiff_folder_path": "/path/to/tiff_folder",
+    ... }
+    )
     """
 
     def __init__(
         self,
-        file_map: dict[str, list[Path | str]],
-        plate: useq.WellPlate | str,
-        metadata: dict[str, Any],
-        data_path: str | Path,
+        settings: TiffCollectionSettings | dict[str, Any] | None = None,
     ) -> None:
+        try:
+            if isinstance(settings, dict):
+                settings = TiffCollectionSettings(**settings)
+
+            if isinstance(settings, TiffCollectionSettings):
+                file_map = settings.file_map
+                plate = settings.plate
+                metadata = settings.metadata
+                tiff_folder_path = settings.tiff_folder_path
+            else:
+                raise TypeError(
+                    f"First argument must be TiffCollectionSettings, dict, or None, "
+                    f"got {type(settings)}"
+                )
+        except TypeError as e:
+            raise TypeError(
+                "If passing a dict as the first argument, it must contain "
+                "'file_map', 'plate', 'metadata', and 'data_path' keys!"
+            ) from e
+
         if not file_map:
             raise ValueError("file_map cannot be empty")
 
@@ -104,10 +120,10 @@ class TiffCollectionReader:
             )
 
         # Verify all files exist
-        missing_files = self._check_for_missing_files(file_map, data_path)
+        missing_files = self._check_for_missing_files(file_map, tiff_folder_path)
         if missing_files:
             raise FileNotFoundError(
-                f"TIFF files not found in data_path or as absolute paths: "
+                f"TIFF files not found in tiff_folder_path or as absolute paths: "
                 f"{missing_files}"
             )
 
@@ -232,14 +248,14 @@ class TiffCollectionReader:
                     "kwargs must be a mapping from strings to integers (e.g. p=0, t=1)!"
                 )
 
-        # Find the TIFF file and frame index matching these indexers
+        # Find the TIFF file and frame index
+        # If 't' not specified, frame_idx will be None (load entire time series)
         result = self._find_tiff_for_index(indexers)
-
         if result is None:
             raise ValueError(f"No TIFF file found for indexers: {indexers}")
 
         tiff_path, frame_idx = result
-        # Lazy load only the requested frame
+        # Lazy load the data (full file if frame_idx is None, specific frame otherwise)
         data = self._load_tiff(tiff_path, frame_idx)
 
         if metadata:
@@ -311,16 +327,16 @@ class TiffCollectionReader:
 
     def _check_for_missing_files(
         self,
-        file_map: dict[str, list[str | Path]],
-        data_path: str | Path,
+        file_map: Mapping[str, list[str | Path]],
+        tiff_folder_path: str | Path,
     ) -> list[str]:
         """Check for missing files in the collection."""
-        data_path = Path(data_path)
         missing_files = []
         for _, files in file_map.items():
-            for file_str in files:
-                if not Path(file_str).exists():
-                    missing_files.append(file_str)
+            for file_path in files:
+                # Check if file exists in any the provided tiff_folder_path
+                if not (Path(tiff_folder_path) / file_path).exists():
+                    missing_files.append(str(file_path))
         return missing_files
 
     def _build_metadata(self, metadata: dict) -> list[dict]:
@@ -346,8 +362,8 @@ class TiffCollectionReader:
                 "pixel_size_um": metadata["pixel_size_um"],
                 "mda_event": {
                     "index": {"p": p, "t": t, "c": c, "z": z},
+                    "pos_name": pos_name,
                 },
-                "pos_name": pos_name,
                 "file_path": str(tiff_path),
             }
             meta_list.append(frame_meta)
@@ -428,28 +444,37 @@ class TiffCollectionReader:
 
     def _find_tiff_for_index(
         self, indexers: Mapping[str, int]
-    ) -> tuple[Path, int] | None:
+    ) -> tuple[Path, int | None] | None:
         """Find the TIFF file and frame index for the given indexers.
 
         Returns
         -------
-        tuple[Path, int] | None
+        tuple[Path, int | None] | None
             (file_path, frame_index) or None if not found.
             For multi-frame TIFFs, frame_index is the timepoint within the file.
+            If 't' is not in indexers, frame_index is None (load entire time series).
         """
         # Build index tuple
         p = indexers.get("p", 0)
-        t = indexers.get("t", 0)
         c = indexers.get("c", 0)
         z = indexers.get("z", 0)
 
+        # If 't' not specified, return None for frame_idx to load entire time series
+        if "t" not in indexers:
+            # Use t=0 just to look up the file path (all t values map to same file)
+            tiff_path = self._file_mapping.get((p, 0, c, z))
+            if tiff_path is None:
+                return None
+            return tiff_path, None
+
+        # Otherwise, return specific frame index
+        t = indexers["t"]
         tiff_path = self._file_mapping.get((p, t, c, z))
         if tiff_path is None:
             return None
-        # Return the path and the frame index (timepoint)
         return tiff_path, t
 
-    def _load_tiff(self, tiff_path: Path, frame_idx: int = 0) -> np.ndarray:
+    def _load_tiff(self, tiff_path: Path, frame_idx: int | None = 0) -> np.ndarray:
         """Load a specific frame from a TIFF file using memory mapping.
 
         Uses tifffile.memmap to create a memory-mapped array that only loads
@@ -460,15 +485,19 @@ class TiffCollectionReader:
         ----------
         tiff_path : Path
             Path to the TIFF file.
-        frame_idx : int
-            Frame index to load (for time series). Default is 0.
+        frame_idx : int | None
+            Frame index to load (for time series). If None, load entire file.
+            Default is 0.
 
         Returns
         -------
         np.ndarray
-            Memory-mapped array for the requested frame.
+            Memory-mapped array for the requested frame or entire file.
         """
         data = tifffile.memmap(tiff_path, mode="r")
+        # If frame_idx is None, return entire file
+        if frame_idx is None:
+            return data
         # If multi-frame (3D: T, Y, X), extract the requested frame
         if len(data.shape) == 3:
             return data[frame_idx]

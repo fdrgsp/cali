@@ -8,7 +8,10 @@ from pathlib import Path
 
 from rich import print
 
-from cali.readers._tiff_collection_reader import TiffCollectionReader
+from cali.readers._tiff_collection_reader import (
+    TiffCollectionReader,
+    TiffCollectionSettings,
+)
 
 # Example 1: Multi-well plate
 # ============================
@@ -46,15 +49,13 @@ for i in sorted(custom_files):
 print(file_map)
 
 # Create reader
-reader = TiffCollectionReader(
+tiff_settings = TiffCollectionSettings(
     file_map=file_map,
     plate="96-well",
-    metadata={
-        "exposure_ms": 100.0,
-        "pixel_size_um": 0.65,
-    },
-    data_path=str(tiff_folder),
+    metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
+    tiff_folder_path=tiff_folder,
 )
+reader = TiffCollectionReader(tiff_settings)
 
 # get sequence
 sequence = reader.sequence
@@ -69,5 +70,4 @@ print(data_p0t0.shape)
 
 # Get metadata for a specific position
 data_p0, meta = reader.isel(p=0, metadata=True)
-print(meta)
-
+print(meta[:3])

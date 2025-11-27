@@ -29,7 +29,7 @@ from cali.sqlmodel import (
     save_experiment_to_database,
 )
 from cali.util import load_fovs_from_database, update_fovs_in_database
-from cali.util._util import load_data
+from cali.util._util import load_data_from_path
 
 dataset_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
 db_path = Path("manual_run.cali")
@@ -51,7 +51,7 @@ engine = create_engine(
 
 # set the positions (fovs) to process
 # positions_to_process = [17, 18]
-data = load_data(dataset_path)
+data = load_data_from_path(dataset_path)
 positions_to_process = list(range(len(data.sequence.stage_positions)))
 
 # detection -----------------------------------------------------------------------

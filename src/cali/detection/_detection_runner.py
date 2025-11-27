@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,13 +11,16 @@ from tqdm import tqdm
 from cali._constants import EVENT_KEY
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Mask
-from cali.util import load_data, mask_to_coordinates
+from cali.util import mask_to_coordinates
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
+    from pathlib import Path
 
     from cellpose.models import CellposeModel
+
 
 
 class DetectionRunner:
@@ -43,7 +45,7 @@ class DetectionRunner:
 
     def run(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         as_generator: bool = False,
@@ -59,8 +61,8 @@ class DetectionRunner:
 
         Parameters
         ----------
-        dataset : str | Path | TensorstoreZarrReader | OMEZarrReader
-            Path to imaging data (zarr store) or a data reader instance
+        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+            Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method field determines which algorithm to use)
         global_position_indices : Sequence[int]
@@ -84,7 +86,7 @@ class DetectionRunner:
 
     def _run_generator(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
@@ -92,13 +94,9 @@ class DetectionRunner:
         # Reset cancellation event
         self._cancellation_event.clear()
 
-        # Load data
-        if isinstance(dataset, (str, Path)):
-            dataset = load_data(dataset)
-        else:
-            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
-                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
-            )
+        assert isinstance(
+            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
+        ), "Data must be a TensorstoreZarrReader, OMEZarrReader, or TiffCollectionReader instance."
 
         if detection_settings.method == "cellpose":
             yield from self._run_cellpose(
@@ -124,7 +122,7 @@ class DetectionRunner:
 
     def _run_caiman(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
     ) -> list[FOV]:
@@ -132,8 +130,8 @@ class DetectionRunner:
 
         Parameters
         ----------
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader
-            Path to imaging data (zarr store) or a data reader instance
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+            Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method should be "caiman")
         position_indices : Sequence[int]
@@ -152,7 +150,7 @@ class DetectionRunner:
 
     def _run_cellpose(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
         cellpose_debug: bool = False,
@@ -161,8 +159,8 @@ class DetectionRunner:
 
         Parameters
         ----------
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader
-            Path to imaging data (zarr store) or a data reader instance
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+            Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method should be "cellpose")
         position_indices : Sequence[int]
@@ -219,7 +217,7 @@ class DetectionRunner:
 
     def _run_cellpose_detection(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         position_indices: Sequence[int],
         model: CellposeModel,
         diameter: float | None,
@@ -236,13 +234,11 @@ class DetectionRunner:
         FOV
             FOV objects with ROIs and Masks, ready to be committed
         """
-        # Load data
-        if isinstance(dataset, (str, Path)):
-            dataset = load_data(dataset)
-        else:
-            assert isinstance(dataset, (TensorstoreZarrReader, OMEZarrReader)), (
-                "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
-            )
+        assert isinstance(
+            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
+        ), (
+            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
+            "TiffCollectionReader instance.")
 
         # Process images in batches
         n_positions = len(position_indices)

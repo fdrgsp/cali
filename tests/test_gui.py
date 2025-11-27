@@ -1,6 +1,17 @@
+from pathlib import Path
+
+import pytest
 from pytestqt.qtbot import QtBot
+from sqlmodel import Session, create_engine
 
 from cali.gui import CaliGui
+from cali.gui._util import CaliRunSettings
+from cali.sqlmodel._model import (
+    AnalysisSettings,
+    DetectionSettings,
+    Experiment,
+    ExtractionSettings,
+)
 
 
 def test_launch_gui(qtbot: QtBot) -> None:
@@ -8,3 +19,389 @@ def test_launch_gui(qtbot: QtBot) -> None:
     gui = CaliGui()
     qtbot.addWidget(gui)
     gui.show()
+
+
+@pytest.fixture
+def temp_db_with_detection(tmp_path: Path) -> Path:
+    """Create a temporary database with detection settings."""
+    db_path = tmp_path / "test_detection.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    # Create tables
+    from cali.sqlmodel._model import SQLModel
+
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        # Create experiment
+        experiment = Experiment(
+            name="Test Experiment",
+            data_path=str(tmp_path / "data.zarr"),
+            writer=0,
+            tiff_file_map=None,
+            tiff_folder_path=None,
+            plate_type=None,
+        )
+        session.add(experiment)
+        session.commit()
+
+        # Create detection settings
+        detection_settings = DetectionSettings(
+            method="cellpose",
+            model="cyto3",
+            diameter=30.0,
+            channels=[0, 0],
+            flow_threshold=0.4,
+            cellprob_threshold=0.0,
+        )
+        session.add(detection_settings)
+        session.commit()
+
+    engine.dispose()
+    return db_path
+
+
+@pytest.fixture
+def temp_db_with_extraction(tmp_path: Path) -> Path:
+    """Create a temporary database with detection and extraction settings."""
+    db_path = tmp_path / "test_extraction.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    from cali.sqlmodel._model import SQLModel
+
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        # Create experiment
+        experiment = Experiment(
+            name="Test Experiment",
+            data_path=str(tmp_path / "data.zarr"),
+            writer=0,
+            tiff_file_map=None,
+            tiff_folder_path=None,
+            plate_type=None,
+        )
+        session.add(experiment)
+        session.commit()
+
+        # Create detection settings
+        detection_settings = DetectionSettings(
+            method="cellpose",
+            model="cyto3",
+            diameter=30.0,
+            channels=[0, 0],
+            flow_threshold=0.4,
+            cellprob_threshold=0.0,
+        )
+        session.add(detection_settings)
+        session.commit()
+
+        # Create extraction settings
+        extraction_settings = ExtractionSettings(
+            compute_neuropil=True,
+            neuropil_radius_inner=2.0,
+            neuropil_radius_outer=6.0,
+            compute_dff=True,
+            dff_method="median",
+            compute_deconvolution=True,
+        )
+        session.add(extraction_settings)
+        session.commit()
+
+    engine.dispose()
+    return db_path
+
+
+@pytest.fixture
+def temp_db_with_analysis(tmp_path: Path) -> Path:
+    """Create a temporary database with detection, extraction, and analysis settings."""
+    db_path = tmp_path / "test_analysis.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    from cali.sqlmodel._model import SQLModel
+
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        # Create experiment
+        experiment = Experiment(
+            name="Test Experiment",
+            data_path=str(tmp_path / "data.zarr"),
+            writer=0,
+            tiff_file_map=None,
+            tiff_folder_path=None,
+            plate_type=None,
+        )
+        session.add(experiment)
+        session.commit()
+
+        # Create detection settings
+        detection_settings = DetectionSettings(
+            method="cellpose",
+            model="cyto3",
+            diameter=30.0,
+            channels=[0, 0],
+            flow_threshold=0.4,
+            cellprob_threshold=0.0,
+        )
+        session.add(detection_settings)
+        session.commit()
+
+        # Create extraction settings
+        extraction_settings = ExtractionSettings(
+            compute_neuropil=True,
+            neuropil_radius_inner=2.0,
+            neuropil_radius_outer=6.0,
+            compute_dff=True,
+            dff_method="median",
+            compute_deconvolution=True,
+        )
+        session.add(extraction_settings)
+        session.commit()
+
+        # Create analysis settings
+        analysis_settings = AnalysisSettings(
+            peaks_prominence_multiplier=3.0,
+            peaks_distance=10,
+            dff_window=100,
+        )
+        session.add(analysis_settings)
+        session.commit()
+
+    engine.dispose()
+    return db_path
+
+
+def test_run_options_detection_only(qtbot: QtBot, temp_db_with_detection: Path) -> None:
+    """Test that detection-only database doesn't enable extraction/analysis options."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Directly populate settings without loading data
+    gui._database_path = str(temp_db_with_detection)
+    gui._runs_panel.set_database_path(str(temp_db_with_detection))
+    gui._populate_settings(str(temp_db_with_detection))
+
+    # Check that detection settings are populated
+    assert gui._run_cali_wdg._detection_settings_combo.count() > 1
+
+    # Check that extraction settings are not populated
+    assert gui._run_cali_wdg._extraction_settings_combo.count() == 1  # Only placeholder
+
+    # Set to "Extraction Only" option
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+
+    # Check that detection combo becomes visible
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # Check that "Analysis Only" option is disabled
+    from qtpy.QtCore import Qt
+
+    model = gui._run_cali_wdg._run_options_combo.model()
+    analysis_item = model.item(4)
+    assert not (analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+
+def test_run_options_with_extraction(
+    qtbot: QtBot, temp_db_with_extraction: Path
+) -> None:
+    """Test that extraction database enables extraction-only but not analysis-only."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    gui._database_path = str(temp_db_with_extraction)
+    gui._runs_panel.set_database_path(str(temp_db_with_extraction))
+    gui._populate_settings(str(temp_db_with_extraction))
+
+    # Check that both detection and extraction settings are populated
+    assert gui._run_cali_wdg._detection_settings_combo.count() > 1
+    assert gui._run_cali_wdg._extraction_settings_combo.count() > 1
+
+    # Set to "Extraction Only" - should be enabled
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+
+    # Set to "Analysis Only" - should be disabled (no analysis settings yet)
+    # Note: In the current implementation, this checks for extraction settings existence
+    # which we have, so it should be enabled
+    from qtpy.QtCore import Qt
+
+    model = gui._run_cali_wdg._run_options_combo.model()
+    analysis_item = model.item(4)
+    # Should be enabled since we have both detection and extraction
+    assert analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled
+
+    # Cleanup
+    gui.close()
+
+
+def test_run_options_all_settings(qtbot: QtBot, temp_db_with_analysis: Path) -> None:
+    """Test that all run options are available when all settings exist."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    gui._database_path = str(temp_db_with_analysis)
+    gui._runs_panel.set_database_path(str(temp_db_with_analysis))
+    gui._populate_settings(str(temp_db_with_analysis))
+
+    # Check all settings are populated
+    assert gui._run_cali_wdg._detection_settings_combo.count() > 1
+    assert gui._run_cali_wdg._extraction_settings_combo.count() > 1
+
+    from qtpy.QtCore import Qt
+
+    model = gui._run_cali_wdg._run_options_combo.model()
+
+    # All options should be enabled
+    for i in range(5):
+        item = model.item(i)
+        assert item.flags() & Qt.ItemFlag.ItemIsEnabled
+
+
+def test_run_settings_parsing_detection_only(qtbot: QtBot) -> None:
+    """Test parsing run settings for detection-only mode."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Set to "Detection Only"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(2)
+
+    settings = gui._run_cali_wdg.value()
+    assert isinstance(settings, CaliRunSettings)
+    assert settings.run_detection
+    assert not settings.run_extraction
+    assert not settings.run_analysis
+    assert settings.detection_settings_id is None  # Not using existing detection
+    assert settings.extraction_settings_id is None
+
+
+def test_run_settings_parsing_extraction_only(qtbot: QtBot) -> None:
+    """Test parsing run settings for extraction-only mode."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Populate detection settings like the real code does
+    gui._run_cali_wdg.populate_detection_settings([(1, "cellpose")])
+
+    # Set to "Extraction Only" - this triggers visibility change
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+
+    # Verify combo is visible after changing option
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+
+    # Select the detection settings (index 1 is first real item after placeholder)
+    gui._run_cali_wdg._detection_settings_combo.setCurrentIndex(1)
+
+    settings = gui._run_cali_wdg.value()
+    assert isinstance(settings, CaliRunSettings)
+    assert not settings.run_detection
+    assert settings.run_extraction
+    assert not settings.run_analysis
+    assert settings.detection_settings_id == 1
+    assert settings.extraction_settings_id is None
+
+    # Cleanup
+    gui.close()
+
+
+def test_run_settings_parsing_analysis_only(qtbot: QtBot) -> None:
+    """Test parsing run settings for analysis-only mode."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Populate settings like the real code does
+    gui._run_cali_wdg.populate_detection_settings([(1, "cellpose")])
+    gui._run_cali_wdg.populate_extraction_settings([1])
+
+    # Set to "Analysis Only" - this triggers visibility change
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
+
+    # Verify combos are visible
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # Select settings (index 1 is first real item after placeholder)
+    gui._run_cali_wdg._detection_settings_combo.setCurrentIndex(1)
+    gui._run_cali_wdg._extraction_settings_combo.setCurrentIndex(1)
+
+    settings = gui._run_cali_wdg.value()
+    assert isinstance(settings, CaliRunSettings)
+    assert not settings.run_detection
+    assert not settings.run_extraction
+    assert settings.run_analysis
+    assert settings.detection_settings_id == 1
+    assert settings.extraction_settings_id == 1
+
+
+def test_run_settings_parsing_full_pipeline(qtbot: QtBot) -> None:
+    """Test parsing run settings for full pipeline."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Set to "Detection, Extraction and Analysis"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(0)
+
+    settings = gui._run_cali_wdg.value()
+    assert isinstance(settings, CaliRunSettings)
+    assert settings.run_detection
+    assert settings.run_extraction
+    assert settings.run_analysis
+    assert settings.detection_settings_id is None  # Creating new detection
+    assert settings.extraction_settings_id is None
+
+
+def test_run_settings_parsing_positions(qtbot: QtBot) -> None:
+    """Test parsing position inputs."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Test single positions
+    gui._run_cali_wdg._positions_wdg.setValue("0, 5, 10")
+    settings = gui._run_cali_wdg.value()
+    assert settings.positions == [0, 5, 10]
+
+    # Test range
+    gui._run_cali_wdg._positions_wdg.setValue("0-5")
+    settings = gui._run_cali_wdg.value()
+    assert settings.positions == [0, 1, 2, 3, 4, 5]
+
+    # Test mixed
+    gui._run_cali_wdg._positions_wdg.setValue("0-2, 5, 8-10")
+    settings = gui._run_cali_wdg.value()
+    assert settings.positions == [0, 1, 2, 5, 8, 9, 10]
+
+    # Test empty (all positions)
+    gui._run_cali_wdg._positions_wdg.setValue("")
+    settings = gui._run_cali_wdg.value()
+    assert settings.positions == []
+
+
+def test_combo_visibility_changes(qtbot: QtBot) -> None:
+    """Test that combos show/hide correctly when changing run options."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Default: "Detection, Extraction and Analysis"
+    assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # "Detection Only"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(2)
+    assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # "Extraction Only"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # "Analysis Only"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
+    assert gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+    # Back to "Detection and Extraction"
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(1)
+    assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
+    assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()

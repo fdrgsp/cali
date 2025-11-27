@@ -2,6 +2,11 @@
 
 from ._ome_zarr_reader import OMEZarrReader
 from ._tensorstore_zarr_reader import TensorstoreZarrReader
-from ._tiff_collection_reader import TiffCollectionReader
+from ._tiff_collection_reader import TiffCollectionReader, TiffCollectionSettings
 
-__all__ = ["OMEZarrReader", "TensorstoreZarrReader", "TiffCollectionReader"]
+__all__ = [
+    "OMEZarrReader",
+    "TensorstoreZarrReader",
+    "TiffCollectionReader",
+    "TiffCollectionSettings",
+]

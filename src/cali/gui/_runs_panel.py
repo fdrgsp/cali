@@ -492,7 +492,10 @@ class _RunsPanel(QGroupBox):
             return None
 
     def get_detection_settings_ids(self) -> list[int]:
-        """Get all unique detection settings IDs from runs.
+        """Get all unique detection settings IDs from database.
+
+        Queries the DetectionSettings table directly to find all available
+        detection settings, regardless of whether they're in a CaliResult.
 
         Returns
         -------
@@ -505,14 +508,16 @@ class _RunsPanel(QGroupBox):
         try:
             from sqlmodel import Session, create_engine, select
 
+            from cali.sqlmodel._model import DetectionSettings
+
             engine = create_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             with Session(engine) as session:
-                # Get all unique detection settings IDs
-                stmt = select(CaliResult.detection_settings).distinct()
+                # Get all detection settings IDs directly from the table
+                stmt = select(DetectionSettings.id)
                 results = session.exec(stmt).all()
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)
@@ -522,7 +527,10 @@ class _RunsPanel(QGroupBox):
             return []
 
     def get_extraction_settings_ids(self) -> list[int]:
-        """Get all unique extraction settings IDs from runs.
+        """Get all unique extraction settings IDs from database.
+
+        Queries the ExtractionSettings table directly to find all available
+        extraction settings, regardless of whether they're in a CaliResult.
 
         Returns
         -------
@@ -535,14 +543,16 @@ class _RunsPanel(QGroupBox):
         try:
             from sqlmodel import Session, create_engine, select
 
+            from cali.sqlmodel._model import ExtractionSettings
+
             engine = create_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             with Session(engine) as session:
-                # Get all unique extraction settings IDs
-                stmt = select(CaliResult.extraction_settings).distinct()
+                # Get all extraction settings IDs directly from the table
+                stmt = select(ExtractionSettings.id)
                 results = session.exec(stmt).all()
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)

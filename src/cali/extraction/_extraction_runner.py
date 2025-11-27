@@ -4,7 +4,6 @@ import threading
 import warnings
 from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Callable, cast
 
 import numpy as np
@@ -17,6 +16,7 @@ from cali._constants import (
 )
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
@@ -25,7 +25,7 @@ from cali.sqlmodel._model import (
     Mask,
     Traces,
 )
-from cali.util import coordinates_to_mask, load_data, mask_to_coordinates
+from cali.util import coordinates_to_mask, mask_to_coordinates
 
 from ._neuropil import create_neuropil_from_dilation
 from ._util import (
@@ -52,7 +52,7 @@ class ExtractionRunner:
 
     def run(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         extraction_settings: ExtractionSettings,
         fovs: Iterable[FOV],
         *,
@@ -67,8 +67,8 @@ class ExtractionRunner:
 
         Parameters
         ----------
-        dataset : str | Path | TensorstoreZarrReader | OMEZarrReader
-            Path to imaging data (zarr store) or a data reader instance
+        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+            Data reader instance for imaging data
         extraction_settings : ExtractionSettings
             Extraction parameters (neuropil, dff_window, decay_constant, etc.)
         fovs : Iterable[FOV]
@@ -102,7 +102,7 @@ class ExtractionRunner:
 
     def _run_generator(
         self,
-        dataset: str | Path | TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
@@ -111,13 +111,12 @@ class ExtractionRunner:
         # Reset cancellation event
         self._cancellation_event.clear()
 
-        # Load data
-        if isinstance(dataset, (str, Path)):
-            dataset = load_data(dataset)
-        else:
-            assert isinstance(
-                dataset, (TensorstoreZarrReader, OMEZarrReader)
-            ), "Data must be a TensorstoreZarrReader or OMEZarrReader instance."
+        assert isinstance(
+            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
+        ), (
+            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
+            "TiffCollectionReader instance."
+        )
 
         cali_logger.info(f"⚡️ Using {extraction_settings.threads} threads")
 
@@ -145,7 +144,7 @@ class ExtractionRunner:
     def _exec_in_threadpool(
         self,
         analyze: Callable,
-        dataset: TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         cancel_event: threading.Event,
         fovs: Iterable[FOV],
         extraction_settings: ExtractionSettings,
@@ -198,7 +197,7 @@ class ExtractionRunner:
 
     def _analyze_position(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov: FOV,
@@ -217,7 +216,7 @@ class ExtractionRunner:
 
     def _extract_trace_data_per_position(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov_to_analyze: FOV,

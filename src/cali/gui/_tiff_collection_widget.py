@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fonticon_mdi6 import MDI6
 from pymmcore_widgets.useq_widgets import WellPlateWidget
@@ -20,15 +20,16 @@ from qtpy.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 from superqt.fonticon import icon
 
+from cali.readers import TiffCollectionReader, TiffCollectionSettings
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from useq import WellPlate
 
 
 class TiffCollectionWidget(QDialog):
@@ -45,20 +46,36 @@ class TiffCollectionWidget(QDialog):
         self,
         parent: QWidget | None = None,
         *,
-        tiff_files: Sequence[Path | str] = [],
+        tiff_files: Sequence[Path | str] | Path | str | None = None,
     ) -> None:
         """Initialize the TiffCollectionWidget dialog.
 
         Parameters
         ----------
-        tiff_files : Sequence[Path]
-            List of TIFF file paths found in the data directory
+        tiff_files : Sequence[Path | str] | Path | str | None
+            Either a list of TIFF file paths, a single directory path
+            to search for TIFF files (.tif and .tiff extensions),
+            or None (default) for empty initialization
         parent : QWidget | None
             Parent widget
         """
         super().__init__(parent)
         self.setWindowTitle("TIFF Collection Configuration")
         self.setWindowIcon(icon(MDI6.file_image_outline))
+
+        # Handle single path or sequence of paths
+        if tiff_files is None:
+            tiff_files = []
+        elif isinstance(tiff_files, (str, Path)):
+            tiff_path = Path(tiff_files)
+            if tiff_path.is_dir():
+                # Find all TIFF files in directory
+                tiff_files = sorted(
+                    list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff"))
+                )
+            else:
+                # Single file provided
+                tiff_files = [tiff_path]
 
         self._tiff_files = sorted(Path(f) for f in tiff_files)
         self._file_map: dict[tuple[int, int], list[Path]] = {}
@@ -96,14 +113,19 @@ class TiffCollectionWidget(QDialog):
         )
         for tiff_file in self._tiff_files:
             self._available_list.addItem(tiff_file.name)
-        files_layout.addWidget(avail_label)
-        files_layout.addWidget(self._available_list)
+
+        # Create widget to hold available files section
+        available_widget = QWidget()
+        available_layout = QVBoxLayout(available_widget)
+        available_layout.setContentsMargins(5, 5, 5, 5)
+        available_layout.addWidget(avail_label)
+        available_layout.addWidget(self._available_list)
 
         # Add/Remove buttons
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(5)
-        self._add_btn = QPushButton(icon(MDI6.arrow_down), "Add to Selected Well")
+        self._add_btn = QPushButton(icon(MDI6.arrow_down), "Add to Well")
         self._add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._add_btn.clicked.connect(self._on_add_clicked)
         self._remove_btn = QPushButton(icon(MDI6.arrow_up), "Remove from Well")
@@ -111,35 +133,59 @@ class TiffCollectionWidget(QDialog):
         self._remove_btn.clicked.connect(self._on_remove_clicked)
         button_layout.addWidget(self._add_btn)
         button_layout.addWidget(self._remove_btn)
-        files_layout.addLayout(button_layout)
 
         # Assigned files list
         assigned_label = QLabel("Files Assigned to Selected Well:")
-        files_layout.addWidget(assigned_label)
         self._assigned_list = QListWidget()
         self._assigned_list.setSelectionMode(
             QListWidget.SelectionMode.ExtendedSelection
         )
-        files_layout.addWidget(self._assigned_list)
+
+        # Create widget to hold assigned files section
+        assigned_widget = QWidget()
+        assigned_layout = QVBoxLayout(assigned_widget)
+        assigned_layout.setContentsMargins(5, 5, 5, 5)
+        assigned_layout.addWidget(assigned_label)
+        assigned_layout.addLayout(button_layout)
+        assigned_layout.addWidget(self._assigned_list)
+
+        # Create vertical splitter for the two list widgets
+        lists_splitter = QSplitter(Qt.Orientation.Vertical)
+        lists_splitter.addWidget(available_widget)
+        lists_splitter.addWidget(assigned_widget)
+
+        # Add components to files layout
+        files_layout.addWidget(lists_splitter)
 
         # BOTTOM: Metadata inputs and OK/Cancel buttons
         # Metadata inputs
         metadata_group = QGroupBox("Metadata")
         metadata_layout = QHBoxLayout(metadata_group)
-        metadata_layout.setContentsMargins(0, 0, 0, 0)
+        metadata_layout.setContentsMargins(5, 5, 5, 5)
         metadata_layout.setSpacing(5)
 
+        tooltip_exp = (
+            "Set the exposure time in milliseconds (ms) for the imaging data.\n"
+        )
         exp_label = QLabel("Exposure Time:")
+        exp_label.setToolTip(tooltip_exp)
         self._exposure_spin = QDoubleSpinBox()
+        self._exposure_spin.setToolTip(tooltip_exp)
         self._exposure_spin.setRange(0.001, 10000.0)
         self._exposure_spin.setValue(100.0)
         self._exposure_spin.setDecimals(3)
         self._exposure_spin.setSuffix(" ms")
 
+        tooltip_px = (
+            "Set the pixel size in micrometers (µm) for the imaging data.\n"
+            "Set to 0 to keep measurements in pixels."
+        )
         px_label = QLabel("Pixel Size:")
+        px_label.setToolTip(tooltip_px)
         self._pixel_size_spin = QDoubleSpinBox()
-        self._pixel_size_spin.setRange(0.001, 100.0)
-        self._pixel_size_spin.setValue(1.0)
+        self._pixel_size_spin.setToolTip(tooltip_px)
+        self._pixel_size_spin.setRange(0.0, 100.0)
+        self._pixel_size_spin.setValue(0.0)
         self._pixel_size_spin.setDecimals(3)
         self._pixel_size_spin.setSuffix(" µm")
 
@@ -147,7 +193,6 @@ class TiffCollectionWidget(QDialog):
         metadata_layout.addWidget(self._exposure_spin)
         metadata_layout.addWidget(px_label)
         metadata_layout.addWidget(self._pixel_size_spin)
-        metadata_layout.addStretch()
 
         # OK/Cancel buttons
         button_box = QHBoxLayout()
@@ -163,9 +208,12 @@ class TiffCollectionWidget(QDialog):
         button_box.addWidget(cancel_btn)
 
         # LAYOUTS
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(plate_group, stretch=3)
-        top_layout.addWidget(files_group, stretch=2)
+        # Create horizontal splitter between plate and files
+        top_splitter = QSplitter(Qt.Orientation.Horizontal)
+        top_splitter.addWidget(plate_group)
+        top_splitter.addWidget(files_group)
+        top_splitter.setStretchFactor(0, 3)  # Plate gets more space
+        top_splitter.setStretchFactor(1, 2)  # Files get less space
 
         # Bottom section - metadata and buttons
         bottom_layout = QHBoxLayout()
@@ -175,9 +223,9 @@ class TiffCollectionWidget(QDialog):
         bottom_layout.addLayout(button_box)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(5)
-        main_layout.addLayout(top_layout)
+        main_layout.addWidget(top_splitter)
 
         main_layout.addLayout(bottom_layout)
 
@@ -185,14 +233,30 @@ class TiffCollectionWidget(QDialog):
 
     # -------------------------PUBLIC METHODS-------------------------
 
-    def set_tiff_files(self, tiff_files: Sequence[Path | str]) -> None:
+    def set_tiff_files(self, tiff_files: Sequence[Path | str] | Path | str) -> None:
         """Set or update the list of TIFF files.
 
         Parameters
         ----------
-        tiff_files : Sequence[Path]
-            List of TIFF file paths to display in the available files list
+        tiff_files : Sequence[Path | str] | Path | str
+            Either a list of TIFF file paths, or a single directory path
+            to search for TIFF files (.tif and .tiff extensions)
         """
+        # Handle single path or sequence of paths
+        if isinstance(tiff_files, (str, Path)):
+            tiff_path = Path(tiff_files)
+            if tiff_path.is_dir():
+                # Find all TIFF files in directory
+                tiff_files = sorted(
+                    list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff"))
+                )
+            else:
+                # Single file provided
+                tiff_files = [tiff_path]
+
+        if not tiff_files:
+            raise ValueError("tiff_files cannot be empty.")
+
         self._tiff_files = sorted(Path(f) for f in tiff_files)
         self._file_map.clear()
 
@@ -204,34 +268,41 @@ class TiffCollectionWidget(QDialog):
         # Clear assigned files list
         self._assigned_list.clear()
 
-    def value(
-        self,
-    ) -> tuple[dict[str, list[Path]], WellPlate, dict[str, float]]:
+    def value(self) -> TiffCollectionReader:
         """Get the configured TiffCollectionReader parameters.
 
         Returns
         -------
-        tuple[dict[str, list[Path]], useq.WellPlate, dict[str, float]]
-            A tuple of (file_map, plate, metadata) where:
-            - file_map: Maps well names (e.g., "A1") to lists of TIFF file paths
-            - plate: The selected useq.WellPlate
-            - metadata: Dictionary with 'exposure_ms' and 'pixel_size_um'
+        TiffCollectionSettings
+            The configured settings including file map, plate type, and metadata
         """
+        if not self._tiff_files:
+            raise ValueError(
+                "No TIFF files have been set. Use set_tiff_files() first."
+            )
+
         # Convert from (row, col) tuples to well names like "A1", "B2", etc.
-        file_map: dict[str, list[Path]] = {}
+        file_map: dict[str, list[Path | str]] = {}
         for (row, col), paths in self._file_map.items():
             well_name = f"{chr(ord('A') + row)}{col + 1}"
-            file_map[well_name] = paths
+            file_map[well_name] = cast("list[Path | str]", paths)
 
         plate_plan = self._plate_widget.value()
         plate = plate_plan.plate
 
+        px = self._pixel_size_spin.value()
         metadata = {
             "exposure_ms": self._exposure_spin.value(),
-            "pixel_size_um": self._pixel_size_spin.value(),
+            "pixel_size_um": (None if px == 0.0 else px),
         }
 
-        return file_map, plate, metadata
+        settings = TiffCollectionSettings(
+            file_map=file_map,
+            plate=plate,
+            metadata=metadata,
+            tiff_folder_path=Path(self._tiff_files[0]).parent
+        )
+        return TiffCollectionReader(settings)
 
     # -------------------------PRIVATE METHODS-------------------------
 

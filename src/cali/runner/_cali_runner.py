@@ -12,9 +12,10 @@ from cali._constants import DEFAULT_CALI_DB_NAME
 from cali.detection import DetectionRunner
 from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
+from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
-from cali.util import commit_fov_result, load_data
+from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
@@ -220,7 +221,20 @@ class CaliRunner:
         Yields progress strings during execution.
         """
         # 0. Make sure data are ready
-        dataset = load_data(dataset_path)
+        tiff_settings = experiment.tiff_collection_settings(dataset_path)
+        if tiff_settings is not None:
+            dataset = TiffCollectionReader(tiff_settings)
+        else:
+            dataset = load_data_from_path(dataset_path)
+
+        if dataset is None:
+            msg = f"❌ Could not load data from path: {dataset_path}"
+            cali_logger.error(msg)
+            raise ValueError(msg)
+        if dataset.sequence is None:
+            msg = "❌  Dataset does not contain sequence information."
+            cali_logger.error(msg)
+            raise ValueError(msg)
 
         if output_path is None:
             output_path = Path(dataset_path).parent
@@ -892,7 +906,7 @@ class CaliRunner:
 
     def _run_detection(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
@@ -910,7 +924,7 @@ class CaliRunner:
 
     def _run_extraction(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
@@ -1004,18 +1018,20 @@ class CaliRunner:
         analysis_settings_id: int | None,
         positions_analyzed: list[int],
     ) -> int:
-        """Create or update an CaliResult entry.
+        """Create or update a CaliResult entry.
 
-        If a CaliResult with the same experiment, detection_settings,
-        extraction_settings, and analysis_settings already exists, update its
-        positions_analyzed list by merging new positions. Otherwise create a new entry.
+        Handles progressive analysis stages:
+        1. If exact match exists (same detection, extraction, analysis), merge positions
+        2. If partial match exists (same detection/extraction but less complete),
+           upgrade the existing result with new settings
+        3. Otherwise, create new result and clean up superseded ones
 
         Returns
         -------
             The ID of the created or updated CaliResult.
         """
-        # Check if result with same settings already exists
-        existing_result = session.exec(
+        # First, check for exact match with all settings
+        exact_match = session.exec(
             select(CaliResult).where(
                 CaliResult.experiment == experiment_id,
                 CaliResult.detection_settings == detection_settings_id,
@@ -1024,71 +1040,146 @@ class CaliRunner:
             )
         ).first()
 
-        if existing_result:
+        if exact_match:
             # Update existing result by merging positions
-            old_positions = set(existing_result.positions_analyzed or [])
+            old_positions = set(exact_match.positions_analyzed or [])
             new_positions = set(positions_analyzed)
             merged_positions = sorted(old_positions | new_positions)
 
-            existing_result.positions_analyzed = merged_positions
-            session.add(existing_result)
+            exact_match.positions_analyzed = merged_positions
+            session.add(exact_match)
             session.commit()
-            session.refresh(existing_result)
+            session.refresh(exact_match)
 
-            result_type = (
-                "detection-only" if analysis_settings_id is None else "full analysis"
+            result_type = self._get_result_type(
+                extraction_settings_id, analysis_settings_id
             )
             cali_logger.info(
-                f"📝 Updated {result_type} CaliResult ID {existing_result.id} "
+                f"📝 Updated {result_type} CaliResult ID {exact_match.id} "
                 f"(DetectionSettings={detection_settings_id}, "
                 f"ExtractionSettings={extraction_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
                 f"positions={merged_positions})"
             )
-            assert existing_result.id is not None
-            return existing_result.id
+            assert exact_match.id is not None
+            return exact_match.id
+
+        # Check for a less-complete result that can be upgraded
+        # (same detection/extraction but missing analysis)
+        if analysis_settings_id is not None and extraction_settings_id is not None:
+            upgradeable_result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.experiment == experiment_id,
+                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.extraction_settings == extraction_settings_id,
+                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                )
+            ).first()
+
+            if upgradeable_result:
+                # Upgrade the existing result with analysis settings
+                old_positions = set(upgradeable_result.positions_analyzed or [])
+                new_positions = set(positions_analyzed)
+                merged_positions = sorted(old_positions | new_positions)
+
+                upgradeable_result.analysis_settings = analysis_settings_id
+                upgradeable_result.positions_analyzed = merged_positions
+                session.add(upgradeable_result)
+                session.commit()
+                session.refresh(upgradeable_result)
+
+                cali_logger.info(
+                    f"⬆️  Upgraded CaliResult ID {upgradeable_result.id} "
+                    f"with AnalysisSettings={analysis_settings_id}, "
+                    f"positions={merged_positions}"
+                )
+                assert upgradeable_result.id is not None
+                return upgradeable_result.id
+
+        # Check for result with same detection/extraction but missing extraction
+        # (upgrade detection-only to detection+extraction)
+        if extraction_settings_id is not None and analysis_settings_id is None:
+            upgradeable_result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.experiment == experiment_id,
+                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.extraction_settings.is_(None),  # type: ignore
+                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                )
+            ).first()
+
+            if upgradeable_result:
+                # Upgrade the existing result with extraction settings
+                old_positions = set(upgradeable_result.positions_analyzed or [])
+                new_positions = set(positions_analyzed)
+                merged_positions = sorted(old_positions | new_positions)
+
+                upgradeable_result.extraction_settings = extraction_settings_id
+                upgradeable_result.positions_analyzed = merged_positions
+                session.add(upgradeable_result)
+                session.commit()
+                session.refresh(upgradeable_result)
+
+                cali_logger.info(
+                    f"⬆️  Upgraded CaliResult ID {upgradeable_result.id} "
+                    f"with ExtractionSettings={extraction_settings_id}, "
+                    f"positions={merged_positions}"
+                )
+                assert upgradeable_result.id is not None
+                return upgradeable_result.id
+
+        # No upgradeable result found - create new one
+        # First, delete any detection-only result that will be superseded
+        if analysis_settings_id is not None:
+            detection_only_result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.experiment == experiment_id,
+                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.extraction_settings.is_(None),  # type: ignore
+                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                )
+            ).first()
+
+            if detection_only_result:
+                cali_logger.info(
+                    f"🗑️  Removing detection-only CaliResult ID "
+                    f"{detection_only_result.id} (superseded by analysis result)"
+                )
+                session.delete(detection_only_result)
+                session.commit()
+
+        # Create new result
+        result = CaliResult(
+            experiment=experiment_id,
+            detection_settings=detection_settings_id,
+            extraction_settings=extraction_settings_id,
+            analysis_settings=analysis_settings_id,
+            positions_analyzed=positions_analyzed,
+        )
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+        result_type = self._get_result_type(
+            extraction_settings_id, analysis_settings_id
+        )
+        cali_logger.info(
+            f"📊 Created {result_type} CaliResult ID {result.id} "
+            f"(DetectionSettings={detection_settings_id}, "
+            f"ExtractionSettings={extraction_settings_id}, "
+            f"AnalysisSettings={analysis_settings_id}, "
+            f"positions={positions_analyzed})"
+        )
+        assert result.id is not None
+        return result.id
+
+    def _get_result_type(
+        self, extraction_settings_id: int | None, analysis_settings_id: int | None
+    ) -> str:
+        """Get descriptive type of CaliResult based on settings."""
+        if analysis_settings_id is not None:
+            return "full analysis"
+        elif extraction_settings_id is not None:
+            return "detection+extraction"
         else:
-            # If creating a full analysis result, delete any detection-only result
-            # with same detection settings (the analysis result supersedes it)
-            if analysis_settings_id is not None:
-                detection_only_result = session.exec(
-                    select(CaliResult).where(
-                        CaliResult.experiment == experiment_id,
-                        CaliResult.detection_settings == detection_settings_id,
-                        CaliResult.extraction_settings.is_(None),  # type: ignore
-                        CaliResult.analysis_settings.is_(None),  # type: ignore
-                    )
-                ).first()
-
-                if detection_only_result:
-                    cali_logger.info(
-                        "🗑️  Removing detection-only result ID "
-                        f"{detection_only_result.id} (superseded by analysis result)"
-                    )
-                    session.delete(detection_only_result)
-                    session.commit()
-
-            # Create new result
-            result = CaliResult(
-                experiment=experiment_id,
-                detection_settings=detection_settings_id,
-                extraction_settings=extraction_settings_id,
-                analysis_settings=analysis_settings_id,
-                positions_analyzed=positions_analyzed,
-            )
-            session.add(result)
-            session.commit()
-            session.refresh(result)
-
-            result_type = (
-                "detection-only" if analysis_settings_id is None else "full analysis"
-            )
-            cali_logger.info(
-                f"📊 Created {result_type} CaliResult ID {result.id} "
-                f"(DetectionSettings={detection_settings_id}, "
-                f"ExtractionSettings={extraction_settings_id}, "
-                f"AnalysisSettings={analysis_settings_id}, "
-                f"positions={positions_analyzed})"
-            )
-            assert result.id is not None
-            return result.id
+            return "detection-only"

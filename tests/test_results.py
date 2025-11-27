@@ -286,7 +286,6 @@ def test_analysis_settings_database_deduplication(test_db: Path) -> None:
             # Check if it already exists
             existing = session.exec(
                 select(AnalysisSettings).where(
-                    AnalysisSettings.dff_window == as2.dff_window,
                     AnalysisSettings.threads == as2.threads,
                 )
             ).first()
@@ -327,14 +326,12 @@ def test_detection_settings_fields() -> None:
 def test_analysis_settings_evoked_fields() -> None:
     """Test AnalysisSettings with evoked experiment fields."""
     settings = AnalysisSettings(
-        dff_window=100,
         led_power_equation="y = 0.5 * x",
         led_pulse_duration=50.0,
         led_pulse_powers=[5.0, 10.0, 15.0],
         led_pulse_on_frames=[100, 200, 300],
     )
 
-    assert settings.dff_window == 100
     assert settings.led_power_equation == "y = 0.5 * x"
     assert settings.led_pulse_duration == 50.0
     assert settings.led_pulse_powers == [5.0, 10.0, 15.0]
@@ -390,7 +387,7 @@ def test_cali_result_links_to_settings(
             assert loaded_d_settings is not None
             assert loaded_a_settings is not None
             assert loaded_d_settings.method == "cellpose"
-            assert loaded_a_settings.dff_window == 100
+            assert loaded_a_settings.threads == 1
 
     finally:
         engine.dispose(close=True)
@@ -540,6 +537,102 @@ def test_multiple_cali_results_same_experiment(
         engine.dispose(close=True)
 
 
+def test_cali_result_progressive_upgrade(
+    test_db: Path, test_experiment: Experiment
+) -> None:
+    """Test progressive upgrade: detection → detection+extraction → full analysis.
+
+    This tests the workflow where a user:
+    1. Runs detection only
+    2. Runs detection + extraction (should upgrade result, not create new)
+    3. Runs detection + extraction + analysis (should upgrade again, not create new)
+    """
+    from cali.sqlmodel import save_experiment_to_database
+
+    save_experiment_to_database(
+        test_experiment,
+        output_path=test_db.parent,
+        database_name=test_db.name,
+        overwrite=True,
+    )
+
+    engine = create_engine(f"sqlite:///{test_db}")
+    try:
+        with Session(engine) as session:
+            # Create settings
+            d_settings = DetectionSettings(
+                method="cellpose", model_type="cpsam", diameter=30
+            )
+            e_settings = ExtractionSettings(
+                compute_neuropil=True,
+                neuropil_radius_inner=2.0,
+                neuropil_radius_outer=6.0,
+            )
+            a_settings = AnalysisSettings(dff_window=100)
+            session.add_all([d_settings, e_settings, a_settings])
+            session.commit()
+            session.refresh(d_settings)
+            session.refresh(e_settings)
+            session.refresh(a_settings)
+
+            # Stage 1: Detection only
+            result1 = CaliResult(
+                experiment=test_experiment.id,
+                detection_settings=d_settings.id,
+                extraction_settings=None,
+                analysis_settings=None,
+                positions_analyzed=[0],
+            )
+            session.add(result1)
+            session.commit()
+            session.refresh(result1)
+            result1_id = result1.id
+
+            # Verify detection-only result
+            assert result1.detection_settings == d_settings.id
+            assert result1.extraction_settings is None
+            assert result1.analysis_settings is None
+
+            # Stage 2: Add extraction (simulate upgrade)
+            result1.extraction_settings = e_settings.id
+            session.add(result1)
+            session.commit()
+            session.refresh(result1)
+
+            # Verify same ID, now with extraction
+            assert result1.id == result1_id
+            assert result1.extraction_settings == e_settings.id
+            assert result1.analysis_settings is None
+
+            # Verify still only one result
+            all_results = session.exec(
+                select(CaliResult).where(CaliResult.experiment == test_experiment.id)
+            ).all()
+            assert len(all_results) == 1
+
+            # Stage 3: Add analysis (simulate upgrade)
+            result1.analysis_settings = a_settings.id
+            session.add(result1)
+            session.commit()
+            session.refresh(result1)
+
+            # Verify same ID, now with all three settings
+            assert result1.id == result1_id
+            assert result1.detection_settings == d_settings.id
+            assert result1.extraction_settings == e_settings.id
+            assert result1.analysis_settings == a_settings.id
+
+            # Verify still only one CaliResult exists
+            all_results = session.exec(
+                select(CaliResult).where(CaliResult.experiment == test_experiment.id)
+            ).all()
+            assert len(all_results) == 1
+            assert all_results[0].id == result1_id
+
+    finally:
+        engine.dispose(close=True)
+
+
 def test_query_cali_results_by_settings(
     test_db: Path, test_experiment: Experiment
 ) -> None:
@@ -625,25 +718,21 @@ def test_detection_settings_hash_stability() -> None:
 def test_analysis_settings_spontaneous_fields() -> None:
     """Test AnalysisSettings with spontaneous experiment fields."""
     settings = AnalysisSettings(
-        dff_window=100,
         threads=4,
         peaks_height_value=1.5,
         spike_threshold_value=2.0,
-        neuropil_inner_radius=5,
         burst_threshold=20.0,
     )
 
-    assert settings.dff_window == 100
     assert settings.threads == 4
     assert settings.peaks_height_value == 1.5
     assert settings.spike_threshold_value == 2.0
-    assert settings.neuropil_inner_radius == 5
     assert settings.burst_threshold == 20.0
 
 
 def test_analysis_settings_experiment_type() -> None:
     """Test ExtractionSettings with experiment_type field."""
-    from cali._constants import EVOKED, SPONTANEOUS
+    from cali._constants import EVOKED
 
     settings_evoked = ExtractionSettings(
         experiment_type=EVOKED,
@@ -897,19 +986,24 @@ def test_analysis_settings_inequality_cases() -> None:
     """Test various inequality cases for AnalysisSettings."""
     as1 = AnalysisSettings(threads=4)
     as2 = AnalysisSettings(threads=4)
-    as3 = AnalysisSettings(threads=8)
+    as3 = AnalysisSettings(threads=8)  # Different threads but still equal
     as4 = AnalysisSettings(
-        dff_window=100,
         threads=4,
         led_power_equation="y = x",
     )
+    as5 = AnalysisSettings(
+        threads=4,
+        peaks_height_value=5.0,  # Different peak height
+    )
 
-    # Different dff_window
-    assert as1 != as2
-    # Different threads
-    assert as1 != as3
+    # Same settings - should be equal
+    assert as1 == as2
+    # Different threads doesn't affect equality (threads is runtime param)
+    assert as1 == as3
     # Different led_power_equation
     assert as1 != as4
+    # Different peaks_height_value
+    assert as1 != as5
 
 
 def test_cali_result_empty_positions() -> None:

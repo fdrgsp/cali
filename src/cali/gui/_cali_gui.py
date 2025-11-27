@@ -53,7 +53,7 @@ from cali.sqlmodel import (
 )
 from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
-from cali.util import load_data
+from cali.util import load_data_from_path
 
 from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
 from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
@@ -78,10 +78,12 @@ if TYPE_CHECKING:
     from cali.readers import (
         OMEZarrReader,
         TensorstoreZarrReader,
-        TiffCollectionReader,
     )
 
 from cali.logger import cali_logger
+from cali.readers import (
+    TiffCollectionReader,
+)
 
 DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("coverslip-18mm-square"),
@@ -369,6 +371,7 @@ class CaliGui(QMainWindow):
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
+
         self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
         self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
@@ -402,7 +405,12 @@ class CaliGui(QMainWindow):
         experiment = Experiment.load_from_db(database_path, load_data=False)
 
         # DATA-------------------------------------------------------------------------
-        self._data = load_data(data_path, experiment=experiment)
+        tiff_settings = experiment.tiff_collection_settings(data_path)
+        if tiff_settings is not None:
+            self._data = TiffCollectionReader(tiff_settings)
+        else:
+            self._data = load_data_from_path(data_path)
+
         if self._data is None:
             msg = (
                 f"❌ Unsupported file format! Currently, Only "
@@ -475,7 +483,7 @@ class CaliGui(QMainWindow):
                 self,
                 "Database Exists",
                 f"Database already exists at:\n{self._database_path}\n\n"
-                "Do you want to overwrite it? All existing runs will be deleted.",
+                "Do you want to OVERWRITE it? All existing runs will be deleted.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -492,7 +500,12 @@ class CaliGui(QMainWindow):
                 )
 
                 # DATA-----------------------------------------------------------------
-                self._data = load_data(data_path, experiment=experiment)
+                tiff_settings = experiment.tiff_collection_settings(data_path)
+                if tiff_settings is not None:
+                    self._data = TiffCollectionReader(tiff_settings)
+                else:
+                    self._data = load_data_from_path(data_path)
+
                 if self._data is None:
                     msg = (
                         f"❌ Unsupported file format! Currently, Only "
@@ -514,9 +527,9 @@ class CaliGui(QMainWindow):
                     return
 
             else:
-                self._data = load_data(data_path)
+                # DATA-----------------------------------------------------------------
                 tiff_file_map = tiff_plate_type = tiff_metadata = None
-
+                self._data = load_data_from_path(data_path)
                 # if data is None and the data_path is a tiff folder, try to create
                 # a TiffCollectionReader
                 if self._data is None:
@@ -526,16 +539,11 @@ class CaliGui(QMainWindow):
                         # Show TiffCollectionWidget to configure TIFF files
                         self._tiff_collection_widget.set_tiff_files(tiff_list)
                         if self._tiff_collection_widget.exec():
-                            (
-                                tiff_file_map,
-                                plate,
-                                tiff_metadata,
-                            ) = self._tiff_collection_widget.value()
-                            tiff_plate_type = plate.name
-                            cali_logger.info(
-                                f"📋 Configured {len(tiff_file_map)} TIFF files "
-                                f"for plate {tiff_plate_type}"
+                            self._data = self._tiff_collection_widget.value()
+                            tiff_file_map, tiff_plate_type, tiff_metadata = (
+                                self._data.to_experiment_tiff_config()
                             )
+                            cali_logger.info("📋 `TiffCollectionReader` Configured.")
                         else:
                             self._loading_bar.hide()
                             return
@@ -548,15 +556,6 @@ class CaliGui(QMainWindow):
                         cali_logger.error(msg)
                         self._loading_bar.hide()
                         return
-                else:
-                    msg = (
-                        f"❌ No valid data found at {data_path}! "
-                        "Expected zarr datastore or TIFF file folder."
-                    )
-                    show_error_dialog(self, msg)
-                    cali_logger.error(msg)
-                    self._loading_bar.hide()
-                    return
 
                 # User chose to overwrite - create new database
                 cali_logger.info(f"💾 Overwriting database at {self._database_path}")
@@ -579,11 +578,11 @@ class CaliGui(QMainWindow):
                 self._draw_plate_with_selection(plate_plan)
             else:
                 cali_logger.warning("❌ Plate plan not found in experiment.")
-        else:
 
+        else:
             # DATA -----------------------------------------------------------------
-            self._data = load_data(data_path)
             tiff_file_map = tiff_plate_type = tiff_metadata = None
+            self._data = load_data_from_path(data_path)
             # if data is None and the data_path is a tiff folder, try to create
             # a TiffCollectionReader
             if self._data is None:
@@ -593,16 +592,11 @@ class CaliGui(QMainWindow):
                     # Show TiffCollectionWidget to configure TIFF files
                     self._tiff_collection_widget.set_tiff_files(tiff_list)
                     if self._tiff_collection_widget.exec():
-                        (
-                            tiff_file_map,
-                            plate,
-                            tiff_metadata,
-                        ) = self._tiff_collection_widget.value()
-                        tiff_plate_type = plate.name
-                        cali_logger.info(
-                            f"📋 Configured {len(tiff_file_map)} TIFF files "
-                            f"for plate {tiff_plate_type}"
+                        self._data = self._tiff_collection_widget.value()
+                        tiff_file_map, tiff_plate_type, tiff_metadata = (
+                            self._data.to_experiment_tiff_config()
                         )
+                        cali_logger.info("📋 `TiffCollectionReader` Configured.")
                     else:
                         self._loading_bar.hide()
                         return
@@ -633,7 +627,10 @@ class CaliGui(QMainWindow):
             )
 
         # DATA---------------------------------------------------------------------
-        self._data = load_data(data_path, experiment=experiment)
+        # skip loading data if already loaded as TiffCollectionReader
+        if not isinstance(self._data, TiffCollectionReader):
+            self._data = load_data_from_path(data_path)
+
         if self._data is None:
             msg = (
                 f"❌ Unsupported file format! Currently, Only "
@@ -907,11 +904,26 @@ class CaliGui(QMainWindow):
 
     def _on_worker_errored(self, error: Any) -> None:
         """Handle errors from the runner."""
+        import traceback
+
         self._elapsed_timer.stop()
         self._enable(True)
+
+        # Format the error with full traceback
+        if hasattr(error, "__traceback__"):
+            tb_lines = traceback.format_exception(
+                type(error), error, error.__traceback__
+            )
+            error_msg = "".join(tb_lines)
+        else:
+            error_msg = str(error)
+
         cali_logger.error(
-            f"❌ Analysis runner encountered an error during execution:\n {error}"
+            f"❌ Runner encountered an error during execution:\n{error}"
         )
+
+        # Also show error dialog to user
+        show_error_dialog(self, f"Runner Error:\n\n{error_msg}")
 
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
@@ -1091,6 +1103,7 @@ class CaliGui(QMainWindow):
                     msg = f"❌ Failed to initialize from database:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
+                    self._loading_bar.hide()
                     return
 
             # input from directories
@@ -1099,6 +1112,7 @@ class CaliGui(QMainWindow):
                     msg = "❌ Output path must be provided to create the cali database!"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
+                    self._loading_bar.hide()
                     return
                 try:
                     self._initialize_from_directories(
@@ -1110,6 +1124,7 @@ class CaliGui(QMainWindow):
                     msg = f"❌ Failed to initialize from directories:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
+                    self._loading_bar.hide()
                     return
 
     def _clear_widget_before_initialization(self) -> None:

@@ -51,7 +51,7 @@ from cali.sqlmodel import (
     load_experiment_from_database,
     save_experiment_to_database,
 )
-from cali.util import load_data
+from cali.util import load_data_from_path
 
 from ..src.cali.gui._extraction_gui import (
     AnalysisSettingsData,
@@ -361,7 +361,7 @@ class CaliGui(QMainWindow):
 
         # DATA-------------------------------------------------------------------------
 
-        self._data = load_data(data_path)
+        self._data = load_data_from_path(data_path)
         if self._data is None:
             msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"
@@ -413,7 +413,7 @@ class CaliGui(QMainWindow):
 
         # DATASTORE--------------------------------------------------------------------
 
-        self._data = load_data(data_path)
+        self._data = load_data_from_path(data_path)
         if self._data is None:
             msg = (
                 f"Unsupported file format! Only {WRITERS[ZARR_TESNSORSTORE][0]} and"

@@ -533,19 +533,31 @@ class _RunCaliWidget(QWidget):
         detection_settings_id = None
         extraction_settings_id = None
 
-        if "Only" in option:
-            # For "Only" modes, we need to select from existing settings
+        # For "Only" modes that require existing settings
+        if "Extraction Only" in option or "Analysis Only" in option:
+            # Get detection settings ID (required for both)
             detection_settings_id = self._detection_settings_combo.currentData()
+
+            # Get extraction settings ID (only for Analysis Only)
             if "Analysis Only" in option:
                 extraction_settings_id = self._extraction_settings_combo.currentData()
 
+        # Determine which stages to run
+        extraction_only = "Extraction Only (require one detection run)"
+        analysis_only = "Analysis Only (require one detection and one extraction run)"
+
+        run_detection = "Detection" in option and option not in [
+            extraction_only,
+            analysis_only,
+        ]
+        run_extraction = "Extraction" in option and option != analysis_only
+        run_analysis = "Analysis" in option
+
         return CaliRunSettings(
             positions=parse_lineedit_text(self._positions_wdg.value()),
-            run_detection="Detection" in option
-            and "Only" not in option.replace("Detection Only", ""),
-            run_extraction="Extraction" in option
-            and "Only" not in option.replace("Extraction Only", ""),
-            run_analysis="Analysis" in option,
+            run_detection=run_detection,
+            run_extraction=run_extraction,
+            run_analysis=run_analysis,
             detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
         )
@@ -624,8 +636,8 @@ class _RunCaliWidget(QWidget):
         # 0: "Detection, Extraction and Analysis"
         # 1: "Detection and Extraction"
         # 2: "Detection Only"
-        # 3: "Extraction Only (require at least one detection run in database)"
-        # 4: "Analysis Only (require at least one detection and one extraction run in database)"
+        # 3: "Extraction Only (require one detection run)"
+        # 4: "Analysis Only (require one detection and one extraction run)"
 
         current_index = self._run_options_combo.currentIndex()
 
@@ -662,12 +674,9 @@ class _RunCaliWidget(QWidget):
             The selected run option text
         """
         # Show detection settings for "Extraction Only" and "Analysis Only"
-        is_extraction_only = (
-            text == "Extraction Only (require at least one detection run in database)"
-        )
+        is_extraction_only = text == "Extraction Only (require one detection run)"
         is_analysis_only = (
-            text
-            == "Analysis Only (require at least one detection and one extraction run in database)"
+            text == "Analysis Only (require one detection and one extraction run)"
         )
 
         show_detection = is_extraction_only or is_analysis_only

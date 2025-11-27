@@ -11,10 +11,11 @@ The schema enables:
 - Relationship navigation (e.g., all ROIs for a condition)
 """
 
+import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Self
+from typing import Any, Optional, Self, cast
 
 import numpy as np
 import useq
@@ -44,6 +45,7 @@ from cali._constants import (
     MULTIPLIER,
     SPONTANEOUS,
 )
+from cali.readers._tiff_collection_reader import TiffCollectionSettings
 
 # ==================== Core Models ====================
 
@@ -439,17 +441,9 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         experiment = cls(
             name=name,
             description=description,
-            tiff_file_map_json=(
-                None
-                if tiff_file_map is None
-                else str(tiff_file_map)
-            ),
+            tiff_file_map_json=(None if tiff_file_map is None else str(tiff_file_map)),
             tiff_plate_type=tiff_plate_type,
-            tiff_metadata_json=(
-                None
-                if tiff_metadata is None
-                else str(tiff_metadata)
-            ),
+            tiff_metadata_json=(None if tiff_metadata is None else str(tiff_metadata)),
         )
 
         # Create useq WellPlate and WellPlatePlan
@@ -516,7 +510,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
     def create_from_data(
         cls,
         name: str,
-        data_path: str,
+        data_path: str | Path,
         plate_maps: dict[str, dict[str, str]] | None = None,
         description: str | None = None,
         tiff_file_map: Mapping[str, Sequence[str | Path]] | None = None,
@@ -537,8 +531,8 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         ----------
         name : str
             Experiment name (must be unique)
-        data_path : str
-            Path to the raw imaging data (zarr/tensorstore) containing useq metadata
+        data_path : str | Path
+            Path to the raw imaging data (zarr/tensorstore or TIFF collection)
         plate_maps : dict[str, dict[str, str]] | None, optional
             Plate map configuration mapping well positions to conditions.
             Format: {"genotype": {"A1": "WT", "A2": "KO"},
@@ -582,35 +576,40 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         import json
 
         from cali.readers import TiffCollectionReader
-        from cali.util import load_data
+        from cali.util import load_data_from_path
 
         from ._data_to_plate import data_to_plate
 
+        tiff_settings: TiffCollectionSettings | None = None
         # If TIFF parameters provided, create TiffCollectionReader
         if (
             tiff_file_map is not None
             and tiff_plate_type is not None
             and tiff_metadata is not None
+            and data_path is not None
         ):
             # Create TiffCollectionReader from provided parameters
-            # Cast is safe: list[str] is valid input for list[Path | str]
-            from typing import cast
-
-            data = TiffCollectionReader(
+            tiff_settings = TiffCollectionSettings(
                 file_map=cast("dict[str, list[Path | str]]", tiff_file_map),
                 plate=tiff_plate_type,
                 metadata=tiff_metadata,
-                data_path=data_path,
+                tiff_folder_path=data_path,
             )
+            data = TiffCollectionReader(tiff_settings)
         else:
-            # Load data normally (zarr or existing TiffCollectionReader)
-            data = load_data(data_path)
+            # Load data normally (zarr/tensorstore or TIFF without settings)
+            data = load_data_from_path(cast("str | Path", data_path))
+            if data is None:
+                from cali._constants import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 
-        if data is None:
-            raise ValueError(
-                f"Failed to load data from {data_path}. "
-                "Ensure the path is correct and contains valid imaging data."
-            )
+                msg = (
+                    f"Failed to load data from {data_path}. "
+                    "Ensure the path is correct and contains valid imaging data. \n"
+                    f"❌ Unsupported file format! Currently, Only "
+                    f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                    "TiffCollectionReader are supported."
+                )
+                raise ValueError(msg)
 
         # Create experiment
         experiment = cls(
@@ -634,6 +633,27 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             )
 
         return experiment
+
+    def tiff_collection_settings(
+        self, data_path: str | Path
+    ) -> TiffCollectionSettings | None:
+        """Return TiffCollectionSettings if this experiment has TIFF configs."""
+        if (
+            self.tiff_file_map_json is None
+            or self.tiff_plate_type is None
+            or self.tiff_metadata_json is None
+        ):
+            return None
+
+        file_map = json.loads(self.tiff_file_map_json)
+        metadata = json.loads(self.tiff_metadata_json)
+
+        return TiffCollectionSettings(
+            file_map=file_map,
+            plate=self.tiff_plate_type,
+            metadata=metadata,
+            tiff_folder_path=data_path,
+        )
 
 
 class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]

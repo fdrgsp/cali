@@ -4,7 +4,7 @@ from ._to_csv import save_analysis_data_to_csv, save_trace_data_to_csv
 from ._util import (
     commit_fov_result,
     coordinates_to_mask,
-    load_data,
+    load_data_from_path,
     load_fovs_from_database,
     mask_to_coordinates,
     save_labeled_images,
@@ -15,7 +15,7 @@ from ._util import (
 __all__ = [
     "commit_fov_result",
     "coordinates_to_mask",
-    "load_data",
+    "load_data_from_path",
     "load_fovs_from_database",
     "mask_to_coordinates",
     "save_analysis_data_to_csv",
