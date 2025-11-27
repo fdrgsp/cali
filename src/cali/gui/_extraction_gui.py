@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fonticon_mdi6 import MDI6
@@ -10,13 +11,11 @@ from qtpy.QtWidgets import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -26,28 +25,16 @@ from qtpy.QtWidgets import (
 from superqt.fonticon import icon
 
 from cali._constants import (
-    DEFAULT_BURST_GAUSS_SIGMA,
-    DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
-    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
-    DEFAULT_HEIGHT,
-    DEFAULT_MIN_BURST_DURATION,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
-    DEFAULT_PEAKS_DISTANCE,
-    DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
-    DEFAULT_SPIKE_THRESHOLD,
     EVOKED,
-    GLOBAL_HEIGHT,
-    GLOBAL_SPIKE_THRESHOLD,
-    MULTIPLIER,
     SPONTANEOUS,
 )
+from cali.sqlmodel import ExtractionSettings
 
-# from ._plate_map import PlateMapWidget
 from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     _BrowseWidget,
@@ -104,28 +91,172 @@ class TraceExtractionData:
     neuropil_correction_factor: float
 
 
-@dataclass(frozen=True)
-class CalciumPeaksData:
-    """Data structure to hold the calcium peaks settings."""
+class _ExtractionGUI(QWidget):
+    progress_bar_updated = Signal()
 
-    peaks_height: float
-    peaks_height_mode: str
-    peaks_distance: int
-    peaks_prominence_multiplier: float
-    calcium_synchrony_jitter: int
-    calcium_network_threshold: float
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
 
+        # MAIN WIDGET -----------------------------------------------------------------
+        group_wdg = QGroupBox(self)
+        group_layout = QVBoxLayout(group_wdg)
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(5)
 
-@dataclass(frozen=True)
-class SpikeData:
-    """Data structure to hold the spikes settings."""
+        # THREADS WIDGET -------------------------------------------------------------
+        cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
+        threads_wdg = QWidget()
+        threads_wdg.setToolTip(
+            "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
+            "By default, the value is set to the number of CPUs - 2 "
+            f"(in your system: {cpu_to_use}).\n\n"
+            "Using the number of CPUs as reference because:\n"
+            "• This analysis is CPU-intensive (math calculations, image processing)\n"
+            "• More threads beyond CPU count creates context switching overhead\n"
+            "• Each thread processes memory-intensive data\n"
+            "• Optimal performance occurs when threads match available CPU cores.\n"
+            "By default using CPU count - 2 to reserve some of the CPUs for the "
+            "operating system and GUI responsiveness.\n"
+            "If your system becomes unresponsive, consider reducing this number."
+        )
+        threads_lbl = QLabel("Number of Threads:")
+        threads_lbl.setSizePolicy(*FIXED)
+        self._threads = QSpinBox()
+        self._threads.setRange(1, 100)
+        self._threads.setValue(cpu_to_use)
+        threads_layout = QHBoxLayout(threads_wdg)
+        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.setSpacing(5)
+        threads_layout.addWidget(threads_lbl)
+        threads_layout.addWidget(self._threads)
 
-    spike_threshold: float
-    spike_threshold_mode: str
-    burst_threshold: float
-    burst_min_duration: int
-    burst_blur_sigma: float
-    synchrony_lag: int
+        # EXTRACTION WIDGETS ---------------------------------------------------------
+        self._plate_map_wdg = _PlateMapWidget(self)
+        self._experiment_type_wdg = _ExperimentTypeWidget(self)
+        self._neuropil_wdg = _NeuropilCorrectionWidget(self)
+        self._trace_extraction_wdg = _TraceExtractionWidget(self)
+        # self._frame_rate_wdg = _FrameRateWidget(self)
+
+        # SCROLL AREA WIDGET ---------------------------------------------------------
+        analysis_scroll_area = QScrollArea()
+        analysis_scroll_area.setWidgetResizable(True)
+        analysis_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        analysis_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        # add extraction widgets to scroll area
+        group_layout.addWidget(create_divider_line("Plate Map"))
+        group_layout.addWidget(self._plate_map_wdg)
+        group_layout.addWidget(create_divider_line("Type of Experiment"))
+        group_layout.addWidget(self._experiment_type_wdg)
+        # group_layout.addWidget(create_divider_line("Frame Rate"))
+        # group_layout.addWidget(self._frame_rate_wdg)
+        group_layout.addWidget(create_divider_line("Neuropil Settings"))
+        group_layout.addWidget(self._neuropil_wdg)
+        group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
+        group_layout.addWidget(self._trace_extraction_wdg)
+        group_layout.addWidget(create_divider_line("Threads"))
+        group_layout.addWidget(threads_wdg)
+        group_layout.addStretch(1)
+        analysis_scroll_area.setWidget(group_wdg)
+
+        # MAIN LAYOUT -----------------------------------------------------------------
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(15)
+        main_layout.addWidget(analysis_scroll_area)
+
+        # STYLING ---------------------------------------------------------------------
+        fix_width = self._experiment_type_wdg._led_pulse_duration_lbl.sizeHint().width()
+        self._trace_extraction_wdg.set_labels_width(fix_width)
+        self._plate_map_wdg.set_labels_width(fix_width)
+        self._experiment_type_wdg.set_labels_width(fix_width)
+        self._neuropil_wdg.set_labels_width(fix_width)
+        self._trace_extraction_wdg.set_labels_width(fix_width)
+        threads_lbl.setFixedWidth(fix_width)
+        # self._frame_rate_wdg.set_labels_width(fix_width)
+
+    @property
+    def from_metadata(self):  # noqa: ANN202
+        """Signal emitted when the 'Load From Metadata' button is clicked."""
+        return self._experiment_type_wdg._from_meta_btn.clicked
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    def value(self) -> ExtractionSettingsData:
+        """Get the current values of the widget."""
+        return ExtractionSettingsData(
+            self._plate_map_wdg.value(),
+            self._experiment_type_wdg.value(),
+            self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
+        )
+
+    def setValue(self, value: ExtractionSettingsData) -> None:
+        """Set the values of the widget."""
+        if value.plate_map_data is not None:
+            plate, genotype_map, treatment_map = value.plate_map_data
+            self._plate_map_wdg.setValue(plate, genotype_map, treatment_map)
+        if value.experiment_type_data is not None:
+            self._experiment_type_wdg.setValue(value.experiment_type_data)
+        if value.trace_extraction_data is not None:
+            self._trace_extraction_wdg.setValue(value.trace_extraction_data)
+            # Also set the neuropil widget from trace extraction data
+            neuropil_data = NeuropilData(
+                value.trace_extraction_data.neuropil_inner_radius,
+                value.trace_extraction_data.neuropil_min_pixels,
+                value.trace_extraction_data.neuropil_correction_factor,
+            )
+            self._neuropil_wdg.setValue(neuropil_data)
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._plate_map_wdg.clear()
+        self._experiment_type_wdg.reset()
+        self._neuropil_wdg.reset()
+        self._trace_extraction_wdg.reset()
+        # self._frame_rate_wdg.reset()
+
+    def to_model_settings(self) -> ExtractionSettings:
+        """Convert current GUI settings to ExtractionSettings model.
+
+        Returns
+        -------
+        ExtractionSettings
+            The ExtractionSettings model populated with current GUI values.
+        """
+        settings = self.value()
+
+        # Extract nested data with defaults
+        trace_data = settings.trace_extraction_data
+
+        experiment_type = SPONTANEOUS
+        if (exp_type_data := settings.experiment_type_data) is not None:
+            experiment_type = exp_type_data.experiment_type
+
+        settings = ExtractionSettings(
+            created_at=datetime.now(),
+            threads=self._threads.value(),
+            experiment_type=experiment_type or SPONTANEOUS,
+            neuropil_inner_radius=(
+                trace_data.neuropil_inner_radius if trace_data else 0
+            ),
+            neuropil_min_pixels=trace_data.neuropil_min_pixels if trace_data else 0,
+            neuropil_correction_factor=(
+                trace_data.neuropil_correction_factor if trace_data else 0.0
+            ),
+            decay_constant=trace_data.decay_constant if trace_data else 0.0,
+            dff_window=(
+                trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
+            ),
+            stimulation_mask_path=(
+                exp_type_data.stimulation_area_path if exp_type_data else None
+            ),
+            # frame_rate=self._frame_rate_wdg.value(),
+        )
+
+        return settings
 
 
 class _PlateMapWidget(QWidget):
@@ -304,7 +435,7 @@ class _ExperimentTypeWidget(QWidget):
         led_pulse_layout.setSpacing(5)
         led_pulse_layout.addWidget(self._led_pulse_duration_lbl)
         led_pulse_layout.addWidget(self._led_pulse_duration_spin)
-        self._led_power_eq.hide()
+        self._led_pulse_duration_wdg.hide()
 
         # LED pulse powers widget
         self._led_powers_wdg = QWidget(self)
@@ -667,468 +798,6 @@ class _TraceExtractionWidget(QWidget):
         self._decay_constant_spin.setValue(0.0)
 
 
-class _PeaksHeightWidget(QWidget):
-    """Widget to select the peaks height multiplier."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setToolTip(
-            "Peak height threshold for detecting calcium transients in deconvolved "
-            "ΔF/F0 traces using scipy.signal.find_peaks.\n\n"
-            "Two modes:\n"
-            "• Global Minimum: Same absolute threshold applied to ALL ROIs across "
-            "ALL FOVs. Peaks below this value are rejected everywhere.\n\n"
-            "• Noise Multiplier: Adaptive threshold computed individually for EACH "
-            "ROI in EACH FOV.\n"
-            "  Threshold = noise_level * multiplier, where noise_level "
-            "is calculated per ROI using Median Absolute Deviation (MAD).\n\n"
-            "For example, a multiplier of 3.0 can be use to detect events 3 standard "
-            "deviations above noise."
-        )
-
-        self._peaks_height_lbl = QLabel("Minimum Peaks Height:")
-        self._peaks_height_lbl.setSizePolicy(*FIXED)
-
-        self._peaks_height_spin = QDoubleSpinBox(self)
-        self._peaks_height_spin.setDecimals(4)
-        self._peaks_height_spin.setRange(0.0, 100000.0)
-        self._peaks_height_spin.setSingleStep(0.01)
-        self._peaks_height_spin.setValue(DEFAULT_HEIGHT)
-
-        self._global_peaks_height = QRadioButton("Use as Global Minimum Peaks Height")
-
-        self._height_multiplier = QRadioButton("Use as Noise Level Multiplier")
-        self._height_multiplier.setChecked(True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._peaks_height_lbl)
-        layout.addWidget(self._peaks_height_spin, 1)
-        layout.addWidget(self._height_multiplier, 0)
-        layout.addWidget(self._global_peaks_height, 0)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(self) -> tuple[float, str]:
-        """Return the value of the peaks height multiplier."""
-        return (
-            self._peaks_height_spin.value(),
-            GLOBAL_HEIGHT if self._global_peaks_height.isChecked() else MULTIPLIER,
-        )
-
-    def setValue(self, value: tuple[float, str]) -> None:
-        """Set the value of the peaks height widget."""
-        height, mode = value
-        self._peaks_height_spin.setValue(height)
-        self._global_peaks_height.setChecked(mode == GLOBAL_HEIGHT)
-        self._height_multiplier.setChecked(mode == MULTIPLIER)
-
-
-class _CalciumPeaksWidget(QWidget):
-    """Widget to select the calcium peaks settings."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # peaks height
-        self._peaks_height = _PeaksHeightWidget(self)
-
-        # peaks minimum distance
-        self._peaks_distance_wdg = QWidget(self)
-        self._peaks_distance_wdg.setToolTip(
-            "Minimum distance between peaks in frames.\n"
-            "This prevents detecting multiple peaks from the same calcium event.\n\n"
-            "Example: If exposure time = 50ms and you want 100ms minimum separation,\n"
-            "set distance = 2 frames (100ms ÷ 50ms = 2 frames).\n\n"
-            "• Higher values: More conservative, fewer detected peaks\n"
-            "• Lower values: More sensitive, may detect noise or incomplete decay\n"
-            "• Minimum value: 1 (adjacent frames allowed)."
-        )
-        self._peaks_distance_lbl = QLabel("Minimum Peaks Distance:")
-        self._peaks_distance_lbl.setSizePolicy(*FIXED)
-        self._peaks_distance_spin = QSpinBox(self)
-        self._peaks_distance_spin.setRange(1, 1000)
-        self._peaks_distance_spin.setSingleStep(1)
-        self._peaks_distance_spin.setValue(2)
-        peaks_distance_layout = QHBoxLayout(self._peaks_distance_wdg)
-        peaks_distance_layout.setContentsMargins(0, 0, 0, 0)
-        peaks_distance_layout.setSpacing(5)
-        peaks_distance_layout.addWidget(self._peaks_distance_lbl)
-        peaks_distance_layout.addWidget(self._peaks_distance_spin)
-
-        # peaks prominence
-        self._peaks_prominence_wdg = QWidget(self)
-        self._peaks_prominence_wdg.setToolTip(
-            "Controls the prominence threshold multiplier for peak validation.\n"
-            "Prominence measures how much a peak stands out from surrounding\n"
-            "baseline, helping distinguish real calcium events from noise.\n\n"
-            "Prominence threshold = noise_level * multiplier\n\n"
-            "• Value of 1.0: Uses noise level as prominence threshold\n"
-            "• Values >1.0: Requires peaks to be more prominent than noise level\n"
-            "• Values <1.0: More lenient, allows peaks closer to noise level\n\n"
-            "Increase if detecting too many noise artifacts as peaks."
-        )
-        self._peaks_prominence_lbl = QLabel("Peaks Prominence Multiplier:")
-        self._peaks_prominence_lbl.setSizePolicy(*FIXED)
-        self._peaks_prominence_multiplier_spin = QDoubleSpinBox(self)
-        self._peaks_prominence_multiplier_spin.setDecimals(4)
-        self._peaks_prominence_multiplier_spin.setRange(0, 100000.0)
-        self._peaks_prominence_multiplier_spin.setSingleStep(0.01)
-        self._peaks_prominence_multiplier_spin.setValue(1)
-        peaks_prominence_layout = QHBoxLayout(self._peaks_prominence_wdg)
-        peaks_prominence_layout.setContentsMargins(0, 0, 0, 0)
-        peaks_prominence_layout.setSpacing(5)
-        peaks_prominence_layout.addWidget(self._peaks_prominence_lbl)
-        peaks_prominence_layout.addWidget(self._peaks_prominence_multiplier_spin)
-
-        # synchrony jitter window
-        self._calcium_synchrony_wdg = QWidget(self)
-        self._calcium_synchrony_wdg.setToolTip(
-            "Calcium Peak Synchrony Analysis Settings\n\n"
-            "Jitter Window Parameter:\n"
-            "Controls the temporal tolerance for detecting synchronous "
-            "calcium peaks.\n\n"
-            "What the value means:\n"
-            "• Value = 2: Peaks within ±2 frames are considered synchronous\n"
-            "• Larger values detect more synchrony but may include false positives\n"
-            "• Smaller values are more strict but may miss genuine synchrony\n\n"
-            "Example with Jitter = 2:\n"
-            "ROI 1 peaks: [10, 25, 40]  ROI 2 peaks: [12, 24, 41]\n"
-            "Result: All pairs are synchronous (differences ≤ 2 frames)."
-        )
-        self._calcium_jitter_window_lbl = QLabel("Synchrony Jitter (frames):")
-        self._calcium_jitter_window_lbl.setSizePolicy(*FIXED)
-        self._calcium_synchrony_jitter_spin = QSpinBox(self)
-        self._calcium_synchrony_jitter_spin.setRange(0, 100)
-        self._calcium_synchrony_jitter_spin.setSingleStep(1)
-        self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        calcium_synchrony_layout = QHBoxLayout(self._calcium_synchrony_wdg)
-        calcium_synchrony_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_synchrony_layout.setSpacing(5)
-        calcium_synchrony_layout.addWidget(self._calcium_jitter_window_lbl)
-        calcium_synchrony_layout.addWidget(self._calcium_synchrony_jitter_spin)
-
-        # network connectivity threshold
-        self._calcium_network_wdg = QWidget(self)
-        self._calcium_network_wdg.setToolTip(
-            "Network Connectivity Threshold (Percentile)\n\n"
-            "Controls which correlation values become network connections.\n"
-            "Uses PERCENTILE-based thresholding, not absolute correlation values.\n\n"
-            "How it works:\n"
-            "• Calculates percentile of ALL pairwise correlations\n"
-            "• Only correlations above this percentile become connections\n"
-            "• 90th percentile = top 10% of correlations become edges\n"
-            "• 95th percentile = top 5% (more conservative)\n"
-            "• 80th percentile = top 20% (more liberal)\n\n"
-            "Important: A 0.95 correlation may show as 'not connected'\n"
-            "if most correlations in your data are higher (e.g., 0.96-0.99).\n"
-            "This ensures only the STRONGEST connections are shown\n"
-            "relative to your specific dataset."
-        )
-        self._calcium_network_lbl = QLabel("Network Threshold (%):")
-        self._calcium_network_lbl.setSizePolicy(*FIXED)
-        self._calcium_network_threshold_spin = QDoubleSpinBox(self)
-        self._calcium_network_threshold_spin.setRange(1.0, 100.0)
-        self._calcium_network_threshold_spin.setSingleStep(5.0)
-        self._calcium_network_threshold_spin.setDecimals(1)
-        self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
-        calcium_network_layout = QHBoxLayout(self._calcium_network_wdg)
-        calcium_network_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_network_layout.setSpacing(5)
-        calcium_network_layout.addWidget(self._calcium_network_lbl)
-        calcium_network_layout.addWidget(self._calcium_network_threshold_spin)
-
-        # main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._peaks_height)
-        layout.addWidget(self._peaks_distance_wdg)
-        layout.addWidget(self._peaks_prominence_wdg)
-        layout.addWidget(self._calcium_synchrony_wdg)
-        layout.addWidget(self._calcium_network_wdg)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the labels."""
-        self._peaks_height._peaks_height_lbl.setFixedWidth(width)
-        self._peaks_distance_lbl.setFixedWidth(width)
-        self._peaks_prominence_lbl.setFixedWidth(width)
-        self._calcium_jitter_window_lbl.setFixedWidth(width)
-        self._calcium_network_lbl.setFixedWidth(width)
-
-    def value(self) -> CalciumPeaksData:
-        """Get the current values of the widget."""
-        return CalciumPeaksData(
-            *self._peaks_height.value(),
-            self._peaks_distance_spin.value(),
-            self._peaks_prominence_multiplier_spin.value(),
-            self._calcium_synchrony_jitter_spin.value(),
-            self._calcium_network_threshold_spin.value(),
-        )
-
-    def setValue(self, value: CalciumPeaksData) -> None:
-        """Set the values of the widget."""
-        self._peaks_height.setValue((value.peaks_height, value.peaks_height_mode))
-        self._peaks_distance_spin.setValue(value.peaks_distance)
-        self._peaks_prominence_multiplier_spin.setValue(
-            value.peaks_prominence_multiplier
-        )
-        self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
-        self._calcium_network_threshold_spin.setValue(value.calcium_network_threshold)
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self._peaks_height.setValue((DEFAULT_HEIGHT, MULTIPLIER))
-        self._peaks_distance_spin.setValue(2)
-        self._peaks_prominence_multiplier_spin.setValue(1)
-        self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
-
-
-class _SpikeThresholdWidget(QWidget):
-    """Widget to select the spike threshold multiplier."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setToolTip(
-            "Spike detection threshold for identifying spikes in OASIS-deconvolved "
-            "inferred spike traces.\n\n"
-            "Two modes:\n"
-            "• Global Minimum: Same absolute threshold applied to ALL ROIs across "
-            "ALL FOVs. Spike amplitudes below this value are rejected (set to 0) "
-            "everywhere.\n\n"
-            "• Noise Multiplier: Adaptive threshold computed individually for EACH "
-            "ROI in EACH FOV.\n"
-            "  For ROIs with ≥10 detected spikes: "
-            "Threshold = 10th_percentile_of_spikes * multiplier\n"
-            "  For ROIs with <10 spikes: Threshold = 0.01 * multiplier (fallback)"
-        )
-
-        self._spike_threshold_lbl = QLabel("Spike Detection Threshold:")
-        self._spike_threshold_lbl.setSizePolicy(*FIXED)
-
-        self._spike_threshold_spin = QDoubleSpinBox(self)
-        self._spike_threshold_spin.setDecimals(4)
-        self._spike_threshold_spin.setRange(0.0, 10000.0)
-        self._spike_threshold_spin.setSingleStep(0.1)
-        self._spike_threshold_spin.setValue(DEFAULT_SPIKE_THRESHOLD)
-
-        self._global_spike_threshold = QRadioButton("Use as Global Minimum Threshold")
-
-        self._threshold_multiplier = QRadioButton("Use as Noise Level Multiplier")
-        self._threshold_multiplier.setChecked(True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._spike_threshold_lbl)
-        layout.addWidget(self._spike_threshold_spin, 1)
-        layout.addWidget(self._threshold_multiplier, 0)
-        layout.addWidget(self._global_spike_threshold, 0)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(self) -> tuple[float, str]:
-        """Return the value of the spike threshold."""
-        return (
-            self._spike_threshold_spin.value(),
-            (
-                GLOBAL_SPIKE_THRESHOLD
-                if self._global_spike_threshold.isChecked()
-                else MULTIPLIER
-            ),
-        )
-
-    def setValue(self, value: tuple[float, str]) -> None:
-        """Set the value of the spike threshold widget."""
-        threshold, mode = value
-        self._spike_threshold_spin.setValue(threshold)
-        self._global_spike_threshold.setChecked(mode == GLOBAL_SPIKE_THRESHOLD)
-        self._threshold_multiplier.setChecked(mode == MULTIPLIER)
-
-
-class _BurstWidget(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setToolTip(
-            "Settings to control the detection of network bursts in population "
-            "activity.\n\n"
-            "• Burst Threshold:\n"
-            "   Minimum percentage of ROIs that must be active simultaneously to "
-            "detect a network burst.\n"
-            "   Population activity above this threshold is considered burst "
-            "activity.\n"
-            "   Higher values (50-80%) detect only strong network-wide events.\n"
-            "   Lower values (10-30%) capture weaker coordinated activity.\n\n"
-            "• Burst Min Duration (frames):\n"
-            "   Minimum duration (in frames) for a detected burst to be "
-            "considered valid.\n"
-            "   Filters out brief spikes that don't represent sustained "
-            "network activity.\n"
-            "   Higher values ensure only sustained bursts are detected.\n\n"
-            "• Burst Gaussian Blur Sigma:\n"
-            "   Gaussian smoothing applied to population activity before "
-            "burst detection.\n"
-            "   Reduces noise and connects nearby activity peaks into "
-            "coherent bursts.\n"
-            "   Higher values (2-5) provide more smoothing, merging closer events.\n"
-            "   Lower values (0.5-1) preserve temporal precision but may "
-            "fragment bursts.\n"
-            "   Set to 0 to disable smoothing."
-        )
-
-        self._burst_threshold_lbl = QLabel("Burst Threshold (%):")
-        self._burst_threshold_lbl.setSizePolicy(*FIXED)
-        self._burst_threshold = QDoubleSpinBox(self)
-        self._burst_threshold.setDecimals(2)
-        self._burst_threshold.setRange(0.0, 100.0)
-        self._burst_threshold.setSingleStep(1)
-        self._burst_threshold.setValue(DEFAULT_BURST_THRESHOLD)
-
-        self._burst_min_threshold_label = QLabel("Burst Min Duration (frames):")
-        self._burst_min_threshold_label.setSizePolicy(*FIXED)
-        self._burst_min_duration_frames = QSpinBox(self)
-        self._burst_min_duration_frames.setRange(0, 100)
-        self._burst_min_duration_frames.setSingleStep(1)
-        self._burst_min_duration_frames.setValue(DEFAULT_MIN_BURST_DURATION)
-
-        self._burst_blur_label = QLabel("Burst Gaussian Blur Sigma:")
-        self._burst_blur_label.setSizePolicy(*FIXED)
-        self._burst_blur_sigma = QDoubleSpinBox(self)
-        self._burst_blur_sigma.setDecimals(2)
-        self._burst_blur_sigma.setRange(0.0, 100.0)
-        self._burst_blur_sigma.setSingleStep(0.5)
-        self._burst_blur_sigma.setValue(DEFAULT_BURST_GAUSS_SIGMA)
-
-        burst_layout = QGridLayout(self)
-        burst_layout.setContentsMargins(0, 0, 0, 0)
-        burst_layout.setSpacing(5)
-        burst_layout.addWidget(self._burst_threshold_lbl, 0, 0)
-        burst_layout.addWidget(self._burst_threshold, 0, 1)
-        burst_layout.addWidget(self._burst_min_threshold_label, 1, 0)
-        burst_layout.addWidget(self._burst_min_duration_frames, 1, 1)
-        burst_layout.addWidget(self._burst_blur_label, 2, 0)
-        burst_layout.addWidget(self._burst_blur_sigma, 2, 1)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(self) -> tuple[float, int, float]:
-        """Return the burst detection parameters."""
-        return (
-            self._burst_threshold.value(),
-            self._burst_min_duration_frames.value(),
-            self._burst_blur_sigma.value(),
-        )
-
-    def setValue(self, value: tuple[float, int, float]) -> None:
-        """Set the value of the burst widget."""
-        threshold, duration, sigma = value
-        self._burst_threshold.setValue(threshold)
-        self._burst_min_duration_frames.setValue(duration)
-        self._burst_blur_sigma.setValue(sigma)
-
-
-class _SpikeWidget(QWidget):
-    """Widget to select the spike detection settings."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # spikes threshold
-        self._spike_threshold_wdg = _SpikeThresholdWidget(self)
-
-        # burst detection settings
-        self._burst_wdg = _BurstWidget(self)
-
-        # spike synchrony settings
-        self._spike_synchrony_wdg = QWidget(self)
-        self._spike_synchrony_wdg.setToolTip(
-            "Inferred Spike Synchrony Analysis Settings\n\n"
-            "Max Lag Parameter:\n"
-            "Controls the maximum temporal offset for cross-correlation analysis.\n\n"
-            "What the value means:\n"
-            "• Value = 5: Checks correlations within ±5 frames window\n"
-            "• Algorithm slides one spike train over another, looking for "
-            "best match within this range\n"
-            "• Takes the MAXIMUM correlation found within the lag window\n"
-            "• Larger values are more permissive, smaller values more strict\n\n"
-            "Example with Max Lag = 5:\n"
-            "ROI 1 spikes: [10, 25, 40]  ROI 2 spikes: [12, 24, 41]\n"
-            "Algorithm finds high correlation at lag +2 and -1 frames\n"
-            "Result: High synchrony score based on best alignment."
-        )
-        self._spikes_sync_cross_corr_lag = QLabel("Synchrony Lag (frames):")
-        self._spikes_sync_cross_corr_lag.setSizePolicy(*FIXED)
-        self._spikes_sync_cross_corr_max_lag = QSpinBox(self)
-        self._spikes_sync_cross_corr_max_lag.setRange(0, 100)
-        self._spikes_sync_cross_corr_max_lag.setSingleStep(1)
-        self._spikes_sync_cross_corr_max_lag.setValue(5)
-        spikes_sync_cross_corr_layout = QHBoxLayout(self._spike_synchrony_wdg)
-        spikes_sync_cross_corr_layout.setContentsMargins(0, 0, 0, 0)
-        spikes_sync_cross_corr_layout.setSpacing(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
-        spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_lag)
-        spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_max_lag)
-
-        # main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._spike_threshold_wdg)
-        layout.addWidget(self._burst_wdg)
-        layout.addWidget(self._spike_synchrony_wdg)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the labels."""
-        self._spike_threshold_wdg._spike_threshold_lbl.setFixedWidth(width)
-        self._burst_wdg._burst_threshold_lbl.setFixedWidth(width)
-        self._burst_wdg._burst_min_threshold_label.setFixedWidth(width)
-        self._burst_wdg._burst_blur_label.setFixedWidth(width)
-        self._spikes_sync_cross_corr_lag.setFixedWidth(width)
-
-    def value(self) -> SpikeData:
-        """Get the current values of the widget."""
-        spike_threshold, spike_threshold_mode = self._spike_threshold_wdg.value()
-        burst_threshold, burst_min_duration, burst_blur_sigma = self._burst_wdg.value()
-        synchrony_lag = self._spikes_sync_cross_corr_max_lag.value()
-
-        return SpikeData(
-            spike_threshold=spike_threshold,
-            spike_threshold_mode=spike_threshold_mode,
-            burst_threshold=burst_threshold,
-            burst_min_duration=burst_min_duration,
-            burst_blur_sigma=burst_blur_sigma,
-            synchrony_lag=synchrony_lag,
-        )
-
-    def setValue(self, value: SpikeData) -> None:
-        """Set the values of the widget."""
-        tr = (value.spike_threshold, value.spike_threshold_mode)
-        self._spike_threshold_wdg.setValue(tr)
-        bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
-        self._burst_wdg.setValue(bst)
-        self._spikes_sync_cross_corr_max_lag.setValue(value.synchrony_lag)
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self._spike_threshold_wdg.setValue((DEFAULT_SPIKE_THRESHOLD, MULTIPLIER))
-        self._burst_wdg.setValue(
-            (
-                DEFAULT_BURST_THRESHOLD,
-                DEFAULT_MIN_BURST_DURATION,
-                DEFAULT_BURST_GAUSS_SIGMA,
-            )
-        )
-        self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
-
-
 class _FrameRateWidget(QWidget):
     """Widget to select the frame rate of the experiment."""
 
@@ -1183,182 +852,3 @@ class _FrameRateWidget(QWidget):
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-
-
-class _ExtractionGUI(QWidget):
-    progress_bar_updated = Signal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
-
-        # THREADS WIDGET -------------------------------------------------------------
-        cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
-        threads_wdg = QWidget()
-        threads_wdg.setToolTip(
-            "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
-            "By default, the value is set to the number of CPUs - 2 "
-            f"(in your system: {cpu_to_use}).\n\n"
-            "Using the number of CPUs as reference because:\n"
-            "• This analysis is CPU-intensive (math calculations, image processing)\n"
-            "• More threads beyond CPU count creates context switching overhead\n"
-            "• Each thread processes memory-intensive data\n"
-            "• Optimal performance occurs when threads match available CPU cores.\n"
-            "By default using CPU count - 2 to reserve some of the CPUs for the "
-            "operating system and GUI responsiveness.\n"
-            "If your system becomes unresponsive, consider reducing this number."
-        )
-        threads_lbl = QLabel("Number of Threads:")
-        threads_lbl.setSizePolicy(*FIXED)
-        self._threads = QSpinBox()
-        self._threads.setRange(1, 100)
-        self._threads.setValue(cpu_to_use)
-        threads_layout = QHBoxLayout(threads_wdg)
-        threads_layout.setContentsMargins(0, 0, 0, 0)
-        threads_layout.setSpacing(5)
-        threads_layout.addWidget(threads_lbl)
-        threads_layout.addWidget(self._threads)
-
-        # EXTRACTION WIDGETS ---------------------------------------------------------
-        self._plate_map_wdg = _PlateMapWidget(self)
-        self._experiment_type_wdg = _ExperimentTypeWidget(self)
-        self._neuropil_wdg = _NeuropilCorrectionWidget(self)
-        self._trace_extraction_wdg = _TraceExtractionWidget(self)
-        # self._frame_rate_wdg = _FrameRateWidget(self)
-
-        # SCROLL AREA WIDGET ---------------------------------------------------------
-        analysis_scroll_area = QScrollArea()
-        analysis_scroll_area.setWidgetResizable(True)
-        analysis_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        analysis_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        # add extraction widgets to scroll area
-        group_layout.addWidget(create_divider_line("Plate Map"))
-        group_layout.addWidget(self._plate_map_wdg)
-        group_layout.addWidget(create_divider_line("Type of Experiment"))
-        group_layout.addWidget(self._experiment_type_wdg)
-        # group_layout.addWidget(create_divider_line("Frame Rate"))
-        # group_layout.addWidget(self._frame_rate_wdg)
-        group_layout.addWidget(create_divider_line("Neuropil Settings"))
-        group_layout.addWidget(self._neuropil_wdg)
-        group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
-        group_layout.addWidget(self._trace_extraction_wdg)
-        group_layout.addWidget(create_divider_line("Threads"))
-        group_layout.addWidget(threads_wdg)
-        group_layout.addStretch(1)
-        analysis_scroll_area.setWidget(group_wdg)
-
-        # MAIN LAYOUT -----------------------------------------------------------------
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(15)
-        main_layout.addWidget(analysis_scroll_area)
-
-        # STYLING ---------------------------------------------------------------------
-        fix_width = self._trace_extraction_wdg._dff_lbl.sizeHint().width()
-        self._plate_map_wdg.set_labels_width(fix_width)
-        self._experiment_type_wdg.set_labels_width(fix_width)
-        self._neuropil_wdg.set_labels_width(fix_width)
-        self._trace_extraction_wdg.set_labels_width(fix_width)
-        threads_lbl.setFixedWidth(fix_width)
-        # self._frame_rate_wdg.set_labels_width(fix_width)
-
-    @property
-    def from_metadata(self):  # noqa: ANN202
-        """Signal emitted when the 'Load From Metadata' button is clicked."""
-        return self._experiment_type_wdg._from_meta_btn.clicked
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(self) -> ExtractionSettingsData:
-        """Get the current values of the widget."""
-        return ExtractionSettingsData(
-            self._plate_map_wdg.value(),
-            self._experiment_type_wdg.value(),
-            self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
-        )
-
-    def setValue(self, value: ExtractionSettingsData) -> None:
-        """Set the values of the widget."""
-        if value.plate_map_data is not None:
-            plate, genotype_map, treatment_map = value.plate_map_data
-            self._plate_map_wdg.setValue(plate, genotype_map, treatment_map)
-        if value.experiment_type_data is not None:
-            self._experiment_type_wdg.setValue(value.experiment_type_data)
-        if value.trace_extraction_data is not None:
-            self._trace_extraction_wdg.setValue(value.trace_extraction_data)
-            # Also set the neuropil widget from trace extraction data
-            neuropil_data = NeuropilData(
-                value.trace_extraction_data.neuropil_inner_radius,
-                value.trace_extraction_data.neuropil_min_pixels,
-                value.trace_extraction_data.neuropil_correction_factor,
-            )
-            self._neuropil_wdg.setValue(neuropil_data)
-
-    def enable(self, enable: bool) -> None:
-        """Enable or disable the widget."""
-        self._plate_map_wdg.setEnabled(enable)
-        self._experiment_type_wdg.setEnabled(enable)
-        # self._frame_rate_wdg.setEnabled(enable)
-        self._neuropil_wdg.setEnabled(enable)
-        self._trace_extraction_wdg.setEnabled(enable)
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self._plate_map_wdg.clear()
-        self._experiment_type_wdg.reset()
-        # self._frame_rate_wdg.reset()
-        self._neuropil_wdg.reset()
-        self._trace_extraction_wdg.reset()
-
-    def to_model_settings(self) -> ExtractionSettings:
-        """Convert current GUI settings to ExtractionSettings model.
-
-        Returns
-        -------
-        ExtractionSettings
-            The ExtractionSettings model populated with current GUI values.
-        """
-        from datetime import datetime
-
-        from cali.sqlmodel import ExtractionSettings
-
-        settings = self.value()
-
-        # Extract nested data with defaults
-        trace_data = settings.trace_extraction_data
-
-        experiment_type = SPONTANEOUS
-        if (exp_type_data := settings.experiment_type_data) is not None:
-            experiment_type = exp_type_data.experiment_type
-
-        settings = ExtractionSettings(
-            created_at=datetime.now(),
-            threads=self._threads.value(),
-            experiment_type=experiment_type or SPONTANEOUS,
-            neuropil_inner_radius=(
-                trace_data.neuropil_inner_radius if trace_data else 0
-            ),
-            neuropil_min_pixels=trace_data.neuropil_min_pixels if trace_data else 0,
-            neuropil_correction_factor=(
-                trace_data.neuropil_correction_factor if trace_data else 0.0
-            ),
-            decay_constant=trace_data.decay_constant if trace_data else 0.0,
-            dff_window=(
-                trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
-            ),
-            stimulation_mask_path=(
-                exp_type_data.stimulation_area_path if exp_type_data else None
-            ),
-            # frame_rate=self._frame_rate_wdg.value(),
-        )
-
-        return settings

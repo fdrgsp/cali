@@ -183,7 +183,7 @@ class CaliGui(QMainWindow):
         # DETECTION AND EXTRACTION TAB --------------------------------
         self._detection_extraction_tab = QWidget()
         self._main_tab.addTab(
-            self._detection_extraction_tab, "Detection and Extraction"
+            self._detection_extraction_tab, "Detection, Extraction and Analysis"
         )
         detection_extraction_layout = QVBoxLayout(self._detection_extraction_tab)
         detection_extraction_layout.setContentsMargins(0, 0, 0, 0)
@@ -656,9 +656,7 @@ class CaliGui(QMainWindow):
 
             # Get analysis settings if needed
             analysis_settings = (
-                self._analysis_wdg.to_model_settings()
-                if value.run_analysis
-                else None
+                self._analysis_wdg.to_model_settings() if value.run_analysis else None
             )
 
             # Validate evoked experiment settings
@@ -1240,14 +1238,12 @@ class CaliGui(QMainWindow):
 
     def _on_led_info_from_meta_clicked(self) -> None:
         if self._data is None:
-            show_error_dialog(
-                self, "Data not loaded! Cannot load metadata from datastore!"
-            )
+            show_error_dialog(self, "Data not loaded! Cannot find metadata!")
             return
 
         try:
             if (sequence := self._data.sequence) is None:
-                msg = "❌ useq.MDASequence not found! Cannot retrieve metadata!"
+                msg = "useq.MDASequence not found! Cannot retrieve metadata!"
                 show_error_dialog(self, msg)
                 cali_logger.error(msg)
                 return
@@ -1283,12 +1279,12 @@ class CaliGui(QMainWindow):
                     )
 
             else:
-                msg = "⚠️ No stimulation metadata found in the datastore!"
+                msg = "No stimulation metadata found in the datastore!"
                 show_error_dialog(self, msg)
                 cali_logger.warning(msg)
 
         except Exception as e:
-            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
+            msg = f"Failed to load metadata from datastore!\n\nError: {e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
             return

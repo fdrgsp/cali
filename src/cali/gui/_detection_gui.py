@@ -55,6 +55,164 @@ class CellposeSettings:
 class CaimanSettings: ...
 
 
+class _DetectionGUI(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # MAIN WIDGET -----------------------------------------------------------------
+        group_wdg = QGroupBox(self)
+        group_layout = QVBoxLayout(group_wdg)
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(5)
+
+        # CELLPOSE WIDGET -------------------------------------------------------------
+        self._cellpose_wdg = _CellposeDetectionWidget(self)
+        self._cellpose_wdg.setChecked(True)
+
+        # CAIMAN WIDGET ---------------------------------------------------------------
+        self._caiman_wdg = _CaimanDetectionWidget(self)
+        self._caiman_wdg.setChecked(False)
+
+        # SCROLL AREA WIDGET ---------------------------------------------------------
+        detection_scroll_area = QScrollArea()
+        detection_scroll_area.setWidgetResizable(True)
+        detection_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        detection_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        # add cellpose and caiman widgets to scroll area
+        group_layout.addWidget(self._cellpose_wdg)
+        group_layout.addWidget(self._caiman_wdg)
+        group_layout.addStretch(1)
+        detection_scroll_area.setWidget(group_wdg)
+
+        # CONNECTIONS -----------------------------------------------------------------
+        self._cellpose_wdg.toggled.connect(self._on_detection_method_toggled)
+        self._caiman_wdg.toggled.connect(self._on_detection_method_toggled)
+
+        # MAIN LAYOUT -----------------------------------------------------------------
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(15)
+        main_layout.addWidget(detection_scroll_area)
+
+        # STYLING ---------------------------------------------------------------------
+        cp = self._cellpose_wdg
+        fixed_lbl_width = cp._cellprob_label.sizeHint().width()
+        cp._models_combo_label.setMinimumWidth(fixed_lbl_width)
+        cp._browse_custom_model._label.setMinimumWidth(fixed_lbl_width)
+        cp._diameter_label.setMinimumWidth(fixed_lbl_width)
+        cp._cellprob_label.setMinimumWidth(fixed_lbl_width)
+        cp._flow_label.setMinimumWidth(fixed_lbl_width)
+        cp._min_size_label.setMinimumWidth(fixed_lbl_width)
+        cp._batch_label.setMinimumWidth(fixed_lbl_width)
+        cp._normalize_label.setMinimumWidth(fixed_lbl_width)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    def value(self) -> CellposeSettings | CaimanSettings:
+        """Return the detection parameters of the selected method."""
+        if self._cellpose_wdg.isChecked():
+            return self._cellpose_wdg.value()
+        else:  # caiman is selected
+            return self._caiman_wdg.value()
+
+    def setValue(self, value: CellposeSettings | CaimanSettings) -> None:
+        """Set the detection parameters of the selected method."""
+        if isinstance(value, CellposeSettings):
+            self._cellpose_wdg.setValue(value)
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(True)
+            with signals_blocked(self._caiman_wdg):
+                self._caiman_wdg.setChecked(False)
+        elif isinstance(value, CaimanSettings):
+            self._caiman_wdg.setValue(value)
+            with signals_blocked(self._caiman_wdg):
+                self._caiman_wdg.setChecked(True)
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(False)
+        else:
+            raise TypeError(
+                "Value must be an instance of CellposeSettings orCaimanSettings."
+            )
+
+    def enable(self, enabled: bool) -> None:
+        """Enable or disable the detection GUI."""
+        self._cellpose_wdg.setEnabled(enabled)
+        self._caiman_wdg.setEnabled(enabled)
+
+    def reset(self) -> None:
+        """Reset the detection GUI to default values."""
+        self._cellpose_wdg.setValue(CellposeSettings())
+        self._caiman_wdg.setValue(CaimanSettings())
+        with signals_blocked(self._cellpose_wdg):
+            self._cellpose_wdg.setChecked(True)
+        with signals_blocked(self._caiman_wdg):
+            self._caiman_wdg.setChecked(False)
+
+    def to_model_settings(self) -> DetectionSettings:
+        """Convert current GUI settings to AnalysisSettings model.
+
+        Returns
+        -------
+        tuple[list[int], AnalysisSettings]
+            A tuple containing the list of positions to analyze and the
+            AnalysisSettings model instance.
+        """
+        from datetime import datetime
+
+        from cali.sqlmodel import DetectionSettings
+
+        settings = self.value()
+
+        if isinstance(settings, CellposeSettings):
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="cellpose",
+                model_type=settings.model_type,
+                custom_model=(
+                    settings.model_path if settings.model_type == "custom" else None
+                ),
+                diameter=None if settings.diameter == 0 else settings.diameter,
+                cellprob_threshold=settings.cellprob_threshold,
+                flow_threshold=settings.flow_threshold,
+                min_size=settings.min_size,
+                normalize=settings.normalize,
+                batch_size=settings.batch_size,
+                # + caiman defaults
+            )
+        else:  #  caiman
+            settings = DetectionSettings(
+                created_at=datetime.now(),
+                method="caiman",
+                # + cellpose defaults
+            )
+
+        return settings
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_detection_method_toggled(self, checked: bool) -> None:
+        """Make checkable group boxes behave like radio buttons."""
+        sender = cast("QGroupBox", self.sender())
+        if not checked:
+            # Prevent unchecking - at least one must be selected
+            with signals_blocked(sender):
+                sender.setChecked(True)
+            return
+
+        # When one is checked, uncheck the other
+        if sender is self._cellpose_wdg:
+            with signals_blocked(self._caiman_wdg):
+                self._caiman_wdg.setChecked(False)
+        elif sender is self._caiman_wdg:
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(False)
+            self._cellpose_wdg.blockSignals(False)
+
+
 class _SelectModelPath(_BrowseWidget):
     def __init__(
         self,
@@ -295,161 +453,3 @@ class _CaimanDetectionWidget(QGroupBox):
     def setValue(self, value: CaimanSettings) -> None:
         """Set the CaImAn parameters."""
         ...
-
-
-class _DetectionGUI(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
-
-        # CELLPOSE WIDGET -------------------------------------------------------------
-        self._cellpose_wdg = _CellposeDetectionWidget(self)
-        self._cellpose_wdg.setChecked(True)
-
-        # CAIMAN WIDGET ---------------------------------------------------------------
-        self._caiman_wdg = _CaimanDetectionWidget(self)
-        self._caiman_wdg.setChecked(False)
-
-        # SCROLL AREA WIDGET ---------------------------------------------------------
-        detection_scroll_area = QScrollArea()
-        detection_scroll_area.setWidgetResizable(True)
-        detection_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        detection_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        # add cellpose and caiman widgets to scroll area
-        group_layout.addWidget(self._cellpose_wdg)
-        group_layout.addWidget(self._caiman_wdg)
-        group_layout.addStretch(1)
-        detection_scroll_area.setWidget(group_wdg)
-
-        # CONNECTIONS -----------------------------------------------------------------
-        self._cellpose_wdg.toggled.connect(self._on_detection_method_toggled)
-        self._caiman_wdg.toggled.connect(self._on_detection_method_toggled)
-
-        # MAIN LAYOUT -----------------------------------------------------------------
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(15)
-        main_layout.addWidget(detection_scroll_area)
-
-        # STYLING ---------------------------------------------------------------------
-        cp = self._cellpose_wdg
-        fixed_lbl_width = cp._cellprob_label.sizeHint().width()
-        cp._models_combo_label.setMinimumWidth(fixed_lbl_width)
-        cp._browse_custom_model._label.setMinimumWidth(fixed_lbl_width)
-        cp._diameter_label.setMinimumWidth(fixed_lbl_width)
-        cp._cellprob_label.setMinimumWidth(fixed_lbl_width)
-        cp._flow_label.setMinimumWidth(fixed_lbl_width)
-        cp._min_size_label.setMinimumWidth(fixed_lbl_width)
-        cp._batch_label.setMinimumWidth(fixed_lbl_width)
-        cp._normalize_label.setMinimumWidth(fixed_lbl_width)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(self) -> CellposeSettings | CaimanSettings:
-        """Return the detection parameters of the selected method."""
-        if self._cellpose_wdg.isChecked():
-            return self._cellpose_wdg.value()
-        else:  # caiman is selected
-            return self._caiman_wdg.value()
-
-    def setValue(self, value: CellposeSettings | CaimanSettings) -> None:
-        """Set the detection parameters of the selected method."""
-        if isinstance(value, CellposeSettings):
-            self._cellpose_wdg.setValue(value)
-            with signals_blocked(self._cellpose_wdg):
-                self._cellpose_wdg.setChecked(True)
-            with signals_blocked(self._caiman_wdg):
-                self._caiman_wdg.setChecked(False)
-        elif isinstance(value, CaimanSettings):
-            self._caiman_wdg.setValue(value)
-            with signals_blocked(self._caiman_wdg):
-                self._caiman_wdg.setChecked(True)
-            with signals_blocked(self._cellpose_wdg):
-                self._cellpose_wdg.setChecked(False)
-        else:
-            raise TypeError(
-                "Value must be an instance of CellposeSettings orCaimanSettings."
-            )
-
-    def enable(self, enabled: bool) -> None:
-        """Enable or disable the detection GUI."""
-        self._cellpose_wdg.setEnabled(enabled)
-        self._caiman_wdg.setEnabled(enabled)
-
-    def reset(self) -> None:
-        """Reset the detection GUI to default values."""
-        self._cellpose_wdg.setValue(CellposeSettings())
-        self._caiman_wdg.setValue(CaimanSettings())
-        with signals_blocked(self._cellpose_wdg):
-            self._cellpose_wdg.setChecked(True)
-        with signals_blocked(self._caiman_wdg):
-            self._caiman_wdg.setChecked(False)
-
-    def to_model_settings(self) -> DetectionSettings:
-        """Convert current GUI settings to AnalysisSettings model.
-
-        Returns
-        -------
-        tuple[list[int], AnalysisSettings]
-            A tuple containing the list of positions to analyze and the
-            AnalysisSettings model instance.
-        """
-        from datetime import datetime
-
-        from cali.sqlmodel import DetectionSettings
-
-        settings = self.value()
-
-        if isinstance(settings, CellposeSettings):
-            settings = DetectionSettings(
-                created_at=datetime.now(),
-                method="cellpose",
-                model_type=settings.model_type,
-                custom_model=(
-                    settings.model_path if settings.model_type == "custom" else None
-                ),
-                diameter=None if settings.diameter == 0 else settings.diameter,
-                cellprob_threshold=settings.cellprob_threshold,
-                flow_threshold=settings.flow_threshold,
-                min_size=settings.min_size,
-                normalize=settings.normalize,
-                batch_size=settings.batch_size,
-                # + caiman defaults
-            )
-        else:  #  caiman
-            settings = DetectionSettings(
-                created_at=datetime.now(),
-                method="caiman",
-                # + cellpose defaults
-            )
-
-        return settings
-
-    # PRIVATE METHODS -----------------------------------------------------------------
-
-    def _on_detection_method_toggled(self, checked: bool) -> None:
-        """Make checkable group boxes behave like radio buttons."""
-        sender = cast("QGroupBox", self.sender())
-        if not checked:
-            # Prevent unchecking - at least one must be selected
-            with signals_blocked(sender):
-                sender.setChecked(True)
-            return
-
-        # When one is checked, uncheck the other
-        if sender is self._cellpose_wdg:
-            with signals_blocked(self._caiman_wdg):
-                self._caiman_wdg.setChecked(False)
-        elif sender is self._caiman_wdg:
-            with signals_blocked(self._cellpose_wdg):
-                self._cellpose_wdg.setChecked(False)
-            self._cellpose_wdg.blockSignals(False)
