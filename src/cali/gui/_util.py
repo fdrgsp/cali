@@ -383,6 +383,7 @@ class _RunCaliWidget(QWidget):
         items = [
             "Detection, Extraction and Analysis",
             "Detection and Extraction",
+            "Extraction and Analysis (require detection)",
             "Detection Only",
             "Extraction Only (require detection)",
             "Analysis Only (require detection and extraction)",
@@ -392,6 +393,9 @@ class _RunCaliWidget(QWidget):
             "Choose what to run:\n\n"
             "• Detection, Extraction and Analysis: Full pipeline\n"
             "• Detection and Extraction: Run detection and extraction only\n"
+            "• Extraction and Analysis (require detection): Run extraction and\n"
+            "  analysis using existing detection results (requires selecting a\n"
+            "  Detection ID)\n"
             "• Detection Only: Run detection only to identify ROIs\n"
             "• Extraction Only: Run extraction using existing detection results\n"
             "  (requires selecting a Detection ID)\n"
@@ -532,8 +536,13 @@ class _RunCaliWidget(QWidget):
         extraction_settings_id = None
 
         # For "Only" modes that require existing settings
-        if "Extraction Only" in option or "Analysis Only" in option:
-            # Get detection settings ID (required for both)
+        extraction_and_analysis = "Extraction and Analysis (require detection)"
+        if (
+            "Extraction Only" in option
+            or "Analysis Only" in option
+            or option == extraction_and_analysis
+        ):
+            # Get detection settings ID (required for all these modes)
             detection_settings_id = self._detection_settings_combo.currentData()
 
             # Get extraction settings ID (only for Analysis Only)
@@ -547,6 +556,7 @@ class _RunCaliWidget(QWidget):
         run_detection = "Detection" in option and option not in [
             extraction_only,
             analysis_only,
+            extraction_and_analysis,
         ]
         run_extraction = "Extraction" in option and option != analysis_only
         run_analysis = "Analysis" in option
@@ -633,14 +643,15 @@ class _RunCaliWidget(QWidget):
         # Index mapping:
         # 0: "Detection, Extraction and Analysis"
         # 1: "Detection and Extraction"
-        # 2: "Detection Only"
-        # 3: "Extraction Only (require detection)"
-        # 4: "Analysis Only (require detection and extraction)"
+        # 2: "Extraction and Analysis (require detection)"
+        # 3: "Detection Only"
+        # 4: "Extraction Only (require detection)"
+        # 5: "Analysis Only (require detection and extraction)"
 
         current_index = self._run_options_combo.currentIndex()
 
-        # "Extraction Only" requires detections
-        extraction_only_item = model.item(3)
+        # "Extraction Only" and "Extraction and Analysis" require detections
+        extraction_only_item = model.item(4)
         if extraction_only_item:
             if has_detections:
                 extraction_only_item.setFlags(
@@ -648,11 +659,22 @@ class _RunCaliWidget(QWidget):
                 )
             else:
                 extraction_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                if current_index == 3:
+                if current_index == 4:
+                    self._run_options_combo.setCurrentIndex(0)
+
+        extraction_and_analysis_item = model.item(2)
+        if extraction_and_analysis_item:
+            if has_detections:
+                extraction_and_analysis_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                )
+            else:
+                extraction_and_analysis_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                if current_index == 2:
                     self._run_options_combo.setCurrentIndex(0)
 
         # "Analysis Only" requires both detections and extractions
-        analysis_only_item = model.item(4)
+        analysis_only_item = model.item(5)
         if analysis_only_item:
             if has_detections and has_extractions:
                 analysis_only_item.setFlags(
@@ -660,7 +682,7 @@ class _RunCaliWidget(QWidget):
                 )
             else:
                 analysis_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                if current_index == 4:
+                if current_index == 5:
                     self._run_options_combo.setCurrentIndex(0)
 
     def _on_run_option_changed(self, text: str) -> None:
@@ -671,13 +693,19 @@ class _RunCaliWidget(QWidget):
         text : str
             The selected run option text
         """
-        # Show detection settings for "Extraction Only" and "Analysis Only"
+        # Show detection settings for "Extraction Only", "Analysis Only",
+        # and "Extraction and Analysis"
         is_extraction_only = text == "Extraction Only (require detection)"
         is_analysis_only = (
             text == "Analysis Only (require detection and extraction)"
         )
+        is_extraction_and_analysis = (
+            text == "Extraction and Analysis (require detection)"
+        )
 
-        show_detection = is_extraction_only or is_analysis_only
+        show_detection = (
+            is_extraction_only or is_analysis_only or is_extraction_and_analysis
+        )
         self._detection_settings_combo.setVisible(show_detection)
 
         # Show extraction settings only for "Analysis Only"

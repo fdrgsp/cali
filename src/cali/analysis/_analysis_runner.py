@@ -7,6 +7,7 @@ containing Traces data and computes analysis metrics (peaks, IEI, frequency).
 import threading
 from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
@@ -167,8 +168,12 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return None
 
-        msg = f"📊 Analyzing Traces for {fov.name}."
-        cali_logger.info(msg)
+        msg = (
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - "
+            f"cali_logger - INFO - 📊 Analyzing Traces for {fov.name}."
+        )
+
+        # cali_logger.info(msg)
 
         for roi in tqdm(fov.rois, desc=msg):
             if self._check_for_abort_requested():

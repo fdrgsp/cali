@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,10 +18,8 @@ from cali.util import mask_to_coordinates
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
-    from pathlib import Path
 
     from cellpose.models import CellposeModel
-
 
 
 class DetectionRunner:
@@ -238,7 +237,8 @@ class DetectionRunner:
             dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
         ), (
             "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
-            "TiffCollectionReader instance.")
+            "TiffCollectionReader instance."
+        )
 
         # Process images in batches
         n_positions = len(position_indices)
@@ -247,8 +247,11 @@ class DetectionRunner:
         cali_logger.info(
             f"🧮 Processing {n_positions} positions in {n_batches} batches of {batch_size}"
         )
-
-        for batch_idx in tqdm(range(n_batches), desc="Running Cellpose"):
+        msg = (
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - "
+            "cali_logger - INFO - 🔍 Running Cellpose"
+        )
+        for batch_idx in tqdm(range(n_batches), desc=msg):
             if self._check_for_abort_requested():
                 return
 

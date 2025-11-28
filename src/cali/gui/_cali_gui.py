@@ -764,14 +764,16 @@ class CaliGui(QMainWindow):
     def _get_run_option(self, value: CaliRunSettings) -> int:
         """Get the current run option from the run widget."""
         if value.run_detection and value.run_extraction and value.run_analysis:
-            return 0  # all
-        if value.run_detection and value.run_extraction:
-            return 1  # detection + extraction
-        if value.run_detection and not value.run_analysis and not value.run_extraction:
-            return 2 # detection only
+            return 0  # Detection, Extraction and Analysis
+        if value.run_detection and value.run_extraction and not value.run_analysis:
+            return 1  # Detection and Extraction
+        if value.run_extraction and value.run_analysis and not value.run_detection:
+            return 2  # Extraction and Analysis (require detection)
+        if value.run_detection and not value.run_extraction and not value.run_analysis:
+            return 3  # Detection Only
         if value.run_extraction and not value.run_detection and not value.run_analysis:
-            return 3 # extraction only
-        return 4  # analysis only
+            return 4  # Extraction Only (require detection)
+        return 5  # Analysis Only (require detection and extraction)
 
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
 

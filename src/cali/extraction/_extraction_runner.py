@@ -4,6 +4,7 @@ import threading
 import warnings
 from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import Callable, cast
 
 import numpy as np
@@ -131,7 +132,11 @@ class ExtractionRunner:
             if fov_result is not None:
                 yield fov_result
 
-        cali_logger.info("✅ Extraction complete!")
+        if analysis_settings is None:
+            msg = "✅ Extraction complete!"
+        else:
+            msg = "✅ Extraction and Analysis complete!"
+        cali_logger.info(msg)
 
     # -------------------------PRIVATE METHODS-----------------------------------
 
@@ -270,8 +275,11 @@ class ExtractionRunner:
 
         # Use the existing FOV from detection (don't create a new one)
         # We'll add traces to the existing ROIs
-        msg = f"📈 Extracting Traces Data from {fov_name}."
-        cali_logger.info(msg)
+
+        msg = (
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - "
+            f"cali_logger - INFO - 📈 Extracting Traces Data from {fov_name}."
+        )
 
         # Create a map of label_value -> ROI for quick lookup
         roi_map = {roi.label_value: roi for roi in fov_to_analyze.rois}
