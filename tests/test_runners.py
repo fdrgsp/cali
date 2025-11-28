@@ -950,16 +950,17 @@ def test_extraction_runner_cancel_mocked(
 
     runner = CaliRunner(commit_batch_size=1)
 
-    detection_settings = DetectionSettings(
-        method="cellpose", model_type=MODEL, diameter=30.0
-    )
-
-    extraction_settings = ExtractionSettings(
-        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
-    )
-
     # Start run in a thread
     def run_task() -> None:
+        # Create settings inside the thread to avoid DetachedInstanceError
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        )
+
+        extraction_settings = ExtractionSettings(
+            neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+        )
+
         original_analyze = runner._extraction_runner._analyze_position
 
         def slow_analyze(*args: Any, **kwargs: Any) -> Any:
@@ -1130,20 +1131,21 @@ def test_extraction_runner_cancel_before_start_mocked(
     """Test cancellation before extraction starts with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
-    detection_settings = DetectionSettings(
-        method="cellpose", model_type=MODEL, diameter=30.0
-    )
-
-    extraction_settings = ExtractionSettings(
-        neuropil_inner_radius=2,
-        neuropil_min_pixels=50,
-    )
-
     # Set cancel event
     runner.cancel()
 
     # Patch clear to do nothing so the event stays set
     with patch.object(runner._extraction_runner._cancellation_event, "clear"):
+        # Create fresh settings to avoid DetachedInstanceError
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        )
+
+        extraction_settings = ExtractionSettings(
+            neuropil_inner_radius=2,
+            neuropil_min_pixels=50,
+        )
+
         # Run should return immediately (or handle it gracefully)
         runner.run(
             experiment=test_experiment,
@@ -1286,13 +1288,23 @@ def test_settings_by_id_mocked(
             ds_id = ds.id
             es_id = es.id
             as_id = as_.id
+            exp_id = test_experiment.id
             assert ds_id is not None
+    finally:
+        engine.dispose()
+
+    # Get fresh experiment from DB to avoid DetachedInstanceError
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            exp = session.get(Experiment, exp_id)
+            assert exp is not None
     finally:
         engine.dispose()
 
     # Run using IDs
     runner.run(
-        experiment=test_experiment,
+        experiment=exp,
         dataset_path=data_path,
         detection_settings=ds_id,
         extraction_settings=es_id,
@@ -1608,7 +1620,7 @@ def test_extraction_analysis_settings_with_id_mocked(
         global_position_indices=[0],
     )
 
-    # Get IDs
+    # Get IDs and experiment ID
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
@@ -1621,23 +1633,30 @@ def test_extraction_analysis_settings_with_id_mocked(
             ds_id = ds_db.id
             es_id = es_db.id
             as_id = as_db.id
+            exp_id = test_experiment.id
+            assert ds_id is not None
+            assert es_id is not None
+            assert as_id is not None
+            assert exp_id is not None
     finally:
         engine.dispose()
 
-    # Create new objects with same IDs
-    ds_new = DetectionSettings(
-        method="cellpose", model_type=MODEL, diameter=30.0, id=ds_id
-    )
-    es_new = ExtractionSettings(neuropil_inner_radius=10, id=es_id)
-    as_new = AnalysisSettings(peaks_height_value=10.0, id=as_id)
+    # Get fresh experiment from DB
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            exp = session.get(Experiment, exp_id)
+            assert exp is not None
+    finally:
+        engine.dispose()
 
-    # Run 2
+    # Run 2 using just the IDs (not objects)
     runner.run(
-        experiment=test_experiment,
+        experiment=exp,
         dataset_path=data_path,
-        detection_settings=ds_new,
-        extraction_settings=es_new,
-        analysis_settings=as_new,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
         global_position_indices=[0],
