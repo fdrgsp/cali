@@ -112,27 +112,6 @@ class AnalysisRunner:
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
         """Execute analysis in parallel and yield FOV results."""
-        # If max_workers is 1, run in the main thread to avoid overhead and potential
-        # threading issues
-        if max_workers == 1:
-            for fov in fovs:
-                if cancel_event.is_set():
-                    cali_logger.info("🚮 Cancellation requested")
-                    break
-                try:
-                    if (fov_result := analyze(analysis_settings, fov)) is not None:
-                        yield fov_result
-                except Exception:
-                    import traceback
-
-                    full_tb = traceback.format_exc()
-                    cali_logger.error(f"Exception in analysis: {full_tb}")
-
-            if cancel_event.is_set():
-                cali_logger.info("❌ Run Cancelled")
-
-            return
-
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             if cancel_event.is_set():
                 cali_logger.info("🚮 Cancellation requested before starting analysis")
