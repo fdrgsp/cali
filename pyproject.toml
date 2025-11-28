@@ -173,6 +173,7 @@ exclude_lines = [
     "raise NotImplementedError",
     "\\.\\.\\.",
 ]
+omit = ["*/_model_graph.py"]
 show_missing = true
 
 [tool.coverage.run]

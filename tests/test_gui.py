@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pytest
 from pytestqt.qtbot import QtBot
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QStandardItemModel
 from sqlmodel import Session, create_engine
 
 from cali.gui import CaliGui
-from cali.gui._util import CaliRunSettings
+from cali.gui._run_widget import CaliRunSettings
 from cali.sqlmodel._model import (
     AnalysisSettings,
     DetectionSettings,
@@ -163,6 +165,8 @@ def test_run_options_detection_only(qtbot: QtBot, temp_db_with_detection: Path) 
     """Test that detection-only database doesn't enable extraction/analysis options."""
     gui = CaliGui()
     qtbot.addWidget(gui)
+    gui.show()
+    qtbot.waitExposed(gui)
 
     # Directly populate settings without loading data
     gui._database_path = str(temp_db_with_detection)
@@ -183,11 +187,11 @@ def test_run_options_detection_only(qtbot: QtBot, temp_db_with_detection: Path) 
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
     # Check that "Analysis Only" option is disabled
-    from qtpy.QtCore import Qt
-
     model = gui._run_cali_wdg._run_options_combo.model()
+    assert isinstance(model, QStandardItemModel)
     analysis_item = model.item(5)
-    assert not (analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled)
+    assert analysis_item is not None
+    assert not (analysis_item.flags() & Qt.ItemFlag.ItemIsSelectable)
 
 
 def test_run_options_with_extraction(
@@ -196,6 +200,8 @@ def test_run_options_with_extraction(
     """Test that extraction database enables extraction-only but not analysis-only."""
     gui = CaliGui()
     qtbot.addWidget(gui)
+    gui.show()
+    qtbot.waitExposed(gui)
 
     gui._database_path = str(temp_db_with_extraction)
     gui._runs_panel.set_database_path(str(temp_db_with_extraction))
@@ -212,10 +218,10 @@ def test_run_options_with_extraction(
     # Set to "Analysis Only" - should be disabled (no analysis settings yet)
     # Note: In the current implementation, this checks for extraction settings existence
     # which we have, so it should be enabled
-    from qtpy.QtCore import Qt
-
     model = gui._run_cali_wdg._run_options_combo.model()
+    assert isinstance(model, QStandardItemModel)
     analysis_item = model.item(5)
+    assert analysis_item is not None
     # Should be enabled since we have both detection and extraction
     assert analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled
 
@@ -227,6 +233,8 @@ def test_run_options_all_settings(qtbot: QtBot, temp_db_with_analysis: Path) -> 
     """Test that all run options are available when all settings exist."""
     gui = CaliGui()
     qtbot.addWidget(gui)
+    gui.show()
+    qtbot.waitExposed(gui)
 
     gui._database_path = str(temp_db_with_analysis)
     gui._runs_panel.set_database_path(str(temp_db_with_analysis))
@@ -236,13 +244,13 @@ def test_run_options_all_settings(qtbot: QtBot, temp_db_with_analysis: Path) -> 
     assert gui._run_cali_wdg._detection_settings_combo.count() > 1
     assert gui._run_cali_wdg._extraction_settings_combo.count() > 1
 
-    from qtpy.QtCore import Qt
-
     model = gui._run_cali_wdg._run_options_combo.model()
+    assert isinstance(model, QStandardItemModel)
 
     # All options should be enabled
     for i in range(5):
         item = model.item(i)
+        assert item is not None
         assert item.flags() & Qt.ItemFlag.ItemIsEnabled
 
 

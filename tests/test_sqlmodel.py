@@ -46,7 +46,10 @@ from cali.sqlmodel import (
 from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
 from cali.sqlmodel._model import (
     AnalysisSettings,
+    CaliResult,
     DataAnalysis,
+    DetectionSettings,
+    ExtractionSettings,
     Mask,
     Traces,
 )
@@ -56,6 +59,10 @@ from cali.sqlmodel._util import (
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+from unittest.mock import MagicMock, patch
+
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 TempDB = tuple[Engine, Path]
 
@@ -163,6 +170,114 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
         session.refresh(exp)
 
     return exp
+
+
+@pytest.fixture
+def mock_engine() -> Generator[Engine, None, None]:
+    engine = create_engine("sqlite:///:memory:")
+    from cali.sqlmodel._util import create_database_and_tables
+
+    create_database_and_tables(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def populated_db(mock_engine: Engine) -> Engine:
+    engine = mock_engine
+    with Session(engine) as session:
+        # Create Experiment
+        exp = Experiment(name="Test Experiment", description="Test Description")
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Create Plate
+        plate = Plate(experiment=exp, name="Test Plate", plate_type="96-well")
+        session.add(plate)
+        session.commit()
+        session.refresh(plate)
+
+        # Create Conditions
+        cond1 = Condition(name="Cond1", condition_type="Type1")
+        cond2 = Condition(name="Cond2", condition_type="Type2")
+        session.add(cond1)
+        session.add(cond2)
+        session.commit()
+
+        # Create Well
+        well = Well(plate=plate, name="A1", row=0, column=0, conditions=[cond1, cond2])
+        session.add(well)
+        session.commit()
+        session.refresh(well)
+
+        # Create FOV
+        fov = FOV(well=well, name="A1_0000", position_index=0, fov_number=0)
+        session.add(fov)
+        session.commit()
+        session.refresh(fov)
+
+        # Create Settings
+        det_settings = DetectionSettings(
+            method="cellpose", model_type="cyto", diameter=30
+        )
+        session.add(det_settings)
+
+        ext_settings = ExtractionSettings(neuropil_inner_radius=5)
+        session.add(ext_settings)
+
+        ana_settings = AnalysisSettings(
+            experiment_type="Evoked Activity",
+            led_power_equation="x",
+            led_pulse_duration=10,
+            led_pulse_powers=[10],
+            led_pulse_on_frames=[10],
+            stimulation_mask_path="path/to/mask",
+        )
+        session.add(ana_settings)
+        session.commit()
+        session.refresh(det_settings)
+        session.refresh(ext_settings)
+        session.refresh(ana_settings)
+
+        # Create ROI
+        roi = ROI(
+            fov=fov,
+            label_value=1,
+            active=True,
+            stimulated=True,
+            detection_settings_id=det_settings.id,
+        )
+        session.add(roi)
+        session.commit()
+        session.refresh(roi)
+
+        # Create CaliResult
+        result = CaliResult(
+            experiment=exp.id,
+            detection_settings=det_settings.id,
+            extraction_settings=ext_settings.id,
+            analysis_settings=ana_settings.id,
+            positions_analyzed=[0, 1, 2, 4],  # Test range grouping
+        )
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+        # Add Traces and DataAnalysis linked to result
+        trace = Traces(roi=roi, raw_trace=[1, 2, 3], analysis_result_id=result.id)
+        session.add(trace)
+
+        da = DataAnalysis(roi=roi, analysis_result_id=result.id)
+        session.add(da)
+
+        # Add Mask
+        mask = Mask(coords_y=[0], coords_x=[0], height=10, width=10, mask_type="roi")
+        roi.roi_mask = mask
+        session.add(mask)
+        session.commit()
+
+    return engine
 
 
 # ==================== Model Tests ====================
@@ -1026,7 +1141,6 @@ def test_visualize_experiment_functions(
     simple_experiment: Experiment, temp_db: TempDB
 ) -> None:
     """Test visualization functions."""
-    from cali.sqlmodel._visualize_experiment import print_cali_results
 
     engine, _db_path = temp_db
 
@@ -1588,3 +1702,484 @@ def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
         # Should return empty lists when there's no plate
         assert len(cond1_data) == 0
         assert len(cond2_data) == 0
+
+
+def test_experiment_create_from_tiff_data(tmp_path: Path) -> None:
+    """Test Experiment.create_from_data with TIFF collection."""
+    import numpy as np
+    import tifffile
+
+    # Create dummy TIFF files
+    tiff_dir = tmp_path / "tiffs"
+    tiff_dir.mkdir()
+
+    file_map = {}
+    for well in ["A1", "A2"]:
+        files = []
+        for i in range(2):
+            fname = f"{well}_fov{i}.tif"
+            fpath = tiff_dir / fname
+            data = np.zeros((10, 10), dtype=np.uint8)
+            tifffile.imwrite(fpath, data)
+            files.append(str(fpath.absolute()))
+        file_map[well] = files
+
+    metadata = {"exposure_ms": 100.0, "pixel_size_um": 1.0}
+
+    exp = Experiment.create_from_data(
+        name="TIFF Experiment",
+        data_path=tiff_dir,
+        tiff_file_map=file_map,
+        tiff_plate_type="96-well",
+        tiff_metadata=metadata,
+    )
+
+    assert exp.name == "TIFF Experiment"
+    assert exp.tiff_file_map_json is not None
+    assert exp.plate is not None
+    assert len(exp.plate.wells) == 2
+
+    # Test tiff_collection_settings method
+    settings = exp.tiff_collection_settings(tiff_dir)
+    assert settings is not None
+    assert settings.plate == "96-well"
+
+
+def test_settings_load_from_database(temp_db: TempDB) -> None:
+    """Test load_from_database methods for settings."""
+    engine, db_path = temp_db
+
+    with Session(engine) as session:
+        d1 = DetectionSettings(method="cellpose", model_type="cyto3")
+        d2 = DetectionSettings(method="caiman")
+        session.add(d1)
+        session.add(d2)
+
+        e1 = ExtractionSettings(dff_window=10)
+        e2 = ExtractionSettings(dff_window=20)
+        session.add(e1)
+        session.add(e2)
+
+        a1 = AnalysisSettings(peaks_height_value=1.0)
+        a2 = AnalysisSettings(peaks_height_value=2.0)
+        session.add(a1)
+        session.add(a2)
+
+        session.commit()
+        d1_id, _d2_id = d1.id, d2.id
+        e1_id, _e2_id = e1.id, e2.id
+        a1_id, _a2_id = a1.id, a2.id
+
+    # DetectionSettings
+    res = DetectionSettings.load_from_database(db_path, id=d1_id)
+    assert isinstance(res, DetectionSettings)
+    assert res.model_type == "cyto3"
+
+    res_list = DetectionSettings.load_from_database(db_path, method="caiman")
+    assert len(res_list) == 1
+    assert res_list[0].method == "caiman"
+
+    res_all = DetectionSettings.load_from_database(db_path)
+    assert len(res_all) == 2
+
+    with pytest.raises(ValueError):
+        DetectionSettings.load_from_database(db_path, id=999)
+
+    # ExtractionSettings
+    res = ExtractionSettings.load_from_database(db_path, id=e1_id)
+    assert isinstance(res, ExtractionSettings)
+    assert res.dff_window == 10
+
+    res_all = ExtractionSettings.load_from_database(db_path)
+    assert len(res_all) == 2
+
+    with pytest.raises(ValueError):
+        ExtractionSettings.load_from_database(db_path, id=999)
+
+    # AnalysisSettings
+    res = AnalysisSettings.load_from_database(db_path, id=a1_id)
+    assert isinstance(res, AnalysisSettings)
+    assert res.peaks_height_value == 1.0
+
+    res_all = AnalysisSettings.load_from_database(db_path)
+    assert len(res_all) == 2
+
+    with pytest.raises(ValueError):
+        AnalysisSettings.load_from_database(db_path, id=999)
+
+
+def test_cali_result_load_from_database(
+    simple_experiment: Experiment, temp_db: TempDB
+) -> None:
+    """Test CaliResult.load_from_database."""
+    from cali.sqlmodel import CaliResult
+
+    engine, db_path = temp_db
+
+    with Session(engine) as session:
+        # Create CaliResult
+        exp = session.exec(
+            select(Experiment).where(Experiment.name == simple_experiment.name)
+        ).first()
+
+        res1 = CaliResult(experiment=exp.id, positions_analyzed=[1])
+        res2 = CaliResult(experiment=exp.id, positions_analyzed=[2])
+        session.add(res1)
+        session.add(res2)
+        session.commit()
+        res1_id = res1.id
+        exp_id = exp.id
+
+    # Test loading by ID
+    res = CaliResult.load_from_database(db_path, id=res1_id)
+    assert isinstance(res, CaliResult)
+    assert res.positions_analyzed == [1]
+
+    # Test loading by experiment_id
+    results = CaliResult.load_from_database(db_path, experiment_id=exp_id)
+    assert len(results) == 2
+
+    # Test loading all
+    results = CaliResult.load_from_database(db_path)
+    assert len(results) == 2
+
+    # Test error
+    with pytest.raises(ValueError):
+        CaliResult.load_from_database(db_path, id=999)
+
+
+def test_experiment_create(temp_db: TempDB) -> None:
+    """Test Experiment.create."""
+    _engine, _ = temp_db
+
+    # Basic creation
+    exp = Experiment.create(
+        name="Created Exp", plate_type="96-well", well_names=["A1", "B2"]
+    )
+    assert exp.name == "Created Exp"
+    assert len(exp.plate.wells) == 2
+
+    # With multiple FOVs
+    exp2 = Experiment.create(
+        name="Multi FOV", plate_type="96-well", well_names=["A1"], fovs_per_well=3
+    )
+    assert len(exp2.plate.wells) == 1
+    assert len(exp2.plate.wells[0].fovs) == 3
+    assert exp2.plate.wells[0].fovs[0].fov_number == 0
+    assert exp2.plate.wells[0].fovs[2].fov_number == 2
+
+    # With plate maps
+    plate_maps = {"genotype": {"A1": "WT"}}
+    exp3 = Experiment.create(
+        name="Mapped Exp",
+        plate_type="96-well",
+        well_names=["A1"],
+        plate_maps=plate_maps,
+    )
+    assert len(exp3.plate.wells[0].conditions) == 1
+    assert exp3.plate.wells[0].conditions[0].name == "WT"
+
+    # With all wells (default) - 6-well plate
+    exp4 = Experiment.create(name="All Wells", plate_type="6-well")
+    assert len(exp4.plate.wells) == 6
+
+
+def test_print_cali_results_all(populated_db: Engine) -> None:
+    # Test printing all results
+    print_cali_results(populated_db, show_settings=True)
+
+
+def test_print_cali_results_filtered(populated_db: Engine) -> None:
+    # Test filtering by experiment name
+    print_cali_results(
+        populated_db, experiment_name="Test Experiment", show_settings=True
+    )
+
+
+def test_print_cali_results_not_found(populated_db: Engine) -> None:
+    # Test experiment not found
+    print_cali_results(populated_db, experiment_name="NonExistent")
+
+
+def test_print_cali_results_no_results(mock_engine: Engine) -> None:
+    # Test no results in DB
+    print_cali_results(mock_engine)
+    print_cali_results(mock_engine, experiment_name="Test Experiment")
+
+
+def test_print_cali_results_levels(populated_db: Engine) -> None:
+    # Test different max levels
+    for level in ["experiment", "plate", "well", "fov", "roi"]:
+        print_cali_results(
+            populated_db, experiment_name="Test Experiment", max_experiment_level=level
+        )
+
+
+def test_model_graph_generation() -> None:
+    # Test that the model graph module can be imported
+    # Skip if sqlalchemy_data_model_visualizer is not available
+    try:
+        import importlib
+
+        import cali.sqlmodel._model_graph
+
+        importlib.reload(cali.sqlmodel._model_graph)
+
+        # Just verify the module loads without errors
+        assert cali.sqlmodel._model_graph is not None
+    except ModuleNotFoundError:
+        pytest.skip("sqlalchemy_data_model_visualizer not available")
+
+
+def test_cali_result_eq_hash(populated_db: Engine) -> None:
+    with Session(populated_db) as session:
+        result1 = session.exec(select(CaliResult)).first()
+        # Create a copy
+        result2 = CaliResult(
+            experiment=result1.experiment,
+            detection_settings=result1.detection_settings,
+            extraction_settings=result1.extraction_settings,
+            analysis_settings=result1.analysis_settings,
+            positions_analyzed=result1.positions_analyzed,
+        )
+
+        assert result1 == result2
+        assert hash(result1) == hash(result2)
+
+        # Test inequality
+        result3 = CaliResult(
+            experiment=result1.experiment,
+            detection_settings=result1.detection_settings,
+            extraction_settings=result1.extraction_settings,
+            analysis_settings=result1.analysis_settings,
+            positions_analyzed=[999],
+        )
+        assert result1 != result3
+        assert result1 != "not a result"
+
+
+def test_cali_result_load_from_database_coverage(
+    populated_db: Engine, tmp_path: Path
+) -> None:
+    # We need a real file database for load_from_database as it takes a path
+    db_path = tmp_path / "test_cali_result.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    from cali.sqlmodel._util import create_database_and_tables
+
+    create_database_and_tables(engine)
+
+    # Copy data from populated_db to file db
+    with Session(populated_db), Session(engine) as dst_session:
+        # We need to copy everything... this is tedious.
+        # Instead, let's just create new data in the file db
+        exp = Experiment(name="Test Exp File", description="Desc")
+        dst_session.add(exp)
+        dst_session.commit()
+        dst_session.refresh(exp)
+
+        res = CaliResult(experiment=exp.id, positions_analyzed=[1])
+        dst_session.add(res)
+        dst_session.commit()
+        dst_session.refresh(res)
+        res_id = res.id
+        exp_id = exp.id
+
+    engine.dispose()
+
+    # Test loading
+    # Load by ID
+    loaded_res = CaliResult.load_from_database(db_path, id=res_id)
+    assert loaded_res.id == res_id
+
+    # Load by Experiment ID
+    loaded_results = CaliResult.load_from_database(db_path, experiment_id=exp_id)
+    assert len(loaded_results) == 1
+    assert loaded_results[0].id == res_id
+
+    # Load all
+    loaded_all = CaliResult.load_from_database(db_path)
+    assert len(loaded_all) == 1
+
+    # Load with existing session
+    engine2 = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine2) as session:
+            loaded_res_sess = CaliResult.load_from_database(
+                db_path, id=res_id, session=session
+            )
+            assert loaded_res_sess.id == res_id
+    finally:
+        engine2.dispose()
+
+    # Test not found
+    with pytest.raises(ValueError):
+        CaliResult.load_from_database(db_path, id=999)
+
+
+def test_experiment_eq_hash() -> None:
+    exp1 = Experiment(name="Exp1")
+    exp2 = Experiment(name="Exp1")
+    exp3 = Experiment(name="Exp2")
+
+    assert exp1 == exp2
+    assert exp1 != exp3
+    assert exp1 != "not exp"
+
+    # Hash without ID
+    assert hash(exp1) == hash(id(exp1))
+
+    # Hash with ID
+    exp1.id = 1
+    assert hash(exp1) == hash(1)
+
+
+def test_experiment_load_from_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "test_exp.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    from cali.sqlmodel._util import create_database_and_tables
+
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="Test Exp Load")
+        session.add(exp)
+        session.commit()
+        exp_id = exp.id
+    engine.dispose()
+
+    # Load
+    loaded_exp = Experiment.load_from_db(db_path, id=exp_id)
+    assert loaded_exp.name == "Test Exp Load"
+
+    # Load with load_data=False
+    loaded_exp_nodata = Experiment.load_from_db(db_path, id=exp_id, load_data=False)
+    assert loaded_exp_nodata.name == "Test Exp Load"
+
+    # Load with session
+    engine2 = create_engine(f"sqlite:///{db_path}")
+    try:
+        with Session(engine2) as session:
+            loaded_exp_sess = Experiment.load_from_db(
+                db_path, id=exp_id, session=session
+            )
+            assert loaded_exp_sess.name == "Test Exp Load"
+    finally:
+        engine2.dispose()
+
+
+def test_experiment_create_coverage(tmp_path: Path) -> None:
+    # Test Experiment.create
+    exp = Experiment.create(
+        name="Created Exp",
+        plate_type="96-well",
+        well_names=["A1", "B2"],
+        fovs_per_well=2,
+        description="Created Description",
+    )
+
+    assert exp.name == "Created Exp"
+    assert exp.plate.plate_type == "96-well"
+    assert len(exp.plate.wells) == 2
+    assert len(exp.plate.wells[0].fovs) == 2
+
+    # Test with plate maps
+    exp_mapped = Experiment.create(
+        name="Mapped Exp", plate_maps={"cond": {"A1": "val"}}, well_names=["A1"]
+    )
+    assert len(exp_mapped.plate.wells[0].conditions) == 1
+
+
+def test_experiment_create_from_data_tiff(tmp_path: Path) -> None:
+    # Define a mock class that can be used with isinstance
+    class MockTiffCollectionReader:
+        def __init__(self, settings: object) -> None:
+            self.settings = settings
+
+        def to_experiment_tiff_config(
+            self,
+        ) -> tuple[dict[str, list[str]], str, dict[str, float]]:
+            return ({"A1": ["path.tif"]}, "96-well", {"exposure_ms": 100})
+
+    # Mock TiffCollectionReader and data_to_plate
+    with (
+        patch("cali.readers.TiffCollectionReader", MockTiffCollectionReader),
+        patch("cali.sqlmodel._data_to_plate.data_to_plate") as mock_data_to_plate,
+        patch.dict("sys.modules", {"cali.util": MagicMock()}),
+    ):
+        mock_data_to_plate.return_value = Plate(name="96-well", plate_type="96-well")
+
+        exp = Experiment.create_from_data(
+            name="Tiff Exp",
+            data_path=str(tmp_path),
+            tiff_file_map={"A1": ["path.tif"]},
+            tiff_plate_type="96-well",
+            tiff_metadata={"exposure_ms": 100},
+        )
+
+        assert exp.name == "Tiff Exp"
+        assert exp.tiff_file_map_json is not None
+        assert exp.tiff_plate_type == "96-well"
+
+        # Test tiff_collection_settings
+        settings = exp.tiff_collection_settings(str(tmp_path))
+        assert settings is not None
+        assert settings.plate == "96-well"
+
+        # Test tiff_collection_settings returns None if fields missing
+        exp.tiff_plate_type = None
+        assert exp.tiff_collection_settings(str(tmp_path)) is None
+
+
+def test_settings_load_from_database_coverage(tmp_path: Path) -> None:
+    db_path = tmp_path / "test_settings.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    from cali.sqlmodel._util import create_database_and_tables
+
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        det = DetectionSettings(method="cellpose", model_type="cyto", diameter=30)
+        session.add(det)
+
+        ext = ExtractionSettings(neuropil_inner_radius=5)
+        session.add(ext)
+
+        ana = AnalysisSettings(experiment_type="Spontaneous")
+        session.add(ana)
+
+        session.commit()
+        det_id = det.id
+        ext_id = ext.id
+        ana_id = ana.id
+
+    engine.dispose()
+
+    # Test DetectionSettings.load_from_database
+    loaded_det = DetectionSettings.load_from_database(db_path, id=det_id)
+    assert loaded_det.method == "cellpose"
+
+    loaded_dets = DetectionSettings.load_from_database(db_path, method="cellpose")
+    assert len(loaded_dets) == 1
+
+    with pytest.raises(ValueError):
+        DetectionSettings.load_from_database(db_path, id=999)
+
+    # Test ExtractionSettings.load_from_database
+    loaded_ext = ExtractionSettings.load_from_database(db_path, id=ext_id)
+    assert loaded_ext.neuropil_inner_radius == 5
+
+    loaded_exts = ExtractionSettings.load_from_database(db_path)
+    assert len(loaded_exts) == 1
+
+    with pytest.raises(ValueError):
+        ExtractionSettings.load_from_database(db_path, id=999)
+
+    # Test AnalysisSettings.load_from_database
+    loaded_ana = AnalysisSettings.load_from_database(db_path, id=ana_id)
+    assert loaded_ana.experiment_type == "Spontaneous"
+
+    loaded_anas = AnalysisSettings.load_from_database(db_path)
+    assert len(loaded_anas) == 1
+
+    with pytest.raises(ValueError):
+        AnalysisSettings.load_from_database(db_path, id=999)
