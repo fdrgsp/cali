@@ -579,7 +579,7 @@ class _RunCaliWidget(QWidget):
             Selected detection settings ID or None if not selected/visible
         """
         if self._detection_settings_combo.isVisible():
-            return self._detection_settings_combo.currentData()
+            return self._detection_settings_combo.currentData()  # type: ignore[no-any-return]
         return None
 
     def populate_detection_settings(self, settings_list: list[tuple[int, str]]) -> None:

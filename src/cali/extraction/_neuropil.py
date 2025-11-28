@@ -105,7 +105,7 @@ def _create_cell_pix_from_masks(
         cell_core = lammap > 0.0
 
     # Suite2p's create_cell_pix returns float array, later used with < 0.5
-    return cell_core.astype(np.float32)
+    return cell_core.astype(np.float32)  # type: ignore[no-any-return]
 
 
 def create_neuropil_from_dilation(

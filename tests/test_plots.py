@@ -68,7 +68,7 @@ def db_path() -> Path:
 
 
 @pytest.fixture
-def db_engine(db_path: Path):  # type: ignore[misc]
+def db_engine(db_path: Path) -> Engine:  # type: ignore[misc]
     """Create a database engine for testing."""
     engine = create_engine(
         f"sqlite:///{db_path}",

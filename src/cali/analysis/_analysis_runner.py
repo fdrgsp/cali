@@ -206,8 +206,8 @@ class AnalysisRunner:
 
                 # Store analysis in temporary list (similar to extraction pattern)
                 if not hasattr(roi, "_new_data_analysis"):
-                    roi._new_data_analysis = []  # type: ignore
-                roi._new_data_analysis.append(data_analysis)  # type: ignore
+                    roi._new_data_analysis = []
+                roi._new_data_analysis.append(data_analysis)
                 roi.active = active
                 roi.stimulated = stimulated
 

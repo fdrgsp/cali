@@ -610,7 +610,7 @@ class CellposeSegmentationWidget(QWidget):
 
             batch_end = min(batch_start + batch_size, n_images)
             batch_images = images[batch_start:batch_end]
-            current_batch_masks = []
+            current_batch_masks: list[np.ndarray] = []
 
             # Process each image in the batch
             for i, img in enumerate(batch_images):

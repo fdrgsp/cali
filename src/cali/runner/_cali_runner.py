@@ -221,6 +221,7 @@ class CaliRunner:
         Yields progress strings during execution.
         """
         # 0. Make sure data are ready
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
         tiff_settings = experiment.tiff_collection_settings(dataset_path)
         if tiff_settings is not None:
             dataset = TiffCollectionReader(tiff_settings)
@@ -262,7 +263,7 @@ class CaliRunner:
         )
 
         # Enable foreign keys for SQLite
-        @event.listens_for(engine, "connect")
+        @event.listens_for(engine, "connect")  # type: ignore[misc]
         def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -282,22 +283,26 @@ class CaliRunner:
                         "analysis_settings is provided"
                     )
 
+                # Narrow types to actual settings objects
+                extraction_settings_obj: ExtractionSettings | None = None
+                analysis_settings_obj: AnalysisSettings | None = None
+
                 if extraction_settings is not None:
-                    extraction_settings = self._get_or_create_extraction_settings(
+                    extraction_settings_obj = self._get_or_create_extraction_settings(
                         session, extraction_settings
                     )
-                    extraction_settings_id = extraction_settings.id
-                    extraction_threads = extraction_settings.threads
+                    extraction_settings_id = extraction_settings_obj.id
+                    extraction_threads = extraction_settings_obj.threads
                     assert extraction_settings_id is not None
                 else:
                     extraction_settings_id = None
                     extraction_threads = None
 
                 if analysis_settings is not None:
-                    analysis_settings = self._get_or_create_analysis_settings(
+                    analysis_settings_obj = self._get_or_create_analysis_settings(
                         session, analysis_settings
                     )
-                    analysis_settings_id = analysis_settings.id
+                    analysis_settings_id = analysis_settings_obj.id
                     assert analysis_settings_id is not None
                 else:
                     analysis_settings_id = None
@@ -360,10 +365,14 @@ class CaliRunner:
                             session.expunge_all()
                             # Re-attach settings objects for next iteration
                             detection_settings = session.merge(detection_settings)
-                            if extraction_settings is not None:
-                                extraction_settings = session.merge(extraction_settings)
-                            if analysis_settings is not None:
-                                analysis_settings = session.merge(analysis_settings)
+                            if extraction_settings_obj is not None:
+                                extraction_settings_obj = session.merge(
+                                    extraction_settings_obj
+                                )
+                            if analysis_settings_obj is not None:
+                                analysis_settings_obj = session.merge(
+                                    analysis_settings_obj
+                                )
 
                         positions_processed_detection.append(pos_idx)
 
@@ -377,10 +386,12 @@ class CaliRunner:
                         session.expunge_all()
                         # Re-attach settings objects
                         detection_settings = session.merge(detection_settings)
-                        if extraction_settings is not None:
-                            extraction_settings = session.merge(extraction_settings)
-                        if analysis_settings is not None:
-                            analysis_settings = session.merge(analysis_settings)
+                        if extraction_settings_obj is not None:
+                            extraction_settings_obj = session.merge(
+                                extraction_settings_obj
+                            )
+                        if analysis_settings_obj is not None:
+                            analysis_settings_obj = session.merge(analysis_settings_obj)
 
                     # Log detection completion
                     if positions_processed_detection:
@@ -400,51 +411,51 @@ class CaliRunner:
                             )
 
                 # 7. Run extraction if settings provided
-                if extraction_settings is not None:
+                if extraction_settings_obj is not None:
                     # Eagerly load all scalar attributes before detaching
                     # This prevents DetachedInstanceError when accessing later
                     _ = (
-                        extraction_settings.threads,
-                        extraction_settings.neuropil_inner_radius,
-                        extraction_settings.neuropil_min_pixels,
-                        extraction_settings.neuropil_correction_factor,
-                        extraction_settings.decay_constant,
-                        extraction_settings.dff_window,
+                        extraction_settings_obj.threads,
+                        extraction_settings_obj.neuropil_inner_radius,
+                        extraction_settings_obj.neuropil_min_pixels,
+                        extraction_settings_obj.neuropil_correction_factor,
+                        extraction_settings_obj.decay_constant,
+                        extraction_settings_obj.dff_window,
                     )
 
                     # Detach settings for thread safety
                     # This prevents "session is in committed state" errors in threads
-                    session.expunge(extraction_settings)
+                    session.expunge(extraction_settings_obj)
 
-                    if analysis_settings is not None:
+                    if analysis_settings_obj is not None:
                         # Eagerly load all scalar attributes before detaching
                         _ = (
-                            analysis_settings.threads,
-                            analysis_settings.peaks_height_value,
-                            analysis_settings.peaks_height_mode,
-                            analysis_settings.peaks_distance,
-                            analysis_settings.peaks_prominence_multiplier,
-                            analysis_settings.calcium_sync_jitter_window,
-                            analysis_settings.calcium_network_threshold,
-                            analysis_settings.spike_threshold_value,
-                            analysis_settings.spike_threshold_mode,
-                            analysis_settings.burst_threshold,
-                            analysis_settings.burst_min_duration,
-                            analysis_settings.burst_gaussian_sigma,
-                            analysis_settings.spikes_sync_cross_corr_lag,
-                            analysis_settings.experiment_type,
-                            analysis_settings.stimulation_mask_path,
-                            analysis_settings.led_power_equation,
-                            analysis_settings.led_pulse_duration,
-                            analysis_settings.led_pulse_powers,
-                            analysis_settings.led_pulse_on_frames,
+                            analysis_settings_obj.threads,
+                            analysis_settings_obj.peaks_height_value,
+                            analysis_settings_obj.peaks_height_mode,
+                            analysis_settings_obj.peaks_distance,
+                            analysis_settings_obj.peaks_prominence_multiplier,
+                            analysis_settings_obj.calcium_sync_jitter_window,
+                            analysis_settings_obj.calcium_network_threshold,
+                            analysis_settings_obj.spike_threshold_value,
+                            analysis_settings_obj.spike_threshold_mode,
+                            analysis_settings_obj.burst_threshold,
+                            analysis_settings_obj.burst_min_duration,
+                            analysis_settings_obj.burst_gaussian_sigma,
+                            analysis_settings_obj.spikes_sync_cross_corr_lag,
+                            analysis_settings_obj.experiment_type,
+                            analysis_settings_obj.stimulation_mask_path,
+                            analysis_settings_obj.led_power_equation,
+                            analysis_settings_obj.led_pulse_duration,
+                            analysis_settings_obj.led_pulse_powers,
+                            analysis_settings_obj.led_pulse_on_frames,
                         )
 
                         # Load stimulation mask from file if path provided but
                         # mask not yet loaded
                         if (
-                            analysis_settings.stimulation_mask_path
-                            and analysis_settings.stimulation_mask is None
+                            analysis_settings_obj.stimulation_mask_path
+                            and analysis_settings_obj.stimulation_mask is None
                         ):
                             import tifffile
 
@@ -452,7 +463,7 @@ class CaliRunner:
                             from cali.util import mask_to_coordinates
 
                             stim_mask_file = Path(
-                                analysis_settings.stimulation_mask_path
+                                analysis_settings_obj.stimulation_mask_path
                             )
                             if stim_mask_file.exists():
                                 # Load and convert stimulation mask
@@ -471,11 +482,13 @@ class CaliRunner:
                                 )
                                 session.add(stimulation_mask)
                                 session.flush()  # Get the mask ID
-                                analysis_settings.stimulation_mask = stimulation_mask
-                                analysis_settings.stimulation_mask_id = (
+                                analysis_settings_obj.stimulation_mask = (
+                                    stimulation_mask
+                                )
+                                analysis_settings_obj.stimulation_mask_id = (
                                     stimulation_mask.id
                                 )
-                                session.add(analysis_settings)
+                                session.add(analysis_settings_obj)
                                 session.commit()
                                 cali_logger.info(
                                     f"🎭 Loaded stimulation mask from "
@@ -483,12 +496,12 @@ class CaliRunner:
                                 )
 
                         # Ensure stimulation_mask is detached for thread safety
-                        if analysis_settings.stimulation_mask:
-                            session.expunge(analysis_settings.stimulation_mask)
-                        session.expunge(analysis_settings)
+                        if analysis_settings_obj.stimulation_mask:
+                            session.expunge(analysis_settings_obj.stimulation_mask)
+                        session.expunge(analysis_settings_obj)
 
                     yield "📈 Running Extraction" + (
-                        " and Analysis..." if analysis_settings else "..."
+                        " and Analysis..." if analysis_settings_obj else "..."
                     )
 
                     # Determine which positions need extraction/analysis
@@ -563,8 +576,8 @@ class CaliRunner:
                         # Run extraction on this batch
                         for fov in self._run_extraction(
                             dataset,
-                            extraction_settings,
-                            analysis_settings,
+                            extraction_settings_obj,
+                            analysis_settings_obj,
                             fovs=batch_fovs,
                         ):
                             # Move new traces/analysis from temporary storage to actual
@@ -573,7 +586,7 @@ class CaliRunner:
                                 for roi in fov.rois:
                                     # Process temporary new traces
                                     if hasattr(roi, "_new_traces"):
-                                        for trace in roi._new_traces:  # type: ignore
+                                        for trace in roi._new_traces:
                                             trace.analysis_result_id = (
                                                 analysis_result_id
                                             )
@@ -582,7 +595,7 @@ class CaliRunner:
 
                                     # Process temporary new data analysis
                                     if hasattr(roi, "_new_data_analysis"):
-                                        for data_analysis in roi._new_data_analysis:  # type: ignore
+                                        for data_analysis in roi._new_data_analysis:
                                             data_analysis.analysis_result_id = (
                                                 analysis_result_id
                                             )
@@ -734,17 +747,18 @@ class CaliRunner:
             p for p in global_position_indices if p not in existing_pos_set
         ]
 
+        info = "\u24d8"
         if not positions_needing_analysis:
             cali_logger.info(
-                "ℹ️ Analysis already exists for all positions with DetectionSettings ID "
-                f"{detection_settings_id} and AnalysisSettings ID "
+                f"{info} Analysis already exists for all positions with "
+                f"DetectionSettings ID {detection_settings_id} and AnalysisSettings ID "
                 f"{analysis_settings_id}. Skipping analysis."
             )
             return []
 
         if existing_pos_set:
             cali_logger.info(
-                f"ℹ️ Analysis exists for {len(existing_pos_set)} position(s) "
+                f"{info} Analysis exists for {len(existing_pos_set)} position(s) "
                 f"but missing for {len(positions_needing_analysis)} position(s): "
                 f"{positions_needing_analysis}. Running analysis for missing positions."
             )
@@ -827,6 +841,7 @@ class CaliRunner:
                 )
                 cali_logger.error(msg)
                 raise ValueError(msg)
+            assert isinstance(existing, DetectionSettings)
             cali_logger.info(
                 f"♻️ Reusing existing DetectionSettings ID {existing.id} "
                 f"(method: {existing.method})"
@@ -835,7 +850,9 @@ class CaliRunner:
 
         elif detection_settings.id is None:
             # Check if identical settings already exist
-            all_settings = session.exec(select(DetectionSettings)).all()
+            all_settings: list[DetectionSettings] = list(
+                session.exec(select(DetectionSettings)).all()
+            )
             for candidate in all_settings:
                 if detection_settings == candidate:
                     cali_logger.info(
@@ -857,6 +874,7 @@ class CaliRunner:
             # Settings has ID - check if exists in database
             existing = session.get(DetectionSettings, detection_settings.id)
             if existing is not None:
+                assert isinstance(existing, DetectionSettings)
                 cali_logger.info(
                     f"♻️ Reusing existing DetectionSettings ID {existing.id} "
                     f"(method: {existing.method})"
@@ -892,12 +910,15 @@ class CaliRunner:
                 )
                 cali_logger.error(msg)
                 raise ValueError(msg)
+            assert isinstance(existing, ExtractionSettings)
             cali_logger.info(f"♻️ Reusing existing ExtractionSettings ID {existing.id}")
             return existing
 
         elif extraction_settings.id is None:
             # Check if identical settings already exist
-            all_settings = session.exec(select(ExtractionSettings)).all()
+            all_settings: list[ExtractionSettings] = list(
+                session.exec(select(ExtractionSettings)).all()
+            )
             for candidate in all_settings:
                 if extraction_settings == candidate:
                     cali_logger.info(
@@ -917,6 +938,7 @@ class CaliRunner:
             # Settings has ID - check if exists in database
             existing = session.get(ExtractionSettings, extraction_settings.id)
             if existing is not None:
+                assert isinstance(existing, ExtractionSettings)
                 cali_logger.info(
                     f"♻️ Reusing existing ExtractionSettings ID {existing.id}"
                 )
@@ -951,12 +973,15 @@ class CaliRunner:
                 )
                 cali_logger.error(msg)
                 raise ValueError(msg)
+            assert isinstance(existing, AnalysisSettings)
             cali_logger.info(f"♻️ Reusing existing AnalysisSettings ID {existing.id}")
             return existing
 
         elif analysis_settings.id is None:
             # Check if identical settings already exist
-            all_settings = session.exec(select(AnalysisSettings)).all()
+            all_settings: list[AnalysisSettings] = list(
+                session.exec(select(AnalysisSettings)).all()
+            )
             for candidate in all_settings:
                 if analysis_settings == candidate:
                     cali_logger.info(
@@ -966,6 +991,7 @@ class CaliRunner:
 
             # New settings - merge and commit
             analysis_settings = session.merge(analysis_settings)
+            assert isinstance(analysis_settings, AnalysisSettings)
             session.commit()
             session.refresh(analysis_settings)
             cali_logger.info(
@@ -975,6 +1001,7 @@ class CaliRunner:
         else:
             # Settings has ID - merge to reattach
             analysis_settings = session.merge(analysis_settings)
+            assert isinstance(analysis_settings, AnalysisSettings)
             cali_logger.info(
                 f"♻️ Reusing existing AnalysisSettings ID {analysis_settings.id}"
             )
@@ -1059,9 +1086,9 @@ class CaliRunner:
                 select(FOV)
                 .where(FOV.position_index.in_(position_indices))  # type: ignore
                 .options(
-                    joinedload(FOV.rois).joinedload(ROI.roi_mask),  # type: ignore  # type: ignore
-                    joinedload(FOV.rois).joinedload(ROI.traces_history),  # type: ignore  # type: ignore
-                    joinedload(FOV.rois).joinedload(ROI.data_analysis_history),  # type: ignore  # type: ignore
+                    joinedload(FOV.rois).joinedload(ROI.roi_mask),
+                    joinedload(FOV.rois).joinedload(ROI.traces_history),
+                    joinedload(FOV.rois).joinedload(ROI.data_analysis_history),
                 )
             )
             .unique()
@@ -1127,6 +1154,7 @@ class CaliRunner:
         exact_match = session.exec(query).first()
 
         if exact_match:
+            assert isinstance(exact_match, CaliResult)
             # Update existing result by merging positions
             old_positions = set(exact_match.positions_analyzed or [])
             new_positions = set(positions_analyzed)
@@ -1163,6 +1191,7 @@ class CaliRunner:
             ).first()
 
             if upgradeable_result:
+                assert isinstance(upgradeable_result, CaliResult)
                 # Upgrade the existing result with analysis settings
                 old_positions = set(upgradeable_result.positions_analyzed or [])
                 new_positions = set(positions_analyzed)
@@ -1195,6 +1224,7 @@ class CaliRunner:
             ).first()
 
             if upgradeable_result:
+                assert isinstance(upgradeable_result, CaliResult)
                 # Upgrade the existing result with extraction settings
                 old_positions = set(upgradeable_result.positions_analyzed or [])
                 new_positions = set(positions_analyzed)

@@ -143,7 +143,7 @@ class _RunsPanel(QGroupBox):
                 stmt = (
                     select(CaliResult, DetectionSettings)
                     .where(CaliResult.detection_settings == DetectionSettings.id)
-                    .order_by(desc(CaliResult.created_at))  # type: ignore
+                    .order_by(desc(CaliResult.created_at))
                 )
                 results = session.exec(stmt).all()
 
@@ -458,7 +458,7 @@ class _RunsPanel(QGroupBox):
         if current_item is None:
             return None
 
-        return current_item.data(Qt.ItemDataRole.UserRole)
+        return current_item.data(Qt.ItemDataRole.UserRole)  # type: ignore
 
     def get_selected_detection_settings_id(self) -> int | None:
         """Get the detection settings ID from the currently selected run.
@@ -635,7 +635,7 @@ class _RunsPanel(QGroupBox):
                     query = query.where(CaliResult.analysis_settings == analysis_id)
 
                 # Order by created_at desc and take first
-                query = query.order_by(desc(CaliResult.created_at))  # type: ignore
+                query = query.order_by(desc(CaliResult.created_at))
                 matching_run = session.exec(query).first()
 
             engine.dispose(close=True)
@@ -676,8 +676,8 @@ class _RunsPanel(QGroupBox):
             and a1.type() == QEvent.Type.MouseButtonPress
         ):
             # Check if click is on empty area
-            item = self._runs_list.itemAt(a1.pos())  # type: ignore
+            item = self._runs_list.itemAt(a1.pos())
             if item is None:
                 # Clicked on white area - deselect all
                 self._runs_list.clearSelection()
-        return super().eventFilter(a0, a1)
+        return bool(super().eventFilter(a0, a1))

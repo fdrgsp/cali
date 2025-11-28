@@ -165,7 +165,7 @@ def _plot_traces_data(
             p2,
             thresholds,
         )
-        last_trace = trace
+        last_trace = trace  # type: ignore[assignment]
         count += COUNT_INCREMENT
 
     _set_graph_title_and_labels(ax, dff, dec, normalize, with_peaks)

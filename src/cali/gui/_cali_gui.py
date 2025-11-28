@@ -329,7 +329,7 @@ class CaliGui(QMainWindow):
             graph.roiSelected.connect(self._highlight_roi)
 
         # connect analysis from metadata button
-        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
+        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)  # type: ignore
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
@@ -365,8 +365,8 @@ class CaliGui(QMainWindow):
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
+        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
+        # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # self._initialize_from_database(db_path, data_path)
 
         self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -1040,8 +1040,7 @@ class CaliGui(QMainWindow):
                     if existing:
                         existing.color = color
                         condition_cache[key] = existing
-                        return existing
-
+                        return existing  # type: ignore
                     # 3) Create new condition and add to session
                     cond = Condition(
                         name=name,
@@ -1275,7 +1274,7 @@ class CaliGui(QMainWindow):
 
         for r, c in wells.keys():
             if (r, c) not in selected_indices:
-                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)  # type: ignore
+                self._plate_view.setWellColor(r, c, UNSELECTABLE_COLOR)
 
     # WIDGETS -------------------------------------------------------------------------
 
@@ -1672,7 +1671,7 @@ class CaliGui(QMainWindow):
                         select(ROI)
                         .join(FOV)
                         .where(FOV.name == fov_name)
-                        .options(selectinload(ROI.roi_mask))  # type: ignore
+                        .options(selectinload(ROI.roi_mask))
                     )
 
                     # Add detection_settings_id filter if available
@@ -1724,15 +1723,15 @@ class CaliGui(QMainWindow):
                                 FOV.name == fov_name,
                             )
                             .options(
-                                selectinload(Traces.roi),  # type: ignore
-                                selectinload(Traces.neuropil_mask),  # type: ignore
+                                selectinload(Traces.roi),
+                                selectinload(Traces.neuropil_mask),
                             )
                         )
                         traces = session.exec(traces_stmt).all()
 
                         # Build neuropil mask from Traces
                         for trace in traces:
-                            # Only include traces from ROIs matching detection_settings_id
+                            # Include traces from ROIs matching detection_settings_id
                             if (
                                 trace.roi
                                 and trace.roi.detection_settings_id
@@ -1905,51 +1904,3 @@ class CaliGui(QMainWindow):
                 "CSV export is not yet implemented for SQLModel. "
                 "Please use the database export instead.",
             )
-
-    # def _on_frame_rate_info_from_meta_clicked(self) -> None:
-    #     if self._data is None:
-    #         show_error_dialog(
-    #             self, "Data not loaded! Cannot load metadata from datastore!"
-    #         )
-    #         return
-
-    #     try:
-    #         # Get metadata directly from the data reader
-    #         if not (meta := cast("list[dict]", self._data.metadata)):
-    #             msg = "No metadata found in the datastore!"
-    #             show_error_dialog(self, msg)
-    #             cali_logger.error(msg)
-    #             return
-
-    #         if (sequence := self._data.sequence) is None:
-    #             msg = "useq.MDASequence not found! Cannot retrieve metadata!"
-    #             show_error_dialog(self, msg)
-    #             cali_logger.error(msg)
-    #             return
-
-    #         # Get exposure time from metadata (first frame)
-    #         exp_time = meta[0].get("mda_event", {}).get("exposure", 0.0)
-    #         if exp_time <= 0:
-    #             msg = "Invalid exposure time found in metadata!"
-    #             show_error_dialog(self, msg)
-    #             cali_logger.error(msg)
-    #             return
-
-    #         # Get timepoints
-    #         timepoints = sequence.sizes.get("t", 0)
-    #         if timepoints == 0:
-    #             msg = "No timepoints found in the sequence!"
-    #             show_error_dialog(self, msg)
-    #             cali_logger.error(msg)
-    #             return
-
-    #         frame_rate = (timepoints - 1) / ((timepoints * exp_time) / 1000)
-    #         self._analysis_wdg._frame_rate_wdg._frame_rate_spin.setValue(frame_rate)
-
-    #         cali_logger.info(f"Frame rate set to: {frame_rate:.2f} fps.")
-
-    #     except Exception as e:
-    #         msg = f"Failed to load frame rate from datastore!\n\nError: {e}"
-    #         show_error_dialog(self, msg)
-    #         cali_logger.error(msg)
-    #         return

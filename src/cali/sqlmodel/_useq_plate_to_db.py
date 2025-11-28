@@ -291,7 +291,7 @@ def useq_plate_plan_to_db(
     global_position_index = 0
     for well_name in sorted(wells_data.keys()):
         # Get the well object we created
-        well = next((w for w in plate.wells if w.name == well_name), None)
+        well = next((w for w in plate.wells if w.name == well_name), None)  # type: ignore[assignment]
         if well is None:
             continue
 

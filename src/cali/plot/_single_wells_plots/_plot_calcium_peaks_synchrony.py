@@ -38,7 +38,7 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
 def _get_data_analysis_for_run(
     roi_model: ROI, run_id: int | None
 ) -> DataAnalysis | None:
-    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
@@ -199,7 +199,7 @@ def _get_jit(
             if result and result.analysis_settings is not None:
                 settings = session.get(AnalysisSettings, result.analysis_settings)
                 if settings:
-                    return settings.calcium_sync_jitter_window
+                    return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 
         # Fallback: get settings from the first available run
         stmt = (
@@ -211,7 +211,7 @@ def _get_jit(
         if result and result.analysis_settings is not None:
             settings = session.get(AnalysisSettings, result.analysis_settings)
             if settings:
-                return settings.calcium_sync_jitter_window
+                return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 
     cali_logger.warning("No valid analysis settings found for synchrony analysis.")
     return None

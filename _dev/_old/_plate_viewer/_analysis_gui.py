@@ -1275,62 +1275,6 @@ class _RunAnalysisWidget(QWidget):
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
 
-class _FrameRateWidget(QWidget):
-    """Widget to select the frame rate of the experiment."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setToolTip(
-            "Set the frame rate (in frames per second or Hz) of the imaging "
-            "experiment.\n\n"
-            "This value is used to convert frame-based measurements into time-based "
-            "units during analysis ONLY IF there are no metadata available.\n"
-            "If the data contains metadata, the frame rate will be extracted for each "
-            "position automatically."
-        )
-
-        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
-        self._frame_rate_lbl.setSizePolicy(*FIXED)
-
-        self._frame_rate_spin = QDoubleSpinBox(self)
-        self._frame_rate_spin.setDecimals(2)
-        self._frame_rate_spin.setRange(0.01, 1000.0)
-        self._frame_rate_spin.setSingleStep(0.5)
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-
-        self._from_meta_btn = FromMetaButton(self, "Load From Metadata")
-        self._from_meta_btn.setToolTip(
-            "Try to load the frame rate from the image metadata (from exposure time "
-            " and number of frames)."
-        )
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._frame_rate_lbl)
-        layout.addWidget(self._frame_rate_spin, 1)
-        layout.addWidget(self._from_meta_btn, 0)
-
-    # PUBLIC METHODS ------------------------------------------------------------
-
-    def value(self) -> float:
-        """Return the frame rate value."""
-        return self._frame_rate_spin.value()  # type: ignore
-
-    def setValue(self, value: float) -> None:
-        """Set the frame rate value."""
-        self._frame_rate_spin.setValue(value)
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the label."""
-        self._frame_rate_lbl.setFixedWidth(width)
-
-    def reset(self) -> None:
-        """Reset the widget to default values."""
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-
-
 class _CalciumAnalysisGUI(QGroupBox):
     progress_bar_updated = Signal()
 
@@ -1347,7 +1291,6 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._spike_wdg = _SpikeWidget(self)
         self._positions_wdg = _ChoosePositionsWidget(self)
         self._run_analysis_wdg = _RunAnalysisWidget(self)
-        # self._frame_rate_wdg = _FrameRateWidget(self)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
@@ -1356,8 +1299,6 @@ class _CalciumAnalysisGUI(QGroupBox):
         main_layout.addWidget(self._plate_map_wdg)
         main_layout.addWidget(create_divider_line("Type of Experiment"))
         main_layout.addWidget(self._experiment_type_wdg)
-        # main_layout.addWidget(create_divider_line("Frame Rate"))
-        # main_layout.addWidget(self._frame_rate_wdg)
         main_layout.addWidget(create_divider_line("Neuropil Settings"))
         main_layout.addWidget(self._neuropil_wdg)
         main_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
@@ -1379,7 +1320,6 @@ class _CalciumAnalysisGUI(QGroupBox):
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
         self._positions_wdg.set_labels_width(fix_width)
-        # self._frame_rate_wdg.set_labels_width(fix_width)
 
     # PUBLIC METHODS ------------------------------------------------------------
 

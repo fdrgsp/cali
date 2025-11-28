@@ -124,7 +124,7 @@ def _get_lag(
     from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
     with Session(engine) as session:
-        # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment -> CaliResult
+        # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment
         stmt = (
             select(CaliResult)
             .join(Experiment, CaliResult.experiment == Experiment.id)
@@ -177,8 +177,8 @@ def _get_spike_trains_from_rois(
         if rois is not None:
             stmt = stmt.where(col(ROI.id).in_(rois))
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),  # type: ignore
-            selectinload(ROI.data_analysis_history),  # type: ignore
+            selectinload(ROI.traces_history),
+            selectinload(ROI.data_analysis_history),
         )
         roi_results = session.exec(stmt).all()
 

@@ -17,7 +17,7 @@ from numba import njit, prange
 from scipy.ndimage import gaussian_filter, maximum_filter1d, minimum_filter1d
 
 
-@njit(
+@njit(  # type: ignore[misc]
     [
         "float32[:], float32[:], float32[:], int64[:], float32[:], float32[:], float32, float32"  # noqa: E501
     ],
@@ -60,7 +60,7 @@ def oasis_trace(
     s[t[1:ip]] = v[1:ip] - v[: ip - 1] * np.exp(g * l[: ip - 1])
 
 
-@njit(
+@njit(  # type: ignore[misc]
     [
         "float32[:,:], float32[:,:], float32[:,:], int64[:,:], float32[:,:], float32[:,:], float32, float32"  # noqa: E501
     ],

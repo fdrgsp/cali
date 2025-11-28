@@ -495,8 +495,8 @@ class _CaimanDetectionWidget(QGroupBox):
 
     def value(self) -> CaimanSettings:
         """Return the current CaImAn parameters."""
-        ...
+        return CaimanSettings()
 
     def setValue(self, value: CaimanSettings) -> None:
         """Set the CaImAn parameters."""
-        ...
+        return

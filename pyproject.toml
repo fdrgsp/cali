@@ -159,6 +159,7 @@ disallow_subclassing_any = false
 show_error_codes = true
 pretty = true
 plugins = ["pydantic.mypy"]
+exclude = ".*\\.ipynb$"
 
 # https://coverage.readthedocs.io/en/6.4/config.html
 [tool.coverage.report]
@@ -185,6 +186,9 @@ ignore = [
     "tests/**/*",
     "_dev/**/*",
 ]
+
+[tool.typos.files]
+extend-exclude = ["*.ipynb"]
 
 [tool.typos.default] 
 extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems", "selectin", "pn", "id"]

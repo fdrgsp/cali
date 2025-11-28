@@ -266,8 +266,7 @@ class ExtractionRunner:
 
         # get the elapsed time from the metadata to calculate the total time in seconds
         # assumes data shape is (time, height, width)
-        exp_ms = None  # TODO: expose frame rate/exp time in the gui
-        elapsed_time_list = self._get_elapsed_time_ms_list(meta, exp_ms, data.shape[0])
+        elapsed_time_list = self._get_elapsed_time_ms_list(meta, data.shape[0])
 
         # get the total time in seconds for the recording
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
@@ -361,12 +360,12 @@ class ExtractionRunner:
                 # during threaded execution. The commit function will handle
                 # proper attachment.
                 if not hasattr(existing_roi, "_new_traces"):
-                    existing_roi._new_traces = []  # type: ignore
-                    existing_roi._new_data_analysis = []  # type: ignore
-                existing_roi._new_traces.append(traces)  # type: ignore
+                    existing_roi._new_traces = []
+                    existing_roi._new_data_analysis = []
+                existing_roi._new_traces.append(traces)
                 # Only add data_analysis if it was computed
                 if data_analysis is not None:
-                    existing_roi._new_data_analysis.append(data_analysis)  # type: ignore
+                    existing_roi._new_data_analysis.append(data_analysis)
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 
@@ -544,7 +543,7 @@ class ExtractionRunner:
             fs = len(dff) / tot_time_sec  # Sampling frequency (Hz)
             g = np.exp(-1 / (fs * tau))
         # deconvolve the dff trace with adaptive penalty
-        dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))  # type: ignore
+        dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))
         dec_dff = cast("np.ndarray", dec_dff)
         spikes = cast("np.ndarray", spikes)
 
@@ -646,7 +645,7 @@ class ExtractionRunner:
             # Try to get pos_name first (e.g., "B5_0000")
             pos_name = meta[0][event_key].get("pos_name")
             if pos_name:
-                return pos_name
+                return pos_name  # type: ignore[no-any-return]
         except (KeyError, IndexError, AttributeError):
             pass
 
@@ -661,14 +660,12 @@ class ExtractionRunner:
         return f"pos_{p}"
 
     def _get_elapsed_time_ms_list(
-        self, meta: list[dict], exposure_ms: float | None, num_timepoints: int
+        self, meta: list[dict], num_timepoints: int
     ) -> list[float]:
         """Get elapsed time list from metadata."""
         elapsed_time_list: list[float] = []
 
-        # from metadata get the exposure time in ms
-        if exposure_ms is None:
-            exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
+        exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
 
         # if in metadata, get the elapsed time list from RUNNER_TIME_KEY
         if RUNNER_TIME_KEY in meta[0]:  # new metadata format

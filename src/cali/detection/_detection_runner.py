@@ -96,7 +96,8 @@ class DetectionRunner:
         assert isinstance(
             dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
         ), (
-            "Data must be a TensorstoreZarrReader, OMEZarrReader, or TiffCollectionReader instance."
+            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
+            "TiffCollectionReader instance."
         )
 
         if detection_settings.method == "cellpose":
@@ -144,7 +145,10 @@ class DetectionRunner:
             List of FOV objects with ROIs and masks
         """
         try:
-            import caiman
+            import importlib.util
+
+            if importlib.util.find_spec("caiman") is None:
+                raise ModuleNotFoundError("CaImAn is not installed!")
         except ModuleNotFoundError as e:
             cali_logger.error("CaImAn is not installed!")
             raise ModuleNotFoundError(
@@ -158,6 +162,8 @@ class DetectionRunner:
 
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
+
+        return  # type: ignore
 
     def _run_cellpose(
         self,
@@ -208,8 +214,7 @@ class DetectionRunner:
             else detection_settings.model_type
         )
         cali_logger.info(f"💿 Loading model from `{model_path}`.")
-        model = CellposeModel(pretrained_model=str(model_path), gpu=use_gpu)  # type: ignore
-
+        model = CellposeModel(pretrained_model=str(model_path), gpu=use_gpu)
         # Run detection and yield FOV results
         yield from self._run_cellpose_detection(
             dataset=dataset,
@@ -256,7 +261,7 @@ class DetectionRunner:
         n_batches = (n_positions + batch_size - 1) // batch_size
 
         cali_logger.info(
-            f"🧮 Processing {n_positions} positions in {n_batches} batches of {batch_size}"
+            f"Processing {n_positions} positions in {n_batches} batches of {batch_size}"
         )
         msg = (
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - "
@@ -458,7 +463,7 @@ class DetectionRunner:
             # Try to get pos_name first (e.g., "B5_0000")
             pos_name = meta[0][event_key].get("pos_name")
             if pos_name:
-                return pos_name
+                return pos_name  # type: ignore
         except (KeyError, IndexError, AttributeError):
             pass
 

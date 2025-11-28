@@ -193,7 +193,7 @@ def _rearrange_fov_by_conditions(
 
             # update the evoked conditions dict
             if roi_data.evoked_experiment:
-                from ._util import get_stimulated_amplitudes_from_roi_data
+                from cali.plot._util import get_stimulated_amplitudes_from_roi_data
 
                 # Compute amplitudes on-demand (without LED power equation for now)
                 amps_stim, amps_non_stim = get_stimulated_amplitudes_from_roi_data(
@@ -425,7 +425,7 @@ def _export_inferred_spikes_data(
     rows = {}
     for well_fov, rois in data.items():
         for roi_key, roi_data in rois.items():
-            if (spikes := _get_spikes_over_threshold(roi_data, raw)) is None:
+            if (spikes := _get_spikes_over_threshold(roi_data, raw)) is None:  # type: ignore[call-arg, arg-type]
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = spikes
@@ -684,7 +684,7 @@ def _get_spike_synchrony_parameter(
         for well_fov, roi_dict in key_dict.items():
             spike_dict: dict[str, list[float]] = {}
             for roi_key, roi_data in roi_dict.items():
-                if thresholded_spikes := _get_spikes_over_threshold(roi_data):
+                if thresholded_spikes := _get_spikes_over_threshold(roi_data):  # type: ignore[call-arg]
                     spike_dict[roi_key] = thresholded_spikes
 
             # Calculate spike synchrony matrix
@@ -708,7 +708,7 @@ def _get_calcium_peaks_event_synchrony_parameter(
     for condition, key_dict in sorted(data.items()):
         for well_fov, roi_dict in key_dict.items():
             # Get peak event trains using the existing function
-            peak_trains = _get_calcium_peaks_events_from_rois(roi_dict, rois=None)
+            peak_trains = _get_calcium_peaks_events_from_rois(roi_dict, rois=None)  # type: ignore[call-arg]
 
             if peak_trains is None or len(peak_trains) < 2:
                 continue
@@ -750,7 +750,7 @@ def _get_calcium_network_density_parameter(
     for condition, key_dict in sorted(data.items()):
         for well_fov, roi_dict in key_dict.items():
             # Calculate correlation matrix
-            correlation_matrix, rois_idxs = _calculate_cross_correlation(
+            correlation_matrix, rois_idxs = _calculate_cross_correlation(  # type: ignore[call-arg]
                 roi_dict, rois=None
             )
 
@@ -811,14 +811,14 @@ def _get_burst_activity_parameter(
     for condition, well_fov_dict in sorted(data.items()):
         for well_fov, roi_dict in well_fov_dict.items():
             # Get burst parameters from ROI data
-            burst_params = _get_burst_parameters(roi_dict)
+            burst_params = _get_burst_parameters(roi_dict)  # type: ignore[call-arg]
             if burst_params is None:
                 continue
 
             burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
             # Get spike trains and time axis for population analysis
-            spike_trains, _, time_axis = _get_population_spike_data(roi_dict)
+            spike_trains, _, time_axis = _get_population_spike_data(roi_dict)  # type: ignore[call-arg]
 
             if spike_trains is None or len(spike_trains) < 2:
                 continue
@@ -924,7 +924,7 @@ def _get_amplitude_stim_or_non_stim_peaks_parameter(
             continue  # skip unrelated conditions
         for fov, roi_dict in fov_dict.items():
             for roi_data in roi_dict.values():
-                from ._util import get_stimulated_amplitudes_from_roi_data
+                from cali.plot._util import get_stimulated_amplitudes_from_roi_data
 
                 # Compute amplitudes on-demand
                 amps_stim, amps_non_stim = get_stimulated_amplitudes_from_roi_data(

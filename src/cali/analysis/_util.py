@@ -29,7 +29,6 @@ def create_stimulation_mask(stimulation_file: str) -> np.ndarray:
         # if the image is already a binary mask, return it
         if unique[0] == 0 and unique[1] == 1:
             return blue_img  # type: ignore
-
     # apply Gaussian Blur to reduce noise
     blur = filters.gaussian(blue_img, sigma=2)
 

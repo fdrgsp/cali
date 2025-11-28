@@ -31,7 +31,7 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
 def _get_data_analysis_for_run(
     roi_model: ROI, run_id: int | None
 ) -> DataAnalysis | None:
-    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
@@ -218,8 +218,8 @@ def _get_population_spike_data(
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),  # type: ignore
-            selectinload(ROI.data_analysis_history),  # type: ignore
+            selectinload(ROI.traces_history),
+            selectinload(ROI.data_analysis_history),
         )
         roi_results = session.exec(stmt).all()
 

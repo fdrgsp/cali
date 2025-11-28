@@ -160,8 +160,8 @@ def _get_calcium_peaks_events_from_rois(
             if rois is not None:
                 stmt = stmt.where(col(ROI.id).in_(rois))
             stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-                selectinload(ROI.data_analysis_history),  # type: ignore
-                selectinload(ROI.traces_history),  # type: ignore
+                selectinload(ROI.data_analysis_history),
+                selectinload(ROI.traces_history),
             )
             roi_results = session.exec(stmt).all()
 
@@ -216,7 +216,7 @@ def _get_traces_for_run(roi: ROI, run_id: int | None) -> "Traces | None":
 
 
 def _get_data_analysis_for_run(roi: ROI, run_id: int | None) -> "DataAnalysis | None":
-    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
     if not roi.data_analysis_history:
         return None
     if run_id is None:
@@ -451,7 +451,7 @@ def _get_spikes_over_threshold(
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.id) == roi_id)
             .options(
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.data_analysis),
             )
         )
         roi = session.exec(stmt).first()
@@ -467,7 +467,7 @@ def _get_spikes_over_threshold(
 
     if raw:
         # Return raw inferred spikes
-        return inferred_spikes
+        return inferred_spikes  # type: ignore[no-any-return]
 
     spikes_thresholded = []
     for spike in inferred_spikes:
