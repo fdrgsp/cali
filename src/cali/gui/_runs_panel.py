@@ -680,4 +680,4 @@ class _RunsPanel(QGroupBox):
             if item is None:
                 # Clicked on white area - deselect all
                 self._runs_list.clearSelection()
-        return super().eventFilter(a0, a1)
+        return bool(super().eventFilter(a0, a1))

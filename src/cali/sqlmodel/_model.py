@@ -1219,7 +1219,7 @@ class AnalysisSettings(SQLModel, table=True):
         return None
 
 
-class Plate(SQLModel, table=True):
+class Plate(SQLModel, table=True):  # type: ignore[call-arg]
     """Plate container (e.g., 96-well plate).
 
     Attributes
@@ -1265,7 +1265,7 @@ class Plate(SQLModel, table=True):
     wells: list["Well"] = Relationship(back_populates="plate")
 
 
-class Condition(SQLModel, table=True):
+class Condition(SQLModel, table=True):  # type: ignore[call-arg]
     """Experimental condition (e.g., genotype, treatment).
 
     Conditions can be reused across multiple wells. This allows for
@@ -1294,7 +1294,7 @@ class Condition(SQLModel, table=True):
     description: str | None = None
 
 
-class WellCondition(SQLModel, table=True):
+class WellCondition(SQLModel, table=True):  # type: ignore[call-arg]
     """Link table for Well-Condition many-to-many relationship."""
 
     __tablename__ = "well_condition_link"
@@ -1304,7 +1304,7 @@ class WellCondition(SQLModel, table=True):
     condition_id: int = Field(foreign_key="condition.id", primary_key=True)
 
 
-class Well(SQLModel, table=True):
+class Well(SQLModel, table=True):  # type: ignore[call-arg]
     """Well in a plate (e.g., "B5").
 
     A well can have multiple FOVs (imaging positions) and is associated
@@ -1364,7 +1364,7 @@ class Well(SQLModel, table=True):
         return self.conditions[1] if len(self.conditions) > 1 else None
 
 
-class FOV(SQLModel, table=True):
+class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     """Field of View (imaging position) within a well.
 
     Each FOV represents a single imaging position/site within a well.
@@ -1412,7 +1412,7 @@ class FOV(SQLModel, table=True):
     rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
 
 
-class ROI(SQLModel, table=True):
+class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     """Region of Interest (ROI) core metadata.
 
     Represents a single cell/neuron segmented from imaging data.
@@ -1484,7 +1484,7 @@ class ROI(SQLModel, table=True):
     )
 
 
-class Traces(SQLModel, table=True):
+class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     """Fluorescence trace data for an ROI.
 
     Stores all time-series fluorescence measurements and derived traces.
@@ -1562,7 +1562,7 @@ class Traces(SQLModel, table=True):
     )
 
 
-class DataAnalysis(SQLModel, table=True):
+class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     """Container for data analysis results for an ROI.
 
     This class stores various analysis results related to an ROI,
@@ -1630,7 +1630,7 @@ class DataAnalysis(SQLModel, table=True):
     analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
 
 
-class Mask(SQLModel, table=True):
+class Mask(SQLModel, table=True):  # type: ignore[call-arg]
     """Generic mask coordinate data.
 
     Stores spatial coordinates and dimensions for a mask (ROI or neuropil).
