@@ -57,7 +57,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Use standard model for testing
         detection_settings = DetectionSettings(
             method="cellpose",
-            model_type="cyto3",
+            model_type="cpsam",
             diameter=30.0,
         )
 
