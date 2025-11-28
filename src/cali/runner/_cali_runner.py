@@ -1105,14 +1105,24 @@ class CaliRunner:
             The ID of the created or updated CaliResult.
         """
         # First, check for exact match with all settings
-        exact_match = session.exec(
-            select(CaliResult).where(
-                CaliResult.experiment == experiment_id,
-                CaliResult.detection_settings == detection_settings_id,
-                CaliResult.extraction_settings == extraction_settings_id,
-                CaliResult.analysis_settings == analysis_settings_id,
+        query = select(CaliResult).where(
+            CaliResult.experiment == experiment_id,
+            CaliResult.detection_settings == detection_settings_id,
+        )
+
+        if extraction_settings_id is None:
+            query = query.where(CaliResult.extraction_settings.is_(None))  # type: ignore
+        else:
+            query = query.where(
+                CaliResult.extraction_settings == extraction_settings_id
             )
-        ).first()
+
+        if analysis_settings_id is None:
+            query = query.where(CaliResult.analysis_settings.is_(None))  # type: ignore
+        else:
+            query = query.where(CaliResult.analysis_settings == analysis_settings_id)
+
+        exact_match = session.exec(query).first()
 
         if exact_match:
             # Update existing result by merging positions
