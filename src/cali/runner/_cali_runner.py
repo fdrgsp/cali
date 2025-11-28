@@ -366,9 +366,13 @@ class CaliRunner:
                             # Re-attach settings objects for next iteration
                             detection_settings = session.merge(detection_settings)
                             if extraction_settings_obj is not None:
-                                extraction_settings_obj = session.merge(extraction_settings_obj)
+                                extraction_settings_obj = session.merge(
+                                    extraction_settings_obj
+                                )
                             if analysis_settings_obj is not None:
-                                analysis_settings_obj = session.merge(analysis_settings_obj)
+                                analysis_settings_obj = session.merge(
+                                    analysis_settings_obj
+                                )
 
                         positions_processed_detection.append(pos_idx)
 
@@ -383,7 +387,9 @@ class CaliRunner:
                         # Re-attach settings objects
                         detection_settings = session.merge(detection_settings)
                         if extraction_settings_obj is not None:
-                            extraction_settings_obj = session.merge(extraction_settings_obj)
+                            extraction_settings_obj = session.merge(
+                                extraction_settings_obj
+                            )
                         if analysis_settings_obj is not None:
                             analysis_settings_obj = session.merge(analysis_settings_obj)
 
