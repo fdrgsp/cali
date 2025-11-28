@@ -66,10 +66,10 @@ from ._plate_plan_wizard import PlatePlanWizard
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
+    CaliRunSettings,
     _ElapsedTimer,
     _ProgressBarWidget,
     _RunCaliWidget,
-    CaliRunSettings,
     show_error_dialog,
 )
 
