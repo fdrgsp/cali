@@ -160,8 +160,8 @@ def _get_calcium_peaks_events_from_rois(
             if rois is not None:
                 stmt = stmt.where(col(ROI.id).in_(rois))
             stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-                selectinload(ROI.data_analysis_history),  # type: ignore
-                selectinload(ROI.traces_history),  # type: ignore
+                selectinload(ROI.data_analysis_history),
+                selectinload(ROI.traces_history),
             )
             roi_results = session.exec(stmt).all()
 
@@ -451,7 +451,7 @@ def _get_spikes_over_threshold(
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.id) == roi_id)
             .options(
-                selectinload(ROI.data_analysis),  # type: ignore
+                selectinload(ROI.data_analysis),
             )
         )
         roi = session.exec(stmt).first()

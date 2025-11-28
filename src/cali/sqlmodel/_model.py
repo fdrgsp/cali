@@ -51,7 +51,7 @@ from cali.readers._tiff_collection_reader import TiffCollectionSettings
 # ==================== Core Models ====================
 
 
-class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
+class CaliResult(SQLModel, table=True):
     """Cali run metadata.
 
     Tracks which experiment was analyzed with which settings and which positions

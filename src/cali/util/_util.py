@@ -326,12 +326,12 @@ def update_fovs_in_database(
                 # (ExtractionRunner stores traces in _new_traces temporarily)
                 for roi in fov.rois:
                     if hasattr(roi, "_new_traces"):
-                        for trace in roi._new_traces:  # type: ignore
+                        for trace in roi._new_traces:
                             roi.traces_history.append(trace)
                         delattr(roi, "_new_traces")
 
                     if hasattr(roi, "_new_data_analysis"):
-                        for data_analysis in roi._new_data_analysis:  # type: ignore
+                        for data_analysis in roi._new_data_analysis:
                             roi.data_analysis_history.append(data_analysis)
                         delattr(roi, "_new_data_analysis")
 
@@ -447,8 +447,8 @@ def load_fovs_from_database(
 
             # Eager load all relationships to avoid lazy-loading after detachment
             query = select(FOV).options(
-                selectinload(FOV.rois).selectinload(ROI.traces_history),  # type: ignore
-                selectinload(FOV.rois).selectinload(ROI.data_analysis_history),  # type: ignore
+                selectinload(FOV.rois).selectinload(ROI.traces_history),
+                selectinload(FOV.rois).selectinload(ROI.data_analysis_history),
             )
 
             if pos_list is not None:
