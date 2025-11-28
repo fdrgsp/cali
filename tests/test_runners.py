@@ -899,9 +899,7 @@ def test_detection_runner_2d_data(
     )
 
     # Patch load_data_from_path to return our mock dataset
-    with patch(
-        "cali.runner._cali_runner.load_data_from_path", return_value=dataset
-    ):
+    with patch("cali.runner._cali_runner.load_data_from_path", return_value=dataset):
         # Run detection (cellpose is already mocked by mock_detection_runner fixture)
         runner.run(
             experiment=test_experiment,
