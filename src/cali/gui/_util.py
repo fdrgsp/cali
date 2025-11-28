@@ -465,6 +465,7 @@ class _RunCaliWidget(QWidget):
     def enable(self, state: bool) -> None:
         """Enable or disable the widget but the cancel button."""
         self._positions_wdg.setEnabled(state)
+        self._run_options_lbl.setEnabled(state)
         self._run_options_combo.setEnabled(state)
         self._detection_settings_combo.setEnabled(state)
         self._run_btn.setEnabled(state)

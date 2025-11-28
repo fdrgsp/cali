@@ -199,7 +199,7 @@ class CaliGui(QMainWindow):
             self._detection_extraction_tab, "Detection, Extraction and Analysis"
         )
         detection_extraction_layout = QVBoxLayout(self._detection_extraction_tab)
-        detection_extraction_layout.setContentsMargins(0, 0, 0, 0)
+        detection_extraction_layout.setContentsMargins(5, 0, 5, 0)
         detection_extraction_layout.setSpacing(5)
 
         # SUB-TABS FOR DETECTION AND EXTRACTION ----------------------------------------
