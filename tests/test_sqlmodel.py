@@ -365,7 +365,10 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.skip(
-    reason="JSON migration references old field locations (experiment_type in AnalysisSettings). Needs update for ExtractionSettings refactor."
+    reason=(
+        "JSON migration references old field locations. "
+        "Needs update for ExtractionSettings refactor."
+    )
 )
 def test_load_analysis_from_json(tmp_path: Path) -> None:
     """Test loading analysis from JSON directory."""

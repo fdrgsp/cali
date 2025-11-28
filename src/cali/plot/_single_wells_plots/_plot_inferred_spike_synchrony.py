@@ -124,7 +124,7 @@ def _get_lag(
     from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
 
     with Session(engine) as session:
-        # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment -> CaliResult
+        # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment
         stmt = (
             select(CaliResult)
             .join(Experiment, CaliResult.experiment == Experiment.id)

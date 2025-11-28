@@ -1,3 +1,5 @@
+"""Example of how to save labeled images."""
+
 from cali.util import save_labeled_images
 
 db_path = "manual_run.cali"

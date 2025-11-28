@@ -31,6 +31,7 @@ from cali._constants import (
 )
 from cali.sqlmodel import ExtractionSettings
 
+from ._analysis_gui import FromMetaButton
 from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     create_divider_line,

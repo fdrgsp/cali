@@ -731,17 +731,18 @@ class CaliRunner:
             p for p in global_position_indices if p not in existing_pos_set
         ]
 
+        info = "\u24d8"
         if not positions_needing_analysis:
             cali_logger.info(
-                "ℹ️ Analysis already exists for all positions with DetectionSettings ID "
-                f"{detection_settings_id} and AnalysisSettings ID "
+                f"{info} Analysis already exists for all positions with "
+                f"DetectionSettings ID {detection_settings_id} and AnalysisSettings ID "
                 f"{analysis_settings_id}. Skipping analysis."
             )
             return []
 
         if existing_pos_set:
             cali_logger.info(
-                f"ℹ️ Analysis exists for {len(existing_pos_set)} position(s) "
+                f"{info} Analysis exists for {len(existing_pos_set)} position(s) "
                 f"but missing for {len(positions_needing_analysis)} position(s): "
                 f"{positions_needing_analysis}. Running analysis for missing positions."
             )

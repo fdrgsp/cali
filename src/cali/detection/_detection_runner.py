@@ -96,7 +96,8 @@ class DetectionRunner:
         assert isinstance(
             dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
         ), (
-            "Data must be a TensorstoreZarrReader, OMEZarrReader, or TiffCollectionReader instance."
+            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
+            "TiffCollectionReader instance."
         )
 
         if detection_settings.method == "cellpose":
@@ -144,7 +145,10 @@ class DetectionRunner:
             List of FOV objects with ROIs and masks
         """
         try:
-            import caiman
+            import importlib.util
+
+            if importlib.util.find_spec("caiman") is None:
+                raise ModuleNotFoundError("CaImAn is not installed!")
         except ModuleNotFoundError as e:
             cali_logger.error("CaImAn is not installed!")
             raise ModuleNotFoundError(
@@ -256,7 +260,7 @@ class DetectionRunner:
         n_batches = (n_positions + batch_size - 1) // batch_size
 
         cali_logger.info(
-            f"🧮 Processing {n_positions} positions in {n_batches} batches of {batch_size}"
+            f"Processing {n_positions} positions in {n_batches} batches of {batch_size}"
         )
         msg = (
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]} - "

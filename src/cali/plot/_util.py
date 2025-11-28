@@ -216,7 +216,7 @@ def _get_traces_for_run(roi: ROI, run_id: int | None) -> "Traces | None":
 
 
 def _get_data_analysis_for_run(roi: ROI, run_id: int | None) -> "DataAnalysis | None":
-    """Get the DataAnalysis object for a specific run from the ROI's data_analysis_history."""
+    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
     if not roi.data_analysis_history:
         return None
     if run_id is None:

@@ -28,6 +28,7 @@ from sqlmodel import (
     Session,
     SQLModel,
     create_engine,
+    desc,
     select,
 )
 
@@ -216,7 +217,7 @@ class CaliResult(SQLModel, table=True):  # type: ignore[call-arg]
                 statement = statement.where(cls.experiment == experiment_id)
 
             # Order by creation time to get most recent first
-            statement = statement.order_by(cls.created_at.desc())
+            statement = statement.order_by(desc(cls.created_at))
 
             results = list(session.exec(statement).all())
             session.expunge_all()
@@ -598,7 +599,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
             data = TiffCollectionReader(tiff_settings)
         else:
             # Load data normally (zarr/tensorstore or TIFF without settings)
-            data = load_data_from_path(cast("str | Path", data_path))
+            data = load_data_from_path(data_path)
             if data is None:
                 from cali._constants import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 
@@ -813,7 +814,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 statement = statement.where(cls.method == method)
 
             # Order by creation time to get most recent first
-            statement = statement.order_by(cls.created_at.desc())
+            statement = statement.order_by(desc(cls.created_at))
 
             results = list(session.exec(statement).all())
             session.expunge_all()
@@ -953,7 +954,7 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 return obj
 
             # Order by creation time to get most recent first
-            statement = statement.order_by(cls.created_at.desc())
+            statement = statement.order_by(desc(cls.created_at))
 
             results = list(session.exec(statement).all())
             session.expunge_all()
@@ -1178,7 +1179,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 return obj
 
             # Order by creation time to get most recent first
-            statement = statement.order_by(cls.created_at.desc())
+            statement = statement.order_by(desc(cls.created_at))
 
             results = list(session.exec(statement).all())
             session.expunge_all()

@@ -1,5 +1,5 @@
 """
-Example of how to use DetectionRunner, ExtractionRunner, and AnalysisRunner individually.
+Example of using DetectionRunner, ExtractionRunner, and AnalysisRunner individually.
 
 This script demonstrates how to run the pipeline components manually without
 using the unified CaliRunner class. This gives you more control over the
@@ -31,7 +31,10 @@ from cali.sqlmodel import (
 from cali.util import load_fovs_from_database, update_fovs_in_database
 from cali.util._util import load_data_from_path
 
-dataset_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+dataset_path = (
+    "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
+    "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+)
 db_path = Path("manual_run.cali")
 
 # Clean up previous run for this example
@@ -112,7 +115,8 @@ with Session(engine) as session:
                 .where(ROI.fov_id == fov.id)
             ).one()
             print(
-                f"{fov.name}: {len(fov.rois)} ROIs, {trace_count} Traces, {analysis_count} DataAnalysis"
+                f"{fov.name}: {len(fov.rois)} ROIs, {trace_count} Traces, "
+                f"{analysis_count} DataAnalysis"
             )
 
 # Clean up engine

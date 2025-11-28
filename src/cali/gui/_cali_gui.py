@@ -365,8 +365,8 @@ class CaliGui(QMainWindow):
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
+        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
+        # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # self._initialize_from_database(db_path, data_path)
 
         self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -1732,7 +1732,7 @@ class CaliGui(QMainWindow):
 
                         # Build neuropil mask from Traces
                         for trace in traces:
-                            # Only include traces from ROIs matching detection_settings_id
+                            # Include traces from ROIs matching detection_settings_id
                             if (
                                 trace.roi
                                 and trace.roi.detection_settings_id
