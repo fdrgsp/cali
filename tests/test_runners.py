@@ -24,8 +24,9 @@ from cali.sqlmodel import (
 from cali.util import load_data_from_path
 
 # Cellpose model type for testing
-MODEL = "cpsam"  #cellpose4
+MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
+
 
 @pytest.fixture(autouse=True)
 def cleanup_gc() -> Iterator[None]:

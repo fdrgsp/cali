@@ -8,13 +8,11 @@ from typing import TYPE_CHECKING
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -30,14 +28,11 @@ from cali._constants import (
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
-    EVOKED,
-    SPONTANEOUS,
 )
 from cali.sqlmodel import ExtractionSettings
 
 from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
-    _BrowseWidget,
     create_divider_line,
 )
 

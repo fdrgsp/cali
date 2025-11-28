@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from cv2 import exp
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
@@ -295,9 +294,7 @@ class _AnalysisGUI(QWidget):
                 else None
             ),
             led_pulse_powers=(
-                experiment_type_data.led_pulse_powers
-                if experiment_type_data
-                else None
+                experiment_type_data.led_pulse_powers if experiment_type_data else None
             ),
             led_pulse_on_frames=(
                 experiment_type_data.led_pulse_on_frames

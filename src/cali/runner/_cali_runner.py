@@ -885,8 +885,7 @@ class CaliRunner:
             existing = session.get(ExtractionSettings, extraction_settings)
             if existing is None:
                 msg = (
-                    f"ExtractionSettings ID {extraction_settings} not found "
-                    "in database"
+                    f"ExtractionSettings ID {extraction_settings} not found in database"
                 )
                 cali_logger.error(msg)
                 raise ValueError(msg)
