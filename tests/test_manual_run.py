@@ -1,7 +1,10 @@
 """Tests for manual pipeline execution."""
 
 from pathlib import Path
+from typing import Any, Iterator
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 from sqlmodel import Session, create_engine, func, select
 
@@ -16,6 +19,7 @@ from cali.sqlmodel import (
     DetectionSettings,
     Experiment,
     ExtractionSettings,
+    Mask,
     Traces,
     save_experiment_to_database,
 )
@@ -23,6 +27,44 @@ from cali.util import load_fovs_from_database, update_fovs_in_database
 from cali.util._util import load_data_from_path
 
 THREADS = 1
+
+
+def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
+    """Create a mock FOV with ROIs for testing without running cellpose."""
+    # Use A1_ naming convention for well parsing
+    fov = FOV(position_index=position_index, name=f"A1_{position_index:04d}")
+
+    rois = []
+    for i in range(1, num_rois + 1):
+        # Create a simple circular mask matching dataset dims (256x256)
+        mask_data = np.zeros((256, 256), dtype=np.uint8)
+        cy, cx = 50 + i * 20, 50 + i * 20
+        y, x = np.ogrid[:256, :256]
+        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
+        mask_data[mask_region] = 1
+
+        # Get coordinates from mask
+        coords = np.where(mask_data)
+        coords_y = coords[0].tolist()
+        coords_x = coords[1].tolist()
+
+        mask = Mask(
+            mask_type="roi",
+            coords_y=coords_y,
+            coords_x=coords_x,
+            height=256,
+            width=256,
+        )
+
+        roi = ROI(
+            label_value=i,
+            roi_mask=mask,
+            fov_id=0,  # Dummy ID, will be handled by relationship
+        )
+        rois.append(roi)
+
+    fov.rois = rois
+    return fov
 
 
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
@@ -59,17 +101,47 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Use standard model for testing
         detection_settings = DetectionSettings(
             method="cellpose",
-            model_type="cpsam",
+            model_type="cyto3",
             diameter=30.0,
         )
 
-        for fov in detection_runner.run(
-            dataset=data,
-            detection_settings=detection_settings,
-            global_position_indices=positions_to_process,
-            as_generator=True,
-        ):
-            update_fovs_in_database(db_path, fov)
+        # Mock cellpose execution
+        with patch(
+            "cali.detection._detection_runner.DetectionRunner._run_cellpose"
+        ) as mock_run:
+
+            def mock_side_effect(
+                dataset: Any,
+                detection_settings: Any,
+                position_indices: list[int],
+                *args: Any,
+                **kwargs: Any,
+            ) -> Iterator[FOV]:
+                for pos_idx in position_indices:
+                    yield create_mock_fov(pos_idx)
+
+            mock_run.side_effect = mock_side_effect
+
+            # Run detection (mocked)
+            fovs = list(
+                detection_runner.run(
+                    dataset=data,
+                    detection_settings=detection_settings,
+                    global_position_indices=positions_to_process,
+                )
+            )
+
+        assert len(fovs) == 1
+        assert len(fovs[0].rois) == 3
+
+        # Save FOVs to database
+        update_fovs_in_database(engine, fovs)
+
+        # Verify saved
+        with Session(engine) as session:
+            saved_fovs = session.exec(select(FOV)).all()
+            assert len(saved_fovs) == 1
+            assert len(saved_fovs[0].rois) == 3
 
         # 2. Extraction
         extraction_runner = ExtractionRunner()
