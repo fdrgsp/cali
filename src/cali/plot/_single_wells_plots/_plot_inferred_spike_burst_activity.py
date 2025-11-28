@@ -218,8 +218,8 @@ def _get_population_spike_data(
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),  # type: ignore
-            selectinload(ROI.data_analysis_history),  # type: ignore
+            selectinload(ROI.traces_history),
+            selectinload(ROI.data_analysis_history),
         )
         roi_results = session.exec(stmt).all()
 

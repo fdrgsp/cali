@@ -199,7 +199,7 @@ def _get_jit(
             if result and result.analysis_settings is not None:
                 settings = session.get(AnalysisSettings, result.analysis_settings)
                 if settings:
-                    return settings.calcium_sync_jitter_window
+                    return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 
         # Fallback: get settings from the first available run
         stmt = (
@@ -211,7 +211,7 @@ def _get_jit(
         if result and result.analysis_settings is not None:
             settings = session.get(AnalysisSettings, result.analysis_settings)
             if settings:
-                return settings.calcium_sync_jitter_window
+                return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 
     cali_logger.warning("No valid analysis settings found for synchrony analysis.")
     return None

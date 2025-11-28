@@ -203,7 +203,7 @@ def load_experiment_from_database(
             session.expunge(experiment)
 
         # Session automatically closed here
-        return experiment
+        return experiment  # type: ignore
     finally:
         # Dispose engine to release database connections (Windows compatibility)
         engine.dispose(close=True)

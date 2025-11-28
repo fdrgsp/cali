@@ -899,7 +899,7 @@ def plot_single_well_data(
                 analyzer = cast("SingleWellAnalyzer", product.analyzer)
                 # Pass run_id as keyword argument to avoid positional conflicts
                 # with other keyword args in the analyzer functions
-                return analyzer(widget, engine, fov_name, rois, run_id=run_id)
+                return analyzer(widget, engine, fov_name, rois, run_id=run_id)  # type: ignore[no-any-return]
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Analysis '{text}' not found in registry")

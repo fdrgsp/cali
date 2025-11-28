@@ -118,4 +118,4 @@ class _WellSelectionPage(QWizardPage):
 
     def value(self) -> useq.WellPlatePlan:
         """Return the selected wells."""
-        return self._well_plate_widget.value()
+        return self._well_plate_widget.value()  # type: ignore

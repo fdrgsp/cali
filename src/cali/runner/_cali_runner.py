@@ -263,7 +263,7 @@ class CaliRunner:
         )
 
         # Enable foreign keys for SQLite
-        @event.listens_for(engine, "connect")
+        @event.listens_for(engine, "connect")  # type: ignore[misc]
         def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -985,6 +985,7 @@ class CaliRunner:
 
             # New settings - merge and commit
             analysis_settings = session.merge(analysis_settings)
+            assert isinstance(analysis_settings, AnalysisSettings)
             session.commit()
             session.refresh(analysis_settings)
             cali_logger.info(
@@ -994,6 +995,7 @@ class CaliRunner:
         else:
             # Settings has ID - merge to reattach
             analysis_settings = session.merge(analysis_settings)
+            assert isinstance(analysis_settings, AnalysisSettings)
             cali_logger.info(
                 f"♻️ Reusing existing AnalysisSettings ID {analysis_settings.id}"
             )

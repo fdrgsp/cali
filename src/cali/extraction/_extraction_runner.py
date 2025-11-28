@@ -645,7 +645,7 @@ class ExtractionRunner:
             # Try to get pos_name first (e.g., "B5_0000")
             pos_name = meta[0][event_key].get("pos_name")
             if pos_name:
-                return pos_name
+                return pos_name  # type: ignore[no-any-return]
         except (KeyError, IndexError, AttributeError):
             pass
 

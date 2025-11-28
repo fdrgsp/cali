@@ -31,13 +31,13 @@ def data_to_plate(
             cali_logger.error(f"❌ Could not load data from path: {data}")
             return None
     else:
-        dataset = data
+        dataset = data  # type: ignore[assignment]
 
-    if dataset.sequence is None:
+    if dataset.sequence is None:  # type: ignore[union-attr]
         cali_logger.error("❌  Dataset does not contain sequence information.")
         return None
 
-    plate_plan = dataset.sequence.stage_positions
+    plate_plan = dataset.sequence.stage_positions  # type: ignore[union-attr]
     if not isinstance(plate_plan, useq.WellPlatePlan):
         cali_logger.error("❌  Dataset does not contain a WellPlatePlan.")
         return None

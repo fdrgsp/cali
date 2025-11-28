@@ -163,6 +163,8 @@ class DetectionRunner:
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
 
+        return  # type: ignore
+
     def _run_cellpose(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
@@ -461,7 +463,7 @@ class DetectionRunner:
             # Try to get pos_name first (e.g., "B5_0000")
             pos_name = meta[0][event_key].get("pos_name")
             if pos_name:
-                return pos_name
+                return pos_name  # type: ignore
         except (KeyError, IndexError, AttributeError):
             pass
 

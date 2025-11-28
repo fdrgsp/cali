@@ -117,7 +117,7 @@ def _plot_amplitude_and_frequency_data(
                 .join(FOV)
                 .where(col(FOV.name) == fov_name)
                 .options(
-                    selectinload(ROI.data_analysis_history),  # type: ignore
+                    selectinload(ROI.data_analysis_history),
                 )
             )
 

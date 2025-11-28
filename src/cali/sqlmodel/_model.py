@@ -15,7 +15,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Self, cast
+from typing import TYPE_CHECKING, Any, Optional, Self, cast
 
 import numpy as np
 import useq
@@ -47,6 +47,10 @@ from cali._constants import (
     SPONTANEOUS,
 )
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
+
+if TYPE_CHECKING:
+    from cali.readers._ome_zarr_reader import OMEZarrReader
+    from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
 
 # ==================== Core Models ====================
 
@@ -212,7 +216,7 @@ class CaliResult(SQLModel, table=True):
                 if obj is None:
                     raise ValueError(f"No CaliResult found with id={id}")
                 session.expunge_all()
-                return obj
+                return obj  # type: ignore
             elif experiment_id is not None:
                 statement = statement.where(cls.experiment == experiment_id)
 
@@ -226,10 +230,10 @@ class CaliResult(SQLModel, table=True):
         finally:
             if our_session is not None:
                 our_session.close()
-                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+                engine.dispose(close=True)
 
 
-class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
+class Experiment(SQLModel, table=True):
     """Top-level experiment container.
 
     An experiment can contain a plate and tracks global metadata
@@ -345,7 +349,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
                 )
                 statement = select(Experiment).options(
                     plate_chain.selectinload(ROI.traces_history).selectinload(
-                        Traces.neuropil_mask  # type: ignore
+                        Traces.neuropil_mask
                     ),
                     plate_chain.selectinload(ROI.data_analysis_history),
                     plate_chain.selectinload(ROI.roi_mask),
@@ -361,7 +365,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
 
             obj = session.exec(statement).first()
             session.expunge_all()  # Detach all instances from the session
-            return obj
+            return obj  # type: ignore
         finally:
             if our_session is not None:
                 our_session.close()
@@ -582,6 +586,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         from ._data_to_plate import data_to_plate
 
         tiff_settings: TiffCollectionSettings | None = None
+        data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
         # If TIFF parameters provided, create TiffCollectionReader
         if (
             tiff_file_map is not None
@@ -657,7 +662,7 @@ class Experiment(SQLModel, table=True):  # type: ignore[call-arg]
         )
 
 
-class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
+class DetectionSettings(SQLModel, table=True):
     """Detection/segmentation parameter settings.
 
     Stores the detection parameters used for cell segmentation.
@@ -809,7 +814,7 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 if obj is None:
                     raise ValueError(f"No DetectionSettings found with id={id}")
                 session.expunge_all()
-                return obj
+                return obj  # type: ignore
             elif method is not None:
                 statement = statement.where(cls.method == method)
 
@@ -823,10 +828,10 @@ class DetectionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         finally:
             if our_session is not None:
                 our_session.close()
-                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+                engine.dispose(close=True)
 
 
-class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
+class ExtractionSettings(SQLModel, table=True):
     """Trace extraction parameter settings.
 
     Stores the trace extraction parameters used for a specific extraction run.
@@ -951,7 +956,7 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 if obj is None:
                     raise ValueError(f"No ExtractionSettings found with id={id}")
                 session.expunge_all()
-                return obj
+                return obj  # type: ignore
 
             # Order by creation time to get most recent first
             statement = statement.order_by(desc(cls.created_at))
@@ -966,7 +971,7 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 engine.dispose(close=True)
 
 
-class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
+class AnalysisSettings(SQLModel, table=True):
     """Analysis parameter settings for an experiment.
 
     Stores the analysis parameters used for a specific analysis run.
@@ -1176,7 +1181,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 if obj is None:
                     raise ValueError(f"No AnalysisSettings found with id={id}")
                 session.expunge_all()
-                return obj
+                return obj  # type: ignore
 
             # Order by creation time to get most recent first
             statement = statement.order_by(desc(cls.created_at))
@@ -1188,7 +1193,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         finally:
             if our_session is not None:
                 our_session.close()
-                engine.dispose(close=True)  # type: ignore[possibly-undefined]
+                engine.dispose(close=True)
 
     def stimulated_mask_area(self) -> np.ndarray | None:
         """Get stimulation mask as numpy array.
@@ -1214,7 +1219,7 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         return None
 
 
-class Plate(SQLModel, table=True):  # type: ignore[call-arg]
+class Plate(SQLModel, table=True):
     """Plate container (e.g., 96-well plate).
 
     Attributes
@@ -1260,7 +1265,7 @@ class Plate(SQLModel, table=True):  # type: ignore[call-arg]
     wells: list["Well"] = Relationship(back_populates="plate")
 
 
-class Condition(SQLModel, table=True):  # type: ignore[call-arg]
+class Condition(SQLModel, table=True):
     """Experimental condition (e.g., genotype, treatment).
 
     Conditions can be reused across multiple wells. This allows for
@@ -1289,7 +1294,7 @@ class Condition(SQLModel, table=True):  # type: ignore[call-arg]
     description: str | None = None
 
 
-class WellCondition(SQLModel, table=True):  # type: ignore[call-arg]
+class WellCondition(SQLModel, table=True):
     """Link table for Well-Condition many-to-many relationship."""
 
     __tablename__ = "well_condition_link"
@@ -1299,7 +1304,7 @@ class WellCondition(SQLModel, table=True):  # type: ignore[call-arg]
     condition_id: int = Field(foreign_key="condition.id", primary_key=True)
 
 
-class Well(SQLModel, table=True):  # type: ignore[call-arg]
+class Well(SQLModel, table=True):
     """Well in a plate (e.g., "B5").
 
     A well can have multiple FOVs (imaging positions) and is associated
@@ -1359,7 +1364,7 @@ class Well(SQLModel, table=True):  # type: ignore[call-arg]
         return self.conditions[1] if len(self.conditions) > 1 else None
 
 
-class FOV(SQLModel, table=True):  # type: ignore[call-arg]
+class FOV(SQLModel, table=True):
     """Field of View (imaging position) within a well.
 
     Each FOV represents a single imaging position/site within a well.
@@ -1407,7 +1412,7 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
 
 
-class ROI(SQLModel, table=True):  # type: ignore[call-arg]
+class ROI(SQLModel, table=True):
     """Region of Interest (ROI) core metadata.
 
     Represents a single cell/neuron segmented from imaging data.
@@ -1479,7 +1484,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
 
-class Traces(SQLModel, table=True):  # type: ignore[call-arg]
+class Traces(SQLModel, table=True):
     """Fluorescence trace data for an ROI.
 
     Stores all time-series fluorescence measurements and derived traces.
@@ -1557,7 +1562,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
 
-class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+class DataAnalysis(SQLModel, table=True):
     """Container for data analysis results for an ROI.
 
     This class stores various analysis results related to an ROI,
@@ -1625,7 +1630,7 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
 
 
-class Mask(SQLModel, table=True):  # type: ignore[call-arg]
+class Mask(SQLModel, table=True):
     """Generic mask coordinate data.
 
     Stores spatial coordinates and dimensions for a mask (ROI or neuropil).

@@ -179,7 +179,7 @@ class _AnalysisGUI(QWidget):
     # PUBLIC METHODS ------------------------------------------------------------------
 
     @property
-    def from_metadata(self):  # noqa: ANN202
+    def from_metadata(self) -> None:
         """Signal emitted when the 'Load From Metadata' button is clicked."""
         return self._experiment_type_wdg.from_metadata
 
@@ -462,9 +462,9 @@ class _ExperimentTypeWidget(QWidget):
     # PUBLIC METHODS ------------------------------------------------------------------
 
     @property
-    def from_metadata(self):  # noqa: ANN202
+    def from_metadata(self) -> None:
         """Signal emitted when the 'Load From Metadata' button is clicked."""
-        return self._from_meta_btn.clicked
+        return self._from_meta_btn.clicked  # type: ignore
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""

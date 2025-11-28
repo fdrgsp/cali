@@ -425,7 +425,7 @@ def _export_inferred_spikes_data(
     rows = {}
     for well_fov, rois in data.items():
         for roi_key, roi_data in rois.items():
-            if (spikes := _get_spikes_over_threshold(roi_data, raw)) is None:  # type: ignore[call-arg]
+            if (spikes := _get_spikes_over_threshold(roi_data, raw)) is None:  # type: ignore[call-arg, arg-type]
                 continue
             row_name = f"{well_fov}_{roi_key}"
             rows[row_name] = spikes

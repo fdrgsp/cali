@@ -329,7 +329,7 @@ class CaliGui(QMainWindow):
             graph.roiSelected.connect(self._highlight_roi)
 
         # connect analysis from metadata button
-        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
+        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)  # type: ignore
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
@@ -1040,8 +1040,7 @@ class CaliGui(QMainWindow):
                     if existing:
                         existing.color = color
                         condition_cache[key] = existing
-                        return existing
-
+                        return existing  # type: ignore
                     # 3) Create new condition and add to session
                     cond = Condition(
                         name=name,

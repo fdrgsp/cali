@@ -467,7 +467,7 @@ def _get_spikes_over_threshold(
 
     if raw:
         # Return raw inferred spikes
-        return inferred_spikes
+        return inferred_spikes  # type: ignore[no-any-return]
 
     spikes_thresholded = []
     for spike in inferred_spikes:

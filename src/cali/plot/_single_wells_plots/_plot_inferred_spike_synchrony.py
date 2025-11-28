@@ -177,8 +177,8 @@ def _get_spike_trains_from_rois(
         if rois is not None:
             stmt = stmt.where(col(ROI.id).in_(rois))
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),  # type: ignore
-            selectinload(ROI.data_analysis_history),  # type: ignore
+            selectinload(ROI.traces_history),
+            selectinload(ROI.data_analysis_history),
         )
         roi_results = session.exec(stmt).all()
 
