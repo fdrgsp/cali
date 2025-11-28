@@ -1018,7 +1018,7 @@ class CaliRunner:
         fovs : Iterable[FOV]
             FOVs with ROIs to analyze (from detection or loaded from DB)
         """
-        cali_logger.info("📊 Running extraction...")
+        cali_logger.info("📈 Running extraction...")
         yield from self._extraction_runner.run(
             dataset=dataset,
             extraction_settings=extraction_settings,

@@ -22,6 +22,7 @@ from cali.sqlmodel import (
 from cali.util import load_fovs_from_database, update_fovs_in_database
 from cali.util._util import load_data_from_path
 
+THREADS = 1
 
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
     """Test manual execution of the pipeline components."""
@@ -71,7 +72,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
 
         # 2. Extraction
         extraction_runner = ExtractionRunner()
-        extraction_settings = ExtractionSettings(dff_window=150, threads=1)
+        extraction_settings = ExtractionSettings(dff_window=150, threads=THREADS)
 
         # We need to load FOVs from DB to get the ROIs created in step 1
         fovs_for_extraction = load_fovs_from_database(engine, positions_to_process)
@@ -88,7 +89,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
 
         # 3. Analysis
         analysis_runner = AnalysisRunner()
-        analysis_settings = AnalysisSettings(peaks_height_value=2, threads=1)
+        analysis_settings = AnalysisSettings(peaks_height_value=2, threads=THREADS)
 
         # Load FOVs again to get traces created in step 2
         fovs_for_analysis = load_fovs_from_database(engine, positions_to_process)

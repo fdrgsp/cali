@@ -59,6 +59,8 @@ if TYPE_CHECKING:
 
 TempDB = tuple[Engine, Path]
 
+THREADS = 1
+
 # ==================== Fixtures ====================
 
 
@@ -1058,7 +1060,7 @@ def test_model_stimulated_mask_area() -> None:
     from cali.sqlmodel._model import AnalysisSettings, Mask
 
     # Test with no mask
-    settings = AnalysisSettings()
+    settings = AnalysisSettings(threads=THREADS)
     assert settings.stimulated_mask_area() is None
 
     # Test with mask
@@ -1069,7 +1071,7 @@ def test_model_stimulated_mask_area() -> None:
         width=10,
         mask_type="stimulation",
     )
-    settings = AnalysisSettings(stimulation_mask=mask)
+    settings = AnalysisSettings(stimulation_mask=mask, threads=THREADS)
     result = settings.stimulated_mask_area()
     assert result is not None
     assert result.shape == (10, 10)
@@ -1201,6 +1203,7 @@ def test_analysis_settings_evoked_fields(temp_db: TempDB) -> None:
         led_pulse_duration=50.0,
         led_pulse_powers=[5.0, 10.0],
         led_pulse_on_frames=[100, 200],
+        threads=THREADS,
     )
 
     with Session(engine) as session:
@@ -1415,6 +1418,7 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
         settings = AnalysisSettings(
             stimulation_mask_path="/path/to/stimulation_mask.tif",
             stimulation_mask=stim_mask,
+            threads=THREADS,
         )
 
         session.add(settings)
@@ -1438,7 +1442,7 @@ def test_analysis_settings_without_stimulation_mask(temp_db: TempDB) -> None:
 
     with Session(engine) as session:
         # Create analysis settings without stimulation mask
-        settings = AnalysisSettings()
+        settings = AnalysisSettings(threads=THREADS)
 
         session.add(settings)
         session.commit()

@@ -23,7 +23,7 @@ from cali.sqlmodel import (
 )
 from cali.util import load_data_from_path
 
-# Cellpose model type for testing
+THREADS = 1
 MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
 
@@ -106,10 +106,12 @@ def test_cali_runner_full_pipeline(
         neuropil_inner_radius=2,
         neuropil_min_pixels=50,
         dff_window=100,
+        threads=THREADS,
     )
 
     analysis_settings = AnalysisSettings(
         peaks_prominence_multiplier=3.0,
+        threads=THREADS,
     )
 
     # Run full pipeline
@@ -175,6 +177,7 @@ def test_cali_runner_incremental(
     extraction_settings = ExtractionSettings(
         neuropil_inner_radius=2,
         neuropil_min_pixels=50,
+        threads=THREADS,
     )
 
     runner.run(
@@ -207,6 +210,7 @@ def test_analysis_runner_direct() -> None:
 
     analysis_settings = AnalysisSettings(
         peaks_prominence_multiplier=3.0,
+        threads=THREADS,
     )
 
     # Create dummy FOV with ROI and Traces
@@ -286,7 +290,9 @@ def test_cali_runner_overwrite(
     """Test overwriting existing database."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type=MODEL, diameter=30.0
+        method="cellpose",
+        model_type=MODEL,
+        diameter=30.0,
     )
 
     # First run
@@ -430,8 +436,7 @@ def test_cali_runner_upgrading(
 
     # 2. Extraction Only (Upgrade)
     extraction_settings = ExtractionSettings(
-        neuropil_inner_radius=2,
-        neuropil_min_pixels=50,
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
     )
     runner.run(
         experiment=test_experiment,
@@ -444,7 +449,9 @@ def test_cali_runner_upgrading(
     )
 
     # 3. Analysis (Upgrade)
-    analysis_settings = AnalysisSettings(peaks_prominence_multiplier=3.0)
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
 
     # Need to get extraction settings ID
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -506,7 +513,7 @@ def test_analysis_runner_error() -> None:
         runner, "_analyze_roi_traces", side_effect=ValueError("Test Error")
     ):
         # Should not raise, but log error
-        runner.run([fov], analysis_settings=AnalysisSettings())
+        runner.run([fov], analysis_settings=AnalysisSettings(threads=THREADS))
 
     # Verify no analysis added
     assert not hasattr(roi, "_new_data_analysis") or len(roi._new_data_analysis) == 0
@@ -689,7 +696,7 @@ def test_extraction_runner_error() -> None:
         runner, "_analyze_position", side_effect=Exception("Extraction Error")
     ):
         # Should log error
-        list(runner.run(dataset, ExtractionSettings(), [fov]))
+        list(runner.run(dataset, ExtractionSettings(threads=THREADS), [fov]))
 
 
 def test_cali_runner_stimulation_mask(
@@ -712,8 +719,7 @@ def test_cali_runner_stimulation_mask(
     )
 
     extraction_settings = ExtractionSettings(
-        neuropil_inner_radius=2,
-        neuropil_min_pixels=50,
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
     )
 
     analysis_settings = AnalysisSettings(
@@ -721,6 +727,7 @@ def test_cali_runner_stimulation_mask(
         peaks_height_mode="std",
         peaks_distance=10,
         stimulation_mask_path=str(mask_path),
+        threads=THREADS,
     )
 
     # Run full pipeline
@@ -828,8 +835,7 @@ def test_extraction_runner_cancel(
     )
 
     extraction_settings = ExtractionSettings(
-        neuropil_inner_radius=2,
-        neuropil_min_pixels=50,
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
     )
 
     # Start run in a thread
@@ -934,7 +940,7 @@ def test_analysis_runner_no_traces() -> None:
     roi.traces_history = []
     fov = FOV(id=1, name="FOV_01", position_index=0, rois=[roi])
 
-    analysis_settings = AnalysisSettings()
+    analysis_settings = AnalysisSettings(threads=THREADS)
 
     # Should log warning and continue
     results = list(runner.run([fov], analysis_settings))
@@ -967,7 +973,7 @@ def test_analysis_runner_cancel() -> None:
     roi.traces_history = [traces]
     fov = FOV(id=1, name="FOV_01", position_index=0, rois=[roi])
 
-    analysis_settings = AnalysisSettings()
+    analysis_settings = AnalysisSettings(threads=THREADS)
 
     # Patch _analyze_roi_traces to be slow
     original_analyze = runner._analyze_roi_traces
