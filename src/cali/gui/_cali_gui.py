@@ -63,13 +63,12 @@ from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
+from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
-    CaliRunSettings,
     _ElapsedTimer,
     _ProgressBarWidget,
-    _RunCaliWidget,
     show_error_dialog,
 )
 
