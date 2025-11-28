@@ -8,6 +8,7 @@ Key optimizations:
 """
 
 import gc
+import sys
 from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
@@ -213,7 +214,6 @@ def test_cali_runner_full_pipeline_mocked(
         engine.dispose()
 
 
-# @pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_cali_runner_incremental_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
@@ -283,7 +283,7 @@ def test_cali_runner_incremental_mocked(
 # SLOW TEST (runs real cellpose for coverage)
 # =============================================================================
 
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Test takes too long on Windows")
 def test_cali_runner_real_cellpose(
     test_db_path: Path, test_experiment: Experiment, data_path: Path
 ) -> None:
