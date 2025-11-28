@@ -53,7 +53,16 @@ jobs:
       - name: Run Tests
         run: uv run --no-sync coverage run -p -m pytest -v --color=yes
 
-      - name: Coverage
+      - name: Combine & generate coverage XML
+        run: |
+          uv run --no-sync coverage combine
+          uv run --no-sync coverage xml
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: ${{ matrix.platform }}-py${{ matrix.python-version }}
+          fail_ci_if_error: true
+
