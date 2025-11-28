@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import mplcursors
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -79,20 +79,16 @@ def _plot_cell_size_data(
     with Session(engine) as session:
         # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
+        if run_id is None:
+            cali_logger.warning("No run_id provided for cell size plot.")
+            return
 
-        # Build query to get ROIs for this FOV with eager loading of related data
-        stmt = (
-            select(ROI)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .options(
-                selectinload(ROI.data_analysis_history),  # type: ignore
-            )
-        )
+        result = session.get(CaliResult, run_id)
+        if result:
+            detection_settings_id = result.detection_settings
+
+        # Build query to get ROIs for this FOV
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
 
         # Filter by specific ROIs if requested
         if rois is not None:
@@ -110,14 +106,11 @@ def _plot_cell_size_data(
     units = ""
 
     for roi in roi_models:
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-        if data_analysis is None or data_analysis.cell_size is None:
+        if roi.cell_size is None:
             continue
-        if not units and data_analysis.cell_size_units:
-            units = data_analysis.cell_size_units
-        ax.scatter(
-            roi.label_value, data_analysis.cell_size, label=f"ROI {roi.label_value}"
-        )
+        if not units and roi.cell_size_units:
+            units = roi.cell_size_units
+        ax.scatter(roi.label_value, roi.cell_size, label=f"ROI {roi.label_value}")
 
     ax.set_xlabel("ROI")
     ax.set_xticks([])

@@ -10,6 +10,7 @@ import numpy as np
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -87,12 +88,16 @@ def _plot_neuropil_traces(
 
     # Query database for ROI data
     with Session(engine) as session:
+        if run_id is None:
+            cali_logger.warning("No run_id provided for neuropil traces plot.")
+            return
+
         # Get detection_settings_id from the run if run_id is provided
+        result = session.get(CaliResult, run_id)
+
         detection_settings_id: int | None = None
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings
+        if result:
+            detection_settings_id = result.detection_settings
 
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (
@@ -135,7 +140,7 @@ def _plot_neuropil_traces(
         ax.text(
             0.5,
             0.5,
-            "No neuropil traces available.\nNeuropil correction may not be enabled.",
+            "No neuropil traces available.",
             ha="center",
             va="center",
             fontsize=12,

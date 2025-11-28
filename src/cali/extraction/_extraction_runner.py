@@ -14,6 +14,7 @@ from cali._constants import (
     EVENT_KEY,
     RUNNER_TIME_KEY,
 )
+from cali.analysis._util import get_overlap_roi_with_stimulated_area
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.readers._tiff_collection_reader import TiffCollectionReader
@@ -28,10 +29,7 @@ from cali.sqlmodel._model import (
 from cali.util import coordinates_to_mask, mask_to_coordinates
 
 from ._neuropil import create_neuropil_from_dilation
-from ._util import (
-    calculate_dff,
-    get_overlap_roi_with_stimulated_area,
-)
+from ._util import calculate_dff
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -547,17 +545,6 @@ class ExtractionRunner:
         if self._check_for_abort_requested():
             return None
 
-        # check if the roi is stimulated
-        # STIMULATION_AREA_THRESHOLD = 0.5
-        roi_stimulation_overlap_ratio = 0.0
-        stimulated_area_mask = extraction_settings.stimulated_mask_area()
-        if stimulated_area_mask is not None:
-            roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                stimulated_area_mask, label_mask
-            )
-        # consider the roi stimulated if more than 10% of the roi overlaps
-        is_roi_stimulated = roi_stimulation_overlap_ratio > 0.1
-
         # Create Traces object (extraction product)
         traces = Traces(
             raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
@@ -577,7 +564,7 @@ class ExtractionRunner:
         # Optionally perform analysis (peak detection, IEI, frequency)
         data_analysis = None
         active = False
-        stimulated = is_roi_stimulated
+        stimulated = False
 
         if analysis_settings is not None:
             # Import analysis functions
@@ -587,6 +574,16 @@ class ExtractionRunner:
                 compute_peak_detection_thresholds,
                 detect_peaks_in_trace,
             )
+
+            # check if the roi is stimulated
+            roi_stimulation_overlap_ratio = 0.0
+            stimulated_area_mask = analysis_settings.stimulated_mask_area()
+            if stimulated_area_mask is not None:
+                roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
+                    stimulated_area_mask, label_mask
+                )
+            # consider the roi stimulated if more than 10% of the roi overlaps
+            stimulated = roi_stimulation_overlap_ratio > 0.1
 
             # Compute thresholds
             (

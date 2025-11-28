@@ -192,7 +192,7 @@ def _plot_stimulated_rois(
 ) -> None:
     """Plot the ROIs with stimulated and non-stimulated areas."""
     # get the labels file path
-    labels_image_path = widget._plate_viewer.pv_labels_path
+    labels_image_path = widget._plate_viewer.pv_labels_path 
     if labels_image_path is None:
         return
 

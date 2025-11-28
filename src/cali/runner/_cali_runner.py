@@ -398,17 +398,95 @@ class CaliRunner:
 
                 # 7. Run extraction if settings provided
                 if extraction_settings is not None:
-                    # Ensure stimulation_mask is loaded and detach settings for thread
-                    # safety. This prevents "session is in committed state" errors in
-                    # threads
-                    if extraction_settings.stimulation_mask:
-                        session.expunge(extraction_settings.stimulation_mask)
+                    # Eagerly load all scalar attributes before detaching
+                    # This prevents DetachedInstanceError when accessing later
+                    _ = (
+                        extraction_settings.threads,
+                        extraction_settings.neuropil_inner_radius,
+                        extraction_settings.neuropil_min_pixels,
+                        extraction_settings.neuropil_correction_factor,
+                        extraction_settings.decay_constant,
+                        extraction_settings.dff_window,
+                    )
+
+                    # Detach settings for thread safety
+                    # This prevents "session is in committed state" errors in threads
                     session.expunge(extraction_settings)
 
                     if analysis_settings is not None:
+                        # Eagerly load all scalar attributes before detaching
+                        _ = (
+                            analysis_settings.threads,
+                            analysis_settings.peaks_height_value,
+                            analysis_settings.peaks_height_mode,
+                            analysis_settings.peaks_distance,
+                            analysis_settings.peaks_prominence_multiplier,
+                            analysis_settings.calcium_sync_jitter_window,
+                            analysis_settings.calcium_network_threshold,
+                            analysis_settings.spike_threshold_value,
+                            analysis_settings.spike_threshold_mode,
+                            analysis_settings.burst_threshold,
+                            analysis_settings.burst_min_duration,
+                            analysis_settings.burst_gaussian_sigma,
+                            analysis_settings.spikes_sync_cross_corr_lag,
+                            analysis_settings.experiment_type,
+                            analysis_settings.stimulation_mask_path,
+                            analysis_settings.led_power_equation,
+                            analysis_settings.led_pulse_duration,
+                            analysis_settings.led_pulse_powers,
+                            analysis_settings.led_pulse_on_frames,
+                        )
+
+                        # Load stimulation mask from file if path provided but
+                        # mask not yet loaded
+                        if (
+                            analysis_settings.stimulation_mask_path
+                            and analysis_settings.stimulation_mask is None
+                        ):
+                            import tifffile
+
+                            from cali.sqlmodel._model import Mask
+                            from cali.util import mask_to_coordinates
+
+                            stim_mask_file = Path(
+                                analysis_settings.stimulation_mask_path
+                            )
+                            if stim_mask_file.exists():
+                                # Load and convert stimulation mask
+                                stim_mask_array = tifffile.imread(str(stim_mask_file))
+                                coords, shape = mask_to_coordinates(
+                                    stim_mask_array.astype(bool)
+                                )
+
+                                # Create and attach Mask object
+                                stimulation_mask = Mask(
+                                    coords_y=coords[0],
+                                    coords_x=coords[1],
+                                    height=shape[0],
+                                    width=shape[1],
+                                    mask_type="stimulation",
+                                )
+                                session.add(stimulation_mask)
+                                session.flush()  # Get the mask ID
+                                analysis_settings.stimulation_mask = stimulation_mask
+                                analysis_settings.stimulation_mask_id = (
+                                    stimulation_mask.id
+                                )
+                                session.add(analysis_settings)
+                                session.commit()
+                                cali_logger.info(
+                                    f"🎭 Loaded stimulation mask from "
+                                    f"{stim_mask_file.name}"
+                                )
+
+                        # Ensure stimulation_mask is detached for thread safety
+                        if analysis_settings.stimulation_mask:
+                            session.expunge(analysis_settings.stimulation_mask)
                         session.expunge(analysis_settings)
 
-                    yield "📈 Running Extraction..."
+                    yield "📈 Running Extraction" + (
+                        " and Analysis..." if analysis_settings else "..."
+                    )
 
                     # Determine which positions need extraction/analysis
                     # Use analysis_settings_id if doing analysis,
@@ -448,9 +526,7 @@ class CaliRunner:
                     # ensure utilization but not too large to consume too much memory.
                     # Default to commit_batch_size, but ensure min of threads
                     assert extraction_threads is not None
-                    batch_size = max(
-                        self.commit_batch_size, extraction_threads
-                    )
+                    batch_size = max(self.commit_batch_size, extraction_threads)
 
                     positions_processed = []
                     fov_count = 0
@@ -814,9 +890,7 @@ class CaliRunner:
                 )
                 cali_logger.error(msg)
                 raise ValueError(msg)
-            cali_logger.info(
-                f"♻️ Reusing existing ExtractionSettings ID {existing.id}"
-            )
+            cali_logger.info(f"♻️ Reusing existing ExtractionSettings ID {existing.id}")
             return existing
 
         elif extraction_settings.id is None:

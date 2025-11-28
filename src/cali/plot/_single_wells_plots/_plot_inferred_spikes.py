@@ -7,6 +7,7 @@ import numpy as np
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -100,69 +101,45 @@ def _plot_inferred_spikes(
     with Session(engine) as session:
         roi_data = []  # List of (ROI, Traces, DataAnalysis)
 
-        if run_id is not None:
-            # Optimized query
-            stmt = (
-                select(ROI, Traces, DataAnalysis)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    Traces,
-                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-                )
-                .join(
-                    DataAnalysis,
-                    (DataAnalysis.roi_id == ROI.id)
-                    & (DataAnalysis.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
+        if run_id is None:
+            cali_logger.warning("No run_id provided for inferred spikes plot.")
+            return
+
+        # Optimized query
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-            if active_only:
-                stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-
-            stmt = stmt.order_by(col(ROI.label_value))
-
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy behavior
-            stmt = (
-                select(ROI)
-                .join(FOV)
-                .where(col(FOV.name) == fov_name)
-                .options(
-                    selectinload(ROI.traces_history),
-                    selectinload(ROI.data_analysis_history),
-                )
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
             )
+            .where(col(FOV.name) == fov_name)
+        )
 
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-            if active_only:
-                stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+        if active_only:
+            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
 
-            stmt = stmt.order_by(col(ROI.label_value))
+        stmt = stmt.order_by(col(ROI.label_value))
 
-            roi_models = session.exec(stmt).all()
-
-            for r in roi_models:
-                t = _get_traces_for_run(r, None)
-                da = _get_data_analysis_for_run(r, None)
-                if t and da:
-                    roi_data.append((r, t, da))
+        results = session.exec(stmt).all()
+        roi_data = results
 
     # compute percentiles for normalization if needed
     p1 = p2 = 0.0
     if normalize:
         all_values = []
-        for _, _, data_analysis in roi_data:
-            if data_analysis and data_analysis.inferred_spikes:
+        for _, traces, data_analysis in roi_data:
+            if data_analysis and traces.inferred_spikes:
                 # Use inferred_spikes as the spike data
-                spike_data = data_analysis.inferred_spikes
+                spike_data = traces.inferred_spikes
                 if raw:
                     # For raw, use all values above 0
                     spike_values = [s for s in spike_data if s > 0]
@@ -183,7 +160,7 @@ def _plot_inferred_spikes(
     last_trace: list[float] | None = None
 
     for roi, traces, data_analysis in roi_data:
-        if data_analysis is None or not data_analysis.inferred_spikes:
+        if data_analysis is None or not traces.inferred_spikes:
             continue
 
         if data_analysis.total_recording_time_sec is not None:
@@ -191,11 +168,11 @@ def _plot_inferred_spikes(
 
         # Get spike data based on raw/thresholded mode
         if raw:
-            spike_data = [s if s > 0 else 0 for s in data_analysis.inferred_spikes]
+            spike_data = [s if s > 0 else 0 for s in traces.inferred_spikes]
         else:
             threshold = data_analysis.inferred_spikes_threshold or 0
             spike_data = [
-                s if s > threshold else 0 for s in data_analysis.inferred_spikes
+                s if s > threshold else 0 for s in traces.inferred_spikes
             ]
 
         _plot_trace(
@@ -213,7 +190,7 @@ def _plot_inferred_spikes(
             _plot_trace(
                 ax, str(roi.label_value), traces.dec_dff, normalize, count, p1, p2
             )
-        last_trace = data_analysis.inferred_spikes
+        last_trace = traces.inferred_spikes
         count += 1
 
     _set_graph_title_and_labels(ax, normalize, raw)
@@ -367,50 +344,34 @@ def _plot_inferred_spikes_normalized_with_bursts(
     with Session(engine) as session:
         roi_data = []
 
-        if run_id is not None:
-            stmt = (
-                select(ROI, Traces, DataAnalysis)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    Traces,
-                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-                )
-                .join(
-                    DataAnalysis,
-                    (DataAnalysis.roi_id == ROI.id)
-                    & (DataAnalysis.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
-                .where(col(ROI.active) == True)  # noqa: E712
+        if run_id is None:
+            cali_logger.warning(
+                "No run_id provided for inferred spikes normalized with bursts plot."
             )
+            return
 
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-            stmt = stmt.order_by(col(ROI.label_value))
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy fallback
-            stmt = (
-                select(ROI)
-                .join(FOV)
-                .where(col(FOV.name) == fov_name)
-                .where(col(ROI.active) == True)  # noqa: E712
-                .options(
-                    selectinload(ROI.traces_history),
-                    selectinload(ROI.data_analysis_history),
-                )
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
-            stmt = stmt.order_by(col(ROI.label_value))
-            roi_models = session.exec(stmt).all()
-            for r in roi_models:
-                t = _get_traces_for_run(r, None)
-                da = _get_data_analysis_for_run(r, None)
-                if t and da:
-                    roi_data.append((r, t, da))
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+            .where(col(ROI.active) == True)  # noqa: E712
+        )
+
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        stmt = stmt.order_by(col(ROI.label_value))
+        results = session.exec(stmt).all()
+        roi_data = results
 
     if not roi_data:
         widget.figure.tight_layout()
@@ -421,11 +382,11 @@ def _plot_inferred_spikes_normalized_with_bursts(
     spike_trains = []
     recording_time_sec = 0.0
 
-    for _, _, data_analysis in roi_data:
-        if data_analysis and data_analysis.inferred_spikes:
+    for _, traces, data_analysis in roi_data:
+        if data_analysis and traces.inferred_spikes:
             threshold = data_analysis.inferred_spikes_threshold or 0
             spike_data = [
-                s if s > threshold else 0 for s in data_analysis.inferred_spikes
+                s if s > threshold else 0 for s in traces.inferred_spikes
             ]
             spike_trains.append(spike_data)
             if data_analysis.total_recording_time_sec:

@@ -16,14 +16,14 @@ from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
 
 if TYPE_CHECKING:
-    from cali.sqlmodel._model import Traces
-
+    from cali.sqlmodel._model import ROI, Traces
 from ._trace_analysis import (
     calculate_frequency,
     calculate_inter_event_intervals,
     compute_peak_detection_thresholds,
     detect_peaks_in_trace,
 )
+from ._util import get_overlap_roi_with_stimulated_area
 
 
 class AnalysisRunner:
@@ -190,18 +190,18 @@ class AnalysisRunner:
 
             # Analyze the traces
             analysis_data = self._analyze_roi_traces(
-                traces=traces, analysis_settings=analysis_settings
+                traces=traces, analysis_settings=analysis_settings, roi=roi
             )
 
             if analysis_data is not None:
-                data_analysis, active = analysis_data
+                data_analysis, active, stimulated = analysis_data
 
                 # Store analysis in temporary list (similar to extraction pattern)
                 if not hasattr(roi, "_new_data_analysis"):
                     roi._new_data_analysis = []  # type: ignore
                 roi._new_data_analysis.append(data_analysis)  # type: ignore
                 roi.active = active
-                # roi.stimulated is already set during extraction, don't override
+                roi.stimulated = stimulated
 
         return fov
 
@@ -209,7 +209,8 @@ class AnalysisRunner:
         self,
         traces: "Traces",
         analysis_settings: AnalysisSettings,
-    ) -> tuple[DataAnalysis, bool] | None:
+        roi: "ROI",
+    ) -> tuple[DataAnalysis, bool, bool] | None:
         """Analyze traces for a single ROI.
 
         Parameters
@@ -218,12 +219,13 @@ class AnalysisRunner:
             Traces object with dec_dff, inferred_spikes, etc.
         analysis_settings : AnalysisSettings
             Analysis parameters
+        roi : ROI
+            ROI object containing the mask for stimulation overlap check
 
         Returns
         -------
-        tuple[DataAnalysis, bool] | None
-            (DataAnalysis, active) or None if processing fails.
-            Note: roi.stimulated is already set during extraction.
+        tuple[DataAnalysis, bool, bool] | None
+            (DataAnalysis, active, stimulated) or None if processing fails.
         """
         if self._check_for_abort_requested():
             return None
@@ -266,8 +268,32 @@ class AnalysisRunner:
         # Calculate frequency
         frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
 
-        # Calculate IEI
-        iei = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+        # Calculate IEI (convert from ms to sec)
+        iei_ms = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+        iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
+
+        # Check if the ROI is stimulated (evoked experiments only)
+        stimulated = False
+        stimulated_area_mask = analysis_settings.stimulated_mask_area()
+        if stimulated_area_mask is not None and roi.roi_mask is not None:
+            # Get label mask from ROI mask coordinates
+            from cali.util import coordinates_to_mask
+
+            if (
+                roi.roi_mask.coords_y is not None
+                and roi.roi_mask.coords_x is not None
+                and roi.roi_mask.height is not None
+                and roi.roi_mask.width is not None
+            ):
+                label_mask = coordinates_to_mask(
+                    (roi.roi_mask.coords_y, roi.roi_mask.coords_x),
+                    (roi.roi_mask.height, roi.roi_mask.width),
+                )
+                roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
+                    stimulated_area_mask, label_mask
+                )
+                # Consider the ROI stimulated if more than 10% overlaps
+                stimulated = roi_stimulation_overlap_ratio > 0.1
 
         # Create DataAnalysis object
         data_analysis = DataAnalysis(
@@ -283,4 +309,4 @@ class AnalysisRunner:
 
         active = len(peaks_dec_dff) > 0
 
-        return (data_analysis, active)
+        return (data_analysis, active, stimulated)

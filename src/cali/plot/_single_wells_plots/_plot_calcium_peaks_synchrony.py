@@ -169,13 +169,6 @@ def _plot_peak_event_synchrony_data(
         f"(Calcium Peaks Events - Jitter Window Method)\n"
     )
 
-    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1)
-    cbar = widget.figure.colorbar(
-        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
-        ax=ax,
-    )
-    cbar.set_label("Peak Event Synchrony Index")
-
     ax.set_title(title)
     ax.set_ylabel("ROI")
     ax.set_yticklabels([])

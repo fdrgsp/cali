@@ -100,14 +100,12 @@ def _generate_spike_raster_plot(
     active_rois = []
     # loop over the ROI models and get the spike events for each ROI
     for roi, traces, data_analysis in roi_data:
-        if data_analysis is None or not data_analysis.inferred_spikes:
+        if data_analysis is None or not traces.inferred_spikes:
             continue
 
         # Get thresholded spikes (values above threshold)
         threshold = data_analysis.inferred_spikes_threshold or 0
-        thresholded_spikes = [
-            s if s > threshold else 0 for s in data_analysis.inferred_spikes
-        ]
+        thresholded_spikes = [s if s > threshold else 0 for s in traces.inferred_spikes]
 
         if not any(s > 0 for s in thresholded_spikes):
             continue
@@ -152,7 +150,7 @@ def _generate_spike_raster_plot(
 
     if not event_data:
         cali_logger.warning(
-            "No spike data available for the selected ROIs. "
+            "No spike data available for the selected ROIs.\n"
             "Please check the data or ROI selection."
         )
         return
@@ -206,11 +204,11 @@ def _generate_spike_amplitude_colors(
     norm_amp_color = Normalize(vmin=min_amp, vmax=vmax)
     cmap = colormaps.get_cmap("viridis")
 
-    for _, _, data_analysis in roi_data:
-        if data_analysis and data_analysis.inferred_spikes:
+    for _, traces, data_analysis in roi_data:
+        if data_analysis and traces.inferred_spikes:
             threshold = data_analysis.inferred_spikes_threshold or 0
             thresholded_spikes = [
-                s if s > threshold else 0 for s in data_analysis.inferred_spikes
+                s if s > threshold else 0 for s in traces.inferred_spikes
             ]
 
             # Get individual spike amplitudes and create colors for each spike event

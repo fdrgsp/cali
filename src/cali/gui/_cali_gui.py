@@ -69,6 +69,7 @@ from ._util import (
     _ElapsedTimer,
     _ProgressBarWidget,
     _RunCaliWidget,
+    CaliRunSettings,
     show_error_dialog,
 )
 
@@ -328,7 +329,7 @@ class CaliGui(QMainWindow):
             graph.roiSelected.connect(self._highlight_roi)
 
         # connect analysis from metadata button
-        self._extraction_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
+        self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
@@ -368,9 +369,9 @@ class CaliGui(QMainWindow):
         # db_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results.cali"
         # self._initialize_from_database(db_path, data_path)
 
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
+        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/evoked/results.cali"
+        self._output_path = "tests/test_data/evoked/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
@@ -695,6 +696,7 @@ class CaliGui(QMainWindow):
         try:
             # Get current selections to preserve them
             current_value = self._run_cali_wdg.value()
+            current_run_option = self._get_run_option(current_value)
             preserve_detection_selection = current_value.detection_settings_id
             preserve_extraction_selection = current_value.extraction_settings_id
 
@@ -732,6 +734,10 @@ class CaliGui(QMainWindow):
 
             self._run_cali_wdg.populate_detection_settings(settings_list)
 
+            # Restore run option selection
+            combo = self._run_cali_wdg._run_options_combo
+            combo.setCurrentIndex(current_run_option)
+
             # Restore detection selection if it still exists
             if preserve_detection_selection is not None:
                 combo = self._run_cali_wdg._detection_settings_combo
@@ -755,6 +761,18 @@ class CaliGui(QMainWindow):
         except Exception as e:
             cali_logger.error(f"Failed to populate detection settings: {e}")
 
+    def _get_run_option(self, value: CaliRunSettings) -> int:
+        """Get the current run option from the run widget."""
+        if value.run_detection and value.run_extraction and value.run_analysis:
+            return 0  # all
+        if value.run_detection and value.run_extraction:
+            return 1  # detection + extraction
+        if value.run_detection and not value.run_analysis and not value.run_extraction:
+            return 2 # detection only
+        if value.run_extraction and not value.run_detection and not value.run_analysis:
+            return 3 # extraction only
+        return 4  # analysis only
+
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
 
     def _on_cali_run_clicked(self) -> None:
@@ -763,7 +781,6 @@ class CaliGui(QMainWindow):
             self._data is None
             or self._database_path is None
             or self._data.sequence is None
-            or self._sub_tab.currentIndex() not in {0, 1}
         ):
             return
 
@@ -794,29 +811,25 @@ class CaliGui(QMainWindow):
                 self._analysis_wdg.to_model_settings() if value.run_analysis else None
             )
 
-            # Validate evoked experiment settings(only when creating new settings)
-            if extraction_settings is not None and not isinstance(
-                extraction_settings, int
-            ):
+            if extraction_settings is not None and analysis_settings is not None:
                 from cali._constants import EVOKED
 
-                if extraction_settings.experiment_type == EVOKED:
+                if analysis_settings.experiment_type == EVOKED:
                     missing_fields = []
                     # Check for required evoked experiment fields
-                    if not extraction_settings.stimulation_mask_path:
+                    if not analysis_settings.stimulation_mask_path:
                         missing_fields.append("Stimulation mask (Extraction tab)")
-                    if analysis_settings is not None:
-                        if not analysis_settings.led_pulse_duration:
-                            missing_fields.append("LED pulse duration (Analysis tab)")
-                        if not analysis_settings.led_pulse_powers:
-                            missing_fields.append("LED pulse powers (Analysis tab)")
-                        if not analysis_settings.led_pulse_on_frames:
-                            missing_fields.append("LED pulse on frames (Analysis tab)")
+                    if not analysis_settings.led_pulse_duration:
+                        missing_fields.append("LED pulse duration (Analysis tab)")
+                    if not analysis_settings.led_pulse_powers:
+                        missing_fields.append("LED pulse powers (Analysis tab)")
+                    if not analysis_settings.led_pulse_on_frames:
+                        missing_fields.append("LED pulse on frames (Analysis tab)")
                     if missing_fields:
                         msg = (
                             "Evoked experiment type selected but required fields are "
                             "missing:\n\n"
-                            + "\n".join(f"  • {field}" for field in missing_fields)
+                            + "\n".join(f"{field}" for field in missing_fields)
                             + "\n\nPlease configure these settings in the "
                             "Extraction tab."
                         )
@@ -886,23 +899,6 @@ class CaliGui(QMainWindow):
             show_error_dialog(self, msg)
             cali_logger.error(msg)
 
-    def _enable(self, state: bool) -> None:
-        """Enable or disable the GUI during a run."""
-        # Switch to Detection & Analysis tab and prevent tab changes
-        self._main_tab.setCurrentIndex(0)
-        # Enable/disable tab bar to prevent switching (but keep tab content viewable)
-        if tab_bar := self._main_tab.tabBar():
-            tab_bar.setEnabled(state)
-        # Disable input widgets in Detection & Analysis tab
-        self._detection_wdg.setEnabled(state)
-        self._extraction_wdg.setEnabled(state)
-        self._run_cali_wdg.enable(state)
-        # Disable other GUI components
-        self._fov_table.setEnabled(state)
-        self._plate_view.setEnabled(state)
-        self._image_viewer.setEnabled(state)
-        self._runs_panel.setEnabled(state)
-
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
         if progress.startswith("PROGRESS:RESET"):
@@ -933,17 +929,16 @@ class CaliGui(QMainWindow):
         else:
             error_msg = str(error)
 
-        cali_logger.error(f"❌ Runner encountered an error during execution:\n{error}")
+        cali_logger.error(f"❌ Runner encountered an error during execution:\n{error_msg}")
 
         # Also show error dialog to user
-        show_error_dialog(self, f"Runner Error:\n\n{error_msg}")
+        show_error_dialog(self, f"Runner Error:\n\n{error}")
 
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
         cali_logger.info("✅ Runner finished successfully.")
         self._elapsed_timer.stop()
-        # self._run_cali_wdg.reset_progress_bar()
         self._run_cali_wdg.set_progress_bar_text("Run Finished")
         # refresh the runs panel
         self._runs_panel.refresh_runs()
@@ -986,6 +981,7 @@ class CaliGui(QMainWindow):
             detection_id, extraction_id, analysis_id
         )
 
+        # Refresh the FOV table selection to update the display
         self._on_fov_table_selection_changed()
 
     def _save_plate_map_to_database(self) -> None:
@@ -1093,6 +1089,24 @@ class CaliGui(QMainWindow):
             # This will reload labels if the FOV still exists with remaining data
             self._on_fov_table_selection_changed()
 
+    def _enable(self, state: bool) -> None:
+        """Enable or disable the GUI during a run."""
+        # Switch to Detection & Analysis tab and prevent tab changes
+        self._main_tab.setCurrentIndex(0)
+        # Enable/disable tab bar to prevent switching (but keep tab content viewable)
+        if tab_bar := self._main_tab.tabBar():
+            tab_bar.setEnabled(state)
+        # Disable widgets in Detection, Extraction, Analysis and Run Cali
+        self._detection_wdg.setEnabled(state)
+        self._extraction_wdg.setEnabled(state)
+        self._analysis_wdg.setEnabled(state)
+        self._run_cali_wdg.enable(state)
+        # Disable other GUI components
+        self._fov_table.setEnabled(state)
+        self._plate_view.setEnabled(state)
+        self._image_viewer.setEnabled(state)
+        self._runs_panel.setEnabled(state)
+
     # DATA INITIALIZATION--------------------------------------------------------------
 
     def _show_data_input_dialog(self) -> None:
@@ -1169,7 +1183,15 @@ class CaliGui(QMainWindow):
         """Update all graph widgets with the current database path and engine."""
         from sqlmodel import create_engine
 
-        # Create SQLAlchemy engine for database queries
+        # Dispose old engines to ensure connections are closed
+        for sw_graph in self.SW_GRAPHS:
+            if sw_graph.engine is not None:
+                sw_graph.engine.dispose(close=True)
+        for mw_graph in self.MW_GRAPHS:
+            if mw_graph.engine is not None:
+                mw_graph.engine.dispose(close=True)
+
+        # Create new SQLAlchemy engine for database queries
         engine = create_engine(
             f"sqlite:///{database_path}",
             echo=False,
@@ -1177,12 +1199,17 @@ class CaliGui(QMainWindow):
             pool_pre_ping=True,
         )
 
+        # Update all graph widgets with new database path and engine
         for sw_graph in self.SW_GRAPHS:
             sw_graph.database_path = database_path
             sw_graph.engine = engine
+            # Refresh the plot with new data
+            sw_graph._on_combo_changed(sw_graph._combo.currentText())
         for mw_graph in self.MW_GRAPHS:
             mw_graph.database_path = database_path
             mw_graph.engine = engine
+            # Refresh the plot with new data
+            mw_graph._on_combo_changed(mw_graph._combo.currentText())
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
@@ -1298,7 +1325,6 @@ class CaliGui(QMainWindow):
             # Load and apply extraction settings
             if result.extraction_settings:
                 from cali.gui._extraction_gui import (
-                    ExperimentTypeData,
                     ExtractionSettingsData,
                     TraceExtractionData,
                 )
@@ -1311,14 +1337,6 @@ class CaliGui(QMainWindow):
 
                 self._extraction_wdg.setValue(
                     ExtractionSettingsData(
-                        experiment_type_data=ExperimentTypeData(
-                            experiment_type=e_settings.experiment_type,
-                            led_power_equation=None,
-                            led_pulse_duration=None,
-                            led_pulse_on_frames=None,
-                            led_pulse_powers=None,
-                            stimulation_area_path=e_settings.stimulation_mask_path,
-                        ),
                         trace_extraction_data=TraceExtractionData(
                             dff_window_size=e_settings.dff_window,
                             decay_constant=e_settings.decay_constant,
@@ -1333,7 +1351,11 @@ class CaliGui(QMainWindow):
 
             # Load and apply analysis settings
             if result.analysis_settings:
-                from cali.gui._extraction_gui import CalciumPeaksData, SpikeData
+                from cali.gui._analysis_gui import (
+                    CalciumPeaksData,
+                    ExperimentTypeData,
+                    SpikeData,
+                )
 
                 a_settings = AnalysisSettings.load_from_database(
                     self._database_path, id=result.analysis_settings
@@ -1342,6 +1364,14 @@ class CaliGui(QMainWindow):
 
                 self._analysis_wdg.setValue(
                     AnalysisSettingsData(
+                        experiment_type_data=ExperimentTypeData(
+                            experiment_type=a_settings.experiment_type,
+                            led_power_equation=a_settings.led_power_equation,
+                            led_pulse_duration=a_settings.led_pulse_duration,
+                            led_pulse_on_frames=a_settings.led_pulse_on_frames,
+                            led_pulse_powers=a_settings.led_pulse_powers,
+                            stimulation_area_path=a_settings.stimulation_mask_path,
+                        ),
                         calcium_peaks_data=CalciumPeaksData(
                             peaks_height=a_settings.peaks_height_value,
                             peaks_height_mode=a_settings.peaks_height_mode,
@@ -1405,7 +1435,7 @@ class CaliGui(QMainWindow):
             meta = sequence.metadata.get(PYMMCW_METADATA_KEY, {})
             led_meta = cast("dict", meta.get("stimulation", {}))
             if led_meta:
-                wdg = self._extraction_wdg._experiment_type_wdg
+                wdg = self._analysis_wdg._experiment_type_wdg
 
                 # pulse duration
                 if led_duration := led_meta.get("led_pulse_duration", None):
@@ -1669,7 +1699,11 @@ class CaliGui(QMainWindow):
 
                     # Build ROI mask
                     for roi in rois:
-                        if roi.roi_mask and roi.roi_mask.coords_y and roi.roi_mask.coords_x:
+                        if (
+                            roi.roi_mask
+                            and roi.roi_mask.coords_y
+                            and roi.roi_mask.coords_x
+                        ):
                             coords = (roi.roi_mask.coords_y, roi.roi_mask.coords_x)
                             roi_binary_mask = coordinates_to_mask(coords, shape)
                             roi_mask[roi_binary_mask] = roi.label_value
@@ -1697,7 +1731,8 @@ class CaliGui(QMainWindow):
                             # Only include traces from ROIs matching detection_settings_id
                             if (
                                 trace.roi
-                                and trace.roi.detection_settings_id == detection_settings_id
+                                and trace.roi.detection_settings_id
+                                == detection_settings_id
                                 and trace.neuropil_mask
                                 and trace.neuropil_mask.coords_y
                                 and trace.neuropil_mask.coords_x
@@ -1706,9 +1741,13 @@ class CaliGui(QMainWindow):
                                     trace.neuropil_mask.coords_y,
                                     trace.neuropil_mask.coords_x,
                                 )
-                                neuropil_binary_mask = coordinates_to_mask(coords, shape)
+                                neuropil_binary_mask = coordinates_to_mask(
+                                    coords, shape
+                                )
                                 # Use the ROI's label_value
-                                neuropil_mask[neuropil_binary_mask] = trace.roi.label_value
+                                neuropil_mask[neuropil_binary_mask] = (
+                                    trace.roi.label_value
+                                )
 
                     # Return masks (None if empty)
                     roi_result = roi_mask if roi_mask.max() > 0 else None

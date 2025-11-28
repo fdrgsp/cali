@@ -140,16 +140,19 @@ def _get_burst_parameters(
 
     with Session(engine) as session:
         # Get the AnalysisSettings from the run
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result and result.analysis_settings is not None:
-                settings = session.get(AnalysisSettings, result.analysis_settings)
-                if settings:
-                    return (
-                        settings.burst_threshold,
-                        settings.burst_min_duration,
-                        settings.burst_gaussian_sigma,
-                    )
+        if run_id is None:
+            cali_logger.warning("No run_id provided for burst parameters retrieval.")
+            return None
+
+        result = session.get(CaliResult, run_id)
+        if result and result.analysis_settings is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings)
+            if settings:
+                return (
+                    settings.burst_threshold,
+                    settings.burst_min_duration,
+                    settings.burst_gaussian_sigma,
+                )
 
         # Fallback: get settings from the first available run
         stmt = (
@@ -215,6 +218,7 @@ def _get_population_spike_data(
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.traces_history),  # type: ignore
             selectinload(ROI.data_analysis_history),  # type: ignore
         )
         roi_results = session.exec(stmt).all()
@@ -225,15 +229,18 @@ def _get_population_spike_data(
     rois_rec_time: list[float] = []
 
     for roi in roi_results:
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-        if data_analysis is None or not data_analysis.inferred_spikes:
+        # Get traces for this run
+        traces = _get_traces_for_run(roi, run_id)
+        if traces is None or not traces.inferred_spikes:
             continue
 
-        # Get thresholded spike data
-        threshold = data_analysis.inferred_spikes_threshold or 0
-        thresholded_spikes = [
-            s if s > threshold else 0 for s in data_analysis.inferred_spikes
-        ]
+        # Get threshold from DataAnalysis if available
+        data_analysis = _get_data_analysis_for_run(roi, run_id)
+        threshold = data_analysis.inferred_spikes_threshold if data_analysis else 0
+        threshold = threshold or 0
+
+        # Get thresholded spike data from Traces
+        thresholded_spikes = [s if s > threshold else 0 for s in traces.inferred_spikes]
 
         # Convert spike probabilities to binary spike train
         spike_train = (np.array(thresholded_spikes) > 0.0).astype(float)
@@ -243,7 +250,7 @@ def _get_population_spike_data(
             max_length = max(max_length, len(spike_train))
 
             # Store recording time for time axis calculation
-            if data_analysis.total_recording_time_sec is not None:
+            if data_analysis and data_analysis.total_recording_time_sec is not None:
                 rois_rec_time.append(data_analysis.total_recording_time_sec)
 
     if len(spike_trains) < 2:
@@ -440,7 +447,7 @@ def _add_burst_statistics_legend(
     # Add text box below the plot, under the x-axis label
     ax.text(
         0.5,
-        -0.22,
+        -0.25,
         stats_text,
         transform=ax.transAxes,
         fontsize=10,

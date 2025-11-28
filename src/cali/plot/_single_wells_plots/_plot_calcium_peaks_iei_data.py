@@ -6,7 +6,7 @@ import mplcursors
 import numpy as np
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
-
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -81,53 +81,31 @@ def _plot_iei_data(
     with Session(engine) as session:
         roi_data = []  # List of (ROI, DataAnalysis)
 
-        if run_id is not None:
-            # Optimized query
-            stmt = (
-                select(ROI, DataAnalysis)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    DataAnalysis,
-                    (DataAnalysis.roi_id == ROI.id)
-                    & (DataAnalysis.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
+        if run_id is None:
+            cali_logger.warning("No run_id provided for IEI plot.")
+            return
+
+        # Optimized query
+        stmt = (
+            select(ROI, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
             )
+            .where(col(FOV.name) == fov_name)
+        )
 
-            # Filter by specific ROIs if requested
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-            # Order by label_value for consistent plotting
-            stmt = stmt.order_by(col(ROI.label_value))
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
 
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy behavior
-            # Build query to get ROIs for this FOV with eager loading of related data
-            stmt = (
-                select(ROI)
-                .join(FOV)
-                .where(col(FOV.name) == fov_name)
-                .options(
-                    selectinload(ROI.data_analysis_history),  # type: ignore
-                )
-            )
-
-            # Filter by specific ROIs if requested
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-            # Order by label_value for consistent plotting
-            stmt = stmt.order_by(col(ROI.label_value))
-
-            roi_models = session.exec(stmt).all()
-
-            for r in roi_models:
-                da = _get_data_analysis_for_run(r, None)
-                if da:
-                    roi_data.append((r, da))
+        results = session.exec(stmt).all()
+        roi_data = results
 
     for roi, data_analysis in roi_data:
         _plot_metrics(ax, roi, data_analysis)

@@ -50,6 +50,7 @@ class _BrowseWidget(QWidget):
         label: str = "",
         path: str | None = None,
         tooltip: str = "",
+        file_filter: str = "",
         *,
         is_dir: bool = True,
     ) -> None:
@@ -60,6 +61,8 @@ class _BrowseWidget(QWidget):
         self._current_path = path or ""
 
         self._label_text = label
+
+        self._file_filter = file_filter
 
         self._label = QLabel(f"{self._label_text}:")
         self._label.setSizePolicy(*FIXED)
@@ -101,6 +104,8 @@ class _BrowseWidget(QWidget):
             path, _ = QFileDialog.getOpenFileName(
                 self,
                 f"Select the {self._label_text}.",
+                "",
+                self._file_filter,
             )
             if path:
                 self._path.setText(path)
@@ -402,8 +407,6 @@ class _RunCaliWidget(QWidget):
         self._run_options_combo.currentTextChanged.connect(self._on_run_option_changed)
 
         # Detection settings selector (for Extraction/Analysis-only modes)
-        self._detection_settings_lbl = QLabel("Detection ID:")
-        self._detection_settings_lbl.setSizePolicy(*FIXED)
         self._detection_settings_combo = QComboBox()
         self._detection_settings_combo.setToolTip(
             "Select which detection results to use.\n\n"
@@ -411,12 +414,9 @@ class _RunCaliWidget(QWidget):
             "(method, parameters) used to identify ROIs. Required for \n"
             "extraction-only and analysis-only modes."
         )
-        self._detection_settings_lbl.setVisible(False)
         self._detection_settings_combo.setVisible(False)
 
         # Extraction settings selector (for Analysis-only mode)
-        self._extraction_settings_lbl = QLabel("Extraction ID:")
-        self._extraction_settings_lbl.setSizePolicy(*FIXED)
         self._extraction_settings_combo = QComboBox()
         self._extraction_settings_combo.setToolTip(
             "Select which extraction results to use for analysis.\n\n"
@@ -424,7 +424,6 @@ class _RunCaliWidget(QWidget):
             "(neuropil correction, ΔF/F0 parameters) used. Required for \n"
             "analysis-only mode."
         )
-        self._extraction_settings_lbl.setVisible(False)
         self._extraction_settings_combo.setVisible(False)
 
         run_options_layout = QHBoxLayout(run_options_wdg)
@@ -432,9 +431,7 @@ class _RunCaliWidget(QWidget):
         run_options_layout.setSpacing(5)
         run_options_layout.addWidget(self._run_options_lbl)
         run_options_layout.addWidget(self._run_options_combo)
-        run_options_layout.addWidget(self._detection_settings_lbl)
         run_options_layout.addWidget(self._detection_settings_combo)
-        run_options_layout.addWidget(self._extraction_settings_lbl)
         run_options_layout.addWidget(self._extraction_settings_combo)
 
         # main layout
@@ -681,11 +678,9 @@ class _RunCaliWidget(QWidget):
         )
 
         show_detection = is_extraction_only or is_analysis_only
-        self._detection_settings_lbl.setVisible(show_detection)
         self._detection_settings_combo.setVisible(show_detection)
 
         # Show extraction settings only for "Analysis Only"
-        self._extraction_settings_lbl.setVisible(is_analysis_only)
         self._extraction_settings_combo.setVisible(is_analysis_only)
 
         # Auto-select if only one option available

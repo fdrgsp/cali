@@ -1055,11 +1055,11 @@ def test_json_to_db_error_handling(tmp_path: Path) -> None:
 
 
 def test_model_stimulated_mask_area() -> None:
-    """Test ExtractionSettings.stimulated_mask_area method."""
-    from cali.sqlmodel._model import ExtractionSettings, Mask
+    """Test AnalysisSettings.stimulated_mask_area method."""
+    from cali.sqlmodel._model import AnalysisSettings, Mask
 
     # Test with no mask
-    settings = ExtractionSettings()
+    settings = AnalysisSettings()
     assert settings.stimulated_mask_area() is None
 
     # Test with mask
@@ -1070,7 +1070,7 @@ def test_model_stimulated_mask_area() -> None:
         width=10,
         mask_type="stimulation",
     )
-    settings = ExtractionSettings(stimulation_mask=mask)
+    settings = AnalysisSettings(stimulation_mask=mask)
     result = settings.stimulated_mask_area()
     assert result is not None
     assert result.shape == (10, 10)
@@ -1399,7 +1399,7 @@ def test_roi_with_masks(temp_db: TempDB) -> None:
 
 
 def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
-    """Test ExtractionSettings with stimulation mask."""
+    """Test AnalysisSettings with stimulation mask."""
     engine, _ = temp_db
 
     with Session(engine) as session:
@@ -1412,8 +1412,8 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
             mask_type="stimulation",
         )
 
-        # Create extraction settings with stimulation mask
-        settings = ExtractionSettings(
+        # Create analysis settings with stimulation mask
+        settings = AnalysisSettings(
             stimulation_mask_path="/path/to/stimulation_mask.tif",
             stimulation_mask=stim_mask,
         )
@@ -1422,7 +1422,7 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
         session.commit()
 
         # Retrieve and verify
-        result = session.exec(select(ExtractionSettings)).first()
+        result = session.exec(select(AnalysisSettings)).first()
         assert result is not None
         assert result.stimulation_mask_path == "/path/to/stimulation_mask.tif"
         assert result.stimulation_mask is not None
@@ -1434,18 +1434,18 @@ def test_analysis_settings_with_stimulation_mask(temp_db: TempDB) -> None:
 
 
 def test_analysis_settings_without_stimulation_mask(temp_db: TempDB) -> None:
-    """Test ExtractionSettings without stimulation mask (optional field)."""
+    """Test AnalysisSettings without stimulation mask (optional field)."""
     engine, _ = temp_db
 
     with Session(engine) as session:
-        # Create extraction settings without stimulation mask
-        settings = ExtractionSettings()
+        # Create analysis settings without stimulation mask
+        settings = AnalysisSettings()
 
         session.add(settings)
         session.commit()
 
         # Retrieve and verify
-        result = session.exec(select(ExtractionSettings)).first()
+        result = session.exec(select(AnalysisSettings)).first()
         assert result is not None
         assert result.stimulation_mask_path is None
         assert result.stimulation_mask is None

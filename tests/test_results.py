@@ -731,17 +731,15 @@ def test_analysis_settings_spontaneous_fields() -> None:
 
 
 def test_analysis_settings_experiment_type() -> None:
-    """Test ExtractionSettings with experiment_type field."""
+    """Test AnalysisSettings with experiment_type field."""
     from cali._constants import EVOKED
 
-    settings_evoked = ExtractionSettings(
+    settings_evoked = AnalysisSettings(
         experiment_type=EVOKED,
-        dff_window=100,
     )
 
-    settings_spont = ExtractionSettings(
+    settings_spont = AnalysisSettings(
         experiment_type=SPONTANEOUS,
-        dff_window=100,
     )
 
     assert settings_evoked.experiment_type == EVOKED

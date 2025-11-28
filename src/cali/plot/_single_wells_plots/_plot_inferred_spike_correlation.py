@@ -12,7 +12,7 @@ from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 
-from cali.plot._util import _get_data_analysis_for_run
+from cali.plot._util import _get_data_analysis_for_run, _get_traces_for_run
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -67,19 +67,22 @@ def _calculate_spike_cross_correlation(
         if rois is not None:
             stmt = stmt.where(col(ROI.id).in_(rois))
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
+            selectinload(ROI.traces_history),  # type: ignore
             selectinload(ROI.data_analysis_history),  # type: ignore
         )
         roi_results = session.exec(stmt).all()
 
     # Extract spike trains for the active ROIs
     for roi in roi_results:
-        # Get data_analysis for the specified run
+        # Get traces and data_analysis for the specified run
+        traces = _get_traces_for_run(roi, run_id)
         data_analysis = _get_data_analysis_for_run(roi, run_id)
-        if data_analysis is None:
+
+        if traces is None or data_analysis is None:
             continue
 
-        # Get thresholded spike data
-        inferred_spikes = data_analysis.inferred_spikes
+        # Get spike data from Traces and threshold from DataAnalysis
+        inferred_spikes = traces.inferred_spikes
         inferred_spikes_threshold = data_analysis.inferred_spikes_threshold
 
         if inferred_spikes is None or inferred_spikes_threshold is None:

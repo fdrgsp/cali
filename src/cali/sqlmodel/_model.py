@@ -848,22 +848,14 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Decay constant for deconvolution
     dff_window : int
         Window size for ΔF/F baseline calculation
-    stimulation_mask_path : str | None
-        Path to stimulation mask file (for GUI/reference)
-    experiment_type : str
-        Type of experiment: "Spontaneous Activity" or "Evoked Activity"
     threads : int
         Number of threads to use for analysis (default: 1)
-    experiment_id : int
-        Foreign key to parent experiment
     """
 
     __tablename__ = "extraction_settings"
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
-
-    experiment_type: str = Field(default=SPONTANEOUS, index=True)
 
     neuropil_inner_radius: int = 0
     neuropil_min_pixels: int = 0
@@ -872,23 +864,7 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
     decay_constant: float = 0.0
     dff_window: int = DEFAULT_DFF_WINDOW
 
-    stimulation_mask_path: str | None = None
-
     threads: int = Field(default=1)
-
-    # Foreign keys
-    stimulation_mask_id: int | None = Field(
-        default=None, foreign_key="mask.id", index=True
-    )
-
-    # Relationships
-
-    stimulation_mask: Optional["Mask"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[ExtractionSettings.stimulation_mask_id]",
-            "lazy": "selectin",
-        }
-    )
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
@@ -899,13 +875,11 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         if not isinstance(other, ExtractionSettings):
             return False
         return (
-            self.experiment_type == other.experiment_type
-            and self.neuropil_inner_radius == other.neuropil_inner_radius
+            self.neuropil_inner_radius == other.neuropil_inner_radius
             and self.neuropil_min_pixels == other.neuropil_min_pixels
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
-            and self.stimulation_mask_path == other.stimulation_mask_path
             # and self.threads == other.threads
         )
 
@@ -913,32 +887,14 @@ class ExtractionSettings(SQLModel, table=True):  # type: ignore[call-arg]
         """Custom hash that excludes id and created_at for consistency with __eq__."""
         return hash(
             (
-                self.experiment_type,
                 self.neuropil_inner_radius,
                 self.neuropil_min_pixels,
                 self.neuropil_correction_factor,
                 self.decay_constant,
                 self.dff_window,
-                self.stimulation_mask_path,
                 # self.threads,
             )
         )
-
-    def stimulated_mask_area(self) -> np.ndarray | None:
-        from cali.util import coordinates_to_mask
-
-        if (
-            (stim_mask := self.stimulation_mask)
-            and stim_mask.coords_y is not None
-            and stim_mask.coords_x is not None
-            and stim_mask.height is not None
-            and stim_mask.width is not None
-        ):
-            return coordinates_to_mask(
-                (stim_mask.coords_y, stim_mask.coords_x),
-                (stim_mask.height, stim_mask.width),
-            )
-        return None
 
     @classmethod
     def load_from_database(
@@ -1058,6 +1014,14 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
         Number of threads to use for analysis (default: 1)
     experiment_id : int
         Foreign key to parent experiment
+    stimulation_mask_id : int | None
+        Foreign key to stimulation mask (if any)
+    stimulation_mask : Mask | None
+        Relationship to stimulation mask (if any)
+    experiment_type : str
+        Type of experiment ("spontaneous" or "evoked")
+    stimulation_mask_path : str | None
+        Path to stimulation mask file (if any)
     """
 
     __tablename__ = "analysis_settings"
@@ -1079,12 +1043,27 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: int = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
 
+    experiment_type: str = Field(default=SPONTANEOUS, index=True)
+    stimulation_mask_path: str | None = None
     led_power_equation: str | None = None
     led_pulse_duration: float | None = None
     led_pulse_powers: list[float] | None = Field(default=None, sa_column=Column(JSON))
     led_pulse_on_frames: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     threads: int = Field(default=1)
+
+    # Foreign keys
+    stimulation_mask_id: int | None = Field(
+        default=None, foreign_key="mask.id", index=True
+    )
+
+    # Relationships
+    stimulation_mask: Optional["Mask"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[AnalysisSettings.stimulation_mask_id]",
+            "lazy": "selectin",
+        }
+    )
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
@@ -1111,6 +1090,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
             and self.led_pulse_duration == other.led_pulse_duration
             and self.led_pulse_powers == other.led_pulse_powers
             and self.led_pulse_on_frames == other.led_pulse_on_frames
+            and self.experiment_type == other.experiment_type
+            and self.stimulation_mask_path == other.stimulation_mask_path
             # and self.threads == other.threads
         )
 
@@ -1134,6 +1115,8 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
                 self.led_pulse_duration,
                 tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
                 tuple(self.led_pulse_on_frames) if self.led_pulse_on_frames else None,
+                self.experiment_type,
+                self.stimulation_mask_path,
                 # self.threads,
             )
         )
@@ -1205,6 +1188,29 @@ class AnalysisSettings(SQLModel, table=True):  # type: ignore[call-arg]
             if our_session is not None:
                 our_session.close()
                 engine.dispose(close=True)  # type: ignore[possibly-undefined]
+
+    def stimulated_mask_area(self) -> np.ndarray | None:
+        """Get stimulation mask as numpy array.
+
+        Returns
+        -------
+        np.ndarray | None
+            Binary mask of stimulated area, or None if no mask defined.
+        """
+        from cali.util import coordinates_to_mask
+
+        if (
+            (stim_mask := self.stimulation_mask)
+            and stim_mask.coords_y is not None
+            and stim_mask.coords_x is not None
+            and stim_mask.height is not None
+            and stim_mask.width is not None
+        ):
+            return coordinates_to_mask(
+                (stim_mask.coords_y, stim_mask.coords_x),
+                (stim_mask.height, stim_mask.width),
+            )
+        return None
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
