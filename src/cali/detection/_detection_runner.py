@@ -126,7 +126,7 @@ class DetectionRunner:
         dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
-    ) -> list[FOV]:
+    ) -> Generator[FOV, None, None]:
         """Run CaImAn detection and return FOV results with ROIs and masks.
 
         Parameters
@@ -143,18 +143,27 @@ class DetectionRunner:
         list[FOV]
             List of FOV objects with ROIs and masks
         """
+        try:
+            import caiman
+        except ModuleNotFoundError as e:
+            cali_logger.error("CaImAn is not installed!")
+            raise ModuleNotFoundError(
+                "CaImAn detection requires the caiman package.\n\n"
+                "To install CaImAn:\n"
+                "• `uv sync --extra caiman`\n"
+                "• `pip install caiman`\n"
+            ) from e
+
         cali_logger.info("🔍 Running CaImAn detection...")
 
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
-        raise NotImplementedError("CaImAn detection coming soon!")
 
     def _run_cellpose(
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
-        cellpose_debug: bool = False,
     ) -> Generator[FOV, None, None]:
         """Run Cellpose segmentation and yield FOV results with ROIs and masks.
 
@@ -175,19 +184,19 @@ class DetectionRunner:
             FOV objects with ROIs and masks, ready to be saved to database
         """
         try:
-            from cellpose import core, io
+            from cellpose import core
             from cellpose.models import CellposeModel
-        except ImportError as e:
-            cali_logger.error(
-                "Cellpose is not installed. Please install Cellpose to use "
-                "Cellpose detection: `uv sync --extra cp4`."
-            )
-            raise e
+        except ModuleNotFoundError as e:
+            cali_logger.error("Cellpose is not installed!")
+            raise ModuleNotFoundError(
+                "Cellpose detection requires the cellpose package.\n\n"
+                "To install Cellpose:\n"
+                "• For Cellpose 4: `uv sync --extra cp4`\n"
+                "• For Cellpose 3: `uv sync --extra cp3`\n"
+                "• Or via pip: `pip install cellpose`"
+            ) from e
 
         cali_logger.info("🔍 Running Cellpose detection...")
-
-        if cellpose_debug:
-            io.logger_setup()
 
         use_gpu = core.use_gpu()
         cali_logger.info(f"🖥️ Use GPU: {use_gpu}")
