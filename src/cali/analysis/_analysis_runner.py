@@ -120,9 +120,7 @@ class AnalysisRunner:
                     cali_logger.info("🚮 Cancellation requested")
                     break
                 try:
-                    if (
-                        fov_result := analyze(analysis_settings, fov)
-                    ) is not None:
+                    if (fov_result := analyze(analysis_settings, fov)) is not None:
                         yield fov_result
                 except Exception:
                     import traceback

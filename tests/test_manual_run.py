@@ -24,6 +24,7 @@ from cali.util._util import load_data_from_path
 
 THREADS = 1
 
+
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
     """Test manual execution of the pipeline components."""
     # Setup paths

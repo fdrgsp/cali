@@ -5,8 +5,6 @@ It focuses on testing the database schema and settings equality, without
 requiring full detection/analysis pipeline integration.
 """
 
-from concurrent.futures import thread
-from operator import ne
 from pathlib import Path
 
 import pytest
@@ -21,6 +19,7 @@ from cali.sqlmodel._model import (
 )
 
 THREADS = 1
+
 
 @pytest.fixture
 def test_db(tmp_path: Path) -> Path:
@@ -102,7 +101,7 @@ def test_analysis_settings_equality() -> None:
         peaks_height_value=1.5,
         spike_threshold_value=2.0,
         burst_threshold=20.0,
-        threads=THREADS
+        threads=THREADS,
     )
 
     # Should be equal despite different created_at times
