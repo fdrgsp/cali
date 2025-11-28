@@ -213,7 +213,7 @@ def test_cali_runner_full_pipeline_mocked(
         engine.dispose()
 
 
-@pytest.mark.filterwarnings("ignore::ResourceWarning")
+# @pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_cali_runner_incremental_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
@@ -404,7 +404,7 @@ def test_detection_runner_error(data_path: Path) -> None:
         list(runner.run(dataset, settings, [0]))
 
 
-@pytest.mark.filterwarnings("ignore::ResourceWarning")
+# @pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_cali_runner_overwrite_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
@@ -639,7 +639,7 @@ def test_analysis_runner_error() -> None:
     assert not hasattr(roi, "_new_data_analysis") or len(roi._new_data_analysis) == 0
 
 
-@pytest.mark.filterwarnings("ignore::ResourceWarning")
+# @pytest.mark.filterwarnings("ignore::ResourceWarning")
 def test_cali_runner_batching_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
