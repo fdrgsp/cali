@@ -18,6 +18,7 @@ if sys.platform == "win32":
 
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication
+from useq import register_well_plates
 
 from cali.gui import CaliGui
 
@@ -27,6 +28,61 @@ if TYPE_CHECKING:
 
 
 CELLPOSE_ICON = Path(__file__).parent / "icons" / "cellpose_icon.png"
+
+
+# Register more useq-plates
+register_well_plates(
+    {
+        "1536-well": {
+            "rows": 32,
+            "columns": 48,
+            "well_spacing": 2.25,
+            "well_size": 1.55,
+        },
+        "dish-35mm-round": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 35.0,
+            "circular_wells": True,
+            "name": "dish-35mm-round",
+        },
+        "coverslip-18mm-round": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 18.0,
+            "circular_wells": True,
+            "name": "coverslip-18mm-round",
+        },
+        "coverslip-22mm-round": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 22.0,
+            "circular_wells": True,
+            "name": "coverslip-22mm-round",
+        },
+        # overvriting because in useq name and key are different and we need them same
+        "coverslip-18mm-square": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 18.0,
+            "circular_wells": False,
+            "name": "coverslip-18mm-square",
+        },
+        # overvriting because in useq name and key are different and we need them same
+        "coverslip-22mm-square": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 22.0,
+            "circular_wells": False,
+            "name": "coverslip-22mm-square",
+        },
+    }
+)
 
 
 def main(args: Sequence[str] | None = None) -> None:

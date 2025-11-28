@@ -13,6 +13,8 @@ from cali.sqlmodel._model import (
     ExtractionSettings,
 )
 
+THREADS = 1
+
 
 def test_launch_gui(qtbot: QtBot) -> None:
     """Test launching the Cali GUI."""
@@ -93,6 +95,7 @@ def temp_db_with_extraction(tmp_path: Path) -> Path:
             neuropil_correction_factor=0.7,
             decay_constant=0.5,
             dff_window=100,
+            threads=THREADS,
         )
         session.add(extraction_settings)
         session.commit()
@@ -138,6 +141,7 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
             neuropil_correction_factor=0.7,
             decay_constant=0.5,
             dff_window=100,
+            threads=THREADS,
         )
         session.add(extraction_settings)
         session.commit()
@@ -146,6 +150,7 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         analysis_settings = AnalysisSettings(
             peaks_prominence_multiplier=3.0,
             peaks_distance=10,
+            threads=THREADS,
         )
         session.add(analysis_settings)
         session.commit()

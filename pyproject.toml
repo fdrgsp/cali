@@ -146,7 +146,8 @@ filterwarnings = [
     "ignore:Failing to pass a value:DeprecationWarning",
     "ignore:Could not find cvxpy.*:UserWarning",
     "ignore:nperseg.*is greater than signal length:UserWarning",
-    "ignore::FutureWarning"
+    "ignore::FutureWarning",
+    "ignore:Conversion of an array with ndim > 0 to a scalar:DeprecationWarning",
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
