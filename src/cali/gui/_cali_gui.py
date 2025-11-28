@@ -931,7 +931,9 @@ class CaliGui(QMainWindow):
         else:
             error_msg = str(error)
 
-        cali_logger.error(f"❌ Runner encountered an error during execution:\n{error_msg}")
+        cali_logger.error(
+            f"❌ Runner encountered an error during execution:\n{error_msg}"
+        )
 
         # Also show error dialog to user
         show_error_dialog(self, f"Runner Error:\n\n{error}")

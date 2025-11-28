@@ -95,7 +95,9 @@ class DetectionRunner:
 
         assert isinstance(
             dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
-        ), "Data must be a TensorstoreZarrReader, OMEZarrReader, or TiffCollectionReader instance."
+        ), (
+            "Data must be a TensorstoreZarrReader, OMEZarrReader, or TiffCollectionReader instance."
+        )
 
         if detection_settings.method == "cellpose":
             yield from self._run_cellpose(

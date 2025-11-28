@@ -10,14 +10,12 @@ This script demonstrates how to:
 import tempfile
 from pathlib import Path
 
-from cv2 import exp
 import numpy as np
 import tifffile
 from rich import print
 
 from cali.readers import TiffCollectionReader, TiffCollectionSettings
 from cali.sqlmodel import Experiment, save_experiment_to_database
-from cali.util import load_data_from_path
 
 # Create temporary directory for this example
 with tempfile.TemporaryDirectory() as tmpdir:

@@ -175,11 +175,13 @@ class _RunsPanel(QGroupBox):
             f"Run #{result.id} - {created_at}\n"
             f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
         )
-        
+
         # Extraction status
         extraction_icon = "❌" if result.extraction_settings is None else "✅"
-        item_text += f"  {extraction_icon} Extraction ID: {result.extraction_settings}\n"
-        
+        item_text += (
+            f"  {extraction_icon} Extraction ID: {result.extraction_settings}\n"
+        )
+
         # Analysis status
         analysis_icon = "❌" if result.analysis_settings is None else "✅"
         item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings}"
