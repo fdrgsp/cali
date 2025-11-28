@@ -645,7 +645,7 @@ def test_cali_runner_batching_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test batching logic in CaliRunner with mocked detection."""
     runner = CaliRunner(commit_batch_size=2)
@@ -676,7 +676,7 @@ def test_cali_runner_commit_error_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling during batch commit with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -705,7 +705,7 @@ def test_cali_runner_process_batch_error_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling in _run_detection with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -734,7 +734,7 @@ def test_cali_runner_settings_reuse_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test reusing existing settings in CaliRunner with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -814,7 +814,7 @@ def test_cali_runner_stimulation_mask_mocked(
     test_experiment: Experiment,
     data_path: Path,
     tmp_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test loading stimulation mask from file with mocked detection."""
     import tifffile
@@ -876,7 +876,7 @@ def test_cali_runner_stimulation_mask_mocked(
 def test_detection_runner_2d_data(
     test_db_path: Path,
     test_experiment: Experiment,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test detection on 2D data (no time dimension)."""
     from unittest.mock import MagicMock, patch
@@ -917,6 +917,7 @@ def test_detection_runner_debug(
     test_experiment: Experiment,
     data_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test detection with debug logging enabled."""
     monkeypatch.setenv("CELLPOSE_DEBUG", "1")
@@ -942,7 +943,7 @@ def test_extraction_runner_cancel_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test cancellation during extraction with mocked detection."""
     import threading
@@ -999,7 +1000,7 @@ def test_cali_runner_settings_errors_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling for settings lookup with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -1127,7 +1128,7 @@ def test_extraction_runner_cancel_before_start_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test cancellation before extraction starts with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -1163,7 +1164,7 @@ def test_cali_runner_update_result_mocked(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test updating an existing analysis result with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
@@ -1220,7 +1221,7 @@ def test_settings_deduplication_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that identical settings are reused with mocked detection."""
     ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1261,7 +1262,7 @@ def test_settings_by_id_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test passing settings by ID with mocked detection."""
     from sqlmodel import SQLModel
@@ -1333,7 +1334,7 @@ def test_settings_object_with_id_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test passing settings object that already has an ID with mocked detection."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1389,7 +1390,7 @@ def test_result_upgrade_flow_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test upgrading result from detection -> extraction -> analysis."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1467,7 +1468,7 @@ def test_load_fovs_filtering_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that _load_fovs_from_db filters by detection settings."""
     ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1564,7 +1565,7 @@ def test_run_as_generator_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test running as a generator with mocked detection."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1602,7 +1603,7 @@ def test_extraction_analysis_settings_with_id_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test passing extraction/analysis settings objects with IDs."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1680,7 +1681,7 @@ def test_result_update_existing_mocked(
     test_experiment: Experiment,
     data_path: Path,
     runner: CaliRunner,
-    mock_detection_runner: MagicMock,  # type: ignore[no-untyped-def]
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test updating an existing result (exact match) with mocked detection."""
     from typing import Any
