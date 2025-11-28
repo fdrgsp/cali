@@ -18,6 +18,8 @@ from cali.sqlmodel._model import (
     ExtractionSettings,
 )
 
+THREADS = 1
+
 
 @pytest.fixture
 def test_db(tmp_path: Path) -> Path:
@@ -87,23 +89,19 @@ def test_analysis_settings_equality() -> None:
     import time
 
     as1 = AnalysisSettings(
-        dff_window=100,
         peaks_height_value=1.5,
         spike_threshold_value=2.0,
-        threads=4,
-        neuropil_inner_radius=5,
+        threads=THREADS,
         burst_threshold=20.0,
     )
 
     time.sleep(0.001)  # Ensure different timestamps
 
     as2 = AnalysisSettings(
-        dff_window=100,
         peaks_height_value=1.5,
         spike_threshold_value=2.0,
-        threads=4,
-        neuropil_inner_radius=5,
         burst_threshold=20.0,
+        threads=THREADS,
     )
 
     # Should be equal despite different created_at times
@@ -113,8 +111,7 @@ def test_analysis_settings_equality() -> None:
 
     # Different settings should not be equal
     as3 = AnalysisSettings(
-        dff_window=200,  # Different window
-        peaks_height_value=1.5,
+        peaks_height_value=2,
         spike_threshold_value=2.0,
         threads=4,
     )
@@ -564,11 +561,12 @@ def test_cali_result_progressive_upgrade(
                 method="cellpose", model_type="cpsam", diameter=30
             )
             e_settings = ExtractionSettings(
-                compute_neuropil=True,
-                neuropil_radius_inner=2.0,
-                neuropil_radius_outer=6.0,
+                neuropil_inner_radius=2,
+                neuropil_min_pixels=50,
+                neuropil_correction_factor=0.7,
+                threads=THREADS,
             )
-            a_settings = AnalysisSettings(dff_window=100)
+            a_settings = AnalysisSettings(threads=THREADS)
             session.add_all([d_settings, e_settings, a_settings])
             session.commit()
             session.refresh(d_settings)

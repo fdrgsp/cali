@@ -127,14 +127,17 @@ class AnalysisRunner:
             )
 
             for future in as_completed(futures):
+                # Check for cancellation at the start of each iteration
                 if cancel_event.is_set():
                     cali_logger.info(
                         "🚮 Cancellation requested, shutting down executor..."
                     )
+                    # Cancel pending futures and shutdown executor
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
 
                 try:
+                    # Commit the results to database if we got any
                     if (fov_result := future.result()) is not None:
                         yield fov_result
                 except Exception:

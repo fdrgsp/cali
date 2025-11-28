@@ -194,7 +194,6 @@ class ExtractionRunner:
                     full_tb = traceback.format_exc()
                     cali_logger.error(f"Exception in extraction thread: {full_tb}")
 
-        # Check if cancelled before finishing
         if cancel_event.is_set():
             cali_logger.info("❌ Run Cancelled")
 

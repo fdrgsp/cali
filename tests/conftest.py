@@ -7,6 +7,11 @@ preload torch here to ensure proper DLL loading order.
 """
 
 import sys
+from pathlib import Path
+
+import pytest
+
+from cali.sqlmodel import Experiment
 
 # Import torch before pytest-qt initializes on Windows
 if sys.platform == "win32":
@@ -15,3 +20,28 @@ if sys.platform == "win32":
     except (ImportError, OSError):
         # Torch/cellpose might not be installed, that's ok
         pass
+
+
+@pytest.fixture
+def data_path() -> Path:
+    """Return path to test data."""
+    path = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
+    if not path.exists():
+        pytest.skip(f"Test data not found at {path}")
+    return path
+
+
+@pytest.fixture
+def test_db_path(tmp_path: Path) -> Path:
+    """Create a test database path."""
+    return tmp_path / "test_runners.cali"
+
+
+@pytest.fixture
+def test_experiment(data_path: Path) -> Experiment:
+    """Create a test experiment."""
+    exp = Experiment.create_from_data(
+        name="Test Runner Experiment",
+        data_path=str(data_path),
+    )
+    return exp
