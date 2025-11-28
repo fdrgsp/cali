@@ -898,32 +898,19 @@ def test_detection_runner_2d_data(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
 
-    # Patch CellposeModel to avoid loading real model
-    # We patch where it is defined/imported
-    with patch("cellpose.models.CellposeModel") as MockModel:
-        mock_instance = MockModel.return_value
-        # Mock eval to return masks (list of arrays), flows, styles
-        # masks should be same shape as input image
-        mock_instance.eval.return_value = (
-            [np.zeros((100, 100), dtype=np.uint16)],
-            None,
-            None,
+    # Patch load_data_from_path to return our mock dataset
+    with patch(
+        "cali.runner._cali_runner.load_data_from_path", return_value=dataset
+    ):
+        # Run detection (cellpose is already mocked by mock_detection_runner fixture)
+        runner.run(
+            experiment=test_experiment,
+            dataset_path="dummy_path",
+            detection_settings=detection_settings,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[0],
         )
-
-        # Patch load_data_from_path to return our mock dataset
-        with patch(
-            "cali.runner._cali_runner.load_data_from_path", return_value=dataset
-        ):
-            # Run detection
-            # We expect it to run without error, even if it finds nothing
-            runner.run(
-                experiment=test_experiment,
-                dataset_path="dummy_path",
-                detection_settings=detection_settings,
-                database_name=test_db_path.name,
-                output_path=test_db_path.parent,
-                global_position_indices=[0],
-            )
 
 
 def test_detection_runner_debug(
