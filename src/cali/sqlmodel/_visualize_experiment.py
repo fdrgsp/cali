@@ -243,16 +243,6 @@ def _add_extraction_settings_to_tree(
     )
     settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
 
-    # Show experiment type
-    exp_type_emoji = "⚡" if settings.experiment_type == "Evoked Activity" else "✨"
-    exp_type_color = (
-        "green" if settings.experiment_type == "Evoked Activity" else "magenta"
-    )
-    settings_node.add(
-        f"{exp_type_emoji} Experiment type: [{exp_type_color}]"
-        f"{settings.experiment_type}[/{exp_type_color}]"
-    )
-
     if show_details:
         # Neuropil correction
         neuropil_node = settings_node.add("🔵 [blue]Neuropil Correction[/blue]")
@@ -264,13 +254,6 @@ def _add_extraction_settings_to_tree(
         processing_node = settings_node.add("📈 [blue]Signal Processing[/blue]")
         processing_node.add(f"ΔF/F window: {settings.dff_window}")
         processing_node.add(f"Decay constant: {settings.decay_constant}")
-
-        # Stimulation mask (if present)
-        if settings.stimulation_mask_id is not None:
-            stim_node = settings_node.add("⚡ [blue]Stimulation[/blue]")
-            stim_node.add("🎭 Stimulation mask: True")
-            if settings.stimulation_mask_path:
-                stim_node.add(f"Mask path: {settings.stimulation_mask_path}")
 
 
 def _add_analysis_settings_to_tree(
@@ -291,6 +274,16 @@ def _add_analysis_settings_to_tree(
         f"📊 [bold yellow]Analysis Settings (ID: {settings.id})[/bold yellow]"
     )
     settings_node.add(f"📅 Created: [dim]{settings.created_at}[/dim]")
+
+    # Show experiment type
+    exp_type_emoji = "⚡" if settings.experiment_type == "Evoked Activity" else "✨"
+    exp_type_color = (
+        "green" if settings.experiment_type == "Evoked Activity" else "magenta"
+    )
+    settings_node.add(
+        f"{exp_type_emoji} Experiment type: [{exp_type_color}]"
+        f"{settings.experiment_type}[/{exp_type_color}]"
+    )
 
     if show_details:
         # Peak detection

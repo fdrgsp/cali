@@ -366,22 +366,18 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
 # ==================== JSON Migration Tests ====================
 
 
-@pytest.mark.skip(
-    reason=(
-        "JSON migration references old field locations. "
-        "Needs update for ExtractionSettings refactor."
-    )
-)
 def test_load_analysis_from_json(tmp_path: Path) -> None:
     """Test loading analysis from JSON directory."""
     # Use evoked test data - copy to tmp_path to avoid conflicts
     import shutil
 
+    from cali._constants import EVOKED
     from cali.sqlmodel._json_to_db import load_analysis_from_json
     from cali.sqlmodel._model import (
         AnalysisSettings,
         CaliResult,
         DetectionSettings,
+        ExtractionSettings,
     )
     from cali.sqlmodel._util import load_experiment_from_database
 
@@ -420,16 +416,21 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
             assert detection_settings.method == "cellpose"
             assert detection_settings.model_type == "custom"
 
+            # Check ExtractionSettings was created
+            extraction_settings = session.exec(select(ExtractionSettings)).first()
+            assert extraction_settings is not None
+
             # Check AnalysisSettings was created
             analysis_settings = session.exec(select(AnalysisSettings)).first()
             assert analysis_settings is not None
-            assert analysis_settings.experiment_type == "Evoked Activity"
+            assert analysis_settings.experiment_type == EVOKED
 
             # Check CaliResult was created
             cali_result = session.exec(select(CaliResult)).first()
             assert cali_result is not None
             assert cali_result.experiment == loaded_exp.id
             assert cali_result.detection_settings == detection_settings.id
+            assert cali_result.extraction_settings == extraction_settings.id
             assert cali_result.analysis_settings == analysis_settings.id
 
             # Check plate structure

@@ -32,6 +32,7 @@ from ._model import (
     DataAnalysis,
     DetectionSettings,
     Experiment,
+    ExtractionSettings,
     Mask,
     Plate,
     Traces,
@@ -161,9 +162,10 @@ def load_analysis_from_json(
             )
             conditions[name] = cond
 
-    # 4. Load analysis settings
+    # 4. Load analysis and extraction settings
     settings_path = Path(output_path) / "settings.json"
     analysis_settings = None
+    extraction_settings = None
 
     if settings_path.exists():
         with open(settings_path) as f:
@@ -204,10 +206,20 @@ def load_analysis_from_json(
                 # If loading fails, just skip it (optional field)
                 print(f"Warning: Could not load stimulation mask: {e}")
 
+        # Create ExtractionSettings (extraction-related parameters)
+        extraction_settings = ExtractionSettings(
+            neuropil_inner_radius=settings_data.get("neuropil_inner_radius", 0),
+            neuropil_min_pixels=settings_data.get("neuropil_min_pixels", 0),
+            neuropil_correction_factor=settings_data.get(
+                "neuropil_correction_factor", 0.0
+            ),
+            decay_constant=settings_data.get("decay constant", 0.0),
+            dff_window=settings_data.get("dff_window", 30),
+        )
+
+        # Create AnalysisSettings (analysis-related parameters)
         analysis_settings = AnalysisSettings(
             experiment_type=experiment_type,
-            dff_window=settings_data.get("dff_window", 30),
-            decay_constant=settings_data.get("decay constant", 0.0),
             peaks_height_value=settings_data.get("peaks_height_value", 3.0),
             peaks_height_mode=settings_data.get("peaks_height_mode", "multiplier"),
             peaks_distance=settings_data.get("peaks_distance", 2),
@@ -229,11 +241,6 @@ def load_analysis_from_json(
             ),
             calcium_sync_jitter_window=settings_data.get(
                 "calcium_sync_jitter_window", 5
-            ),
-            neuropil_inner_radius=settings_data.get("neuropil_inner_radius", 0),
-            neuropil_min_pixels=settings_data.get("neuropil_min_pixels", 0),
-            neuropil_correction_factor=settings_data.get(
-                "neuropil_correction_factor", 0.0
             ),
             led_power_equation=settings_data.get("led_power_equation") or None,
             stimulation_mask=stimulation_mask,
@@ -399,6 +406,7 @@ def load_analysis_from_json(
 
         saved_exp_id = None
         saved_analysis_settings_id = None
+        saved_extraction_settings_id = None
         saved_detection_settings_id = None
         try:
             with Session(engine) as session:
@@ -412,6 +420,13 @@ def load_analysis_from_json(
                 session.add(detection_settings)
                 session.commit()
                 saved_detection_settings_id = detection_settings.id
+
+                # Add extraction_settings if it exists
+                # (it's not part of experiment tree)
+                if extraction_settings:
+                    session.add(extraction_settings)
+                    session.commit()  # Commit settings first
+                    saved_extraction_settings_id = extraction_settings.id
 
                 # Add analysis_settings if it exists
                 # (it's not part of experiment tree)
@@ -446,6 +461,7 @@ def load_analysis_from_json(
                     analysis_result = CaliResult(
                         experiment=saved_exp_id,
                         detection_settings=saved_detection_settings_id,
+                        extraction_settings=saved_extraction_settings_id,  # May be None
                         analysis_settings=saved_analysis_settings_id,  # May be None
                         positions_analyzed=sorted(positions_analyzed),
                     )
