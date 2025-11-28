@@ -47,7 +47,6 @@ from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_
 from cali.sqlmodel._model import (
     AnalysisSettings,
     DataAnalysis,
-    ExtractionSettings,
     Mask,
     Traces,
 )
@@ -189,7 +188,6 @@ def test_experiment_creation(temp_db: TempDB) -> None:
 
 def test_experiment_create_from_data(tmp_path: Path) -> None:
     """Test Experiment.create_from_data classmethod."""
-    from cali._constants import SPONTANEOUS
 
     # Create experiment from test data
     exp = Experiment.create_from_data(
@@ -366,7 +364,9 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
 # ==================== JSON Migration Tests ====================
 
 
-@pytest.mark.skip(reason="JSON migration references old field locations (experiment_type in AnalysisSettings). Needs update for ExtractionSettings refactor.")
+@pytest.mark.skip(
+    reason="JSON migration references old field locations (experiment_type in AnalysisSettings). Needs update for ExtractionSettings refactor."
+)
 def test_load_analysis_from_json(tmp_path: Path) -> None:
     """Test loading analysis from JSON directory."""
     # Use evoked test data - copy to tmp_path to avoid conflicts
@@ -852,7 +852,6 @@ def test_large_trace_data(temp_db: TempDB) -> None:
 
 def test_full_workflow(tmp_path: Path) -> None:
     """Test complete workflow from creation to database to export."""
-    from cali._constants import SPONTANEOUS
 
     # 1. Create experiment from data
     exp = Experiment.create_from_data(
@@ -1280,7 +1279,7 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
 
         result = session.exec(select(ROI)).first()
         assert result.cell_size_units == "μm²"
-        
+
         data_analysis = session.exec(select(DataAnalysis)).first()
         assert data_analysis.total_recording_time_sec == 600.0
         assert data_analysis.peaks_amplitudes_dec_dff == [0.5, 0.6, 0.7]

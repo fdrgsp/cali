@@ -277,9 +277,7 @@ class TiffCollectionWidget(QDialog):
             The configured settings including file map, plate type, and metadata
         """
         if not self._tiff_files:
-            raise ValueError(
-                "No TIFF files have been set. Use set_tiff_files() first."
-            )
+            raise ValueError("No TIFF files have been set. Use set_tiff_files() first.")
 
         # Convert from (row, col) tuples to well names like "A1", "B2", etc.
         file_map: dict[str, list[Path | str]] = {}
@@ -300,7 +298,7 @@ class TiffCollectionWidget(QDialog):
             file_map=file_map,
             plate=plate,
             metadata=metadata,
-            tiff_folder_path=Path(self._tiff_files[0]).parent
+            tiff_folder_path=Path(self._tiff_files[0]).parent,
         )
         return TiffCollectionReader(settings)
 
