@@ -78,11 +78,15 @@ def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
 def mock_detection_runner():
     """Fixture that patches DetectionRunner to return mock FOVs quickly."""
     with patch(
-        "cali.detection._detection_runner.DetectionRunner._run_cellpose_detection"
+        "cali.detection._detection_runner.DetectionRunner._run_cellpose"
     ) as mock:
 
         def mock_detection(
-            dataset: Any, position_indices: list[int], *args: Any, **kwargs: Any
+            dataset: Any,
+            detection_settings: Any,
+            position_indices: list[int],
+            *args: Any,
+            **kwargs: Any,
         ) -> Iterator[FOV]:
             for pos_idx in position_indices:
                 yield create_mock_fov(pos_idx)
