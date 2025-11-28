@@ -36,11 +36,7 @@ def temp_db_with_detection(tmp_path: Path) -> Path:
         # Create experiment
         experiment = Experiment(
             name="Test Experiment",
-            data_path=str(tmp_path / "data.zarr"),
-            writer=0,
-            tiff_file_map=None,
-            tiff_folder_path=None,
-            plate_type=None,
+            description=f"Experiment from data at {tmp_path / 'data.zarr'}",
         )
         session.add(experiment)
         session.commit()
@@ -48,11 +44,10 @@ def temp_db_with_detection(tmp_path: Path) -> Path:
         # Create detection settings
         detection_settings = DetectionSettings(
             method="cellpose",
-            model="cyto3",
+            model_type="cyto3",
             diameter=30.0,
-            channels=[0, 0],
-            flow_threshold=0.4,
             cellprob_threshold=0.0,
+            flow_threshold=0.4,
         )
         session.add(detection_settings)
         session.commit()
@@ -75,11 +70,7 @@ def temp_db_with_extraction(tmp_path: Path) -> Path:
         # Create experiment
         experiment = Experiment(
             name="Test Experiment",
-            data_path=str(tmp_path / "data.zarr"),
-            writer=0,
-            tiff_file_map=None,
-            tiff_folder_path=None,
-            plate_type=None,
+            description=f"Experiment from data at {tmp_path / 'data.zarr'}",
         )
         session.add(experiment)
         session.commit()
@@ -87,23 +78,21 @@ def temp_db_with_extraction(tmp_path: Path) -> Path:
         # Create detection settings
         detection_settings = DetectionSettings(
             method="cellpose",
-            model="cyto3",
+            model_type="cyto3",
             diameter=30.0,
-            channels=[0, 0],
-            flow_threshold=0.4,
             cellprob_threshold=0.0,
+            flow_threshold=0.4,
         )
         session.add(detection_settings)
         session.commit()
 
         # Create extraction settings
         extraction_settings = ExtractionSettings(
-            compute_neuropil=True,
-            neuropil_radius_inner=2.0,
-            neuropil_radius_outer=6.0,
-            compute_dff=True,
-            dff_method="median",
-            compute_deconvolution=True,
+            neuropil_inner_radius=2,
+            neuropil_min_pixels=50,
+            neuropil_correction_factor=0.7,
+            decay_constant=0.5,
+            dff_window=100,
         )
         session.add(extraction_settings)
         session.commit()
@@ -126,11 +115,7 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         # Create experiment
         experiment = Experiment(
             name="Test Experiment",
-            data_path=str(tmp_path / "data.zarr"),
-            writer=0,
-            tiff_file_map=None,
-            tiff_folder_path=None,
-            plate_type=None,
+            description=f"Experiment from data at {tmp_path / 'data.zarr'}",
         )
         session.add(experiment)
         session.commit()
@@ -138,23 +123,21 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         # Create detection settings
         detection_settings = DetectionSettings(
             method="cellpose",
-            model="cyto3",
+            model_type="cyto3",
             diameter=30.0,
-            channels=[0, 0],
-            flow_threshold=0.4,
             cellprob_threshold=0.0,
+            flow_threshold=0.4,
         )
         session.add(detection_settings)
         session.commit()
 
         # Create extraction settings
         extraction_settings = ExtractionSettings(
-            compute_neuropil=True,
-            neuropil_radius_inner=2.0,
-            neuropil_radius_outer=6.0,
-            compute_dff=True,
-            dff_method="median",
-            compute_deconvolution=True,
+            neuropil_inner_radius=2,
+            neuropil_min_pixels=50,
+            neuropil_correction_factor=0.7,
+            decay_constant=0.5,
+            dff_window=100,
         )
         session.add(extraction_settings)
         session.commit()
@@ -163,7 +146,6 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         analysis_settings = AnalysisSettings(
             peaks_prominence_multiplier=3.0,
             peaks_distance=10,
-            dff_window=100,
         )
         session.add(analysis_settings)
         session.commit()
@@ -188,8 +170,8 @@ def test_run_options_detection_only(qtbot: QtBot, temp_db_with_detection: Path) 
     # Check that extraction settings are not populated
     assert gui._run_cali_wdg._extraction_settings_combo.count() == 1  # Only placeholder
 
-    # Set to "Extraction Only" option
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    # Set to "Extraction Only" option (now at index 4)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
 
     # Check that detection combo becomes visible
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
@@ -199,7 +181,7 @@ def test_run_options_detection_only(qtbot: QtBot, temp_db_with_detection: Path) 
     from qtpy.QtCore import Qt
 
     model = gui._run_cali_wdg._run_options_combo.model()
-    analysis_item = model.item(4)
+    analysis_item = model.item(5)
     assert not (analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled)
 
 
@@ -219,7 +201,7 @@ def test_run_options_with_extraction(
     assert gui._run_cali_wdg._extraction_settings_combo.count() > 1
 
     # Set to "Extraction Only" - should be enabled
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
 
     # Set to "Analysis Only" - should be disabled (no analysis settings yet)
@@ -228,7 +210,7 @@ def test_run_options_with_extraction(
     from qtpy.QtCore import Qt
 
     model = gui._run_cali_wdg._run_options_combo.model()
-    analysis_item = model.item(4)
+    analysis_item = model.item(5)
     # Should be enabled since we have both detection and extraction
     assert analysis_item.flags() & Qt.ItemFlag.ItemIsEnabled
 
@@ -265,7 +247,7 @@ def test_run_settings_parsing_detection_only(qtbot: QtBot) -> None:
     qtbot.addWidget(gui)
 
     # Set to "Detection Only"
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(2)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
 
     settings = gui._run_cali_wdg.value()
     assert isinstance(settings, CaliRunSettings)
@@ -285,7 +267,7 @@ def test_run_settings_parsing_extraction_only(qtbot: QtBot) -> None:
     gui._run_cali_wdg.populate_detection_settings([(1, "cellpose")])
 
     # Set to "Extraction Only" - this triggers visibility change
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
 
     # Verify combo is visible after changing option
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
@@ -315,7 +297,7 @@ def test_run_settings_parsing_analysis_only(qtbot: QtBot) -> None:
     gui._run_cali_wdg.populate_extraction_settings([1])
 
     # Set to "Analysis Only" - this triggers visibility change
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(5)
 
     # Verify combos are visible
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
@@ -386,22 +368,22 @@ def test_combo_visibility_changes(qtbot: QtBot) -> None:
     assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
-    # "Detection Only"
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(2)
+    # "Detection Only" (index 3)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
     assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
-    # "Extraction Only"
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(3)
+    # "Extraction Only" (index 4)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
-    # "Analysis Only"
-    gui._run_cali_wdg._run_options_combo.setCurrentIndex(4)
+    # "Analysis Only" (index 5)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(5)
     assert gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
-    # Back to "Detection and Extraction"
+    # Back to "Detection and Extraction" (index 1)
     gui._run_cali_wdg._run_options_combo.setCurrentIndex(1)
     assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
