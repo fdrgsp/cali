@@ -23,6 +23,9 @@ from cali.sqlmodel import (
 )
 from cali.util import load_data_from_path
 
+# Cellpose model type for testing
+MODEL = "cpsam"  #cellpose4
+# MODEL = "cyto3"  # cellpose3
 
 @pytest.fixture(autouse=True)
 def cleanup_gc() -> Iterator[None]:
@@ -44,7 +47,7 @@ def test_cali_runner_detection_only(
 
     detection_settings = DetectionSettings(
         method="cellpose",
-        model_type="cyto3",
+        model_type=MODEL,
         diameter=30.0,
         cellprob_threshold=0.0,
         flow_threshold=0.4,
@@ -94,7 +97,7 @@ def test_cali_runner_full_pipeline(
 
     detection_settings = DetectionSettings(
         method="cellpose",
-        model_type="cyto3",
+        model_type=MODEL,
         diameter=30.0,
     )
 
@@ -142,7 +145,7 @@ def test_cali_runner_incremental(
 
     detection_settings = DetectionSettings(
         method="cellpose",
-        model_type="cyto3",
+        model_type=MODEL,
         diameter=30.0,
     )
 
@@ -282,7 +285,7 @@ def test_cali_runner_overwrite(
     """Test overwriting existing database."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # First run
@@ -298,7 +301,7 @@ def test_cali_runner_overwrite(
     # Second run with overwrite=True
     # Create new settings object to avoid DetachedInstanceError
     detection_settings_2 = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
     runner.run(
         experiment=test_experiment,
@@ -326,7 +329,7 @@ def test_cali_runner_validation_error(
     """Test validation error when experiment mismatch."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # First run
@@ -364,7 +367,7 @@ def test_cali_runner_skipping(
     """Test skipping detection/analysis if already exists."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # First run
@@ -382,7 +385,7 @@ def test_cali_runner_skipping(
     # just running it is enough to hit the "skipping" branches.
     # Create new settings object to avoid DetachedInstanceError
     detection_settings_2 = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
     runner.run(
         experiment=test_experiment,
@@ -400,7 +403,7 @@ def test_cali_runner_upgrading(
     """Test upgrading result from detection-only to full analysis."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # 1. Detection Only
@@ -516,7 +519,7 @@ def test_cali_runner_batching(
     # Use batch size 2, process 3 positions
     runner = CaliRunner(commit_batch_size=2)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # We need to mock detection to be fast and return dummy results
@@ -548,7 +551,7 @@ def test_cali_runner_commit_error(
     """Test error handling during batch commit."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # Patch commit_fov_result
@@ -592,7 +595,7 @@ def test_cali_runner_process_batch_error(
     """Test error handling in _run_detection."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # Patch _run_detection to raise exception
@@ -618,7 +621,7 @@ def test_cali_runner_settings_reuse(
     """Test reusing existing settings in CaliRunner."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # First run
@@ -643,7 +646,7 @@ def test_cali_runner_settings_reuse(
     # Second run with same settings object (should reuse)
     # We need to pass a new object with same values to trigger lookup by value
     detection_settings_2 = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
     runner.run(
         experiment=test_experiment,
@@ -704,7 +707,7 @@ def test_cali_runner_stimulation_mask(
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     extraction_settings = ExtractionSettings(
@@ -770,7 +773,7 @@ def test_detection_runner_2d_data(
     dataset.isel.return_value = (np.zeros((100, 100)), {})
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # Patch load_data_from_path to return our mock dataset
@@ -796,7 +799,7 @@ def test_detection_runner_debug(
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # Run detection
@@ -820,7 +823,7 @@ def test_extraction_runner_cancel(
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     extraction_settings = ExtractionSettings(
@@ -882,7 +885,7 @@ def test_cali_runner_settings_errors(
         )
 
     # 2. DetectionSettings object with non-existent ID
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", id=999)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, id=999)
     # This should create it, not raise error (based on code reading)
     # Wait, lines 855-871 handle this case:
     # existing = session.get(DetectionSettings, detection_settings.id)
@@ -996,7 +999,7 @@ def test_extraction_runner_cancel_before_start(
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     extraction_settings = ExtractionSettings(
@@ -1028,7 +1031,7 @@ def test_cali_runner_update_result(
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0
+        method="cellpose", model_type=MODEL, diameter=30.0
     )
 
     # 1. Run on position 0
@@ -1078,8 +1081,8 @@ def test_settings_deduplication(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test that identical settings are reused."""
-    ds1 = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
-    ds2 = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    ds2 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run 1
     try:
@@ -1125,7 +1128,7 @@ def test_settings_by_id(
     """Test passing settings by ID."""
     from sqlmodel import SQLModel
 
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     es = ExtractionSettings(neuropil_inner_radius=10)
     as_ = AnalysisSettings(peaks_height_value=10.0)
 
@@ -1185,7 +1188,7 @@ def test_settings_object_with_id(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test passing settings object that already has an ID."""
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run 1 to create settings in DB
     runner.run(
@@ -1210,7 +1213,7 @@ def test_settings_object_with_id(
 
     # Create a NEW object but with the SAME ID (simulating loading from elsewhere)
     ds_with_id = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0, id=ds_id
+        method="cellpose", model_type=MODEL, diameter=30.0, id=ds_id
     )
 
     # Run 2 with object having ID
@@ -1237,7 +1240,7 @@ def test_result_upgrade_flow(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test upgrading result from detection -> extraction -> analysis."""
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     es = ExtractionSettings(neuropil_inner_radius=10)
     as_ = AnalysisSettings(peaks_height_value=10.0)
 
@@ -1322,9 +1325,9 @@ def test_load_fovs_filtering(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test that _load_fovs_from_db filters by detection settings."""
-    ds1 = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     ds2 = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=40.0
+        method="cellpose", model_type=MODEL, diameter=40.0
     )  # Different
 
     # Run detection with DS1 on pos 0
@@ -1432,7 +1435,7 @@ def test_run_as_generator(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test running as a generator."""
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run as generator
     gen = runner.run(
@@ -1470,7 +1473,7 @@ def test_extraction_analysis_settings_with_id(
     test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
 ) -> None:
     """Test passing extraction/analysis settings objects that already have IDs."""
-    ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     es = ExtractionSettings(neuropil_inner_radius=10)
     as_ = AnalysisSettings(peaks_height_value=10.0)
 
@@ -1504,7 +1507,7 @@ def test_extraction_analysis_settings_with_id(
 
     # Create new objects with same IDs
     ds_new = DetectionSettings(
-        method="cellpose", model_type="cyto3", diameter=30.0, id=ds_id
+        method="cellpose", model_type=MODEL, diameter=30.0, id=ds_id
     )
     es_new = ExtractionSettings(neuropil_inner_radius=10, id=es_id)
     as_new = AnalysisSettings(peaks_height_value=10.0, id=as_id)
@@ -1554,7 +1557,7 @@ def test_result_update_existing(
         mock_dataset.isel.side_effect = side_effect
         mock_load.return_value = mock_dataset
 
-        ds = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+        ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
         # Run 1: Position 0
         try:
@@ -1571,7 +1574,7 @@ def test_result_update_existing(
                 runner.engine.dispose()  # type: ignore
 
         # Run 2: Position 1 (should update existing result to include pos 1)
-        ds2 = DetectionSettings(method="cellpose", model_type="cyto3", diameter=30.0)
+        ds2 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
         try:
             runner.run(
                 experiment=test_experiment,
