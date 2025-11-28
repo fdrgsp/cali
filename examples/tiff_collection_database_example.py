@@ -10,6 +10,7 @@ This script demonstrates how to:
 import tempfile
 from pathlib import Path
 
+from cv2 import exp
 import numpy as np
 import tifffile
 from rich import print
@@ -46,7 +47,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         file_map=file_map,
         plate="96-well",
         metadata={"exposure_ms": 100.0, "pixel_size_um": 0.65},
-        tiff_folder_path=list(tmp_path.glob("*.tif")),
+        tiff_folder_path=tmp_path,
     )
     reader = TiffCollectionReader(settings)
 
@@ -91,7 +92,8 @@ with tempfile.TemporaryDirectory() as tmpdir:
     print(f"  Has TIFF config: {experiment_loaded.tiff_file_map_json is not None}")
 
     # Recreate reader using load_data with experiment
-    data_loaded = load_data_from_path(tmp_path, experiment=experiment_loaded)
+    tiff_settings = experiment_loaded.tiff_collection_settings(tmp_path)
+    data_loaded = TiffCollectionReader(tiff_settings)
     print(f"  Reader type: {type(data_loaded).__name__}")
 
     print("\n" + "=" * 70)

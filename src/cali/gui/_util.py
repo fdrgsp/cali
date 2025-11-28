@@ -379,8 +379,8 @@ class _RunCaliWidget(QWidget):
             "Detection, Extraction and Analysis",
             "Detection and Extraction",
             "Detection Only",
-            "Extraction Only (require one detection run)",
-            "Analysis Only (require one detection and one extraction run)",
+            "Extraction Only (require detection)",
+            "Analysis Only (require detection and extraction)",
         ]
         self._run_options_combo.addItems(items)
         self._run_options_combo.setToolTip(
@@ -543,8 +543,8 @@ class _RunCaliWidget(QWidget):
                 extraction_settings_id = self._extraction_settings_combo.currentData()
 
         # Determine which stages to run
-        extraction_only = "Extraction Only (require one detection run)"
-        analysis_only = "Analysis Only (require one detection and one extraction run)"
+        extraction_only = "Extraction Only (require detection)"
+        analysis_only = "Analysis Only (require detection and extraction)"
 
         run_detection = "Detection" in option and option not in [
             extraction_only,
@@ -636,8 +636,8 @@ class _RunCaliWidget(QWidget):
         # 0: "Detection, Extraction and Analysis"
         # 1: "Detection and Extraction"
         # 2: "Detection Only"
-        # 3: "Extraction Only (require one detection run)"
-        # 4: "Analysis Only (require one detection and one extraction run)"
+        # 3: "Extraction Only (require detection)"
+        # 4: "Analysis Only (require detection and extraction)"
 
         current_index = self._run_options_combo.currentIndex()
 
@@ -674,9 +674,9 @@ class _RunCaliWidget(QWidget):
             The selected run option text
         """
         # Show detection settings for "Extraction Only" and "Analysis Only"
-        is_extraction_only = text == "Extraction Only (require one detection run)"
+        is_extraction_only = text == "Extraction Only (require detection)"
         is_analysis_only = (
-            text == "Analysis Only (require one detection and one extraction run)"
+            text == "Analysis Only (require detection and extraction)"
         )
 
         show_detection = is_extraction_only or is_analysis_only

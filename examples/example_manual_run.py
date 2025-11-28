@@ -52,6 +52,8 @@ engine = create_engine(
 # set the positions (fovs) to process
 # positions_to_process = [17, 18]
 data = load_data_from_path(dataset_path)
+assert data is not None
+assert data.sequence is not None
 positions_to_process = list(range(len(data.sequence.stage_positions)))
 
 # detection -----------------------------------------------------------------------
@@ -62,7 +64,7 @@ detection_settings = DetectionSettings(
     custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",
 )
 for fov in detection_runner.run(
-    dataset=dataset_path,
+    dataset=data,
     detection_settings=detection_settings,
     global_position_indices=positions_to_process,
     as_generator=True,
@@ -74,7 +76,7 @@ for fov in detection_runner.run(
 extraction_runner = ExtractionRunner()
 extraction_settings = ExtractionSettings(dff_window=150, threads=3)
 for fov in extraction_runner.run(
-    dataset=dataset_path,
+    dataset=data,
     extraction_settings=extraction_settings,
     fovs=load_fovs_from_database(engine, positions_to_process),
     as_generator=True,

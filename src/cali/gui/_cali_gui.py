@@ -372,9 +372,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
 
-        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
-        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -715,14 +715,17 @@ class CaliGui(QMainWindow):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                statement = select(DetectionSettings).where(
-                    DetectionSettings.id.in_(detection_ids)  # type: ignore
-                )
-                results = session.exec(statement).all()
-                for d_settings in results:
-                    if d_settings.id is not None:
-                        settings_list.append((d_settings.id, d_settings.method))
+            try:
+                with Session(engine) as session:
+                    statement = select(DetectionSettings).where(
+                        DetectionSettings.id.in_(detection_ids)  # type: ignore
+                    )
+                    results = session.exec(statement).all()
+                    for d_settings in results:
+                        if d_settings.id is not None:
+                            settings_list.append((d_settings.id, d_settings.method))
+            finally:
+                engine.dispose(close=True)
 
             # Sort by ID to maintain order
             settings_list.sort(key=lambda x: x[0])
@@ -769,20 +772,32 @@ class CaliGui(QMainWindow):
 
             value = self._run_cali_wdg.value()
 
-            # Get extraction settings if needed
-            extraction_settings = (
-                self._extraction_wdg.to_model_settings()
-                if value.run_extraction
-                else None
-            )
+            # Get extraction settings - either from GUI or selected ID (analysis-only)
+            if value.run_analysis and not value.run_extraction:
+                # Analysis-only mode: use existing extraction settings ID
+                extraction_settings_id = value.extraction_settings_id
+                if extraction_settings_id is None:
+                    show_error_dialog(
+                        self,
+                        "Please select an Extraction ID to run analysis-only mode.",
+                    )
+                    return
+                extraction_settings = extraction_settings_id
+            elif value.run_extraction:
+                # Extraction or Detection+Extraction mode: get from GUI
+                extraction_settings = self._extraction_wdg.to_model_settings()
+            else:
+                extraction_settings = None
 
             # Get analysis settings if needed
             analysis_settings = (
                 self._analysis_wdg.to_model_settings() if value.run_analysis else None
             )
 
-            # Validate evoked experiment settings
-            if extraction_settings is not None:
+            # Validate evoked experiment settings(only when creating new settings)
+            if extraction_settings is not None and not isinstance(
+                extraction_settings, int
+            ):
                 from cali._constants import EVOKED
 
                 if extraction_settings.experiment_type == EVOKED:
@@ -918,9 +933,7 @@ class CaliGui(QMainWindow):
         else:
             error_msg = str(error)
 
-        cali_logger.error(
-            f"❌ Runner encountered an error during execution:\n{error}"
-        )
+        cali_logger.error(f"❌ Runner encountered an error during execution:\n{error}")
 
         # Also show error dialog to user
         show_error_dialog(self, f"Runner Error:\n\n{error_msg}")
@@ -1618,89 +1631,92 @@ class CaliGui(QMainWindow):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                # Query ROIs with detection_settings_id filter
-                stmt = (
-                    select(ROI)
-                    .join(FOV)
-                    .where(FOV.name == fov_name)
-                    .options(selectinload(ROI.roi_mask))  # type: ignore
-                )
-
-                # Add detection_settings_id filter if available
-                if detection_settings_id is not None:
-                    stmt = stmt.where(
-                        ROI.detection_settings_id == detection_settings_id
-                    )
-
-                rois = session.exec(stmt).all()
-
-                if not rois:
-                    return None, None
-
-                # Get the shape from the first ROI mask
-                first_mask = rois[0].roi_mask
-                if (
-                    not first_mask
-                    or first_mask.height is None
-                    or first_mask.width is None
-                ):
-                    return None, None
-
-                shape = (first_mask.height, first_mask.width)
-
-                # Create combined label masks
-                roi_mask = np.zeros(shape, dtype=np.uint16)
-                neuropil_mask = np.zeros(shape, dtype=np.uint16)
-
-                # Build ROI mask
-                for roi in rois:
-                    if roi.roi_mask and roi.roi_mask.coords_y and roi.roi_mask.coords_x:
-                        coords = (roi.roi_mask.coords_y, roi.roi_mask.coords_x)
-                        roi_binary_mask = coordinates_to_mask(coords, shape)
-                        roi_mask[roi_binary_mask] = roi.label_value
-
-                # Query neuropil masks from Traces for the selected run
-                # Neuropil masks are now stored per-Trace (per analysis run)
-                if run_id is not None:
-                    traces_stmt = (
-                        select(Traces)
-                        .join(ROI)
+            try:
+                with Session(engine) as session:
+                    # Query ROIs with detection_settings_id filter
+                    stmt = (
+                        select(ROI)
                         .join(FOV)
-                        .where(
-                            Traces.analysis_result_id == run_id,
-                            FOV.name == fov_name,
-                        )
-                        .options(
-                            selectinload(Traces.roi),  # type: ignore
-                            selectinload(Traces.neuropil_mask),  # type: ignore
-                        )
+                        .where(FOV.name == fov_name)
+                        .options(selectinload(ROI.roi_mask))  # type: ignore
                     )
-                    traces = session.exec(traces_stmt).all()
 
-                    # Build neuropil mask from Traces
-                    for trace in traces:
-                        # Only include traces from ROIs matching detection_settings_id
-                        if (
-                            trace.roi
-                            and trace.roi.detection_settings_id == detection_settings_id
-                            and trace.neuropil_mask
-                            and trace.neuropil_mask.coords_y
-                            and trace.neuropil_mask.coords_x
-                        ):
-                            coords = (
-                                trace.neuropil_mask.coords_y,
-                                trace.neuropil_mask.coords_x,
+                    # Add detection_settings_id filter if available
+                    if detection_settings_id is not None:
+                        stmt = stmt.where(
+                            ROI.detection_settings_id == detection_settings_id
+                        )
+
+                    rois = session.exec(stmt).all()
+
+                    if not rois:
+                        return None, None
+
+                    # Get the shape from the first ROI mask
+                    first_mask = rois[0].roi_mask
+                    if (
+                        not first_mask
+                        or first_mask.height is None
+                        or first_mask.width is None
+                    ):
+                        return None, None
+
+                    shape = (first_mask.height, first_mask.width)
+
+                    # Create combined label masks
+                    roi_mask = np.zeros(shape, dtype=np.uint16)
+                    neuropil_mask = np.zeros(shape, dtype=np.uint16)
+
+                    # Build ROI mask
+                    for roi in rois:
+                        if roi.roi_mask and roi.roi_mask.coords_y and roi.roi_mask.coords_x:
+                            coords = (roi.roi_mask.coords_y, roi.roi_mask.coords_x)
+                            roi_binary_mask = coordinates_to_mask(coords, shape)
+                            roi_mask[roi_binary_mask] = roi.label_value
+
+                    # Query neuropil masks from Traces for the selected run
+                    # Neuropil masks are now stored per-Trace (per analysis run)
+                    if run_id is not None:
+                        traces_stmt = (
+                            select(Traces)
+                            .join(ROI)
+                            .join(FOV)
+                            .where(
+                                Traces.analysis_result_id == run_id,
+                                FOV.name == fov_name,
                             )
-                            neuropil_binary_mask = coordinates_to_mask(coords, shape)
-                            # Use the ROI's label_value
-                            neuropil_mask[neuropil_binary_mask] = trace.roi.label_value
+                            .options(
+                                selectinload(Traces.roi),  # type: ignore
+                                selectinload(Traces.neuropil_mask),  # type: ignore
+                            )
+                        )
+                        traces = session.exec(traces_stmt).all()
 
-                # Return masks (None if empty)
-                roi_result = roi_mask if roi_mask.max() > 0 else None
-                neuropil_result = neuropil_mask if neuropil_mask.max() > 0 else None
+                        # Build neuropil mask from Traces
+                        for trace in traces:
+                            # Only include traces from ROIs matching detection_settings_id
+                            if (
+                                trace.roi
+                                and trace.roi.detection_settings_id == detection_settings_id
+                                and trace.neuropil_mask
+                                and trace.neuropil_mask.coords_y
+                                and trace.neuropil_mask.coords_x
+                            ):
+                                coords = (
+                                    trace.neuropil_mask.coords_y,
+                                    trace.neuropil_mask.coords_x,
+                                )
+                                neuropil_binary_mask = coordinates_to_mask(coords, shape)
+                                # Use the ROI's label_value
+                                neuropil_mask[neuropil_binary_mask] = trace.roi.label_value
 
-                return roi_result, neuropil_result
+                    # Return masks (None if empty)
+                    roi_result = roi_mask if roi_mask.max() > 0 else None
+                    neuropil_result = neuropil_mask if neuropil_mask.max() > 0 else None
+
+                    return roi_result, neuropil_result
+            finally:
+                engine.dispose(close=True)
 
         except Exception as e:
             cali_logger.warning(f"❌ Failed to load ROI masks from database: {e}")
