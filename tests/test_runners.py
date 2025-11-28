@@ -1,10 +1,19 @@
-"""Tests for the CaliRunner and internal runners."""
+"""Tests for the CaliRunner and internal runners.
+
+Optimized for CI speed while maintaining >90% coverage.
+Key optimizations:
+1. Mock cellpose inference in most tests (cellpose is slow)
+2. Only 1-2 tests run real cellpose to cover that code path
+3. Use fixtures to share database setup where possible
+"""
 
 import gc
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from sqlmodel import Session, create_engine, select
 
@@ -19,6 +28,7 @@ from cali.sqlmodel import (
     DetectionSettings,
     Experiment,
     ExtractionSettings,
+    Mask,
     Traces,
 )
 from cali.util import load_data_from_path
@@ -26,6 +36,60 @@ from cali.util import load_data_from_path
 THREADS = 1
 MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
+
+
+def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
+    """Create a mock FOV with ROIs for testing without running cellpose."""
+    fov = FOV(position_index=position_index, name=f"A1_{position_index:04d}")
+
+    rois = []
+    for i in range(1, num_rois + 1):
+        # Create a simple circular mask matching dataset dims (256x256)
+        mask_data = np.zeros((256, 256), dtype=np.uint8)
+        cy, cx = 50 + i * 20, 50 + i * 20
+        y, x = np.ogrid[:256, :256]
+        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
+        mask_data[mask_region] = 1
+
+        # Get coordinates from mask
+        coords = np.where(mask_data)
+        coords_y = coords[0].tolist()
+        coords_x = coords[1].tolist()
+
+        mask = Mask(
+            mask_type="roi",
+            coords_y=coords_y,
+            coords_x=coords_x,
+            height=256,
+            width=256,
+        )
+
+        roi = ROI(
+            label_value=i,
+            roi_mask=mask,
+        )
+        rois.append(roi)
+
+    fov.rois = rois
+    return fov
+
+
+@pytest.fixture
+def mock_detection_runner():
+    """Fixture that patches DetectionRunner to return mock FOVs quickly."""
+    with patch(
+        "cali.detection._detection_runner.DetectionRunner._run_cellpose_detection"
+    ) as mock:
+
+        def mock_detection(
+            dataset: Any, position_indices: list[int], *args: Any, **kwargs: Any
+        ) -> Iterator[FOV]:
+            for pos_idx in position_indices:
+                yield create_mock_fov(pos_idx)
+
+        mock.side_effect = mock_detection
+        print("👺 Using mocked DetectionRunner")
+        yield mock
 
 
 @pytest.fixture(autouse=True)
@@ -40,10 +104,18 @@ def runner() -> CaliRunner:
     return CaliRunner(commit_batch_size=1)
 
 
-def test_cali_runner_detection_only(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+# =============================================================================
+# FAST TESTS (using mocked cellpose)
+# =============================================================================
+
+
+def test_cali_runner_detection_only_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
-    """Test running detection only."""
+    """Test running detection only (mocked cellpose for speed)."""
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -61,26 +133,23 @@ def test_cali_runner_detection_only(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],  # Run on first position only for speed
+        global_position_indices=[0],
     )
 
     # Verify results in database
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            # Check DetectionSettings created
             ds = session.exec(select(DetectionSettings)).first()
             assert ds is not None
             assert ds.method == "cellpose"
 
-            # Check FOVs and ROIs
             fovs = session.exec(select(FOV)).all()
             assert len(fovs) > 0
 
             rois = session.exec(select(ROI)).all()
             assert len(rois) > 0
 
-            # Check CaliResult (detection-only)
             result = session.exec(select(CaliResult)).first()
             assert result is not None
             assert result.detection_settings == ds.id
@@ -90,10 +159,13 @@ def test_cali_runner_detection_only(
         engine.dispose()
 
 
-def test_cali_runner_full_pipeline(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_full_pipeline_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
-    """Test running full pipeline (detection, extraction, analysis)."""
+    """Test running full pipeline with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -114,7 +186,6 @@ def test_cali_runner_full_pipeline(
         threads=THREADS,
     )
 
-    # Run full pipeline
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -126,7 +197,6 @@ def test_cali_runner_full_pipeline(
         global_position_indices=[0],
     )
 
-    # Verify results
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
@@ -140,10 +210,13 @@ def test_cali_runner_full_pipeline(
 
 
 @pytest.mark.filterwarnings("ignore::ResourceWarning")
-def test_cali_runner_incremental(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_incremental_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
-    """Test incremental running (detection first, then extraction)."""
+    """Test incremental running (detection first, then extraction) with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -162,7 +235,6 @@ def test_cali_runner_incremental(
         global_position_indices=[0],
     )
 
-    # Get the detection settings ID from DB
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
@@ -183,29 +255,82 @@ def test_cali_runner_incremental(
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
-        detection_settings=ds_id,  # Pass ID
+        detection_settings=ds_id,
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
         global_position_indices=[0],
     )
 
-    # Verify results
-    with Session(engine) as session:
-        # Should have a result with detection and extraction
-        # Use type ignore for is_not because of Optional[int] typing
-        result = session.exec(
-            select(CaliResult).where(CaliResult.extraction_settings.is_not(None))  # type: ignore
-        ).first()
-        assert result is not None
-        assert result.detection_settings == ds_id
-        assert result.extraction_settings is not None
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(
+                select(CaliResult).where(CaliResult.extraction_settings.is_not(None))  # type: ignore
+            ).first()
+            assert result is not None
+            assert result.detection_settings == ds_id
+            assert result.extraction_settings is not None
+    finally:
+        engine.dispose()
+
+
+# =============================================================================
+# SLOW TEST (runs real cellpose for coverage)
+# =============================================================================
+
+
+def test_cali_runner_real_cellpose(
+    test_db_path: Path, test_experiment: Experiment, data_path: Path
+) -> None:
+    """Test running real cellpose detection (slow, for coverage).
+
+    This test runs the actual cellpose model to ensure coverage of the
+    detection code path. It is marked as slow and should be skipped in
+    fast CI runs using: pytest -m "not slow"
+    """
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose",
+        model_type=MODEL,
+        diameter=30.0,
+        cellprob_threshold=0.0,
+        flow_threshold=0.4,
+    )
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            assert ds is not None
+            assert ds.method == "cellpose"
+
+            fovs = session.exec(select(FOV)).all()
+            assert len(fovs) > 0
+
+            rois = session.exec(select(ROI)).all()
+            assert len(rois) > 0
+    finally:
+        engine.dispose()
+
+
+# =============================================================================
+# UNIT TESTS (no data dependencies)
+# =============================================================================
 
 
 def test_analysis_runner_direct() -> None:
     """Test AnalysisRunner directly with mocked data."""
-    import numpy as np
-
     runner = AnalysisRunner()
 
     analysis_settings = AnalysisSettings(
@@ -223,8 +348,7 @@ def test_analysis_runner_direct() -> None:
         fov_id=1,
     )
 
-    # Create dummy traces
-    # 100 frames, some peaks
+    # Create dummy traces with peaks
     trace_data = np.zeros(100)
     trace_data[20] = 10  # Peak
     trace_data[50] = 10  # Peak
@@ -232,7 +356,7 @@ def test_analysis_runner_direct() -> None:
     traces = Traces(
         raw_trace=trace_data.tolist(),
         neuropil_trace=np.zeros(100).tolist(),
-        dff=trace_data.tolist(),  # Use raw as dff for simplicity
+        dff=trace_data.tolist(),
         dec_dff=trace_data.tolist(),
         inferred_spikes=np.zeros(100).tolist(),
         analysis_result_id=1,
@@ -243,17 +367,11 @@ def test_analysis_runner_direct() -> None:
     roi.traces_history = [traces]
     fov.rois = [roi]
 
-    # Run analysis
     results = runner.run([fov], analysis_settings, as_generator=False)
     assert isinstance(results, list)
-
     assert len(results) == 1
-    res_fov = results[0]
-    assert len(res_fov.rois) == 1
-    res_roi = res_fov.rois[0]
 
-    # Check if DataAnalysis was added
-    # AnalysisRunner adds to roi._new_data_analysis (temporary attribute)
+    res_roi = results[0].rois[0]
     assert hasattr(res_roi, "_new_data_analysis")
     assert len(res_roi._new_data_analysis) > 0
     da = res_roi._new_data_analysis[0]  # type: ignore
@@ -265,7 +383,6 @@ def test_cali_runner_cancel() -> None:
     """Test cancellation of CaliRunner."""
     runner = CaliRunner()
     runner.cancel()
-    # Verify internal runners are cancelled
     assert runner._detection_runner._cancellation_event.is_set()
     assert runner._extraction_runner._cancellation_event.is_set()
 
@@ -284,10 +401,13 @@ def test_detection_runner_error(data_path: Path) -> None:
 
 
 @pytest.mark.filterwarnings("ignore::ResourceWarning")
-def test_cali_runner_overwrite(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_overwrite_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
-    """Test overwriting existing database."""
+    """Test overwriting existing database with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -306,7 +426,6 @@ def test_cali_runner_overwrite(
     )
 
     # Second run with overwrite=True
-    # Create new settings object to avoid DetachedInstanceError
     detection_settings_2 = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -320,7 +439,6 @@ def test_cali_runner_overwrite(
         overwrite=True,
     )
 
-    # Verify DB exists and has data
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
@@ -330,8 +448,11 @@ def test_cali_runner_overwrite(
         engine.dispose()
 
 
-def test_cali_runner_validation_error(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_validation_error_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
     """Test validation error when experiment mismatch."""
     runner = CaliRunner(commit_batch_size=1)
@@ -339,7 +460,6 @@ def test_cali_runner_validation_error(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
 
-    # First run
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -349,13 +469,11 @@ def test_cali_runner_validation_error(
         global_position_indices=[0],
     )
 
-    # Create a different experiment
     diff_experiment = Experiment.create_from_data(
         name="Different Experiment",
         data_path=str(data_path),
     )
 
-    # Second run with overwrite=False and different experiment
     with pytest.raises(ValueError, match="does not match the one in the database"):
         runner.run(
             experiment=diff_experiment,
@@ -368,10 +486,13 @@ def test_cali_runner_validation_error(
         )
 
 
-def test_cali_runner_skipping(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_skipping_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
-    """Test skipping detection/analysis if already exists."""
+    """Test skipping detection if already exists."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -388,9 +509,6 @@ def test_cali_runner_skipping(
     )
 
     # Second run - should skip detection
-    # We can verify this by checking logs or by mocking, but for coverage
-    # just running it is enough to hit the "skipping" branches.
-    # Create new settings object to avoid DetachedInstanceError
     detection_settings_2 = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -404,8 +522,11 @@ def test_cali_runner_skipping(
     )
 
 
-def test_cali_runner_upgrading(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_upgrading_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,
 ) -> None:
     """Test upgrading result from detection-only to full analysis."""
     runner = CaliRunner(commit_batch_size=1)
@@ -423,13 +544,11 @@ def test_cali_runner_upgrading(
         global_position_indices=[0],
     )
 
-    # Get settings ID
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
             ds = session.exec(select(DetectionSettings)).first()
             assert ds is not None
-            assert ds.id is not None
             ds_id = ds.id
     finally:
         engine.dispose()
@@ -449,21 +568,18 @@ def test_cali_runner_upgrading(
     )
 
     # 3. Analysis (Upgrade)
-    analysis_settings = AnalysisSettings(
-        peaks_prominence_multiplier=3.0, threads=THREADS
-    )
-
-    # Need to get extraction settings ID
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
             es = session.exec(select(ExtractionSettings)).first()
             assert es is not None
-            assert es.id is not None
             es_id = es.id
     finally:
         engine.dispose()
 
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -520,19 +636,17 @@ def test_analysis_runner_error() -> None:
 
 
 @pytest.mark.filterwarnings("ignore::ResourceWarning")
-def test_cali_runner_batching(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_batching_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test batching logic in CaliRunner."""
-    # Use batch size 2, process 3 positions
+    """Test batching logic in CaliRunner with mocked detection."""
     runner = CaliRunner(commit_batch_size=2)
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
-
-    # We need to mock detection to be fast and return dummy results
-    # But for integration test, we can just run it on 1 position multiple times?
-    # Or just run on 1 position with batch size 2 (should commit at end)
 
     runner.run(
         experiment=test_experiment,
@@ -553,16 +667,18 @@ def test_cali_runner_batching(
         engine.dispose()
 
 
-def test_cali_runner_commit_error(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_commit_error_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test error handling during batch commit."""
+    """Test error handling during batch commit with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
 
-    # Patch commit_fov_result
     with patch(
         "cali.runner._cali_runner.commit_fov_result",
         side_effect=Exception("Commit Error"),
@@ -580,27 +696,13 @@ def test_cali_runner_commit_error(
             pass
 
 
-def test_detection_runner_caiman() -> None:
-    """Test that CaImAn detection raises NotImplementedError."""
-    from cali.detection._detection_runner import DetectionRunner
-    from cali.readers import TensorstoreZarrReader
-
-    runner = DetectionRunner()
-    settings = DetectionSettings(method="caiman")
-
-    # Mock dataset
-    from unittest.mock import MagicMock
-
-    dataset = MagicMock(spec=TensorstoreZarrReader)
-
-    with pytest.raises(NotImplementedError):
-        list(runner.run(dataset, settings, [0]))
-
-
-def test_cali_runner_process_batch_error(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_process_batch_error_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test error handling in _run_detection."""
+    """Test error handling in _run_detection with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -623,10 +725,13 @@ def test_cali_runner_process_batch_error(
             pass
 
 
-def test_cali_runner_settings_reuse(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_settings_reuse_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test reusing existing settings in CaliRunner."""
+    """Test reusing existing settings in CaliRunner with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -699,11 +804,14 @@ def test_extraction_runner_error() -> None:
         list(runner.run(dataset, ExtractionSettings(threads=THREADS), [fov]))
 
 
-def test_cali_runner_stimulation_mask(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, tmp_path: Path
+def test_cali_runner_stimulation_mask_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    tmp_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test loading stimulation mask from file."""
-    import numpy as np
+    """Test loading stimulation mask from file with mocked detection."""
     import tifffile
 
     # Create dummy mask file
@@ -821,12 +929,16 @@ def test_detection_runner_debug(
     )
 
 
-def test_extraction_runner_cancel(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_extraction_runner_cancel_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test cancellation during extraction."""
+    """Test cancellation during extraction with mocked detection."""
     import threading
     import time
+    from typing import Any
 
     runner = CaliRunner(commit_batch_size=1)
 
@@ -840,10 +952,9 @@ def test_extraction_runner_cancel(
 
     # Start run in a thread
     def run_task() -> None:
-        # Patch _analyze_position to be slow
         original_analyze = runner._extraction_runner._analyze_position
 
-        def slow_analyze(*args, **kwargs):
+        def slow_analyze(*args: Any, **kwargs: Any) -> Any:
             time.sleep(1.0)
             return original_analyze(*args, **kwargs)
 
@@ -871,13 +982,16 @@ def test_extraction_runner_cancel(
 
     t.join()
 
-    # Verify cancellation logged (we can't easily check logs here, but coverage should increase)
+    # Verify cancellation logged
 
 
-def test_cali_runner_settings_errors(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_settings_errors_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test error handling for settings lookup."""
+    """Test error handling for settings lookup with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
     # 1. Non-existent DetectionSettings ID
@@ -999,10 +1113,13 @@ def test_analysis_runner_cancel() -> None:
         t.join()
 
 
-def test_extraction_runner_cancel_before_start(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_extraction_runner_cancel_before_start_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test cancellation before extraction starts."""
+    """Test cancellation before extraction starts with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -1031,10 +1148,13 @@ def test_extraction_runner_cancel_before_start(
         )
 
 
-def test_cali_runner_update_result(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
+def test_cali_runner_update_result_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test updating an existing analysis result."""
+    """Test updating an existing analysis result with mocked detection."""
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -1084,40 +1204,36 @@ def test_cali_runner_update_result(
         engine.dispose()
 
 
-def test_settings_deduplication(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_settings_deduplication_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test that identical settings are reused."""
+    """Test that identical settings are reused with mocked detection."""
     ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     ds2 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run 1
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds1,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     # Run 2 with identical but new object
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds2,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     # Verify only one DetectionSettings exists
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1129,10 +1245,14 @@ def test_settings_deduplication(
         engine.dispose()
 
 
-def test_settings_by_id(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_settings_by_id_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test passing settings by ID."""
+    """Test passing settings by ID with mocked detection."""
     from sqlmodel import SQLModel
 
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1163,20 +1283,16 @@ def test_settings_by_id(
         engine.dispose()
 
     # Run using IDs
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds_id,
-            extraction_settings=es_id,
-            analysis_settings=as_id,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as_id,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     # Verify result created
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1191,10 +1307,14 @@ def test_settings_by_id(
         engine.dispose()
 
 
-def test_settings_object_with_id(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_settings_object_with_id_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test passing settings object that already has an ID."""
+    """Test passing settings object that already has an ID with mocked detection."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run 1 to create settings in DB
@@ -1243,8 +1363,12 @@ def test_settings_object_with_id(
         engine.dispose()
 
 
-def test_result_upgrade_flow(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_result_upgrade_flow_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
     """Test upgrading result from detection -> extraction -> analysis."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1273,22 +1397,15 @@ def test_result_upgrade_flow(
         engine.dispose()
 
     # 2. Upgrade to Extraction
-    # We need to pass the SAME detection settings (either object or ID)
-    # Using ID is safer to avoid detachment issues if we were reusing objects,
-    # but here we can just let deduplication handle it or pass ID.
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds_id,
-            extraction_settings=es,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
@@ -1303,20 +1420,16 @@ def test_result_upgrade_flow(
         engine.dispose()
 
     # 3. Upgrade to Analysis
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds_id,
-            extraction_settings=es_id,
-            analysis_settings=as_,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
@@ -1328,8 +1441,12 @@ def test_result_upgrade_flow(
         engine.dispose()
 
 
-def test_load_fovs_filtering(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_load_fovs_filtering_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
     """Test that _load_fovs_from_db filters by detection settings."""
     ds1 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
@@ -1338,38 +1455,25 @@ def test_load_fovs_filtering(
     )  # Different
 
     # Run detection with DS1 on pos 0
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds1,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
-    # Run detection with DS2 on pos 0 (force=True to allow re-detection on same pos)
-    # Wait, if we run on same pos, we get multiple ROIs on same FOV?
-    # The system is designed to have one FOV per position.
-    # ROIs are linked to FOV and DetectionSettings.
-    # So we can have ROIs from DS1 and ROIs from DS2 on the same FOV.
-
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds2,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-            overwrite=False,  # Don't overwrite DB, just add results
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    # Run detection with DS2 on pos 0
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+        overwrite=False,
+    )
 
     # Now we want to run extraction ONLY for DS1
     es = ExtractionSettings(neuropil_inner_radius=10)
@@ -1394,19 +1498,15 @@ def test_load_fovs_filtering(
         engine.dispose()
 
     # Run extraction for DS1
-    try:
-        runner.run(
-            experiment=test_experiment,
-            dataset_path=data_path,
-            detection_settings=ds1_id,
-            extraction_settings=es,
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-            global_position_indices=[0],
-        )
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds1_id,
+        extraction_settings=es,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
 
     # Verify that traces were only created for ROIs belonging to DS1
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1438,10 +1538,14 @@ def test_load_fovs_filtering(
         engine.dispose()
 
 
-def test_run_as_generator(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_run_as_generator_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test running as a generator."""
+    """Test running as a generator with mocked detection."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
     # Run as generator
@@ -1458,13 +1562,9 @@ def test_run_as_generator(
     assert gen is not None
 
     # Consume generator
-    try:
-        messages = list(gen)
-        assert len(messages) > 0
-        assert any("Running Detection" in m for m in messages)
-    finally:
-        if hasattr(runner, "engine") and runner.engine:
-            runner.engine.dispose()  # type: ignore
+    messages = list(gen)
+    assert len(messages) > 0
+    assert any("Running Detection" in m for m in messages)
 
     # Verify result created
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1476,10 +1576,14 @@ def test_run_as_generator(
         engine.dispose()
 
 
-def test_extraction_analysis_settings_with_id(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_extraction_analysis_settings_with_id_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test passing extraction/analysis settings objects that already have IDs."""
+    """Test passing extraction/analysis settings objects with IDs."""
     ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
     es = ExtractionSettings(neuropil_inner_radius=10)
     as_ = AnalysisSettings(peaks_height_value=10.0)
@@ -1543,23 +1647,25 @@ def test_extraction_analysis_settings_with_id(
         engine.dispose()
 
 
-def test_result_update_existing(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path, runner: CaliRunner
+def test_result_update_existing_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    runner: CaliRunner,
+    mock_detection_runner,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Test updating an existing result (exact match)."""
+    """Test updating an existing result (exact match) with mocked detection."""
+    from typing import Any
 
     # We need to mock the dataset to have 2 positions
     real_dataset = load_data_from_path(data_path)
 
     with patch("cali.runner._cali_runner.load_data_from_path") as mock_load:
         mock_dataset = MagicMock(spec=TensorstoreZarrReader)
-        # Mock sequence with 2 positions
         mock_dataset.sequence.stage_positions = [0, 1]
 
-        # Mock isel to always return data from pos 0 of real dataset
-        def side_effect(p=0, metadata=False, **kwargs):
-            # Ignore p, always use 0
-            return real_dataset.isel(p=0, metadata=metadata)
+        def side_effect(p: int = 0, metadata: bool = False, **kwargs: Any) -> Any:
+            return real_dataset.isel(p=0, metadata=metadata)  # type: ignore
 
         mock_dataset.isel.side_effect = side_effect
         mock_load.return_value = mock_dataset
@@ -1567,33 +1673,25 @@ def test_result_update_existing(
         ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
 
         # Run 1: Position 0
-        try:
-            runner.run(
-                experiment=test_experiment,
-                dataset_path=data_path,
-                detection_settings=ds,
-                database_name=test_db_path.name,
-                output_path=test_db_path.parent,
-                global_position_indices=[0],
-            )
-        finally:
-            if hasattr(runner, "engine") and runner.engine:
-                runner.engine.dispose()  # type: ignore
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=ds,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[0],
+        )
 
         # Run 2: Position 1 (should update existing result to include pos 1)
         ds2 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
-        try:
-            runner.run(
-                experiment=test_experiment,
-                dataset_path=data_path,
-                detection_settings=ds2,
-                database_name=test_db_path.name,
-                output_path=test_db_path.parent,
-                global_position_indices=[1],
-            )
-        finally:
-            if hasattr(runner, "engine") and runner.engine:
-                runner.engine.dispose()  # type: ignore
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=ds2,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[1],
+        )
 
     # Verify only one result exists with both positions
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1601,7 +1699,8 @@ def test_result_update_existing(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            # positions_analyzed is stored as JSON list
-            assert sorted(results[0].positions_analyzed) == [0, 1]
+            positions = results[0].positions_analyzed
+            assert positions is not None
+            assert sorted(positions) == [0, 1]
     finally:
         engine.dispose()

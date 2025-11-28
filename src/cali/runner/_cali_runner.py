@@ -339,6 +339,9 @@ class CaliRunner:
                         fov_count += 1
                         yield "PROGRESS:UPDATE"
 
+                        # Capture position index before expunging
+                        pos_idx = fov.position_index
+
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
                         commit_fov_result(
@@ -362,7 +365,7 @@ class CaliRunner:
                             if analysis_settings is not None:
                                 analysis_settings = session.merge(analysis_settings)
 
-                        positions_processed_detection.append(fov.position_index)
+                        positions_processed_detection.append(pos_idx)
 
                     # Final commit for any remaining FOVs
                     if fov_count % self.commit_batch_size != 0:
