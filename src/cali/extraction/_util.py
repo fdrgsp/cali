@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
-import tifffile
-from skimage import filters, morphology
 
 
 def calculate_dff(

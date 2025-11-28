@@ -240,6 +240,22 @@ class _CellposeDetectionWidget(QGroupBox):
         self.setTitle("Cellpose")
         self.setCheckable(True)
 
+        # Check installation
+        cp_ver_str = None
+        cp_major = 0
+        try:
+            from importlib.metadata import PackageNotFoundError, version
+
+            try:
+                cp_ver_str = version("cellpose")
+                cp_major = int(cp_ver_str.split(".")[0])
+            except (PackageNotFoundError, ValueError):
+                pass
+        except ImportError:
+            pass
+
+        self._cp_is_installed = cp_ver_str is not None
+
         # MODEL SELECTION WIDGETS -----------------------------------------------------
         self._model_wdg = QWidget(self)
         model_wdg_layout = QHBoxLayout(self._model_wdg)
@@ -248,7 +264,10 @@ class _CellposeDetectionWidget(QGroupBox):
         self._models_combo_label = QLabel("Model Type:")
         self._models_combo_label.setSizePolicy(*FIXED)
         self._models_combo = QComboBox()
-        self._models_combo.addItems(["cpsam", "cyto3", "custom"])
+        models = ["cpsam"] if cp_major >= 4 else ["cyto3"]
+        models.append("custom")
+
+        self._models_combo.addItems(models)
         self._models_combo.currentTextChanged.connect(self._on_model_combo_changed)
         model_wdg_layout.addWidget(self._models_combo_label)
         model_wdg_layout.addWidget(self._models_combo, 1)
@@ -372,17 +391,39 @@ class _CellposeDetectionWidget(QGroupBox):
         cp_wdg_layout.setContentsMargins(10, 10, 10, 10)
         cp_wdg_layout.setSpacing(5)
 
-        cp_wdg_layout.addWidget(create_divider_line("Select Cellpose Model"))
-        cp_wdg_layout.addWidget(self._model_wdg)
-        cp_wdg_layout.addWidget(self._browse_custom_model)
-        cp_wdg_layout.addWidget(create_divider_line("Cellpose Parameters"))
-        cp_wdg_layout.addWidget(self._diameter_wdg)
-        cp_wdg_layout.addWidget(self._cellprob_wdg)
-        cp_wdg_layout.addWidget(self._flow_wdg)
-        cp_wdg_layout.addWidget(self._min_size_wdg)
-        cp_wdg_layout.addWidget(self._normalize_wdg)
-        cp_wdg_layout.addWidget(create_divider_line("Batch Processing"))
-        cp_wdg_layout.addWidget(self._batch_wdg)
+        if cp_ver_str is None:
+            warning_lbl = QLabel(
+                "Cellpose is not installed!\n\n"
+                "To use Cellpose detection, please install it:\n"
+                "• For Cellpose 4: `uv sync --extra cp4`\n"
+                "• For Cellpose 3: `uv sync --extra cp3`\n"
+                "• Or via pip: `pip install cellpose`"
+            )
+            warning_lbl.setWordWrap(True)
+            warning_lbl.setStyleSheet("color: #FF5555; font-weight: bold;")
+            cp_wdg_layout.addWidget(warning_lbl)
+
+            # Hide widgets
+            self._model_wdg.hide()
+            self._browse_custom_model.hide()
+            self._diameter_wdg.hide()
+            self._cellprob_wdg.hide()
+            self._flow_wdg.hide()
+            self._min_size_wdg.hide()
+            self._normalize_wdg.hide()
+            self._batch_wdg.hide()
+        else:
+            cp_wdg_layout.addWidget(create_divider_line("Select Cellpose Model"))
+            cp_wdg_layout.addWidget(self._model_wdg)
+            cp_wdg_layout.addWidget(self._browse_custom_model)
+            cp_wdg_layout.addWidget(create_divider_line("Cellpose Parameters"))
+            cp_wdg_layout.addWidget(self._diameter_wdg)
+            cp_wdg_layout.addWidget(self._cellprob_wdg)
+            cp_wdg_layout.addWidget(self._flow_wdg)
+            cp_wdg_layout.addWidget(self._min_size_wdg)
+            cp_wdg_layout.addWidget(self._normalize_wdg)
+            cp_wdg_layout.addWidget(create_divider_line("Batch Processing"))
+            cp_wdg_layout.addWidget(self._batch_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -410,6 +451,9 @@ class _CellposeDetectionWidget(QGroupBox):
 
     def setValue(self, value: CellposeSettings) -> None:
         """Set the Cellpose parameters from a CellposeData object."""
+        if not self._cp_is_installed:
+            return
+
         self._models_combo.setCurrentText(value.model_type)
         if value.model_type == "custom" and value.model_path is not None:
             self._browse_custom_model.setValue(value.model_path)
@@ -427,6 +471,9 @@ class _CellposeDetectionWidget(QGroupBox):
 
     def _on_model_combo_changed(self, text: str) -> None:
         """Show or hide the custom model path widget."""
+        if not self._cp_is_installed:
+            return
+
         if text == "custom":
             self._browse_custom_model.show()
         else:

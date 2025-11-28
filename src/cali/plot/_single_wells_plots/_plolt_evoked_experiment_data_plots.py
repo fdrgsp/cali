@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
@@ -12,13 +12,6 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
-from cali._constants import MWCM
-from cali.plot._util import (
-    _get_spikes_over_threshold,
-    equation_from_str,
-    get_stimulated_amplitudes_from_roi_data,
-)
-
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
@@ -26,7 +19,6 @@ if TYPE_CHECKING:
     from cali.gui._graph_widgets import _SingleWellGraphWidget
     from cali.sqlmodel._util import ROIData
 
-from cali.logger import cali_logger
 
 DEFAULT_COLOR = "gray"
 STIMULATED_COLOR = "green"
@@ -192,7 +184,7 @@ def _plot_stimulated_rois(
 ) -> None:
     """Plot the ROIs with stimulated and non-stimulated areas."""
     # get the labels file path
-    labels_image_path = widget._plate_viewer.pv_labels_path 
+    labels_image_path = widget._plate_viewer.pv_labels_path
     if labels_image_path is None:
         return
 

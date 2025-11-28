@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import mplcursors
 import numpy as np
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
@@ -171,9 +170,7 @@ def _plot_inferred_spikes(
             spike_data = [s if s > 0 else 0 for s in traces.inferred_spikes]
         else:
             threshold = data_analysis.inferred_spikes_threshold or 0
-            spike_data = [
-                s if s > threshold else 0 for s in traces.inferred_spikes
-            ]
+            spike_data = [s if s > threshold else 0 for s in traces.inferred_spikes]
 
         _plot_trace(
             ax,
@@ -385,9 +382,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
     for _, traces, data_analysis in roi_data:
         if data_analysis and traces.inferred_spikes:
             threshold = data_analysis.inferred_spikes_threshold or 0
-            spike_data = [
-                s if s > threshold else 0 for s in traces.inferred_spikes
-            ]
+            spike_data = [s if s > threshold else 0 for s in traces.inferred_spikes]
             spike_trains.append(spike_data)
             if data_analysis.total_recording_time_sec:
                 recording_time_sec = data_analysis.total_recording_time_sec

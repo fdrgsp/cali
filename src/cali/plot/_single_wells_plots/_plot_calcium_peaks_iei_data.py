@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
+
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 

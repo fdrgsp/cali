@@ -696,9 +696,7 @@ class _RunCaliWidget(QWidget):
         # Show detection settings for "Extraction Only", "Analysis Only",
         # and "Extraction and Analysis"
         is_extraction_only = text == "Extraction Only (require detection)"
-        is_analysis_only = (
-            text == "Analysis Only (require detection and extraction)"
-        )
+        is_analysis_only = text == "Analysis Only (require detection and extraction)"
         is_extraction_and_analysis = (
             text == "Extraction and Analysis (require detection)"
         )
