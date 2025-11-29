@@ -133,17 +133,16 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlalchemy import desc
             from sqlmodel import Session, create_engine, select
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Join CaliResult with DetectionSettings to avoid N+1 queries
-                # Order by created_at descending (most recent first)
+                # Order by created_at ascending (most recent last)
                 stmt = (
                     select(CaliResult, DetectionSettings)
                     .where(CaliResult.detection_settings == DetectionSettings.id)
-                    .order_by(desc(CaliResult.created_at))
+                    .order_by(CaliResult.created_at)
                 )
                 results = session.exec(stmt).all()
 
