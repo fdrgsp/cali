@@ -15,3 +15,4 @@ ask to claude:
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
 - when we cancel, we need to make sure that the position not detected/extracted/analyzed should be removed form the #sym:CaliResult no?
 - fix liggy hover cursor in plots when there are many rois/traces/lines...
+- general improvement of how the database is handled durynt cali pipeline
