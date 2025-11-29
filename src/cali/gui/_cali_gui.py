@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QGridLayout,
     QGroupBox,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMenuBar,
@@ -958,47 +959,13 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-
-        # Highlight the run that matches the settings just used
-        value = self._run_cali_wdg.value()
-        detection_id = extraction_id = analysis_id = None
-
-        # Get detection ID - either from run or from last created
-        if value.detection_settings_id is not None:
-            detection_id = value.detection_settings_id
-        else:
-            # Find the most recent detection settings ID
-            detection_ids = self._runs_panel.get_detection_settings_ids()
-            if detection_ids:
-                detection_id = detection_ids[-1]  # Most recent
-
-        # Get extraction ID if extraction was run
-        if value.run_extraction:
-            if value.extraction_settings_id is not None:
-                extraction_id = value.extraction_settings_id
-            else:
-                extraction_ids = self._runs_panel.get_extraction_settings_ids()
-                if extraction_ids:
-                    extraction_id = extraction_ids[-1]  # Most recent
-
-        # Get analysis ID if analysis was run
-        if value.run_analysis:
-            analysis_ids = self._runs_panel.get_analysis_settings_ids()
-            if analysis_ids:
-                analysis_id = analysis_ids[-1]  # Most recent
-
-        # Highlight matching run
-        self._runs_panel.highlight_run_by_settings(
-            detection_id, extraction_id, analysis_id
-        )
-
-        # Refresh the engine to see newly written data AFTER highlighting the run
-        # This ensures the run_id is set before refreshing plots
-        if self._database_path:
             self._update_graph_with_database_path(self._database_path)
-
-        # Refresh the FOV table selection to update the display
-        self._on_fov_table_selection_changed()
+        # trigger selection of last run to update GUI (triggers _on_run_item_selected)
+        if self._runs_panel._runs_list.count() > 0:
+            last_index = self._runs_panel._runs_list.count() - 1
+            self._runs_panel._on_item_clicked(
+                QListWidgetItem(self._runs_panel._runs_list.item(last_index))
+            )
 
     def _save_plate_map_to_database(self) -> None:
         """Save plate map data from GUI to database."""
