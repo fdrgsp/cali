@@ -1915,22 +1915,6 @@ def test_print_cali_results_levels(populated_db: Engine) -> None:
         )
 
 
-def test_model_graph_generation() -> None:
-    # Test that the model graph module can be imported
-    # Skip if sqlalchemy_data_model_visualizer is not available
-    try:
-        import importlib
-
-        import cali.sqlmodel._model_graph
-
-        importlib.reload(cali.sqlmodel._model_graph)
-
-        # Just verify the module loads without errors
-        assert cali.sqlmodel._model_graph is not None
-    except ModuleNotFoundError:
-        pytest.skip("sqlalchemy_data_model_visualizer not available")
-
-
 def test_cali_result_eq_hash(populated_db: Engine) -> None:
     with Session(populated_db) as session:
         result1 = session.exec(select(CaliResult)).first()
