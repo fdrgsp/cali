@@ -351,7 +351,7 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
-                            positions_analyzed=list(positions_for_detection),
+                            positions_detected=list(positions_for_detection),
                         )
                     )
                 if positions_for_detection:
@@ -431,18 +431,18 @@ class CaliRunner:
                             if detection_result_was_created:
                                 # Replace: result was created in this run
                                 completed = sorted(positions_processed_detection)
-                                result.positions_analyzed = completed
+                                result.positions_detected = completed
                             else:
                                 # Merge: result existed from previous run
-                                old_positions = set(result.positions_analyzed or [])
+                                old_positions = set(result.positions_detected or [])
                                 new_positions = set(positions_processed_detection)
                                 completed = sorted(old_positions | new_positions)
-                                result.positions_analyzed = completed
+                                result.positions_detected = completed
                             session.add(result)
                             session.commit()
                             cali_logger.info(
                                 f"📝 Updated CaliResult ID {detection_result_id} "
-                                f"with completed positions: {completed}"
+                                f"with completed detected positions: {completed}"
                             )
 
                 # 7. Run extraction if settings provided
@@ -567,16 +567,32 @@ class CaliRunner:
                     analysis_result_id = None
                     analysis_result_was_created = False
                     if experiment.id is not None:
-                        analysis_result_id, analysis_result_was_created = (
-                            self._create_or_update_analysis_result(
-                                session=session,
-                                experiment_id=experiment.id,
-                                detection_settings_id=det_id,
-                                extraction_settings_id=extraction_settings_id,
-                                analysis_settings_id=analysis_settings_id,
-                                positions_analyzed=list(positions_for_extraction),
+                        # For extraction/analysis, we track both stages
+                        if analysis_settings_id is not None:
+                            # Full pipeline: track extracted and analyzed
+                            analysis_result_id, analysis_result_was_created = (
+                                self._create_or_update_analysis_result(
+                                    session=session,
+                                    experiment_id=experiment.id,
+                                    detection_settings_id=det_id,
+                                    extraction_settings_id=extraction_settings_id,
+                                    analysis_settings_id=analysis_settings_id,
+                                    positions_extracted=list(positions_for_extraction),
+                                    positions_analyzed=list(positions_for_extraction),
+                                )
                             )
-                        )
+                        else:
+                            # Extraction only: track extracted
+                            analysis_result_id, analysis_result_was_created = (
+                                self._create_or_update_analysis_result(
+                                    session=session,
+                                    experiment_id=experiment.id,
+                                    detection_settings_id=det_id,
+                                    extraction_settings_id=extraction_settings_id,
+                                    analysis_settings_id=None,
+                                    positions_extracted=list(positions_for_extraction),
+                                )
+                            )
 
                     # Process in batches
                     # Use a batch size that is at least the number of threads to
@@ -677,21 +693,36 @@ class CaliRunner:
                     if analysis_result_id is not None:
                         result = session.get(CaliResult, analysis_result_id)
                         if result:
+                            completed = sorted(positions_processed)
                             if analysis_result_was_created:
                                 # Replace: result was created in this run
-                                completed = sorted(positions_processed)
-                                result.positions_analyzed = completed
+                                result.positions_extracted = completed
+                                if analysis_settings_id is not None:
+                                    result.positions_analyzed = completed
                             else:
                                 # Merge: result existed from previous run
-                                old_positions = set(result.positions_analyzed or [])
-                                new_positions = set(positions_processed)
-                                completed = sorted(old_positions | new_positions)
-                                result.positions_analyzed = completed
+                                old_extracted = set(result.positions_extracted or [])
+                                new_extracted = set(positions_processed)
+                                result.positions_extracted = sorted(
+                                    old_extracted | new_extracted
+                                )
+                                if analysis_settings_id is not None:
+                                    old_analyzed = set(result.positions_analyzed or [])
+                                    result.positions_analyzed = sorted(
+                                        old_analyzed | new_extracted
+                                    )
                             session.add(result)
                             session.commit()
+
+                            stage = (
+                                "extracted and analyzed"
+                                if analysis_settings_id is not None
+                                else "extracted"
+                            )
                             cali_logger.info(
                                 f"📝 Updated CaliResult ID {analysis_result_id} "
-                                f"with completed positions: {completed}"
+                                f"with completed {stage} positions: "
+                                f"{result.positions_extracted}"
                             )
         finally:
             cali_logger.info("🏁 Cali Run finished!")
@@ -1259,9 +1290,11 @@ class CaliRunner:
         detection_settings_id: int,
         extraction_settings_id: int | None,
         analysis_settings_id: int | None,
-        positions_analyzed: list[int],
+        positions_detected: list[int] | None = None,
+        positions_extracted: list[int] | None = None,
+        positions_analyzed: list[int] | None = None,
     ) -> tuple[int, bool]:
-        """Create or update a CaliResult entry.
+        """Create or update a CaliResult entry with progressive stage tracking.
 
         Handles progressive analysis stages:
         1. If exact match exists (same detection, extraction, analysis), merge positions
@@ -1269,10 +1302,40 @@ class CaliRunner:
            upgrade the existing result with new settings
         3. Otherwise, create new result and clean up superseded ones
 
+        Parameters
+        ----------
+        session : Session
+            Database session
+        experiment_id : int
+            Experiment ID
+        detection_settings_id : int
+            Detection settings ID
+        extraction_settings_id : int | None
+            Extraction settings ID (None for detection-only)
+        analysis_settings_id : int | None
+            Analysis settings ID (None for extraction-only or detection-only)
+        positions_detected : list[int] | None
+            Positions with detection results (ROIs)
+        positions_extracted : list[int] | None
+            Positions with extraction results (traces)
+        positions_analyzed : list[int] | None
+            Positions with full analysis results
+
         Returns
         -------
             Tuple of (result_id, was_created) where was_created=True for new results.
         """
+        # Ensure at least one position list is provided
+        if (
+            positions_detected is None
+            and positions_extracted is None
+            and positions_analyzed is None
+        ):
+            raise ValueError(
+                "At least one of positions_detected, positions_extracted, "
+                "or positions_analyzed must be provided"
+            )
+
         # First, check for exact match with all settings
         query = select(CaliResult).where(
             CaliResult.experiment == experiment_id,
@@ -1295,12 +1358,22 @@ class CaliRunner:
 
         if exact_match:
             assert isinstance(exact_match, CaliResult)
-            # Update existing result by merging positions
-            old_positions = set(exact_match.positions_analyzed or [])
-            new_positions = set(positions_analyzed)
-            merged_positions = sorted(old_positions | new_positions)
+            # Update existing result by merging positions for each stage
+            if positions_detected is not None:
+                old = set(exact_match.positions_detected or [])
+                new = set(positions_detected)
+                exact_match.positions_detected = sorted(old | new)
 
-            exact_match.positions_analyzed = merged_positions
+            if positions_extracted is not None:
+                old = set(exact_match.positions_extracted or [])
+                new = set(positions_extracted)
+                exact_match.positions_extracted = sorted(old | new)
+
+            if positions_analyzed is not None:
+                old = set(exact_match.positions_analyzed or [])
+                new = set(positions_analyzed)
+                exact_match.positions_analyzed = sorted(old | new)
+
             session.add(exact_match)
             session.commit()
             session.refresh(exact_match)
@@ -1313,7 +1386,9 @@ class CaliRunner:
                 f"(DetectionSettings={detection_settings_id}, "
                 f"ExtractionSettings={extraction_settings_id}, "
                 f"AnalysisSettings={analysis_settings_id}, "
-                f"positions={merged_positions})"
+                f"detected={exact_match.positions_detected}, "
+                f"extracted={exact_match.positions_extracted}, "
+                f"analyzed={exact_match.positions_analyzed})"
             )
             assert exact_match.id is not None
             return (exact_match.id, False)
@@ -1332,21 +1407,31 @@ class CaliRunner:
 
             if upgradeable_result:
                 assert isinstance(upgradeable_result, CaliResult)
-                # Upgrade the existing result with analysis settings
-                old_positions = set(upgradeable_result.positions_analyzed or [])
-                new_positions = set(positions_analyzed)
-                merged_positions = sorted(old_positions | new_positions)
+                # Upgrade the existing result with analysis settings and merge positions
+                if positions_detected is not None:
+                    old = set(upgradeable_result.positions_detected or [])
+                    new = set(positions_detected)
+                    upgradeable_result.positions_detected = sorted(old | new)
+
+                if positions_extracted is not None:
+                    old = set(upgradeable_result.positions_extracted or [])
+                    new = set(positions_extracted)
+                    upgradeable_result.positions_extracted = sorted(old | new)
+
+                if positions_analyzed is not None:
+                    old = set(upgradeable_result.positions_analyzed or [])
+                    new = set(positions_analyzed)
+                    upgradeable_result.positions_analyzed = sorted(old | new)
 
                 upgradeable_result.analysis_settings_id = analysis_settings_id
-                upgradeable_result.positions_analyzed = merged_positions
                 session.add(upgradeable_result)
                 session.commit()
                 session.refresh(upgradeable_result)
 
                 cali_logger.info(
-                    f"⬆️  Upgraded CaliResult ID {upgradeable_result.id} "
+                    f"⬆️ Upgraded CaliResult ID {upgradeable_result.id} "
                     f"with AnalysisSettings={analysis_settings_id}, "
-                    f"positions={merged_positions}"
+                    f"analyzed={upgradeable_result.positions_analyzed}"
                 )
                 assert upgradeable_result.id is not None
                 return (upgradeable_result.id, True)  # True: treat like creation
@@ -1366,21 +1451,31 @@ class CaliRunner:
 
             if upgradeable_result:
                 assert isinstance(upgradeable_result, CaliResult)
-                # Upgrade the existing result with extraction settings
-                old_positions = set(upgradeable_result.positions_analyzed or [])
-                new_positions = set(positions_analyzed)
-                merged_positions = sorted(old_positions | new_positions)
+                # Upgrade result with extraction settings and merge positions
+                if positions_detected is not None:
+                    old = set(upgradeable_result.positions_detected or [])
+                    new = set(positions_detected)
+                    upgradeable_result.positions_detected = sorted(old | new)
+
+                if positions_extracted is not None:
+                    old = set(upgradeable_result.positions_extracted or [])
+                    new = set(positions_extracted)
+                    upgradeable_result.positions_extracted = sorted(old | new)
+
+                if positions_analyzed is not None:
+                    old = set(upgradeable_result.positions_analyzed or [])
+                    new = set(positions_analyzed)
+                    upgradeable_result.positions_analyzed = sorted(old | new)
 
                 upgradeable_result.extraction_settings_id = extraction_settings_id
-                upgradeable_result.positions_analyzed = merged_positions
                 session.add(upgradeable_result)
                 session.commit()
                 session.refresh(upgradeable_result)
 
                 cali_logger.info(
-                    f"⬆️  Upgraded CaliResult ID {upgradeable_result.id} "
+                    f"⬆️ Upgraded CaliResult ID {upgradeable_result.id} "
                     f"with ExtractionSettings={extraction_settings_id}, "
-                    f"positions={merged_positions}"
+                    f"extracted={upgradeable_result.positions_extracted}"
                 )
                 assert upgradeable_result.id is not None
                 return (upgradeable_result.id, True)  # True: treat like creation
@@ -1397,12 +1492,22 @@ class CaliRunner:
 
             if compatible_result:
                 assert isinstance(compatible_result, CaliResult)
-                # Update positions (don't change analysis settings)
-                old_positions = set(compatible_result.positions_analyzed or [])
-                new_positions = set(positions_analyzed)
-                merged_positions = sorted(old_positions | new_positions)
+                # Update positions for each stage (don't change analysis settings)
+                if positions_detected is not None:
+                    old = set(compatible_result.positions_detected or [])
+                    new = set(positions_detected)
+                    compatible_result.positions_detected = sorted(old | new)
 
-                compatible_result.positions_analyzed = merged_positions
+                if positions_extracted is not None:
+                    old = set(compatible_result.positions_extracted or [])
+                    new = set(positions_extracted)
+                    compatible_result.positions_extracted = sorted(old | new)
+
+                if positions_analyzed is not None:
+                    old = set(compatible_result.positions_analyzed or [])
+                    new = set(positions_analyzed)
+                    compatible_result.positions_analyzed = sorted(old | new)
+
                 session.add(compatible_result)
                 session.commit()
                 session.refresh(compatible_result)
@@ -1411,8 +1516,9 @@ class CaliRunner:
                     extraction_settings_id, compatible_result.analysis_settings_id
                 )
                 cali_logger.info(
-                    f"📝 Updated {result_type} CaliResult ID {compatible_result.id} "
-                    f"with new positions: {merged_positions}"
+                    f"⬆️ Updated {result_type} CaliResult ID "
+                    f"{compatible_result.id} with new positions "
+                    f"(extracted={compatible_result.positions_extracted})"
                 )
                 assert compatible_result.id is not None
                 return (compatible_result.id, False)  # False: not newly created
@@ -1443,6 +1549,8 @@ class CaliRunner:
             detection_settings=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             analysis_settings_id=analysis_settings_id,
+            positions_detected=positions_detected,
+            positions_extracted=positions_extracted,
             positions_analyzed=positions_analyzed,
         )
         session.add(result)
@@ -1457,7 +1565,8 @@ class CaliRunner:
             f"(DetectionSettings={detection_settings_id}, "
             f"ExtractionSettings={extraction_settings_id}, "
             f"AnalysisSettings={analysis_settings_id}, "
-            f"positions={positions_analyzed})"
+            f"detected={positions_detected}, extracted={positions_extracted}, "
+            f"analyzed={positions_analyzed})"
         )
         assert result.id is not None
         return (result.id, True)

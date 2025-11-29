@@ -444,19 +444,50 @@ class _RunsPanel(QGroupBox):
             f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
         )
 
-        # Extraction status
+        # Extraction status with incomplete indicator
         extraction_icon = "❌" if result.extraction_settings_id is None else "✅"
+        extraction_incomplete = ""
+        if result.extraction_settings_id is not None:
+            # Check if extraction is incomplete (detected > extracted)
+            detected = set(result.positions_detected or [])
+            extracted = set(result.positions_extracted or [])
+            if detected and extracted and len(detected) > len(extracted):
+                extraction_incomplete = " ⚠️"
+
         item_text += (
-            f"  {extraction_icon} Extraction ID: {result.extraction_settings_id}\n"
+            f"  {extraction_icon} Extraction ID: {result.extraction_settings_id}"
+            f"{extraction_incomplete}\n"
         )
 
-        # Analysis status
+        # Analysis status with incomplete indicator
         analysis_icon = "❌" if result.analysis_settings_id is None else "✅"
-        item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
+        analysis_incomplete = ""
+        if result.analysis_settings_id is not None:
+            # Check if analysis is incomplete (extracted > analyzed)
+            extracted = set(result.positions_extracted or [])
+            analyzed = set(result.positions_analyzed or [])
+            if extracted and analyzed and len(extracted) > len(analyzed):
+                analysis_incomplete = " ⚠️"
+
+        item_text += (
+            f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
+            f"{analysis_incomplete}"
+        )
 
         item = QListWidgetItem(item_text)
         # item.setIcon(icon(MDI6.run_fast))
         item.setData(Qt.ItemDataRole.UserRole, result.id)
+
+        item.setToolTip(
+            f"Run #{result.id}\n"
+            f"Created at: {created_at}\n"
+            f"Detection Settings ID: {d_id}\n"
+            f"Extraction Settings ID: {result.extraction_settings_id}\n"
+            f"Analysis Settings ID: {result.analysis_settings_id}\n"
+            f"Positions Detected: {len(result.positions_detected or [])}\n"
+            f"Positions Extracted: {len(result.positions_extracted or [])}\n"
+            f"Positions Analyzed: {len(result.positions_analyzed or [])}\n"
+        )
 
         self._runs_list.addItem(item)
 

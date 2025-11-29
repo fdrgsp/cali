@@ -119,11 +119,13 @@ class _ImageViewer(QGroupBox):
         self._labels.setCheckable(True)
         self._labels.setChecked(False)
         self._labels.toggled.connect(self._show_labels)
+        self._labels.setEnabled(False)
         # neuropil
         self._neuropil = QPushButton("Neuropil")
         self._neuropil.setCheckable(True)
         self._neuropil.setChecked(False)
         self._neuropil.toggled.connect(self._show_neuropil)
+        self._neuropil.setEnabled(False)
         # reset view button
         self._reset_view = QPushButton()
         self._reset_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
