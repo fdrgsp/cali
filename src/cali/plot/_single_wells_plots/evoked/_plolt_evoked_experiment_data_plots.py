@@ -443,10 +443,45 @@ def _visualize_stimulated_area(
     elif stimulated_area and stim_mask is not None:
         # Just show stimulation mask
         ax.imshow(stim_mask, cmap="gray", clim=(0, 1))
+    else:
+        # Fallback to text statistics
+        _display_roi_statistics(ax, stimulated_roi_labels, non_stimulated_roi_labels)
 
     ax.axis("off")
     widget.figure.tight_layout()
     widget.canvas.draw()
+
+
+def _display_roi_statistics(
+    ax: Axes,
+    stimulated_rois: list[int],
+    non_stimulated_rois: list[int],
+) -> None:
+    """Display ROI statistics as text when mask visualization is not available."""
+    text_lines = [
+        "Stimulated Area Visualization",
+        "",
+        f"Total ROIs: {len(stimulated_rois) + len(non_stimulated_rois)}",
+        f"Stimulated ROIs: {len(stimulated_rois)}",
+        f"Non-Stimulated ROIs: {len(non_stimulated_rois)}",
+        "",
+    ]
+
+    if stimulated_rois:
+        text_lines.append(f"Stimulated: {stimulated_rois}")
+    if non_stimulated_rois:
+        text_lines.append(f"Non-Stimulated: {non_stimulated_rois}")
+
+    ax.text(
+        0.5,
+        0.5,
+        "\n".join(text_lines),
+        ha="center",
+        va="center",
+        fontsize=10,
+        transform=ax.transAxes,
+        family="monospace",
+    )
 
 
 def _plot_stimulated_vs_non_stimulated_roi_traces(
