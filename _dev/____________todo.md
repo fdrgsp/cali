@@ -11,6 +11,7 @@
 
 
 ask to claude:
-- when we cancel, we need to make sure that the position not detected/extracted/analyzed should be removed form the #sym:CaliResult no?
+- the logic in CaliGui to load the data is dolid but the code is repetitive. first create a test that cover all the logic, then try to not copy paste the same code multiple times.
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
+- when we cancel, we need to make sure that the position not detected/extracted/analyzed should be removed form the #sym:CaliResult no?
 - fix liggy hover cursor in plots when there are many rois/traces/lines...
