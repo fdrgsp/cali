@@ -192,6 +192,7 @@ class _RunCaliWidget(QWidget):
         self._run_options_lbl.setEnabled(state)
         self._run_options_combo.setEnabled(state)
         self._detection_settings_combo.setEnabled(state)
+        self._extraction_settings_combo.setEnabled(state)
         self._run_btn.setEnabled(state)
 
     def progress_bar_maximum(self) -> int:

@@ -554,17 +554,18 @@ class _RunsPanel(QGroupBox):
             QMessageBox.warning(self, "Error", f"Failed to delete run: {e}")
 
     def _clear_all_from_database(self) -> None:
-        """Delete all runs from the database with smart cascading.
+        """Delete all runs from the database with complete cleanup.
 
-        Deletes all runs and cleans up all orphaned settings and ROIs.
+        Deletes all CaliResults, ROIs, and ALL settings (including orphaned ones).
+        This ensures a completely clean database state.
         """
         if self._database_path is None:
             return
 
         try:
-            from sqlmodel import Session, create_engine, delete, select
+            from sqlmodel import Session, create_engine, delete
 
-            from cali.sqlmodel._model import ROI
+            from cali.sqlmodel._model import ROI, ExtractionSettings
 
             engine = create_engine(
                 f"sqlite:///{self._database_path}",
@@ -572,39 +573,16 @@ class _RunsPanel(QGroupBox):
                 pool_pre_ping=True,
             )
             with Session(engine) as session:
-                # Collect all detection and analysis settings before deleting
-                # We only need the IDs
-                stmt = select(
-                    CaliResult.detection_settings, CaliResult.analysis_settings_id
-                )
-                rows = session.exec(stmt).all()
-
-                det_ids = {r[0] for r in rows if r[0] is not None}
-                ana_ids = {r[1] for r in rows if r[1] is not None}
-
-                # Delete all analysis results (cascades to Traces)
+                # Delete all analysis results (cascades to Traces and DataAnalysis)
                 session.exec(delete(CaliResult))
 
-                # Clean up orphaned settings and ROIs
-                if det_ids:
-                    # Delete ROIs associated with these detection settings
-                    session.exec(
-                        delete(ROI).where(ROI.detection_settings_id.in_(det_ids))  # type: ignore
-                    )
-                    # Delete DetectionSettings
-                    session.exec(
-                        delete(DetectionSettings).where(
-                            DetectionSettings.id.in_(det_ids)  # type: ignore
-                        )
-                    )
+                # Delete ALL ROIs (cascades to Traces, DataAnalysis, and Masks)
+                session.exec(delete(ROI))
 
-                if ana_ids:
-                    # Delete AnalysisSettings
-                    session.exec(
-                        delete(AnalysisSettings).where(
-                            AnalysisSettings.id.in_(ana_ids)  # type: ignore
-                        )
-                    )
+                # Delete ALL settings (including orphaned ones from cancelled runs)
+                session.exec(delete(DetectionSettings))
+                session.exec(delete(ExtractionSettings))
+                session.exec(delete(AnalysisSettings))
 
                 session.commit()
 

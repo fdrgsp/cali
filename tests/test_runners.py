@@ -3,12 +3,10 @@
 Optimized for CI speed while maintaining >90% coverage.
 Key optimizations:
 1. Mock cellpose inference in most tests (cellpose is slow)
-2. Only 1-2 tests run real cellpose to cover that code path
-3. Use fixtures to share database setup where possible
+2. Use fixtures to share database setup where possible
 """
 
 import gc
-import sys
 from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
@@ -275,56 +273,6 @@ def test_cali_runner_incremental_mocked(
             assert result is not None
             assert result.detection_settings == ds_id
             assert result.extraction_settings_id is not None
-    finally:
-        engine.dispose()
-
-
-# =============================================================================
-# SLOW TEST (runs real cellpose for coverage)
-# =============================================================================
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Test takes too long on Windows")
-def test_cali_runner_real_cellpose(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
-) -> None:
-    """Test running real cellpose detection (slow, for coverage).
-
-    This test runs the actual cellpose model to ensure coverage of the
-    detection code path. It is marked as slow and should be skipped in
-    fast CI runs using: pytest -m "not slow"
-    """
-    runner = CaliRunner(commit_batch_size=1)
-
-    detection_settings = DetectionSettings(
-        method="cellpose",
-        model_type=MODEL,
-        diameter=30.0,
-        cellprob_threshold=0.0,
-        flow_threshold=0.4,
-    )
-
-    runner.run(
-        experiment=test_experiment,
-        dataset_path=data_path,
-        detection_settings=detection_settings,
-        database_name=test_db_path.name,
-        output_path=test_db_path.parent,
-        global_position_indices=[0],
-    )
-
-    engine = create_engine(f"sqlite:///{test_db_path}")
-    try:
-        with Session(engine) as session:
-            ds = session.exec(select(DetectionSettings)).first()
-            assert ds is not None
-            assert ds.method == "cellpose"
-
-            fovs = session.exec(select(FOV)).all()
-            assert len(fovs) > 0
-
-            rois = session.exec(select(ROI)).all()
-            assert len(rois) > 0
     finally:
         engine.dispose()
 

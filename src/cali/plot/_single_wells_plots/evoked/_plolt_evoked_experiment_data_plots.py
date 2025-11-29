@@ -467,11 +467,6 @@ def _display_roi_statistics(
         "",
     ]
 
-    if stimulated_rois:
-        text_lines.append(f"Stimulated: {stimulated_rois}")
-    if non_stimulated_rois:
-        text_lines.append(f"Non-Stimulated: {non_stimulated_rois}")
-
     ax.text(
         0.5,
         0.5,

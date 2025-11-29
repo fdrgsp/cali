@@ -330,6 +330,27 @@ class CaliRunner:
                 # 5. Run detection if needed
                 positions_processed_detection = []
                 total_rois_detected = 0
+                detection_result_id = None  # Track result ID for updating positions
+
+                # Create detection-only result if no analysis will follow
+                needs_detection_result = (
+                    positions_for_detection
+                    and analysis_settings is None
+                    and experiment.id is not None
+                )
+                detection_result_was_created = False
+                if needs_detection_result:
+                    # Optimistic: assume all will complete
+                    detection_result_id, detection_result_was_created = (
+                        self._create_or_update_analysis_result(
+                            session=session,
+                            experiment_id=experiment.id,  # type: ignore
+                            detection_settings_id=det_id,
+                            extraction_settings_id=None,
+                            analysis_settings_id=None,
+                            positions_analyzed=list(positions_for_detection),
+                        )
+                    )
                 if positions_for_detection:
                     yield f"PROGRESS:RESET:{len(positions_for_detection)}"
                     fov_count = 0
@@ -399,15 +420,26 @@ class CaliRunner:
                             f"✅ Detection committed: {total_rois_detected} "
                             f"ROIs across {len(positions_processed_detection)} FOVs"
                         )
-                        # Only create detection-only result if no analysis will follow
-                        if analysis_settings is None and experiment.id is not None:
-                            self._create_or_update_analysis_result(
-                                session=session,
-                                experiment_id=experiment.id,
-                                detection_settings_id=det_id,
-                                extraction_settings_id=None,
-                                analysis_settings_id=None,
-                                positions_analyzed=positions_processed_detection,
+
+                    # Update detection-only result with actually completed positions
+                    if detection_result_id is not None:
+                        result = session.get(CaliResult, detection_result_id)
+                        if result:
+                            if detection_result_was_created:
+                                # Replace: result was created in this run
+                                completed = sorted(positions_processed_detection)
+                                result.positions_analyzed = completed
+                            else:
+                                # Merge: result existed from previous run
+                                old_positions = set(result.positions_analyzed or [])
+                                new_positions = set(positions_processed_detection)
+                                completed = sorted(old_positions | new_positions)
+                                result.positions_analyzed = completed
+                            session.add(result)
+                            session.commit()
+                            cali_logger.info(
+                                f"📝 Updated CaliResult ID {detection_result_id} "
+                                f"with completed positions: {completed}"
                             )
 
                 # 7. Run extraction if settings provided
@@ -527,14 +559,17 @@ class CaliRunner:
 
                     # Create CaliResult FIRST with expected positions so we have the ID
                     analysis_result_id = None
+                    analysis_result_was_created = False
                     if experiment.id is not None:
-                        analysis_result_id = self._create_or_update_analysis_result(
-                            session=session,
-                            experiment_id=experiment.id,
-                            detection_settings_id=det_id,
-                            extraction_settings_id=extraction_settings_id,
-                            analysis_settings_id=analysis_id_for_check,
-                            positions_analyzed=list(positions_for_extraction),
+                        analysis_result_id, analysis_result_was_created = (
+                            self._create_or_update_analysis_result(
+                                session=session,
+                                experiment_id=experiment.id,
+                                detection_settings_id=det_id,
+                                extraction_settings_id=extraction_settings_id,
+                                analysis_settings_id=analysis_id_for_check,
+                                positions_analyzed=list(positions_for_extraction),
+                            )
                         )
 
                     # Process in batches
@@ -631,6 +666,27 @@ class CaliRunner:
                     # Log completion
                     if positions_processed:
                         cali_logger.info(f"✅ Extraction committed: {fov_count} FOVs")
+
+                    # Update analysis result with actually completed positions
+                    if analysis_result_id is not None:
+                        result = session.get(CaliResult, analysis_result_id)
+                        if result:
+                            if analysis_result_was_created:
+                                # Replace: result was created in this run
+                                completed = sorted(positions_processed)
+                                result.positions_analyzed = completed
+                            else:
+                                # Merge: result existed from previous run
+                                old_positions = set(result.positions_analyzed or [])
+                                new_positions = set(positions_processed)
+                                completed = sorted(old_positions | new_positions)
+                                result.positions_analyzed = completed
+                            session.add(result)
+                            session.commit()
+                            cali_logger.info(
+                                f"📝 Updated CaliResult ID {analysis_result_id} "
+                                f"with completed positions: {completed}"
+                            )
         finally:
             engine.dispose(close=True)
 
@@ -1120,7 +1176,7 @@ class CaliRunner:
         extraction_settings_id: int | None,
         analysis_settings_id: int | None,
         positions_analyzed: list[int],
-    ) -> int:
+    ) -> tuple[int, bool]:
         """Create or update a CaliResult entry.
 
         Handles progressive analysis stages:
@@ -1131,7 +1187,7 @@ class CaliRunner:
 
         Returns
         -------
-            The ID of the created or updated CaliResult.
+            Tuple of (result_id, was_created) where was_created=True for new results.
         """
         # First, check for exact match with all settings
         query = select(CaliResult).where(
@@ -1176,7 +1232,7 @@ class CaliRunner:
                 f"positions={merged_positions})"
             )
             assert exact_match.id is not None
-            return exact_match.id
+            return (exact_match.id, False)
 
         # Check for a less-complete result that can be upgraded
         # (same detection/extraction but missing analysis)
@@ -1209,7 +1265,7 @@ class CaliRunner:
                     f"positions={merged_positions}"
                 )
                 assert upgradeable_result.id is not None
-                return upgradeable_result.id
+                return (upgradeable_result.id, True)  # True: treat like creation
 
         # Check for result with same detection/extraction but missing extraction
         # (upgrade detection-only to detection+extraction)
@@ -1242,7 +1298,7 @@ class CaliRunner:
                     f"positions={merged_positions}"
                 )
                 assert upgradeable_result.id is not None
-                return upgradeable_result.id
+                return (upgradeable_result.id, True)  # True: treat like creation
 
         # No upgradeable result found - create new one
         # First, delete any detection-only result that will be superseded
@@ -1287,7 +1343,7 @@ class CaliRunner:
             f"positions={positions_analyzed})"
         )
         assert result.id is not None
-        return result.id
+        return (result.id, True)
 
     def _get_result_type(
         self, extraction_settings_id: int | None, analysis_settings_id: int | None
