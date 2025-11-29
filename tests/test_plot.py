@@ -67,11 +67,11 @@ def test_plot_stimulated_vs_non_stimulated_traces(
 ) -> None:
     """Test plotting stimulated vs non-stimulated normalized traces."""
     from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
-        _plot_stimulated_vs_non_stimulated_roi_amp,
+        _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
     # Test with valid data
-    _plot_stimulated_vs_non_stimulated_roi_amp(
+    _plot_stimulated_vs_non_stimulated_roi_traces(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
@@ -90,10 +90,10 @@ def test_plot_stimulated_vs_non_stimulated_traces_with_peaks(
 ) -> None:
     """Test plotting stimulated vs non-stimulated traces with peaks."""
     from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
-        _plot_stimulated_vs_non_stimulated_roi_amp,
+        _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
-    _plot_stimulated_vs_non_stimulated_roi_amp(
+    _plot_stimulated_vs_non_stimulated_roi_traces(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
@@ -110,10 +110,10 @@ def test_plot_stimulated_vs_non_stimulated_traces_no_run(
 ) -> None:
     """Test plotting with no run_id selected."""
     from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
-        _plot_stimulated_vs_non_stimulated_roi_amp,
+        _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
-    _plot_stimulated_vs_non_stimulated_roi_amp(
+    _plot_stimulated_vs_non_stimulated_roi_traces(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
@@ -631,7 +631,7 @@ def test_plot_calcium_peaks_raster(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
         amplitude_colors=False,
         colorbar=False,
@@ -654,7 +654,7 @@ def test_plot_calcium_peaks_raster_with_amplitude_colors(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
         amplitude_colors=True,
         colorbar=True,
@@ -677,7 +677,7 @@ def test_plot_inferred_spike_raster(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
         amplitude_colors=False,
         colorbar=False,
@@ -705,7 +705,7 @@ def test_plot_calcium_amplitudes(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
         amp=True,
         freq=False,
@@ -728,7 +728,7 @@ def test_plot_calcium_frequencies(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
         amp=False,
         freq=True,
@@ -756,7 +756,7 @@ def test_plot_calcium_peaks_iei(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -782,7 +782,7 @@ def test_plot_calcium_network_connectivity(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -803,7 +803,7 @@ def test_plot_calcium_peaks_correlation(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -824,7 +824,7 @@ def test_plot_inferred_spike_correlation(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -850,7 +850,7 @@ def test_plot_calcium_peaks_synchrony(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -871,7 +871,7 @@ def test_plot_inferred_spike_synchrony(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -898,7 +898,7 @@ def test_plot_inferred_spike_burst_activity(
         engine=evoked_engine,
         fov_name="B5_0000",
         rois=None,
-        run_id=2,
+        run_id=1,
     )
 
     mock_widget.figure.clear.assert_called()
@@ -923,7 +923,7 @@ def test_plot_cell_size(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 
@@ -949,7 +949,7 @@ def test_plot_neuropil_traces(
         widget=mock_widget,
         engine=evoked_engine,
         fov_name="B5_0000",
-        run_id=2,
+        run_id=1,
         rois=None,
     )
 

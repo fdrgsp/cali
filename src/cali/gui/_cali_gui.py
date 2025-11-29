@@ -948,8 +948,6 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-            # Refresh the engine to see newly written data
-            self._update_graph_with_database_path(self._database_path)
 
         # Highlight the run that matches the settings just used
         value = self._run_cali_wdg.value()
@@ -983,6 +981,11 @@ class CaliGui(QMainWindow):
         self._runs_panel.highlight_run_by_settings(
             detection_id, extraction_id, analysis_id
         )
+
+        # Refresh the engine to see newly written data AFTER highlighting the run
+        # This ensures the run_id is set before refreshing plots
+        if self._database_path:
+            self._update_graph_with_database_path(self._database_path)
 
         # Refresh the FOV table selection to update the display
         self._on_fov_table_selection_changed()

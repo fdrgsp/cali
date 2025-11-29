@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import contextlib
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import mplcursors
 import numpy as np
-import tifffile
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
@@ -17,7 +15,6 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-    from cali.sqlmodel._util import ROIData
 
 
 DEFAULT_COLOR = "gray"
@@ -71,7 +68,7 @@ def _plot_evoked_experiment_data(
         )
     else:
         # Default to showing stimulated vs non-stimulated traces
-        _plot_stimulated_vs_non_stimulated_roi_amp(
+        _plot_stimulated_vs_non_stimulated_roi_traces(
             widget=widget,
             engine=engine,
             fov_name=fov_name,
@@ -154,29 +151,47 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         widget.canvas.draw()
         return
 
-    # Extract peak amplitudes for each ROI
+    # Extract peak amplitudes for each ROI and plot
     roi_labels = []
-    amplitudes_list = []
     artists = []
-    metadata = []
 
     for roi_model, _, data_analysis in results:
         if data_analysis and data_analysis.peaks_amplitudes_dec_dff:
             roi_labels.append(roi_model.label_value)
             amps = data_analysis.peaks_amplitudes_dec_dff
-            amplitudes_list.append(amps)
 
-            # Plot scatter for this ROI
-            x_positions = [roi_model.label_value] * len(amps)
-            artist = ax.scatter(
-                x_positions,
-                amps,
-                alpha=0.6,
-                s=50,
+            # Calculate mean and SEM
+            mean_amp = float(np.mean(amps))
+
+            # Only calculate SEM if we have more than one data point
+            if len(amps) > 1:
+                std_amp = np.std(amps, ddof=1)  # sample std
+                sem_amp = std_amp / np.sqrt(len(amps))
+            else:
+                sem_amp = 0  # No error bars for single point
+
+            # Plot mean ± SEM as error bars
+            errorbar = ax.errorbar(
+                [roi_model.label_value],
+                [mean_amp],
+                yerr=[sem_amp],
+                fmt="o",
+                capsize=5,
                 color=STIMULATED_COLOR if stimulated else NON_STIMULATED_COLOR,
+                label=f"ROI {roi_model.label_value}",
+                zorder=2,
             )
-            artists.append(artist)
-            metadata.append((x_positions, amps))
+            artists.append(errorbar)
+
+            # Plot individual peak amplitudes in background
+            ax.scatter(
+                [roi_model.label_value] * len(amps),
+                amps,
+                alpha=0.5,
+                s=30,
+                color="lightgray",
+                zorder=1,
+            )
 
     if not roi_labels:
         ax.text(
@@ -197,12 +212,12 @@ def _plot_stim_or_not_stim_peaks_amplitude(
     ax.set_xlabel("ROI")
     ax.set_ylabel("Peak Amplitude (dec ΔF/F)")
     title = "Stimulated" if stimulated else "Non-Stimulated"
-    ax.set_title(f"{title} ROI Peak Amplitudes")
+    ax.set_title(f"{title} ROI Mean Peak Amplitudes ± SEM")
     ax.set_xticks(roi_labels)
     ax.set_xticklabels([str(lbl) for lbl in roi_labels])
 
     # Add hover functionality
-    _add_hover_to_stimulated_amp_plot(widget, artists, metadata)
+    _add_hover_to_stimulated_amp_plot(widget, artists)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -218,26 +233,27 @@ def extract_leading_number(key: str) -> float:
 def _add_hover_to_stimulated_amp_plot(
     widget: _SingleWellGraphWidget,
     artists: list,
-    metadata: list[tuple[list[int], list[float]]],
 ) -> None:
-    """Add hover tooltips to amplitude scatter plot points."""
+    """Add hover tooltips to amplitude error bar plot."""
     cursor = mplcursors.cursor(artists, hover=mplcursors.HoverMode.Transient)
 
     @cursor.connect("add")  # type: ignore
     def on_add(sel: mplcursors.Selection) -> None:
-        artist = sel.artist
-        index = sel.index
-        group_index = artists.index(artist)
-        rois_, amps = metadata[group_index]
-        roi = rois_[index]
-        amp_val = amps[index]
+        # Get the label from the artist to extract ROI
+        label = sel.artist.get_label()
+        if label and "ROI" in label:
+            roi = label.split(" ")[1]
+            # Get the y-value (mean amplitude)
+            _, y = sel.target
 
-        sel.annotation.set(
-            text=f"ROI {roi}\nAmp: {amp_val:.3f}", fontsize=8, color="black"
-        )
-        sel.annotation.arrow_patch.set_alpha(0.5)
+            sel.annotation.set(
+                text=f"ROI {roi}\nMean Amp: {y:.3f}", fontsize=8, color="black"
+            )
+            sel.annotation.arrow_patch.set_alpha(0.5)
 
-        widget.roiSelected.emit(str(roi))
+            widget.roiSelected.emit(str(roi))
+        else:
+            sel.annotation.set_visible(False)
 
 
 def _visualize_stimulated_area(
@@ -466,131 +482,7 @@ def _display_roi_statistics(
     )
 
 
-def _plot_stimulated_rois(
-    ax: Axes,
-    widget: _SingleWellGraphWidget,
-    data: dict[str, ROIData],
-    rois: list[int] | None,
-    stim_mask: np.ndarray,
-    with_stimulated_area: bool,
-) -> None:
-    """Plot the ROIs with stimulated and non-stimulated areas."""
-    # get the labels file path
-    labels_image_path = widget._plate_viewer.pv_labels_path
-    if labels_image_path is None:
-        return
-
-    stim, non_stim = _group_rois(data, rois)
-
-    # open label image
-    r = str(rois[0]) if rois is not None else "1"
-    label_name = f"{data[r].well_fov_position}.tif"
-    if not label_name:
-        return
-    # todo: maybe get it form ROIData.mask_coord_and_shape
-    labels = tifffile.imread(Path(labels_image_path) / label_name)
-
-    # create a color mapping for the labels
-    color_mapping = _generate_color_mapping(labels, stim, non_stim)
-
-    # plot the labels image with the color mapping
-    unique_labels = np.unique(labels)
-    colors = [color_mapping.get(lbl, DEFAULT_COLOR) for lbl in unique_labels]
-    cmap = ListedColormap(colors)
-    norm = BoundaryNorm(
-        boundaries=np.append(unique_labels, unique_labels[-1] + 1),
-        ncolors=len(colors),
-    )
-
-    if with_stimulated_area:
-        stim_area_contours = find_contours(stim_mask.astype(float), level=0.5)
-        for contour in stim_area_contours:
-            ax.plot(contour[:, 1], contour[:, 0], color="yellow", linewidth=1)
-    ax.imshow(labels, cmap=cmap, norm=norm)
-
-    _add_legend(ax)
-    _add_hover_functionality_plot_stim_roi(ax, widget, labels, stim_mask)
-
-
-def _group_rois(data: dict, rois: list[int] | None) -> tuple[list[int], list[int]]:
-    """To group the ROIs based on stimulated state."""
-    stimulated_rois: list[int] = []
-    non_stimulated_rois: list[int] = []
-
-    for roi_key in data:
-        if rois is not None and int(roi_key) not in rois:
-            continue
-
-        roi_data = cast("ROIData", data[roi_key])
-
-        if roi_data.stimulated:
-            stimulated_rois.append(int(roi_key))
-        else:
-            non_stimulated_rois.append(int(roi_key))
-
-    return stimulated_rois, non_stimulated_rois
-
-
-def _generate_color_mapping(
-    labels: np.ndarray, stim: list[int], non_stim: list[int]
-) -> dict[int, str]:
-    """Generate a color mapping for the labels."""
-    color_mapping = {0: "black", 1: "white"}  # 0: background, 1: stimulated area
-    labels_range = np.unique(labels[labels != 0])
-    for roi in labels_range:
-        if roi in stim:
-            color_mapping[roi] = STIMULATED_COLOR
-        elif roi in non_stim:
-            color_mapping[roi] = NON_STIMULATED_COLOR
-        else:
-            color_mapping[roi] = DEFAULT_COLOR
-    return color_mapping
-
-
-def _add_legend(ax: Axes) -> None:
-    """Add legend to the plot."""
-    legend_patches = [
-        Patch(color="green", label="Stimulated ROIs"),
-        Patch(color="magenta", label="Non-Stimulated ROIs"),
-    ]
-    ax.legend(
-        handles=legend_patches,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),  # moves it above the plot (x, y)
-        ncol=2,  # single row
-        frameon=True,
-        fontsize="small",
-        edgecolor="black",
-    )
-
-
-def _add_hover_functionality_plot_stim_roi(
-    ax: Axes,
-    widget: _SingleWellGraphWidget,
-    labels: np.ndarray,
-    stim_mask: np.ndarray,
-) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        roi_val = None
-        x, y = int(sel.target[0]), int(sel.target[1])
-        if 0 <= y < stim_mask.shape[0] and 0 <= x < stim_mask.shape[1]:
-            roi_val = str(labels[y, x]) if labels[y, x] > 0 else None
-        if roi_val and "ROI" in roi_val:
-            sel.annotation.set(text=f"ROI {roi_val}", fontsize=8, color="yellow")
-            sel.annotation.arrow_patch.set_color("yellow")
-            sel.annotation.arrow_patch.set_alpha(1)  # arrow is visible
-        else:
-            sel.annotation.set_visible(False)  # hide annotation
-            sel.annotation.arrow_patch.set_alpha(0)  # hide arrow
-        if roi_val and roi_val.isdigit():
-            widget.roiSelected.emit(roi_val)
-
-
-def _plot_stimulated_vs_non_stimulated_roi_amp(
+def _plot_stimulated_vs_non_stimulated_roi_traces(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -714,26 +606,6 @@ def _plot_stimulated_vs_non_stimulated_roi_amp(
                         markersize=8,
                     )
 
-                # Show individual peak amplitudes as scatter + mean ± SEM
-                if data_analysis.peaks_amplitudes_dec_dff:
-                    amps = np.array(data_analysis.peaks_amplitudes_dec_dff)
-                    mean_amp = np.mean(amps)
-                    std_amp = np.std(amps, ddof=1)
-                    sem_amp = std_amp / np.sqrt(len(amps))
-
-                    # Plot individual amplitudes in light gray
-                    [roi_model.label_value] * len(amps)
-                    # Create small secondary axis on right for amplitude display
-                    # For now, show as text annotation
-                    ax.text(
-                        len(trace) + 5,
-                        offset,
-                        f"{mean_amp:.2f}±{sem_amp:.2f}",
-                        fontsize=8,
-                        color=STIMULATED_COLOR,
-                        va="center",
-                    )
-
             last_trace = trace_obj.dec_dff
             count += 1
 
@@ -760,23 +632,6 @@ def _plot_stimulated_vs_non_stimulated_roi_amp(
                         markersize=8,
                     )
 
-                # Show individual peak amplitudes as scatter + mean ± SEM
-                if data_analysis.peaks_amplitudes_dec_dff:
-                    amps = np.array(data_analysis.peaks_amplitudes_dec_dff)
-                    mean_amp = np.mean(amps)
-                    std_amp = np.std(amps, ddof=1)
-                    sem_amp = std_amp / np.sqrt(len(amps))
-
-                    # Show as text annotation
-                    ax.text(
-                        len(trace) + 5,
-                        offset,
-                        f"{mean_amp:.2f}±{sem_amp:.2f}",
-                        fontsize=8,
-                        color=NON_STIMULATED_COLOR,
-                        va="center",
-                    )
-
             last_trace = trace_obj.dec_dff
             count += 1
 
@@ -793,7 +648,7 @@ def _plot_stimulated_vs_non_stimulated_roi_amp(
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
         Patch(color=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
     ]
-    ax.legend(handles=legend_patches, loc="best", fontsize="small")
+    ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
     # Update time axis
     _update_time_axis(ax, rois_rec_time, last_trace)
@@ -1023,7 +878,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
         Patch(color=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
     ]
-    ax.legend(handles=legend_patches, loc="best", fontsize="small")
+    ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
     # Update time axis
     _update_time_axis_spike_traces(ax, rois_rec_time, last_trace)
@@ -1234,7 +1089,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
         Patch(color=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
     ]
-    ax.legend(handles=legend_patches, loc="upper left", fontsize="small")
+    ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
     # Update time axis
     _update_time_axis_spike_traces(ax, rois_rec_time, last_trace)

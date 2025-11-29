@@ -9,7 +9,8 @@ from typing_extensions import TypeAlias
 
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
-    _plot_stimulated_vs_non_stimulated_roi_amp,
+    _plot_stimulated_vs_non_stimulated_roi_traces,
+    _plot_stimulated_vs_non_stimulated_spike_raster,
     _plot_stimulated_vs_non_stimulated_spike_traces,
     _visualize_stimulated_area,
 )
@@ -155,13 +156,12 @@ INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes (Thresholded) Cross-Correlat
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
 INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
 INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
-RASTER_PLOT = "Calcium Peaks Raster plot Colored by ROI"
-RASTER_PLOT_AMP = "Calcium Peaks Raster plot Colored by Amplitude"
-RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster plot Colored by Amplitude with Colorbar"  # noqa: E501
-INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes Raster plot Colored by ROI"
-INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes Raster plot Colored by Amplitude"
-INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes Raster plot Colored by Amplitude with Colorbar"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces"
+RASTER_PLOT = "Calcium Peaks Raster Plot Colored by ROI"
+RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
+RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
+INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes Raster Plot Colored by ROI"
+INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes Raster Plot Colored by Amplitude"
+INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
 CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Global Synchrony"
 CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
 CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
@@ -174,6 +174,8 @@ STIMULATED_ROIS = "Stimulated vs Non-Stimulated ROIs"
 STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with Stimulated Area"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stimulated vs Non-Stimulated Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
+STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces"
+STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER = "Stimulated vs Non-Stimulated Spike Raster Plot"  # noqa: E501
 STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
 NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
 STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
@@ -459,7 +461,7 @@ AnalysisProduct(
 AnalysisProduct(
     name=STIMULATED_AREA,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_visualize_stimulated_area, stimulated_area=False),
+    analyzer=partial(_visualize_stimulated_area, stimulated_area=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -494,14 +496,14 @@ AnalysisProduct(
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_vs_non_stimulated_roi_amp,
+    analyzer=_plot_stimulated_vs_non_stimulated_roi_traces,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_amp, with_peaks=True),
+    analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_traces, with_peaks=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -512,6 +514,14 @@ AnalysisProduct(
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
+AnalysisProduct(
+    name=STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+
 
 # Cell Size Group
 AnalysisProduct(

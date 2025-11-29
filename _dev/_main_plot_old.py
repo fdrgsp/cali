@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from ..src.cali.plot._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
 from ..src.cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
-    _plot_stimulated_vs_non_stimulated_roi_amp,
+    _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_traces,
     _visualize_stimulated_area,
 )
@@ -323,7 +323,7 @@ def plot_single_well_data(
             STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
             STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
         }:
-            return _plot_stimulated_vs_non_stimulated_roi_amp(
+            return _plot_stimulated_vs_non_stimulated_roi_traces(
                 widget, data, rois, **EVOKED_GROUP[text]
             )
 

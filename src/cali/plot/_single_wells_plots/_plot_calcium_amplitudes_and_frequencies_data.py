@@ -140,8 +140,14 @@ def _plot_metrics(
         ):
             return
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+
+        # Only calculate SEM if we have more than one data point
+        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
+            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
+            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        else:
+            sem_amp = 0  # No error bars for single point
+
         _plot_errorbars(
             ax,
             [data_analysis.dec_dff_frequency],
@@ -155,8 +161,14 @@ def _plot_metrics(
 
         # plot mean amplitude +- sem of each ROI
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+
+        # Only calculate SEM if we have more than one data point
+        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
+            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
+            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        else:
+            sem_amp = 0  # No error bars for single point
+
         _plot_errorbars(
             ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
         )
