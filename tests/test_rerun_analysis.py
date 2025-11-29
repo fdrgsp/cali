@@ -137,7 +137,7 @@ def test_rerun_analysis_same_settings(
             assert len(results) == 1
             result1_id = results[0].id
             ds_id = results[0].detection_settings
-            es_id = results[0].extraction_settings
+            es_id = results[0].extraction_settings_id
             assert ds_id is not None
             assert es_id is not None
     finally:
@@ -208,7 +208,7 @@ def test_rerun_extraction_on_existing_detection(
             result1 = session.exec(select(CaliResult)).first()
             assert result1 is not None
             ds_id = result1.detection_settings
-            es_id = result1.extraction_settings
+            es_id = result1.extraction_settings_id
             assert ds_id is not None
             assert es_id is not None
     finally:

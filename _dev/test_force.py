@@ -72,7 +72,7 @@ with Session(engine) as session:
     # CaliResults should be deleted (full analysis)
     assert len(rois) == len(first_roi_ids), "Should have same number of ROIs"
     assert len(results) == 1, "Should only have detection-only result"
-    assert results[0].analysis_settings is None, "Should be detection-only"
+    assert results[0].analysis_settings_id is None, "Should be detection-only"
     print("✅ Correctly deleted analysis and replaced ROIs")
 
 print("\n" + "="*80)

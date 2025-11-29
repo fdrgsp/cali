@@ -145,8 +145,8 @@ def _get_burst_parameters(
             return None
 
         result = session.get(CaliResult, run_id)
-        if result and result.analysis_settings is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings)
+        if result and result.analysis_settings_id is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings_id)
             if settings:
                 return (
                     settings.burst_threshold,
@@ -157,12 +157,12 @@ def _get_burst_parameters(
         # Fallback: get settings from the first available run
         stmt = (
             select(CaliResult)
-            .where(CaliResult.analysis_settings.is_not(None))  # type: ignore
+            .where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
             .limit(1)
         )
         result = session.exec(stmt).first()
-        if result and result.analysis_settings is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings)
+        if result and result.analysis_settings_id is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings_id)
             if settings:
                 return (
                     settings.burst_threshold,

@@ -22,14 +22,14 @@ with Session(engine) as session:
 
     for i, result in enumerate(results, 1):
         exp = session.get(Experiment, result.experiment)
-        settings = session.get(AnalysisSettings, result.analysis_settings)
+        settings = session.get(AnalysisSettings, result.analysis_settings_id)
 
         print(f"\nResult #{i}:")
         print(
             f"  Experiment ID: {result.experiment} - '{exp.name if exp else 'MISSING'}'"
         )
         print(
-            f"  Settings ID: {result.analysis_settings} - dff_window={settings.dff_window if settings else 'MISSING'}"
+            f"  Settings ID: {result.analysis_settings_id} - dff_window={settings.dff_window if settings else 'MISSING'}"
         )
         print(f"  Positions: {result.positions_analyzed}")
 

@@ -120,7 +120,7 @@ def _get_network_threshold(
             .join(FOV, Well.id == FOV.well_id)
             .join(
                 AnalysisSettings,
-                CaliResult.analysis_settings == AnalysisSettings.id,
+                CaliResult.analysis_settings_id == AnalysisSettings.id,
                 isouter=True,
             )
             .where(col(FOV.name) == fov_name)

@@ -196,20 +196,20 @@ def _get_jit(
         # Get the AnalysisSettings from the run
         if run_id is not None:
             result = session.get(CaliResult, run_id)
-            if result and result.analysis_settings is not None:
-                settings = session.get(AnalysisSettings, result.analysis_settings)
+            if result and result.analysis_settings_id is not None:
+                settings = session.get(AnalysisSettings, result.analysis_settings_id)
                 if settings:
                     return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 
         # Fallback: get settings from the first available run
         stmt = (
             select(CaliResult)
-            .where(CaliResult.analysis_settings.is_not(None))  # type: ignore
+            .where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
             .limit(1)
         )
         result = session.exec(stmt).first()
-        if result and result.analysis_settings is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings)
+        if result and result.analysis_settings_id is not None:
+            settings = session.get(AnalysisSettings, result.analysis_settings_id)
             if settings:
                 return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
 

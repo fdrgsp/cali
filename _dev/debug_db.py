@@ -35,7 +35,7 @@ with Session(engine) as session:
     results = session.exec(select(CaliResult)).all()
     print(f"\nCaliResults: {len(results)}")
     for r in results:
-        print(f"  ID={r.id}, exp={r.experiment}, det={r.detection_settings}, ana={r.analysis_settings}, pos={r.positions_analyzed}")
+        print(f"  ID={r.id}, exp={r.experiment}, det={r.detection_settings}, ana={r.analysis_settings_id}, pos={r.positions_analyzed}")
     
     # Check Traces
     traces = session.exec(select(Traces)).all()
@@ -65,7 +65,7 @@ with Session(engine) as session:
             ROI.detection_settings_id == 1,
             Traces.analysis_result_id.in_(  # type: ignore
                 select(CaliResult.id).where(
-                    CaliResult.analysis_settings == 1
+                    CaliResult.analysis_settings_id == 1
                 )
             ),
             FOV.position_index.in_([0]),  # type: ignore

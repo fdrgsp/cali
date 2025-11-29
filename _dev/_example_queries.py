@@ -26,7 +26,7 @@ def example_1_get_traces_by_settings(
     ar = session.exec(
         select(CaliResult).where(
             CaliResult.detection_settings == detection_id,
-            CaliResult.analysis_settings == analysis_id,
+            CaliResult.analysis_settings_id == analysis_id,
         )
     ).first()
 
@@ -99,7 +99,7 @@ def example_4_get_analysis_metadata(session: Session, trace_id: int) -> dict[str
         ).first()
 
     analysis = session.exec(
-        select(AnalysisSettings).where(AnalysisSettings.id == ar.analysis_settings)
+        select(AnalysisSettings).where(AnalysisSettings.id == ar.analysis_settings_id)
     ).first()
 
     return {
@@ -130,7 +130,7 @@ def example_5_filter_by_analysis_params(
     results = []
     for setting in settings:
         ars = session.exec(
-            select(CaliResult).where(CaliResult.analysis_settings == setting.id)
+            select(CaliResult).where(CaliResult.analysis_settings_id == setting.id)
         ).all()
         results.extend(ars)
 

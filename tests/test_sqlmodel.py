@@ -256,8 +256,8 @@ def populated_db(mock_engine: Engine) -> Engine:
         result = CaliResult(
             experiment=exp.id,
             detection_settings=det_settings.id,
-            extraction_settings=ext_settings.id,
-            analysis_settings=ana_settings.id,
+            extraction_settings_id=ext_settings.id,
+            analysis_settings_id=ana_settings.id,
             positions_analyzed=[0, 1, 2, 4],  # Test range grouping
         )
         session.add(result)
@@ -545,8 +545,8 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
             assert cali_result is not None
             assert cali_result.experiment == loaded_exp.id
             assert cali_result.detection_settings == detection_settings.id
-            assert cali_result.extraction_settings == extraction_settings.id
-            assert cali_result.analysis_settings == analysis_settings.id
+            assert cali_result.extraction_settings_id == extraction_settings.id
+            assert cali_result.analysis_settings_id == analysis_settings.id
 
             # Check plate structure
             assert loaded_exp.plate is not None
@@ -1938,8 +1938,8 @@ def test_cali_result_eq_hash(populated_db: Engine) -> None:
         result2 = CaliResult(
             experiment=result1.experiment,
             detection_settings=result1.detection_settings,
-            extraction_settings=result1.extraction_settings,
-            analysis_settings=result1.analysis_settings,
+            extraction_settings_id=result1.extraction_settings_id,
+            analysis_settings_id=result1.analysis_settings_id,
             positions_analyzed=result1.positions_analyzed,
         )
 
@@ -1950,8 +1950,8 @@ def test_cali_result_eq_hash(populated_db: Engine) -> None:
         result3 = CaliResult(
             experiment=result1.experiment,
             detection_settings=result1.detection_settings,
-            extraction_settings=result1.extraction_settings,
-            analysis_settings=result1.analysis_settings,
+            extraction_settings_id=result1.extraction_settings_id,
+            analysis_settings_id=result1.analysis_settings_id,
             positions_analyzed=[999],
         )
         assert result1 != result3

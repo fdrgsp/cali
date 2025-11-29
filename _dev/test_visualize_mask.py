@@ -22,8 +22,8 @@ with Session(engine) as session:
     # Get stimulation mask
     result = session.get(CaliResult, run_id)
     stim_mask = None
-    if result and result.analysis_settings:
-        analysis_settings = session.get(AnalysisSettings, result.analysis_settings)
+    if result and result.analysis_settings_id:
+        analysis_settings = session.get(AnalysisSettings, result.analysis_settings_id)
         if analysis_settings and analysis_settings.stimulation_mask_id:
             mask_obj = session.get(Mask, analysis_settings.stimulation_mask_id)
             if mask_obj and mask_obj.coords_y and mask_obj.coords_x:

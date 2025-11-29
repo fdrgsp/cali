@@ -1325,7 +1325,7 @@ class CaliGui(QMainWindow):
                     return
 
             # Load and apply extraction settings
-            if result.extraction_settings:
+            if result.extraction_settings_id:
                 from cali.gui._extraction_gui import (
                     ExtractionSettingsData,
                     TraceExtractionData,
@@ -1333,7 +1333,7 @@ class CaliGui(QMainWindow):
                 from cali.sqlmodel import ExtractionSettings
 
                 e_settings = ExtractionSettings.load_from_database(
-                    self._database_path, id=result.extraction_settings
+                    self._database_path, id=result.extraction_settings_id
                 )
                 assert isinstance(e_settings, ExtractionSettings)
 
@@ -1352,7 +1352,7 @@ class CaliGui(QMainWindow):
                 )
 
             # Load and apply analysis settings
-            if result.analysis_settings:
+            if result.analysis_settings_id:
                 from cali.gui._analysis_gui import (
                     CalciumPeaksData,
                     ExperimentTypeData,
@@ -1360,7 +1360,7 @@ class CaliGui(QMainWindow):
                 )
 
                 a_settings = AnalysisSettings.load_from_database(
-                    self._database_path, id=result.analysis_settings
+                    self._database_path, id=result.analysis_settings_id
                 )
                 assert isinstance(a_settings, AnalysisSettings)
 

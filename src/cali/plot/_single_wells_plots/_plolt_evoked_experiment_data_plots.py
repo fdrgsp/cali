@@ -35,7 +35,6 @@ def _plot_evoked_experiment_data(
     run_id: int | None = None,
     stimulated_area: bool = False,
     with_rois: bool = False,
-    stimulated: bool = False,
     with_peaks: bool = False,
 ) -> None:
     """Plot evoked experiment data.
@@ -56,8 +55,6 @@ def _plot_evoked_experiment_data(
         Whether to show stimulated area
     with_rois : bool
         Whether to show ROIs
-    stimulated : bool
-        Whether to show stimulated peaks
     with_peaks : bool
         Whether to show peaks
     """
@@ -294,8 +291,10 @@ def _visualize_stimulated_area(
     with Session(engine) as session:
         # Get stimulation mask if available
         result = session.get(CaliResult, run_id)
-        if result and result.analysis_settings:
-            analysis_settings = session.get(AnalysisSettings, result.analysis_settings)
+        if result and result.analysis_settings_id:
+            analysis_settings = session.get(
+                AnalysisSettings, result.analysis_settings_id
+            )
             if analysis_settings and analysis_settings.stimulation_mask_id:
                 mask_obj = session.get(Mask, analysis_settings.stimulation_mask_id)
                 if (

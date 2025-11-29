@@ -72,9 +72,9 @@ class CaliResult(SQLModel, table=True):
         Foreign key to experiment
     detection_settings : int | None
         Foreign key to detection settings used
-    extraction_settings : int | None
+    extraction_settings_id: int | None
         Foreign key to extraction settings used (None for detection-only runs)
-    analysis_settings : int | None
+    analysis_settings_id: int | None
         Foreign key to analysis settings used (None for extraction-only runs)
     positions_analyzed : list[int] | None
         List of position indices that were analyzed
@@ -94,10 +94,10 @@ class CaliResult(SQLModel, table=True):
     detection_settings: int | None = Field(
         default=None, foreign_key="detection_settings.id"
     )
-    extraction_settings: int | None = Field(
+    extraction_settings_id: int | None = Field(
         default=None, foreign_key="extraction_settings.id"
     )
-    analysis_settings: int | None = Field(
+    analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id"
     )
     positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
@@ -123,8 +123,8 @@ class CaliResult(SQLModel, table=True):
         return (
             self.experiment == other.experiment
             and self.detection_settings == other.detection_settings
-            and self.extraction_settings == other.extraction_settings
-            and self.analysis_settings == other.analysis_settings
+            and self.extraction_settings_id == other.extraction_settings_id
+            and self.analysis_settings_id == other.analysis_settings_id
             and self.positions_analyzed == other.positions_analyzed
         )
 
@@ -137,8 +137,8 @@ class CaliResult(SQLModel, table=True):
             (
                 self.experiment,
                 self.detection_settings,
-                self.extraction_settings,
-                self.analysis_settings,
+                self.extraction_settings_id,
+                self.analysis_settings_id,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
             )
         )

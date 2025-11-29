@@ -155,10 +155,10 @@ def print_cali_results(
                     )
 
             # Extraction settings (if available)
-            if result.extraction_settings:
+            if result.extraction_settings_id:
                 extraction_settings = session.exec(
                     select(ExtractionSettings).where(
-                        ExtractionSettings.id == result.extraction_settings
+                        ExtractionSettings.id == result.extraction_settings_id
                     )
                 ).first()
                 if extraction_settings:
@@ -169,7 +169,7 @@ def print_cali_results(
             # Analysis settings
             settings = session.exec(
                 select(AnalysisSettings).where(
-                    AnalysisSettings.id == result.analysis_settings
+                    AnalysisSettings.id == result.analysis_settings_id
                 )
             ).first()
 

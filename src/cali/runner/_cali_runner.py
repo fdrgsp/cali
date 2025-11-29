@@ -734,7 +734,7 @@ class CaliRunner:
                 ROI.detection_settings_id == detection_settings_id,
                 Traces.analysis_result_id.in_(  # type: ignore
                     select(CaliResult.id).where(
-                        CaliResult.analysis_settings == analysis_settings_id
+                        CaliResult.analysis_settings_id == analysis_settings_id
                     )
                 ),
                 FOV.position_index.in_(global_position_indices),  # type: ignore
@@ -1140,16 +1140,16 @@ class CaliRunner:
         )
 
         if extraction_settings_id is None:
-            query = query.where(CaliResult.extraction_settings.is_(None))  # type: ignore
+            query = query.where(CaliResult.extraction_settings_id.is_(None))  # type: ignore
         else:
             query = query.where(
-                CaliResult.extraction_settings == extraction_settings_id
+                CaliResult.extraction_settings_id == extraction_settings_id
             )
 
         if analysis_settings_id is None:
-            query = query.where(CaliResult.analysis_settings.is_(None))  # type: ignore
+            query = query.where(CaliResult.analysis_settings_id.is_(None))  # type: ignore
         else:
-            query = query.where(CaliResult.analysis_settings == analysis_settings_id)
+            query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
 
         exact_match = session.exec(query).first()
 
@@ -1185,8 +1185,8 @@ class CaliRunner:
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
                     CaliResult.detection_settings == detection_settings_id,
-                    CaliResult.extraction_settings == extraction_settings_id,
-                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                    CaliResult.extraction_settings_id == extraction_settings_id,
+                    CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
             ).first()
 
@@ -1197,7 +1197,7 @@ class CaliRunner:
                 new_positions = set(positions_analyzed)
                 merged_positions = sorted(old_positions | new_positions)
 
-                upgradeable_result.analysis_settings = analysis_settings_id
+                upgradeable_result.analysis_settings_id = analysis_settings_id
                 upgradeable_result.positions_analyzed = merged_positions
                 session.add(upgradeable_result)
                 session.commit()
@@ -1218,8 +1218,8 @@ class CaliRunner:
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
                     CaliResult.detection_settings == detection_settings_id,
-                    CaliResult.extraction_settings.is_(None),  # type: ignore
-                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                    CaliResult.extraction_settings_id.is_(None),  # type: ignore
+                    CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
             ).first()
 
@@ -1230,7 +1230,7 @@ class CaliRunner:
                 new_positions = set(positions_analyzed)
                 merged_positions = sorted(old_positions | new_positions)
 
-                upgradeable_result.extraction_settings = extraction_settings_id
+                upgradeable_result.extraction_settings_id = extraction_settings_id
                 upgradeable_result.positions_analyzed = merged_positions
                 session.add(upgradeable_result)
                 session.commit()
@@ -1251,8 +1251,8 @@ class CaliRunner:
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
                     CaliResult.detection_settings == detection_settings_id,
-                    CaliResult.extraction_settings.is_(None),  # type: ignore
-                    CaliResult.analysis_settings.is_(None),  # type: ignore
+                    CaliResult.extraction_settings_id.is_(None),  # type: ignore
+                    CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
             ).first()
 
@@ -1268,8 +1268,8 @@ class CaliRunner:
         result = CaliResult(
             experiment=experiment_id,
             detection_settings=detection_settings_id,
-            extraction_settings=extraction_settings_id,
-            analysis_settings=analysis_settings_id,
+            extraction_settings_id=extraction_settings_id,
+            analysis_settings_id=analysis_settings_id,
             positions_analyzed=positions_analyzed,
         )
         session.add(result)

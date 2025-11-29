@@ -225,7 +225,6 @@ def test_plot_evoked_experiment_data(
         run_id=1,
         stimulated_area=False,
         with_rois=False,
-        stimulated=False,
         with_peaks=False,
     )
 
@@ -608,6 +607,350 @@ def test_plot_inferred_spikes_specific_rois(
         active_only=False,
         dec_dff=False,
         thresholds=False,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Raster Plot Tests
+# ============================================================================
+
+
+def test_plot_calcium_peaks_raster(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peaks raster plot."""
+    from cali.plot._single_wells_plots._plot_calcium_peaks_raster_plots import (
+        _generate_raster_plot,
+    )
+
+    _generate_raster_plot(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+        amplitude_colors=False,
+        colorbar=False,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_calcium_peaks_raster_with_amplitude_colors(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peaks raster with amplitude colors."""
+    from cali.plot._single_wells_plots._plot_calcium_peaks_raster_plots import (
+        _generate_raster_plot,
+    )
+
+    _generate_raster_plot(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+        amplitude_colors=True,
+        colorbar=True,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_inferred_spike_raster(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting inferred spike raster."""
+    from cali.plot._single_wells_plots._plot_inferred_spike_raster_plots import (
+        _generate_spike_raster_plot,
+    )
+
+    _generate_spike_raster_plot(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+        amplitude_colors=False,
+        colorbar=False,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Peak Amplitudes and Frequencies Tests
+# ============================================================================
+
+
+def test_plot_calcium_amplitudes(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peak amplitudes."""
+    from cali.plot._single_wells_plots import (
+        _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
+    )
+
+    amp_freq_module._plot_amplitude_and_frequency_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+        amp=True,
+        freq=False,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_calcium_frequencies(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peak frequencies."""
+    from cali.plot._single_wells_plots import (
+        _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
+    )
+
+    amp_freq_module._plot_amplitude_and_frequency_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+        amp=False,
+        freq=True,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# IEI (Inter-Event Interval) Tests
+# ============================================================================
+
+
+def test_plot_calcium_peaks_iei(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peaks inter-event intervals."""
+    from cali.plot._single_wells_plots._plot_calcium_peaks_iei_data import (
+        _plot_iei_data,
+    )
+
+    _plot_iei_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Network and Correlation Tests
+# ============================================================================
+
+
+def test_plot_calcium_network_connectivity(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium network connectivity."""
+    from cali.plot._single_wells_plots._plot_calcium_network_connectivity import (
+        _plot_connectivity_network_data,
+    )
+
+    _plot_connectivity_network_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_calcium_peaks_correlation(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peaks correlation heatmap."""
+    from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
+        _plot_cross_correlation_data,
+    )
+
+    _plot_cross_correlation_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_inferred_spike_correlation(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting inferred spike correlation heatmap."""
+    from cali.plot._single_wells_plots._plot_inferred_spike_correlation import (
+        _plot_spike_cross_correlation_data,
+    )
+
+    _plot_spike_cross_correlation_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Synchrony Tests
+# ============================================================================
+
+
+def test_plot_calcium_peaks_synchrony(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting calcium peaks synchrony."""
+    from cali.plot._single_wells_plots._plot_calcium_peaks_synchrony import (
+        _plot_peak_event_synchrony_data,
+    )
+
+    _plot_peak_event_synchrony_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+def test_plot_inferred_spike_synchrony(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting inferred spike synchrony."""
+    from cali.plot._single_wells_plots._plot_inferred_spike_synchrony import (
+        _plot_spike_synchrony_data,
+    )
+
+    _plot_spike_synchrony_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Burst Activity Tests
+# ============================================================================
+
+
+def test_plot_inferred_spike_burst_activity(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting inferred spike burst activity."""
+    from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+        _plot_inferred_spike_burst_activity,
+    )
+
+    _plot_inferred_spike_burst_activity(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        rois=None,
+        run_id=2,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Cell Size Tests
+# ============================================================================
+
+
+def test_plot_cell_size(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting cell size distribution."""
+    from cali.plot._single_wells_plots._plot_cell_size import (
+        _plot_cell_size_data,
+    )
+
+    _plot_cell_size_data(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
+    )
+
+    mock_widget.figure.clear.assert_called()
+    mock_widget.canvas.draw.assert_called()
+
+
+# ============================================================================
+# Neuropil Traces Tests
+# ============================================================================
+
+
+def test_plot_neuropil_traces(
+    evoked_engine: Engine,
+    mock_widget: MagicMock,
+) -> None:
+    """Test plotting neuropil traces."""
+    from cali.plot._single_wells_plots.calcium_traces._plot_neuropil_traces import (
+        _plot_neuropil_traces,
+    )
+
+    _plot_neuropil_traces(
+        widget=mock_widget,
+        engine=evoked_engine,
+        fov_name="B5_0000",
+        run_id=2,
+        rois=None,
     )
 
     mock_widget.figure.clear.assert_called()

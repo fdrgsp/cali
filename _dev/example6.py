@@ -46,7 +46,7 @@ def table(db_path: str):
                 str(result.detection_settings) if result.detection_settings else "None"
             )
             analysis_id = (
-                str(result.analysis_settings) if result.analysis_settings else "None"
+                str(result.analysis_settings_id) if result.analysis_settings_id else "None"
             )
             positions = (
                 str(result.positions_analyzed) if result.positions_analyzed else "None"

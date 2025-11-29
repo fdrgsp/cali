@@ -461,8 +461,8 @@ def load_analysis_from_json(
                     analysis_result = CaliResult(
                         experiment=saved_exp_id,
                         detection_settings=saved_detection_settings_id,
-                        extraction_settings=saved_extraction_settings_id,  # May be None
-                        analysis_settings=saved_analysis_settings_id,  # May be None
+                        extraction_settings_id=saved_extraction_settings_id,
+                        analysis_settings_id=saved_analysis_settings_id,
                         positions_analyzed=sorted(positions_analyzed),
                     )
                     session.add(analysis_result)
