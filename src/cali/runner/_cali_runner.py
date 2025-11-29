@@ -1436,6 +1436,37 @@ class CaliRunner:
                 assert upgradeable_result.id is not None
                 return (upgradeable_result.id, True)  # True: treat like creation
 
+        # Check for detection-only result to update when running detection-only
+        if extraction_settings_id is None and analysis_settings_id is None:
+            detection_only_result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.experiment == experiment_id,
+                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.extraction_settings_id.is_(None),  # type: ignore
+                    CaliResult.analysis_settings_id.is_(None),  # type: ignore
+                )
+            ).first()
+
+            if detection_only_result:
+                assert isinstance(detection_only_result, CaliResult)
+                # Update positions for detection-only run
+                if positions_detected is not None:
+                    old = set(detection_only_result.positions_detected or [])
+                    new = set(positions_detected)
+                    detection_only_result.positions_detected = sorted(old | new)
+
+                session.add(detection_only_result)
+                session.commit()
+                session.refresh(detection_only_result)
+
+                cali_logger.info(
+                    f"📝 Updated detection-only CaliResult ID "
+                    f"{detection_only_result.id} with new positions "
+                    f"(detected={detection_only_result.positions_detected})"
+                )
+                assert detection_only_result.id is not None
+                return (detection_only_result.id, False)  # False: not newly created
+
         # Check for result with same detection/extraction (regardless of analysis)
         # when we're running detection+extraction without analysis
         if extraction_settings_id is not None and analysis_settings_id is None:
