@@ -16,3 +16,4 @@ ask to claude:
 - when we cancel, we need to make sure that the position not detected/extracted/analyzed should be removed form the #sym:CaliResult no?
 - how to fix laggy hover cursor in plots when there are many rois/traces/lines...
 - general improvement of how the database is handled durynt cali pipeline
+- the run wdg should display "cancellation requested" when we click on cancel

@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -24,14 +25,36 @@ if TYPE_CHECKING:
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
+DIALOG_TYPES = Literal["error", "warning", "info"]
+DIALOG_SYMBOLS = {
+    "error": "❌",
+    "warning": "⚠️",
+    "info": "\u24d8",
+}
 
-def show_error_dialog(parent: QWidget, message: str) -> None:
+
+def show_error_dialog(
+    parent: QWidget, message: str, type: DIALOG_TYPES = "error"
+) -> None:
     """Show an error dialog with the given message."""
-    dialog = QMessageBox(parent)
-    dialog.setWindowTitle("Error")
-    dialog.setText(message)
-    dialog.setIcon(QMessageBox.Icon.Critical)
-    dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+    dialog = QDialog(parent)
+    symbol = DIALOG_SYMBOLS.get(type, "")
+    dialog.setWindowTitle(f"{symbol} {type.capitalize()}")
+    dialog.setModal(True)
+
+    layout = QVBoxLayout(dialog)
+
+    # QTextEdit for scrollable text
+    text_edit = QTextEdit()
+    text_edit.setPlainText(message)
+    text_edit.setReadOnly(True)
+    text_edit.setMinimumSize(300, 200)
+    layout.addWidget(text_edit)
+
+    button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+    button_box.accepted.connect(dialog.accept)
+    layout.addWidget(button_box)
+
     dialog.exec()
 
 

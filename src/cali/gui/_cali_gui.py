@@ -332,7 +332,7 @@ class CaliGui(QMainWindow):
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
-        self._run_cali_wdg._cancel_btn.clicked.connect(self._runner.cancel)
+        self._run_cali_wdg._cancel_btn.clicked.connect(self._on_cali_cancel_clicked)
 
         self._elapsed_timer.elapsed_time_updated.connect(
             self._run_cali_wdg.set_time_label
@@ -368,13 +368,18 @@ class CaliGui(QMainWindow):
         # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/evoked/results.cali"
-        self._output_path = "tests/test_data/evoked/"
+        self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+        self._database_path = "tests/test_data/spontaneous/results.cali"
+        self._output_path = "tests/test_data/spontaneous/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+
+        # USED IN TESTS -------------------------------------------------
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -520,8 +525,8 @@ class CaliGui(QMainWindow):
                 if self._data.sequence is None:
                     show_error_dialog(
                         self,
-                        "useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                        "the useq.MDASequence in the datastore metadata!",
+                        "❌ useq.MDASequence not found! Cannot use the  `CaliGui` "
+                        "without the useq.MDASequence in the datastore metadata!",
                     )
                     self._loading_bar.hide()
                     return
@@ -645,7 +650,7 @@ class CaliGui(QMainWindow):
         if self._data.sequence is None:
             show_error_dialog(
                 self,
-                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
                 "the useq.MDASequence in the datastore metadata!",
             )
             self._loading_bar.hide()
@@ -797,7 +802,7 @@ class CaliGui(QMainWindow):
                 if extraction_settings_id is None:
                     show_error_dialog(
                         self,
-                        "Please select an Extraction ID to run analysis-only mode.",
+                        "❌ Please select an Extraction ID to run analysis-only mode.",
                     )
                     return
                 extraction_settings = extraction_settings_id
@@ -828,8 +833,8 @@ class CaliGui(QMainWindow):
                         missing_fields.append("LED pulse on frames (Analysis tab)")
                     if missing_fields:
                         msg = (
-                            "Evoked experiment type selected but required fields are "
-                            "missing:\n\n"
+                            "❌ Evoked experiment type selected but required fields "
+                            "are missing:\n\n"
                             + "\n".join(f"{field}" for field in missing_fields)
                             + "\n\nPlease configure these settings in the "
                             "Extraction tab."
@@ -844,7 +849,7 @@ class CaliGui(QMainWindow):
                 if detection_settings_id is None:
                     show_error_dialog(
                         self,
-                        "Please select a Detection ID to run extraction-only mode.",
+                        "❌ Please select a Detection ID to run extraction-only mode.",
                     )
                     return
                 detection_settings = detection_settings_id
@@ -858,7 +863,7 @@ class CaliGui(QMainWindow):
 
             # Initialize progress bar and timer
             self._run_cali_wdg.reset_progress_bar()
-            self._run_cali_wdg.set_progress_bar_text("🏁 Initializing...")
+            self._run_cali_wdg.set_progress_bar_text("🚀 Initializing...")
             self._elapsed_timer.start()
 
             # Save plate map data to database before running
@@ -931,18 +936,23 @@ class CaliGui(QMainWindow):
             error_msg = str(error)
 
         cali_logger.error(
-            f"❌ Runner encountered an error during execution:\n{error_msg}"
+            f"❌ Cali Runner encountered an error during execution:\n{error_msg}"
         )
 
         # Also show error dialog to user
-        show_error_dialog(self, f"Runner Error:\n\n{error}")
+        show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
+
+    def _on_cali_cancel_clicked(self) -> None:
+        """Handle cancellation of the runner."""
+        self._runner.cancel()
+        self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
 
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
-        cali_logger.info("✅ Runner finished successfully.")
+        cali_logger.info("🏁 Cali Run finished!")
         self._elapsed_timer.stop()
-        self._run_cali_wdg.set_progress_bar_text("Run Finished")
+        self._run_cali_wdg.set_progress_bar_text("🏁 Cali Run Finished")
         # refresh the runs panel
         self._runs_panel.refresh_runs()
         # repopulate detection settings combobox
@@ -1427,12 +1437,12 @@ class CaliGui(QMainWindow):
 
     def _on_led_info_from_meta_clicked(self) -> None:
         if self._data is None:
-            show_error_dialog(self, "Data not loaded! Cannot find metadata!")
+            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
             return
 
         try:
             if (sequence := self._data.sequence) is None:
-                msg = "useq.MDASequence not found! Cannot retrieve metadata!"
+                msg = "❌ useq.MDASequence not found! Cannot retrieve metadata!"
                 show_error_dialog(self, msg)
                 cali_logger.error(msg)
                 return
@@ -1468,12 +1478,12 @@ class CaliGui(QMainWindow):
                     )
 
             else:
-                msg = "No stimulation metadata found in the datastore!"
+                msg = "❌ No stimulation metadata found in the datastore!"
                 show_error_dialog(self, msg)
                 cali_logger.warning(msg)
 
         except Exception as e:
-            msg = f"Failed to load metadata from datastore!\n\nError: {e}"
+            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
             return
@@ -1541,7 +1551,7 @@ class CaliGui(QMainWindow):
         if self._data.sequence is None:
             show_error_dialog(
                 self,
-                "useq.MDASequence not found! Cannot retrieve the Well data without "
+                "❌ useq.MDASequence not found! Cannot retrieve the Well data without "
                 "the tensorstore useq.MDASequence!",
             )
             return
@@ -1810,7 +1820,8 @@ class CaliGui(QMainWindow):
         if self._data is None or (sequence := self._data.sequence) is None:
             show_error_dialog(
                 self,
-                "No data to save or useq.MDASequence not found! Cannot save the data.",
+                "❌ No data to save or useq.MDASequence not found! "
+                "Cannot save the data.",
             )
             return
 
@@ -1821,7 +1832,8 @@ class CaliGui(QMainWindow):
 
             if not Path(path).is_dir():
                 show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
+                    self,
+                    f"❌ The path {path} is not a directory! Cannot save the data.",
                 )
                 return
 
@@ -1880,11 +1892,15 @@ class CaliGui(QMainWindow):
         """Show the save as csv dialog."""
         # Check if experiment has analysis data
         if self._database_path is None:
-            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            show_error_dialog(
+                self, "❌ No data to save! Run or load analysis data first."
+            )
             return
 
         if not has_experiment_analysis(self._database_path):
-            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            show_error_dialog(
+                self, "❌ No data to save! Run or load analysis data first."
+            )
             return
 
         dialog = _SaveAsCSV(self)
@@ -1894,7 +1910,8 @@ class CaliGui(QMainWindow):
             path = dialog.value()
             if not Path(path).is_dir():
                 show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
+                    self,
+                    f"❌ The path {path} is not a directory! Cannot save the data.",
                 )
                 return
 
@@ -1902,7 +1919,5 @@ class CaliGui(QMainWindow):
             # save_trace_data_to_csv(path, self._experiment)
             # save_analysis_data_to_csv(path, self._experiment)
             show_error_dialog(
-                self,
-                "CSV export is not yet implemented for SQLModel. "
-                "Please use the database export instead.",
+                self, "❌ CSV export is not yet implemented for SQLModel."
             )
