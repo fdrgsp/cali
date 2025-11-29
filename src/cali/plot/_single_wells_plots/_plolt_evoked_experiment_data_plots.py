@@ -305,6 +305,8 @@ def _visualize_stimulated_area(
     image_shape = None
 
     with Session(engine) as session:
+        # Clear any cached data to ensure we see newly committed analysis results
+        session.expire_all()
         # Get stimulation mask if available
         result = session.get(CaliResult, run_id)
         if result and result.analysis_settings_id:
