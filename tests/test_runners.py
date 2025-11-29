@@ -1679,3 +1679,511 @@ def test_result_update_existing_mocked(
             assert sorted(positions) == [0, 1]
     finally:
         engine.dispose()
+
+
+# =============================================================================
+# EXTRACTION SKIP LOGIC TESTS (regression tests for bug fix)
+# =============================================================================
+
+
+def test_skip_extraction_when_exists(
+    tmp_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+    runner: CaliRunner,
+) -> None:
+    """Test that extraction is skipped when data already exists.
+
+    Scenario:
+    1. Run full pipeline on pos 0
+    2. Run extraction-only on pos 0 with same settings
+       - Should skip everything (detection AND extraction already exist)
+       - Should NOT create duplicate data
+
+    This tests the bug fix where extraction was re-running even when
+    the data already existed.
+    """
+    database_path = tmp_path / "test.cali"
+
+    # Step 1: Run full pipeline on pos 0
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(dff_window=150)
+    analysis_settings = AnalysisSettings(peaks_height_value=2)
+
+    runner.run(
+        test_experiment,
+        data_path,
+        detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        global_position_indices=[0],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify step 1 results
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        # Should have 1 result
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1
+        result1 = results[0]
+        assert result1.positions_analyzed == [0]
+
+        # Should have traces for pos 0
+        traces_pos0_step1 = session.exec(
+            select(Traces)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                FOV.position_index == 0,
+                Traces.analysis_result_id == result1.id,
+            )
+        ).all()
+        assert len(traces_pos0_step1) > 0
+        initial_trace_count = len(traces_pos0_step1)
+
+    # Step 2: Try to run extraction-only on same position with same settings
+    # This is the key test: should skip both detection AND extraction
+    runner.run(
+        test_experiment,
+        data_path,
+        1,  # Reuse detection settings ID
+        extraction_settings=1,  # Reuse extraction settings ID
+        analysis_settings=None,  # No analysis this time
+        global_position_indices=[0],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify step 2 results - THE KEY TEST
+    with Session(engine) as session:
+        # Should still have only 1 result (extraction-only was skipped)
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1, f"Expected 1 result, got {len(results)}"
+
+        # Verify pos 0 traces were NOT duplicated
+        traces_pos0_step2 = session.exec(
+            select(Traces)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                FOV.position_index == 0,
+                ROI.detection_settings_id == 1,
+            )
+        ).all()
+        # Should still have same number of traces as step 1
+        # (no duplicates from step 2)
+        assert len(traces_pos0_step2) == initial_trace_count, (
+            f"Expected {initial_trace_count} traces, got {len(traces_pos0_step2)}. "
+            "Extraction should have been skipped!"
+        )
+
+    engine.dispose(close=True)
+
+
+def test_skip_detection_and_extraction_when_both_exist(
+    tmp_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+    runner: CaliRunner,
+) -> None:
+    """Test that both detection and extraction are skipped when data exists.
+
+    Scenario:
+    1. Run full pipeline on pos 0
+    2. Run extraction-only on same position with same settings
+       - Should skip everything (no new data needed)
+    """
+    database_path = tmp_path / "test.cali"
+
+    # Step 1: Run full pipeline on pos 0
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(dff_window=150)
+
+    runner.run(
+        test_experiment,
+        data_path,
+        detection_settings,
+        extraction_settings=extraction_settings,
+        global_position_indices=[0],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Step 2: Try to run extraction-only on same position with same settings
+    # Should skip everything
+    runner.run(
+        test_experiment,
+        data_path,
+        1,  # Reuse detection settings
+        extraction_settings=1,  # Reuse extraction settings
+        global_position_indices=[0],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify no duplicate data was created
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        # Should still have only 1 result
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1
+
+        # Verify position has exactly one set of traces
+        traces = session.exec(
+            select(Traces).join(ROI).join(FOV).where(FOV.position_index == 0)
+        ).all()
+        # Each ROI should have exactly 1 Traces object
+        roi_ids = {t.roi_id for t in traces}
+        for roi_id in roi_ids:
+            roi_traces = [t for t in traces if t.roi_id == roi_id]
+            assert len(roi_traces) == 1, (
+                f"ROI {roi_id} has {len(roi_traces)} traces (expected 1)"
+            )
+
+    engine.dispose(close=True)
+
+
+# =============================================================================
+# RERUN ANALYSIS TESTS (regression tests for identity map issue)
+# =============================================================================
+
+
+def test_rerun_analysis_same_settings(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test re-running analysis with same settings doesn't cause identity map conflicts.
+
+    This is a regression test for the error:
+    sqlalchemy.exc.InvalidRequestError: Can't attach instance <Traces at 0x...>;
+    another instance with key (..., (5,), None) is already present in this session.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es = ExtractionSettings(neuropil_inner_radius=10)
+    as_ = AnalysisSettings(peaks_height_value=10.0)
+
+    # First run - full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify first run created result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            result1_id = results[0].id
+            ds_id = results[0].detection_settings
+            es_id = results[0].extraction_settings_id
+            assert ds_id is not None
+            assert es_id is not None
+    finally:
+        engine.dispose()
+
+    # Second run - new analysis settings on same detection/extraction (using IDs)
+    # This should create a new CaliResult but reuse detection
+    as2 = AnalysisSettings(peaks_height_value=15.0)  # Different threshold
+
+    # This should NOT raise InvalidRequestError
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify second run created new result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2
+            # Should have two different results
+            result_ids = {r.id for r in results}
+            assert len(result_ids) == 2
+            assert result1_id in result_ids
+    finally:
+        engine.dispose()
+
+
+def test_rerun_extraction_on_existing_detection(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test re-running extraction+analysis on existing detection.
+
+    This is the exact scenario from the user's error log.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es1 = ExtractionSettings(neuropil_inner_radius=10)
+    as1 = AnalysisSettings(peaks_height_value=10.0)
+
+    # First run - full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es1,
+        analysis_settings=as1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Get the detection settings ID
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result1 = session.exec(select(CaliResult)).first()
+            assert result1 is not None
+            ds_id = result1.detection_settings
+            es_id = result1.extraction_settings_id
+            assert ds_id is not None
+            assert es_id is not None
+    finally:
+        engine.dispose()
+
+    # Second run - new analysis on same detection/extraction (using IDs)
+    # This matches the user's scenario: "Created new AnalysisSettings ID 3"
+    # while reusing DetectionSettings and ExtractionSettings
+    as2 = AnalysisSettings(peaks_height_value=15.0)
+
+    # This should NOT raise InvalidRequestError
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify the run completed successfully
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            # Should have multiple results (one for each analysis)
+            assert len(results) >= 2
+    finally:
+        engine.dispose()
+
+
+def test_mixed_analysis_and_no_analysis_runs(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: str,
+    mock_detection_runner: Generator[None, None, None],
+) -> None:
+    """Test mixing full pipeline runs with detection+extraction-only runs.
+
+    Scenario:
+    1. Run pos 0 with analysis (creates CaliResult ID 1 with analysis)
+    2. Run pos 1 with analysis (updates CaliResult ID 1)
+    3. Run pos [0, 2] with detection+extraction only (NO analysis)
+       → Should update CaliResult ID 1, not create ID 2
+
+    This was a bug where running detection+extraction without analysis
+    created a new CaliResult instead of reusing the existing one.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL)
+    es = ExtractionSettings()
+    as_ = AnalysisSettings()
+
+    # Run 1: pos 0 with full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify we have 1 result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert results[0].positions_analyzed == [0]
+            assert results[0].analysis_settings_id is not None
+
+            ds_id = results[0].detection_settings
+            es_id = results[0].extraction_settings_id
+            as_id = results[0].analysis_settings_id
+    finally:
+        engine.dispose()
+
+    # Run 2: pos 1 with full pipeline (using setting IDs)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as_id,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[1],
+    )
+
+    # Verify still 1 result with positions [0, 1]
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert sorted(results[0].positions_analyzed) == [0, 1]
+    finally:
+        engine.dispose()
+
+    # Run 3: pos [0, 2] with detection+extraction only (NO analysis)
+    # This should UPDATE the existing result, not create a new one
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=None,  # Key: no analysis
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 2],
+    )
+
+    # Verify STILL only 1 result with positions [0, 1, 2]
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1, (
+                f"Expected 1 CaliResult but found {len(results)}. "
+                "Running detection+extraction without analysis should update "
+                "existing result, not create a new one."
+            )
+            assert sorted(results[0].positions_analyzed) == [0, 1, 2]
+            # Should still have the original analysis settings
+            assert results[0].analysis_settings_id == as_id
+    finally:
+        engine.dispose()
+
+
+def test_different_extraction_settings_creates_new_result(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: str,
+    mock_detection_runner: Generator[None, None, None],
+) -> None:
+    """Test that different extraction settings create a new CaliResult.
+
+    Scenario:
+    1. Run pos 0 with detection+extraction+analysis (settings 1/1/1)
+    2. Run pos 0 again with DIFFERENT extraction settings (settings 1/2/1)
+       → Should create CaliResult ID 2 and re-run extraction+analysis
+
+    This was a bug where _get_positions_for_analysis didn't check extraction
+    settings, so it would skip analysis even when extraction was different.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL)
+    es1 = ExtractionSettings(dff_window=150)
+    as_ = AnalysisSettings()
+
+    # Run 1: pos 0 with settings 1/1/1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es1,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify we have 1 result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert results[0].positions_analyzed == [0]
+
+            ds_id = results[0].detection_settings
+            es1_id = results[0].extraction_settings_id
+            as_id = results[0].analysis_settings_id
+    finally:
+        engine.dispose()
+
+    # Run 2: pos 0 with DIFFERENT extraction settings (1/2/1)
+    es2 = ExtractionSettings(dff_window=180)  # Different!
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es2,  # New extraction settings
+        analysis_settings=as_id,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Verify we NOW have 2 results
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2, (
+                f"Expected 2 CaliResult but found {len(results)}. "
+                "Different extraction settings should create a new result."
+            )
+
+            # Check that both results exist with correct settings
+            result1 = next(r for r in results if r.extraction_settings_id == es1_id)
+            result2 = next(r for r in results if r.extraction_settings_id != es1_id)
+
+            assert result1.positions_analyzed == [0]
+            assert result2.positions_analyzed == [0]
+
+            # Both should have same detection and analysis settings
+            assert result1.detection_settings == ds_id
+            assert result2.detection_settings == ds_id
+            assert result1.analysis_settings_id == as_id
+            assert result2.analysis_settings_id == as_id
+
+            # But different extraction settings
+            assert result1.extraction_settings_id == es1_id
+            assert result2.extraction_settings_id != es1_id
+    finally:
+        engine.dispose()

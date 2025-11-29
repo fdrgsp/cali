@@ -368,13 +368,13 @@ class CaliGui(QMainWindow):
         # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        self._database_path = "tests/test_data/spontaneous/results.cali"
-        self._output_path = "tests/test_data/spontaneous/"
+        # self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+        # self._database_path = "tests/test_data/spontaneous/results.cali"
+        # self._output_path = "tests/test_data/spontaneous/"
 
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        self._database_path = "/Users/fdrgsp/Desktop/cali_test/tiffs.cali"
+        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # USED IN TESTS -------------------------------------------------
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -779,6 +779,112 @@ class CaliGui(QMainWindow):
             return 4  # Extraction Only (require detection)
         return 5  # Analysis Only (require detection and extraction)
 
+    def _check_positions_missing_detection(
+        self, detection_settings_id: int, positions: list[int]
+    ) -> list[int]:
+        """Check which positions are missing detection data.
+
+        Parameters
+        ----------
+        detection_settings_id : int
+            Detection settings ID to check
+        positions : list[int]
+            List of position indices to check
+
+        Returns
+        -------
+        list[int]
+            List of position indices missing detection data
+        """
+        if not self._database_path:
+            return []
+
+        from sqlmodel import Session, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Find positions that already have ROIs with this detection
+                existing_positions = session.exec(
+                    select(FOV.position_index)
+                    .join(ROI)
+                    .where(
+                        ROI.detection_settings_id == detection_settings_id,
+                        FOV.position_index.in_(positions),  # type: ignore
+                    )
+                    .distinct()
+                ).all()
+
+                existing_set = set(existing_positions)
+                return [p for p in positions if p not in existing_set]
+        finally:
+            engine.dispose(close=True)
+
+    def _check_positions_missing_extraction(
+        self,
+        detection_settings_id: int,
+        extraction_settings_id: int,
+        positions: list[int],
+    ) -> list[int]:
+        """Check which positions are missing extraction data.
+
+        Parameters
+        ----------
+        detection_settings_id : int
+            Detection settings ID to check
+        extraction_settings_id : int
+            Extraction settings ID to check
+        positions : list[int]
+            List of position indices to check
+
+        Returns
+        -------
+        list[int]
+            List of position indices missing extraction data
+        """
+        if not self._database_path:
+            return []
+
+        from sqlmodel import Session, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Find positions that have Traces with this combination
+                existing_positions = session.exec(
+                    select(FOV.position_index)
+                    .join(ROI)
+                    .join(Traces)
+                    .where(
+                        ROI.detection_settings_id == detection_settings_id,
+                        Traces.analysis_result_id.in_(  # type: ignore
+                            select(CaliResult.id).where(
+                                CaliResult.extraction_settings_id
+                                == extraction_settings_id
+                            )
+                        ),
+                        FOV.position_index.in_(positions),  # type: ignore
+                    )
+                    .distinct()
+                ).all()
+
+                existing_set = set(existing_positions)
+                return [p for p in positions if p not in existing_set]
+        finally:
+            engine.dispose(close=True)
+
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
 
     def _on_cali_run_clicked(self) -> None:
@@ -795,21 +901,78 @@ class CaliGui(QMainWindow):
 
             value = self._run_cali_wdg.value()
 
+            # Get positions list early since we need it for validation
+            pos = value.positions or list(
+                range(len(self._data.sequence.stage_positions))
+            )
+
+            # Track if we've already assigned settings (to prevent overwriting)
+            detection_settings = None
+            extraction_settings = None
+
             # Get extraction settings - either from GUI or selected ID (analysis-only)
             if value.run_analysis and not value.run_extraction:
                 # Analysis-only mode: use existing extraction settings ID
                 extraction_settings_id = value.extraction_settings_id
-                if extraction_settings_id is None:
+                detection_settings_id_check = value.detection_settings_id
+                if (
+                    extraction_settings_id is None
+                    or detection_settings_id_check is None
+                ):
+                    missing = []
+                    if detection_settings_id_check is None:
+                        missing.append("Detection ID")
+                    if extraction_settings_id is None:
+                        missing.append("Extraction ID")
                     show_error_dialog(
                         self,
-                        "❌ Please select an Extraction ID to run analysis-only mode.",
+                        f"❌ Please select {' and '.join(missing)} to run "
+                        f"analysis-only mode.",
                     )
                     return
                 extraction_settings = extraction_settings_id
-            elif value.run_extraction:
+
+                # Check if selected positions have both detection and extraction data
+                missing_detection = self._check_positions_missing_detection(
+                    detection_settings_id_check, pos
+                )
+                missing_extraction = self._check_positions_missing_extraction(
+                    detection_settings_id_check, extraction_settings_id, pos
+                )
+
+                if missing_detection or missing_extraction:
+                    msg = "Data Missing for Analysis\n\n"
+                    if missing_detection:
+                        msg = msg + f"Missing detection data: {missing_detection}"
+                    if missing_extraction:
+                        msg = msg + f"Missing extraction data: {missing_extraction}"
+
+                    msg = msg + (
+                        "\n\nDo you want to run the full pipeline (detection + "
+                        "extraction + analysis) on these positions?\n"
+                        "(If you select 'No', only positions with existing "
+                        "data will be processed)."
+                    )
+                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
+                    if mbox.exec():  # type: ignore
+                        # User wants to run full pipeline - switch modes
+                        # Use the selected IDs from combo boxes, not GUI widgets
+                        value = CaliRunSettings(
+                            positions=value.positions,
+                            run_detection=True,
+                            run_extraction=True,
+                            run_analysis=True,
+                            detection_settings_id=None,
+                            extraction_settings_id=None,
+                        )
+                        # Use the IDs that were selected in the combo boxes
+                        detection_settings = detection_settings_id_check
+                        extraction_settings = extraction_settings_id
+            elif value.run_extraction and extraction_settings is None:
                 # Extraction or Detection+Extraction mode: get from GUI
+                # (only if not already set from dialog above)
                 extraction_settings = self._extraction_wdg.to_model_settings()
-            else:
+            elif extraction_settings is None:
                 extraction_settings = None
 
             # Get analysis settings if needed
@@ -853,8 +1016,40 @@ class CaliGui(QMainWindow):
                     )
                     return
                 detection_settings = detection_settings_id
-            else:
+
+                # Check if selected positions have detection data
+                missing_detection = self._check_positions_missing_detection(
+                    detection_settings_id, pos
+                )
+                if missing_detection:
+                    msg = "Detection Data Missing\n\n"
+                    msg += "The following positions are missing detection data:\n"
+                    msg += f"{missing_detection}\n\n"
+                    msg += "Do you want to run detection first on these positions?\n"
+                    msg += (
+                        "(If you select 'No', only positions with existing detection "
+                        "will be processed)."
+                    )
+                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
+                    if mbox.exec():  # type: ignore
+                        # User wants to run detection first - switch to full pipeline
+                        # Use the selected detection ID from combo box, not GUI widget
+                        value = CaliRunSettings(
+                            positions=value.positions,
+                            run_detection=True,
+                            run_extraction=True,
+                            run_analysis=value.run_analysis,
+                            detection_settings_id=None,
+                            extraction_settings_id=None,
+                        )
+                        # Use the detection ID that was selected in the combo box
+                        detection_settings = detection_settings_id
+                        # For extraction, use GUI widget since we're in
+                        # extraction-only mode
+                        extraction_settings = self._extraction_wdg.to_model_settings()
+            elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
+                # (only if not already set from dialog above)
                 detection_settings = self._detection_wdg.to_model_settings()
 
             pos = value.positions or list(
@@ -950,7 +1145,6 @@ class CaliGui(QMainWindow):
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
-        cali_logger.info("🏁 Cali Run finished!")
         self._elapsed_timer.stop()
         self._run_cali_wdg.set_progress_bar_text("🏁 Cali Run Finished")
         # refresh the runs panel

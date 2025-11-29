@@ -146,10 +146,12 @@ class CaliRunner:
             either a DetectionSettings instance or an integer ID referencing
             an existing DetectionSettings in the database.
         extraction_settings : ExtractionSettings | int | None
+            By default None.
             Extraction parameters (neuropil, dff_window, decay_constant, etc.).
             Required if analysis_settings is provided. Can be an ExtractionSettings
             instance or integer ID referencing existing settings in the database.
         analysis_settings : AnalysisSettings | int | None
+            By default None.
             Analysis parameters (peak detection, thresholds, etc.).
             If None, only extraction (traces) is performed. If provided,
             both extraction and analysis are run.
@@ -332,9 +334,10 @@ class CaliRunner:
                 total_rois_detected = 0
                 detection_result_id = None  # Track result ID for updating positions
 
-                # Create detection-only result if no analysis will follow
+                # Create detection-only result if no extraction/analysis will follow
                 needs_detection_result = (
                     positions_for_detection
+                    and extraction_settings is None
                     and analysis_settings is None
                     and experiment.id is not None
                 )
@@ -537,20 +540,23 @@ class CaliRunner:
                     )
 
                     # Determine which positions need extraction/analysis
-                    # Use analysis_settings_id if doing analysis,
-                    # otherwise None for extraction-only
-                    analysis_id_for_check = analysis_settings_id
-
-                    positions_for_extraction = (
-                        self._get_positions_for_analysis(
+                    if analysis_settings_id is not None:
+                        # Analysis mode: check for existing analysis results
+                        positions_for_extraction = self._get_positions_for_analysis(
                             session,
                             det_id,
-                            analysis_id_for_check,
+                            extraction_settings_id,  # type: ignore
+                            analysis_settings_id,
                             global_position_indices,
                         )
-                        if analysis_id_for_check is not None
-                        else global_position_indices
-                    )
+                    else:
+                        # Extraction-only mode: check for existing extraction results
+                        positions_for_extraction = self._get_positions_for_extraction(
+                            session,
+                            det_id,
+                            extraction_settings_id,  # type: ignore
+                            global_position_indices,
+                        )
 
                     if not positions_for_extraction:
                         return
@@ -567,7 +573,7 @@ class CaliRunner:
                                 experiment_id=experiment.id,
                                 detection_settings_id=det_id,
                                 extraction_settings_id=extraction_settings_id,
-                                analysis_settings_id=analysis_id_for_check,
+                                analysis_settings_id=analysis_settings_id,
                                 positions_analyzed=list(positions_for_extraction),
                             )
                         )
@@ -688,6 +694,7 @@ class CaliRunner:
                                 f"with completed positions: {completed}"
                             )
         finally:
+            cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)
 
     # ==================== PRIVATE HELPER METHODS ====================
@@ -736,7 +743,7 @@ class CaliRunner:
 
         if not positions_needing_detection:
             cali_logger.info(
-                "✓ Detection already exists for all positions with "
+                "⚠️ Detection already exists for all positions with "
                 f"DetectionSettings ID {detection_settings_id}. Skipping detection."
             )
             return []
@@ -751,17 +758,17 @@ class CaliRunner:
 
         return positions_needing_detection
 
-    def _get_positions_for_analysis(
+    def _get_positions_for_extraction(
         self,
         session: Session,
         detection_settings_id: int,
-        analysis_settings_id: int,
+        extraction_settings_id: int,
         global_position_indices: Sequence[int],
     ) -> list[int]:
-        """Get positions that need analysis.
+        """Get positions that need extraction.
 
         Returns positions that either:
-        - Don't have analysis results yet, OR
+        - Don't have Traces with this extraction settings yet, OR
         - force=True (re-run all)
 
         Parameters
@@ -770,6 +777,80 @@ class CaliRunner:
             Database session
         detection_settings_id : int
             Detection settings ID to check
+        extraction_settings_id : int
+            Extraction settings ID to check
+        global_position_indices : Sequence[int]
+            Positions to check
+
+        Returns
+        -------
+        list[int]
+            Positions that need extraction. Empty list means skip all.
+        """
+        # Find positions that already have Traces with this extraction_settings_id
+        # and detection_settings_id combination
+        existing_positions = session.exec(
+            select(FOV.position_index)
+            .join(ROI)
+            .join(Traces)
+            .where(
+                ROI.detection_settings_id == detection_settings_id,
+                Traces.analysis_result_id.in_(  # type: ignore
+                    select(CaliResult.id).where(
+                        CaliResult.extraction_settings_id == extraction_settings_id
+                    )
+                ),
+                FOV.position_index.in_(global_position_indices),  # type: ignore
+            )
+            .distinct()
+        ).all()
+
+        existing_pos_set = set(existing_positions)
+        positions_needing_extraction = [
+            p for p in global_position_indices if p not in existing_pos_set
+        ]
+
+        if not positions_needing_extraction:
+            cali_logger.info(
+                f"⚠️ Extraction already exists for all positions with "
+                f"DetectionSettings ID {detection_settings_id} and "
+                f"ExtractionSettings ID {extraction_settings_id}. "
+                "Skipping extraction."
+            )
+            return []
+
+        if existing_pos_set:
+            cali_logger.info(
+                f"⚠️ Extraction exists for {len(existing_pos_set)} position(s) "
+                f"but missing for {len(positions_needing_extraction)} position(s): "
+                f"{positions_needing_extraction}. "
+                "Running extraction for missing positions."
+            )
+
+        return positions_needing_extraction
+
+    def _get_positions_for_analysis(
+        self,
+        session: Session,
+        detection_settings_id: int,
+        extraction_settings_id: int,
+        analysis_settings_id: int,
+        global_position_indices: Sequence[int],
+    ) -> list[int]:
+        """Get positions that need analysis.
+
+        Returns positions that either:
+        - Don't have analysis results yet with this combination of settings, OR
+        - force=True (re-run all)
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        detection_settings_id : int
+            Detection settings ID to check
+        extraction_settings_id : int
+            Extraction settings ID to check (analysis depends on extraction)
         analysis_settings_id : int
             Analysis settings ID to check
         global_position_indices : Sequence[int]
@@ -780,8 +861,8 @@ class CaliRunner:
         list[int]
             Positions that need analysis. Empty list means skip all.
         """
-        # Find positions that already have Traces with this analysis_settings_id
-        # and detection_settings_id combination
+        # Find positions that already have Traces with this combination of
+        # detection_settings_id, extraction_settings_id, and analysis_settings_id
         existing_positions = session.exec(
             select(FOV.position_index)
             .join(ROI)
@@ -790,7 +871,8 @@ class CaliRunner:
                 ROI.detection_settings_id == detection_settings_id,
                 Traces.analysis_result_id.in_(  # type: ignore
                     select(CaliResult.id).where(
-                        CaliResult.analysis_settings_id == analysis_settings_id
+                        CaliResult.extraction_settings_id == extraction_settings_id,
+                        CaliResult.analysis_settings_id == analysis_settings_id,
                     )
                 ),
                 FOV.position_index.in_(global_position_indices),  # type: ignore
@@ -803,18 +885,18 @@ class CaliRunner:
             p for p in global_position_indices if p not in existing_pos_set
         ]
 
-        info = "\u24d8"
         if not positions_needing_analysis:
             cali_logger.info(
-                f"{info} Analysis already exists for all positions with "
-                f"DetectionSettings ID {detection_settings_id} and AnalysisSettings ID "
-                f"{analysis_settings_id}. Skipping analysis."
+                f"⚠️ Analysis already exists for all positions with "
+                f"DetectionSettings ID {detection_settings_id}, "
+                f"ExtractionSettings ID {extraction_settings_id}, and "
+                f"AnalysisSettings ID {analysis_settings_id}. Skipping analysis."
             )
             return []
 
         if existing_pos_set:
             cali_logger.info(
-                f"{info} Analysis exists for {len(existing_pos_set)} position(s) "
+                f"⚠️ Analysis exists for {len(existing_pos_set)} position(s) "
                 f"but missing for {len(positions_needing_analysis)} position(s): "
                 f"{positions_needing_analysis}. Running analysis for missing positions."
             )
@@ -1073,7 +1155,7 @@ class CaliRunner:
 
         Yields FOV results from DetectionRunner.
         """
-        cali_logger.info("🔍 Running detection...")
+        cali_logger.info("🔍 Running Detection...")
         yield from self._detection_runner.run(
             dataset=dataset,
             detection_settings=detection_settings,
@@ -1104,7 +1186,9 @@ class CaliRunner:
         fovs : Iterable[FOV]
             FOVs with ROIs to analyze (from detection or loaded from DB)
         """
-        cali_logger.info("📈 Running extraction...")
+        msg = "📈 Running Extraction"
+        msg = msg + (" and 📊 Analysis..." if analysis_settings is not None else "...")
+        cali_logger.info(msg)
         yield from self._extraction_runner.run(
             dataset=dataset,
             extraction_settings=extraction_settings,
@@ -1267,9 +1351,10 @@ class CaliRunner:
                 assert upgradeable_result.id is not None
                 return (upgradeable_result.id, True)  # True: treat like creation
 
-        # Check for result with same detection/extraction but missing extraction
-        # (upgrade detection-only to detection+extraction)
+        # Check for result with same detection/extraction (regardless of analysis)
+        # when we're running detection+extraction without analysis
         if extraction_settings_id is not None and analysis_settings_id is None:
+            # First, check for detection-only result to upgrade
             upgradeable_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
@@ -1299,6 +1384,38 @@ class CaliRunner:
                 )
                 assert upgradeable_result.id is not None
                 return (upgradeable_result.id, True)  # True: treat like creation
+
+            # Second, check for existing result with same detection+extraction
+            # (may have analysis settings, but we're just adding positions)
+            compatible_result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.experiment == experiment_id,
+                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.extraction_settings_id == extraction_settings_id,
+                )
+            ).first()
+
+            if compatible_result:
+                assert isinstance(compatible_result, CaliResult)
+                # Update positions (don't change analysis settings)
+                old_positions = set(compatible_result.positions_analyzed or [])
+                new_positions = set(positions_analyzed)
+                merged_positions = sorted(old_positions | new_positions)
+
+                compatible_result.positions_analyzed = merged_positions
+                session.add(compatible_result)
+                session.commit()
+                session.refresh(compatible_result)
+
+                result_type = self._get_result_type(
+                    extraction_settings_id, compatible_result.analysis_settings_id
+                )
+                cali_logger.info(
+                    f"📝 Updated {result_type} CaliResult ID {compatible_result.id} "
+                    f"with new positions: {merged_positions}"
+                )
+                assert compatible_result.id is not None
+                return (compatible_result.id, False)  # False: not newly created
 
         # No upgradeable result found - create new one
         # First, delete any detection-only result that will be superseded
@@ -1336,7 +1453,7 @@ class CaliRunner:
             extraction_settings_id, analysis_settings_id
         )
         cali_logger.info(
-            f"📊 Created {result_type} CaliResult ID {result.id} "
+            f"⚙️ Created {result_type} CaliResult ID {result.id} "
             f"(DetectionSettings={detection_settings_id}, "
             f"ExtractionSettings={extraction_settings_id}, "
             f"AnalysisSettings={analysis_settings_id}, "

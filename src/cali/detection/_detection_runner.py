@@ -155,7 +155,7 @@ class DetectionRunner:
                 "• pip install caiman\n"
             ) from e
 
-        cali_logger.info("🔍 Running CaImAn detection...")
+        cali_logger.info("🔍 Running CaImAn Detection...")
 
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
@@ -199,7 +199,7 @@ class DetectionRunner:
                 "• Or via pip: pip install cellpose"
             ) from e
 
-        cali_logger.info("🔍 Running Cellpose detection...")
+        cali_logger.info("🔍 Running Cellpose Detection...")
 
         use_gpu = core.use_gpu()
         cali_logger.info(f"🖥️ Use GPU: {use_gpu}")
