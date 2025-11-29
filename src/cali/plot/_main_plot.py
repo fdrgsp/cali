@@ -437,20 +437,7 @@ AnalysisProduct(
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-# AnalysisProduct(
-#     name=CLUSTERING,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_hierarchical_clustering_data,
-#     category="Calcium Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name=CLUSTERING_DENDROGRAM,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_hierarchical_clustering_data, use_dendrogram=True),
-#     category="Calcium Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
+
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
@@ -467,20 +454,6 @@ AnalysisProduct(
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_CLUSTERING,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_spike_hierarchical_clustering_data,
-#     category="Inferred Spikes Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name=INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_hierarchical_clustering_data, use_dendrogram=True),
-#     category="Inferred Spikes Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
 
 # Evoked Experiment Group
 AnalysisProduct(

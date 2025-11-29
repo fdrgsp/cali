@@ -501,7 +501,7 @@ class CaliRunner:
                         session.expunge(analysis_settings_obj)
 
                     yield "📈 Running Extraction" + (
-                        " and Analysis..." if analysis_settings_obj else "..."
+                        " and 📊 Analysis..." if analysis_settings_obj else "..."
                     )
 
                     # Determine which positions need extraction/analysis
