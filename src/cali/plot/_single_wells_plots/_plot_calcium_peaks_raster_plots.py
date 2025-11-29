@@ -132,7 +132,7 @@ def _generate_raster_plot(
         _generate_amplitude_colors(roi_data, min_amp, max_amp, colors)
 
     # plot the raster plot
-    ax.eventplot(event_data, colors=colors)
+    ax.eventplot(event_data, colors=colors, linewidth=3)
 
     # set the axis labels
     ax.set_ylabel("ROIs")

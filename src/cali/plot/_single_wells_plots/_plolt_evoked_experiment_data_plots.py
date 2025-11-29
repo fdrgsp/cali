@@ -818,12 +818,13 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         widget.canvas.draw()
         return
 
-    # Plot raster-style spike traces
-    y_position = 0
+    # Prepare event data for raster plot using eventplot
+    event_data: list[list[float]] = []
+    colors: list[str] = []
     last_trace = None
 
-    # Plot stimulated ROIs first
-    for roi_model, trace_obj, data_analysis in stimulated_rois:
+    # Collect stimulated ROI spike events
+    for _roi_model, trace_obj, data_analysis in stimulated_rois:
         if trace_obj.inferred_spikes and data_analysis.inferred_spikes_threshold:
             spikes = np.array(trace_obj.inferred_spikes)
             threshold = data_analysis.inferred_spikes_threshold
@@ -831,21 +832,15 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             # Threshold spikes
             thresholded = np.where(spikes > threshold, spikes, 0)
 
-            # Plot as raster (vertical lines where spikes occur)
+            # Get spike indices
             spike_indices = np.where(thresholded > 0)[0]
-            ax.vlines(
-                spike_indices,
-                y_position,
-                y_position + 0.8,
-                colors=STIMULATED_COLOR,
-                label=f"ROI {roi_model.label_value}" if y_position == 0 else "",
-            )
+            event_data.append(spike_indices.tolist())
+            colors.append(STIMULATED_COLOR)
 
             last_trace = trace_obj.inferred_spikes
-            y_position += 1
 
-    # Plot non-stimulated ROIs
-    for roi_model, trace_obj, data_analysis in non_stimulated_rois:
+    # Collect non-stimulated ROI spike events
+    for _roi_model, trace_obj, data_analysis in non_stimulated_rois:
         if trace_obj.inferred_spikes and data_analysis.inferred_spikes_threshold:
             spikes = np.array(trace_obj.inferred_spikes)
             threshold = data_analysis.inferred_spikes_threshold
@@ -853,23 +848,21 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             # Threshold spikes
             thresholded = np.where(spikes > threshold, spikes, 0)
 
-            # Plot as raster
+            # Get spike indices
             spike_indices = np.where(thresholded > 0)[0]
-            ax.vlines(
-                spike_indices,
-                y_position,
-                y_position + 0.8,
-                colors=NON_STIMULATED_COLOR,
-                label=f"ROI {roi_model.label_value}",
-            )
+            event_data.append(spike_indices.tolist())
+            colors.append(NON_STIMULATED_COLOR)
 
             last_trace = trace_obj.inferred_spikes
-            y_position += 1
+
+    # Plot raster using eventplot
+    ax.eventplot(event_data, colors=colors, linewidth=3)
 
     # Set labels and title
     ax.set_ylabel("ROI")
-    ax.set_title("Stimulated vs Non-Stimulated Spike Traces")
-    ax.set_ylim(-0.5, y_position + 0.5)
+    ax.set_yticks([])
+    ax.set_yticklabels([])
+    ax.set_title("Stimulated vs Non-Stimulated Spike Raster Plot")
 
     # Add legend for stimulated/non-stimulated
     from matplotlib.patches import Patch
