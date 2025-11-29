@@ -150,8 +150,22 @@ class _InputDialog(QDialog):
         InputDialogData
             The output dialog containing the selected paths.
         """
-        # from Directories
+        # from Database
         if self._tab_widget.currentIndex() == 0:
+            datastore_path = self._browse_data_db.value()
+            database_path = self._browse_database.value()
+            return InputDialogData(
+                data_path=(
+                    os.path.normpath(datastore_path) if datastore_path else None
+                ),
+                output_path=None,
+                database_path=(
+                    os.path.normpath(database_path) if database_path else None
+                ),
+                database_name=None,
+            )
+        # from Directories
+        else:
             datastore_path = self._browse_data.value()
             output_path = self._browse_output.value()
             database_name = (
@@ -165,18 +179,4 @@ class _InputDialog(QDialog):
                 output_path=(os.path.normpath(output_path) if output_path else None),
                 database_path=None,
                 database_name=database_name,
-            )
-        # from Database
-        else:
-            datastore_path = self._browse_data_db.value()
-            database_path = self._browse_database.value()
-            return InputDialogData(
-                data_path=(
-                    os.path.normpath(datastore_path) if datastore_path else None
-                ),
-                output_path=None,
-                database_path=(
-                    os.path.normpath(database_path) if database_path else None
-                ),
-                database_name=None,
             )
