@@ -25,7 +25,7 @@ with Session(engine) as session:
         print(f"\nCaliResult ID: {ar.id}")
         print(f"  Experiment: {ar.experiment}")
         print(f"  DetectionSettings: {ar.detection_settings}")
-        print(f"  AnalysisSettings: {ar.analysis_settings}")
+        print(f"  AnalysisSettings: {ar.analysis_settings_id}")
         print(f"  Positions: {ar.positions_analyzed}")
         print(f"  Traces linked via relationship: {len(ar.traces)}")
         print(

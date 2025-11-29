@@ -122,11 +122,15 @@ def test_cali_result_equality() -> None:
     """Test CaliResult equality ignores created_at timestamp."""
     import time
 
-    result1 = CaliResult(experiment=1, analysis_settings=1, positions_analyzed=[0, 1])
+    result1 = CaliResult(
+        experiment=1, analysis_settings_id=1, positions_analyzed=[0, 1]
+    )
 
     time.sleep(0.001)  # Ensure different timestamps
 
-    result2 = CaliResult(experiment=1, analysis_settings=1, positions_analyzed=[0, 1])
+    result2 = CaliResult(
+        experiment=1, analysis_settings_id=1, positions_analyzed=[0, 1]
+    )
 
     # created_at should be different
     assert result1.created_at != result2.created_at, (
@@ -141,7 +145,7 @@ def test_cali_result_equality() -> None:
     # Different settings should not be equal
     result3 = CaliResult(
         experiment=1,
-        analysis_settings=2,  # Different analysis settings
+        analysis_settings_id=2,  # Different analysis settings
         positions_analyzed=[0, 1],
     )
 
@@ -156,14 +160,14 @@ def test_cali_result_with_none_values() -> None:
     result1 = CaliResult(
         experiment=1,
         detection_settings=None,
-        analysis_settings=1,
+        analysis_settings_id=1,
         positions_analyzed=None,
     )
 
     result2 = CaliResult(
         experiment=1,
         detection_settings=None,
-        analysis_settings=1,
+        analysis_settings_id=1,
         positions_analyzed=None,
     )
 
@@ -205,7 +209,7 @@ def test_cali_result_database_storage(
             result = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings.id,
-                analysis_settings=a_settings.id,
+                analysis_settings_id=a_settings.id,
                 positions_analyzed=[0, 1, 2],
             )
             session.add(result)
@@ -217,7 +221,7 @@ def test_cali_result_database_storage(
             assert loaded_result is not None
             assert loaded_result.experiment == test_experiment.id
             assert loaded_result.detection_settings == d_settings.id
-            assert loaded_result.analysis_settings == a_settings.id
+            assert loaded_result.analysis_settings_id == a_settings.id
             assert loaded_result.positions_analyzed == [0, 1, 2]
 
     finally:
@@ -364,7 +368,7 @@ def test_cali_result_links_to_settings(
             result = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings.id,
-                analysis_settings=a_settings.id,
+                analysis_settings_id=a_settings.id,
                 positions_analyzed=[0],
             )
             session.add(result)
@@ -373,13 +377,15 @@ def test_cali_result_links_to_settings(
 
             # Verify linkages
             assert result.detection_settings == d_settings.id
-            assert result.analysis_settings == a_settings.id
+            assert result.analysis_settings_id == a_settings.id
 
             # Verify we can query back
             loaded_d_settings = session.get(
                 DetectionSettings, result.detection_settings
             )
-            loaded_a_settings = session.get(AnalysisSettings, result.analysis_settings)
+            loaded_a_settings = session.get(
+                AnalysisSettings, result.analysis_settings_id
+            )
 
             assert loaded_d_settings is not None
             assert loaded_a_settings is not None
@@ -414,7 +420,7 @@ def test_detection_only_cali_result(test_db: Path, test_experiment: Experiment) 
             result = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings.id,
-                analysis_settings=None,  # No analysis
+                analysis_settings_id=None,  # No analysis
                 positions_analyzed=[0],
             )
             session.add(result)
@@ -423,7 +429,7 @@ def test_detection_only_cali_result(test_db: Path, test_experiment: Experiment) 
 
             # Verify
             assert result.detection_settings == d_settings.id
-            assert result.analysis_settings is None
+            assert result.analysis_settings_id is None
 
     finally:
         engine.dispose(close=True)
@@ -506,13 +512,13 @@ def test_multiple_cali_results_same_experiment(
             result_1 = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings_1.id,
-                analysis_settings=a_settings_1.id,
+                analysis_settings_id=a_settings_1.id,
                 positions_analyzed=[0],
             )
             result_2 = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings_2.id,
-                analysis_settings=a_settings_2.id,
+                analysis_settings_id=a_settings_2.id,
                 positions_analyzed=[0],
             )
             session.add_all([result_1, result_2])
@@ -526,7 +532,7 @@ def test_multiple_cali_results_same_experiment(
             assert len(all_results) == 2
             # Verify they link to different settings
             settings_pairs = {
-                (r.detection_settings, r.analysis_settings) for r in all_results
+                (r.detection_settings, r.analysis_settings_id) for r in all_results
             }
             assert len(settings_pairs) == 2
 
@@ -577,8 +583,8 @@ def test_cali_result_progressive_upgrade(
             result1 = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings.id,
-                extraction_settings=None,
-                analysis_settings=None,
+                extraction_settings_id=None,
+                analysis_settings_id=None,
                 positions_analyzed=[0],
             )
             session.add(result1)
@@ -588,19 +594,19 @@ def test_cali_result_progressive_upgrade(
 
             # Verify detection-only result
             assert result1.detection_settings == d_settings.id
-            assert result1.extraction_settings is None
-            assert result1.analysis_settings is None
+            assert result1.extraction_settings_id is None
+            assert result1.analysis_settings_id is None
 
             # Stage 2: Add extraction (simulate upgrade)
-            result1.extraction_settings = e_settings.id
+            result1.extraction_settings_id = e_settings.id
             session.add(result1)
             session.commit()
             session.refresh(result1)
 
             # Verify same ID, now with extraction
             assert result1.id == result1_id
-            assert result1.extraction_settings == e_settings.id
-            assert result1.analysis_settings is None
+            assert result1.extraction_settings_id == e_settings.id
+            assert result1.analysis_settings_id is None
 
             # Verify still only one result
             all_results = session.exec(
@@ -609,7 +615,7 @@ def test_cali_result_progressive_upgrade(
             assert len(all_results) == 1
 
             # Stage 3: Add analysis (simulate upgrade)
-            result1.analysis_settings = a_settings.id
+            result1.analysis_settings_id = a_settings.id
             session.add(result1)
             session.commit()
             session.refresh(result1)
@@ -617,8 +623,8 @@ def test_cali_result_progressive_upgrade(
             # Verify same ID, now with all three settings
             assert result1.id == result1_id
             assert result1.detection_settings == d_settings.id
-            assert result1.extraction_settings == e_settings.id
-            assert result1.analysis_settings == a_settings.id
+            assert result1.extraction_settings_id == e_settings.id
+            assert result1.analysis_settings_id == a_settings.id
 
             # Verify still only one CaliResult exists
             all_results = session.exec(
@@ -661,7 +667,7 @@ def test_query_cali_results_by_settings(
             result = CaliResult(
                 experiment=test_experiment.id,
                 detection_settings=d_settings.id,
-                analysis_settings=a_settings.id,
+                analysis_settings_id=a_settings.id,
                 positions_analyzed=[0, 1],
             )
             session.add(result)
@@ -672,7 +678,7 @@ def test_query_cali_results_by_settings(
                 select(CaliResult)
                 .where(CaliResult.experiment == test_experiment.id)
                 .where(CaliResult.detection_settings == d_settings.id)
-                .where(CaliResult.analysis_settings == a_settings.id)
+                .where(CaliResult.analysis_settings_id == a_settings.id)
             ).first()
 
             assert found is not None
@@ -750,13 +756,13 @@ def test_cali_result_with_all_fields() -> None:
     result = CaliResult(
         experiment=1,
         detection_settings=2,
-        analysis_settings=3,
+        analysis_settings_id=3,
         positions_analyzed=[0, 1, 2, 3, 4],
     )
 
     assert result.experiment == 1
     assert result.detection_settings == 2
-    assert result.analysis_settings == 3
+    assert result.analysis_settings_id == 3
     assert result.positions_analyzed == [0, 1, 2, 3, 4]
     assert result.id is None  # Not yet saved
     assert result.created_at is not None
@@ -831,13 +837,13 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
             result1 = CaliResult(
                 experiment=exp1.id,
                 detection_settings=d_settings.id,
-                analysis_settings=a_settings.id,
+                analysis_settings_id=a_settings.id,
                 positions_analyzed=[0],
             )
             result2 = CaliResult(
                 experiment=exp2.id,
                 detection_settings=d_settings.id,
-                analysis_settings=a_settings.id,
+                analysis_settings_id=a_settings.id,
                 positions_analyzed=[0],
             )
             session.add_all([result1, result2])
@@ -849,7 +855,10 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
             assert (
                 all_results[0].detection_settings == all_results[1].detection_settings
             )
-            assert all_results[0].analysis_settings == all_results[1].analysis_settings
+            assert (
+                all_results[0].analysis_settings_id
+                == all_results[1].analysis_settings_id
+            )
 
     finally:
         engine.dispose(close=True)
@@ -950,7 +959,7 @@ def test_cali_result_str_representation() -> None:
     result = CaliResult(
         experiment=1,
         detection_settings=2,
-        analysis_settings=3,
+        analysis_settings_id=3,
         positions_analyzed=[0, 1, 2],
     )
 

@@ -9,34 +9,28 @@ from typing_extensions import TypeAlias
 
 from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
-    _plot_stimulated_vs_non_stimulated_roi_amp,
+    _plot_stimulated_vs_non_stimulated_roi_traces,
+    _plot_stimulated_vs_non_stimulated_spike_raster,
     _plot_stimulated_vs_non_stimulated_spike_traces,
     _visualize_stimulated_area,
 )
 from ._single_wells_plots._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )
-from ._single_wells_plots._plot_calcium_network_connectivity import (
-    _plot_connectivity_matrix_data,
-    _plot_connectivity_network_data,
-)
 from ._single_wells_plots._plot_calcium_peaks_correlation import (
     _plot_cross_correlation_data,
-    _plot_hierarchical_clustering_data,
 )
 from ._single_wells_plots._plot_calcium_peaks_iei_data import _plot_iei_data
 from ._single_wells_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
 from ._single_wells_plots._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
-from ._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
 from ._single_wells_plots._plot_cell_size import _plot_cell_size_data
 from ._single_wells_plots._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
 from ._single_wells_plots._plot_inferred_spike_correlation import (
     _plot_spike_cross_correlation_data,
-    _plot_spike_hierarchical_clustering_data,
 )
 from ._single_wells_plots._plot_inferred_spike_raster_plots import (
     _generate_spike_raster_plot,
@@ -48,8 +42,12 @@ from ._single_wells_plots._plot_inferred_spikes import (
     _plot_inferred_spikes,
     _plot_inferred_spikes_normalized_with_bursts,
 )
-from ._single_wells_plots._plot_neuropil_traces import _plot_neuropil_traces
-from ._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
+from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
+    _plot_traces_data,
+)
+from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
+    _plot_neuropil_traces,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -154,13 +152,12 @@ INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes (Thresholded) Cross-Correlat
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
 INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
 INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
-RASTER_PLOT = "Calcium Peaks Raster plot Colored by ROI"
-RASTER_PLOT_AMP = "Calcium Peaks Raster plot Colored by Amplitude"
-RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster plot Colored by Amplitude with Colorbar"  # noqa: E501
-INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes Raster plot Colored by ROI"
-INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes Raster plot Colored by Amplitude"
-INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes Raster plot Colored by Amplitude with Colorbar"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces"
+RASTER_PLOT = "Calcium Peaks Raster Plot Colored by ROI"
+RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
+RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
+INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes Raster Plot Colored by ROI"
+INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes Raster Plot Colored by Amplitude"
+INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
 CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Global Synchrony"
 CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
 CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
@@ -173,6 +170,8 @@ STIMULATED_ROIS = "Stimulated vs Non-Stimulated ROIs"
 STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with Stimulated Area"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stimulated vs Non-Stimulated Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
+STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces"
+STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER = "Stimulated vs Non-Stimulated Spike Raster Plot"  # noqa: E501
 STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
 NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
 STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
@@ -183,7 +182,6 @@ NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
 # REGISTER SINGLE WELL ANALYSIS PRODUCTS ==============================================
 # Define all analysis products using the AnalysisProduct dataclass
-# This replaces the old dictionary-based approach with a more structured pattern
 
 # Calcium Traces Group
 AnalysisProduct(
@@ -263,20 +261,11 @@ AnalysisProduct(
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-
-# Neuropil Group
-AnalysisProduct(
-    name=NEUROPIL_ROI_MASKS,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_neuropil_masks,
-    category="Neuropil Correction",
-    pipeline_stage=PipelineStage.EXTRACTION,
-)
 AnalysisProduct(
     name=NEUROPIL_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_neuropil_traces,
-    category="Neuropil Correction",
+    category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 
@@ -317,40 +306,10 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_inferred_spikes_normalized_with_bursts,
-    category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
     category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-
-# Amplitude and Frequency Group
-AnalysisProduct(
-    name=DEC_DFF_AMPLITUDE,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
-    category="Calcium Peaks Amplitude and Frequency",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=DEC_DFF_FREQUENCY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
-    category="Calcium Peaks Amplitude and Frequency",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
-    category="Calcium Peaks Amplitude and Frequency",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
@@ -400,22 +359,51 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Inter-event Interval Group
+# Amplitude and Frequency Group
+AnalysisProduct(
+    name=DEC_DFF_AMPLITUDE,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
+    category="Calcium Peaks Amplitude, Frequency and Event Interval",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=DEC_DFF_FREQUENCY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
+    category="Calcium Peaks Amplitude, Frequency and Event Interval",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
+    category="Calcium Peaks Amplitude, Frequency and Event Interval",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 AnalysisProduct(
     name=DEC_DFF_IEI,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_iei_data,
-    category="Calcium Peaks Interevent Interval",
+    category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Cell Size Group
+
+# Inferred Spike Burst Analysis Group
 AnalysisProduct(
-    name=CELL_SIZE,
+    name=INFERRED_SPIKE_BURST_ANALYSIS,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_cell_size_data,
-    category="Cell Size",
-    pipeline_stage=PipelineStage.DETECTION,
+    analyzer=_plot_inferred_spike_burst_activity,
+    category="Inferred Spike Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_inferred_spikes_normalized_with_bursts,
+    category="Inferred Spike Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
 )
 
 # Correlation Analysis Group
@@ -423,77 +411,45 @@ AnalysisProduct(
     name=CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_peak_event_synchrony_data,
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=CALCIUM_NETWORK_CONNECTIVITY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_connectivity_network_data,
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=CALCIUM_CONNECTIVITY_MATRIX,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_connectivity_matrix_data,
-    category="Correlation Analysis",
+    category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_cross_correlation_data,
-    category="Correlation Analysis",
+    category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-AnalysisProduct(
-    name=CLUSTERING,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_hierarchical_clustering_data,
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=CLUSTERING_DENDROGRAM,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_hierarchical_clustering_data, use_dendrogram=True),
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# AnalysisProduct(
+#     name=CALCIUM_NETWORK_CONNECTIVITY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_connectivity_network_data,
+#     category="Calcium Correlation Analysis",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name=CALCIUM_CONNECTIVITY_MATRIX,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_connectivity_matrix_data,
+#     category="Calcium Correlation Analysis",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+
+
+# Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
-    category="Correlation Analysis",
+    category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=INFERRED_SPIKE_CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=INFERRED_SPIKE_CLUSTERING,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_spike_hierarchical_clustering_data,
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_hierarchical_clustering_data, use_dendrogram=True),
-    category="Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=INFERRED_SPIKE_BURST_ANALYSIS,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_inferred_spike_burst_activity,
-    category="Correlation Analysis",
+    category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
@@ -501,7 +457,7 @@ AnalysisProduct(
 AnalysisProduct(
     name=STIMULATED_AREA,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_visualize_stimulated_area, stimulated_area=False),
+    analyzer=partial(_visualize_stimulated_area, stimulated_area=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -536,14 +492,14 @@ AnalysisProduct(
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_vs_non_stimulated_roi_amp,
+    analyzer=_plot_stimulated_vs_non_stimulated_roi_traces,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_amp, with_peaks=True),
+    analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_traces, with_peaks=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -553,6 +509,23 @@ AnalysisProduct(
     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+
+
+# Cell Size Group
+AnalysisProduct(
+    name=CELL_SIZE,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cell_size_data,
+    category="Cell Size",
+    pipeline_stage=PipelineStage.DETECTION,
 )
 
 # # Multi-Well Analysis Products ------------------------------------------------------
@@ -804,7 +777,7 @@ def get_available_plots(
     result = {}
     for category, names in categories.items():
         # Create a divider key that won't be selectable
-        divider_key = f"----------{category}".ljust(60, "-")
+        divider_key = f"---------------------{category}".ljust(60, "-")
         result[divider_key] = names
 
     return result

@@ -237,9 +237,22 @@ def commit_fov_result(
                                 existing_analysis_ids.add(trace.analysis_result_id)
                                 continue
 
+                        # Clear the trace's ROI reference first to avoid cascading the
+                        # wrong ROI
+                        # (trace.roi might point to new_roi which has same ID as
+                        # matching_roi)
+                        trace.roi = None  # type: ignore[assignment]
+                        trace.roi_id = None
+
+                        # Add to session only if not already present
+                        # (avoids "already present" error but also "not in session"
+                        # warning)
+                        if trace not in session:
+                            session.add(trace)
+
+                        # Now set to the correct matching_roi
                         trace.roi_id = matching_roi.id
-                        trace.roi = matching_roi
-                        session.add(trace)
+                        matching_roi.traces_history.append(trace)
 
                     # Only add new data_analysis if not already exists
                     for data_analysis in new_roi.data_analysis_history:
@@ -257,9 +270,20 @@ def commit_fov_result(
                                 # Skip - data_analysis already exists
                                 continue
 
+                        # Clear the data_analysis's ROI reference first to avoid
+                        # cascading the wrong ROI
+                        data_analysis.roi = None  # type: ignore[assignment]
+                        data_analysis.roi_id = None
+
+                        # Add to session only if not already present
+                        # (avoids "already present" error but also "not in session"
+                        # warning)
+                        if data_analysis not in session:
+                            session.add(data_analysis)
+
+                        # Now set to the correct matching_roi
                         data_analysis.roi_id = matching_roi.id
-                        data_analysis.roi = matching_roi
-                        session.add(data_analysis)
+                        matching_roi.data_analysis_history.append(data_analysis)
                 else:
                     cali_logger.warning(
                         f"No matching ROI found for label={new_roi.label_value} "

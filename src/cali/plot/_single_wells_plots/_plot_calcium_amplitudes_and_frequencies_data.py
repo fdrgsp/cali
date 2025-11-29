@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import mplcursors
 import numpy as np
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -87,53 +87,31 @@ def _plot_amplitude_and_frequency_data(
     with Session(engine) as session:
         roi_data = []  # List of (ROI, DataAnalysis)
 
-        if run_id is not None:
-            # Optimized query
-            stmt = (
-                select(ROI, DataAnalysis)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    DataAnalysis,
-                    (DataAnalysis.roi_id == ROI.id)
-                    & (DataAnalysis.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
+        if run_id is None:
+            cali_logger.warning("No run_id provided for IEI plot.")
+            return
+
+        # Optimized query
+        stmt = (
+            select(ROI, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
             )
+            .where(col(FOV.name) == fov_name)
+        )
 
-            # Filter by specific ROIs if requested
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
+        # Filter by specific ROIs if requested
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-            # Order by label_value for consistent plotting
-            stmt = stmt.order_by(col(ROI.label_value))
+        # Order by label_value for consistent plotting
+        stmt = stmt.order_by(col(ROI.label_value))
 
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy behavior
-            # Build query to get ROIs for this FOV with eager loading of related data
-            stmt = (
-                select(ROI)
-                .join(FOV)
-                .where(col(FOV.name) == fov_name)
-                .options(
-                    selectinload(ROI.data_analysis_history),
-                )
-            )
-
-            # Filter by specific ROIs if requested
-            if rois is not None:
-                stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-            # Order by label_value for consistent plotting
-            stmt = stmt.order_by(col(ROI.label_value))
-
-            roi_models = session.exec(stmt).all()
-
-            for r in roi_models:
-                da = _get_data_analysis_for_run(r, None)
-                if da:
-                    roi_data.append((r, da))
+        results = session.exec(stmt).all()
+        roi_data = results
 
     # Plot the data
     for roi, data_analysis in roi_data:
@@ -162,8 +140,14 @@ def _plot_metrics(
         ):
             return
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+
+        # Only calculate SEM if we have more than one data point
+        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
+            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
+            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        else:
+            sem_amp = 0  # No error bars for single point
+
         _plot_errorbars(
             ax,
             [data_analysis.dec_dff_frequency],
@@ -177,8 +161,14 @@ def _plot_metrics(
 
         # plot mean amplitude +- sem of each ROI
         mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)  # sample std
-        sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+
+        # Only calculate SEM if we have more than one data point
+        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
+            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
+            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        else:
+            sem_amp = 0  # No error bars for single point
+
         _plot_errorbars(
             ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
         )

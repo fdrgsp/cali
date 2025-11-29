@@ -133,17 +133,16 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlalchemy import desc
             from sqlmodel import Session, create_engine, select
 
             engine = create_engine(f"sqlite:///{self._database_path}")
             with Session(engine) as session:
                 # Join CaliResult with DetectionSettings to avoid N+1 queries
-                # Order by created_at descending (most recent first)
+                # Order by created_at ascending (most recent last)
                 stmt = (
                     select(CaliResult, DetectionSettings)
                     .where(CaliResult.detection_settings == DetectionSettings.id)
-                    .order_by(desc(CaliResult.created_at))
+                    .order_by(CaliResult.created_at)
                 )
                 results = session.exec(stmt).all()
 
@@ -177,14 +176,14 @@ class _RunsPanel(QGroupBox):
         )
 
         # Extraction status
-        extraction_icon = "❌" if result.extraction_settings is None else "✅"
+        extraction_icon = "❌" if result.extraction_settings_id is None else "✅"
         item_text += (
-            f"  {extraction_icon} Extraction ID: {result.extraction_settings}\n"
+            f"  {extraction_icon} Extraction ID: {result.extraction_settings_id}\n"
         )
 
         # Analysis status
-        analysis_icon = "❌" if result.analysis_settings is None else "✅"
-        item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings}"
+        analysis_icon = "❌" if result.analysis_settings_id is None else "✅"
+        item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
 
         item = QListWidgetItem(item_text)
         # item.setIcon(icon(MDI6.run_fast))
@@ -271,7 +270,7 @@ class _RunsPanel(QGroupBox):
                     return
 
                 detection_id = result.detection_settings
-                analysis_id = result.analysis_settings
+                analysis_id = result.analysis_settings_id
 
                 # Delete the analysis result (cascades to Traces via relationship)
                 session.delete(result)
@@ -307,7 +306,7 @@ class _RunsPanel(QGroupBox):
                 # Collect all detection and analysis settings before deleting
                 # We only need the IDs
                 stmt = select(
-                    CaliResult.detection_settings, CaliResult.analysis_settings
+                    CaliResult.detection_settings, CaliResult.analysis_settings_id
                 )
                 rows = session.exec(stmt).all()
 
@@ -421,7 +420,7 @@ class _RunsPanel(QGroupBox):
         # Check if AnalysisSettings are orphaned (not used by any other run)
         if analysis_id is not None:
             other_runs_using_analysis = session.exec(
-                select(CaliResult).where(CaliResult.analysis_settings == analysis_id)
+                select(CaliResult).where(CaliResult.analysis_settings_id == analysis_id)
             ).first()
 
             if not other_runs_using_analysis:
@@ -584,7 +583,7 @@ class _RunsPanel(QGroupBox):
             )
             with Session(engine) as session:
                 # Get all unique analysis settings IDs
-                stmt = select(CaliResult.analysis_settings).distinct()
+                stmt = select(CaliResult.analysis_settings_id).distinct()
                 results = session.exec(stmt).all()
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)
@@ -630,9 +629,11 @@ class _RunsPanel(QGroupBox):
                 if detection_id is not None:
                     query = query.where(CaliResult.detection_settings == detection_id)
                 if extraction_id is not None:
-                    query = query.where(CaliResult.extraction_settings == extraction_id)
+                    query = query.where(
+                        CaliResult.extraction_settings_id == extraction_id
+                    )
                 if analysis_id is not None:
-                    query = query.where(CaliResult.analysis_settings == analysis_id)
+                    query = query.where(CaliResult.analysis_settings_id == analysis_id)
 
                 # Order by created_at desc and take first
                 query = query.order_by(desc(CaliResult.created_at))

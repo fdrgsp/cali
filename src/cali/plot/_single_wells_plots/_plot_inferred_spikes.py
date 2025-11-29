@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import mplcursors
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
@@ -305,9 +306,6 @@ def _plot_inferred_spikes_normalized_with_bursts(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
-    burst_threshold_multiplier: float = 2.0,
-    min_burst_duration_ms: float = 50.0,
-    smoothing_window_ms: float = 100.0,
 ) -> None:
     """Plot normalized inferred spikes with superimposed burst periods.
 
@@ -326,12 +324,6 @@ def _plot_inferred_spikes_normalized_with_bursts(
         List of ROI indices to include, None for all active ROIs
     run_id : int | None
         The run ID to filter by, None for latest
-    burst_threshold_multiplier : float
-        Multiplier of baseline activity to detect bursts (default 2.0)
-    min_burst_duration_ms : float
-        Minimum burst duration in milliseconds (default 50ms)
-    smoothing_window_ms : float
-        Smoothing window for population activity in milliseconds (default 100ms)
     """
     # Clear the figure
     widget.figure.clear()
@@ -375,43 +367,40 @@ def _plot_inferred_spikes_normalized_with_bursts(
         widget.canvas.draw()
         return
 
-    # Collect spike data for burst detection
-    spike_trains = []
-    recording_time_sec = 0.0
-
-    for _, traces, data_analysis in roi_data:
-        if data_analysis and traces.inferred_spikes:
-            threshold = data_analysis.inferred_spikes_threshold or 0
-            spike_data = [s if s > threshold else 0 for s in traces.inferred_spikes]
-            spike_trains.append(spike_data)
-            if data_analysis.total_recording_time_sec:
-                recording_time_sec = data_analysis.total_recording_time_sec
-
-    # Detect bursts from population activity
+    # Detect bursts using the same logic as burst activity plot
     bursts = []
-    if spike_trains and recording_time_sec > 0:
-        # Compute population activity (sum across all ROIs at each timepoint)
-        population_activity = np.sum(spike_trains, axis=0)
+    # Get burst parameters from AnalysisSettings (same as burst activity plot)
+    from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+        _detect_population_bursts,
+        _get_burst_parameters,
+    )
 
-        # Smooth the population activity
-        num_frames = len(population_activity)
-        frame_duration_ms = (recording_time_sec * 1000) / num_frames
-        smoothing_window_frames = int(smoothing_window_ms / frame_duration_ms)
-        if smoothing_window_frames > 0:
-            kernel = np.ones(smoothing_window_frames) / smoothing_window_frames
-            population_activity = np.convolve(population_activity, kernel, mode="same")
+    burst_params = _get_burst_parameters(engine, fov_name, rois, run_id)
+    if burst_params is not None:
+        burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
-        # Set burst threshold
-        baseline = np.median(population_activity)
-        burst_threshold = baseline * burst_threshold_multiplier
-
-        # Convert min duration from ms to frames
-        min_duration_frames = int(min_burst_duration_ms / frame_duration_ms)
-
-        # Detect bursts
-        bursts = _detect_population_bursts(
-            population_activity, burst_threshold, min_duration_frames
+        # Get population spike data (same as burst activity plot)
+        from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+            _get_population_spike_data,
         )
+
+        spike_trains_array, _, _time_axis = _get_population_spike_data(
+            engine, fov_name, rois, run_id
+        )
+
+        if spike_trains_array is not None:
+            # Calculate population activity
+            population_activity = np.mean(spike_trains_array, axis=0)
+
+            # Smooth population activity
+            smoothed_activity = gaussian_filter1d(
+                population_activity, sigma=smoothing_sigma
+            )
+
+            # Detect bursts
+            bursts = _detect_population_bursts(
+                smoothed_activity, burst_threshold / 100, min_burst_duration
+            )
 
     # Plot the normalized spikes (reuse existing logic)
     _plot_inferred_spikes(widget, engine, fov_name, rois, run_id=run_id, normalize=True)

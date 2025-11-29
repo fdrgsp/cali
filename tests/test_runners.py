@@ -158,8 +158,8 @@ def test_cali_runner_detection_only_mocked(
             result = session.exec(select(CaliResult)).first()
             assert result is not None
             assert result.detection_settings == ds.id
-            assert result.extraction_settings is None
-            assert result.analysis_settings is None
+            assert result.extraction_settings_id is None
+            assert result.analysis_settings_id is None
     finally:
         engine.dispose()
 
@@ -208,8 +208,8 @@ def test_cali_runner_full_pipeline_mocked(
             result = session.exec(select(CaliResult)).first()
             assert result is not None
             assert result.detection_settings is not None
-            assert result.extraction_settings is not None
-            assert result.analysis_settings is not None
+            assert result.extraction_settings_id is not None
+            assert result.analysis_settings_id is not None
     finally:
         engine.dispose()
 
@@ -270,11 +270,11 @@ def test_cali_runner_incremental_mocked(
     try:
         with Session(engine) as session:
             result = session.exec(
-                select(CaliResult).where(CaliResult.extraction_settings.is_not(None))  # type: ignore
+                select(CaliResult).where(CaliResult.extraction_settings_id.is_not(None))  # type: ignore
             ).first()
             assert result is not None
             assert result.detection_settings == ds_id
-            assert result.extraction_settings is not None
+            assert result.extraction_settings_id is not None
     finally:
         engine.dispose()
 
@@ -1321,8 +1321,8 @@ def test_settings_by_id_mocked(
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
             assert results[0].detection_settings == ds_id
-            assert results[0].extraction_settings == es_id
-            assert results[0].analysis_settings == as_id
+            assert results[0].extraction_settings_id == es_id
+            assert results[0].analysis_settings_id == as_id
     finally:
         engine.dispose()
 
@@ -1410,7 +1410,7 @@ def test_result_upgrade_flow_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].extraction_settings is None
+            assert results[0].extraction_settings_id is None
             ds_id = results[0].detection_settings
             assert ds_id is not None
     finally:
@@ -1432,9 +1432,9 @@ def test_result_upgrade_flow_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].extraction_settings is not None
-            assert results[0].analysis_settings is None
-            es_id = results[0].extraction_settings
+            assert results[0].extraction_settings_id is not None
+            assert results[0].analysis_settings_id is None
+            es_id = results[0].extraction_settings_id
             assert es_id is not None
     finally:
         engine.dispose()
@@ -1456,7 +1456,7 @@ def test_result_upgrade_flow_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].analysis_settings is not None
+            assert results[0].analysis_settings_id is not None
     finally:
         engine.dispose()
 

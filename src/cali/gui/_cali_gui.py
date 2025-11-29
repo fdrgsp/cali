@@ -948,8 +948,6 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-            # Refresh the engine to see newly written data
-            self._update_graph_with_database_path(self._database_path)
 
         # Highlight the run that matches the settings just used
         value = self._run_cali_wdg.value()
@@ -983,6 +981,11 @@ class CaliGui(QMainWindow):
         self._runs_panel.highlight_run_by_settings(
             detection_id, extraction_id, analysis_id
         )
+
+        # Refresh the engine to see newly written data AFTER highlighting the run
+        # This ensures the run_id is set before refreshing plots
+        if self._database_path:
+            self._update_graph_with_database_path(self._database_path)
 
         # Refresh the FOV table selection to update the display
         self._on_fov_table_selection_changed()
@@ -1325,7 +1328,7 @@ class CaliGui(QMainWindow):
                     return
 
             # Load and apply extraction settings
-            if result.extraction_settings:
+            if result.extraction_settings_id:
                 from cali.gui._extraction_gui import (
                     ExtractionSettingsData,
                     TraceExtractionData,
@@ -1333,7 +1336,7 @@ class CaliGui(QMainWindow):
                 from cali.sqlmodel import ExtractionSettings
 
                 e_settings = ExtractionSettings.load_from_database(
-                    self._database_path, id=result.extraction_settings
+                    self._database_path, id=result.extraction_settings_id
                 )
                 assert isinstance(e_settings, ExtractionSettings)
 
@@ -1352,7 +1355,7 @@ class CaliGui(QMainWindow):
                 )
 
             # Load and apply analysis settings
-            if result.analysis_settings:
+            if result.analysis_settings_id:
                 from cali.gui._analysis_gui import (
                     CalciumPeaksData,
                     ExperimentTypeData,
@@ -1360,7 +1363,7 @@ class CaliGui(QMainWindow):
                 )
 
                 a_settings = AnalysisSettings.load_from_database(
-                    self._database_path, id=result.analysis_settings
+                    self._database_path, id=result.analysis_settings_id
                 )
                 assert isinstance(a_settings, AnalysisSettings)
 

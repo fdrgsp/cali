@@ -617,7 +617,8 @@ class ExtractionRunner:
             frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
 
             # Calculate IEI
-            iei = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+            iei_ms = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+            iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
 
             # Create DataAnalysis object (analysis product)
             data_analysis = DataAnalysis(

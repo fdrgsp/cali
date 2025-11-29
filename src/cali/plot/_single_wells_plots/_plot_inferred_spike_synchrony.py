@@ -121,28 +121,45 @@ def _get_lag(
     """Get the lag value for synchrony from AnalysisSettings."""
     from sqlmodel import Session, col, select
 
-    from cali.sqlmodel._model import FOV, CaliResult, Experiment, Plate, Well
+    from cali.sqlmodel._model import (
+        FOV,
+        AnalysisSettings,
+        CaliResult,
+        Experiment,
+        Plate,
+        Well,
+    )
 
     with Session(engine) as session:
-        # Get CaliResult for this run via FOV -> Well -> Plate -> Experiment
+        # Get CaliResult and AnalysisSettings for this run
+        # via FOV -> Well -> Plate -> Experiment
         stmt = (
-            select(CaliResult)
+            select(CaliResult, AnalysisSettings)
             .join(Experiment, CaliResult.experiment == Experiment.id)
             .join(Plate, Experiment.id == Plate.experiment_id)
             .join(Well, Plate.id == Well.plate_id)
             .join(FOV, Well.id == FOV.well_id)
+            .outerjoin(
+                AnalysisSettings,
+                CaliResult.analysis_settings_id == AnalysisSettings.id,
+            )
             .where(col(FOV.name) == fov_name)
         )
         if run_id is not None:
             stmt = stmt.where(col(CaliResult.id) == run_id)
-        result = session.exec(stmt).first()
+        result_tuple = session.exec(stmt).first()
 
-        if result is None or result.analysis_settings is None:
+        if result_tuple is None:
+            cali_logger.warning("No analysis settings found for synchrony analysis.")
+            return None
+
+        _, analysis_settings = result_tuple
+        if analysis_settings is None:
             cali_logger.warning("No analysis settings found for synchrony analysis.")
             return None
 
         # Get spike synchrony cross-correlation lag from analysis settings
-        lag = result.analysis_settings.spikes_sync_cross_corr_lag
+        lag = analysis_settings.spikes_sync_cross_corr_lag
         return lag if lag is not None else 5  # Default value
 
 

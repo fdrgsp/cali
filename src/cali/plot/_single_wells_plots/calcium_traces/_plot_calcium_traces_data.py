@@ -64,7 +64,6 @@ def _plot_traces_data(
     thresholds : bool
         Show peak detection thresholds (only if single ROI selected)
     """
-    print(f"Plotting traces data for FOV: {fov_name}, run_id: {run_id}")
     # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)

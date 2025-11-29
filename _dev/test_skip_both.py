@@ -21,7 +21,7 @@ def _table(db_path: str):
         for result in results:
             exp = str(result.experiment)
             det = str(result.detection_settings) if result.detection_settings else "N"
-            ana = str(result.analysis_settings) if result.analysis_settings else "N"
+            ana = str(result.analysis_settings_id) if result.analysis_settings_id else "N"
             pos = str(result.positions_analyzed) if result.positions_analyzed else "[]"
 
             print(f"{result.id:<5} {exp:<5} {det:<5} {ana:<5} {pos:<30}")

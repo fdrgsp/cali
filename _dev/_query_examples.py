@@ -176,7 +176,7 @@ def get_traces_by_settings(
         query = query.where(CaliResult.detection_settings == detection_settings_id)
 
     if analysis_settings_id is not None:
-        query = query.where(CaliResult.analysis_settings == analysis_settings_id)
+        query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
 
     analysis_results = session.exec(query).all()
 
@@ -656,7 +656,7 @@ def get_analysis_for_detection_method(
     )
 
     if analysis_settings_id is not None:
-        query = query.where(CaliResult.analysis_settings == analysis_settings_id)
+        query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
 
     # Get most recent analysis result
     analysis_result = session.exec(query.order_by(desc(CaliResult.id))).first()
