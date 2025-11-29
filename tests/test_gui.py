@@ -400,3 +400,51 @@ def test_combo_visibility_changes(qtbot: QtBot) -> None:
     gui._run_cali_wdg._run_options_combo.setCurrentIndex(1)
     assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+
+def test_on_worker_finished_selects_last_run(qtbot: QtBot) -> None:
+    """Test that _on_worker_finished selects the last run in the runs panel."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+    gui.show()
+    qtbot.waitExposed(gui)
+
+    # Add some items to the runs list to simulate existing runs
+    gui._runs_panel._runs_list.addItem("Run 1")
+    gui._runs_panel._runs_list.addItem("Run 2")
+    gui._runs_panel._runs_list.addItem("Run 3")
+
+    # Set run IDs in the item data (assuming Qt.ItemDataRole.UserRole stores the run ID)
+    from qtpy.QtCore import Qt
+
+    item0 = gui._runs_panel._runs_list.item(0)
+    assert item0 is not None
+    item0.setData(Qt.ItemDataRole.UserRole, 1)
+
+    item1 = gui._runs_panel._runs_list.item(1)
+    assert item1 is not None
+    item1.setData(Qt.ItemDataRole.UserRole, 2)
+
+    item2 = gui._runs_panel._runs_list.item(2)
+    assert item2 is not None
+    item2.setData(Qt.ItemDataRole.UserRole, 3)
+
+    # Mock refresh_runs to do nothing so items remain
+    import unittest.mock
+
+    with unittest.mock.patch.object(gui._runs_panel, "refresh_runs"):
+        # Call the method that should select the last run
+        gui._on_worker_finished()
+
+    # Check that the last item (index 2) is selected
+    assert gui._runs_panel._runs_list.currentRow() == 2
+
+    # Check that the graphs have been updated with the last run ID
+    # Assuming there are graphs in SW_GRAPHS
+    if gui.SW_GRAPHS:
+        assert gui.SW_GRAPHS[0].run_id == 3
+    if gui.MW_GRAPHS:
+        assert gui.MW_GRAPHS[0].run_id == 3
+
+    # Cleanup
+    gui.close()

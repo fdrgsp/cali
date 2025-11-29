@@ -154,6 +154,275 @@ class _RunsPanel(QGroupBox):
         except Exception as e:
             cali_logger.error(f"Error loading runs: {e}")
 
+    def select_run_by_index(self, idx: int, block_signals: bool = False) -> None:
+        """Select a run by its index in the list.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the run to select
+        block_signals : bool
+            Whether to block signals during selection (default: False)
+        """
+        if 0 <= idx < self._runs_list.count():
+            item = self._runs_list.item(idx)
+            if item:
+                if block_signals:
+                    self._runs_list.setCurrentItem(item)
+                else:
+                    self._runs_list.setCurrentItem(item)
+                    self._on_item_clicked(item)
+
+    def select_run_by_id(self, run_id: int, block_signals: bool = False) -> None:
+        """Select a run by its CaliResult ID.
+
+        Parameters
+        ----------
+        run_id : int
+            CaliResult ID of the run to select
+        block_signals : bool
+            Whether to block signals during selection (default: False)
+        """
+        for i in range(self._runs_list.count()):
+            item = self._runs_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == run_id:
+                if block_signals:
+                    self._runs_list.setCurrentItem(item)
+                else:
+                    self._runs_list.setCurrentItem(item)
+                    self._on_item_clicked(item)
+                return
+
+    def get_run_id_by_index(self, idx: int) -> int | None:
+        """Get the CaliResult ID of the run at the given index.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the run in the list
+
+        Returns
+        -------
+        int | None
+            CaliResult ID of the run, or None if index is invalid
+        """
+        if 0 <= idx < self._runs_list.count():
+            item = self._runs_list.item(idx)
+            if item:
+                return item.data(Qt.ItemDataRole.UserRole)  # type: ignore
+        return None
+
+    def get_selected_run_id(self) -> int | None:
+        """Get the ID of the currently selected run.
+
+        Returns
+        -------
+        int | None
+            CaliResult ID of the selected run, or None if no run selected
+        """
+        current_item = self._runs_list.currentItem()
+        if current_item is None:
+            return None
+
+        return current_item.data(Qt.ItemDataRole.UserRole)  # type: ignore
+
+    def get_selected_detection_settings_id(self) -> int | None:
+        """Get the detection settings ID from the currently selected run.
+
+        Returns
+        -------
+        int | None
+            Detection settings ID of the selected run, or None if no run selected
+        """
+        current_item = self._runs_list.currentItem()
+        if current_item is None or self._database_path is None:
+            return None
+
+        run_id = current_item.data(Qt.ItemDataRole.UserRole)
+        if self._database_path is None:
+            return None
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                result = session.get(CaliResult, run_id)
+                detection_id = result.detection_settings if result else None
+            engine.dispose(close=True)
+            return detection_id
+        except Exception as e:
+            cali_logger.error(f"Failed to get detection settings ID: {e}")
+            return None
+
+    def get_detection_settings_ids(self) -> list[int]:
+        """Get all unique detection settings IDs from database.
+
+        Queries the DetectionSettings table directly to find all available
+        detection settings, regardless of whether they're in a CaliResult.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique detection settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine, select
+
+            from cali.sqlmodel._model import DetectionSettings
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Get all detection settings IDs directly from the table
+                stmt = select(DetectionSettings.id)
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get detection settings IDs: {e}")
+            return []
+
+    def get_extraction_settings_ids(self) -> list[int]:
+        """Get all unique extraction settings IDs from database.
+
+        Queries the ExtractionSettings table directly to find all available
+        extraction settings, regardless of whether they're in a CaliResult.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique extraction settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine, select
+
+            from cali.sqlmodel._model import ExtractionSettings
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Get all extraction settings IDs directly from the table
+                stmt = select(ExtractionSettings.id)
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get extraction settings IDs: {e}")
+            return []
+
+    def get_analysis_settings_ids(self) -> list[int]:
+        """Get all unique analysis settings IDs from runs.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of unique analysis settings IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine, select
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Get all unique analysis settings IDs
+                stmt = select(CaliResult.analysis_settings_id).distinct()
+                results = session.exec(stmt).all()
+                ids = {r for r in results if r is not None}
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get analysis settings IDs: {e}")
+            return []
+
+    def highlight_run_by_settings(
+        self,
+        detection_id: int | None,
+        extraction_id: int | None,
+        analysis_id: int | None,
+    ) -> None:
+        """Highlight the run that matches detection, extraction, and analysis settings.
+
+        If no exact match is found, deselect all runs.
+
+        Parameters
+        ----------
+        detection_id : int | None
+            Detection settings ID to match
+        extraction_id : int | None
+            Extraction settings ID to match (None for detection-only runs)
+        analysis_id : int | None
+            Analysis settings ID to match (None for runs without analysis)
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            from sqlalchemy import desc
+            from sqlmodel import Session, create_engine, select
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Find run with matching settings
+                query = select(CaliResult)
+                if detection_id is not None:
+                    query = query.where(CaliResult.detection_settings == detection_id)
+                if extraction_id is not None:
+                    query = query.where(
+                        CaliResult.extraction_settings_id == extraction_id
+                    )
+                if analysis_id is not None:
+                    query = query.where(CaliResult.analysis_settings_id == analysis_id)
+
+                # Order by created_at desc and take first
+                query = query.order_by(desc(CaliResult.created_at))
+                matching_run = session.exec(query).first()
+
+            engine.dispose(close=True)
+
+            # Find and select the matching item in the list
+            if matching_run:
+                for i in range(self._runs_list.count()):
+                    item = self._runs_list.item(i)
+                    if item and item.data(Qt.ItemDataRole.UserRole) == matching_run.id:
+                        with signals_blocked(self._runs_list):
+                            self._runs_list.setCurrentItem(item)
+                        return
+
+            # No match found - deselect all
+            self._runs_list.clearSelection()
+
+        except Exception as e:
+            cali_logger.error(f"Failed to highlight run by settings: {e}")
+
     def _add_run_item(
         self, result: CaliResult, detection_settings: DetectionSettings
     ) -> None:
@@ -444,217 +713,6 @@ class _RunsPanel(QGroupBox):
         run_id = item.data(Qt.ItemDataRole.UserRole)
         if run_id is not None:
             self.runSelected.emit(run_id)
-
-    def get_selected_run_id(self) -> int | None:
-        """Get the ID of the currently selected run.
-
-        Returns
-        -------
-        int | None
-            CaliResult ID of the selected run, or None if no run selected
-        """
-        current_item = self._runs_list.currentItem()
-        if current_item is None:
-            return None
-
-        return current_item.data(Qt.ItemDataRole.UserRole)  # type: ignore
-
-    def get_selected_detection_settings_id(self) -> int | None:
-        """Get the detection settings ID from the currently selected run.
-
-        Returns
-        -------
-        int | None
-            Detection settings ID of the selected run, or None if no run selected
-        """
-        current_item = self._runs_list.currentItem()
-        if current_item is None or self._database_path is None:
-            return None
-
-        run_id = current_item.data(Qt.ItemDataRole.UserRole)
-        if self._database_path is None:
-            return None
-
-        try:
-            from sqlmodel import Session, create_engine
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                result = session.get(CaliResult, run_id)
-                detection_id = result.detection_settings if result else None
-            engine.dispose(close=True)
-            return detection_id
-        except Exception as e:
-            cali_logger.error(f"Failed to get detection settings ID: {e}")
-            return None
-
-    def get_detection_settings_ids(self) -> list[int]:
-        """Get all unique detection settings IDs from database.
-
-        Queries the DetectionSettings table directly to find all available
-        detection settings, regardless of whether they're in a CaliResult.
-
-        Returns
-        -------
-        list[int]
-            Sorted list of unique detection settings IDs
-        """
-        if self._database_path is None:
-            return []
-
-        try:
-            from sqlmodel import Session, create_engine, select
-
-            from cali.sqlmodel._model import DetectionSettings
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                # Get all detection settings IDs directly from the table
-                stmt = select(DetectionSettings.id)
-                results = session.exec(stmt).all()
-                ids = {r for r in results if r is not None}
-            engine.dispose(close=True)
-            return sorted(ids)
-        except Exception as e:
-            cali_logger.error(f"Failed to get detection settings IDs: {e}")
-            return []
-
-    def get_extraction_settings_ids(self) -> list[int]:
-        """Get all unique extraction settings IDs from database.
-
-        Queries the ExtractionSettings table directly to find all available
-        extraction settings, regardless of whether they're in a CaliResult.
-
-        Returns
-        -------
-        list[int]
-            Sorted list of unique extraction settings IDs
-        """
-        if self._database_path is None:
-            return []
-
-        try:
-            from sqlmodel import Session, create_engine, select
-
-            from cali.sqlmodel._model import ExtractionSettings
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                # Get all extraction settings IDs directly from the table
-                stmt = select(ExtractionSettings.id)
-                results = session.exec(stmt).all()
-                ids = {r for r in results if r is not None}
-            engine.dispose(close=True)
-            return sorted(ids)
-        except Exception as e:
-            cali_logger.error(f"Failed to get extraction settings IDs: {e}")
-            return []
-
-    def get_analysis_settings_ids(self) -> list[int]:
-        """Get all unique analysis settings IDs from runs.
-
-        Returns
-        -------
-        list[int]
-            Sorted list of unique analysis settings IDs
-        """
-        if self._database_path is None:
-            return []
-
-        try:
-            from sqlmodel import Session, create_engine, select
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                # Get all unique analysis settings IDs
-                stmt = select(CaliResult.analysis_settings_id).distinct()
-                results = session.exec(stmt).all()
-                ids = {r for r in results if r is not None}
-            engine.dispose(close=True)
-            return sorted(ids)
-        except Exception as e:
-            cali_logger.error(f"Failed to get analysis settings IDs: {e}")
-            return []
-
-    def highlight_run_by_settings(
-        self,
-        detection_id: int | None,
-        extraction_id: int | None,
-        analysis_id: int | None,
-    ) -> None:
-        """Highlight the run that matches detection, extraction, and analysis settings.
-
-        If no exact match is found, deselect all runs.
-
-        Parameters
-        ----------
-        detection_id : int | None
-            Detection settings ID to match
-        extraction_id : int | None
-            Extraction settings ID to match (None for detection-only runs)
-        analysis_id : int | None
-            Analysis settings ID to match (None for runs without analysis)
-        """
-        if self._database_path is None:
-            return
-
-        try:
-            from sqlalchemy import desc
-            from sqlmodel import Session, create_engine, select
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                # Find run with matching settings
-                query = select(CaliResult)
-                if detection_id is not None:
-                    query = query.where(CaliResult.detection_settings == detection_id)
-                if extraction_id is not None:
-                    query = query.where(
-                        CaliResult.extraction_settings_id == extraction_id
-                    )
-                if analysis_id is not None:
-                    query = query.where(CaliResult.analysis_settings_id == analysis_id)
-
-                # Order by created_at desc and take first
-                query = query.order_by(desc(CaliResult.created_at))
-                matching_run = session.exec(query).first()
-
-            engine.dispose(close=True)
-
-            # Find and select the matching item in the list
-            if matching_run:
-                for i in range(self._runs_list.count()):
-                    item = self._runs_list.item(i)
-                    if item and item.data(Qt.ItemDataRole.UserRole) == matching_run.id:
-                        with signals_blocked(self._runs_list):
-                            self._runs_list.setCurrentItem(item)
-                        return
-
-            # No match found - deselect all
-            self._runs_list.clearSelection()
-
-        except Exception as e:
-            cali_logger.error(f"Failed to highlight run by settings: {e}")
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
         """Filter events to allow deselecting by clicking empty area in list.

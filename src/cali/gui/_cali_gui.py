@@ -18,7 +18,6 @@ from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QGridLayout,
     QGroupBox,
-    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMenuBar,
@@ -321,7 +320,7 @@ class CaliGui(QMainWindow):
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
 
         self._runs_panel.runSelected.connect(self._on_run_item_selected)
-        self._runs_panel.settingsDeleted.connect(self._on_settings_changed)
+        self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
@@ -960,12 +959,14 @@ class CaliGui(QMainWindow):
         if self._database_path:
             self._populate_settings(self._database_path)
             self._update_graph_with_database_path(self._database_path)
-        # trigger selection of last run to update GUI (triggers _on_run_item_selected)
-        if self._runs_panel._runs_list.count() > 0:
-            last_index = self._runs_panel._runs_list.count() - 1
-            self._runs_panel._on_item_clicked(
-                QListWidgetItem(self._runs_panel._runs_list.item(last_index))
-            )
+        # update GUI with the latest run (latest run is at the end of the list)
+        last_idx = self._runs_panel._runs_list.count() - 1
+        # select last run (no signal emitted)
+        self._runs_panel.select_run_by_index(last_idx, block_signals=True)
+        # Update run_id in all graph widgets
+        self._update_graph_with_run_id(self._runs_panel.get_run_id_by_index(last_idx))
+        # Refresh the image viewer to update labels with the new detection settings
+        self._on_fov_table_selection_changed()
 
     def _save_plate_map_to_database(self) -> None:
         """Save plate map data from GUI to database."""
@@ -1061,8 +1062,8 @@ class CaliGui(QMainWindow):
         finally:
             engine.dispose(close=True)
 
-    def _on_settings_changed(self) -> None:
-        """Handle settings changed signal from runs panel (e.g., after deletion)."""
+    def _on_settings_deleted(self) -> None:
+        """Handle settings deleted signal from runs panel (e.g., after deletion)."""
         if self._database_path:
             # Repopulate detection settings, preserving current selection if possible
             self._populate_settings(self._database_path)
