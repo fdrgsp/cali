@@ -17,10 +17,6 @@ from ._single_wells_plots._plolt_evoked_experiment_data_plots import (
 from ._single_wells_plots._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )
-from ._single_wells_plots._plot_calcium_network_connectivity import (
-    _plot_connectivity_matrix_data,
-    _plot_connectivity_network_data,
-)
 from ._single_wells_plots._plot_calcium_peaks_correlation import (
     _plot_cross_correlation_data,
 )
@@ -419,26 +415,26 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CALCIUM_NETWORK_CONNECTIVITY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_connectivity_network_data,
-    category="Calcium Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=CALCIUM_CONNECTIVITY_MATRIX,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_connectivity_matrix_data,
-    category="Calcium Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name=CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_cross_correlation_data,
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
+# AnalysisProduct(
+#     name=CALCIUM_NETWORK_CONNECTIVITY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_connectivity_network_data,
+#     category="Calcium Correlation Analysis",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name=CALCIUM_CONNECTIVITY_MATRIX,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_connectivity_matrix_data,
+#     category="Calcium Correlation Analysis",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 
 
 # Inferred Spikes Correlation Analysis Group
