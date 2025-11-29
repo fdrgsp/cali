@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import mplcursors
 import numpy as np
 
-from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
+from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
 from cali.plot._util import _create_connectivity_matrix

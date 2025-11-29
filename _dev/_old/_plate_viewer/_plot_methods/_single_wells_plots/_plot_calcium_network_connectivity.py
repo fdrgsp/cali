@@ -8,7 +8,7 @@ from skimage import measure
 
 from cali.extraction._util import coordinates_to_mask
 from cali.logger import cali_logger
-from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
+from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
 

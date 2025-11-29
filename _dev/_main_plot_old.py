@@ -4,44 +4,44 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..src.cali.plot._multi_wells_plots._csv_bar_plot import plot_csv_bar_plot
-from ..src.cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+from ..src.cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_traces,
     _visualize_stimulated_area,
 )
-from ..src.cali.plot._single_wells_plots._plot_calcium_amplitudes_and_frequencies_data import (
+from ..src.cali.plot._single_wells_plots.metrics._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_calcium_network_connectivity import (
+from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_network_connectivity import (
     _plot_connectivity_matrix_data,
     _plot_connectivity_network_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
+from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _plot_cross_correlation_data,
     _plot_hierarchical_clustering_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_calcium_peaks_iei_data import _plot_iei_data
-from ..src.cali.plot._single_wells_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
-from ..src.cali.plot._single_wells_plots._plot_calcium_peaks_synchrony import (
+from ..src.cali.plot._single_wells_plots.metrics._plot_calcium_peaks_iei_data import _plot_iei_data
+from ..src.cali.plot._single_wells_plots.rester_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
+from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
 from ..src.cali.plot._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
-from ..src.cali.plot._single_wells_plots._plot_cell_size import _plot_cell_size_data
-from ..src.cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+from ..src.cali.plot._single_wells_plots.metrics._plot_cell_size import _plot_cell_size_data
+from ..src.cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
-from ..src.cali.plot._single_wells_plots._plot_inferred_spike_correlation import (
+from ..src.cali.plot._single_wells_plots.correlation._plot_inferred_spike_correlation import (
     _plot_spike_cross_correlation_data,
     _plot_spike_hierarchical_clustering_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_inferred_spike_raster_plots import (
+from ..src.cali.plot._single_wells_plots.rester_plots._plot_inferred_spike_raster_plots import (
     _generate_spike_raster_plot,
 )
-from ..src.cali.plot._single_wells_plots._plot_inferred_spike_synchrony import (
+from ..src.cali.plot._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_inferred_spikes import (
+from ..src.cali.plot._single_wells_plots.inferred_spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
     _plot_inferred_spikes_normalized_with_bursts,
 )

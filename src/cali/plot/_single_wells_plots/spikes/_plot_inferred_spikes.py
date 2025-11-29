@@ -370,7 +370,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
     # Detect bursts using the same logic as burst activity plot
     bursts = []
     # Get burst parameters from AnalysisSettings (same as burst activity plot)
-    from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+    from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (  # noqa: E501
         _detect_population_bursts,
         _get_burst_parameters,
     )
@@ -380,7 +380,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
         burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
         # Get population spike data (same as burst activity plot)
-        from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+        from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (  # noqa: E501
             _get_population_spike_data,
         )
 
