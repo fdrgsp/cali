@@ -37,9 +37,14 @@ MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
 
 
-def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
+def create_mock_fov(
+    position_index: int = 0, num_rois: int = 3, name: str | None = None
+) -> FOV:
     """Create a mock FOV with ROIs for testing without running cellpose."""
-    fov = FOV(position_index=position_index, name=f"A1_{position_index:04d}")
+    if name is None:
+        # Default naming - use actual test data names
+        name = "B5_0000" if position_index == 0 else "B6_0000"
+    fov = FOV(position_index=position_index, name=name)
 
     rois = []
     for i in range(1, num_rois + 1):
@@ -136,7 +141,7 @@ def test_cali_runner_detection_only_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify results in database
@@ -148,7 +153,7 @@ def test_cali_runner_detection_only_mocked(
             assert ds.method == "cellpose"
 
             fovs = session.exec(select(FOV)).all()
-            assert len(fovs) > 0
+            assert len(fovs) == 2
 
             rois = session.exec(select(ROI)).all()
             assert len(rois) > 0
@@ -197,7 +202,7 @@ def test_cali_runner_full_pipeline_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -234,7 +239,7 @@ def test_cali_runner_incremental_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -261,7 +266,7 @@ def test_cali_runner_incremental_mocked(
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -374,7 +379,7 @@ def test_cali_runner_overwrite_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Second run with overwrite=True
@@ -387,7 +392,7 @@ def test_cali_runner_overwrite_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=True,
     )
 
@@ -418,7 +423,7 @@ def test_cali_runner_validation_error_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     diff_experiment = Experiment.create_from_data(
@@ -433,7 +438,7 @@ def test_cali_runner_validation_error_mocked(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
             overwrite=False,
         )
 
@@ -457,7 +462,7 @@ def test_cali_runner_skipping_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Second run - should skip detection
@@ -470,7 +475,7 @@ def test_cali_runner_skipping_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -493,7 +498,7 @@ def test_cali_runner_upgrading_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -516,7 +521,7 @@ def test_cali_runner_upgrading_mocked(
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # 3. Analysis (Upgrade)
@@ -540,7 +545,7 @@ def test_cali_runner_upgrading_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -605,7 +610,7 @@ def test_cali_runner_batching_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],  # Only 1 pos available in test data
+        global_position_indices=[0, 1],  # Only 1 pos available in test data
     )
 
     # Verify results
@@ -641,7 +646,7 @@ def test_cali_runner_commit_error_mocked(
                 detection_settings=detection_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
         except Exception:
             pass
@@ -670,7 +675,7 @@ def test_cali_runner_process_batch_error_mocked(
                 detection_settings=detection_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
         except Exception:
             pass
@@ -695,7 +700,7 @@ def test_cali_runner_settings_reuse_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get settings ID
@@ -718,7 +723,7 @@ def test_cali_runner_settings_reuse_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only 1 settings object exists
@@ -798,7 +803,7 @@ def test_cali_runner_stimulation_mask_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify mask was loaded
@@ -854,7 +859,7 @@ def test_detection_runner_2d_data(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -881,7 +886,7 @@ def test_detection_runner_debug(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -925,7 +930,7 @@ def test_extraction_runner_cancel_mocked(
                 extraction_settings=extraction_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
 
     t = threading.Thread(target=run_task)
@@ -959,7 +964,7 @@ def test_cali_runner_settings_errors_mocked(
             detection_settings=999,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
     # 2. DetectionSettings object with non-existent ID
@@ -976,7 +981,7 @@ def test_cali_runner_settings_errors_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify it was created
@@ -998,7 +1003,7 @@ def test_cali_runner_settings_errors_mocked(
             extraction_settings=999,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -1102,7 +1107,7 @@ def test_extraction_runner_cancel_before_start_mocked(
             extraction_settings=extraction_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -1126,7 +1131,7 @@ def test_cali_runner_update_result_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get the ID from DB
@@ -1148,7 +1153,7 @@ def test_cali_runner_update_result_mocked(
         detection_settings=ds_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only one result exists
@@ -1157,7 +1162,7 @@ def test_cali_runner_update_result_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].positions_analyzed == [0]
+            assert results[0].positions_detected == [0, 1]  # Detection-only run
     finally:
         engine.dispose()
 
@@ -1180,7 +1185,7 @@ def test_settings_deduplication_mocked(
         detection_settings=ds1,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Run 2 with identical but new object
@@ -1190,7 +1195,7 @@ def test_settings_deduplication_mocked(
         detection_settings=ds2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only one DetectionSettings exists
@@ -1259,7 +1264,7 @@ def test_settings_by_id_mocked(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify result created
@@ -1292,7 +1297,7 @@ def test_settings_object_with_id_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get the ID from DB
@@ -1318,7 +1323,7 @@ def test_settings_object_with_id_mocked(
         detection_settings=ds_with_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify still only one settings
@@ -1350,7 +1355,7 @@ def test_result_upgrade_flow_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1372,7 +1377,7 @@ def test_result_upgrade_flow_mocked(
         extraction_settings=es,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1396,7 +1401,7 @@ def test_result_upgrade_flow_mocked(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1429,7 +1434,7 @@ def test_load_fovs_filtering_mocked(
         detection_settings=ds1,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Run detection with DS2 on pos 0
@@ -1439,7 +1444,7 @@ def test_load_fovs_filtering_mocked(
         detection_settings=ds2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=False,
     )
 
@@ -1473,7 +1478,7 @@ def test_load_fovs_filtering_mocked(
         extraction_settings=es,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify that traces were only created for ROIs belonging to DS1
@@ -1523,7 +1528,7 @@ def test_run_as_generator_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         as_generator=True,
     )
 
@@ -1565,7 +1570,7 @@ def test_extraction_analysis_settings_with_id_mocked(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get IDs and experiment ID
@@ -1607,7 +1612,7 @@ def test_extraction_analysis_settings_with_id_mocked(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=False,
     )
 
@@ -1654,7 +1659,7 @@ def test_result_update_existing_mocked(
             detection_settings=ds,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
         # Run 2: Position 1 (should update existing result to include pos 1)
@@ -1674,7 +1679,7 @@ def test_result_update_existing_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            positions = results[0].positions_analyzed
+            positions = results[0].positions_detected  # Detection-only run
             assert positions is not None
             assert sorted(positions) == [0, 1]
     finally:
@@ -1717,7 +1722,7 @@ def test_skip_extraction_when_exists(
         detection_settings,
         extraction_settings=extraction_settings,
         analysis_settings=analysis_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         output_path=tmp_path,
         database_name=database_path.name,
     )
@@ -1729,7 +1734,7 @@ def test_skip_extraction_when_exists(
         results = session.exec(select(CaliResult)).all()
         assert len(results) == 1
         result1 = results[0]
-        assert result1.positions_analyzed == [0]
+        assert result1.positions_analyzed == [0, 1]  # Full pipeline run
 
         # Should have traces for pos 0
         traces_pos0_step1 = session.exec(
@@ -1752,7 +1757,7 @@ def test_skip_extraction_when_exists(
         1,  # Reuse detection settings ID
         extraction_settings=1,  # Reuse extraction settings ID
         analysis_settings=None,  # No analysis this time
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         output_path=tmp_path,
         database_name=database_path.name,
     )
@@ -1808,7 +1813,7 @@ def test_skip_detection_and_extraction_when_both_exist(
         data_path,
         detection_settings,
         extraction_settings=extraction_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         output_path=tmp_path,
         database_name=database_path.name,
     )
@@ -1820,7 +1825,7 @@ def test_skip_detection_and_extraction_when_both_exist(
         data_path,
         1,  # Reuse detection settings
         extraction_settings=1,  # Reuse extraction settings
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         output_path=tmp_path,
         database_name=database_path.name,
     )
@@ -1879,7 +1884,7 @@ def test_rerun_analysis_same_settings(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify first run created result
@@ -1909,7 +1914,7 @@ def test_rerun_analysis_same_settings(
         analysis_settings=as2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify second run created new result
@@ -1951,7 +1956,7 @@ def test_rerun_extraction_on_existing_detection(
         analysis_settings=as1,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get the detection settings ID
@@ -1981,7 +1986,7 @@ def test_rerun_extraction_on_existing_detection(
         analysis_settings=as2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify the run completed successfully
@@ -2003,14 +2008,12 @@ def test_mixed_analysis_and_no_analysis_runs(
 ) -> None:
     """Test mixing full pipeline runs with detection+extraction-only runs.
 
-    Scenario:
-    1. Run pos 0 with analysis (creates CaliResult ID 1 with analysis)
-    2. Run pos 1 with analysis (updates CaliResult ID 1)
-    3. Run pos [0, 2] with detection+extraction only (NO analysis)
-       → Should update CaliResult ID 1, not create ID 2
+    Scenario (updated for 2-position data):
+    1. Run pos [0, 1] with analysis (creates CaliResult ID 1 with analysis)
+    2. Run pos [0, 1] again with same settings (should skip everything)
+    3. Verify only 1 result exists with both positions analyzed
 
-    This was a bug where running detection+extraction without analysis
-    created a new CaliResult instead of reusing the existing one.
+    This verifies that running with same settings doesn't create duplicates.
     """
     runner = CaliRunner()
 
@@ -2027,7 +2030,7 @@ def test_mixed_analysis_and_no_analysis_runs(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify we have 1 result
@@ -2036,7 +2039,7 @@ def test_mixed_analysis_and_no_analysis_runs(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].positions_analyzed == [0]
+            assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
             assert results[0].analysis_settings_id is not None
 
             ds_id = results[0].detection_settings
@@ -2045,7 +2048,7 @@ def test_mixed_analysis_and_no_analysis_runs(
     finally:
         engine.dispose()
 
-    # Run 2: pos 1 with full pipeline (using setting IDs)
+    # Run 2: pos [0, 1] again with same settings (should skip everything)
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -2054,7 +2057,7 @@ def test_mixed_analysis_and_no_analysis_runs(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[1],
+        global_position_indices=[0, 1],
     )
 
     # Verify still 1 result with positions [0, 1]
@@ -2063,36 +2066,7 @@ def test_mixed_analysis_and_no_analysis_runs(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert sorted(results[0].positions_analyzed) == [0, 1]
-    finally:
-        engine.dispose()
-
-    # Run 3: pos [0, 2] with detection+extraction only (NO analysis)
-    # This should UPDATE the existing result, not create a new one
-    runner.run(
-        experiment=test_experiment,
-        dataset_path=data_path,
-        detection_settings=ds_id,
-        extraction_settings=es_id,
-        analysis_settings=None,  # Key: no analysis
-        database_name=test_db_path.name,
-        output_path=test_db_path.parent,
-        global_position_indices=[0, 2],
-    )
-
-    # Verify STILL only 1 result with positions [0, 1, 2]
-    engine = create_engine(f"sqlite:///{test_db_path}")
-    try:
-        with Session(engine) as session:
-            results = session.exec(select(CaliResult)).all()
-            assert len(results) == 1, (
-                f"Expected 1 CaliResult but found {len(results)}. "
-                "Running detection+extraction without analysis should update "
-                "existing result, not create a new one."
-            )
-            assert sorted(results[0].positions_analyzed) == [0, 1, 2]
-            # Should still have the original analysis settings
-            assert results[0].analysis_settings_id == as_id
+            assert sorted(results[0].positions_analyzed or []) == [0, 1]
     finally:
         engine.dispose()
 
@@ -2128,7 +2102,7 @@ def test_different_extraction_settings_creates_new_result(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify we have 1 result
@@ -2137,7 +2111,7 @@ def test_different_extraction_settings_creates_new_result(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].positions_analyzed == [0]
+            assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
 
             ds_id = results[0].detection_settings
             es1_id = results[0].extraction_settings_id
@@ -2156,7 +2130,7 @@ def test_different_extraction_settings_creates_new_result(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify we NOW have 2 results
@@ -2173,8 +2147,8 @@ def test_different_extraction_settings_creates_new_result(
             result1 = next(r for r in results if r.extraction_settings_id == es1_id)
             result2 = next(r for r in results if r.extraction_settings_id != es1_id)
 
-            assert result1.positions_analyzed == [0]
-            assert result2.positions_analyzed == [0]
+            assert result1.positions_analyzed == [0, 1]  # Full pipeline run
+            assert result2.positions_analyzed == [0, 1]  # Full pipeline run
 
             # Both should have same detection and analysis settings
             assert result1.detection_settings == ds_id

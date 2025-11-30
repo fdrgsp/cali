@@ -458,12 +458,17 @@ def load_analysis_from_json(
             # For legacy JSON imports, we always create a CaliResult to track the import
             if saved_exp_id and saved_detection_settings_id:
                 with Session(engine) as session:
+                    # Legacy JSON imports have all stages completed for the same
+                    # positions
+                    sorted_positions = sorted(positions_analyzed)
                     analysis_result = CaliResult(
                         experiment=saved_exp_id,
                         detection_settings=saved_detection_settings_id,
                         extraction_settings_id=saved_extraction_settings_id,
                         analysis_settings_id=saved_analysis_settings_id,
-                        positions_analyzed=sorted(positions_analyzed),
+                        positions_detected=sorted_positions,
+                        positions_extracted=sorted_positions,
+                        positions_analyzed=sorted_positions,
                     )
                     session.add(analysis_result)
                     session.flush()  # Get analysis_result.id

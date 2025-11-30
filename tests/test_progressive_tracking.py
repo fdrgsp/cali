@@ -102,7 +102,7 @@ def test_detection_only_tracking(
         experiment=test_experiment,
         dataset_path=data_path,
         detection_settings=detection_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -112,7 +112,7 @@ def test_detection_only_tracking(
     with Session(engine) as session:
         result = session.exec(select(CaliResult)).first()
         assert result is not None
-        assert result.positions_detected == [0]
+        assert result.positions_detected == [0, 1]
         assert result.positions_extracted is None
         assert result.positions_analyzed is None
         assert result.extraction_settings_id is None
@@ -138,7 +138,7 @@ def test_detection_plus_extraction_tracking(
         dataset_path=data_path,
         detection_settings=detection_settings,
         extraction_settings=extraction_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -149,7 +149,7 @@ def test_detection_plus_extraction_tracking(
         result = session.exec(select(CaliResult)).first()
         assert result is not None
         # Should have extracted positions (extraction succeeded)
-        assert result.positions_extracted == [0]
+        assert result.positions_extracted == [0, 1]
         # Should not have analyzed (no analysis settings)
         assert result.positions_analyzed is None
         assert result.extraction_settings_id is not None
@@ -177,7 +177,7 @@ def test_full_pipeline_tracking(
         detection_settings=detection_settings,
         extraction_settings=extraction_settings,
         analysis_settings=analysis_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -188,8 +188,8 @@ def test_full_pipeline_tracking(
         result = session.exec(select(CaliResult)).first()
         assert result is not None
         # Full pipeline should track extraction and analysis
-        assert result.positions_extracted == [0]
-        assert result.positions_analyzed == [0]
+        assert result.positions_extracted == [0, 1]
+        assert result.positions_analyzed == [0, 1]
         assert result.extraction_settings_id is not None
         assert result.analysis_settings_id is not None
 
@@ -217,7 +217,7 @@ def test_progressive_runs_merge_positions(
         experiment=test_experiment,
         dataset_path=data_path,
         detection_settings=detection_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -227,7 +227,7 @@ def test_progressive_runs_merge_positions(
         results = session.exec(select(CaliResult)).all()
         assert len(results) == 1  # Should only have one result
         result = results[0]
-        assert result.positions_detected == [0]
+        assert result.positions_detected == [0, 1]
         assert result.positions_extracted is None
         assert result.positions_analyzed is None
         result_id = result.id
@@ -241,7 +241,7 @@ def test_progressive_runs_merge_positions(
         experiment=test_experiment,
         dataset_path=data_path,
         detection_settings=detection_id,  # Use ID to avoid detached object
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -252,7 +252,7 @@ def test_progressive_runs_merge_positions(
         assert len(results) == 1  # CRITICAL: Still only one result (not two!)
         result = results[0]
         assert result.id == result_id  # Same result ID
-        assert result.positions_detected == [0]  # Still position [0]
+        assert result.positions_detected == [0, 1]  # Still position [0]
         assert result.positions_extracted is None
         assert result.positions_analyzed is None
 
@@ -280,7 +280,7 @@ def test_different_settings_create_separate_results(
         detection_settings=detection_settings,
         extraction_settings=extraction_settings,
         analysis_settings=analysis_settings,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -302,7 +302,7 @@ def test_different_settings_create_separate_results(
         detection_settings=detection_id,  # Use ID
         extraction_settings=extraction_id,  # Use ID
         analysis_settings=analysis_settings2,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         database_name="test.cali",
         output_path=tmp_path,
     )
@@ -315,32 +315,61 @@ def test_different_settings_create_separate_results(
 
         # First result
         result1 = results[0]
-        assert result1.positions_extracted == [0]
-        assert result1.positions_analyzed == [0]
+        assert result1.positions_detected == [0, 1]  # Should be set for full pipeline
+        assert result1.positions_extracted == [0, 1]
+        assert result1.positions_analyzed == [0, 1]
 
         # Second result
         result2 = results[1]
-        assert result2.positions_extracted == [0]
-        assert result2.positions_analyzed == [0]
+        assert result2.positions_detected == [0, 1]  # Should be set for full pipeline
+        assert result2.positions_extracted == [0, 1]
+        assert result2.positions_analyzed == [0, 1]
         assert result2.analysis_settings_id != result1.analysis_settings_id
 
     engine.dispose(close=True)
 
 
-def test_detection_only_positions_query(
+def test_full_pipeline_sets_positions_detected(
     tmp_path: Path,
     test_experiment: Experiment,
     mock_detection_runner: MagicMock,
     data_path: Path,
 ) -> None:
-    """Test querying positions that are detection-only.
+    """Test that full pipeline runs set positions_detected correctly.
 
-    Note: Since test data only has position [0], this test simulates
-    the scenario by creating mock FOVs without running extraction on all.
+    This tests the bug where full pipeline runs (detection + extraction + analysis)
+    were not setting positions_detected, showing 0 detected positions in the UI.
     """
-    # This test is disabled because it requires multi-position data
-    # The current test data only has 1 position
-    pytest.skip("Test requires multi-position data which is not available")
+    detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+    extraction_settings = ExtractionSettings(neuropil_inner_radius=10)
+    analysis_settings = AnalysisSettings(peaks_height_value=2.0)
+    db_path = tmp_path / "test.cali"
+
+    runner = CaliRunner()
+
+    # Run full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        global_position_indices=[0, 1],
+        database_name="test.cali",
+        output_path=tmp_path,
+    )
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1
+        result = results[0]
+        # CRITICAL: positions_detected should be set for full pipeline
+        assert result.positions_detected == [0, 1]
+        assert result.positions_extracted == [0, 1]
+        assert result.positions_analyzed == [0, 1]
+
+    engine.dispose(close=True)
 
 
 def test_equality_and_hash_include_new_fields() -> None:

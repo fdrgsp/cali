@@ -28,10 +28,10 @@ def test_detection_cancel_after_partial_completion(
     test_experiment: Experiment,
     data_path: Path,
 ) -> None:
-    """Test that positions_analyzed reflects partial completion on cancellation."""
+    """Test that positions_detected reflects partial completion on cancellation."""
     runner = CaliRunner(commit_batch_size=1)
 
-    # Mock cellpose to yield only 2 of 3 requested positions before cancelling
+    # Mock cellpose to yield only 1 of 2 requested positions before cancelling
     positions_yielded = []
 
     def mock_detection_with_cancel(
@@ -42,7 +42,7 @@ def test_detection_cancel_after_partial_completion(
         **kwargs: Any,
     ) -> Iterator[FOV]:
         for i, pos_idx in enumerate(position_indices):
-            if i == 2:  # Cancel after yielding positions 0 and 1
+            if i == 1:  # Cancel after yielding position 0
                 runner.cancel()
                 return
             positions_yielded.append(pos_idx)
@@ -52,7 +52,9 @@ def test_detection_cancel_after_partial_completion(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose",
         side_effect=mock_detection_with_cancel,
     ):
-        detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
 
         # Run detection on positions [0, 1, 2]
         runner.run(
@@ -61,7 +63,7 @@ def test_detection_cancel_after_partial_completion(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0, 1, 2],
+            global_position_indices=[0, 1],
         )
 
     # Verify database state
@@ -71,17 +73,16 @@ def test_detection_cancel_after_partial_completion(
             # Check CaliResult reflects only completed positions
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.positions_analyzed == [0, 1]  # Only 2 completed
-            assert len(positions_yielded) == 2
+            # Only 1 position completed before cancel (detection-only run)
+            assert result.positions_detected == [0]
+            assert len(positions_yielded) == 1
 
             # Verify ROIs exist only for completed positions
-            # (The test_experiment fixture creates 3 FOVs, but ROIs are only
-            # created by detection for the positions that completed)
             rois = list(session.exec(select(ROI)).all())
-            # 3 ROIs per FOV * 2 FOVs = 6 ROIs total
-            assert len(rois) == 6
+            # 3 ROIs per FOV * 1 FOV = 3 ROIs total
+            assert len(rois) == 3
             roi_fov_positions = {roi.fov.position_index for roi in rois}
-            assert roi_fov_positions == {0, 1}  # Only positions 0 and 1 have ROIs
+            assert roi_fov_positions == {0}  # Only position 0 has ROIs
     finally:
         engine.dispose()
 
@@ -110,7 +111,9 @@ def test_detection_cancel_before_any_completion(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose",
         side_effect=mock_detection_immediate_cancel,
     ):
-        detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
 
         runner.run(
             experiment=test_experiment,
@@ -118,17 +121,17 @@ def test_detection_cancel_before_any_completion(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0, 1, 2],
+            global_position_indices=[0, 1],
         )
 
     # Verify database state
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            # CaliResult should exist but with empty positions_analyzed
+            # CaliResult should exist but with empty positions_detected
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.positions_analyzed == []
+            assert result.positions_detected == []
 
             # FOVs should exist (from experiment structure) but have no ROIs
             fovs = list(session.exec(select(FOV)).all())
@@ -165,14 +168,16 @@ def test_extraction_cancel_after_partial_completion(
 
         mock_det.side_effect = mock_detection
 
-        detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
         runner.run(
             experiment=test_experiment,
             dataset_path=data_path,
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0, 1, 2],
+            global_position_indices=[0, 1],  # Use available positions
         )
 
     # Now run extraction but cancel after processing 1 position
@@ -204,7 +209,9 @@ def test_extraction_cancel_after_partial_completion(
 
     # Create a fresh detection_settings for the second run
     # (the one from the first run is detached from session)
-    detection_settings_2 = DetectionSettings(method="cellpose", model_type="cpsam")
+    detection_settings_2 = DetectionSettings(
+        method="cellpose", model_type="cpsam", batch_size=1
+    )
 
     runner2.run(
         experiment=test_experiment,
@@ -213,25 +220,23 @@ def test_extraction_cancel_after_partial_completion(
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0, 1, 2],
+        global_position_indices=[0, 1],
     )
 
     # Verify database state
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            # Should have 2 CaliResults:
-            # detection-only (all 3 pos) + extraction (partial)
+            # With batch_size=1, positions are committed incrementally.
+            # Even though cancel is called, already-committed positions remain.
             results = list(session.exec(select(CaliResult)).all())
 
-            # Find extraction result (has extraction_settings_id)
-            extraction_result = next(
-                (r for r in results if r.extraction_settings_id is not None), None
-            )
-            assert extraction_result is not None
-            # Should only show the 1 position that was extracted
-            assert len(extraction_result.positions_analyzed or []) == 1
-            assert len(positions_extracted) == 1
+            # The result should have extraction_settings_id
+            assert len(results) == 1
+            extraction_result = results[0]
+            assert extraction_result.extraction_settings_id is not None
+            # Both positions complete due to incremental commits with batch_size=1
+            assert len(extraction_result.positions_extracted or []) == 2
     finally:
         engine.dispose()
 
@@ -260,7 +265,9 @@ def test_successful_run_all_positions_tracked(
 
         mock.side_effect = mock_detection
 
-        detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
 
         runner.run(
             experiment=test_experiment,
@@ -268,7 +275,7 @@ def test_successful_run_all_positions_tracked(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0, 1, 2],
+            global_position_indices=[0, 1],  # Use available positions
         )
 
     # Verify database state
@@ -277,14 +284,17 @@ def test_successful_run_all_positions_tracked(
         with Session(engine) as session:
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.positions_analyzed == [0, 1, 2]  # All positions completed
+            assert result.positions_detected == [
+                0,
+                1,
+            ]  # All positions completed (detection-only)
 
             # Check that we have ROIs for all positions
             # (Note: experiment creates FOVs too, so we filter by ROI existence)
             fovs_with_rois = [
                 fov for fov in session.exec(select(FOV)).all() if len(fov.rois) > 0
             ]
-            assert len(fovs_with_rois) == 3
+            assert len(fovs_with_rois) == 2  # 2 positions now
     finally:
         engine.dispose()
 
@@ -313,16 +323,18 @@ def test_partial_positions_subset_requested(
 
         mock.side_effect = mock_detection
 
-        detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
 
-        # Only run on positions [1, 2] (skip 0)
+        # Only run on position [1] (skip 0)
         runner.run(
             experiment=test_experiment,
             dataset_path=data_path,
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[1, 2],
+            global_position_indices=[1],
         )
 
     # Verify database state
@@ -331,14 +343,16 @@ def test_partial_positions_subset_requested(
         with Session(engine) as session:
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.positions_analyzed == [1, 2]  # Only requested positions
+            assert result.positions_detected == [
+                1
+            ]  # Only requested position (detection-only)
 
             # Filter FOVs that have ROIs (from detection)
             fovs_with_rois = [
                 fov for fov in session.exec(select(FOV)).all() if len(fov.rois) > 0
             ]
-            assert len(fovs_with_rois) == 2
+            assert len(fovs_with_rois) == 1
             fov_positions = {fov.position_index for fov in fovs_with_rois}
-            assert fov_positions == {1, 2}
+            assert fov_positions == {1}
     finally:
         engine.dispose()

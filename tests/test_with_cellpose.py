@@ -31,7 +31,7 @@ def runner() -> CaliRunner:
     return CaliRunner(commit_batch_size=1)
 
 
-@pytest.mark.skip()
+@pytest.mark.skip()  # teporarily disable slow test
 @pytest.mark.skipif(sys.platform == "win32", reason="Test takes too long on Windows")
 def test_cali_runner_real_cellpose(
     test_db_path: Path, test_experiment: Experiment, data_path: Path

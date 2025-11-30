@@ -569,7 +569,7 @@ class CaliRunner:
                     if experiment.id is not None:
                         # For extraction/analysis, we track both stages
                         if analysis_settings_id is not None:
-                            # Full pipeline: track extracted and analyzed
+                            # Full pipeline: track detected, extracted and analyzed
                             analysis_result_id, analysis_result_was_created = (
                                 self._create_or_update_analysis_result(
                                     session=session,
@@ -577,12 +577,13 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=analysis_settings_id,
+                                    positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                     positions_analyzed=list(positions_for_extraction),
                                 )
                             )
                         else:
-                            # Extraction only: track extracted
+                            # Extraction only: track detected and extracted
                             analysis_result_id, analysis_result_was_created = (
                                 self._create_or_update_analysis_result(
                                     session=session,
@@ -590,6 +591,7 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=None,
+                                    positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                 )
                             )

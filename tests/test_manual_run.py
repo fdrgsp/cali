@@ -32,8 +32,9 @@ THREADS = 1
 
 def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
     """Create a mock FOV with ROIs for testing without running cellpose."""
-    # Use A1_ naming convention for well parsing
-    fov = FOV(position_index=position_index, name=f"A1_{position_index:04d}")
+    # Use actual test data naming (B5_0000, B6_0000)
+    name = "B5_0000" if position_index == 0 else "B6_0000"
+    fov = FOV(position_index=position_index, name=name)
 
     rois = []
     for i in range(1, num_rois + 1):
@@ -71,7 +72,7 @@ def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
     """Test manual execution of the pipeline components."""
     # Setup paths
-    dataset_path = Path("tests/test_data/evoked/evk.tensorstore.zarr")
+    dataset_path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
     if not dataset_path.exists():
         pytest.skip(f"Test data not found at {dataset_path}")
 
@@ -94,8 +95,8 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         assert data is not None
         assert data.sequence is not None
 
-        # Use only position 0
-        positions_to_process = [0]
+        # Use both positions
+        positions_to_process = [0, 1]
 
         # 1. Detection
         detection_runner = DetectionRunner()
@@ -132,7 +133,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
                 )
             )
 
-        assert len(fovs) == 1
+        assert len(fovs) == 2  # Now using 2 positions
         assert len(fovs[0].rois) == 3
 
         # Save FOVs to database
@@ -141,7 +142,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Verify saved
         with Session(engine) as session:
             saved_fovs = session.exec(select(FOV)).all()
-            assert len(saved_fovs) == 1
+            assert len(saved_fovs) == 2  # Now using 2 positions
             assert len(saved_fovs[0].rois) == 3
 
         # 2. Extraction
