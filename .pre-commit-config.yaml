@@ -5,7 +5,7 @@ ci:
 
 repos:
   - repo: https://github.com/crate-ci/typos
-    rev: v1
+    rev: v1.40.0
     hooks:
       - id: typos
 
@@ -26,4 +26,4 @@ repos:
       - id: mypy
         files: "^src/"
         additional_dependencies:
-          - pymmcore-plus >=0.16.0
+          - pydantic
