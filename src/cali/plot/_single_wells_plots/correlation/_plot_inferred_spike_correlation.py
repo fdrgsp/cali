@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import mplcursors
 import numpy as np
 from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
 from scipy.signal import correlate
@@ -97,7 +96,7 @@ def _calculate_spike_cross_correlation(
 
         # Only include ROIs that have at least one spike
         if np.sum(spike_train) > 0:
-            rois_idxs.append(roi.id)
+            rois_idxs.append(roi.label_value)
             spike_trains.append(spike_train.astype(float))
 
     if len(rois_idxs) <= 1:
@@ -210,7 +209,7 @@ def _add_hover_functionality_spike_corr(
     rois: list[int],
     values: np.ndarray,
 ) -> None:
-    """Add hover functionality using mplcursors for spike correlation matrix.
+    """Add hover functionality using efficient pick events for spike correlation.
 
     Parameters
     ----------
@@ -223,21 +222,9 @@ def _add_hover_functionality_spike_corr(
     values : np.ndarray
         Correlation matrix values
     """
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
+    from cali.plot._hover_utils import setup_pick_click_for_heatmap
 
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        if x < len(rois) and y < len(rois):
-            roi_x, roi_y = rois[x], rois[y]
-            sel.annotation.set(
-                text=(
-                    f"ROI {roi_x} ↔ ROI {roi_y}\nSpike Correlation: {values[y, x]:0.3f}"
-                ),
-                fontsize=8,
-                color="black",
-            )
-            widget.roiSelected.emit([str(roi_x), str(roi_y)])
+    setup_pick_click_for_heatmap(image.axes, widget, rois, values)
 
 
 def _plot_spike_hierarchical_clustering_data(
@@ -410,18 +397,8 @@ def _add_hover_functionality_spike_clustering(
     values : np.ndarray
         Reordered correlation matrix values
     """
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
+    from cali.plot._hover_utils import setup_pick_click_for_heatmap
 
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        if x < len(rois) and y < len(rois):
-            roi_x, roi_y = rois[order[x]], rois[order[y]]
-            sel.annotation.set(
-                text=(
-                    f"ROI {roi_x} ↔ ROI {roi_y}\nSpike Correlation: {values[y, x]:0.3f}"
-                ),
-                fontsize=8,
-                color="black",
-            )
-            widget.roiSelected.emit([str(roi_x), str(roi_y)])
+    # Create reordered ROI list for hover display
+    reordered_roi_ids = [rois[i] for i in order]
+    setup_pick_click_for_heatmap(image.axes, widget, reordered_roi_ids, values)

@@ -160,7 +160,7 @@ def test_cali_runner_detection_only_mocked(
 
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.detection_settings == ds.id
+            assert result.detection_settings_id == ds.id
             assert result.extraction_settings_id is None
             assert result.analysis_settings_id is None
     finally:
@@ -210,7 +210,7 @@ def test_cali_runner_full_pipeline_mocked(
         with Session(engine) as session:
             result = session.exec(select(CaliResult)).first()
             assert result is not None
-            assert result.detection_settings is not None
+            assert result.detection_settings_id is not None
             assert result.extraction_settings_id is not None
             assert result.analysis_settings_id is not None
     finally:
@@ -276,7 +276,7 @@ def test_cali_runner_incremental_mocked(
                 select(CaliResult).where(CaliResult.extraction_settings_id.is_not(None))  # type: ignore
             ).first()
             assert result is not None
-            assert result.detection_settings == ds_id
+            assert result.detection_settings_id == ds_id
             assert result.extraction_settings_id is not None
     finally:
         engine.dispose()
@@ -1273,7 +1273,7 @@ def test_settings_by_id_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].detection_settings == ds_id
+            assert results[0].detection_settings_id == ds_id
             assert results[0].extraction_settings_id == es_id
             assert results[0].analysis_settings_id == as_id
     finally:
@@ -1364,7 +1364,7 @@ def test_result_upgrade_flow_mocked(
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
             assert results[0].extraction_settings_id is None
-            ds_id = results[0].detection_settings
+            ds_id = results[0].detection_settings_id
             assert ds_id is not None
     finally:
         engine.dispose()
@@ -1894,7 +1894,7 @@ def test_rerun_analysis_same_settings(
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
             result1_id = results[0].id
-            ds_id = results[0].detection_settings
+            ds_id = results[0].detection_settings_id
             es_id = results[0].extraction_settings_id
             assert ds_id is not None
             assert es_id is not None
@@ -1965,7 +1965,7 @@ def test_rerun_extraction_on_existing_detection(
         with Session(engine) as session:
             result1 = session.exec(select(CaliResult)).first()
             assert result1 is not None
-            ds_id = result1.detection_settings
+            ds_id = result1.detection_settings_id
             es_id = result1.extraction_settings_id
             assert ds_id is not None
             assert es_id is not None
@@ -2042,7 +2042,7 @@ def test_mixed_analysis_and_no_analysis_runs(
             assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
             assert results[0].analysis_settings_id is not None
 
-            ds_id = results[0].detection_settings
+            ds_id = results[0].detection_settings_id
             es_id = results[0].extraction_settings_id
             as_id = results[0].analysis_settings_id
     finally:
@@ -2113,7 +2113,7 @@ def test_different_extraction_settings_creates_new_result(
             assert len(results) == 1
             assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
 
-            ds_id = results[0].detection_settings
+            ds_id = results[0].detection_settings_id
             es1_id = results[0].extraction_settings_id
             as_id = results[0].analysis_settings_id
     finally:
@@ -2151,8 +2151,8 @@ def test_different_extraction_settings_creates_new_result(
             assert result2.positions_analyzed == [0, 1]  # Full pipeline run
 
             # Both should have same detection and analysis settings
-            assert result1.detection_settings == ds_id
-            assert result2.detection_settings == ds_id
+            assert result1.detection_settings_id == ds_id
+            assert result2.detection_settings_id == ds_id
             assert result1.analysis_settings_id == as_id
             assert result2.analysis_settings_id == as_id
 

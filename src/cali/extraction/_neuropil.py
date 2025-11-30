@@ -105,7 +105,7 @@ def _create_cell_pix_from_masks(
         cell_core = lammap > 0.0
 
     # Suite2p's create_cell_pix returns float array, later used with < 0.5
-    return cell_core.astype(np.float32)  # type: ignore[no-any-return]
+    return cell_core.astype(np.float32)
 
 
 def create_neuropil_from_dilation(
@@ -164,7 +164,7 @@ def create_neuropil_from_dilation(
 
     # Valid pixels check: pixels are valid if not occupied by cells
     def valid_pixels(ypix: np.ndarray, xpix: np.ndarray) -> np.ndarray:
-        return cell_pix[ypix, xpix] < 0.5  # type: ignore[no-any-return]
+        return cell_pix[ypix, xpix] < 0.5
 
     # Extension step size (Suite2p default: 5 pixels at a time)
     extend_by = 5

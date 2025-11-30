@@ -4,9 +4,8 @@ from typing import TYPE_CHECKING, cast
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import mplcursors
-import numpy as np
 
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._util import (
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
@@ -14,6 +13,7 @@ from cali.plot._util import (
 )
 
 if TYPE_CHECKING:
+    import numpy as np
     from matplotlib.image import AxesImage
     from sqlalchemy.engine import Engine
 
@@ -127,7 +127,7 @@ def _plot_peak_event_synchrony_data(
         f"(Calcium Peaks Events - Jitter Window Method)\n"
     )
 
-    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1)
+    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
     cbar = widget.figure.colorbar(
         cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
         ax=ax,
@@ -141,9 +141,6 @@ def _plot_peak_event_synchrony_data(
     ax.set_xlabel("ROI")
     ax.set_xticklabels([])
     ax.set_xticks([])
-
-    active_rois = list(peak_trains.keys())
-    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -177,8 +174,8 @@ def _plot_peak_event_synchrony_data(
     ax.set_xticklabels([])
     ax.set_xticks([])
 
-    active_rois = list(peak_trains.keys())
-    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
+    active_roi_ids = [int(roi_id) for roi_id in peak_trains.keys()]
+    _add_hover_functionality(img, widget, active_roi_ids, synchrony_matrix)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -220,24 +217,8 @@ def _get_jit(
 def _add_hover_functionality(
     image: AxesImage,
     widget: _SingleWellGraphWidget,
-    rois: list[str],
+    rois: list[int],
     synchrony_matrix: np.ndarray,
 ) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        if x < len(rois) and y < len(rois):
-            roi_x, roi_y = rois[x], rois[y]
-            sel.annotation.set(
-                text=(
-                    f"ROI {roi_x} ↔ ROI {roi_y}\n"
-                    f"Peak Event Synchrony: {synchrony_matrix[y, x]:.3f}"
-                ),
-                fontsize=8,
-                color="black",
-            )
-            if roi_x.isdigit() and roi_y.isdigit():
-                widget.roiSelected.emit([roi_x, roi_y])
+    """Add hover functionality using efficient pick events."""
+    setup_pick_click_for_heatmap(image.axes, widget, rois, synchrony_matrix)

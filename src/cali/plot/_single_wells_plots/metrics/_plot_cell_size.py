@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-import mplcursors
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -85,9 +85,9 @@ def _plot_cell_size_data(
 
         result = session.get(CaliResult, run_id)
         if result:
-            detection_settings_id = result.detection_settings
+            detection_settings_id = result.detection_settings_id
 
-        # Build query to get ROIs for this FOV
+        # Build query to get ROIs for this FOV that have cell_size data
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
 
         # Filter by specific ROIs if requested
@@ -97,6 +97,9 @@ def _plot_cell_size_data(
         # Filter by detection settings if we have a run_id
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+
+        # Only include ROIs that have cell_size data (indicates they were extracted)
+        stmt = stmt.where(col(ROI.cell_size).is_not(None))
 
         # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
@@ -110,7 +113,13 @@ def _plot_cell_size_data(
             continue
         if not units and roi.cell_size_units:
             units = roi.cell_size_units
-        ax.scatter(roi.label_value, roi.cell_size, label=f"ROI {roi.label_value}")
+        ax.scatter(
+            roi.label_value,
+            roi.cell_size,
+            label=f"ROI {roi.label_value}",
+            picker=True,  # Enable picking on scatter
+            s=50,  # Larger size for easier clicking
+        )
 
     ax.set_xlabel("ROI")
     ax.set_xticks([])
@@ -125,35 +134,5 @@ def _plot_cell_size_data(
 
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for ROI traces, not for peaks or other elements
-        if label and "ROI" in label and not label.startswith("_"):
-            # Get the data point coordinates
-            _x, y = sel.target
-
-            # Create hover text with ROI and value information
-            roi = cast("str", label.split(" ")[1])
-
-            # Get the units from the y-axis label
-            y_label = ax.get_ylabel()
-            # Extract units from the y-axis label (e.g., "Cell Size (μm²)" -> "μm²")
-            if "(" in y_label and ")" in y_label:
-                units = y_label.split("(")[1].split(")")[0]
-                hover_text = f"{label}\nSize: {y:.3f} {units}"
-            else:
-                hover_text = f"{label}\nSize: {y:.3f}"
-
-            sel.annotation.set(text=hover_text, fontsize=8, color="black")
-
-            if roi.isdigit():
-                widget.roiSelected.emit(roi)
-        else:
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    """Add hover functionality using efficient pick events."""
+    setup_pick_click(ax, widget, picker_tolerance=5)

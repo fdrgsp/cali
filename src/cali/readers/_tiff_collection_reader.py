@@ -497,12 +497,12 @@ class TiffCollectionReader:
         data = tifffile.memmap(tiff_path, mode="r")
         # If frame_idx is None, return entire file
         if frame_idx is None:
-            return data  # type: ignore
+            return data
         # If multi-frame (3D: T, Y, X), extract the requested frame
         if len(data.shape) == 3:
-            return data[frame_idx]  # type: ignore
+            return data[frame_idx]
         # If single frame (2D: Y, X), return as-is
-        return data  # type: ignore
+        return data
 
     def _get_metadata_from_index(self, indexers: Mapping[str, int]) -> list[dict]:
         """Return the metadata for the given indexers."""

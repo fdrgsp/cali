@@ -91,7 +91,7 @@ class CaliResult(SQLModel, table=True):
 
     # Foreign keys
     experiment: int = Field(foreign_key="experiment.id")
-    detection_settings: int | None = Field(
+    detection_settings_id: int | None = Field(
         default=None, foreign_key="detection_settings.id"
     )
     extraction_settings_id: int | None = Field(
@@ -100,6 +100,9 @@ class CaliResult(SQLModel, table=True):
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id"
     )
+
+    # Plate map versioning - hash of plate_maps dict to track changes
+    plate_map_hash: str | None = Field(default=None)
 
     # Progressive tracking of pipeline stages
     positions_detected: list[int] | None = Field(default=None, sa_column=Column(JSON))
@@ -118,7 +121,7 @@ class CaliResult(SQLModel, table=True):
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
-          positions_analyzed
+          positions_analyzed, plate_map_hash
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -127,12 +130,13 @@ class CaliResult(SQLModel, table=True):
             return False
         return (
             self.experiment == other.experiment
-            and self.detection_settings == other.detection_settings
+            and self.detection_settings_id == other.detection_settings_id
             and self.extraction_settings_id == other.extraction_settings_id
             and self.analysis_settings_id == other.analysis_settings_id
             and self.positions_detected == other.positions_detected
             and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
+            and self.plate_map_hash == other.plate_map_hash
         )
 
     def __hash__(self) -> int:
@@ -143,12 +147,13 @@ class CaliResult(SQLModel, table=True):
         return hash(
             (
                 self.experiment,
-                self.detection_settings,
+                self.detection_settings_id,
                 self.extraction_settings_id,
                 self.analysis_settings_id,
                 tuple(self.positions_detected) if self.positions_detected else None,
                 tuple(self.positions_extracted) if self.positions_extracted else None,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
+                self.plate_map_hash,
             )
         )
 

@@ -25,7 +25,7 @@ def example_1_get_traces_by_settings(
     # First find the CaliResult with these settings
     ar = session.exec(
         select(CaliResult).where(
-            CaliResult.detection_settings == detection_id,
+            CaliResult.detection_settings_id == detection_id,
             CaliResult.analysis_settings_id == analysis_id,
         )
     ).first()
@@ -59,8 +59,8 @@ def example_2_compare_detection_methods(
                     CaliResult.id == trace.analysis_result_id
                 )
             ).first()
-            if ar and ar.detection_settings:
-                traces_by_detection[ar.detection_settings] = trace
+            if ar and ar.detection_settings_id:
+                traces_by_detection[ar.detection_settings_id] = trace
 
     return traces_by_detection
 
@@ -91,10 +91,10 @@ def example_4_get_analysis_metadata(session: Session, trace_id: int) -> dict[str
 
     # Get the settings
     detection = None
-    if ar.detection_settings:
+    if ar.detection_settings_id:
         detection = session.exec(
             select(DetectionSettings).where(
-                DetectionSettings.id == ar.detection_settings
+                DetectionSettings.id == ar.detection_settings_id
             )
         ).first()
 

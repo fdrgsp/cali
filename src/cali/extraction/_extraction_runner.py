@@ -335,10 +335,10 @@ class ExtractionRunner:
                     roi_size_units,
                 ) = trace_data
 
-                # Store cell size in ROI (calculated once during extraction)
-                if existing_roi.cell_size is None:
-                    existing_roi.cell_size = roi_size
-                    existing_roi.cell_size_units = roi_size_units
+                # Store cell size in ROI (update on every extraction run)
+                # This ensures the value is always populated even if initially None
+                existing_roi.cell_size = roi_size
+                existing_roi.cell_size_units = roi_size_units
 
                 # Save neuropil mask to the Traces object if it exists for this ROI
                 neuropil_mask_array = neuropil_masks_dict.get(label_value)

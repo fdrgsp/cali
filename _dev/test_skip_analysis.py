@@ -24,7 +24,7 @@ def _table(db_path: str):
         for result in results:
             exp_id = str(result.experiment) if result.experiment else "None"
             det_id = (
-                str(result.detection_settings) if result.detection_settings else "None"
+                str(result.detection_settings_id) if result.detection_settings_id else "None"
             )
             ana_id = (
                 str(result.analysis_settings_id) if result.analysis_settings_id else "None"

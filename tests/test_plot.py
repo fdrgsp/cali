@@ -930,6 +930,27 @@ def test_plot_cell_size(
     mock_widget.figure.clear.assert_called()
     mock_widget.canvas.draw.assert_called()
 
+    # Verify that scatter points were actually plotted
+    # The plot should have at least one scatter collection
+    axes = mock_widget.figure.get_axes()
+    assert len(axes) == 1, "Should have exactly one subplot"
+    ax = axes[0]
+
+    # Check that scatter points were added (should have at least one PathCollection)
+    scatter_collections = [
+        child
+        for child in ax.get_children()
+        if hasattr(child, "get_offsets") and hasattr(child, "get_offsets")
+    ]
+    assert len(scatter_collections) > 0, (
+        "Should have plotted scatter points for ROIs with cell_size data"
+    )
+
+    # Verify the scatter collection has data points
+    scatter = scatter_collections[0]
+    offsets = scatter.get_offsets()
+    assert len(offsets) > 0, "Scatter plot should contain data points"
+
 
 # ============================================================================
 # Neuropil Traces Tests

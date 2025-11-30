@@ -510,7 +510,7 @@ def test_check_positions_missing_extraction(
         # Create CaliResult first
         result = CaliResult(
             experiment=1,
-            detection_settings=1,
+            detection_settings_id=1,
             extraction_settings_id=1,
             positions_analyzed=[0],
         )

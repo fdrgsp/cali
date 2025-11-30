@@ -15,6 +15,7 @@ from cali.logger import cali_logger
 from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
+from cali.sqlmodel._plate_map_util import compute_plate_map_hash
 from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
@@ -265,7 +266,7 @@ class CaliRunner:
         )
 
         # Enable foreign keys for SQLite
-        @event.listens_for(engine, "connect")  # type: ignore[misc]
+        @event.listens_for(engine, "connect")  # type: ignore
         def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -273,6 +274,14 @@ class CaliRunner:
 
         try:
             with Session(engine) as session:
+                # Get experiment with plate data for plate_map_hash computation
+                from cali.sqlmodel._model import Experiment as ExperimentModel
+
+                exp_in_db = session.get(ExperimentModel, experiment.id)
+                plate_map_hash: str | None = None
+                if exp_in_db and exp_in_db.plate:
+                    plate_map_hash = compute_plate_map_hash(exp_in_db.plate.plate_maps)
+
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
                     session, detection_settings
@@ -351,6 +360,7 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
+                            plate_map_hash=plate_map_hash,
                             positions_detected=list(positions_for_detection),
                         )
                     )
@@ -577,6 +587,7 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=analysis_settings_id,
+                                    plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                     positions_analyzed=list(positions_for_extraction),
@@ -591,6 +602,7 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=None,
+                                    plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                 )
@@ -1292,6 +1304,7 @@ class CaliRunner:
         detection_settings_id: int,
         extraction_settings_id: int | None,
         analysis_settings_id: int | None,
+        plate_map_hash: str | None = None,
         positions_detected: list[int] | None = None,
         positions_extracted: list[int] | None = None,
         positions_analyzed: list[int] | None = None,
@@ -1299,7 +1312,8 @@ class CaliRunner:
         """Create or update a CaliResult entry with progressive stage tracking.
 
         Handles progressive analysis stages:
-        1. If exact match exists (same detection, extraction, analysis), merge positions
+        1. If exact match exists (same detection, extraction, analysis,
+           plate_map), merge positions
         2. If partial match exists (same detection/extraction but less complete),
            upgrade the existing result with new settings
         3. Otherwise, create new result and clean up superseded ones
@@ -1316,6 +1330,9 @@ class CaliRunner:
             Extraction settings ID (None for detection-only)
         analysis_settings_id : int | None
             Analysis settings ID (None for extraction-only or detection-only)
+        plate_map_hash : str | None
+            Hash of the plate_maps dict to track changes. Different plate maps
+            create separate results even with identical extraction settings.
         positions_detected : list[int] | None
             Positions with detection results (ROIs)
         positions_extracted : list[int] | None
@@ -1341,7 +1358,7 @@ class CaliRunner:
         # First, check for exact match with all settings
         query = select(CaliResult).where(
             CaliResult.experiment == experiment_id,
-            CaliResult.detection_settings == detection_settings_id,
+            CaliResult.detection_settings_id == detection_settings_id,
         )
 
         if extraction_settings_id is None:
@@ -1355,6 +1372,12 @@ class CaliRunner:
             query = query.where(CaliResult.analysis_settings_id.is_(None))  # type: ignore
         else:
             query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
+
+        # Include plate_map_hash in exact match check
+        if plate_map_hash is None:
+            query = query.where(CaliResult.plate_map_hash.is_(None))  # type: ignore
+        else:
+            query = query.where(CaliResult.plate_map_hash == plate_map_hash)
 
         exact_match = session.exec(query).first()
 
@@ -1401,7 +1424,7 @@ class CaliRunner:
             upgradeable_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1443,7 +1466,7 @@ class CaliRunner:
             detection_only_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1476,7 +1499,7 @@ class CaliRunner:
             upgradeable_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1518,7 +1541,7 @@ class CaliRunner:
             compatible_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
                 )
             ).first()
@@ -1562,7 +1585,7 @@ class CaliRunner:
             detection_only_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1579,9 +1602,10 @@ class CaliRunner:
         # Create new result
         result = CaliResult(
             experiment=experiment_id,
-            detection_settings=detection_settings_id,
+            detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             analysis_settings_id=analysis_settings_id,
+            plate_map_hash=plate_map_hash,
             positions_detected=positions_detected,
             positions_extracted=positions_extracted,
             positions_analyzed=positions_analyzed,

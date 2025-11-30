@@ -5,19 +5,16 @@ from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import mplcursors
 import numpy as np
-from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
 from scipy.signal import correlate
-from scipy.spatial.distance import squareform
 from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from matplotlib.image import AxesImage
     from sqlalchemy.engine import Engine
 
@@ -96,7 +93,7 @@ def _calculate_cross_correlation(
             if run_id is not None:
                 result = session.get(CaliResult, run_id)
                 if result:
-                    detection_settings_id = result.detection_settings
+                    detection_settings_id = result.detection_settings_id
 
             stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
             if rois is not None:
@@ -120,9 +117,9 @@ def _calculate_cross_correlation(
     rois_idxs: list[int] = []
 
     for roi, roi_traces in roi_data:
-        if roi_traces is None or roi_traces.dec_dff is None or roi.id is None:
+        if roi_traces is None or roi_traces.dec_dff is None or roi.label_value is None:
             continue
-        rois_idxs.append(roi.id)
+        rois_idxs.append(roi.label_value)
         traces.append(roi_traces.dec_dff)
 
     if len(rois_idxs) <= 1:
@@ -178,7 +175,7 @@ def _plot_cross_correlation_data(
     )
     cbar.set_label("Cross-Correlation Index")
 
-    img = ax.imshow(correlation_matrix, cmap="viridis", vmin=0, vmax=1)
+    img = ax.imshow(correlation_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
 
     _add_hover_functionality_cross_corr(img, widget, rois_idxs, correlation_matrix)
 
@@ -192,121 +189,109 @@ def _add_hover_functionality_cross_corr(
     rois: list[int],
     values: np.ndarray,
 ) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        roi_x, roi_y = rois[x], rois[y]
-        sel.annotation.set(
-            text=f"ROI {roi_x} ↔ ROI {roi_y}\nvalue: {values[y, x]:0.2f}",
-            fontsize=8,
-            color="black",
-        )
-
-        widget.roiSelected.emit([str(roi_x), str(roi_y)])
+    """Add hover functionality using efficient pick events."""
+    setup_pick_click_for_heatmap(image.axes, widget, rois, values)
 
 
-def _plot_hierarchical_clustering_data(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-    use_dendrogram: bool = False,
-) -> None:
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
+# def _plot_hierarchical_clustering_data(
+#     widget: _SingleWellGraphWidget,
+#     engine: Engine,
+#     fov_name: str,
+#     rois: list[int] | None = None,
+#     run_id: int | None = None,
+#     use_dendrogram: bool = False,
+# ) -> None:
+#     widget.figure.clear()
+#     ax = widget.figure.add_subplot(111)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        engine, fov_name, rois, run_id
-    )
+#     correlation_matrix, rois_idxs = _calculate_cross_correlation(
+#         engine, fov_name, rois, run_id
+#     )
 
-    if correlation_matrix is None or rois_idxs is None:
-        return
+#     if correlation_matrix is None or rois_idxs is None:
+#         return
 
-    if use_dendrogram:
-        _plot_hierarchical_clustering_dendrogram(ax, correlation_matrix, rois_idxs)
-    else:
-        _plot_hierarchical_clustering_map(widget, ax, correlation_matrix, rois_idxs)
+#     if use_dendrogram:
+#         _plot_hierarchical_clustering_dendrogram(ax, correlation_matrix, rois_idxs)
+#     else:
+#         _plot_hierarchical_clustering_map(widget, ax, correlation_matrix, rois_idxs)
 
-    ax.set_xlabel("ROI")
+#     ax.set_xlabel("ROI")
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
-
-
-def _plot_hierarchical_clustering_dendrogram(
-    ax: Axes,
-    correlation_matrix: np.ndarray,
-    rois_idxs: list[int],
-) -> None:
-    """Plot the hierarchical clustering dendrogram."""
-    ax.set_title(
-        "Pairwise Cross-Correlation - Hierarchical Clustering Dendrogram\n"
-        "(Calcium Peaks Events)"
-    )
-    ax.set_ylabel("Distance")
-    correlation_matrix = np.round(correlation_matrix, decimals=8)
-    dist_condensed = squareform(1 - np.abs(correlation_matrix))
-    Z = linkage(dist_condensed, method="complete")
-    labels = [str(i) for i in rois_idxs]
-    dendrogram(Z, ax=ax, labels=labels, leaf_rotation=90, leaf_font_size=12)
+#     widget.figure.tight_layout()
+#     widget.canvas.draw()
 
 
-def _plot_hierarchical_clustering_map(
-    widget: _SingleWellGraphWidget,
-    ax: Axes,
-    correlation_matrix: np.ndarray,
-    rois_idxs: list[int],
-) -> None:
-    """Plot the hierarchical clustering map."""
-    correlation_matrix = np.round(correlation_matrix, decimals=8)
-    dist_condensed = squareform(1 - np.abs(correlation_matrix))
-    order = leaves_list(linkage(dist_condensed, method="complete"))
-    reordered_matrix = correlation_matrix[order][:, order]
-    ax.set_title(
-        "Pairwise Cross-Correlation - Hierarchical Clustering Map\n"
-        "(Calcium Peaks Events)"
-    )
-    ax.set_ylabel("ROI")
-    ax.set_yticklabels([])
-    ax.set_yticks([])
-    ax.set_xticklabels([])
-    ax.set_xticks([])
-    image = ax.imshow(reordered_matrix, cmap="viridis")
-
-    cbar = widget.figure.colorbar(
-        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
-        ax=ax,
-    )
-    cbar.set_label("Cross-Correlation Index")
-
-    _add_hover_functionality_clustering(
-        image, widget, rois_idxs, order, reordered_matrix
-    )
+# def _plot_hierarchical_clustering_dendrogram(
+#     ax: Axes,
+#     correlation_matrix: np.ndarray,
+#     rois_idxs: list[int],
+# ) -> None:
+#     """Plot the hierarchical clustering dendrogram."""
+#     ax.set_title(
+#         "Pairwise Cross-Correlation - Hierarchical Clustering Dendrogram\n"
+#         "(Calcium Peaks Events)"
+#     )
+#     ax.set_ylabel("Distance")
+#     correlation_matrix = np.round(correlation_matrix, decimals=8)
+#     dist_condensed = squareform(1 - np.abs(correlation_matrix))
+#     Z = linkage(dist_condensed, method="complete")
+#     labels = [str(i) for i in rois_idxs]
+#     dendrogram(Z, ax=ax, labels=labels, leaf_rotation=90, leaf_font_size=12)
 
 
-def _add_hover_functionality_clustering(
-    image: AxesImage,
-    widget: _SingleWellGraphWidget,
-    rois: list[int],
-    order: list[int],
-    values: np.ndarray,
-) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
+# def _plot_hierarchical_clustering_map(
+#     widget: _SingleWellGraphWidget,
+#     ax: Axes,
+#     correlation_matrix: np.ndarray,
+#     rois_idxs: list[int],
+# ) -> None:
+#     """Plot the hierarchical clustering map."""
+#     correlation_matrix = np.round(correlation_matrix, decimals=8)
+#     dist_condensed = squareform(1 - np.abs(correlation_matrix))
+#     order = leaves_list(linkage(dist_condensed, method="complete"))
+#     reordered_matrix = correlation_matrix[order][:, order]
+#     ax.set_title(
+#         "Pairwise Cross-Correlation - Hierarchical Clustering Map\n"
+#         "(Calcium Peaks Events)"
+#     )
+#     ax.set_ylabel("ROI")
+#     ax.set_yticklabels([])
+#     ax.set_yticks([])
+#     ax.set_xticklabels([])
+#     ax.set_xticks([])
+#     image = ax.imshow(reordered_matrix, cmap="viridis")
 
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        roi_x, roi_y = rois[order[x]], rois[order[y]]
+#     cbar = widget.figure.colorbar(
+#         cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
+#         ax=ax,
+#     )
+#     cbar.set_label("Cross-Correlation Index")
 
-        sel.annotation.set(
-            text=f"ROI {roi_x} ↔ ROI {roi_y}\nvalue: {values[y, x]:0.2f}",
-            fontsize=8,
-            color="black",
-        )
+#     _add_hover_functionality_clustering(
+#         image, widget, rois_idxs, order, reordered_matrix
+#     )
 
-        widget.roiSelected.emit([str(roi_x), str(roi_y)])
+
+# def _add_hover_functionality_clustering(
+#     image: AxesImage,
+#     widget: _SingleWellGraphWidget,
+#     rois: list[int],
+#     order: list[int],
+#     values: np.ndarray,
+# ) -> None:
+#     """Add hover functionality using mplcursors."""
+#     cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
+
+#     @cursor.connect("add")  # type: ignore [misc]
+#     def on_add(sel: mplcursors.Selection) -> None:
+#         x, y = map(int, np.round(sel.target))
+#         roi_x, roi_y = rois[order[x]], rois[order[y]]
+
+#         sel.annotation.set(
+#             text=f"ROI {roi_x} ↔ ROI {roi_y}\nvalue: {values[y, x]:0.2f}",
+#             fontsize=8,
+#             color="black",
+#         )
+
+#         widget.roiSelected.emit([str(roi_x), str(roi_y)])

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import mplcursors
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -278,26 +278,8 @@ def _update_time_axis(
 
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Show hover for anything with ROI in the label (traces and thresholds)
-        if label and "ROI" in label and not label.startswith("_"):
-            sel.annotation.set(text=label, fontsize=8, color="black")
-            # Extract ROI number for selection (works for both traces and thresholds)
-            roi_parts = label.split("ROI ")
-            if len(roi_parts) > 1:
-                roi_num = roi_parts[1].split()[0] if roi_parts[1].split() else ""
-                if roi_num.isdigit():
-                    widget.roiSelected.emit(roi_num)
-        else:
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    """Add hover functionality using efficient pick events."""
+    setup_pick_click(ax, widget, picker_tolerance=3)
 
 
 def _plot_inferred_spikes_normalized_with_bursts(

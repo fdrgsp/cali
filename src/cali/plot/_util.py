@@ -131,45 +131,29 @@ def _get_calcium_peaks_events_from_rois(
     with Session(engine) as session:
         roi_data = []  # List of (ROI, Traces, DataAnalysis)
 
-        if run_id is not None:
-            # Optimized query
-            stmt = (
-                select(ROI, Traces, DataAnalysis)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    Traces,
-                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-                )
-                .join(
-                    DataAnalysis,
-                    (DataAnalysis.roi_id == ROI.id)
-                    & (DataAnalysis.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
-                .where(col(ROI.active) == True)  # noqa: E712
+        if run_id is None:
+            cali_logger.warning("No run_id provided for peak event extraction.")
+        # Optimized query
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-
-            if rois is not None:
-                stmt = stmt.where(col(ROI.id).in_(rois))
-
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy behavior
-            stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-            if rois is not None:
-                stmt = stmt.where(col(ROI.id).in_(rois))
-            stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-                selectinload(ROI.data_analysis_history),
-                selectinload(ROI.traces_history),
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
             )
-            roi_results = session.exec(stmt).all()
+            .where(col(FOV.name) == fov_name)
+            .where(col(ROI.active) == True)  # noqa: E712
+        )
+        if rois is not None:
+            stmt = stmt.where(col(ROI.id).in_(rois))
 
-            for r in roi_results:
-                t = _get_traces_for_run(r, None)
-                da = _get_data_analysis_for_run(r, None)
-                if t and da:
-                    roi_data.append((r, t, da))
+        results = session.exec(stmt).all()
+        roi_data = results
 
     peak_trains: dict[str, np.ndarray] = {}
 
@@ -195,7 +179,7 @@ def _get_calcium_peaks_events_from_rois(
                 peak_train[int(peak_frame)] = 1.0
 
         if np.sum(peak_train) > 0:  # Only include ROIs with at least one peak
-            peak_trains[str(roi.id)] = peak_train
+            peak_trains[str(roi.label_value)] = peak_train
 
     return peak_trains if len(peak_trains) >= 2 else None
 
@@ -639,4 +623,4 @@ def _create_connectivity_matrix(
     threshold = np.percentile(off_diagonal_values, threshold_percentile)
 
     # Create binary connectivity matrix
-    return (correlation_matrix >= threshold).astype(int)  # type: ignore [no-any-return]
+    return (correlation_matrix >= threshold).astype(int)
