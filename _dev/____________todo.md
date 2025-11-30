@@ -21,3 +21,7 @@ ask to claude:
 - menu to save and load settings in CaliGui, they are dataclasses so we can save as json
 
 - replece red color in plot combo with unclickable item
+
+- when the analysis is done, we should not reload the plots, it can take time, instead we should first reset to selecting None.
+
+- acc correlation plots to evoked

@@ -6,6 +6,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
 
+from cali.logger import cali_logger
 from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._util import (
     _get_data_analysis_for_run,
@@ -19,8 +20,6 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from cali.logger import cali_logger
 
 
 def _plot_spike_synchrony_data(
@@ -47,6 +46,8 @@ def _plot_spike_synchrony_data(
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
     spike_trains = _get_spike_trains_from_rois(engine, fov_name, rois, run_id)
     if spike_trains is None or len(spike_trains) < 2:
@@ -54,11 +55,15 @@ def _plot_spike_synchrony_data(
             "Insufficient spike data for synchrony analysis. "
             "Ensure at least two ROIs with spikes are selected."
         )
+        widget.figure.tight_layout()
+        widget.canvas.draw()
         return
 
     lag = _get_lag(engine, fov_name, rois, run_id)
     if lag is None:
         cali_logger.warning("No valid lag value found for synchrony analysis.")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
         return
 
     # Convert spike trains to spike data dict for correlation-based synchrony
@@ -78,6 +83,8 @@ def _plot_spike_synchrony_data(
             "Failed to compute synchrony matrix. "
             "Ensure spike data is valid and contains sufficient ROIs."
         )
+        widget.figure.tight_layout()
+        widget.canvas.draw()
         return
 
     # Calculate global synchrony metric using spike-specific function
@@ -90,20 +97,29 @@ def _plot_spike_synchrony_data(
         f"(Thresholded Spike Data - Cross-Correlation Method)\n"
     )
 
-    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
+    img = ax.imshow(
+        synchrony_matrix,
+        cmap="viridis",
+        vmin=0.0,
+        vmax=1.0,
+        picker=True,
+    )
     cbar = widget.figure.colorbar(
-        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
+        cm.ScalarMappable(
+            cmap="viridis",
+            norm=mcolors.Normalize(vmin=0.0, vmax=1.0),
+        ),
         ax=ax,
     )
     cbar.set_label("Spike Synchrony Index")
 
     ax.set_title(title)
     ax.set_ylabel("ROI")
-    ax.set_yticklabels([])
     ax.set_yticks([])
+    ax.set_yticklabels([])
     ax.set_xlabel("ROI")
-    ax.set_xticklabels([])
     ax.set_xticks([])
+    ax.set_xticklabels([])
 
     active_roi_ids = [int(roi_id) for roi_id in spike_trains.keys()]
     _add_hover_functionality(img, widget, active_roi_ids, synchrony_matrix)
@@ -114,8 +130,8 @@ def _plot_spike_synchrony_data(
 
 def _get_lag(
     engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
+    fov_name: str,  # kept for API symmetry; not used directly here
+    rois: list[int] | None = None,  # kept for API symmetry; not used directly here
     run_id: int | None = None,
 ) -> int | None:
     """Get the lag value for synchrony from AnalysisSettings."""
@@ -147,6 +163,7 @@ def _get_lag(
         )
         if run_id is not None:
             stmt = stmt.where(col(CaliResult.id) == run_id)
+
         result_tuple = session.exec(stmt).first()
 
         if result_tuple is None:
@@ -158,9 +175,8 @@ def _get_lag(
             cali_logger.warning("No analysis settings found for synchrony analysis.")
             return None
 
-        # Get spike synchrony cross-correlation lag from analysis settings
         lag = analysis_settings.spikes_sync_cross_corr_lag
-        return lag if lag is not None else 5  # Default value
+        return lag if lag is not None else 5  # Default fallback
 
 
 def _get_spike_trains_from_rois(
@@ -171,14 +187,20 @@ def _get_spike_trains_from_rois(
 ) -> dict[str, np.ndarray] | None:
     """Extract spike trains from ROI data.
 
-    Args:
-        engine: Database engine
-        fov_name: Name of the FOV
-        rois: List of ROI indices to include, None for all
-        run_id: The run ID to filter by, None for latest
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    fov_name : str
+        Name of the FOV
+    rois : list[int] | None
+        List of ROI indices to include, None for all
+    run_id : int | None
+        The run ID to filter by, None for latest
 
     Returns
     -------
+    dict[str, np.ndarray] | None
         Dictionary mapping ROI names to binary spike arrays
     """
     from sqlalchemy.orm import selectinload
@@ -203,29 +225,26 @@ def _get_spike_trains_from_rois(
         return None
 
     for roi in roi_results:
-        # Get traces and data_analysis for the specified run
         traces = _get_traces_for_run(roi, run_id)
         data_analysis = _get_data_analysis_for_run(roi, run_id)
 
         if traces is None or data_analysis is None:
             continue
 
-        # Get spike data from Traces and threshold from DataAnalysis
         inferred_spikes = traces.inferred_spikes
         inferred_spikes_threshold = data_analysis.inferred_spikes_threshold
 
         if inferred_spikes is None or inferred_spikes_threshold is None:
             continue
 
-        # Convert spike probabilities to binary spike train
-        spike_probs = [
-            spike if spike > inferred_spikes_threshold else 0.0
-            for spike in inferred_spikes
-        ]
-        spike_train = np.array(spike_probs) > 0.0
+        spikes = np.asarray(inferred_spikes, dtype=float)
+        the = float(inferred_spikes_threshold)
 
-        # Only include ROIs with at least one spike
-        if np.sum(spike_train) > 0:
+        # Threshold and binarize (vectorized)
+        spikes[spikes <= the] = 0.0
+        spike_train = (spikes > 0.0).astype(bool)
+
+        if spike_train.sum() > 0:
             spike_trains[str(roi.label_value)] = spike_train
 
     return spike_trains if len(spike_trains) >= 2 else None

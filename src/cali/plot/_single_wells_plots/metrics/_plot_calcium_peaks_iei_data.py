@@ -40,12 +40,9 @@ def _get_data_analysis_for_run(
             if roi_model.data_analysis_history
             else None
         )
-    # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
     return (
         roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
     )
@@ -58,7 +55,7 @@ def _plot_iei_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot inter-event interval data by querying database directly.
+    """Plot inter-event interval data by querying the database.
 
     Parameters
     ----------
@@ -71,21 +68,31 @@ def _plot_iei_data(
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
     run_id : int | None
-        The run ID to filter by, None for latest
+        The run ID to filter by, None for latest (currently required)
     """
-    # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
-    # Query database for ROI data
+    if run_id is None:
+        cali_logger.warning("No run_id provided for IEI plot.")
+        ax.text(
+            0.5,
+            0.5,
+            "No analysis run selected.\nPlease select a run from the dropdown.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
+
+    # Query database for ROI + DataAnalysis
     with Session(engine) as session:
-        roi_data = []  # List of (ROI, DataAnalysis)
-
-        if run_id is None:
-            cali_logger.warning("No run_id provided for IEI plot.")
-            return
-
-        # Optimized query
         stmt = (
             select(ROI, DataAnalysis)
             .join(FOV, ROI.fov_id == FOV.id)
@@ -97,21 +104,31 @@ def _plot_iei_data(
             .where(col(FOV.name) == fov_name)
         )
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, DataAnalysis]] = session.exec(stmt).all()
 
-        results = session.exec(stmt).all()
-        roi_data = results
+    if not roi_data:
+        ax.text(
+            0.5,
+            0.5,
+            "No ROI analysis data found for this FOV.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
 
     for roi, data_analysis in roi_data:
         _plot_metrics(ax, roi, data_analysis)
 
     _set_graph_title_and_labels(ax)
-
     _add_hover_functionality(ax, widget)
 
     widget.figure.tight_layout()
@@ -126,21 +143,32 @@ def _plot_metrics(
     """Plot inter-event intervals for a single ROI."""
     if not data_analysis.iei:
         return
-    # plot mean inter-event intervals +- sem of each ROI
-    mean_iei = np.mean(data_analysis.iei)
-    sem_iei = mean_iei / np.sqrt(len(data_analysis.iei))
+
+    iei = np.asarray(data_analysis.iei, dtype=float)
+
+    # Mean IEI
+    mean_iei = float(np.mean(iei))
+
+    # SEM = std / sqrt(N), not mean / sqrt(N)
+    if iei.size > 1:
+        std_iei = float(np.std(iei, ddof=1))
+        sem_iei = std_iei / np.sqrt(iei.size)
+    else:
+        sem_iei = 0.0
+
     ax.errorbar(
-        [roi.label_value],
-        mean_iei,
-        yerr=sem_iei,
+        [float(roi.label_value)],
+        [mean_iei],
+        yerr=[sem_iei],
         fmt="o",
         label=f"ROI {roi.label_value}",
         capsize=5,
         picker=5,  # Enable picking on errorbar
     )
+
     ax.scatter(
-        [roi.label_value] * len(data_analysis.iei),
-        data_analysis.iei,
+        [float(roi.label_value)] * iei.size,
+        iei,
         alpha=0.5,
         color="lightgray",
         s=30,
@@ -149,18 +177,14 @@ def _plot_metrics(
     )
 
 
-def _set_graph_title_and_labels(
-    ax: Axes,
-) -> None:
+def _set_graph_title_and_labels(ax: Axes) -> None:
     """Set axis labels based on the plotted data."""
-    title = "Calcium Peaks Inter-event intervals (Sec - Mean ± SEM - Deconvolved ΔF/F)"
-    x_lbl = "ROIs"
+    title = "Calcium Peaks Inter-Event Intervals (s, Mean ± SEM - Deconvolved ΔF/F)"
     ax.set_title(title)
-    ax.set_ylabel("Inter-event intervals (Sec)")
-    ax.set_xlabel(x_lbl)
-    if x_lbl == "ROIs":
-        ax.set_xticks([])
-        ax.set_xticklabels([])
+    ax.set_ylabel("Inter-Event Interval (s)")
+    ax.set_xlabel("ROIs")
+    ax.set_xticks([])
+    ax.set_xticklabels([])
 
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:

@@ -39,12 +39,9 @@ def _get_data_analysis_for_run(
             if roi_model.data_analysis_history
             else None
         )
-    # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
     return (
         roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
     )
@@ -57,7 +54,7 @@ def _plot_cell_size_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot cell size data by querying database directly.
+    """Plot cell size per ROI by querying the database.
 
     Parameters
     ----------
@@ -74,55 +71,83 @@ def _plot_cell_size_data(
     """
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
+
+    if run_id is None:
+        cali_logger.warning("No run_id provided for cell size plot.")
+        ax.text(
+            0.5,
+            0.5,
+            "No analysis run selected.\nPlease select a run from the dropdown.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
 
     # Query database for ROI data
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None
-        if run_id is None:
-            cali_logger.warning("No run_id provided for cell size plot.")
-            return
 
         result = session.get(CaliResult, run_id)
         if result:
             detection_settings_id = result.detection_settings_id
 
-        # Build query to get ROIs for this FOV that have cell_size data
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Filter by detection settings if we have a run_id
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
-        # Only include ROIs that have cell_size data (indicates they were extracted)
+        # Only include ROIs that have cell_size data
         stmt = stmt.where(col(ROI.cell_size).is_not(None))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         roi_models = session.exec(stmt).all()
 
-    units = ""
+    if not roi_models:
+        ax.text(
+            0.5,
+            0.5,
+            "No cell size data found for this FOV.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
 
+    # Plot data
+    units = ""
     for roi in roi_models:
         if roi.cell_size is None:
             continue
         if not units and roi.cell_size_units:
             units = roi.cell_size_units
         ax.scatter(
-            roi.label_value,
-            roi.cell_size,
+            float(roi.label_value),
+            float(roi.cell_size),
             label=f"ROI {roi.label_value}",
             picker=True,  # Enable picking on scatter
             s=50,  # Larger size for easier clicking
         )
 
+    # Fallback units if nothing was set
+    if not units:
+        units = "a.u."
+
     ax.set_xlabel("ROI")
-    ax.set_xticks([])
+    ax.set_xticks([])  # hide tick labels, keep ROI implied by hover
     ax.set_xticklabels([])
     ax.set_ylabel(f"Cell Size ({units})")
     ax.set_title("Cell Size per ROI")

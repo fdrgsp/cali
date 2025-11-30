@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from sqlmodel import Session, col, select
@@ -21,7 +21,7 @@ def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     if not roi_model.traces_history:
         return None
     if run_id is None:
-        return roi_model.traces_history[0] if roi_model.traces_history else None
+        return roi_model.traces_history[0]
     for trace in roi_model.traces_history:
         if trace.analysis_result_id == run_id:
             return trace
@@ -35,20 +35,11 @@ def _get_data_analysis_for_run(
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return (
-            roi_model.data_analysis_history[0]
-            if roi_model.data_analysis_history
-            else None
-        )
-    # First try to find exact match
+        return roi_model.data_analysis_history[0]
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
-    return (
-        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
-    )
+    return roi_model.data_analysis_history[0]
 
 
 def _plot_amplitude_and_frequency_data(
@@ -60,7 +51,7 @@ def _plot_amplitude_and_frequency_data(
     amp: bool = False,
     freq: bool = False,
 ) -> None:
-    """Plot amplitude and frequency data by querying database directly.
+    """Plot amplitude and/or frequency summary data by querying the database.
 
     Parameters
     ----------
@@ -73,25 +64,35 @@ def _plot_amplitude_and_frequency_data(
     rois : list[int] | None
         List of ROI label values to plot. If None, plots all ROIs.
     run_id : int | None
-        The run ID to filter by, None for latest
+        The run ID to filter by, None for latest (currently required)
     amp : bool
-        Plot amplitude data
+        Plot amplitude data (mean ± SEM of peaks_amplitudes_dec_dff)
     freq : bool
-        Plot frequency data
+        Plot frequency data (dec_dff_frequency)
     """
-    # clear the figure
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
-    # Query database for ROI data
+    if run_id is None:
+        cali_logger.warning("No run_id provided for amplitude/frequency plot.")
+        ax.text(
+            0.5,
+            0.5,
+            "No analysis run selected.\nPlease select a run from the dropdown.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
+
+    # Query database for ROI + DataAnalysis
     with Session(engine) as session:
-        roi_data = []  # List of (ROI, DataAnalysis)
-
-        if run_id is None:
-            cali_logger.warning("No run_id provided for IEI plot.")
-            return
-
-        # Optimized query
         stmt = (
             select(ROI, DataAnalysis)
             .join(FOV, ROI.fov_id == FOV.id)
@@ -103,17 +104,28 @@ def _plot_amplitude_and_frequency_data(
             .where(col(FOV.name) == fov_name)
         )
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, DataAnalysis]] = session.exec(stmt).all()
 
-        results = session.exec(stmt).all()
-        roi_data = results
+    if not roi_data:
+        ax.text(
+            0.5,
+            0.5,
+            "No ROI analysis data found for this FOV.",
+            ha="center",
+            va="center",
+            fontsize=12,
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        widget.figure.tight_layout()
+        widget.canvas.draw()
+        return
 
-    # Plot the data
+    # Plot each ROI's metrics
     for roi, data_analysis in roi_data:
         _plot_metrics(ax, roi, data_analysis, amp, freq)
 
@@ -132,64 +144,77 @@ def _plot_metrics(
     amp: bool,
     freq: bool,
 ) -> None:
-    """Plot amplitude or frequency for a single ROI."""
+    """Plot amplitude and/or frequency summary for a single ROI."""
+    # Amplitude vs frequency scatter (mean ± SEM vs frequency)
     if amp and freq:
         if (
             not data_analysis.peaks_amplitudes_dec_dff
             or data_analysis.dec_dff_frequency is None
         ):
             return
-        mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
 
-        # Only calculate SEM if we have more than one data point
-        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
-            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
-            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
+        mean_amp = float(np.mean(amps))
+
+        if amps.size > 1:
+            std_amp = float(np.std(amps, ddof=1))
+            sem_amp = std_amp / np.sqrt(amps.size)
         else:
-            sem_amp = 0  # No error bars for single point
+            sem_amp = 0.0
 
         _plot_errorbars(
             ax,
-            [data_analysis.dec_dff_frequency],
+            [float(data_analysis.dec_dff_frequency)],
             [mean_amp],
             [sem_amp],
             f"ROI {roi.label_value}",
+            picker=5,
         )
+
+    # Amplitude-only: per-ROI point at x = ROI label
     elif amp:
         if not data_analysis.peaks_amplitudes_dec_dff:
             return
 
-        # plot mean amplitude +- sem of each ROI
-        mean_amp = cast("float", np.mean(data_analysis.peaks_amplitudes_dec_dff))
+        amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
+        mean_amp = float(np.mean(amps))
 
-        # Only calculate SEM if we have more than one data point
-        if len(data_analysis.peaks_amplitudes_dec_dff) > 1:
-            std_amp = np.std(data_analysis.peaks_amplitudes_dec_dff, ddof=1)
-            sem_amp = std_amp / np.sqrt(len(data_analysis.peaks_amplitudes_dec_dff))
+        if amps.size > 1:
+            std_amp = float(np.std(amps, ddof=1))
+            sem_amp = std_amp / np.sqrt(amps.size)
         else:
-            sem_amp = 0  # No error bars for single point
+            sem_amp = 0.0
 
         _plot_errorbars(
-            ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}", 5
+            ax,
+            [float(roi.label_value)],
+            [mean_amp],
+            [sem_amp],
+            f"ROI {roi.label_value}",
+            picker=5,
         )
+
+        # Also show individual amplitudes as gray background points
         ax.scatter(
-            [roi.label_value] * len(data_analysis.peaks_amplitudes_dec_dff),
-            data_analysis.peaks_amplitudes_dec_dff,
+            [float(roi.label_value)] * amps.size,
+            amps,
             alpha=0.5,
             s=30,
             color="lightgray",
-            label=f"ROI {roi.label_value}",  # Add label so scatter is pickable
-            picker=True,  # Enable picking on scatter
+            label=f"ROI {roi.label_value}",
+            picker=True,
         )
+
+    # Frequency-only: per-ROI point at x = ROI label
     elif freq:
         if data_analysis.dec_dff_frequency is None:
             return
         ax.plot(
-            roi.label_value,
-            data_analysis.dec_dff_frequency,
+            float(roi.label_value),
+            float(data_analysis.dec_dff_frequency),
             "o",
             label=f"ROI {roi.label_value}",
-            picker=5,  # Enable picking
+            picker=5,
         )
 
 
@@ -201,15 +226,22 @@ def _plot_errorbars(
     label: str,
     picker: int | None = None,
 ) -> None:
-    """Plot error bars graph."""
+    """Plot error bars."""
     errorbar = ax.errorbar(
-        x, y, yerr=yerr, label=label, fmt="o", capsize=5, picker=picker
+        x,
+        y,
+        yerr=yerr,
+        label=label,
+        fmt="o",
+        capsize=5,
+        picker=picker,
     )
     if picker is None:
         return
+
     # Also enable picking on the marker artist (the mean point)
-    if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
-        errorbar.lines[0].set_picker(5)
+    if hasattr(errorbar, "lines") and errorbar.lines:
+        errorbar.lines[0].set_picker(picker)
         errorbar.lines[0].set_label(label)
 
 
@@ -219,17 +251,20 @@ def _set_graph_title_and_labels(
     freq: bool,
 ) -> None:
     """Set axis labels based on the plotted data."""
-    title = x_lbl = y_lbl = ""
+    title = ""
+    x_lbl = ""
+    y_lbl = ""
+
     if amp and freq:
         title = (
             "ROIs Mean Calcium Peaks Amplitude ± SEM vs Frequency (Deconvolved ΔF/F)"
         )
         x_lbl = "Frequency (Hz)"
-        y_lbl = "Amplitude"
+        y_lbl = "Amplitude (dec ΔF/F)"
     elif amp:
         title = "Calcium Peaks Mean Amplitude ± SEM (Deconvolved ΔF/F)"
         x_lbl = "ROIs"
-        y_lbl = "Amplitude"
+        y_lbl = "Amplitude (dec ΔF/F)"
     elif freq:
         title = "Calcium Peaks Frequency (Deconvolved ΔF/F)"
         x_lbl = "ROIs"
@@ -238,6 +273,8 @@ def _set_graph_title_and_labels(
     ax.set_title(title)
     ax.set_ylabel(y_lbl)
     ax.set_xlabel(x_lbl)
+
+    # For per-ROI plots, hide numeric x tick labels (visual clutter)
     if x_lbl == "ROIs":
         ax.set_xticks([])
         ax.set_xticklabels([])

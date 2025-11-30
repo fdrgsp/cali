@@ -209,6 +209,10 @@ def _plot_connectivity_matrix_data(
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
+    # Disable coordinate display
+    for ax in widget.figure.axes:
+        ax.format_coord = lambda x, y: ""
+
     # Add hover functionality
     _add_hover_functionality_connectivity_matrix(
         img, widget, rois_idxs, connectivity_matrix, correlation_matrix

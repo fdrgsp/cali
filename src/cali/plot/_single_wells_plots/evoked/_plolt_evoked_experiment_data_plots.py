@@ -24,6 +24,9 @@ P1 = 5
 P2 = 100
 
 
+# -----------------------------------------------------------------------------#
+# Entry point dispatcher
+# -----------------------------------------------------------------------------#
 def _plot_evoked_experiment_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -36,26 +39,9 @@ def _plot_evoked_experiment_data(
 ) -> None:
     """Plot evoked experiment data.
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Widget to plot on
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV
-    rois : list[int] | None
-        List of ROI indices to include, None for all
-    run_id : int | None
-        The run ID to filter by, None for latest
-    stimulated_area : bool
-        Whether to show stimulated area
-    with_rois : bool
-        Whether to show ROIs
-    with_peaks : bool
-        Whether to show peaks
+    If `with_rois` or `stimulated_area` is True, show spatial maps.
+    Otherwise, show stimulated vs non-stimulated dec ΔF/F traces.
     """
-    # Delegate to the appropriate function based on parameters
     if with_rois or stimulated_area:
         _visualize_stimulated_area(
             widget=widget,
@@ -67,7 +53,6 @@ def _plot_evoked_experiment_data(
             stimulated_area=stimulated_area,
         )
     else:
-        # Default to showing stimulated vs non-stimulated traces
         _plot_stimulated_vs_non_stimulated_roi_traces(
             widget=widget,
             engine=engine,
@@ -78,6 +63,9 @@ def _plot_evoked_experiment_data(
         )
 
 
+# -----------------------------------------------------------------------------#
+# Peak amplitudes per ROI
+# -----------------------------------------------------------------------------#
 def _plot_stim_or_not_stim_peaks_amplitude(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -127,13 +115,10 @@ def _plot_stim_or_not_stim_peaks_amplitude(
             .where(col(ROI.stimulated) == stimulated)
         )
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         results = session.exec(stmt).all()
 
     if not results:
@@ -151,25 +136,22 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         widget.canvas.draw()
         return
 
-    # Extract peak amplitudes for each ROI and plot
-    roi_labels = []
+    roi_labels: list[int] = []
 
-    for roi_model, _, data_analysis in results:
+    for roi_model, _traces, data_analysis in results:
         if data_analysis and data_analysis.peaks_amplitudes_dec_dff:
             roi_labels.append(roi_model.label_value)
-            amps = data_analysis.peaks_amplitudes_dec_dff
+            amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
 
-            # Calculate mean and SEM
             mean_amp = float(np.mean(amps))
-
-            # Only calculate SEM if we have more than one data point
-            if len(amps) > 1:
-                std_amp = np.std(amps, ddof=1)  # sample std
-                sem_amp = std_amp / np.sqrt(len(amps))
+            if amps.size > 1:
+                std_amp = float(np.std(amps, ddof=1))
+                sem_amp = std_amp / np.sqrt(amps.size)
             else:
-                sem_amp = 0  # No error bars for single point
+                sem_amp = 0.0
+
             label = f"ROI {roi_model.label_value}"
-            # Plot mean ± SEM as error bars
+            # Mean ± SEM
             errorbar = ax.errorbar(
                 [roi_model.label_value],
                 [mean_amp],
@@ -181,21 +163,20 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 zorder=2,
                 picker=5,
             )
-            # Also enable picking on the marker artist (the mean point)
-            if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
+            if hasattr(errorbar, "lines") and errorbar.lines:
                 errorbar.lines[0].set_picker(5)
                 errorbar.lines[0].set_label(label)
 
-            # Plot individual peak amplitudes in background
+            # Individual amplitudes
             ax.scatter(
-                [roi_model.label_value] * len(amps),
+                [roi_model.label_value] * amps.size,
                 amps,
                 alpha=0.5,
                 s=30,
                 color="lightgray",
                 zorder=1,
-                label=f"ROI {roi_model.label_value}",  # Add label for picking
-                picker=True,  # Enable picking
+                label=label,
+                picker=True,
             )
 
     if not roi_labels:
@@ -213,22 +194,26 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         widget.canvas.draw()
         return
 
-    # Set labels and title
     ax.set_xlabel("ROI")
     ax.set_ylabel("Peak Amplitude (dec ΔF/F)")
     title = "Stimulated" if stimulated else "Non-Stimulated"
     ax.set_title(f"{title} ROI Mean Peak Amplitudes ± SEM")
     ax.set_xticks(roi_labels)
-    ax.set_xticklabels([])
-    ax.set_xticks([])
+    ax.set_xticklabels([])  # hide tick labels but keep positions
 
-    # Add hover functionality
+    # Disable coordinate display
+    for ax in widget.figure.axes:
+        ax.format_coord = lambda x, y: ""
+
     setup_pick_click(ax, widget, picker_tolerance=5)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
 
 
+# -----------------------------------------------------------------------------#
+# Utilities
+# -----------------------------------------------------------------------------#
 def extract_leading_number(key: str) -> float:
     """Extract leading number from key (before '_'), stripping units if present."""
     if match := re.match(r"(\d+(?:\.\d+)?)", key.split("_")[0]):
@@ -236,6 +221,9 @@ def extract_leading_number(key: str) -> float:
     raise ValueError(f"Could not extract a valid number from key: {key}")
 
 
+# -----------------------------------------------------------------------------#
+# Spatial visualization: stimulation mask + ROI masks
+# -----------------------------------------------------------------------------#
 def _visualize_stimulated_area(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -245,18 +233,10 @@ def _visualize_stimulated_area(
     with_rois: bool = False,
     stimulated_area: bool = False,
 ) -> None:
-    """Visualize Stimulated area with ROI mask overlay.
-
-    This function shows either:
-    - Just the stimulation mask (stimulated_area=True, with_rois=False)
-    - ROIs colored by stimulation status (with_rois=True)
-    - Both ROIs and stimulation area (both True)
-
-    All masks are reconstructed from database (no external TIF files needed).
-    """
+    """Visualize stimulated area with ROI mask overlay."""
     from sqlmodel import Session, col, select
 
-    from cali.sqlmodel._model import FOV, ROI, AnalysisSettings, Mask
+    from cali.sqlmodel._model import FOV, ROI, AnalysisSettings, CaliResult, Mask
     from cali.util import coordinates_to_mask
 
     widget.figure.clear()
@@ -277,17 +257,14 @@ def _visualize_stimulated_area(
         widget.canvas.draw()
         return
 
-    # Query ROI data and masks from database
-    from cali.sqlmodel._model import CaliResult
-
     stim_mask = None
     roi_data: list[tuple[ROI, Mask | None]] = []
-    image_shape = None
+    image_shape: tuple[int, int] | None = None
 
     with Session(engine) as session:
-        # Clear any cached data to ensure we see newly committed analysis results
         session.expire_all()
-        # Get stimulation mask if available
+
+        # Stimulation mask from AnalysisSettings
         result = session.get(CaliResult, run_id)
         if result and result.analysis_settings_id:
             analysis_settings = session.get(
@@ -302,31 +279,25 @@ def _visualize_stimulated_area(
                     and mask_obj.height is not None
                     and mask_obj.width is not None
                 ):
-                    # Reconstruct stimulation mask from coordinates
                     coords = (mask_obj.coords_y, mask_obj.coords_x)
                     shape = (mask_obj.height, mask_obj.width)
                     stim_mask = coordinates_to_mask(coords, shape)
                     image_shape = shape
 
-        # Query ROI data with their masks
+        # ROI + masks
         stmt = (
             select(ROI, Mask)
             .join(FOV, ROI.fov_id == FOV.id)
             .outerjoin(Mask, ROI.roi_mask_id == Mask.id)
             .where(col(FOV.name) == fov_name)
         )
-
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        # Order by label_value
         stmt = stmt.order_by(col(ROI.label_value))
 
         results = session.exec(stmt).all()
         roi_data = [(roi, mask) for roi, mask in results]
 
-        # Get image shape from first ROI mask if we don't have it from stim mask
         if image_shape is None and roi_data:
             for _roi, mask in roi_data:
                 if mask and mask.height and mask.width:
@@ -348,21 +319,16 @@ def _visualize_stimulated_area(
         widget.canvas.draw()
         return
 
-    # Group ROIs by stimulation status
-    stimulated_roi_labels = []
-    non_stimulated_roi_labels = []
-
+    stimulated_roi_labels: list[int] = []
+    non_stimulated_roi_labels: list[int] = []
     for roi, _ in roi_data:
         if roi.stimulated:
             stimulated_roi_labels.append(roi.label_value)
         else:
             non_stimulated_roi_labels.append(roi.label_value)
 
-    # If we need to show ROIs, reconstruct label image from ROI masks
     if with_rois and image_shape:
-        # Reconstruct label image from ROI masks in database
         labels = np.zeros(image_shape, dtype=np.int32)
-
         for roi, mask in roi_data:
             if (
                 mask
@@ -371,22 +337,18 @@ def _visualize_stimulated_area(
                 and mask.height is not None
                 and mask.width is not None
             ):
-                # Reconstruct ROI mask from coordinates
                 roi_mask = coordinates_to_mask(
                     (mask.coords_y, mask.coords_x), (mask.height, mask.width)
                 )
-                # Set pixels to ROI label value
                 labels[roi_mask] = roi.label_value
 
-        # Create color mapping
-        color_mapping = {0: "black"}  # background
+        # color mapping
+        color_mapping: dict[int, str] = {0: "black"}
         for roi, _ in roi_data:
-            if roi.stimulated:
-                color_mapping[roi.label_value] = STIMULATED_COLOR
-            else:
-                color_mapping[roi.label_value] = NON_STIMULATED_COLOR
+            color_mapping[roi.label_value] = (
+                STIMULATED_COLOR if roi.stimulated else NON_STIMULATED_COLOR
+            )
 
-        # Create colormap
         unique_labels = np.unique(labels)
         colors = [color_mapping.get(lbl, DEFAULT_COLOR) for lbl in unique_labels]
         cmap = ListedColormap(colors)
@@ -397,13 +359,12 @@ def _visualize_stimulated_area(
 
         ax.imshow(labels, cmap=cmap, norm=norm)
 
-        # Show stimulation area contours if requested
+        # stimulation area contours
         if stimulated_area and stim_mask is not None:
             stim_area_contours = find_contours(stim_mask.astype(float), level=0.5)
             for contour in stim_area_contours:
                 ax.plot(contour[:, 1], contour[:, 0], color="yellow", linewidth=2)
 
-        # Add legend
         legend_patches = [
             Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
             Patch(color=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
@@ -421,10 +382,8 @@ def _visualize_stimulated_area(
             edgecolor="black",
         )
     elif stimulated_area and stim_mask is not None:
-        # Just show stimulation mask
         ax.imshow(stim_mask, cmap="gray", clim=(0, 1))
     else:
-        # Fallback to text statistics
         _display_roi_statistics(ax, stimulated_roi_labels, non_stimulated_roi_labels)
 
     ax.axis("off")
@@ -446,7 +405,6 @@ def _display_roi_statistics(
         f"Non-Stimulated ROIs: {len(non_stimulated_rois)}",
         "",
     ]
-
     ax.text(
         0.5,
         0.5,
@@ -459,6 +417,9 @@ def _display_roi_statistics(
     )
 
 
+# -----------------------------------------------------------------------------#
+# dec ΔF/F traces: stimulated vs non-stimulated
+# -----------------------------------------------------------------------------#
 def _plot_stimulated_vs_non_stimulated_roi_traces(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -474,6 +435,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
 
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
     if run_id is None:
         ax.text(
@@ -490,7 +453,6 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         widget.canvas.draw()
         return
 
-    # Query database for ROI data
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -506,14 +468,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             )
             .where(col(FOV.name) == fov_name)
         )
-
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         results = session.exec(stmt).all()
 
     if not results:
@@ -531,9 +488,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         widget.canvas.draw()
         return
 
-    # Separate stimulated and non-stimulated ROIs
-    stimulated_data = []
-    non_stimulated_data = []
+    stimulated_data: list[tuple] = []
+    non_stimulated_data: list[tuple] = []
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
@@ -546,8 +502,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             if data_analysis and data_analysis.total_recording_time_sec is not None:
                 rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-    # Compute global percentile normalization
-    all_values = []
+    # Global percentile normalization
+    all_values: list[float] = []
     for _, trace_obj, _ in results:
         if trace_obj and trace_obj.dec_dff:
             all_values.extend(trace_obj.dec_dff)
@@ -558,68 +514,86 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     else:
         p1, p2 = 0.0, 1.0
 
-    # Plot stimulated ROIs with traces and optional peaks with amplitudes
     count = 0
-    last_trace = None
-    for roi_model, trace_obj, data_analysis in stimulated_data:
+    last_trace: list[float] | None = None
+
+    # Stimulated traces (vectorized per-group)
+    stim_norm_traces: list[np.ndarray] = []
+    for _roi_model, trace_obj, _data_analysis in stimulated_data:
         if trace_obj.dec_dff:
-            trace = _normalize_trace_percentile(trace_obj.dec_dff, p1, p2)
-            offset = count * 1.1
+            trace = np.asarray(
+                _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            )
+            stim_norm_traces.append(trace)
+            last_trace = trace_obj.dec_dff
+
+    if stim_norm_traces:
+        Y = np.vstack(stim_norm_traces)
+        n_stim = Y.shape[0]
+        offsets = (np.arange(n_stim) * 1.1)[:, None]
+        ax.plot((Y + offsets).T, color=STIMULATED_COLOR, linewidth=1)
+        count += n_stim
+
+    # Peaks for stimulated (still per-ROI)
+    if with_peaks:
+        for idx, (_, trace_obj, data_analysis) in enumerate(stimulated_data):
+            if not (
+                trace_obj.dec_dff and data_analysis and data_analysis.peaks_dec_dff
+            ):
+                continue
+            trace = np.asarray(
+                _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            )
+            offset = idx * 1.1
+            peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
             ax.plot(
-                np.array(trace) + offset,
-                label=f"ROI {roi_model.label_value}",
-                color=STIMULATED_COLOR,
+                peaks_indices,
+                trace[peaks_indices] + offset,
+                "x",
+                color="black",
+                markersize=8,
             )
 
-            if with_peaks and data_analysis:
-                # Show peak locations
-                if data_analysis.peaks_dec_dff:
-                    peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
-                    ax.plot(
-                        peaks_indices,
-                        np.array(trace)[peaks_indices] + offset,
-                        "x",
-                        color="black",
-                        markersize=8,
-                    )
-
-            last_trace = trace_obj.dec_dff
-            count += 1
-
-    # Plot non-stimulated ROIs
-    for roi_model, trace_obj, data_analysis in non_stimulated_data:
+    # Non-stimulated traces
+    non_stim_norm_traces: list[np.ndarray] = []
+    for _roi_model, trace_obj, _data_analysis in non_stimulated_data:
         if trace_obj.dec_dff:
-            trace = _normalize_trace_percentile(trace_obj.dec_dff, p1, p2)
-            offset = count * 1.1
+            trace = np.asarray(
+                _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            )
+            non_stim_norm_traces.append(trace)
+            last_trace = trace_obj.dec_dff
+
+    if non_stim_norm_traces:
+        Y = np.vstack(non_stim_norm_traces)
+        n_non = Y.shape[0]
+        offsets = (np.arange(count, count + n_non) * 1.1)[:, None]
+        ax.plot((Y + offsets).T, color=NON_STIMULATED_COLOR, linewidth=1)
+        count += n_non
+
+    if with_peaks:
+        for idx, (_, trace_obj, data_analysis) in enumerate(non_stimulated_data):
+            if not (
+                trace_obj.dec_dff and data_analysis and data_analysis.peaks_dec_dff
+            ):
+                continue
+            trace = np.asarray(
+                _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            )
+            offset = (idx + len(stimulated_data)) * 1.1
+            peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
             ax.plot(
-                np.array(trace) + offset,
-                label=f"ROI {roi_model.label_value}",
-                color=NON_STIMULATED_COLOR,
+                peaks_indices,
+                trace[peaks_indices] + offset,
+                "x",
+                color="black",
+                markersize=8,
             )
 
-            if with_peaks and data_analysis:
-                # Show peak locations
-                if data_analysis.peaks_dec_dff:
-                    peaks_indices = [int(p) for p in data_analysis.peaks_dec_dff]
-                    ax.plot(
-                        peaks_indices,
-                        np.array(trace)[peaks_indices] + offset,
-                        "x",
-                        color="black",
-                        markersize=8,
-                    )
-
-            last_trace = trace_obj.dec_dff
-            count += 1
-
-    # Set labels and title
     ax.set_ylabel("Normalized dec ΔF/F")
     ax.set_title("Stimulated vs Non-Stimulated ROIs (Normalized)")
     ax.set_yticks([])
     ax.set_yticklabels([])
-
-    # Add legend for stimulated/non-stimulated
-    from matplotlib.patches import Patch
 
     legend_patches = [
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
@@ -627,10 +601,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     ]
     ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
-    # Update time axis
     _update_time_axis(ax, rois_rec_time, last_trace)
 
-    # Add hover functionality
     _add_hover_functionality_stim_vs_non_stim(ax, widget)
 
     widget.figure.tight_layout()
@@ -640,13 +612,13 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
 def _normalize_trace_percentile(
     trace: list[float], p1: float, p2: float
 ) -> list[float]:
-    """Normalize a trace using the global 5th and 100th percentiles."""
-    tr = np.array(trace)
+    """Normalize a trace using the global p1-p2 percentiles."""
+    tr = np.array(trace, dtype=float)
     denom = p2 - p1
     if denom == 0:
         return cast("list[float]", np.zeros_like(tr).tolist())
     normalized = (tr - p1) / denom
-    normalized = np.clip(normalized, 0, 1)  # ensure values in [0, 1]
+    normalized = np.clip(normalized, 0, 1)
     return cast("list[float]", normalized.tolist())
 
 
@@ -656,11 +628,8 @@ def _update_time_axis(
     if trace is None or sum(rois_rec_time) <= 0:
         ax.set_xlabel("Frames")
         return
-    # get the average total recording time in seconds
     avg_rec_time = int(np.mean(rois_rec_time))
-    # get total number of frames from the trace
     total_frames = len(trace) if trace is not None else 1
-    # compute tick positions
     tick_interval = avg_rec_time / total_frames
     x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
@@ -672,10 +641,12 @@ def _update_time_axis(
 def _add_hover_functionality_stim_vs_non_stim(
     ax: Axes, widget: _SingleWellGraphWidget
 ) -> None:
-    """Add hover functionality using efficient pick events."""
     setup_pick_click(ax, widget, picker_tolerance=5)
 
 
+# -----------------------------------------------------------------------------#
+# Spike raster: stimulated vs non-stimulated
+# -----------------------------------------------------------------------------#
 def _plot_stimulated_vs_non_stimulated_spike_raster(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -683,13 +654,15 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot raster plot of thresholded spikes: green=stim, magenta=non-stim."""
+    """Plot raster of thresholded spikes: green=stim, magenta=non-stim."""
     from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
     if run_id is None:
         ax.text(
@@ -706,7 +679,6 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         widget.canvas.draw()
         return
 
-    # Query database for ROI data
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -723,14 +695,9 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.active) == True)  # noqa: E712
         )
-
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         results = session.exec(stmt).all()
 
     if not results:
@@ -748,10 +715,9 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         widget.canvas.draw()
         return
 
-    # Separate stimulated and non-stimulated ROIs
-    stimulated_rois = []
-    non_stimulated_rois = []
-    active_roi_labels = []
+    stimulated_rois: list[tuple] = []
+    non_stimulated_rois: list[tuple] = []
+    active_roi_labels: list[int] = []
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
@@ -780,54 +746,38 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         widget.canvas.draw()
         return
 
-    # Prepare event data for raster plot using eventplot
     event_data: list[list[float]] = []
     colors: list[str] = []
-    last_trace = None
+    last_trace: list[float] | None = None
 
-    # Collect stimulated ROI spike events
+    # stim
     for _roi_model, trace_obj, data_analysis in stimulated_rois:
-        if trace_obj.inferred_spikes and data_analysis.inferred_spikes_threshold:
-            spikes = np.array(trace_obj.inferred_spikes)
-            threshold = data_analysis.inferred_spikes_threshold
+        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        if data_analysis.inferred_spikes_threshold is not None:
+            the = float(data_analysis.inferred_spikes_threshold)
+            spikes = np.where(spikes > the, spikes, 0.0)
+        spike_indices = np.where(spikes > 0.0)[0]
+        event_data.append(spike_indices.tolist())
+        colors.append(STIMULATED_COLOR)
+        last_trace = trace_obj.inferred_spikes
 
-            # Threshold spikes
-            thresholded = np.where(spikes > threshold, spikes, 0)
-
-            # Get spike indices
-            spike_indices = np.where(thresholded > 0)[0]
-            event_data.append(spike_indices.tolist())
-            colors.append(STIMULATED_COLOR)
-
-            last_trace = trace_obj.inferred_spikes
-
-    # Collect non-stimulated ROI spike events
+    # non-stim
     for _roi_model, trace_obj, data_analysis in non_stimulated_rois:
-        if trace_obj.inferred_spikes and data_analysis.inferred_spikes_threshold:
-            spikes = np.array(trace_obj.inferred_spikes)
-            threshold = data_analysis.inferred_spikes_threshold
+        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        if data_analysis.inferred_spikes_threshold is not None:
+            the = float(data_analysis.inferred_spikes_threshold)
+            spikes = np.where(spikes > the, spikes, 0.0)
+        spike_indices = np.where(spikes > 0.0)[0]
+        event_data.append(spike_indices.tolist())
+        colors.append(NON_STIMULATED_COLOR)
+        last_trace = trace_obj.inferred_spikes
 
-            # Threshold spikes
-            thresholded = np.where(spikes > threshold, spikes, 0)
+    ax.eventplot(event_data, colors=colors, linewidth=2)
 
-            # Get spike indices
-            spike_indices = np.where(thresholded > 0)[0]
-            event_data.append(spike_indices.tolist())
-            colors.append(NON_STIMULATED_COLOR)
-
-            last_trace = trace_obj.inferred_spikes
-
-    # Plot raster using eventplot
-    ax.eventplot(event_data, colors=colors, linewidth=3)
-
-    # Set labels and title
     ax.set_ylabel("ROI")
     ax.set_yticks([])
     ax.set_yticklabels([])
     ax.set_title("Stimulated vs Non-Stimulated Spike Raster Plot")
-
-    # Add legend for stimulated/non-stimulated
-    from matplotlib.patches import Patch
 
     legend_patches = [
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
@@ -835,10 +785,8 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     ]
     ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
-    # Update time axis
     _update_time_axis_spike_traces(ax, rois_rec_time, last_trace)
 
-    # Add hover functionality
     _add_hover_functionality_spike_traces(ax, widget, active_roi_labels)
 
     widget.figure.tight_layout()
@@ -848,12 +796,14 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
 def _add_hover_functionality_spike_traces(
     ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
 ) -> None:
-    """Add hover functionality using efficient pick events for spike traces."""
     from cali.plot._hover_utils import setup_pick_click_for_raster
 
     setup_pick_click_for_raster(ax, widget, active_rois, picker_tolerance=5)
 
 
+# -----------------------------------------------------------------------------#
+# Spike traces: stimulated vs non-stimulated
+# -----------------------------------------------------------------------------#
 def _plot_stimulated_vs_non_stimulated_spike_traces(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -861,17 +811,15 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot actual inferred spike traces separated by stimulation status.
-
-    Shows continuous spike traces (not raster) with vertical offset,
-    colored by stimulation status: green=stimulated, magenta=non-stimulated.
-    """
+    """Plot continuous inferred spike traces separated by stimulation status."""
     from sqlmodel import Session, col, select
 
     from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
     widget.figure.clear()
     ax = widget.figure.add_subplot(111)
+    # Disable status bar x/y display
+    ax.format_coord = lambda x, y: ""
 
     if run_id is None:
         ax.text(
@@ -888,7 +836,6 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         widget.canvas.draw()
         return
 
-    # Query database for ROI data
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -905,14 +852,9 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.active) == True)  # noqa: E712
         )
-
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         results = session.exec(stmt).all()
 
     if not results:
@@ -930,9 +872,8 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         widget.canvas.draw()
         return
 
-    # Separate stimulated and non-stimulated ROIs
-    stimulated_data = []
-    non_stimulated_data = []
+    stimulated_data: list[tuple] = []
+    non_stimulated_data: list[tuple] = []
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
@@ -960,53 +901,41 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         widget.canvas.draw()
         return
 
-    # Plot spike traces with vertical offset
     count = 0
-    last_trace = None
+    last_trace: list[float] | None = None
 
-    # Plot stimulated ROIs first
+    # Stim traces
     for roi_model, trace_obj, data_analysis in stimulated_data:
-        if trace_obj.inferred_spikes:
-            spikes = np.array(trace_obj.inferred_spikes)
+        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
+            the = float(data_analysis.inferred_spikes_threshold)
+            spikes = np.where(spikes > the, spikes, 0.0)
+        offset = count * 1.1
+        ax.plot(
+            spikes + offset,
+            label=f"ROI {roi_model.label_value}",
+            color=STIMULATED_COLOR,
+            linewidth=1.5,
+        )
+        last_trace = trace_obj.inferred_spikes
+        count += 1
 
-            # Apply threshold if available
-            if data_analysis and data_analysis.inferred_spikes_threshold:
-                threshold = data_analysis.inferred_spikes_threshold
-                spikes = np.where(spikes > threshold, spikes, 0)
-
-            offset = count * 1.1
-            ax.plot(
-                spikes + offset,
-                label=f"ROI {roi_model.label_value}",
-                color=STIMULATED_COLOR,
-                linewidth=1.5,
-            )
-
-            last_trace = trace_obj.inferred_spikes
-            count += 1
-
-    # Plot non-stimulated ROIs
+    # Non-stim traces
     for roi_model, trace_obj, data_analysis in non_stimulated_data:
-        if trace_obj.inferred_spikes:
-            spikes = np.array(trace_obj.inferred_spikes)
+        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
+            the = float(data_analysis.inferred_spikes_threshold)
+            spikes = np.where(spikes > the, spikes, 0.0)
+        offset = count * 1.1
+        ax.plot(
+            spikes + offset,
+            label=f"ROI {roi_model.label_value}",
+            color=NON_STIMULATED_COLOR,
+            linewidth=1.5,
+        )
+        last_trace = trace_obj.inferred_spikes
+        count += 1
 
-            # Apply threshold if available
-            if data_analysis and data_analysis.inferred_spikes_threshold:
-                threshold = data_analysis.inferred_spikes_threshold
-                spikes = np.where(spikes > threshold, spikes, 0)
-
-            offset = count * 1.1
-            ax.plot(
-                spikes + offset,
-                label=f"ROI {roi_model.label_value}",
-                color=NON_STIMULATED_COLOR,
-                linewidth=1.5,
-            )
-
-            last_trace = trace_obj.inferred_spikes
-            count += 1
-
-    # Set labels and title
     ax.set_ylabel("Inferred Spikes (Thresholded)")
     ax.set_title(
         "Stimulated vs Non-Stimulated Spike Traces\n(Thresholded Inferred Spikes)"
@@ -1014,19 +943,14 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     ax.set_yticks([])
     ax.set_yticklabels([])
 
-    # Add legend for stimulated/non-stimulated
-    from matplotlib.patches import Patch
-
     legend_patches = [
         Patch(color=STIMULATED_COLOR, label="Stimulated ROIs"),
         Patch(color=NON_STIMULATED_COLOR, label="Non-Stimulated ROIs"),
     ]
     ax.legend(handles=legend_patches, loc="upper right", fontsize="small")
 
-    # Update time axis
     _update_time_axis_spike_traces(ax, rois_rec_time, last_trace)
 
-    # Add hover functionality
     active_roi_labels = [
         roi_model.label_value
         for roi_model, _, _ in stimulated_data + non_stimulated_data
@@ -1040,15 +964,12 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
 def _update_time_axis_spike_traces(
     ax: Axes, rois_rec_time: list[float], trace: list[float] | None
 ) -> None:
-    """Update the x-axis to show time in seconds if recording time is available."""
+    """Update x-axis to show time (s) if recording time is available."""
     if trace is None or sum(rois_rec_time) <= 0:
         ax.set_xlabel("Frames")
         return
-    # get the average total recording time in seconds
     avg_rec_time = int(np.mean(rois_rec_time))
-    # get total number of frames from the trace
     total_frames = len(trace) if trace is not None else 1
-    # compute tick positions
     tick_interval = avg_rec_time / total_frames
     x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
