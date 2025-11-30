@@ -10,7 +10,7 @@ from typing_extensions import TypeAlias
 from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
-from ._single_wells_plots.calcium_traces._plot_calcium_traces_pyqtgraph import (
+from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
     _plot_traces_data,
 )
 from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
@@ -54,7 +54,6 @@ from ._single_wells_plots.spikes._plot_inferred_spikes import (
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    # from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
     from cali.gui._graph_widgets import _MultilWellGraphWidget
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 

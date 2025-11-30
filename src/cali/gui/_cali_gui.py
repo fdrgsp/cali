@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QMainWindow,
     QMenu,
     QMenuBar,
@@ -257,7 +258,7 @@ class CaliGui(QMainWindow):
         # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
         self._vis_sub_tab.addTab(self._single_well_vis_tab, "Single Wells")
-        single_well_vis_layout = QGridLayout(self._single_well_vis_tab)
+        single_well_vis_layout = QVBoxLayout(self._single_well_vis_tab)
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
 
@@ -265,9 +266,22 @@ class CaliGui(QMainWindow):
         self._single_well_graph_2 = _SingleWellGraphWidget(self)
         self._single_well_graph_3 = _SingleWellGraphWidget(self)
 
-        single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
-        single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
-        single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
+        # Create top widget for graphs 1 and 2 side by side
+        top_widget = QWidget()
+        top_layout = QHBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(5)
+        top_layout.addWidget(self._single_well_graph_1)
+        top_layout.addWidget(self._single_well_graph_2)
+
+        # Create vertical splitter between top (graphs 1&2) and graph 3
+        vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        vertical_splitter.setContentsMargins(0, 0, 0, 0)
+        vertical_splitter.setChildrenCollapsible(False)
+        vertical_splitter.addWidget(top_widget)
+        vertical_splitter.addWidget(self._single_well_graph_3)
+
+        single_well_vis_layout.addWidget(vertical_splitter)
         self.SW_GRAPHS = [
             self._single_well_graph_1,
             self._single_well_graph_2,

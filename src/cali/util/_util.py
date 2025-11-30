@@ -253,8 +253,8 @@ def commit_fov_result(
                         # (avoids "already present" error but also "not in session"
                         # warning)
                         if trace not in session:
-                            session.merge(trace)
-                            # session.add(trace)
+                            session.add(trace)
+                            # session.merge(trace)
 
                         # Now set to the correct matching_roi
                         trace.roi_id = matching_roi.id
@@ -285,8 +285,8 @@ def commit_fov_result(
                         # (avoids "already present" error but also "not in session"
                         # warning)
                         if data_analysis not in session:
-                            session.merge(data_analysis)
-                            # session.add(data_analysis)
+                            session.add(data_analysis)
+                            # session.merge(data_analysis)
 
                         # Now set to the correct matching_roi
                         data_analysis.roi_id = matching_roi.id

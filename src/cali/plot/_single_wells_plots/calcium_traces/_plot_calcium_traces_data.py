@@ -3,23 +3,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
-COUNT_INCREMENT = 1
 P1 = 5
 P2 = 100
+# max number of time points we will draw per trace (automatic downsampling)
+MAX_POINTS = 4000
 
 
+# -----------------------------------------------------------------------------#
+# Public entry point (used by registry)
+# -----------------------------------------------------------------------------#
 def _plot_traces_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -35,45 +39,104 @@ def _plot_traces_data(
     active_only: bool = False,
     thresholds: bool = False,
 ) -> None:
-    """Plot traces data by querying database directly (vectorized Matplotlib).
+    """Plot traces data by querying database directly (pyqtgraph version)."""
+    plot = widget.plot_item
+    assert plot is not None
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Graph widget to plot on
-    engine : Engine
-        SQLAlchemy Engine connected to the database
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    run_id : int
-        The CaliResult.id of the selected run.
-    rois : list[int] | None
-        List of ROI label values to plot. If None, plots all ROIs.
-    raw : bool
-        Plot raw traces
-    dff : bool
-        Plot ΔF/F traces
-    dec : bool
-        Plot deconvolved ΔF/F traces
-    normalize : bool
-        Normalize traces using percentile method
-    with_peaks : bool
-        Show detected peaks
-    active_only : bool
-        Only plot active ROIs
-    thresholds : bool
-        Show peak detection thresholds (only if single ROI selected)
-    """
-    # clear the figure
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
-    # Disable status bar x/y display
-    ax.format_coord = lambda x, y: ""
+    plot.clear()
 
-    # show peaks thresholds only if only 1 roi is selected
+    # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
 
-    # ---------- DB QUERY ----------
+    # --- 1) Get data from DB ---
+    data = _get_traces_and_metadata(
+        engine,
+        fov_name,
+        run_id=run_id,
+        rois=rois,
+        raw=raw,
+        dff=dff,
+        dec=dec,
+        active_only=active_only,
+    )
+    if data is None:
+        return
+
+    Y, labels, data_analysis_list, rois_rec_time = data
+    _, T_orig = Y.shape
+
+    # --- 2) Downsample in time if very long ---
+    stride = 1
+    if T_orig > MAX_POINTS:
+        stride = int(np.ceil(T_orig / MAX_POINTS))
+
+    x_full = np.arange(T_orig, dtype=float)
+    x = x_full[::stride]
+    Y = Y[:, ::stride]  # shape (n_rois, T_ds)
+    T_ds = Y.shape[1]
+
+    # --- 3) Normalize + offsets ---
+    Y, offsets, p1, p2 = _normalize_and_offset(Y, normalize)
+
+    # --- 4) Draw traces ---
+    curves = _draw_traces(plot, x, Y, labels, offsets)
+
+    # --- 5) Peaks + thresholds overlays ---
+    if with_peaks:
+        _draw_peaks_and_thresholds(
+            plot=plot,
+            Y=Y,
+            offsets=offsets,
+            da_list=data_analysis_list,
+            labels=labels,
+            T_orig=T_orig,
+            T_ds=T_ds,
+            stride=stride,
+            x=x,
+            normalize=normalize,
+            p1=p1,
+            p2=p2,
+            thresholds=thresholds,
+        )
+
+    # --- 6) Titles, axes & ranges ---
+    _set_graph_title_and_labels_pg(plot, dff, dec, normalize, with_peaks)
+    # Use first (downsampled) trace as example for time axis
+    _update_time_axis_pg(plot, rois_rec_time, traces_example=Y[0], T_orig=T_orig)
+
+    # Y axis behaviour:
+    y_axis = plot.getAxis("left")
+    if normalize:
+        # ROIs stacked on Y → hide numeric labels
+        y_axis.setTicks([])
+        y_axis.setStyle(showValues=False)
+    else:
+        # actual amplitudes on Y → show labels
+        y_axis.setStyle(showValues=True)
+        y_axis.setTicks(None)  # let pyqtgraph auto-generate ticks
+
+    # Make sure everything is visible
+    plot.getViewBox().enableAutoRange(x=True, y=True)
+
+    # --- 7) Click handling → roiSelected ---
+    _attach_click_handlers(widget, curves)
+
+
+# -----------------------------------------------------------------------------#
+# Data extraction helpers
+# -----------------------------------------------------------------------------#
+def _get_traces_and_metadata(
+    engine: Engine,
+    fov_name: str,
+    *,
+    run_id: int,
+    rois: list[int] | None,
+    raw: bool,
+    dff: bool,
+    dec: bool,
+    active_only: bool,
+) -> tuple[np.ndarray, list[str], list[DataAnalysis | None], list[float]] | None:
+    """Query DB and return (Y, labels, da_list, rois_rec_time)."""
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -97,21 +160,17 @@ def _plot_traces_data(
             stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
 
         stmt = stmt.order_by(col(ROI.label_value))
-
         roi_data = session.exec(stmt).all()
 
     if not roi_data:
-        widget.figure.tight_layout()
-        widget.canvas.draw()
-        return
+        return None
 
-    # ---------- COLLECT TRACES & METADATA ----------
     traces: list[np.ndarray] = []
     labels: list[str] = []
-    data_analysis_list: list[DataAnalysis | None] = []
+    da_list: list[DataAnalysis | None] = []
     rois_rec_time: list[float] = []
 
-    for roi_model, trace_obj, data_analysis in roi_data:
+    for roi_model, trace_obj, da in roi_data:
         if not trace_obj:
             continue
 
@@ -120,130 +179,22 @@ def _plot_traces_data(
             continue
 
         tr = np.asarray(trace, dtype=float)
+        if tr.size == 0:
+            continue
+
         traces.append(tr)
         labels.append(str(roi_model.label_value))
-        data_analysis_list.append(data_analysis)
+        da_list.append(da)
 
-        if (
-            data_analysis is not None
-            and data_analysis.total_recording_time_sec is not None
-        ):
-            rois_rec_time.append(data_analysis.total_recording_time_sec)
+        if da is not None and da.total_recording_time_sec is not None:
+            rois_rec_time.append(da.total_recording_time_sec)
 
     if not traces:
-        widget.figure.tight_layout()
-        widget.canvas.draw()
-        return
+        return None
 
-    # At this point we assume all traces have the same length.
-    # If that's not guaranteed, you'd need to pad/crop them.
-    Y = np.vstack(traces)  # shape = (n_rois, T)
-
-    # ---------- GLOBAL PERCENTILE NORMALIZATION ----------
-    p1 = p2 = 0.0
-    if normalize:
-        flat = Y.ravel()
-        if flat.size > 0:
-            p1, p2 = np.percentile(flat, [P1, P2])
-            denom = p2 - p1
-            if denom == 0:
-                Y = np.zeros_like(Y)
-            else:
-                Y = np.clip((Y - p1) / denom, 0, 1)
-        else:
-            Y = np.zeros_like(Y)
-            p1, p2 = 0.0, 1.0
-
-    # ---------- VERTICAL OFFSETS ----------
-    if normalize:
-        offsets = np.arange(Y.shape[0])[:, None] * 1.1  # (n_rois, 1)
-        Y_plot = Y + offsets
-    else:
-        Y_plot = Y
-        offsets = np.zeros((Y.shape[0], 1))  # for threshold math when not normalized
-
-    # ---------- SINGLE VECTORIZED PLOT CALL ----------
-    # ax.plot expects (T, n) for many lines in one call
-    lines = ax.plot(Y_plot.T, linewidth=0.8, picker=3)
-
-    # set labels / metadata so hover code can identify ROIs
-    for line, roi_label in zip(lines, labels):
-        line.set_label(f"ROI {roi_label}")
-        # Optional: custom attribute if your hover code wants it
-        line._roi_label = roi_label
-
-    # ---------- PEAKS & THRESHOLDS ----------
-    if with_peaks:
-        # plot peaks as markers
-        for i, da in enumerate(data_analysis_list):
-            if not (da and da.peaks_dec_dff):
-                continue
-
-            peaks_indices = np.asarray(da.peaks_dec_dff, dtype=int)
-            ax.plot(
-                peaks_indices,
-                Y_plot[i, peaks_indices],
-                "x",
-            )
-
-        # thresholds only if single ROI selected
-        if thresholds and len(labels) == 1:
-            da = data_analysis_list[0]
-            if da:
-                roi_label = labels[0]
-                offset0 = float(offsets[0, 0])
-
-                if da.peaks_height_dec_dff is not None:
-                    ph = float(da.peaks_height_dec_dff)
-                    if normalize:
-                        denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
-                        ph_norm = np.clip((ph - p1) / denom, 0, 1) + offset0
-                        y_the = ph_norm
-                    else:
-                        y_the = ph
-
-                    ax.axhline(
-                        y=y_the,
-                        color="black",
-                        linestyle="--",
-                        linewidth=2,
-                        alpha=0.6,
-                        label=(f"Peaks Height threshold\n(ROI {roi_label} - {ph:.4f})"),
-                    )
-
-                if da.peaks_prominence_dec_dff is not None:
-                    pp = float(da.peaks_prominence_dec_dff)
-                    if normalize:
-                        denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
-                        y0 = np.clip((0.0 - p1) / denom, 0, 1) + offset0
-                        y1 = np.clip((pp - p1) / denom, 0, 1) + offset0
-                    else:
-                        y0, y1 = 0.0, pp
-
-                    ax.plot(
-                        [-3, -3],
-                        [y0, y1],
-                        color="orange",
-                        linestyle="-",
-                        linewidth=5,
-                        alpha=0.8,
-                        label=(
-                            f"Peaks Prominence Threshold\n(ROI {roi_label} - {pp:.4f})"
-                        ),
-                    )
-
-    # ---------- TITLES / AXES / HOVER ----------
-    _set_graph_title_and_labels(ax, dff, dec, normalize, with_peaks)
-
-    # any trace length works; all rows have same T
-    last_trace = Y[0]
-    _update_time_axis(ax, rois_rec_time, last_trace)
-
-    # ---------- HOVER FUNCTIONALITY ----------s
-    _add_hover_functionality(ax, widget)
-
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+    Y = np.vstack(traces)
+    Y = np.nan_to_num(Y, nan=0.0)
+    return Y, labels, da_list, rois_rec_time
 
 
 def _get_trace(
@@ -260,14 +211,201 @@ def _get_trace(
     return trace
 
 
-def _set_graph_title_and_labels(
-    ax: Axes,
+# -----------------------------------------------------------------------------#
+# Normalization + offsets
+# -----------------------------------------------------------------------------#
+def _normalize_and_offset(
+    Y: np.ndarray, normalize: bool
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """Apply global percentile normalization and compute vertical offsets."""
+    p1 = p2 = 0.0
+    if normalize:
+        flat = Y.ravel()
+        if flat.size > 0:
+            p1, p2 = np.percentile(flat, [P1, P2])
+            denom = p2 - p1
+            if denom == 0:
+                Y[:] = 0.0
+            else:
+                Y = np.clip((Y - p1) / denom, 0, 1)
+        else:
+            Y[:] = 0.0
+            p1, p2 = 0.0, 1.0
+
+        offsets = np.arange(Y.shape[0], dtype=float) * 1.1
+    else:
+        offsets = np.zeros(Y.shape[0], dtype=float)
+
+    return Y, offsets, float(p1), float(p2)
+
+
+# -----------------------------------------------------------------------------#
+# Drawing traces + overlays
+# -----------------------------------------------------------------------------#
+def _draw_traces(
+    plot: pg.PlotItem,
+    x: np.ndarray,
+    Y: np.ndarray,
+    labels: list[str],
+    offsets: np.ndarray,
+) -> list[pg.PlotDataItem]:
+    """Draw one colored curve per ROI and attach metadata via setProperty."""
+    curves: list[pg.PlotDataItem] = []
+    n_rois = Y.shape[0]
+
+    for i in range(n_rois):
+        y_i = Y[i] + offsets[i]
+        roi_label = labels[i]
+
+        # ---- Choose color ----
+        if n_rois == 1:
+            # Single trace → white
+            color = "w"  # or (255, 255, 255) or pg.mkColor("white")
+        else:
+            # Multi-trace → distinct colors
+            color = pg.intColor(i, hues=max(n_rois, 16))
+
+        pen = pg.mkPen(color, width=1)
+
+        curve = plot.plot(
+            x,
+            y_i,
+            pen=pen,
+            name=f"ROI {roi_label}",
+        )
+        # Attach metadata in a non-private way
+        curve.setProperty("roi_label", roi_label)
+        curve.setProperty("roi_index", i)
+        curves.append(curve)
+
+    return curves
+
+
+def _draw_peaks_and_thresholds(
+    plot: pg.PlotItem,
+    Y: np.ndarray,
+    offsets: np.ndarray,
+    da_list: list[DataAnalysis | None],
+    labels: list[str],
+    T_orig: int,
+    T_ds: int,
+    stride: int,
+    x: np.ndarray,
+    normalize: bool,
+    p1: float,
+    p2: float,
+    thresholds: bool,
+) -> None:
+    """Draw peaks markers and (optionally) thresholds."""
+    # Peaks markers
+    for i, da in enumerate(da_list):
+        if not (da and da.peaks_dec_dff):
+            continue
+
+        peaks_indices = np.asarray(da.peaks_dec_dff, dtype=int)
+        # clip to original length
+        peaks_indices = peaks_indices[(peaks_indices >= 0) & (peaks_indices < T_orig)]
+        if peaks_indices.size == 0:
+            continue
+
+        # map to downsampled indices
+        if stride > 1:
+            peaks_ds = (peaks_indices / stride).astype(int)
+            peaks_ds = np.clip(peaks_ds, 0, T_ds - 1)
+        else:
+            peaks_ds = peaks_indices
+
+        y_i = Y[i] + offsets[i]
+        plot.plot(
+            x[peaks_ds],
+            y_i[peaks_ds],
+            pen=None,
+            symbol="o",
+            symbolBrush=pg.mkBrush("yellow"),
+            symbolSize=6,
+        )
+
+    # Thresholds only if single ROI case
+    if not (thresholds and len(labels) == 1):
+        return
+
+    da = da_list[0]
+    if not da:
+        return
+
+    offset0 = float(offsets[0])
+
+    # Peaks height threshold
+    if da.peaks_height_dec_dff is not None:
+        ph = float(da.peaks_height_dec_dff)
+        if normalize:
+            denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
+            ph_norm = np.clip((ph - p1) / denom, 0, 1) + offset0
+            y_the = ph_norm
+        else:
+            y_the = ph
+
+        line = pg.InfiniteLine(
+            pos=y_the,
+            angle=0,
+            pen=pg.mkPen(
+                "orange",
+                style=pg.QtCore.Qt.PenStyle.DashLine,
+                width=3,
+            ),
+        )
+        line.setZValue(10)  # keep on top
+        plot.addItem(line)
+
+    # Prominence threshold bar
+    if da.peaks_prominence_dec_dff is not None:
+        pp = float(da.peaks_prominence_dec_dff)
+        if normalize:
+            denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
+            y0 = np.clip((0.0 - p1) / denom, 0, 1) + offset0
+            y1 = np.clip((pp - p1) / denom, 0, 1) + offset0
+        else:
+            y0, y1 = 0.0, pp
+
+        plot.plot(
+            [x[0], x[0]],
+            [y0, y1],
+            pen=pg.mkPen("orange", width=3),
+        )
+
+
+# -----------------------------------------------------------------------------#
+# Click handling
+# -----------------------------------------------------------------------------#
+def _attach_click_handlers(
+    widget: _SingleWellGraphWidget, curves: list[pg.PlotDataItem]
+) -> None:
+    """Make curves clickable and emit widget.roiSelected on click."""
+    for curve in curves:
+        curve.setCurveClickable(True, 8)
+
+        def _on_curve_clicked(
+            curve_obj: pg.PlotCurveItem,
+            ev: MouseClickEvent,
+            c: pg.PlotDataItem = curve,
+        ) -> None:
+            roi_label = c.property("roi_label")
+            if roi_label is not None:
+                widget.roiSelected.emit(roi_label)
+
+        curve.sigClicked.connect(_on_curve_clicked)
+
+
+# -----------------------------------------------------------------------------#
+# Titles / axes helpers
+# -----------------------------------------------------------------------------#
+def _set_graph_title_and_labels_pg(
+    plot: pg.PlotItem,
     dff: bool,
     dec: bool,
     normalize: bool,
     with_peaks: bool,
 ) -> None:
-    """Set axis labels based on the plotted data."""
     if dff:
         title = (
             "Normalized Calcium Traces (ΔF/F)" if normalize else "Calcium Traces (ΔF/F)"
@@ -286,30 +424,31 @@ def _set_graph_title_and_labels(
     if with_peaks:
         title += " with Peaks"
 
-    ax.set_title(title)
-    ax.set_ylabel(y_lbl)
+    plot.setTitle(title)
+    plot.setLabel("left", y_lbl)
 
 
-def _update_time_axis(
-    ax: Axes, rois_rec_time: list[float], trace: list[float] | np.ndarray | None
+def _update_time_axis_pg(
+    plot: pg.PlotItem,
+    rois_rec_time: list[float],
+    traces_example: np.ndarray | list[float] | None,
+    T_orig: int,
 ) -> None:
-    if trace is None or sum(rois_rec_time) <= 0:
-        ax.set_xlabel("Frames")
+    """Configure bottom axis as time in seconds if recording time is available."""
+    if traces_example is None or not rois_rec_time or sum(rois_rec_time) <= 0:
+        plot.setLabel("bottom", "Frames")
         return
-    # get the average total recording time in seconds
+
+    total_frames = T_orig
+    if total_frames <= 1:
+        plot.setLabel("bottom", "Frames")
+        return
+
     avg_rec_time = int(np.mean(rois_rec_time))
-    # get total number of frames from the trace
-    tr = np.asarray(trace)
-    total_frames = tr.shape[-1] if tr is not None else 1
-    # compute tick positions
-    tick_interval = avg_rec_time / total_frames
     x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
+    tick_interval = avg_rec_time / total_frames
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(x_labels)
-    ax.set_xlabel("Time (s)")
 
-
-def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click(ax, widget, picker_tolerance=3)
+    axis = plot.getAxis("bottom")
+    axis.setTicks([list(zip(x_ticks.tolist(), x_labels))])
+    plot.setLabel("bottom", "Time (s)")

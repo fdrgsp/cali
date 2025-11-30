@@ -1,27 +1,30 @@
-"""Plot raw traces with neuropil correction visualization."""
+"""Plot raw, neuropil, and corrected traces together using pyqtgraph."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import cmap
 import numpy as np
+import pyqtgraph as pg
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from matplotlib.lines import Line2D
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
+# max number of time points we will draw per trace (automatic downsampling)
+MAX_POINTS = 2000
+
+
+# -----------------------------------------------------------------------------#
+# Helpers: retrieval from ROI histories
+# -----------------------------------------------------------------------------#
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     """Get the Traces object for a specific run from the ROI's traces_history."""
     if not roi_model.traces_history:
@@ -46,17 +49,17 @@ def _get_data_analysis_for_run(
             if roi_model.data_analysis_history
             else None
         )
-    # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
     return (
         roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
     )
 
 
+# -----------------------------------------------------------------------------#
+# Main plotting entry point (pyqtgraph)
+# -----------------------------------------------------------------------------#
 def _plot_neuropil_traces(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -64,45 +67,25 @@ def _plot_neuropil_traces(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot all raw and neuropil traces together on widget canvas.
+    """Plot raw, neuropil, and corrected traces using pyqtgraph.
 
-    ...by querying database directly.
-
-    Raw traces and neuropil traces are plotted on the same axes,
-    allowing the filtering logic to isolate specific ROI pairs.
-
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        The widget containing the matplotlib figure and canvas
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    rois : list[int] | None
-        List of specific ROI IDs to plot, or None for all
-    run_id : int | None
-        The CaliResult.id of the selected run. If provided, only data from this run
-        will be plotted.
+    Raw, neuropil, and corrected traces are plotted on the same axes for each ROI.
     """
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
-    # Disable status bar x/y display
-    ax.format_coord = lambda x, y: ""
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    # clear_plot already hid & cleared widget.legend, but just in case:
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
 
     if run_id is None:
         cali_logger.warning("No run_id provided for neuropil traces plot.")
-        ax.text(
-            0.5,
-            0.5,
-            "No run selected.",
-            ha="center",
-            va="center",
-            fontsize=12,
-        )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setTitle("No run selected.")
+        plot.setLabel("bottom", "Frames")
+        plot.setLabel("left", "Fluorescence (a.u.)")
         return
 
     # ---------- QUERY DATABASE ----------
@@ -129,7 +112,7 @@ def _plot_neuropil_traces(
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
-        # Filter by specific ROIs if requested
+        # Filter by specific ROIs if requested (using label_value, as elsewhere)
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
@@ -138,7 +121,7 @@ def _plot_neuropil_traces(
 
         roi_models = session.exec(stmt).all()
 
-    # ---------- COLLECT VALID ROIS & TRACES (VECTOR-FRIENDLY) ----------
+    # ---------- COLLECT VALID ROIS & TRACES ----------
     labels: list[int] = []
     raw_traces: list[np.ndarray] = []
     neuropil_traces: list[np.ndarray] = []
@@ -159,9 +142,8 @@ def _plot_neuropil_traces(
         neu = np.asarray(traces.neuropil_trace, dtype=float)
         corr = np.asarray(traces.corrected_trace, dtype=float)
 
-        # Ensure they all have same length; if not, you could pad/crop here.
+        # Ensure same length; otherwise skip ROI
         if not (len(raw) == len(neu) == len(corr)):
-            # For safety, skip inconsistent entries
             continue
 
         labels.append(roi.label_value)
@@ -169,7 +151,6 @@ def _plot_neuropil_traces(
         neuropil_traces.append(neu)
         corrected_traces.append(corr)
 
-        # Recording time if available
         data_analysis = _get_data_analysis_for_run(roi, run_id)
         if (
             data_analysis is not None
@@ -178,132 +159,110 @@ def _plot_neuropil_traces(
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
     if not raw_traces:
-        # No valid data to plot
-        ax.text(
-            0.5,
-            0.5,
-            "No neuropil traces available.",
-            ha="center",
-            va="center",
-            fontsize=12,
-        )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setTitle("No neuropil traces available.")
+        plot.setLabel("bottom", "Frames")
+        plot.setLabel("left", "Fluorescence (a.u.)")
         return
 
-    # Stack into arrays: shape = (n_rois, T)
+    # Stack into arrays: shape = (n_rois, T_orig)
     Y_raw = np.vstack(raw_traces)
     Y_neu = np.vstack(neuropil_traces)
     Y_corr = np.vstack(corrected_traces)
-    n_rois, T = Y_raw.shape
-    frames = np.arange(T)
 
-    last_trace = Y_raw[0]  # for time axis ticks
+    Y_raw = np.nan_to_num(Y_raw, nan=0.0)
+    Y_neu = np.nan_to_num(Y_neu, nan=0.0)
+    Y_corr = np.nan_to_num(Y_corr, nan=0.0)
 
-    # ---------- COLORS (GLASBEY) ----------
-    glasbey_cmap = cmap.Colormap("glasbey").to_matplotlib()
-    color_indices = np.linspace(0.05, 1, n_rois)  # avoid very dark colors
-    colors = glasbey_cmap(color_indices)
+    n_rois, T_orig = Y_raw.shape
+    x_full = np.arange(T_orig, dtype=float)
 
-    # ---------- VECTORIZED PLOTTING ----------
-    # One plot call per type (raw / neuropil / corrected)
-    # ax.plot(frames, Y.T) => multiple lines
-    lines_raw = ax.plot(
-        frames,
-        Y_raw.T,
-        linewidth=1,
-        linestyle="--",
-        picker=3,
-    )
-    lines_neu = ax.plot(
-        frames,
-        Y_neu.T,
-        linewidth=1,
-        linestyle=":",
-        picker=3,
-    )
-    lines_corr = ax.plot(
-        frames,
-        Y_corr.T,
-        linewidth=1,
-        linestyle="-",
-        picker=3,
-    )
+    # ---------- DOWNSAMPLING ----------
+    stride = 1
+    if T_orig > MAX_POINTS:
+        stride = int(np.ceil(T_orig / MAX_POINTS))
 
-    # Assign colors, labels & metadata for hover
-    for i, roi_id in enumerate(labels):
-        color = colors[i]
+    x = x_full[::stride]
+    Y_raw_ds = Y_raw[:, ::stride]
+    Y_neu_ds = Y_neu[:, ::stride]
+    Y_corr_ds = Y_corr[:, ::stride]
 
-        # Raw
-        line_r = lines_raw[i]
-        line_r.set_color(color)
-        line_r.set_label(f"Raw ROI {roi_id}")
-        line_r._roi_label = roi_id
-        line_r._trace_type = "raw"
+    # ---------- COLORS ----------
+    # Fixed semantics: magenta = raw, yellow = neuropil, green = corrected
+    pen_raw = pg.mkPen("magenta", width=1)
+    pen_neu = pg.mkPen("yellow", width=1)
+    pen_corr = pg.mkPen("green", width=1)
 
-        # Neuropil
-        line_n = lines_neu[i]
-        line_n.set_color(color)
-        line_n.set_label(f"Neuropil ROI {roi_id}")
-        line_n._roi_label = roi_id
-        line_n._trace_type = "neuropil"
+    # ---------- PLOTTING ----------
+    for i in range(n_rois):
+        plot.plot(x, Y_raw_ds[i], pen=pen_raw)
+        plot.plot(x, Y_neu_ds[i], pen=pen_neu)
+        plot.plot(x, Y_corr_ds[i], pen=pen_corr)
 
-        # Corrected
-        line_c = lines_corr[i]
-        line_c.set_color(color)
-        line_c.set_label(f"Corrected ROI {roi_id}")
-        line_c._roi_label = roi_id
-        line_c._trace_type = "corrected"
+    # ---------- AXES / TITLES ----------
+    plot.setTitle("Raw, Neuropil, and Corrected Traces")
+    plot.setLabel("left", "Fluorescence (a.u.)")
 
-    # ---------- FORMATTING ----------
-    ax.set_ylabel("Fluorescence (a.u.)", fontsize=11)
-    ax.set_title("Raw, Neuropil, and Corrected Traces", fontsize=12)
-    ax.grid(True, alpha=0.3)
-
-    # Custom legend explaining line styles
-    legend_elements = [
-        Line2D([0], [0], color="gray", linewidth=1, linestyle="--", label="Raw"),
-        Line2D([0], [0], color="gray", linewidth=1, linestyle=":", label="Neuropil"),
-        Line2D([0], [0], color="gray", linewidth=1, linestyle="-", label="Corrected"),
-    ]
-    ax.legend(
-        handles=legend_elements,
-        loc="upper right",
-        framealpha=0.9,
-        fontsize=9,
+    _update_time_axis_pg_for_neuropil(
+        plot,
+        rois_rec_time=rois_rec_time,
+        T_orig=T_orig,
     )
 
-    # ---------- TIME AXIS ----------
-    _update_time_axis(ax, rois_rec_time, last_trace)
+    plot.getViewBox().enableAutoRange(x=True, y=True)
 
-    # ---------- HOVER FUNCTIONALITY ----------
-    _add_hover_functionality(ax, widget)
+    # ---------- LEGEND (single, reused from widget.legend) ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        # ensure attached to this plot
+        if legend.parentItem() is None:
+            legend.setParentItem(plot.graphicsItem())
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+        # Clear old items
+        if hasattr(legend, "clear"):
+            legend.clear()
+
+        legend.setVisible(True)
+        _populate_neuropil_legend(legend, pen_raw, pen_neu, pen_corr)
 
 
-def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click(ax, widget, picker_tolerance=3)
-
-
-def _update_time_axis(
-    ax: Axes, rois_rec_time: list[float], trace: np.ndarray | None
+# -----------------------------------------------------------------------------#
+# Legend helpers
+# -----------------------------------------------------------------------------#
+def _populate_neuropil_legend(
+    legend: pg.LegendItem,
+    pen_raw: pg.mkPen,
+    pen_neu: pg.mkPen,
+    pen_corr: pg.mkPen,
 ) -> None:
-    """Update x-axis to show time instead of frames if recording time is available."""
-    if trace is None or sum(rois_rec_time) <= 0:
-        ax.set_xlabel("Frame", fontsize=11)
+    """Ensure legend shows exactly three entries: Raw / Neuropil / Corrected."""
+    # Represent each type with a tiny sample curve
+    raw_sample = pg.PlotDataItem([0], [0], pen=pen_raw)
+    neu_sample = pg.PlotDataItem([0], [0], pen=pen_neu)
+    corr_sample = pg.PlotDataItem([0], [0], pen=pen_corr)
+
+    legend.addItem(raw_sample, "Raw")
+    legend.addItem(neu_sample, "Neuropil")
+    legend.addItem(corr_sample, "Corrected")
+
+
+# -----------------------------------------------------------------------------#
+# Time axis helper
+# -----------------------------------------------------------------------------#
+def _update_time_axis_pg_for_neuropil(
+    plot: pg.PlotItem,
+    rois_rec_time: list[float],
+    T_orig: int,
+) -> None:
+    """Configure bottom axis as time in seconds if recording time is available."""
+    if not rois_rec_time or sum(rois_rec_time) <= 0 or T_orig <= 1:
+        plot.setLabel("bottom", "Frames")
         return
-    # Get the average total recording time in seconds
+
     avg_rec_time = int(np.mean(rois_rec_time))
-    # Get total number of frames from the trace
-    total_frames = len(trace)
-    # Compute tick positions
-    tick_interval = avg_rec_time / total_frames
-    x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
+    x_ticks = np.linspace(0, T_orig, num=5, dtype=int)
+    tick_interval = avg_rec_time / T_orig
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(x_labels)
-    ax.set_xlabel("Time (s)", fontsize=11)
+
+    axis = plot.getAxis("bottom")
+    axis.setTicks([list(zip(x_ticks.tolist(), x_labels))])
+    plot.setLabel("bottom", "Time (s)")

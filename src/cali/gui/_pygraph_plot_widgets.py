@@ -94,6 +94,15 @@ class _SingleWellGraphWidget(QWidget):
         self.plot_item = self.plot_widget.getPlotItem()
         self.plot_item.showGrid(x=True, y=False, alpha=0.3)
 
+        # Create a shared legend for this widget (reused across plots)
+        self.legend = pg.LegendItem(
+            offset=(-10, 10),  # near top-right
+            horSpacing=10,
+            verSpacing=0,
+        )
+        self.legend.setParentItem(self.plot_item.graphicsItem())
+        self.legend.setVisible(False)
+
         # Global pg config tweaks (optional)
         pg.setConfigOptions(antialias=False)
         # pg.setConfigOptions(antialias=True, background="w", foreground="k")
@@ -155,6 +164,12 @@ class _SingleWellGraphWidget(QWidget):
     def clear_plot(self) -> None:
         """Clear the plot (replacement for figure.clear())."""
         self.plot_item.clear()
+        # Also clear & hide the shared legend
+        if hasattr(self, "legend") and self.legend is not None:
+            # clear items if supported
+            if hasattr(self.legend, "clear"):
+                self.legend.clear()
+            self.legend.setVisible(False)
 
     def set_combo_text_red(self, state: bool) -> None:
         """Set the combo text color to red if state is True or to black otherwise."""
