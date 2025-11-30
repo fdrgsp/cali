@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -226,6 +226,4 @@ def _add_hover_functionality_connectivity_matrix(
     correlation_matrix: np.ndarray,
 ) -> None:
     """Add hover functionality to connectivity matrix heatmap."""
-    setup_pick_hover_for_heatmap(
-        image.axes, widget, [str(r) for r in rois], connectivity_matrix
-    )
+    setup_pick_click_for_heatmap(image.axes, widget, rois, connectivity_matrix)

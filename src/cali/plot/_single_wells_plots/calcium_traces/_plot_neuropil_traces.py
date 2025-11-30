@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._hover_utils import setup_pick_hover
+from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -256,7 +256,7 @@ def _plot_neuropil_traces(
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover(ax, widget, picker_tolerance=3)
+    setup_pick_click(ax, widget, picker_tolerance=3)
 
 
 def _update_time_axis(

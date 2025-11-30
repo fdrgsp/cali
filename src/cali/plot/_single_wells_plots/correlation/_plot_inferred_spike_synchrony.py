@@ -6,7 +6,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
 
-from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._util import (
     _get_data_analysis_for_run,
     _get_spike_synchrony,
@@ -105,8 +105,8 @@ def _plot_spike_synchrony_data(
     ax.set_xticklabels([])
     ax.set_xticks([])
 
-    active_rois = list(spike_trains.keys())
-    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
+    active_roi_ids = [int(roi_id) for roi_id in spike_trains.keys()]
+    _add_hover_functionality(img, widget, active_roi_ids, synchrony_matrix)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -226,7 +226,7 @@ def _get_spike_trains_from_rois(
 
         # Only include ROIs with at least one spike
         if np.sum(spike_train) > 0:
-            spike_trains[str(roi.id)] = spike_train
+            spike_trains[str(roi.label_value)] = spike_train
 
     return spike_trains if len(spike_trains) >= 2 else None
 
@@ -234,8 +234,8 @@ def _get_spike_trains_from_rois(
 def _add_hover_functionality(
     image: AxesImage,
     widget: _SingleWellGraphWidget,
-    rois: list[str],
+    rois: list[int],
     synchrony_matrix: np.ndarray,
 ) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover_for_heatmap(image.axes, widget, rois, synchrony_matrix)
+    setup_pick_click_for_heatmap(image.axes, widget, rois, synchrony_matrix)

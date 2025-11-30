@@ -96,7 +96,7 @@ def _calculate_spike_cross_correlation(
 
         # Only include ROIs that have at least one spike
         if np.sum(spike_train) > 0:
-            rois_idxs.append(roi.id)
+            rois_idxs.append(roi.label_value)
             spike_trains.append(spike_train.astype(float))
 
     if len(rois_idxs) <= 1:
@@ -222,11 +222,9 @@ def _add_hover_functionality_spike_corr(
     values : np.ndarray
         Correlation matrix values
     """
-    from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+    from cali.plot._hover_utils import setup_pick_click_for_heatmap
 
-    # Convert ROI indices to strings for hover utils
-    roi_strs = [str(r) for r in rois]
-    setup_pick_hover_for_heatmap(image.axes, widget, roi_strs, values)
+    setup_pick_click_for_heatmap(image.axes, widget, rois, values)
 
 
 def _plot_spike_hierarchical_clustering_data(
@@ -399,8 +397,8 @@ def _add_hover_functionality_spike_clustering(
     values : np.ndarray
         Reordered correlation matrix values
     """
-    from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+    from cali.plot._hover_utils import setup_pick_click_for_heatmap
 
     # Create reordered ROI list for hover display
-    reordered_rois = [str(rois[i]) for i in order]
-    setup_pick_hover_for_heatmap(image.axes, widget, reordered_rois, values)
+    reordered_roi_ids = [rois[i] for i in order]
+    setup_pick_click_for_heatmap(image.axes, widget, reordered_roi_ids, values)

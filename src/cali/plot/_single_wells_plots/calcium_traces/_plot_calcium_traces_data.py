@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_hover
+from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -309,4 +309,4 @@ def _update_time_axis(
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover(ax, widget, picker_tolerance=3)
+    setup_pick_click(ax, widget, picker_tolerance=3)

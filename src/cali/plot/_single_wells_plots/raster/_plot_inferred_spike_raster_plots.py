@@ -8,7 +8,7 @@ from matplotlib import colormaps
 from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_hover_for_raster
+from cali.plot._hover_utils import setup_pick_click_for_raster
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -226,7 +226,7 @@ def _add_hover_functionality(
     ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
 ) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover_for_raster(ax, widget, active_rois, picker_tolerance=5)
+    setup_pick_click_for_raster(ax, widget, active_rois, picker_tolerance=5)
 
 
 def _update_time_axis(

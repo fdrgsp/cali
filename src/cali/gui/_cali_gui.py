@@ -345,21 +345,6 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        # data = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data, self._output_path)
-
-        # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data self._output_path)
-
-        # data = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test"
-        # self.initialize_widget_from_directories(data, self._output_path)
-
-        # data = "tests/test_data/spontaneous/spont_analysis/spont.tensorstore.zarr.db"
-        # self.initialize_widget_from_database(data)
-
         # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # db_path = "tests/test_data/evoked/results.cali"
         # self._initialize_from_database(db_path, data_path)
@@ -382,9 +367,13 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/2pos/"
+
         self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        self._output_path = "tests/test_data/2pos/"
+        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________

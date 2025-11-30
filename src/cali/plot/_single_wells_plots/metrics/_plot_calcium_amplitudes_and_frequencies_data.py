@@ -6,7 +6,7 @@ import numpy as np
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._hover_utils import setup_pick_hover
+from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -170,7 +170,7 @@ def _plot_metrics(
             sem_amp = 0  # No error bars for single point
 
         _plot_errorbars(
-            ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}"
+            ax, [roi.label_value], [mean_amp], [sem_amp], f"ROI {roi.label_value}", 5
         )
         ax.scatter(
             [roi.label_value] * len(data_analysis.peaks_amplitudes_dec_dff),
@@ -194,13 +194,23 @@ def _plot_metrics(
 
 
 def _plot_errorbars(
-    ax: Axes, x: list[float], y: float | list[float], yerr: Any, label: str
+    ax: Axes,
+    x: list[float],
+    y: float | list[float],
+    yerr: Any,
+    label: str,
+    picker: int | None = None,
 ) -> None:
     """Plot error bars graph."""
-    errorbar = ax.errorbar(x, y, yerr=yerr, label=label, fmt="o", capsize=5, picker=5)
+    errorbar = ax.errorbar(
+        x, y, yerr=yerr, label=label, fmt="o", capsize=5, picker=picker
+    )
+    if picker is None:
+        return
     # Also enable picking on the marker artist (the mean point)
     if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
         errorbar.lines[0].set_picker(5)
+        errorbar.lines[0].set_label(label)
 
 
 def _set_graph_title_and_labels(
@@ -235,4 +245,4 @@ def _set_graph_title_and_labels(
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover(ax, widget, picker_tolerance=5)
+    setup_pick_click(ax, widget, picker_tolerance=5)

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
-from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._util import (
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
@@ -142,9 +142,6 @@ def _plot_peak_event_synchrony_data(
     ax.set_xticklabels([])
     ax.set_xticks([])
 
-    active_rois = list(peak_trains.keys())
-    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
-
     widget.figure.tight_layout()
     widget.canvas.draw()
     # events with inherent timing uncertainty due to biology and frame rate limits
@@ -177,8 +174,8 @@ def _plot_peak_event_synchrony_data(
     ax.set_xticklabels([])
     ax.set_xticks([])
 
-    active_rois = list(peak_trains.keys())
-    _add_hover_functionality(img, widget, active_rois, synchrony_matrix)
+    active_roi_ids = [int(roi_id) for roi_id in peak_trains.keys()]
+    _add_hover_functionality(img, widget, active_roi_ids, synchrony_matrix)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -220,8 +217,8 @@ def _get_jit(
 def _add_hover_functionality(
     image: AxesImage,
     widget: _SingleWellGraphWidget,
-    rois: list[str],
+    rois: list[int],
     synchrony_matrix: np.ndarray,
 ) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover_for_heatmap(image.axes, widget, rois, synchrony_matrix)
+    setup_pick_click_for_heatmap(image.axes, widget, rois, synchrony_matrix)

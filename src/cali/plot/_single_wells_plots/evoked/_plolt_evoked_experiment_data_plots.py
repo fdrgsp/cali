@@ -8,6 +8,8 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
 from skimage.measure import find_contours
 
+from cali.plot._hover_utils import setup_pick_click
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
@@ -151,7 +153,6 @@ def _plot_stim_or_not_stim_peaks_amplitude(
 
     # Extract peak amplitudes for each ROI and plot
     roi_labels = []
-    artists = []
 
     for roi_model, _, data_analysis in results:
         if data_analysis and data_analysis.peaks_amplitudes_dec_dff:
@@ -167,7 +168,7 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 sem_amp = std_amp / np.sqrt(len(amps))
             else:
                 sem_amp = 0  # No error bars for single point
-
+            label = f"ROI {roi_model.label_value}"
             # Plot mean ± SEM as error bars
             errorbar = ax.errorbar(
                 [roi_model.label_value],
@@ -176,17 +177,17 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 fmt="o",
                 capsize=5,
                 color=STIMULATED_COLOR if stimulated else NON_STIMULATED_COLOR,
-                label=f"ROI {roi_model.label_value}",
+                label=label,
                 zorder=2,
                 picker=5,
             )
             # Also enable picking on the marker artist (the mean point)
             if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
                 errorbar.lines[0].set_picker(5)
-            artists.append(errorbar)
+                errorbar.lines[0].set_label(label)
 
             # Plot individual peak amplitudes in background
-            scatter = ax.scatter(
+            ax.scatter(
                 [roi_model.label_value] * len(amps),
                 amps,
                 alpha=0.5,
@@ -196,7 +197,6 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 label=f"ROI {roi_model.label_value}",  # Add label for picking
                 picker=True,  # Enable picking
             )
-            artists.append(scatter)
 
     if not roi_labels:
         ax.text(
@@ -219,10 +219,11 @@ def _plot_stim_or_not_stim_peaks_amplitude(
     title = "Stimulated" if stimulated else "Non-Stimulated"
     ax.set_title(f"{title} ROI Mean Peak Amplitudes ± SEM")
     ax.set_xticks(roi_labels)
-    ax.set_xticklabels([str(lbl) for lbl in roi_labels])
+    ax.set_xticklabels([])
+    ax.set_xticks([])
 
     # Add hover functionality
-    _add_hover_to_stimulated_amp_plot(widget, artists)
+    setup_pick_click(ax, widget, picker_tolerance=5)
 
     widget.figure.tight_layout()
     widget.canvas.draw()
@@ -233,23 +234,6 @@ def extract_leading_number(key: str) -> float:
     if match := re.match(r"(\d+(?:\.\d+)?)", key.split("_")[0]):
         return float(match[1])
     raise ValueError(f"Could not extract a valid number from key: {key}")
-
-
-def _add_hover_to_stimulated_amp_plot(
-    widget: _SingleWellGraphWidget,
-    artists: list,
-) -> None:
-    """Add hover tooltips to amplitude error bar plot."""
-    from cali.plot._hover_utils import setup_pick_hover
-
-    # Enable picking on all artists
-    for artist in artists:
-        if hasattr(artist, "set_picker"):
-            artist.set_picker(5)
-
-    # Use the new efficient hover system
-    if artists and hasattr(artists[0], "axes"):
-        setup_pick_hover(artists[0].axes, widget, picker_tolerance=5)
 
 
 def _visualize_stimulated_area(
@@ -689,9 +673,7 @@ def _add_hover_functionality_stim_vs_non_stim(
     ax: Axes, widget: _SingleWellGraphWidget
 ) -> None:
     """Add hover functionality using efficient pick events."""
-    from cali.plot._hover_utils import setup_pick_hover
-
-    setup_pick_hover(ax, widget, picker_tolerance=5)
+    setup_pick_click(ax, widget, picker_tolerance=5)
 
 
 def _plot_stimulated_vs_non_stimulated_spike_raster(
@@ -867,9 +849,9 @@ def _add_hover_functionality_spike_traces(
     ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
 ) -> None:
     """Add hover functionality using efficient pick events for spike traces."""
-    from cali.plot._hover_utils import setup_pick_hover_for_raster
+    from cali.plot._hover_utils import setup_pick_click_for_raster
 
-    setup_pick_hover_for_raster(ax, widget, active_rois, picker_tolerance=5)
+    setup_pick_click_for_raster(ax, widget, active_rois, picker_tolerance=5)
 
 
 def _plot_stimulated_vs_non_stimulated_spike_traces(

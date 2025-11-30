@@ -11,7 +11,7 @@ from scipy.stats import zscore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_hover_for_heatmap
+from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -117,9 +117,9 @@ def _calculate_cross_correlation(
     rois_idxs: list[int] = []
 
     for roi, roi_traces in roi_data:
-        if roi_traces is None or roi_traces.dec_dff is None or roi.id is None:
+        if roi_traces is None or roi_traces.dec_dff is None or roi.label_value is None:
             continue
-        rois_idxs.append(roi.id)
+        rois_idxs.append(roi.label_value)
         traces.append(roi_traces.dec_dff)
 
     if len(rois_idxs) <= 1:
@@ -190,7 +190,7 @@ def _add_hover_functionality_cross_corr(
     values: np.ndarray,
 ) -> None:
     """Add hover functionality using efficient pick events."""
-    setup_pick_hover_for_heatmap(image.axes, widget, [str(r) for r in rois], values)
+    setup_pick_click_for_heatmap(image.axes, widget, rois, values)
 
 
 # def _plot_hierarchical_clustering_data(
