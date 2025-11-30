@@ -32,7 +32,7 @@ with Session(engine) as session:
     for ar in analysis_results:
         print(f"CaliResult ID: {ar.id}")
         print(f"  Experiment: {ar.experiment}")
-        print(f"  DetectionSettings: {ar.detection_settings}")
+        print(f"  DetectionSettings: {ar.detection_settings_id}")
         print(f"  AnalysisSettings: {ar.analysis_settings_id}")
         print(f"  Positions: {ar.positions_analyzed}")
 
@@ -63,7 +63,7 @@ with Session(engine) as session:
         ).all()
         print(
             f"\nExample 1: Traces from CaliResult {ar.id} "
-            f"(DetectionSettings={ar.detection_settings}, "
+            f"(DetectionSettings={ar.detection_settings_id}, "
             f"AnalysisSettings={ar.analysis_settings_id})"
         )
         print(f"  Found {len(traces)} traces")
@@ -82,7 +82,7 @@ with Session(engine) as session:
     # Example 3: Compare results from different detection settings
     print("\nExample 3: Group results by DetectionSettings + AnalysisSettings:")
     for ar in analysis_results:
-        key = f"Detection={ar.detection_settings}, Analysis={ar.analysis_settings_id}"
+        key = f"Detection={ar.detection_settings_id}, Analysis={ar.analysis_settings_id}"
         trace_count = len(
             session.exec(select(Traces).where(Traces.analysis_result_id == ar.id)).all()
         )

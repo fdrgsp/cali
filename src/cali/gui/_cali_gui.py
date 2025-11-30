@@ -362,18 +362,18 @@ class CaliGui(QMainWindow):
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # USED IN TESTS -------------------------------------------------
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
+        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/evoked/results.cali"
+        self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
         # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/2pos/result_2pos.cali"
         # self._output_path = "tests/test_data/2pos/"
 
-        self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        self._initialize_from_database(self._database_path, self._data_path)
+        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1467,9 +1467,9 @@ class CaliGui(QMainWindow):
             assert isinstance(result, CaliResult)
 
             # Load and apply detection settings
-            if result.detection_settings:
+            if result.detection_settings_id:
                 d_settings = DetectionSettings.load_from_database(
-                    self._database_path, id=result.detection_settings
+                    self._database_path, id=result.detection_settings_id
                 )
                 assert isinstance(d_settings, DetectionSettings)
                 if d_settings.method == "cellpose":

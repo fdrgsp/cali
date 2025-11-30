@@ -143,10 +143,10 @@ def print_cali_results(
                         positions_node.add(f"Positions {start}-{end}")
 
             # Detection settings (if available)
-            if result.detection_settings:
+            if result.detection_settings_id:
                 detection_settings = session.exec(
                     select(DetectionSettings).where(
-                        DetectionSettings.id == result.detection_settings
+                        DetectionSettings.id == result.detection_settings_id
                     )
                 ).first()
                 if detection_settings:
@@ -184,7 +184,7 @@ def print_cali_results(
                     result_tree,
                     result_experiment,
                     max_level=max_experiment_level,
-                    detection_settings_id=result.detection_settings,
+                    detection_settings_id=result.detection_settings_id,
                     analysis_result_id=result.id,
                 )
 

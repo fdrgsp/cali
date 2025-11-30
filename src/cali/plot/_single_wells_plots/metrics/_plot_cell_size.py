@@ -85,9 +85,9 @@ def _plot_cell_size_data(
 
         result = session.get(CaliResult, run_id)
         if result:
-            detection_settings_id = result.detection_settings
+            detection_settings_id = result.detection_settings_id
 
-        # Build query to get ROIs for this FOV
+        # Build query to get ROIs for this FOV that have cell_size data
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
 
         # Filter by specific ROIs if requested
@@ -97,6 +97,9 @@ def _plot_cell_size_data(
         # Filter by detection settings if we have a run_id
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+
+        # Only include ROIs that have cell_size data (indicates they were extracted)
+        stmt = stmt.where(col(ROI.cell_size).is_not(None))
 
         # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))

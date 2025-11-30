@@ -35,7 +35,7 @@ with Session(engine) as session:
     results = session.exec(select(CaliResult)).all()
     print(f"\nCaliResults: {len(results)}")
     for r in results:
-        print(f"  ID={r.id}, exp={r.experiment}, det={r.detection_settings}, ana={r.analysis_settings_id}, pos={r.positions_analyzed}")
+        print(f"  ID={r.id}, exp={r.experiment}, det={r.detection_settings_id}, ana={r.analysis_settings_id}, pos={r.positions_analyzed}")
     
     # Check Traces
     traces = session.exec(select(Traces)).all()

@@ -173,7 +173,7 @@ def get_traces_by_settings(
     query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:
-        query = query.where(CaliResult.detection_settings == detection_settings_id)
+        query = query.where(CaliResult.detection_settings_id == detection_settings_id)
 
     if analysis_settings_id is not None:
         query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
@@ -652,7 +652,7 @@ def get_analysis_for_detection_method(
     query = (
         select(CaliResult)
         .where(CaliResult.experiment == experiment_id)
-        .where(CaliResult.detection_settings == detection_settings_id)
+        .where(CaliResult.detection_settings_id == detection_settings_id)
     )
 
     if analysis_settings_id is not None:
@@ -740,7 +740,7 @@ def get_latest_results_for_experiment(
     query = select(CaliResult).where(CaliResult.experiment == experiment_id)
 
     if detection_settings_id is not None:
-        query = query.where(CaliResult.detection_settings == detection_settings_id)
+        query = query.where(CaliResult.detection_settings_id == detection_settings_id)
 
     latest_analysis_result = session.exec(
         query.order_by(desc(CaliResult.id))

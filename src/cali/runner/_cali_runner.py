@@ -1358,7 +1358,7 @@ class CaliRunner:
         # First, check for exact match with all settings
         query = select(CaliResult).where(
             CaliResult.experiment == experiment_id,
-            CaliResult.detection_settings == detection_settings_id,
+            CaliResult.detection_settings_id == detection_settings_id,
         )
 
         if extraction_settings_id is None:
@@ -1424,7 +1424,7 @@ class CaliRunner:
             upgradeable_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1466,7 +1466,7 @@ class CaliRunner:
             detection_only_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1499,7 +1499,7 @@ class CaliRunner:
             upgradeable_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1541,7 +1541,7 @@ class CaliRunner:
             compatible_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
                 )
             ).first()
@@ -1585,7 +1585,7 @@ class CaliRunner:
             detection_only_result = session.exec(
                 select(CaliResult).where(
                     CaliResult.experiment == experiment_id,
-                    CaliResult.detection_settings == detection_settings_id,
+                    CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                 )
@@ -1602,7 +1602,7 @@ class CaliRunner:
         # Create new result
         result = CaliResult(
             experiment=experiment_id,
-            detection_settings=detection_settings_id,
+            detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             analysis_settings_id=analysis_settings_id,
             plate_map_hash=plate_map_hash,

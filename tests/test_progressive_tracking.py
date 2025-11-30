@@ -231,7 +231,7 @@ def test_progressive_runs_merge_positions(
         assert result.positions_extracted is None
         assert result.positions_analyzed is None
         result_id = result.id
-        detection_id = result.detection_settings
+        detection_id = result.detection_settings_id
 
     engine.dispose(close=True)
 
@@ -290,7 +290,7 @@ def test_different_settings_create_separate_results(
     with Session(engine) as session:
         result1 = session.exec(select(CaliResult)).first()
         assert result1 is not None
-        detection_id = result1.detection_settings
+        detection_id = result1.detection_settings_id
         extraction_id = result1.extraction_settings_id
     engine.dispose(close=True)
 
@@ -376,7 +376,7 @@ def test_equality_and_hash_include_new_fields() -> None:
     """Test that CaliResult equality and hash include new position fields."""
     result1 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=None,
         analysis_settings_id=None,
         positions_detected=[0, 1],
@@ -386,7 +386,7 @@ def test_equality_and_hash_include_new_fields() -> None:
 
     result2 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=None,
         analysis_settings_id=None,
         positions_detected=[0, 1],
@@ -396,7 +396,7 @@ def test_equality_and_hash_include_new_fields() -> None:
 
     result3 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=None,
         analysis_settings_id=None,
         positions_detected=[0, 1, 2],  # Different

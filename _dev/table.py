@@ -19,7 +19,7 @@ with Session(engine) as session:
     for result in results:
         created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
         detection_id = (
-            str(result.detection_settings) if result.detection_settings else "None"
+            str(result.detection_settings_id) if result.detection_settings_id else "None"
         )
         analysis_id = (
             str(result.analysis_settings_id) if result.analysis_settings_id else "None"

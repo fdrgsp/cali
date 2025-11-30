@@ -50,7 +50,7 @@ def test_incomplete_extraction_shows_asterisk(
         # Detected [0, 1, 2] but only extracted [0, 1]
         result = CaliResult(
             experiment=1,
-            detection_settings=detection_id,
+            detection_settings_id=detection_id,
             extraction_settings_id=extraction_id,
             analysis_settings_id=None,
             positions_detected=[0, 1, 2],
@@ -116,7 +116,7 @@ def test_incomplete_analysis_shows_asterisk(
         # Extracted [0, 1, 2] but only analyzed [0, 1]
         result = CaliResult(
             experiment=1,
-            detection_settings=detection_id,
+            detection_settings_id=detection_id,
             extraction_settings_id=extraction_id,
             analysis_settings_id=analysis_id,
             positions_detected=[0, 1, 2],
@@ -180,7 +180,7 @@ def test_complete_run_no_asterisk(tmp_path: Path, runs_panel: _RunsPanel) -> Non
         # Create result with complete pipeline
         result = CaliResult(
             experiment=1,
-            detection_settings=detection_id,
+            detection_settings_id=detection_id,
             extraction_settings_id=extraction_id,
             analysis_settings_id=analysis_id,
             positions_detected=[0, 1, 2],
@@ -232,7 +232,7 @@ def test_detection_only_run_no_asterisk(tmp_path: Path, runs_panel: _RunsPanel) 
         # Create detection-only result
         result = CaliResult(
             experiment=1,
-            detection_settings=d_settings.id,
+            detection_settings_id=d_settings.id,
             extraction_settings_id=None,
             analysis_settings_id=None,
             positions_detected=[0, 1, 2],
@@ -299,7 +299,7 @@ def test_both_incomplete_shows_both_asterisks(
         # Detected [0, 1, 2, 3], extracted [0, 1, 2], analyzed [0, 1]
         result = CaliResult(
             experiment=1,
-            detection_settings=detection_id,
+            detection_settings_id=detection_id,
             extraction_settings_id=extraction_id,
             analysis_settings_id=analysis_id,
             positions_detected=[0, 1, 2, 3],

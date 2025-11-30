@@ -91,7 +91,7 @@ class CaliResult(SQLModel, table=True):
 
     # Foreign keys
     experiment: int = Field(foreign_key="experiment.id")
-    detection_settings: int | None = Field(
+    detection_settings_id: int | None = Field(
         default=None, foreign_key="detection_settings.id"
     )
     extraction_settings_id: int | None = Field(
@@ -130,7 +130,7 @@ class CaliResult(SQLModel, table=True):
             return False
         return (
             self.experiment == other.experiment
-            and self.detection_settings == other.detection_settings
+            and self.detection_settings_id == other.detection_settings_id
             and self.extraction_settings_id == other.extraction_settings_id
             and self.analysis_settings_id == other.analysis_settings_id
             and self.positions_detected == other.positions_detected
@@ -147,7 +147,7 @@ class CaliResult(SQLModel, table=True):
         return hash(
             (
                 self.experiment,
-                self.detection_settings,
+                self.detection_settings_id,
                 self.extraction_settings_id,
                 self.analysis_settings_id,
                 tuple(self.positions_detected) if self.positions_detected else None,

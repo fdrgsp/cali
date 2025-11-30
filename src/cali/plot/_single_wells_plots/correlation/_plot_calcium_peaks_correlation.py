@@ -93,7 +93,7 @@ def _calculate_cross_correlation(
             if run_id is not None:
                 result = session.get(CaliResult, run_id)
                 if result:
-                    detection_settings_id = result.detection_settings
+                    detection_settings_id = result.detection_settings_id
 
             stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
             if rois is not None:

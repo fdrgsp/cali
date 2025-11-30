@@ -255,7 +255,7 @@ def populated_db(mock_engine: Engine) -> Engine:
         # Create CaliResult
         result = CaliResult(
             experiment=exp.id,
-            detection_settings=det_settings.id,
+            detection_settings_id=det_settings.id,
             extraction_settings_id=ext_settings.id,
             analysis_settings_id=ana_settings.id,
             positions_analyzed=[0, 1, 2, 4],  # Test range grouping
@@ -544,7 +544,7 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
             cali_result = session.exec(select(CaliResult)).first()
             assert cali_result is not None
             assert cali_result.experiment == loaded_exp.id
-            assert cali_result.detection_settings == detection_settings.id
+            assert cali_result.detection_settings_id == detection_settings.id
             assert cali_result.extraction_settings_id == extraction_settings.id
             assert cali_result.analysis_settings_id == analysis_settings.id
 
@@ -1921,7 +1921,7 @@ def test_cali_result_eq_hash(populated_db: Engine) -> None:
         # Create a copy
         result2 = CaliResult(
             experiment=result1.experiment,
-            detection_settings=result1.detection_settings,
+            detection_settings_id=result1.detection_settings_id,
             extraction_settings_id=result1.extraction_settings_id,
             analysis_settings_id=result1.analysis_settings_id,
             positions_analyzed=result1.positions_analyzed,
@@ -1933,7 +1933,7 @@ def test_cali_result_eq_hash(populated_db: Engine) -> None:
         # Test inequality
         result3 = CaliResult(
             experiment=result1.experiment,
-            detection_settings=result1.detection_settings,
+            detection_settings_id=result1.detection_settings_id,
             extraction_settings_id=result1.extraction_settings_id,
             analysis_settings_id=result1.analysis_settings_id,
             positions_analyzed=[999],

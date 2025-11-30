@@ -97,7 +97,7 @@ def _plot_neuropil_traces(
 
         detection_settings_id: int | None = None
         if result:
-            detection_settings_id = result.detection_settings
+            detection_settings_id = result.detection_settings_id
 
         # Build query to get ROIs for this FOV with eager loading of related data
         stmt = (

@@ -10,7 +10,7 @@ from cali.sqlmodel._model import (
 )
 
 # Update this path to your actual database
-DB_PATH = "/Users/fdrgsp/Desktop/cali_test/evk.tensorstore.zarr.db"
+DB_PATH = "/Users/fdrgsp/Desktop/cali_test/resyults.cali"
 
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
@@ -24,7 +24,7 @@ with Session(engine) as session:
     for ar in analysis_results:
         print(f"\nCaliResult ID: {ar.id}")
         print(f"  Experiment: {ar.experiment}")
-        print(f"  DetectionSettings: {ar.detection_settings}")
+        print(f"  DetectionSettings: {ar.detection_settings_id}")
         print(f"  AnalysisSettings: {ar.analysis_settings_id}")
         print(f"  Positions: {ar.positions_analyzed}")
         print(f"  Traces linked via relationship: {len(ar.traces)}")

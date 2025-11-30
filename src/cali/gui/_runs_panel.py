@@ -141,7 +141,7 @@ class _RunsPanel(QGroupBox):
                 # Order by created_at ascending (most recent last)
                 stmt = (
                     select(CaliResult, DetectionSettings)
-                    .where(CaliResult.detection_settings == DetectionSettings.id)
+                    .where(CaliResult.detection_settings_id == DetectionSettings.id)
                     .order_by(CaliResult.created_at)
                 )
                 results = session.exec(stmt).all()
@@ -252,7 +252,7 @@ class _RunsPanel(QGroupBox):
             )
             with Session(engine) as session:
                 result = session.get(CaliResult, run_id)
-                detection_id = result.detection_settings if result else None
+                detection_id = result.detection_settings_id if result else None
             engine.dispose(close=True)
             return detection_id
         except Exception as e:
@@ -394,7 +394,9 @@ class _RunsPanel(QGroupBox):
                 # Find run with matching settings
                 query = select(CaliResult)
                 if detection_id is not None:
-                    query = query.where(CaliResult.detection_settings == detection_id)
+                    query = query.where(
+                        CaliResult.detection_settings_id == detection_id
+                    )
                 if extraction_id is not None:
                     query = query.where(
                         CaliResult.extraction_settings_id == extraction_id
@@ -438,7 +440,7 @@ class _RunsPanel(QGroupBox):
         # Format the display text
         created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
 
-        d_id = result.detection_settings
+        d_id = result.detection_settings_id
         item_text = (
             f"Run #{result.id} - {created_at}\n"
             f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
@@ -569,7 +571,7 @@ class _RunsPanel(QGroupBox):
                 if not result:
                     return
 
-                detection_id = result.detection_settings
+                detection_id = result.detection_settings_id
                 analysis_id = result.analysis_settings_id
 
                 # Delete the analysis result (cascades to Traces via relationship)
@@ -649,7 +651,9 @@ class _RunsPanel(QGroupBox):
         # Check if DetectionSettings are orphaned (not used by any other run)
         if detection_id is not None:
             other_runs_using_detection = session.exec(
-                select(CaliResult).where(CaliResult.detection_settings == detection_id)
+                select(CaliResult).where(
+                    CaliResult.detection_settings_id == detection_id
+                )
             ).first()
 
             if not other_runs_using_detection:

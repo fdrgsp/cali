@@ -64,7 +64,7 @@ def test_cali_result_equality_with_plate_map_hash() -> None:
     """Test CaliResult equality considers plate_map_hash."""
     result1 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=1,
         analysis_settings_id=1,
         plate_map_hash="abc123",
@@ -73,7 +73,7 @@ def test_cali_result_equality_with_plate_map_hash() -> None:
 
     result2 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=1,
         analysis_settings_id=1,
         plate_map_hash="abc123",  # Same hash
@@ -82,7 +82,7 @@ def test_cali_result_equality_with_plate_map_hash() -> None:
 
     result3 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         extraction_settings_id=1,
         analysis_settings_id=1,
         plate_map_hash="xyz789",  # Different hash
@@ -102,21 +102,21 @@ def test_cali_result_equality_none_plate_map_hash() -> None:
     """Test CaliResult equality when plate_map_hash is None."""
     result1 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         plate_map_hash=None,
         positions_detected=[0],
     )
 
     result2 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         plate_map_hash=None,
         positions_detected=[0],
     )
 
     result3 = CaliResult(
         experiment=1,
-        detection_settings=1,
+        detection_settings_id=1,
         plate_map_hash="abc123",
         positions_detected=[0],
     )
