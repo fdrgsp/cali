@@ -162,13 +162,53 @@ class _SingleWellGraphWidget(QWidget):
     # Public helpers used by plot functions
     # ------------------------------------------------------------------ #
     def clear_plot(self) -> None:
-        """Clear the plot (replacement for figure.clear())."""
-        self.plot_item.clear()
-        # Also clear & hide the shared legend
+        """Completely reset the plot before drawing a new one."""
+        plot = self.plot_item
+        if plot is None:
+            return
+
+        # 1) Disconnect any custom heatmap handlers we attached
+        scene = plot.scene()
+        for prop_name, signal_name in [
+            ("ccorr_hover_handler", "sigMouseMoved"),
+            ("ccorr_click_handler", "sigMouseClicked"),
+            ("sync_hover_handler", "sigMouseMoved"),
+            ("sync_click_handler", "sigMouseClicked"),
+        ]:
+            handler = plot.property(prop_name)
+            if handler is not None:
+                with contextlib.suppress(TypeError, RuntimeError):
+                    getattr(scene, signal_name).disconnect(handler)
+                plot.setProperty(prop_name, None)
+
+        # 2) Clear all items (curves, images, lines, etc.)
+        plot.clear()
+
+        # 3) Reset ViewBox transforms and ranges
+        vb = plot.getViewBox()
+        # back to normal "math" orientation for traces
+        vb.invertY(False)
+        # allow non-square aspect by default
+        vb.setAspectLocked(False)
+        # let pyqtgraph decide ranges next time
+        vb.enableAutoRange(x=True, y=True)
+
+        # 4) Reset axes: ticks + value visibility
+        for axis_name in ("left", "bottom"):
+            axis = plot.getAxis(axis_name)
+            # remove any custom ticks
+            axis.setTicks(None)
+            # show numeric labels again by default
+            axis.setStyle(showValues=True)
+
+        # 5) Reset labels & title
+        plot.setTitle("")
+        plot.setLabel("left", "")
+        plot.setLabel("bottom", "")
+
+        # 6) Hide shared legend if we have one
         if hasattr(self, "legend") and self.legend is not None:
-            # clear items if supported
-            if hasattr(self.legend, "clear"):
-                self.legend.clear()
+            self.legend.clear()
             self.legend.setVisible(False)
 
     def set_combo_text_red(self, state: bool) -> None:
