@@ -23,12 +23,12 @@ def create_stimulation_mask(stimulation_file: str) -> np.ndarray:
     unique = np.unique(blue_img)
     # if only pne values which is 1 (full fov illumination)
     if unique.size == 1 and unique[0] == 1:
-        return blue_img  # type: ignore
+        return blue_img
     # if only two values which are 0 and 1 (binary mask)
     elif unique.size == 2:
         # if the image is already a binary mask, return it
         if unique[0] == 0 and unique[1] == 1:
-            return blue_img  # type: ignore
+            return blue_img
     # apply Gaussian Blur to reduce noise
     blur = filters.gaussian(blue_img, sigma=2)
 
@@ -48,7 +48,7 @@ def create_stimulation_mask(stimulation_file: str) -> np.ndarray:
     # final closing with a larger structuring element
     final_mask = morphology.closing(eroded, selem_large)
 
-    return final_mask.astype(np.uint8)  # type: ignore
+    return final_mask.astype(np.uint8)
 
 
 def get_overlap_roi_with_stimulated_area(

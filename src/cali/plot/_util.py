@@ -623,4 +623,4 @@ def _create_connectivity_matrix(
     threshold = np.percentile(off_diagonal_values, threshold_percentile)
 
     # Create binary connectivity matrix
-    return (correlation_matrix >= threshold).astype(int)  # type: ignore [no-any-return]
+    return (correlation_matrix >= threshold).astype(int)
