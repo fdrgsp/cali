@@ -24,6 +24,7 @@ from cali.sqlmodel import (
     ROI,
     AnalysisSettings,
     CaliResult,
+    DataAnalysis,
     DetectionSettings,
     Experiment,
     ExtractionSettings,
@@ -2159,5 +2160,320 @@ def test_different_extraction_settings_creates_new_result(
             # But different extraction settings
             assert result1.extraction_settings_id == es1_id
             assert result2.extraction_settings_id != es1_id
+    finally:
+        engine.dispose()
+
+
+# =============================================================================
+# DELETE AND RERUN TESTS (regression tests for identity map issues after deletion)
+# =============================================================================
+
+
+def test_run_delete_run(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test run, delete CaliResult, run again doesn't cause identity map conflicts."""
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es = ExtractionSettings(neuropil_inner_radius=10)
+    as_ = AnalysisSettings(peaks_height_value=10.0)
+
+    # First run - full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify first run created result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            result_id = results[0].id
+    finally:
+        engine.dispose()
+
+    # Delete the CaliResult (simulate GUI deletion)
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.get(CaliResult, result_id)
+            session.delete(result)
+            session.commit()
+    finally:
+        engine.dispose()
+
+    # Verify deletion
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 0
+    finally:
+        engine.dispose()
+
+    # Second run - should work without identity map conflicts
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=1,  # Reuse by ID
+        extraction_settings=1,  # Reuse by ID
+        analysis_settings=1,  # Reuse by ID
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify second run created result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+    finally:
+        engine.dispose()
+
+
+def test_run_run_delete_one_run(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test run two analyses, delete one, run again doesn't cause conflicts."""
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es = ExtractionSettings(neuropil_inner_radius=10)
+    as1 = AnalysisSettings(peaks_height_value=10.0)
+    as2 = AnalysisSettings(peaks_height_value=15.0)
+
+    # First run - full pipeline with as1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Second run - same detection/extraction, different analysis
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=1,  # Reuse
+        extraction_settings=1,  # Reuse
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 2 results
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2
+            result_ids = [r.id for r in results]
+
+            # Check traces before deletion
+            traces_before = session.exec(select(Traces)).all()
+            print(f"Traces before deletion: {len(traces_before)}")
+    finally:
+        engine.dispose()
+
+    # Delete one CaliResult (the second one)
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result_to_delete = session.get(CaliResult, result_ids[1])
+            # Also delete associated traces and data analysis
+            traces_to_delete = session.exec(
+                select(Traces).where(Traces.analysis_result_id == result_ids[1])
+            ).all()
+            data_analysis_to_delete = session.exec(
+                select(DataAnalysis).where(
+                    DataAnalysis.analysis_result_id == result_ids[1]
+                )
+            ).all()
+            for trace in traces_to_delete:
+                session.delete(trace)
+            for da in data_analysis_to_delete:
+                session.delete(da)
+            session.delete(result_to_delete)
+            session.commit()
+
+            # Check traces after deletion
+            traces_after = session.exec(select(Traces)).all()
+            print(f"Traces after deletion: {len(traces_after)}")
+    finally:
+        engine.dispose()
+
+    # Verify one result remains
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+    finally:
+        engine.dispose()
+
+    # Third run - should work without identity map conflicts
+    as3 = AnalysisSettings(peaks_height_value=20.0)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=1,  # Reuse
+        extraction_settings=1,  # Reuse
+        analysis_settings=as3,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we now have 2 results again
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2
+    finally:
+        engine.dispose()
+
+
+def test_run_run_delete_all_run(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test run multiple times, delete all, run again doesn't cause conflicts."""
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es = ExtractionSettings(neuropil_inner_radius=10)
+    as1 = AnalysisSettings(peaks_height_value=10.0)
+    as2 = AnalysisSettings(peaks_height_value=15.0)
+    as3 = AnalysisSettings(peaks_height_value=20.0)
+
+    # First run - full pipeline with as1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Second run - same detection/extraction, different analysis
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=1,  # Reuse
+        extraction_settings=1,  # Reuse
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Third run - another different analysis
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=1,  # Reuse
+        extraction_settings=1,  # Reuse
+        analysis_settings=as3,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 3 results
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 3
+    finally:
+        engine.dispose()
+
+    # Delete ALL CaliResults
+    from sqlalchemy import text
+    from sqlmodel import delete
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.commit()
+        with Session(engine) as session:
+            # Delete all analysis results (cascades to Traces and DataAnalysis)
+            session.exec(delete(CaliResult))
+
+            # Delete ALL ROIs (cascades to Traces, DataAnalysis, and Masks)
+            session.exec(delete(ROI))
+
+            # Delete ALL settings (including orphaned ones from cancelled runs)
+            session.exec(delete(DetectionSettings))
+            session.exec(delete(ExtractionSettings))
+            session.exec(delete(AnalysisSettings))
+
+            session.commit()
+    finally:
+        engine.dispose()
+
+    # Verify no results remain
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 0
+            traces = session.exec(select(Traces)).all()
+            assert len(traces) == 0
+            data_analyses = session.exec(select(DataAnalysis)).all()
+            assert len(data_analyses) == 0
+    finally:
+        engine.dispose()
+
+    # Fourth run - should work without identity map conflicts
+    ds4 = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es4 = ExtractionSettings(neuropil_inner_radius=10)
+    as4 = AnalysisSettings(peaks_height_value=25.0)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds4,
+        extraction_settings=es4,
+        analysis_settings=as4,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 1 result again
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
     finally:
         engine.dispose()

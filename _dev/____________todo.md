@@ -16,12 +16,10 @@ ask to claude:
 
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
 
-- general improvement of how the database is handled durynt cali pipeline
+- general improvement of how the database is handled during cali pipeline
 
 - menu to save and load settings in CaliGui, they are dataclasses so we can save as json
 
 - replece red color in plot combo with unclickable item
 
-- when the analysis is done, we should not reload the plots, it can take time, instead we should first reset to selecting None.
-
-- acc correlation plots to evoked
+- add correlation plots to evoked experiments (one established is correct)

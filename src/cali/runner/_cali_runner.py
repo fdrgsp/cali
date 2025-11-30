@@ -631,6 +631,14 @@ class CaliRunner:
                             session, det_id, batch_positions
                         )
 
+                        # If this is a new analysis result, clear existing traces
+                        # to force recreation
+                        if analysis_result_was_created:
+                            for fov in loaded_fovs:
+                                for roi in fov.rois:
+                                    roi.traces_history.clear()
+                                    roi.data_analysis_history.clear()
+
                         # Detach FOVs from session to allow safe threading
                         # We must do this because SQLAlchemy objects are not thread-safe
                         # and _run_analysis uses a ThreadPoolExecutor.
@@ -664,6 +672,14 @@ class CaliRunner:
                                             roi.traces_history.append(trace)
                                         delattr(roi, "_new_traces")
 
+                                    # Set analysis_result_id for all traces that don't
+                                    # have it
+                                    for trace in roi.traces_history:
+                                        if trace.analysis_result_id is None:
+                                            trace.analysis_result_id = (
+                                                analysis_result_id
+                                            )
+
                                     # Process temporary new data analysis
                                     if hasattr(roi, "_new_data_analysis"):
                                         for data_analysis in roi._new_data_analysis:
@@ -674,6 +690,14 @@ class CaliRunner:
                                                 data_analysis
                                             )
                                         delattr(roi, "_new_data_analysis")
+
+                                    # Set analysis_result_id for all data_analysis that
+                                    # don't have it
+                                    for data_analysis in roi.data_analysis_history:
+                                        if data_analysis.analysis_result_id is None:
+                                            data_analysis.analysis_result_id = (
+                                                analysis_result_id
+                                            )
 
                             fov_count += 1
                             yield "PROGRESS:UPDATE"

@@ -437,7 +437,7 @@ class CaliGui(QMainWindow):
         self._output_path = str(Path(database_path).parent)
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path(self._database_path)
+        self._update_graph_properties(self._database_path)
 
         # PLATE------------------------------------------------------------------------
         plate_plan = experiment_to_useq_plate_plan(experiment)
@@ -473,7 +473,7 @@ class CaliGui(QMainWindow):
         self._output_path = output_path
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path(self._database_path)
+        self._update_graph_properties(self._database_path)
 
         # CHECK IF DATABASE EXISTS ----------------------------------------------------
         if Path(self._database_path).exists():
@@ -1146,7 +1146,7 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-            self._update_graph_with_database_path(self._database_path)
+            self._update_graph_properties(self._database_path)
         # update GUI with the latest run (latest run is at the end of the list)
         last_idx = self._runs_panel._runs_list.count() - 1
         # select last run (no signal emitted)
@@ -1350,17 +1350,9 @@ class CaliGui(QMainWindow):
         # reset runs panel
         self._runs_panel.clear()
 
-    def _update_graph_with_database_path(self, database_path: Path | str) -> None:
+    def _update_graph_properties(self, database_path: Path | str) -> None:
         """Update all graph widgets with the current database path and engine."""
         from sqlmodel import create_engine
-
-        # Dispose old engines to ensure connections are closed
-        for sw_graph in self.SW_GRAPHS:
-            if sw_graph.engine is not None:
-                sw_graph.engine.dispose(close=True)
-        for mw_graph in self.MW_GRAPHS:
-            if mw_graph.engine is not None:
-                mw_graph.engine.dispose(close=True)
 
         # Create new SQLAlchemy engine for database queries
         engine = create_engine(
@@ -1370,17 +1362,21 @@ class CaliGui(QMainWindow):
             pool_pre_ping=True,
         )
 
-        # Update all graph widgets with new database path and engine
         for sw_graph in self.SW_GRAPHS:
+            if sw_graph.engine is not None:
+                sw_graph.engine.dispose(close=True)
             sw_graph.database_path = database_path
             sw_graph.engine = engine
-            # Refresh the plot with new data
-            sw_graph._on_combo_changed(sw_graph._combo.currentText())
+            # Reset the plot to "None" to avoid plot loading issues
+            sw_graph._combo.setCurrentText("None")
+
         for mw_graph in self.MW_GRAPHS:
+            if mw_graph.engine is not None:
+                mw_graph.engine.dispose(close=True)
             mw_graph.database_path = database_path
             mw_graph.engine = engine
-            # Refresh the plot with new data
-            mw_graph._on_combo_changed(mw_graph._combo.currentText())
+            # Reset the plot to "None" to avoid plot loading issues
+            mw_graph._combo.setCurrentText("None")
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
