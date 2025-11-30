@@ -320,7 +320,7 @@ class CaliGui(QMainWindow):
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
 
         self._runs_panel.runSelected.connect(self._on_run_item_selected)
-        self._runs_panel.settingsDeleted.connect(self._on_settings_changed)
+        self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
@@ -332,7 +332,7 @@ class CaliGui(QMainWindow):
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
-        self._run_cali_wdg._cancel_btn.clicked.connect(self._runner.cancel)
+        self._run_cali_wdg._cancel_btn.clicked.connect(self._on_cali_cancel_clicked)
 
         self._elapsed_timer.elapsed_time_updated.connect(
             self._run_cali_wdg.set_time_label
@@ -368,13 +368,22 @@ class CaliGui(QMainWindow):
         # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
         # self._initialize_from_database(db_path, data_path)
 
-        self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/evoked/results.cali"
-        self._output_path = "tests/test_data/evoked/"
+        # self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
+        # self._database_path = "tests/test_data/spontaneous/results.cali"
+        # self._output_path = "tests/test_data/spontaneous/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/results_from_tiff.cali"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/tiffs.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+
+        # USED IN TESTS -------------------------------------------------
+        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/evoked/results.cali"
+        # self._output_path = "tests/test_data/evoked/"
+        # 2 pos data
+        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        self._output_path = "tests/test_data/2pos/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -520,8 +529,8 @@ class CaliGui(QMainWindow):
                 if self._data.sequence is None:
                     show_error_dialog(
                         self,
-                        "useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                        "the useq.MDASequence in the datastore metadata!",
+                        "❌ useq.MDASequence not found! Cannot use the  `CaliGui` "
+                        "without the useq.MDASequence in the datastore metadata!",
                     )
                     self._loading_bar.hide()
                     return
@@ -645,7 +654,7 @@ class CaliGui(QMainWindow):
         if self._data.sequence is None:
             show_error_dialog(
                 self,
-                "useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
                 "the useq.MDASequence in the datastore metadata!",
             )
             self._loading_bar.hide()
@@ -774,6 +783,112 @@ class CaliGui(QMainWindow):
             return 4  # Extraction Only (require detection)
         return 5  # Analysis Only (require detection and extraction)
 
+    def _check_positions_missing_detection(
+        self, detection_settings_id: int, positions: list[int]
+    ) -> list[int]:
+        """Check which positions are missing detection data.
+
+        Parameters
+        ----------
+        detection_settings_id : int
+            Detection settings ID to check
+        positions : list[int]
+            List of position indices to check
+
+        Returns
+        -------
+        list[int]
+            List of position indices missing detection data
+        """
+        if not self._database_path:
+            return []
+
+        from sqlmodel import Session, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Find positions that already have ROIs with this detection
+                existing_positions = session.exec(
+                    select(FOV.position_index)
+                    .join(ROI)
+                    .where(
+                        ROI.detection_settings_id == detection_settings_id,
+                        FOV.position_index.in_(positions),  # type: ignore
+                    )
+                    .distinct()
+                ).all()
+
+                existing_set = set(existing_positions)
+                return [p for p in positions if p not in existing_set]
+        finally:
+            engine.dispose(close=True)
+
+    def _check_positions_missing_extraction(
+        self,
+        detection_settings_id: int,
+        extraction_settings_id: int,
+        positions: list[int],
+    ) -> list[int]:
+        """Check which positions are missing extraction data.
+
+        Parameters
+        ----------
+        detection_settings_id : int
+            Detection settings ID to check
+        extraction_settings_id : int
+            Extraction settings ID to check
+        positions : list[int]
+            List of position indices to check
+
+        Returns
+        -------
+        list[int]
+            List of position indices missing extraction data
+        """
+        if not self._database_path:
+            return []
+
+        from sqlmodel import Session, create_engine, select
+
+        from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Find positions that have Traces with this combination
+                existing_positions = session.exec(
+                    select(FOV.position_index)
+                    .join(ROI)
+                    .join(Traces)
+                    .where(
+                        ROI.detection_settings_id == detection_settings_id,
+                        Traces.analysis_result_id.in_(  # type: ignore
+                            select(CaliResult.id).where(
+                                CaliResult.extraction_settings_id
+                                == extraction_settings_id
+                            )
+                        ),
+                        FOV.position_index.in_(positions),  # type: ignore
+                    )
+                    .distinct()
+                ).all()
+
+                existing_set = set(existing_positions)
+                return [p for p in positions if p not in existing_set]
+        finally:
+            engine.dispose(close=True)
+
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
 
     def _on_cali_run_clicked(self) -> None:
@@ -790,21 +905,78 @@ class CaliGui(QMainWindow):
 
             value = self._run_cali_wdg.value()
 
+            # Get positions list early since we need it for validation
+            pos = value.positions or list(
+                range(len(self._data.sequence.stage_positions))
+            )
+
+            # Track if we've already assigned settings (to prevent overwriting)
+            detection_settings = None
+            extraction_settings = None
+
             # Get extraction settings - either from GUI or selected ID (analysis-only)
             if value.run_analysis and not value.run_extraction:
                 # Analysis-only mode: use existing extraction settings ID
                 extraction_settings_id = value.extraction_settings_id
-                if extraction_settings_id is None:
+                detection_settings_id_check = value.detection_settings_id
+                if (
+                    extraction_settings_id is None
+                    or detection_settings_id_check is None
+                ):
+                    missing = []
+                    if detection_settings_id_check is None:
+                        missing.append("Detection ID")
+                    if extraction_settings_id is None:
+                        missing.append("Extraction ID")
                     show_error_dialog(
                         self,
-                        "Please select an Extraction ID to run analysis-only mode.",
+                        f"❌ Please select {' and '.join(missing)} to run "
+                        f"analysis-only mode.",
                     )
                     return
                 extraction_settings = extraction_settings_id
-            elif value.run_extraction:
+
+                # Check if selected positions have both detection and extraction data
+                missing_detection = self._check_positions_missing_detection(
+                    detection_settings_id_check, pos
+                )
+                missing_extraction = self._check_positions_missing_extraction(
+                    detection_settings_id_check, extraction_settings_id, pos
+                )
+
+                if missing_detection or missing_extraction:
+                    msg = "Data Missing for Analysis\n\n"
+                    if missing_detection:
+                        msg = msg + f"Missing detection data: {missing_detection}"
+                    if missing_extraction:
+                        msg = msg + f"Missing extraction data: {missing_extraction}"
+
+                    msg = msg + (
+                        "\n\nDo you want to run the full pipeline (detection + "
+                        "extraction + analysis) on these positions?\n"
+                        "(If you select 'No', only positions with existing "
+                        "data will be processed)."
+                    )
+                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
+                    if mbox.exec():  # type: ignore
+                        # User wants to run full pipeline - switch modes
+                        # Use the selected IDs from combo boxes, not GUI widgets
+                        value = CaliRunSettings(
+                            positions=value.positions,
+                            run_detection=True,
+                            run_extraction=True,
+                            run_analysis=True,
+                            detection_settings_id=None,
+                            extraction_settings_id=None,
+                        )
+                        # Use the IDs that were selected in the combo boxes
+                        detection_settings = detection_settings_id_check
+                        extraction_settings = extraction_settings_id
+            elif value.run_extraction and extraction_settings is None:
                 # Extraction or Detection+Extraction mode: get from GUI
+                # (only if not already set from dialog above)
                 extraction_settings = self._extraction_wdg.to_model_settings()
-            else:
+            elif extraction_settings is None:
                 extraction_settings = None
 
             # Get analysis settings if needed
@@ -828,8 +1000,8 @@ class CaliGui(QMainWindow):
                         missing_fields.append("LED pulse on frames (Analysis tab)")
                     if missing_fields:
                         msg = (
-                            "Evoked experiment type selected but required fields are "
-                            "missing:\n\n"
+                            "❌ Evoked experiment type selected but required fields "
+                            "are missing:\n\n"
                             + "\n".join(f"{field}" for field in missing_fields)
                             + "\n\nPlease configure these settings in the "
                             "Extraction tab."
@@ -844,12 +1016,44 @@ class CaliGui(QMainWindow):
                 if detection_settings_id is None:
                     show_error_dialog(
                         self,
-                        "Please select a Detection ID to run extraction-only mode.",
+                        "❌ Please select a Detection ID to run extraction-only mode.",
                     )
                     return
                 detection_settings = detection_settings_id
-            else:
+
+                # Check if selected positions have detection data
+                missing_detection = self._check_positions_missing_detection(
+                    detection_settings_id, pos
+                )
+                if missing_detection:
+                    msg = "Detection Data Missing\n\n"
+                    msg += "The following positions are missing detection data:\n"
+                    msg += f"{missing_detection}\n\n"
+                    msg += "Do you want to run detection first on these positions?\n"
+                    msg += (
+                        "(If you select 'No', only positions with existing detection "
+                        "will be processed)."
+                    )
+                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
+                    if mbox.exec():  # type: ignore
+                        # User wants to run detection first - switch to full pipeline
+                        # Use the selected detection ID from combo box, not GUI widget
+                        value = CaliRunSettings(
+                            positions=value.positions,
+                            run_detection=True,
+                            run_extraction=True,
+                            run_analysis=value.run_analysis,
+                            detection_settings_id=None,
+                            extraction_settings_id=None,
+                        )
+                        # Use the detection ID that was selected in the combo box
+                        detection_settings = detection_settings_id
+                        # For extraction, use GUI widget since we're in
+                        # extraction-only mode
+                        extraction_settings = self._extraction_wdg.to_model_settings()
+            elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
+                # (only if not already set from dialog above)
                 detection_settings = self._detection_wdg.to_model_settings()
 
             pos = value.positions or list(
@@ -858,7 +1062,7 @@ class CaliGui(QMainWindow):
 
             # Initialize progress bar and timer
             self._run_cali_wdg.reset_progress_bar()
-            self._run_cali_wdg.set_progress_bar_text("🏁 Initializing...")
+            self._run_cali_wdg.set_progress_bar_text("🚀 Initializing...")
             self._elapsed_timer.start()
 
             # Save plate map data to database before running
@@ -931,63 +1135,35 @@ class CaliGui(QMainWindow):
             error_msg = str(error)
 
         cali_logger.error(
-            f"❌ Runner encountered an error during execution:\n{error_msg}"
+            f"❌ Cali Runner encountered an error during execution:\n{error_msg}"
         )
 
         # Also show error dialog to user
-        show_error_dialog(self, f"Runner Error:\n\n{error}")
+        show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
+
+    def _on_cali_cancel_clicked(self) -> None:
+        """Handle cancellation of the runner."""
+        self._runner.cancel()
+        self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
 
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
-        cali_logger.info("✅ Runner finished successfully.")
         self._elapsed_timer.stop()
-        self._run_cali_wdg.set_progress_bar_text("Run Finished")
+        self._run_cali_wdg.set_progress_bar_text("🏁 Cali Run Finished")
         # refresh the runs panel
         self._runs_panel.refresh_runs()
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-
-        # Highlight the run that matches the settings just used
-        value = self._run_cali_wdg.value()
-        detection_id = extraction_id = analysis_id = None
-
-        # Get detection ID - either from run or from last created
-        if value.detection_settings_id is not None:
-            detection_id = value.detection_settings_id
-        else:
-            # Find the most recent detection settings ID
-            detection_ids = self._runs_panel.get_detection_settings_ids()
-            if detection_ids:
-                detection_id = detection_ids[-1]  # Most recent
-
-        # Get extraction ID if extraction was run
-        if value.run_extraction:
-            if value.extraction_settings_id is not None:
-                extraction_id = value.extraction_settings_id
-            else:
-                extraction_ids = self._runs_panel.get_extraction_settings_ids()
-                if extraction_ids:
-                    extraction_id = extraction_ids[-1]  # Most recent
-
-        # Get analysis ID if analysis was run
-        if value.run_analysis:
-            analysis_ids = self._runs_panel.get_analysis_settings_ids()
-            if analysis_ids:
-                analysis_id = analysis_ids[-1]  # Most recent
-
-        # Highlight matching run
-        self._runs_panel.highlight_run_by_settings(
-            detection_id, extraction_id, analysis_id
-        )
-
-        # Refresh the engine to see newly written data AFTER highlighting the run
-        # This ensures the run_id is set before refreshing plots
-        if self._database_path:
             self._update_graph_with_database_path(self._database_path)
-
-        # Refresh the FOV table selection to update the display
+        # update GUI with the latest run (latest run is at the end of the list)
+        last_idx = self._runs_panel._runs_list.count() - 1
+        # select last run (no signal emitted)
+        self._runs_panel.select_run_by_index(last_idx, block_signals=True)
+        # Update run_id in all graph widgets
+        self._update_graph_with_run_id(self._runs_panel.get_run_id_by_index(last_idx))
+        # Refresh the image viewer to update labels with the new detection settings
         self._on_fov_table_selection_changed()
 
     def _save_plate_map_to_database(self) -> None:
@@ -1084,8 +1260,8 @@ class CaliGui(QMainWindow):
         finally:
             engine.dispose(close=True)
 
-    def _on_settings_changed(self) -> None:
-        """Handle settings changed signal from runs panel (e.g., after deletion)."""
+    def _on_settings_deleted(self) -> None:
+        """Handle settings deleted signal from runs panel (e.g., after deletion)."""
         if self._database_path:
             # Repopulate detection settings, preserving current selection if possible
             self._populate_settings(self._database_path)
@@ -1427,12 +1603,12 @@ class CaliGui(QMainWindow):
 
     def _on_led_info_from_meta_clicked(self) -> None:
         if self._data is None:
-            show_error_dialog(self, "Data not loaded! Cannot find metadata!")
+            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
             return
 
         try:
             if (sequence := self._data.sequence) is None:
-                msg = "useq.MDASequence not found! Cannot retrieve metadata!"
+                msg = "❌ useq.MDASequence not found! Cannot retrieve metadata!"
                 show_error_dialog(self, msg)
                 cali_logger.error(msg)
                 return
@@ -1468,12 +1644,12 @@ class CaliGui(QMainWindow):
                     )
 
             else:
-                msg = "No stimulation metadata found in the datastore!"
+                msg = "❌ No stimulation metadata found in the datastore!"
                 show_error_dialog(self, msg)
                 cali_logger.warning(msg)
 
         except Exception as e:
-            msg = f"Failed to load metadata from datastore!\n\nError: {e}"
+            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
             return
@@ -1541,7 +1717,7 @@ class CaliGui(QMainWindow):
         if self._data.sequence is None:
             show_error_dialog(
                 self,
-                "useq.MDASequence not found! Cannot retrieve the Well data without "
+                "❌ useq.MDASequence not found! Cannot retrieve the Well data without "
                 "the tensorstore useq.MDASequence!",
             )
             return
@@ -1810,7 +1986,8 @@ class CaliGui(QMainWindow):
         if self._data is None or (sequence := self._data.sequence) is None:
             show_error_dialog(
                 self,
-                "No data to save or useq.MDASequence not found! Cannot save the data.",
+                "❌ No data to save or useq.MDASequence not found! "
+                "Cannot save the data.",
             )
             return
 
@@ -1821,7 +1998,8 @@ class CaliGui(QMainWindow):
 
             if not Path(path).is_dir():
                 show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
+                    self,
+                    f"❌ The path {path} is not a directory! Cannot save the data.",
                 )
                 return
 
@@ -1880,11 +2058,15 @@ class CaliGui(QMainWindow):
         """Show the save as csv dialog."""
         # Check if experiment has analysis data
         if self._database_path is None:
-            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            show_error_dialog(
+                self, "❌ No data to save! Run or load analysis data first."
+            )
             return
 
         if not has_experiment_analysis(self._database_path):
-            show_error_dialog(self, "No data to save! Run or load analysis data first.")
+            show_error_dialog(
+                self, "❌ No data to save! Run or load analysis data first."
+            )
             return
 
         dialog = _SaveAsCSV(self)
@@ -1894,7 +2076,8 @@ class CaliGui(QMainWindow):
             path = dialog.value()
             if not Path(path).is_dir():
                 show_error_dialog(
-                    self, f"The path {path} is not a directory! Cannot save the data."
+                    self,
+                    f"❌ The path {path} is not a directory! Cannot save the data.",
                 )
                 return
 
@@ -1902,7 +2085,5 @@ class CaliGui(QMainWindow):
             # save_trace_data_to_csv(path, self._experiment)
             # save_analysis_data_to_csv(path, self._experiment)
             show_error_dialog(
-                self,
-                "CSV export is not yet implemented for SQLModel. "
-                "Please use the database export instead.",
+                self, "❌ CSV export is not yet implemented for SQLModel."
             )

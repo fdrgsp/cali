@@ -400,3 +400,218 @@ def test_combo_visibility_changes(qtbot: QtBot) -> None:
     gui._run_cali_wdg._run_options_combo.setCurrentIndex(1)
     assert not gui._run_cali_wdg._detection_settings_combo.isVisible()
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
+
+
+def test_on_worker_finished_selects_last_run(qtbot: QtBot) -> None:
+    """Test that _on_worker_finished selects the last run in the runs panel."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+    gui.show()
+    qtbot.waitExposed(gui)
+
+    # Add some items to the runs list to simulate existing runs
+    gui._runs_panel._runs_list.addItem("Run 1")
+    gui._runs_panel._runs_list.addItem("Run 2")
+    gui._runs_panel._runs_list.addItem("Run 3")
+
+    # Set run IDs in the item data (assuming Qt.ItemDataRole.UserRole stores the run ID)
+    from qtpy.QtCore import Qt
+
+    item0 = gui._runs_panel._runs_list.item(0)
+    assert item0 is not None
+    item0.setData(Qt.ItemDataRole.UserRole, 1)
+
+    item1 = gui._runs_panel._runs_list.item(1)
+    assert item1 is not None
+    item1.setData(Qt.ItemDataRole.UserRole, 2)
+
+    item2 = gui._runs_panel._runs_list.item(2)
+    assert item2 is not None
+    item2.setData(Qt.ItemDataRole.UserRole, 3)
+
+    # Mock refresh_runs to do nothing so items remain
+    import unittest.mock
+
+    with unittest.mock.patch.object(gui._runs_panel, "refresh_runs"):
+        # Call the method that should select the last run
+        gui._on_worker_finished()
+
+    # Check that the last item (index 2) is selected
+    assert gui._runs_panel._runs_list.currentRow() == 2
+
+    # Check that the graphs have been updated with the last run ID
+    # Assuming there are graphs in SW_GRAPHS
+    if gui.SW_GRAPHS:
+        assert gui.SW_GRAPHS[0].run_id == 3
+    if gui.MW_GRAPHS:
+        assert gui.MW_GRAPHS[0].run_id == 3
+
+    # Cleanup
+    gui.close()
+
+
+def test_check_positions_missing_detection(
+    qtbot: QtBot, temp_db_with_detection: Path
+) -> None:
+    """Test the helper method that checks for missing detection data."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    gui._database_path = str(temp_db_with_detection)
+
+    # With no ROIs in the database, all positions should be missing
+    missing = gui._check_positions_missing_detection(1, [0, 1, 2])
+    assert missing == [0, 1, 2]
+
+    # Add some ROIs for position 0
+    from cali.sqlmodel._model import FOV, ROI
+
+    engine = create_engine(f"sqlite:///{temp_db_with_detection}")
+    with Session(engine) as session:
+        fov = FOV(name="fov_0", position_index=0, experiment_id=1)
+        session.add(fov)
+        session.commit()
+        session.refresh(fov)
+
+        roi = ROI(
+            label_value=1,
+            fov_id=fov.id,
+            detection_settings_id=1,
+        )
+        session.add(roi)
+        session.commit()
+
+    # Now position 0 should not be missing, but 1 and 2 should be
+    missing = gui._check_positions_missing_detection(1, [0, 1, 2])
+    assert missing == [1, 2]
+
+    engine.dispose()
+    gui.close()
+
+
+def test_check_positions_missing_extraction(
+    qtbot: QtBot, temp_db_with_extraction: Path
+) -> None:
+    """Test the helper method that checks for missing extraction data."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    gui._database_path = str(temp_db_with_extraction)
+
+    # With no traces in the database, all positions should be missing
+    missing = gui._check_positions_missing_extraction(1, 1, [0, 1, 2])
+    assert missing == [0, 1, 2]
+
+    # Add FOV, ROI, CaliResult, and Traces for position 0
+    from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
+
+    engine = create_engine(f"sqlite:///{temp_db_with_extraction}")
+    with Session(engine) as session:
+        # Create CaliResult first
+        result = CaliResult(
+            experiment=1,
+            detection_settings=1,
+            extraction_settings_id=1,
+            positions_analyzed=[0],
+        )
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+        # Create FOV
+        fov = FOV(name="fov_0", position_index=0, experiment_id=1)
+        session.add(fov)
+        session.commit()
+        session.refresh(fov)
+
+        # Create ROI
+        roi = ROI(
+            label_value=1,
+            fov_id=fov.id,
+            detection_settings_id=1,
+        )
+        session.add(roi)
+        session.commit()
+        session.refresh(roi)
+
+        # Create Traces
+        traces = Traces(
+            roi_id=roi.id,
+            analysis_result_id=result.id,
+            raw_trace=[1.0, 2.0, 3.0],
+        )
+        session.add(traces)
+        session.commit()
+
+    # Now position 0 should not be missing, but 1 and 2 should be
+    missing = gui._check_positions_missing_extraction(1, 1, [0, 1, 2])
+    assert missing == [1, 2]
+
+    engine.dispose()
+    gui.close()
+
+
+def test_analysis_only_requires_both_ids(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that analysis-only mode requires both detection and extraction IDs."""
+    from unittest.mock import MagicMock
+
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Set up mock data
+    gui._database_path = "test.cali"
+    gui._data = MagicMock()
+    gui._data.sequence = MagicMock()
+    gui._data.sequence.stage_positions = [MagicMock()]
+
+    # Mock show_error_dialog to track calls
+    error_calls = []
+
+    def mock_error_dialog(parent: object, msg: str) -> None:
+        error_calls.append(msg)
+
+    monkeypatch.setattr("cali.gui._cali_gui.show_error_dialog", mock_error_dialog)
+
+    # Mock Experiment.load_from_db
+    mock_exp = MagicMock()
+    monkeypatch.setattr(
+        "cali.gui._cali_gui.Experiment.load_from_db", lambda *args, **kwargs: mock_exp
+    )
+
+    # Test: Analysis-only with only extraction ID (missing detection ID)
+    gui._run_cali_wdg._run_options_combo.setCurrentIndex(5)  # Analysis Only
+    gui._run_cali_wdg._extraction_settings_combo.addItem("Extraction 1", 1)
+    gui._run_cali_wdg._extraction_settings_combo.setCurrentIndex(1)
+    # Detection combo is empty (no detection ID selected)
+
+    gui._on_cali_run_clicked()
+
+    assert len(error_calls) == 1
+    assert "Detection ID" in error_calls[0]
+
+    # Test: Analysis-only with only detection ID (missing extraction ID)
+    error_calls.clear()
+    gui._run_cali_wdg._detection_settings_combo.addItem("Detection 1", 1)
+    gui._run_cali_wdg._detection_settings_combo.setCurrentIndex(1)
+    # Clear extraction combo to None
+    gui._run_cali_wdg._extraction_settings_combo.clear()
+    gui._run_cali_wdg._extraction_settings_combo.addItem("Select...", None)
+
+    gui._on_cali_run_clicked()
+
+    assert len(error_calls) == 1
+    assert "Extraction ID" in error_calls[0]
+
+    # Test: Analysis-only with neither ID
+    error_calls.clear()
+    gui._run_cali_wdg._detection_settings_combo.clear()
+    gui._run_cali_wdg._detection_settings_combo.addItem("Select...", None)
+
+    gui._on_cali_run_clicked()
+
+    assert len(error_calls) == 1
+    assert "Detection ID" in error_calls[0] and "Extraction ID" in error_calls[0]
+
+    gui.close()

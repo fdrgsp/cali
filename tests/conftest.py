@@ -25,7 +25,7 @@ if sys.platform == "win32":
 @pytest.fixture
 def data_path() -> Path:
     """Return path to test data."""
-    path = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
+    path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
     if not path.exists():
         pytest.skip(f"Test data not found at {path}")
     return path

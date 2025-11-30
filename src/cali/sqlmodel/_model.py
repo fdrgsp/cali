@@ -100,6 +100,10 @@ class CaliResult(SQLModel, table=True):
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id"
     )
+
+    # Progressive tracking of pipeline stages
+    positions_detected: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    positions_extracted: list[int] | None = Field(default=None, sa_column=Column(JSON))
     positions_analyzed: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     # Relationships
@@ -113,7 +117,8 @@ class CaliResult(SQLModel, table=True):
 
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
-          analysis_settings, positions_analyzed
+          analysis_settings, positions_detected, positions_extracted,
+          positions_analyzed
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -125,6 +130,8 @@ class CaliResult(SQLModel, table=True):
             and self.detection_settings == other.detection_settings
             and self.extraction_settings_id == other.extraction_settings_id
             and self.analysis_settings_id == other.analysis_settings_id
+            and self.positions_detected == other.positions_detected
+            and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
         )
 
@@ -139,6 +146,8 @@ class CaliResult(SQLModel, table=True):
                 self.detection_settings,
                 self.extraction_settings_id,
                 self.analysis_settings_id,
+                tuple(self.positions_detected) if self.positions_detected else None,
+                tuple(self.positions_extracted) if self.positions_extracted else None,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
             )
         )

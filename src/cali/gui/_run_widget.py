@@ -192,6 +192,7 @@ class _RunCaliWidget(QWidget):
         self._run_options_lbl.setEnabled(state)
         self._run_options_combo.setEnabled(state)
         self._detection_settings_combo.setEnabled(state)
+        self._extraction_settings_combo.setEnabled(state)
         self._run_btn.setEnabled(state)
 
     def progress_bar_maximum(self) -> int:
@@ -379,7 +380,7 @@ class _RunCaliWidget(QWidget):
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
             else:
-                extraction_only_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                extraction_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if current_index == 4:
                     self._run_options_combo.setCurrentIndex(0)
 
@@ -390,7 +391,7 @@ class _RunCaliWidget(QWidget):
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
             else:
-                extraction_and_analysis_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                extraction_and_analysis_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if current_index == 2:
                     self._run_options_combo.setCurrentIndex(0)
 
@@ -402,7 +403,7 @@ class _RunCaliWidget(QWidget):
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
             else:
-                analysis_only_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                analysis_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if current_index == 5:
                     self._run_options_combo.setCurrentIndex(0)
 

@@ -97,7 +97,10 @@ class AnalysisRunner:
             if fov_result is not None:
                 yield fov_result
 
-        cali_logger.info("✅ Analysis complete!")
+        if self._cancellation_event.is_set():
+            cali_logger.info("🛑 Analysis Cancelled!")
+        else:
+            cali_logger.info("✅ Analysis complete!")
 
     def _check_for_abort_requested(self) -> bool:
         """Check if cancellation has been requested."""
@@ -145,9 +148,6 @@ class AnalysisRunner:
 
                     full_tb = traceback.format_exc()
                     cali_logger.error(f"Exception in analysis thread: {full_tb}")
-
-        if cancel_event.is_set():
-            cali_logger.info("❌ Analysis Cancelled")
 
     def _analyze_fov(
         self,

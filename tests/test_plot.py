@@ -66,7 +66,7 @@ def test_plot_stimulated_vs_non_stimulated_traces(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting stimulated vs non-stimulated normalized traces."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
@@ -89,7 +89,7 @@ def test_plot_stimulated_vs_non_stimulated_traces_with_peaks(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting stimulated vs non-stimulated traces with peaks."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
@@ -109,7 +109,7 @@ def test_plot_stimulated_vs_non_stimulated_traces_no_run(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting with no run_id selected."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stimulated_vs_non_stimulated_roi_traces,
     )
 
@@ -130,7 +130,7 @@ def test_plot_stimulated_vs_non_stimulated_spike_traces(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting stimulated vs non-stimulated spike traces."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stimulated_vs_non_stimulated_spike_traces,
     )
 
@@ -150,7 +150,7 @@ def test_plot_stimulated_peak_amplitudes(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting stimulated ROI peak amplitudes."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stim_or_not_stim_peaks_amplitude,
     )
 
@@ -171,7 +171,7 @@ def test_plot_non_stimulated_peak_amplitudes(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test plotting non-stimulated ROI peak amplitudes."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_stim_or_not_stim_peaks_amplitude,
     )
 
@@ -192,7 +192,7 @@ def test_visualize_stimulated_area(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test visualizing stimulated area."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _visualize_stimulated_area,
     )
 
@@ -213,7 +213,7 @@ def test_plot_evoked_experiment_data(
     mock_widget: MagicMock, evoked_engine: Engine
 ) -> None:
     """Test main evoked experiment data plotting function."""
-    from cali.plot._single_wells_plots._plolt_evoked_experiment_data_plots import (
+    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
         _plot_evoked_experiment_data,
     )
 
@@ -466,7 +466,7 @@ def test_plot_inferred_spikes_raw(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting raw inferred spikes."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -491,7 +491,7 @@ def test_plot_inferred_spikes_normalized(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting normalized inferred spikes."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -516,7 +516,7 @@ def test_plot_inferred_spikes_with_dec_dff(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spikes with deconvolved dff traces."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -541,7 +541,7 @@ def test_plot_inferred_spikes_active_only(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spikes for active ROIs only."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -566,7 +566,7 @@ def test_plot_inferred_spikes_with_threshold(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spikes with threshold for single ROI."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -592,7 +592,7 @@ def test_plot_inferred_spikes_specific_rois(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spikes for specific ROIs."""
-    from cali.plot._single_wells_plots._plot_inferred_spikes import (
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
         _plot_inferred_spikes,
     )
 
@@ -623,7 +623,7 @@ def test_plot_calcium_peaks_raster(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peaks raster plot."""
-    from cali.plot._single_wells_plots._plot_calcium_peaks_raster_plots import (
+    from cali.plot._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
         _generate_raster_plot,
     )
 
@@ -646,7 +646,7 @@ def test_plot_calcium_peaks_raster_with_amplitude_colors(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peaks raster with amplitude colors."""
-    from cali.plot._single_wells_plots._plot_calcium_peaks_raster_plots import (
+    from cali.plot._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
         _generate_raster_plot,
     )
 
@@ -669,7 +669,7 @@ def test_plot_inferred_spike_raster(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spike raster."""
-    from cali.plot._single_wells_plots._plot_inferred_spike_raster_plots import (
+    from cali.plot._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
         _generate_spike_raster_plot,
     )
 
@@ -697,7 +697,7 @@ def test_plot_calcium_amplitudes(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peak amplitudes."""
-    from cali.plot._single_wells_plots import (
+    from cali.plot._single_wells_plots.metrics import (
         _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
     )
 
@@ -720,7 +720,7 @@ def test_plot_calcium_frequencies(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peak frequencies."""
-    from cali.plot._single_wells_plots import (
+    from cali.plot._single_wells_plots.metrics import (
         _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
     )
 
@@ -748,7 +748,7 @@ def test_plot_calcium_peaks_iei(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peaks inter-event intervals."""
-    from cali.plot._single_wells_plots._plot_calcium_peaks_iei_data import (
+    from cali.plot._single_wells_plots.metrics._plot_calcium_peaks_iei_data import (
         _plot_iei_data,
     )
 
@@ -774,7 +774,7 @@ def test_plot_calcium_network_connectivity(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium network connectivity."""
-    from cali.plot._single_wells_plots._plot_calcium_network_connectivity import (
+    from cali.plot._single_wells_plots.correlation._plot_calcium_network_connectivity import (  # noqa E50
         _plot_connectivity_network_data,
     )
 
@@ -795,7 +795,7 @@ def test_plot_calcium_peaks_correlation(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peaks correlation heatmap."""
-    from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
+    from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (  # noqa E50
         _plot_cross_correlation_data,
     )
 
@@ -816,7 +816,7 @@ def test_plot_inferred_spike_correlation(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spike correlation heatmap."""
-    from cali.plot._single_wells_plots._plot_inferred_spike_correlation import (
+    from cali.plot._single_wells_plots.correlation._plot_inferred_spike_correlation import (  # noqa E50
         _plot_spike_cross_correlation_data,
     )
 
@@ -842,7 +842,7 @@ def test_plot_calcium_peaks_synchrony(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting calcium peaks synchrony."""
-    from cali.plot._single_wells_plots._plot_calcium_peaks_synchrony import (
+    from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (  # noqa E50
         _plot_peak_event_synchrony_data,
     )
 
@@ -863,7 +863,7 @@ def test_plot_inferred_spike_synchrony(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spike synchrony."""
-    from cali.plot._single_wells_plots._plot_inferred_spike_synchrony import (
+    from cali.plot._single_wells_plots.correlation._plot_inferred_spike_synchrony import (  # noqa E50
         _plot_spike_synchrony_data,
     )
 
@@ -889,7 +889,7 @@ def test_plot_inferred_spike_burst_activity(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting inferred spike burst activity."""
-    from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+    from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (  # noqa E501
         _plot_inferred_spike_burst_activity,
     )
 
@@ -915,7 +915,7 @@ def test_plot_cell_size(
     mock_widget: MagicMock,
 ) -> None:
     """Test plotting cell size distribution."""
-    from cali.plot._single_wells_plots._plot_cell_size import (
+    from cali.plot._single_wells_plots.metrics._plot_cell_size import (
         _plot_cell_size_data,
     )
 

@@ -133,9 +133,15 @@ class ExtractionRunner:
                 yield fov_result
 
         if analysis_settings is None:
-            msg = "✅ Extraction complete!"
+            if self._cancellation_event.is_set():
+                msg = "🛑 Extraction Cancelled!"
+            else:
+                msg = "✅ Extraction complete!"
         else:
-            msg = "✅ Extraction and Analysis complete!"
+            if self._cancellation_event.is_set():
+                msg = "🛑 Extraction and Analysis Cancelled!"
+            else:
+                msg = "✅ Extraction and Analysis complete!"
         cali_logger.info(msg)
 
     # -------------------------PRIVATE METHODS-----------------------------------
@@ -193,9 +199,6 @@ class ExtractionRunner:
 
                     full_tb = traceback.format_exc()
                     cali_logger.error(f"Exception in extraction thread: {full_tb}")
-
-        if cancel_event.is_set():
-            cali_logger.info("❌ Run Cancelled")
 
     def _analyze_position(
         self,

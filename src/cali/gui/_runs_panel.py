@@ -154,296 +154,63 @@ class _RunsPanel(QGroupBox):
         except Exception as e:
             cali_logger.error(f"Error loading runs: {e}")
 
-    def _add_run_item(
-        self, result: CaliResult, detection_settings: DetectionSettings
-    ) -> None:
-        """Add a run item to the list.
+    def select_run_by_index(self, idx: int, block_signals: bool = False) -> None:
+        """Select a run by its index in the list.
 
         Parameters
         ----------
-        result : CaliResult
-            The analysis result to add
-        detection_settings : DetectionSettings
-            The detection settings associated with the result
+        idx : int
+            Index of the run to select
+        block_signals : bool
+            Whether to block signals during selection (default: False)
         """
-        # Format the display text
-        created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        if 0 <= idx < self._runs_list.count():
+            item = self._runs_list.item(idx)
+            if item:
+                if block_signals:
+                    self._runs_list.setCurrentItem(item)
+                else:
+                    self._runs_list.setCurrentItem(item)
+                    self._on_item_clicked(item)
 
-        d_id = result.detection_settings
-        item_text = (
-            f"Run #{result.id} - {created_at}\n"
-            f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
-        )
-
-        # Extraction status
-        extraction_icon = "❌" if result.extraction_settings_id is None else "✅"
-        item_text += (
-            f"  {extraction_icon} Extraction ID: {result.extraction_settings_id}\n"
-        )
-
-        # Analysis status
-        analysis_icon = "❌" if result.analysis_settings_id is None else "✅"
-        item_text += f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
-
-        item = QListWidgetItem(item_text)
-        # item.setIcon(icon(MDI6.run_fast))
-        item.setData(Qt.ItemDataRole.UserRole, result.id)
-
-        self._runs_list.addItem(item)
-
-    def _on_selection_changed(self) -> None:
-        """Handle selection change to enable/disable delete button."""
-        has_selection = len(self._runs_list.selectedItems()) > 0
-        self._delete_btn.setEnabled(has_selection)
-
-    def _delete_selected_run(self) -> None:
-        """Delete the selected run from the database."""
-        current_item = self._runs_list.currentItem()
-        if current_item is None:
-            return
-
-        run_id = current_item.data(Qt.ItemDataRole.UserRole)
-        if run_id is None:
-            return
-
-        # Confirm deletion
-        reply = QMessageBox.warning(
-            self,
-            "Confirm Deletion",
-            f"Are you sure you want to delete Run #{run_id}?\n\n"
-            "This action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self._delete_run_from_database(run_id)
-            self.refresh_runs()
-            self.settingsDeleted.emit()  # Notify that settings may have changed
-            cali_logger.info(f"🚮 Deleted Run #{run_id} from database.")
-
-    def _clear_all_runs(self) -> None:
-        """Delete all runs from the database."""
-        if self._runs_list.count() == 0:
-            return
-
-        # Confirm clearing all
-        reply = QMessageBox.warning(
-            self,
-            "Confirm Clear All",
-            "Are you sure you want to delete ALL runs from the database?\n\n"
-            "This will permanently delete all analysis results and detection "
-            "settings.\nThis action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self._clear_all_from_database()
-            self.refresh_runs()
-            self.settingsDeleted.emit()  # Notify that settings may have changed
-            cali_logger.info("🚮 Deleted ALL runs from database.")
-
-    def _delete_run_from_database(self, run_id: int) -> None:
-        """Delete a specific run from the database with smart cascading.
-
-        Deletes the run and cleans up orphaned settings and ROIs:
-        - Deletes DetectionSettings if no other run uses them (and their ROIs)
-        - Deletes AnalysisSettings if no other run uses them
+    def select_run_by_id(self, run_id: int, block_signals: bool = False) -> None:
+        """Select a run by its CaliResult ID.
 
         Parameters
         ----------
         run_id : int
-            The ID of the CaliResult to delete
+            CaliResult ID of the run to select
+        block_signals : bool
+            Whether to block signals during selection (default: False)
         """
-        if self._database_path is None:
-            return
+        for i in range(self._runs_list.count()):
+            item = self._runs_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == run_id:
+                if block_signals:
+                    self._runs_list.setCurrentItem(item)
+                else:
+                    self._runs_list.setCurrentItem(item)
+                    self._on_item_clicked(item)
+                return
 
-        try:
-            from sqlmodel import Session, create_engine
-
-            engine = create_engine(f"sqlite:///{self._database_path}")
-            with Session(engine) as session:
-                # Get the result before deleting to capture its settings IDs
-                result = session.get(CaliResult, run_id)
-                if not result:
-                    return
-
-                detection_id = result.detection_settings
-                analysis_id = result.analysis_settings_id
-
-                # Delete the analysis result (cascades to Traces via relationship)
-                session.delete(result)
-                session.commit()
-
-                # Clean up orphaned settings and ROIs
-                self._cleanup_orphaned_data(session, detection_id, analysis_id)
-
-            engine.dispose(close=True)
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to delete run: {e}")
-
-    def _clear_all_from_database(self) -> None:
-        """Delete all runs from the database with smart cascading.
-
-        Deletes all runs and cleans up all orphaned settings and ROIs.
-        """
-        if self._database_path is None:
-            return
-
-        try:
-            from sqlmodel import Session, create_engine, delete, select
-
-            from cali.sqlmodel._model import ROI
-
-            engine = create_engine(
-                f"sqlite:///{self._database_path}",
-                connect_args={"timeout": 30.0, "check_same_thread": False},
-                pool_pre_ping=True,
-            )
-            with Session(engine) as session:
-                # Collect all detection and analysis settings before deleting
-                # We only need the IDs
-                stmt = select(
-                    CaliResult.detection_settings, CaliResult.analysis_settings_id
-                )
-                rows = session.exec(stmt).all()
-
-                det_ids = {r[0] for r in rows if r[0] is not None}
-                ana_ids = {r[1] for r in rows if r[1] is not None}
-
-                # Delete all analysis results (cascades to Traces)
-                session.exec(delete(CaliResult))
-
-                # Clean up orphaned settings and ROIs
-                if det_ids:
-                    # Delete ROIs associated with these detection settings
-                    session.exec(
-                        delete(ROI).where(ROI.detection_settings_id.in_(det_ids))  # type: ignore
-                    )
-                    # Delete DetectionSettings
-                    session.exec(
-                        delete(DetectionSettings).where(
-                            DetectionSettings.id.in_(det_ids)  # type: ignore
-                        )
-                    )
-
-                if ana_ids:
-                    # Delete AnalysisSettings
-                    session.exec(
-                        delete(AnalysisSettings).where(
-                            AnalysisSettings.id.in_(ana_ids)  # type: ignore
-                        )
-                    )
-
-                session.commit()
-
-            engine.dispose(close=True)
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to clear all runs: {e}")
-
-    def _cleanup_orphaned_data(
-        self,
-        session: Session,
-        detection_id: int | None,
-        analysis_id: int | None,
-    ) -> None:
-        """Clean up orphaned settings and ROIs after deleting a run.
+    def get_run_id_by_index(self, idx: int) -> int | None:
+        """Get the CaliResult ID of the run at the given index.
 
         Parameters
         ----------
-        session : Session
-            Database session
-        detection_id : int | None
-            Detection settings ID to check
-        analysis_id : int | None
-            Analysis settings ID to check
+        idx : int
+            Index of the run in the list
+
+        Returns
+        -------
+        int | None
+            CaliResult ID of the run, or None if index is invalid
         """
-        from cali.sqlmodel._model import (
-            FOV,
-            ROI,
-            AnalysisSettings,
-            DetectionSettings,
-        )
-
-        # Check if DetectionSettings are orphaned (not used by any other run)
-        if detection_id is not None:
-            other_runs_using_detection = session.exec(
-                select(CaliResult).where(CaliResult.detection_settings == detection_id)
-            ).first()
-
-            if not other_runs_using_detection:
-                # No other runs use this detection - delete the settings and ROIs
-                cali_logger.info(
-                    f"🧹 Cleaning up orphaned DetectionSettings #{detection_id}"
-                )
-
-                # Delete all ROIs with this detection_settings_id. These ROIs are
-                # deleted even if their FOV contains ROIs from other detections
-                # (This will cascade to delete Traces, DataAnalysis, and Masks)
-                rois_to_delete = session.exec(
-                    select(ROI).where(ROI.detection_settings_id == detection_id)
-                ).all()
-
-                roi_count = len(rois_to_delete)
-                fov_ids = {roi.fov_id for roi in rois_to_delete}
-
-                for roi in rois_to_delete:
-                    session.delete(roi)
-
-                # Delete the detection settings
-                detection_settings = session.get(DetectionSettings, detection_id)
-                if detection_settings:
-                    session.delete(detection_settings)
-
-                session.commit()
-
-                cali_logger.info(
-                    f"  Deleted {roi_count} ROIs from {len(fov_ids)} FOV(s)"
-                )
-
-                # Clean up empty FOVs
-                # (only delete FOVs that have NO ROIs left from any detection)
-                for fov_id in fov_ids:
-                    fov = session.get(FOV, fov_id)
-                    if fov:
-                        # Refresh to get updated relationships
-                        session.refresh(fov)
-                        if not fov.rois:
-                            cali_logger.info(f"  Deleting empty FOV {fov.name}")
-                            session.delete(fov)
-
-                session.commit()
-
-        # Check if AnalysisSettings are orphaned (not used by any other run)
-        if analysis_id is not None:
-            other_runs_using_analysis = session.exec(
-                select(CaliResult).where(CaliResult.analysis_settings_id == analysis_id)
-            ).first()
-
-            if not other_runs_using_analysis:
-                # No other runs use this analysis - delete the settings
-                cali_logger.info(
-                    f"🧹 Cleaning up orphaned AnalysisSettings #{analysis_id}"
-                )
-                analysis_settings = session.get(AnalysisSettings, analysis_id)
-                if analysis_settings:
-                    session.delete(analysis_settings)
-                    session.commit()
-
-    def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        """Handle run item click.
-
-        Parameters
-        ----------
-        item : QListWidgetItem
-            The clicked item
-        """
-        run_id = item.data(Qt.ItemDataRole.UserRole)
-        if run_id is not None:
-            self.runSelected.emit(run_id)
+        if 0 <= idx < self._runs_list.count():
+            item = self._runs_list.item(idx)
+            if item:
+                return item.data(Qt.ItemDataRole.UserRole)  # type: ignore
+        return None
 
     def get_selected_run_id(self) -> int | None:
         """Get the ID of the currently selected run.
@@ -655,6 +422,306 @@ class _RunsPanel(QGroupBox):
 
         except Exception as e:
             cali_logger.error(f"Failed to highlight run by settings: {e}")
+
+    def _add_run_item(
+        self, result: CaliResult, detection_settings: DetectionSettings
+    ) -> None:
+        """Add a run item to the list.
+
+        Parameters
+        ----------
+        result : CaliResult
+            The analysis result to add
+        detection_settings : DetectionSettings
+            The detection settings associated with the result
+        """
+        # Format the display text
+        created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        d_id = result.detection_settings
+        item_text = (
+            f"Run #{result.id} - {created_at}\n"
+            f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
+        )
+
+        # Extraction status with incomplete indicator
+        extraction_icon = "❌" if result.extraction_settings_id is None else "✅"
+        extraction_incomplete = ""
+        if result.extraction_settings_id is not None:
+            # Check if extraction is incomplete (detected > extracted)
+            detected = set(result.positions_detected or [])
+            extracted = set(result.positions_extracted or [])
+            if detected and extracted and len(detected) > len(extracted):
+                extraction_incomplete = " ⚠️"
+
+        item_text += (
+            f"  {extraction_icon} Extraction ID: {result.extraction_settings_id}"
+            f"{extraction_incomplete}\n"
+        )
+
+        # Analysis status with incomplete indicator
+        analysis_icon = "❌" if result.analysis_settings_id is None else "✅"
+        analysis_incomplete = ""
+        if result.analysis_settings_id is not None:
+            # Check if analysis is incomplete (extracted > analyzed)
+            extracted = set(result.positions_extracted or [])
+            analyzed = set(result.positions_analyzed or [])
+            if extracted and analyzed and len(extracted) > len(analyzed):
+                analysis_incomplete = " ⚠️"
+
+        item_text += (
+            f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
+            f"{analysis_incomplete}"
+        )
+
+        item = QListWidgetItem(item_text)
+        # item.setIcon(icon(MDI6.run_fast))
+        item.setData(Qt.ItemDataRole.UserRole, result.id)
+
+        item.setToolTip(
+            f"Run #{result.id}\n"
+            f"Created at: {created_at}\n"
+            f"Detection Settings ID: {d_id}\n"
+            f"Extraction Settings ID: {result.extraction_settings_id}\n"
+            f"Analysis Settings ID: {result.analysis_settings_id}\n"
+            f"Positions Detected: {len(result.positions_detected or [])}\n"
+            f"Positions Extracted: {len(result.positions_extracted or [])}\n"
+            f"Positions Analyzed: {len(result.positions_analyzed or [])}\n"
+        )
+
+        self._runs_list.addItem(item)
+
+    def _on_selection_changed(self) -> None:
+        """Handle selection change to enable/disable delete button."""
+        has_selection = len(self._runs_list.selectedItems()) > 0
+        self._delete_btn.setEnabled(has_selection)
+
+    def _delete_selected_run(self) -> None:
+        """Delete the selected run from the database."""
+        current_item = self._runs_list.currentItem()
+        if current_item is None:
+            return
+
+        run_id = current_item.data(Qt.ItemDataRole.UserRole)
+        if run_id is None:
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.warning(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete Run #{run_id}?\n\n"
+            "This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self._delete_run_from_database(run_id)
+            self.refresh_runs()
+            self.settingsDeleted.emit()  # Notify that settings may have changed
+            cali_logger.info(f"🚮 Deleted Run #{run_id} from database.")
+
+    def _clear_all_runs(self) -> None:
+        """Delete all runs from the database."""
+        if self._runs_list.count() == 0:
+            return
+
+        # Confirm clearing all
+        reply = QMessageBox.warning(
+            self,
+            "Confirm Clear All",
+            "Are you sure you want to delete ALL runs from the database?\n\n"
+            "This will permanently delete all analysis results and detection "
+            "settings.\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self._clear_all_from_database()
+            self.refresh_runs()
+            self.settingsDeleted.emit()  # Notify that settings may have changed
+            cali_logger.info("🚮 Deleted ALL runs from database.")
+
+    def _delete_run_from_database(self, run_id: int) -> None:
+        """Delete a specific run from the database with smart cascading.
+
+        Deletes the run and cleans up orphaned settings and ROIs:
+        - Deletes DetectionSettings if no other run uses them (and their ROIs)
+        - Deletes AnalysisSettings if no other run uses them
+
+        Parameters
+        ----------
+        run_id : int
+            The ID of the CaliResult to delete
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            from sqlmodel import Session, create_engine
+
+            engine = create_engine(f"sqlite:///{self._database_path}")
+            with Session(engine) as session:
+                # Get the result before deleting to capture its settings IDs
+                result = session.get(CaliResult, run_id)
+                if not result:
+                    return
+
+                detection_id = result.detection_settings
+                analysis_id = result.analysis_settings_id
+
+                # Delete the analysis result (cascades to Traces via relationship)
+                session.delete(result)
+                session.commit()
+
+                # Clean up orphaned settings and ROIs
+                self._cleanup_orphaned_data(session, detection_id, analysis_id)
+
+            engine.dispose(close=True)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to delete run: {e}")
+
+    def _clear_all_from_database(self) -> None:
+        """Delete all runs from the database with complete cleanup.
+
+        Deletes all CaliResults, ROIs, and ALL settings (including orphaned ones).
+        This ensures a completely clean database state.
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            from sqlmodel import Session, create_engine, delete
+
+            from cali.sqlmodel._model import ROI, ExtractionSettings
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Delete all analysis results (cascades to Traces and DataAnalysis)
+                session.exec(delete(CaliResult))
+
+                # Delete ALL ROIs (cascades to Traces, DataAnalysis, and Masks)
+                session.exec(delete(ROI))
+
+                # Delete ALL settings (including orphaned ones from cancelled runs)
+                session.exec(delete(DetectionSettings))
+                session.exec(delete(ExtractionSettings))
+                session.exec(delete(AnalysisSettings))
+
+                session.commit()
+
+            engine.dispose(close=True)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to clear all runs: {e}")
+
+    def _cleanup_orphaned_data(
+        self,
+        session: Session,
+        detection_id: int | None,
+        analysis_id: int | None,
+    ) -> None:
+        """Clean up orphaned settings and ROIs after deleting a run.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        detection_id : int | None
+            Detection settings ID to check
+        analysis_id : int | None
+            Analysis settings ID to check
+        """
+        from cali.sqlmodel._model import (
+            FOV,
+            ROI,
+            AnalysisSettings,
+            DetectionSettings,
+        )
+
+        # Check if DetectionSettings are orphaned (not used by any other run)
+        if detection_id is not None:
+            other_runs_using_detection = session.exec(
+                select(CaliResult).where(CaliResult.detection_settings == detection_id)
+            ).first()
+
+            if not other_runs_using_detection:
+                # No other runs use this detection - delete the settings and ROIs
+                cali_logger.info(
+                    f"🧹 Cleaning up orphaned DetectionSettings #{detection_id}"
+                )
+
+                # Delete all ROIs with this detection_settings_id. These ROIs are
+                # deleted even if their FOV contains ROIs from other detections
+                # (This will cascade to delete Traces, DataAnalysis, and Masks)
+                rois_to_delete = session.exec(
+                    select(ROI).where(ROI.detection_settings_id == detection_id)
+                ).all()
+
+                roi_count = len(rois_to_delete)
+                fov_ids = {roi.fov_id for roi in rois_to_delete}
+
+                for roi in rois_to_delete:
+                    session.delete(roi)
+
+                # Delete the detection settings
+                detection_settings = session.get(DetectionSettings, detection_id)
+                if detection_settings:
+                    session.delete(detection_settings)
+
+                session.commit()
+
+                cali_logger.info(
+                    f"  Deleted {roi_count} ROIs from {len(fov_ids)} FOV(s)"
+                )
+
+                # Clean up empty FOVs
+                # (only delete FOVs that have NO ROIs left from any detection)
+                for fov_id in fov_ids:
+                    fov = session.get(FOV, fov_id)
+                    if fov:
+                        # Refresh to get updated relationships
+                        session.refresh(fov)
+                        if not fov.rois:
+                            cali_logger.info(f"  Deleting empty FOV {fov.name}")
+                            session.delete(fov)
+
+                session.commit()
+
+        # Check if AnalysisSettings are orphaned (not used by any other run)
+        if analysis_id is not None:
+            other_runs_using_analysis = session.exec(
+                select(CaliResult).where(CaliResult.analysis_settings_id == analysis_id)
+            ).first()
+
+            if not other_runs_using_analysis:
+                # No other runs use this analysis - delete the settings
+                cali_logger.info(
+                    f"🧹 Cleaning up orphaned AnalysisSettings #{analysis_id}"
+                )
+                analysis_settings = session.get(AnalysisSettings, analysis_id)
+                if analysis_settings:
+                    session.delete(analysis_settings)
+                    session.commit()
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        """Handle run item click.
+
+        Parameters
+        ----------
+        item : QListWidgetItem
+            The clicked item
+        """
+        run_id = item.data(Qt.ItemDataRole.UserRole)
+        if run_id is not None:
+            self.runSelected.emit(run_id)
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
         """Filter events to allow deselecting by clicking empty area in list.

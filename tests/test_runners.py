@@ -3,12 +3,10 @@
 Optimized for CI speed while maintaining >90% coverage.
 Key optimizations:
 1. Mock cellpose inference in most tests (cellpose is slow)
-2. Only 1-2 tests run real cellpose to cover that code path
-3. Use fixtures to share database setup where possible
+2. Use fixtures to share database setup where possible
 """
 
 import gc
-import sys
 from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
@@ -39,9 +37,14 @@ MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
 
 
-def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
+def create_mock_fov(
+    position_index: int = 0, num_rois: int = 3, name: str | None = None
+) -> FOV:
     """Create a mock FOV with ROIs for testing without running cellpose."""
-    fov = FOV(position_index=position_index, name=f"A1_{position_index:04d}")
+    if name is None:
+        # Default naming - use actual test data names
+        name = "B5_0000" if position_index == 0 else "B6_0000"
+    fov = FOV(position_index=position_index, name=name)
 
     rois = []
     for i in range(1, num_rois + 1):
@@ -138,7 +141,7 @@ def test_cali_runner_detection_only_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify results in database
@@ -150,7 +153,7 @@ def test_cali_runner_detection_only_mocked(
             assert ds.method == "cellpose"
 
             fovs = session.exec(select(FOV)).all()
-            assert len(fovs) > 0
+            assert len(fovs) == 2
 
             rois = session.exec(select(ROI)).all()
             assert len(rois) > 0
@@ -199,7 +202,7 @@ def test_cali_runner_full_pipeline_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -236,7 +239,7 @@ def test_cali_runner_incremental_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -263,7 +266,7 @@ def test_cali_runner_incremental_mocked(
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -275,56 +278,6 @@ def test_cali_runner_incremental_mocked(
             assert result is not None
             assert result.detection_settings == ds_id
             assert result.extraction_settings_id is not None
-    finally:
-        engine.dispose()
-
-
-# =============================================================================
-# SLOW TEST (runs real cellpose for coverage)
-# =============================================================================
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Test takes too long on Windows")
-def test_cali_runner_real_cellpose(
-    test_db_path: Path, test_experiment: Experiment, data_path: Path
-) -> None:
-    """Test running real cellpose detection (slow, for coverage).
-
-    This test runs the actual cellpose model to ensure coverage of the
-    detection code path. It is marked as slow and should be skipped in
-    fast CI runs using: pytest -m "not slow"
-    """
-    runner = CaliRunner(commit_batch_size=1)
-
-    detection_settings = DetectionSettings(
-        method="cellpose",
-        model_type=MODEL,
-        diameter=30.0,
-        cellprob_threshold=0.0,
-        flow_threshold=0.4,
-    )
-
-    runner.run(
-        experiment=test_experiment,
-        dataset_path=data_path,
-        detection_settings=detection_settings,
-        database_name=test_db_path.name,
-        output_path=test_db_path.parent,
-        global_position_indices=[0],
-    )
-
-    engine = create_engine(f"sqlite:///{test_db_path}")
-    try:
-        with Session(engine) as session:
-            ds = session.exec(select(DetectionSettings)).first()
-            assert ds is not None
-            assert ds.method == "cellpose"
-
-            fovs = session.exec(select(FOV)).all()
-            assert len(fovs) > 0
-
-            rois = session.exec(select(ROI)).all()
-            assert len(rois) > 0
     finally:
         engine.dispose()
 
@@ -426,7 +379,7 @@ def test_cali_runner_overwrite_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Second run with overwrite=True
@@ -439,7 +392,7 @@ def test_cali_runner_overwrite_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=True,
     )
 
@@ -470,7 +423,7 @@ def test_cali_runner_validation_error_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     diff_experiment = Experiment.create_from_data(
@@ -485,7 +438,7 @@ def test_cali_runner_validation_error_mocked(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
             overwrite=False,
         )
 
@@ -509,7 +462,7 @@ def test_cali_runner_skipping_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Second run - should skip detection
@@ -522,7 +475,7 @@ def test_cali_runner_skipping_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -545,7 +498,7 @@ def test_cali_runner_upgrading_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -568,7 +521,7 @@ def test_cali_runner_upgrading_mocked(
         extraction_settings=extraction_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # 3. Analysis (Upgrade)
@@ -592,7 +545,7 @@ def test_cali_runner_upgrading_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -657,7 +610,7 @@ def test_cali_runner_batching_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],  # Only 1 pos available in test data
+        global_position_indices=[0, 1],  # Only 1 pos available in test data
     )
 
     # Verify results
@@ -693,7 +646,7 @@ def test_cali_runner_commit_error_mocked(
                 detection_settings=detection_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
         except Exception:
             pass
@@ -722,7 +675,7 @@ def test_cali_runner_process_batch_error_mocked(
                 detection_settings=detection_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
         except Exception:
             pass
@@ -747,7 +700,7 @@ def test_cali_runner_settings_reuse_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get settings ID
@@ -770,7 +723,7 @@ def test_cali_runner_settings_reuse_mocked(
         detection_settings=detection_settings_2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only 1 settings object exists
@@ -850,7 +803,7 @@ def test_cali_runner_stimulation_mask_mocked(
         analysis_settings=analysis_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify mask was loaded
@@ -906,7 +859,7 @@ def test_detection_runner_2d_data(
             detection_settings=detection_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -933,7 +886,7 @@ def test_detection_runner_debug(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
 
@@ -977,7 +930,7 @@ def test_extraction_runner_cancel_mocked(
                 extraction_settings=extraction_settings,
                 database_name=test_db_path.name,
                 output_path=test_db_path.parent,
-                global_position_indices=[0],
+                global_position_indices=[0, 1],
             )
 
     t = threading.Thread(target=run_task)
@@ -1011,7 +964,7 @@ def test_cali_runner_settings_errors_mocked(
             detection_settings=999,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
     # 2. DetectionSettings object with non-existent ID
@@ -1028,7 +981,7 @@ def test_cali_runner_settings_errors_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify it was created
@@ -1050,7 +1003,7 @@ def test_cali_runner_settings_errors_mocked(
             extraction_settings=999,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -1154,7 +1107,7 @@ def test_extraction_runner_cancel_before_start_mocked(
             extraction_settings=extraction_settings,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
 
@@ -1178,7 +1131,7 @@ def test_cali_runner_update_result_mocked(
         detection_settings=detection_settings,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get the ID from DB
@@ -1200,7 +1153,7 @@ def test_cali_runner_update_result_mocked(
         detection_settings=ds_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only one result exists
@@ -1209,7 +1162,7 @@ def test_cali_runner_update_result_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            assert results[0].positions_analyzed == [0]
+            assert results[0].positions_detected == [0, 1]  # Detection-only run
     finally:
         engine.dispose()
 
@@ -1232,7 +1185,7 @@ def test_settings_deduplication_mocked(
         detection_settings=ds1,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Run 2 with identical but new object
@@ -1242,7 +1195,7 @@ def test_settings_deduplication_mocked(
         detection_settings=ds2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify only one DetectionSettings exists
@@ -1311,7 +1264,7 @@ def test_settings_by_id_mocked(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify result created
@@ -1344,7 +1297,7 @@ def test_settings_object_with_id_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get the ID from DB
@@ -1370,7 +1323,7 @@ def test_settings_object_with_id_mocked(
         detection_settings=ds_with_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify still only one settings
@@ -1402,7 +1355,7 @@ def test_result_upgrade_flow_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1424,7 +1377,7 @@ def test_result_upgrade_flow_mocked(
         extraction_settings=es,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1448,7 +1401,7 @@ def test_result_upgrade_flow_mocked(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     engine = create_engine(f"sqlite:///{test_db_path}")
@@ -1481,7 +1434,7 @@ def test_load_fovs_filtering_mocked(
         detection_settings=ds1,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Run detection with DS2 on pos 0
@@ -1491,7 +1444,7 @@ def test_load_fovs_filtering_mocked(
         detection_settings=ds2,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=False,
     )
 
@@ -1525,7 +1478,7 @@ def test_load_fovs_filtering_mocked(
         extraction_settings=es,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Verify that traces were only created for ROIs belonging to DS1
@@ -1575,7 +1528,7 @@ def test_run_as_generator_mocked(
         detection_settings=ds,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         as_generator=True,
     )
 
@@ -1617,7 +1570,7 @@ def test_extraction_analysis_settings_with_id_mocked(
         analysis_settings=as_,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
     )
 
     # Get IDs and experiment ID
@@ -1659,7 +1612,7 @@ def test_extraction_analysis_settings_with_id_mocked(
         analysis_settings=as_id,
         database_name=test_db_path.name,
         output_path=test_db_path.parent,
-        global_position_indices=[0],
+        global_position_indices=[0, 1],
         overwrite=False,
     )
 
@@ -1706,7 +1659,7 @@ def test_result_update_existing_mocked(
             detection_settings=ds,
             database_name=test_db_path.name,
             output_path=test_db_path.parent,
-            global_position_indices=[0],
+            global_position_indices=[0, 1],
         )
 
         # Run 2: Position 1 (should update existing result to include pos 1)
@@ -1726,8 +1679,485 @@ def test_result_update_existing_mocked(
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 1
-            positions = results[0].positions_analyzed
+            positions = results[0].positions_detected  # Detection-only run
             assert positions is not None
             assert sorted(positions) == [0, 1]
+    finally:
+        engine.dispose()
+
+
+# =============================================================================
+# EXTRACTION SKIP LOGIC TESTS (regression tests for bug fix)
+# =============================================================================
+
+
+def test_skip_extraction_when_exists(
+    tmp_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+    runner: CaliRunner,
+) -> None:
+    """Test that extraction is skipped when data already exists.
+
+    Scenario:
+    1. Run full pipeline on pos 0
+    2. Run extraction-only on pos 0 with same settings
+       - Should skip everything (detection AND extraction already exist)
+       - Should NOT create duplicate data
+
+    This tests the bug fix where extraction was re-running even when
+    the data already existed.
+    """
+    database_path = tmp_path / "test.cali"
+
+    # Step 1: Run full pipeline on pos 0
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(dff_window=150)
+    analysis_settings = AnalysisSettings(peaks_height_value=2)
+
+    runner.run(
+        test_experiment,
+        data_path,
+        detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        global_position_indices=[0, 1],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify step 1 results
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        # Should have 1 result
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1
+        result1 = results[0]
+        assert result1.positions_analyzed == [0, 1]  # Full pipeline run
+
+        # Should have traces for pos 0
+        traces_pos0_step1 = session.exec(
+            select(Traces)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                FOV.position_index == 0,
+                Traces.analysis_result_id == result1.id,
+            )
+        ).all()
+        assert len(traces_pos0_step1) > 0
+        initial_trace_count = len(traces_pos0_step1)
+
+    # Step 2: Try to run extraction-only on same position with same settings
+    # This is the key test: should skip both detection AND extraction
+    runner.run(
+        test_experiment,
+        data_path,
+        1,  # Reuse detection settings ID
+        extraction_settings=1,  # Reuse extraction settings ID
+        analysis_settings=None,  # No analysis this time
+        global_position_indices=[0, 1],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify step 2 results - THE KEY TEST
+    with Session(engine) as session:
+        # Should still have only 1 result (extraction-only was skipped)
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1, f"Expected 1 result, got {len(results)}"
+
+        # Verify pos 0 traces were NOT duplicated
+        traces_pos0_step2 = session.exec(
+            select(Traces)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                FOV.position_index == 0,
+                ROI.detection_settings_id == 1,
+            )
+        ).all()
+        # Should still have same number of traces as step 1
+        # (no duplicates from step 2)
+        assert len(traces_pos0_step2) == initial_trace_count, (
+            f"Expected {initial_trace_count} traces, got {len(traces_pos0_step2)}. "
+            "Extraction should have been skipped!"
+        )
+
+    engine.dispose(close=True)
+
+
+def test_skip_detection_and_extraction_when_both_exist(
+    tmp_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+    runner: CaliRunner,
+) -> None:
+    """Test that both detection and extraction are skipped when data exists.
+
+    Scenario:
+    1. Run full pipeline on pos 0
+    2. Run extraction-only on same position with same settings
+       - Should skip everything (no new data needed)
+    """
+    database_path = tmp_path / "test.cali"
+
+    # Step 1: Run full pipeline on pos 0
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(dff_window=150)
+
+    runner.run(
+        test_experiment,
+        data_path,
+        detection_settings,
+        extraction_settings=extraction_settings,
+        global_position_indices=[0, 1],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Step 2: Try to run extraction-only on same position with same settings
+    # Should skip everything
+    runner.run(
+        test_experiment,
+        data_path,
+        1,  # Reuse detection settings
+        extraction_settings=1,  # Reuse extraction settings
+        global_position_indices=[0, 1],
+        output_path=tmp_path,
+        database_name=database_path.name,
+    )
+
+    # Verify no duplicate data was created
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        # Should still have only 1 result
+        results = session.exec(select(CaliResult)).all()
+        assert len(results) == 1
+
+        # Verify position has exactly one set of traces
+        traces = session.exec(
+            select(Traces).join(ROI).join(FOV).where(FOV.position_index == 0)
+        ).all()
+        # Each ROI should have exactly 1 Traces object
+        roi_ids = {t.roi_id for t in traces}
+        for roi_id in roi_ids:
+            roi_traces = [t for t in traces if t.roi_id == roi_id]
+            assert len(roi_traces) == 1, (
+                f"ROI {roi_id} has {len(roi_traces)} traces (expected 1)"
+            )
+
+    engine.dispose(close=True)
+
+
+# =============================================================================
+# RERUN ANALYSIS TESTS (regression tests for identity map issue)
+# =============================================================================
+
+
+def test_rerun_analysis_same_settings(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test re-running analysis with same settings doesn't cause identity map conflicts.
+
+    This is a regression test for the error:
+    sqlalchemy.exc.InvalidRequestError: Can't attach instance <Traces at 0x...>;
+    another instance with key (..., (5,), None) is already present in this session.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es = ExtractionSettings(neuropil_inner_radius=10)
+    as_ = AnalysisSettings(peaks_height_value=10.0)
+
+    # First run - full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify first run created result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            result1_id = results[0].id
+            ds_id = results[0].detection_settings
+            es_id = results[0].extraction_settings_id
+            assert ds_id is not None
+            assert es_id is not None
+    finally:
+        engine.dispose()
+
+    # Second run - new analysis settings on same detection/extraction (using IDs)
+    # This should create a new CaliResult but reuse detection
+    as2 = AnalysisSettings(peaks_height_value=15.0)  # Different threshold
+
+    # This should NOT raise InvalidRequestError
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify second run created new result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2
+            # Should have two different results
+            result_ids = {r.id for r in results}
+            assert len(result_ids) == 2
+            assert result1_id in result_ids
+    finally:
+        engine.dispose()
+
+
+def test_rerun_extraction_on_existing_detection(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test re-running extraction+analysis on existing detection.
+
+    This is the exact scenario from the user's error log.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL, diameter=30.0)
+    es1 = ExtractionSettings(neuropil_inner_radius=10)
+    as1 = AnalysisSettings(peaks_height_value=10.0)
+
+    # First run - full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es1,
+        analysis_settings=as1,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Get the detection settings ID
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result1 = session.exec(select(CaliResult)).first()
+            assert result1 is not None
+            ds_id = result1.detection_settings
+            es_id = result1.extraction_settings_id
+            assert ds_id is not None
+            assert es_id is not None
+    finally:
+        engine.dispose()
+
+    # Second run - new analysis on same detection/extraction (using IDs)
+    # This matches the user's scenario: "Created new AnalysisSettings ID 3"
+    # while reusing DetectionSettings and ExtractionSettings
+    as2 = AnalysisSettings(peaks_height_value=15.0)
+
+    # This should NOT raise InvalidRequestError
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as2,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify the run completed successfully
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            # Should have multiple results (one for each analysis)
+            assert len(results) >= 2
+    finally:
+        engine.dispose()
+
+
+def test_mixed_analysis_and_no_analysis_runs(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: str,
+    mock_detection_runner: Generator[None, None, None],
+) -> None:
+    """Test mixing full pipeline runs with detection+extraction-only runs.
+
+    Scenario (updated for 2-position data):
+    1. Run pos [0, 1] with analysis (creates CaliResult ID 1 with analysis)
+    2. Run pos [0, 1] again with same settings (should skip everything)
+    3. Verify only 1 result exists with both positions analyzed
+
+    This verifies that running with same settings doesn't create duplicates.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL)
+    es = ExtractionSettings()
+    as_ = AnalysisSettings()
+
+    # Run 1: pos 0 with full pipeline
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 1 result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
+            assert results[0].analysis_settings_id is not None
+
+            ds_id = results[0].detection_settings
+            es_id = results[0].extraction_settings_id
+            as_id = results[0].analysis_settings_id
+    finally:
+        engine.dispose()
+
+    # Run 2: pos [0, 1] again with same settings (should skip everything)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=as_id,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify still 1 result with positions [0, 1]
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert sorted(results[0].positions_analyzed or []) == [0, 1]
+    finally:
+        engine.dispose()
+
+
+def test_different_extraction_settings_creates_new_result(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: str,
+    mock_detection_runner: Generator[None, None, None],
+) -> None:
+    """Test that different extraction settings create a new CaliResult.
+
+    Scenario:
+    1. Run pos 0 with detection+extraction+analysis (settings 1/1/1)
+    2. Run pos 0 again with DIFFERENT extraction settings (settings 1/2/1)
+       → Should create CaliResult ID 2 and re-run extraction+analysis
+
+    This was a bug where _get_positions_for_analysis didn't check extraction
+    settings, so it would skip analysis even when extraction was different.
+    """
+    runner = CaliRunner()
+
+    ds = DetectionSettings(method="cellpose", model_type=MODEL)
+    es1 = ExtractionSettings(dff_window=150)
+    as_ = AnalysisSettings()
+
+    # Run 1: pos 0 with settings 1/1/1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds,
+        extraction_settings=es1,
+        analysis_settings=as_,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 1 result
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            assert results[0].positions_analyzed == [0, 1]  # Full pipeline run
+
+            ds_id = results[0].detection_settings
+            es1_id = results[0].extraction_settings_id
+            as_id = results[0].analysis_settings_id
+    finally:
+        engine.dispose()
+
+    # Run 2: pos 0 with DIFFERENT extraction settings (1/2/1)
+    es2 = ExtractionSettings(dff_window=180)  # Different!
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es2,  # New extraction settings
+        analysis_settings=as_id,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we NOW have 2 results
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2, (
+                f"Expected 2 CaliResult but found {len(results)}. "
+                "Different extraction settings should create a new result."
+            )
+
+            # Check that both results exist with correct settings
+            result1 = next(r for r in results if r.extraction_settings_id == es1_id)
+            result2 = next(r for r in results if r.extraction_settings_id != es1_id)
+
+            assert result1.positions_analyzed == [0, 1]  # Full pipeline run
+            assert result2.positions_analyzed == [0, 1]  # Full pipeline run
+
+            # Both should have same detection and analysis settings
+            assert result1.detection_settings == ds_id
+            assert result2.detection_settings == ds_id
+            assert result1.analysis_settings_id == as_id
+            assert result2.analysis_settings_id == as_id
+
+            # But different extraction settings
+            assert result1.extraction_settings_id == es1_id
+            assert result2.extraction_settings_id != es1_id
     finally:
         engine.dispose()

@@ -16,13 +16,13 @@ from cali._constants import (
     N_SUFFIX,
     SEM_SUFFIX,
 )
-from cali.plot._single_wells_plots._plot_calcium_peaks_correlation import (
-    _calculate_cross_correlation,
-)
-from cali.plot._single_wells_plots._plot_inferred_spike_burst_activity import (
+from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _detect_population_bursts,
     _get_burst_parameters,
     _get_population_spike_data,
+)
+from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
+    _calculate_cross_correlation,
 )
 from cali.plot._util import (
     _create_connectivity_matrix,

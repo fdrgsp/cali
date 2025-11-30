@@ -110,7 +110,7 @@ class DetectionRunner:
             yield from self._run_caiman(
                 dataset=dataset,
                 detection_settings=detection_settings,
-                position_indices=global_position_indices,
+                global_position_indices=global_position_indices,
             )
         else:
             msg = (
@@ -126,7 +126,7 @@ class DetectionRunner:
         self,
         dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
         detection_settings: DetectionSettings,
-        position_indices: Sequence[int],
+        global_position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
         """Run CaImAn detection and return FOV results with ROIs and masks.
 
@@ -136,7 +136,7 @@ class DetectionRunner:
             Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method should be "caiman")
-        position_indices : Sequence[int]
+        global_position_indices : Sequence[int]
             Position indices to process
 
         Returns
@@ -145,20 +145,17 @@ class DetectionRunner:
             List of FOV objects with ROIs and masks
         """
         try:
-            import importlib.util
-
-            if importlib.util.find_spec("caiman") is None:
-                raise ModuleNotFoundError("CaImAn is not installed!")
+            import caiman  # noqa: F401
         except ModuleNotFoundError as e:
             cali_logger.error("CaImAn is not installed!")
             raise ModuleNotFoundError(
-                "CaImAn detection requires the caiman package.\n\n"
+                "CaImAn detection requires the CaImAn package.\n\n"
                 "To install CaImAn:\n"
-                "• `uv sync --extra caiman`\n"
-                "• `pip install caiman`\n"
+                "• uv sync --extra caiman\n"
+                "• pip install caiman\n"
             ) from e
 
-        cali_logger.info("🔍 Running CaImAn detection...")
+        cali_logger.info("🔍 Running CaImAn Detection...")
 
         # TODO: Implement CaImAn detection
         cali_logger.warning("CaImAn detection not yet implemented")
@@ -197,12 +194,12 @@ class DetectionRunner:
             raise ModuleNotFoundError(
                 "Cellpose detection requires the cellpose package.\n\n"
                 "To install Cellpose:\n"
-                "• For Cellpose 4: `uv sync --extra cp4`\n"
-                "• For Cellpose 3: `uv sync --extra cp3`\n"
-                "• Or via pip: `pip install cellpose`"
+                "• For Cellpose 4: uv sync --extra cp4\n"
+                "• For Cellpose 3: uv sync --extra cp3\n"
+                "• Or via pip: pip install cellpose"
             ) from e
 
-        cali_logger.info("🔍 Running Cellpose detection...")
+        cali_logger.info("🔍 Running Cellpose Detection...")
 
         use_gpu = core.use_gpu()
         cali_logger.info(f"🖥️ Use GPU: {use_gpu}")
@@ -228,7 +225,10 @@ class DetectionRunner:
             normalize=detection_settings.normalize,
         )
 
-        cali_logger.info("✅ Detection complete!")
+        if self._cancellation_event.is_set():
+            cali_logger.info("🛑 Detection Cancelled!")
+        else:
+            cali_logger.info("✅ Detection complete!")
 
     def _run_cellpose_detection(
         self,

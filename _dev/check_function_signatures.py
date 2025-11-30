@@ -4,20 +4,14 @@ import inspect
 from pathlib import Path
 
 # Import modules to inspect
-from cali.plot._single_wells_plots import (
-    _plot_calcium_peaks_raster_plots,
-    _plot_calcium_amplitudes_and_frequencies_data,
-    _plot_calcium_peaks_iei_data,
-    _plot_calcium_network_connectivity,
-    _plot_calcium_peaks_correlation,
-    _plot_inferred_spike_correlation,
-    _plot_calcium_peaks_synchrony,
+from cali.plot._single_wells_plots.correlation import (
     _plot_inferred_spike_synchrony,
-    _plot_inferred_spike_burst_activity,
-    _plot_cell_size,
-    _plot_inferred_spike_raster_plots,
 )
+from cali.plot._single_wells_plots.burst import _plot_inferred_spike_burst_activity
 from cali.plot._single_wells_plots.calcium_traces import _plot_neuropil_traces
+from cali.plot._single_wells_plots.correlation import _plot_calcium_network_connectivity, _plot_calcium_peaks_correlation, _plot_calcium_peaks_synchrony, _plot_inferred_spike_correlation
+from cali.plot._single_wells_plots.metrics import _plot_calcium_amplitudes_and_frequencies_data, _plot_calcium_peaks_iei_data, _plot_cell_size
+from cali.plot._single_wells_plots.raster import _plot_calcium_peaks_raster_plots, _plot_inferred_spike_raster_plots
 
 modules = [
     ("calcium_peaks_raster", _plot_calcium_peaks_raster_plots),
