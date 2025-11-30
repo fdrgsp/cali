@@ -380,6 +380,7 @@ class CaliGui(QMainWindow):
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
+
         # 2 pos data
         self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
         self._database_path = "tests/test_data/2pos/result_2pos.cali"

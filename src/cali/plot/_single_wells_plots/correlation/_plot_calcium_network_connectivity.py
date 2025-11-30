@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import mplcursors
 import numpy as np
 
+from cali.plot._hover_utils import setup_pick_hover_for_heatmap
 from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -193,7 +193,7 @@ def _plot_connectivity_matrix_data(
     network_density = n_edges / total_possible_edges if total_possible_edges > 0 else 0
 
     # Plot connectivity matrix
-    img = ax.imshow(connectivity_matrix, cmap="binary", vmin=0, vmax=1)
+    img = ax.imshow(connectivity_matrix, cmap="binary", vmin=0, vmax=1, picker=True)
 
     # Set labels and title
     ax.set_title(
@@ -226,25 +226,6 @@ def _add_hover_functionality_connectivity_matrix(
     correlation_matrix: np.ndarray,
 ) -> None:
     """Add hover functionality to connectivity matrix heatmap."""
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        if x < len(rois) and y < len(rois):
-            roi_x, roi_y = rois[x], rois[y]
-            is_connected = connectivity_matrix[y, x]
-            correlation = correlation_matrix[y, x]
-
-            status = "Connected" if is_connected else "Not Connected"
-
-            sel.annotation.set(
-                text=(
-                    f"ROI {roi_x} ↔ ROI {roi_y}\n"
-                    f"Status: {status}\n"
-                    f"Correlation: {correlation:.3f}"
-                ),
-                fontsize=8,
-                color="black",
-            )
-            widget.roiSelected.emit([str(roi_x), str(roi_y)])
+    setup_pick_hover_for_heatmap(
+        image.axes, widget, [str(r) for r in rois], connectivity_matrix
+    )

@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, cast
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import mplcursors
 import numpy as np
 
+from cali.plot._hover_utils import setup_pick_hover_for_heatmap
 from cali.plot._util import (
     _get_data_analysis_for_run,
     _get_spike_synchrony,
@@ -90,7 +90,7 @@ def _plot_spike_synchrony_data(
         f"(Thresholded Spike Data - Cross-Correlation Method)\n"
     )
 
-    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1)
+    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
     cbar = widget.figure.colorbar(
         cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
         ax=ax,
@@ -237,21 +237,5 @@ def _add_hover_functionality(
     rois: list[str],
     synchrony_matrix: np.ndarray,
 ) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        x, y = map(int, np.round(sel.target))
-        if x < len(rois) and y < len(rois):
-            roi_x, roi_y = rois[x], rois[y]
-            sel.annotation.set(
-                text=(
-                    f"ROI {roi_x} ↔ ROI {roi_y}\n"
-                    f"Spike Synchrony: {synchrony_matrix[y, x]:.3f}"
-                ),
-                fontsize=8,
-                color="black",
-            )
-            if roi_x.isdigit() and roi_y.isdigit():
-                widget.roiSelected.emit([roi_x, roi_y])
+    """Add hover functionality using efficient pick events."""
+    setup_pick_hover_for_heatmap(image.axes, widget, rois, synchrony_matrix)

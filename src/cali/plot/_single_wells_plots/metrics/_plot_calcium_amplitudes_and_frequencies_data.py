@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-import mplcursors
 import numpy as np
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._hover_utils import setup_pick_hover
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -178,7 +178,8 @@ def _plot_metrics(
             alpha=0.5,
             s=30,
             color="lightgray",
-            label=f"ROI {roi.label_value}",
+            label=f"ROI {roi.label_value}",  # Add label so scatter is pickable
+            picker=True,  # Enable picking on scatter
         )
     elif freq:
         if data_analysis.dec_dff_frequency is None:
@@ -188,6 +189,7 @@ def _plot_metrics(
             data_analysis.dec_dff_frequency,
             "o",
             label=f"ROI {roi.label_value}",
+            picker=5,  # Enable picking
         )
 
 
@@ -195,7 +197,10 @@ def _plot_errorbars(
     ax: Axes, x: list[float], y: float | list[float], yerr: Any, label: str
 ) -> None:
     """Plot error bars graph."""
-    ax.errorbar(x, y, yerr=yerr, label=label, fmt="o", capsize=5)
+    errorbar = ax.errorbar(x, y, yerr=yerr, label=label, fmt="o", capsize=5, picker=5)
+    # Also enable picking on the marker artist (the mean point)
+    if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
+        errorbar.lines[0].set_picker(5)
 
 
 def _set_graph_title_and_labels(
@@ -229,43 +234,5 @@ def _set_graph_title_and_labels(
 
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for ROI traces, not for peaks or other elements
-        if label and "ROI" in label and not label.startswith("_"):
-            # Get the data point coordinates
-            x, y = sel.target
-
-            # Create hover text with ROI and value information
-            roi = cast("str", label.split(" ")[1])
-
-            # Determine what type of plot this is based on axis labels
-            x_label = ax.get_xlabel()
-            y_label = ax.get_ylabel()
-
-            if "Amplitude" in x_label and "Frequency" in y_label:
-                # Amplitude vs Frequency plot
-                hover_text = f"{label}\nAmp: {x:.3f}\nFreq: {y:.3f} Hz"
-            elif "Amplitude" in y_label:
-                # Amplitude plot
-                hover_text = f"{label}\nAmp: {y:.3f}"
-            elif "Frequency" in y_label:
-                # Frequency plot
-                hover_text = f"{label}\nFreq: {y:.3f} Hz"
-            else:
-                # Fallback to just ROI label
-                hover_text = label
-
-            sel.annotation.set(text=hover_text, fontsize=8, color="black")
-
-            if roi.isdigit():
-                widget.roiSelected.emit(roi)
-        else:
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    """Add hover functionality using efficient pick events."""
+    setup_pick_hover(ax, widget, picker_tolerance=5)

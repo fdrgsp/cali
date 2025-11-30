@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import contextlib
 from typing import TYPE_CHECKING
 
 import matplotlib.cm as cm
-import mplcursors
 import numpy as np
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
+from cali.plot._hover_utils import setup_pick_hover_for_raster
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -226,33 +225,8 @@ def _generate_spike_amplitude_colors(
 def _add_hover_functionality(
     ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
 ) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for valid ROI elements
-        if label and "ROI" in label and not label.startswith("_"):
-            sel.annotation.set(text=label, fontsize=8, color="black")
-            roi_parts = label.split(" ")
-            if len(roi_parts) > 1 and roi_parts[1].isdigit():
-                widget.roiSelected.emit(roi_parts[1])
-        else:
-            # For raster plots, map the position to an ROI
-            if hasattr(sel, "target") and active_rois:
-                with contextlib.suppress(ValueError, AttributeError, IndexError):
-                    y_pos = int(sel.target[1])  # Get y-coordinate (ROI index)
-                    if 0 <= y_pos < len(active_rois):
-                        roi_id = active_rois[y_pos]
-                        hover_text = f"ROI {roi_id}"
-                        sel.annotation.set(text=hover_text, fontsize=8, color="black")
-                        widget.roiSelected.emit(str(roi_id))
-                        return
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    """Add hover functionality using efficient pick events."""
+    setup_pick_hover_for_raster(ax, widget, active_rois, picker_tolerance=5)
 
 
 def _update_time_axis(

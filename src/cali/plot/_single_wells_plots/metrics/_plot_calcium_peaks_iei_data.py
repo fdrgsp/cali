@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-import mplcursors
 import numpy as np
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._hover_utils import setup_pick_hover
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -136,6 +136,7 @@ def _plot_metrics(
         fmt="o",
         label=f"ROI {roi.label_value}",
         capsize=5,
+        picker=5,  # Enable picking on errorbar
     )
     ax.scatter(
         [roi.label_value] * len(data_analysis.iei),
@@ -143,7 +144,8 @@ def _plot_metrics(
         alpha=0.5,
         color="lightgray",
         s=30,
-        label=f"ROI {roi.label_value}",
+        label=f"ROI {roi.label_value}",  # Add label so scatter is pickable
+        picker=True,  # Enable picking on scatter
     )
 
 
@@ -162,29 +164,5 @@ def _set_graph_title_and_labels(
 
 
 def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
-
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for ROI traces, not for peaks or other elements
-        if label and "ROI" in label and not label.startswith("_"):
-            # Get the data point coordinates
-            _x, y = sel.target
-
-            # Create hover text with ROI and value information
-            roi = cast("str", label.split(" ")[1])
-
-            # Show IEI value in seconds
-            hover_text = f"{label}\nIEI: {y:.3f} sec"
-
-            sel.annotation.set(text=hover_text, fontsize=8, color="black")
-
-            if roi.isdigit():
-                widget.roiSelected.emit(roi)
-        else:
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    """Add hover functionality using efficient pick events."""
+    setup_pick_hover(ax, widget, picker_tolerance=5)

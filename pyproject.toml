@@ -45,7 +45,6 @@ dependencies = [
     "pyconify",
     "rich",
     "matplotlib",
-    "mplcursors",
     "ndv[vispy]==0.0.4",
     "scikit-image",
     "scipy",

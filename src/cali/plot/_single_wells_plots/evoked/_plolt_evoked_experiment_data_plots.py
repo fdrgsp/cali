@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import contextlib
 import re
 from typing import TYPE_CHECKING, cast
 
-import mplcursors
 import numpy as np
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.patches import Patch
@@ -180,18 +178,25 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 color=STIMULATED_COLOR if stimulated else NON_STIMULATED_COLOR,
                 label=f"ROI {roi_model.label_value}",
                 zorder=2,
+                picker=5,
             )
+            # Also enable picking on the marker artist (the mean point)
+            if hasattr(errorbar, "lines") and len(errorbar.lines) > 0:
+                errorbar.lines[0].set_picker(5)
             artists.append(errorbar)
 
             # Plot individual peak amplitudes in background
-            ax.scatter(
+            scatter = ax.scatter(
                 [roi_model.label_value] * len(amps),
                 amps,
                 alpha=0.5,
                 s=30,
                 color="lightgray",
                 zorder=1,
+                label=f"ROI {roi_model.label_value}",  # Add label for picking
+                picker=True,  # Enable picking
             )
+            artists.append(scatter)
 
     if not roi_labels:
         ax.text(
@@ -235,25 +240,16 @@ def _add_hover_to_stimulated_amp_plot(
     artists: list,
 ) -> None:
     """Add hover tooltips to amplitude error bar plot."""
-    cursor = mplcursors.cursor(artists, hover=mplcursors.HoverMode.Transient)
+    from cali.plot._hover_utils import setup_pick_hover
 
-    @cursor.connect("add")  # type: ignore
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label from the artist to extract ROI
-        label = sel.artist.get_label()
-        if label and "ROI" in label:
-            roi = label.split(" ")[1]
-            # Get the y-value (mean amplitude)
-            _, y = sel.target
+    # Enable picking on all artists
+    for artist in artists:
+        if hasattr(artist, "set_picker"):
+            artist.set_picker(5)
 
-            sel.annotation.set(
-                text=f"ROI {roi}\nMean Amp: {y:.3f}", fontsize=8, color="black"
-            )
-            sel.annotation.arrow_patch.set_alpha(0.5)
-
-            widget.roiSelected.emit(str(roi))
-        else:
-            sel.annotation.set_visible(False)
+    # Use the new efficient hover system
+    if artists and hasattr(artists[0], "axes"):
+        setup_pick_hover(artists[0].axes, widget, picker_tolerance=5)
 
 
 def _visualize_stimulated_area(
@@ -692,23 +688,10 @@ def _update_time_axis(
 def _add_hover_functionality_stim_vs_non_stim(
     ax: Axes, widget: _SingleWellGraphWidget
 ) -> None:
-    """Add hover functionality using mplcursors."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
+    """Add hover functionality using efficient pick events."""
+    from cali.plot._hover_utils import setup_pick_hover
 
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for ROI traces, not for peaks or other elements
-        if label and "ROI" in label and not label.startswith("_"):
-            sel.annotation.set(text=label, fontsize=8, color="black")
-            roi = cast("str", label.split(" ")[1])
-            if roi.isdigit():
-                widget.roiSelected.emit(roi)
-        else:
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    setup_pick_hover(ax, widget, picker_tolerance=5)
 
 
 def _plot_stimulated_vs_non_stimulated_spike_raster(
@@ -883,33 +866,10 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
 def _add_hover_functionality_spike_traces(
     ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
 ) -> None:
-    """Add hover functionality using mplcursors for spike traces."""
-    cursor = mplcursors.cursor(ax, hover=mplcursors.HoverMode.Transient)
+    """Add hover functionality using efficient pick events for spike traces."""
+    from cali.plot._hover_utils import setup_pick_hover_for_raster
 
-    @cursor.connect("add")  # type: ignore [misc]
-    def on_add(sel: mplcursors.Selection) -> None:
-        # Get the label of the artist
-        label = sel.artist.get_label()
-
-        # Only show hover for valid ROI elements
-        if label and "ROI" in label and not label.startswith("_"):
-            sel.annotation.set(text=label, fontsize=8, color="black")
-            roi_parts = label.split(" ")
-            if len(roi_parts) > 1 and roi_parts[1].isdigit():
-                widget.roiSelected.emit(roi_parts[1])
-        else:
-            # For raster plots, map the position to an ROI
-            if hasattr(sel, "target") and active_rois:
-                with contextlib.suppress(ValueError, AttributeError, IndexError):
-                    y_pos = int(sel.target[1])  # Get y-coordinate (ROI index)
-                    if 0 <= y_pos < len(active_rois):
-                        roi_id = active_rois[y_pos]
-                        hover_text = f"ROI {roi_id}"
-                        sel.annotation.set(text=hover_text, fontsize=8, color="black")
-                        widget.roiSelected.emit(str(roi_id))
-                        return
-            # Hide the annotation for non-ROI elements
-            sel.annotation.set_visible(False)
+    setup_pick_hover_for_raster(ax, widget, active_rois, picker_tolerance=5)
 
 
 def _plot_stimulated_vs_non_stimulated_spike_traces(
