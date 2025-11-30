@@ -23,3 +23,7 @@ ask to claude:
 - replece red color in plot combo with unclickable item
 
 - add correlation plots to evoked experiments (one established is correct)
+
+- ⚠️ fix bug: after deleting one run, I get some unique trace error...
+
+- add a loading bar when switching between runs in CaliGui
