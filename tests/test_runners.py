@@ -2601,10 +2601,7 @@ def test_delete_run_and_recreate_same_settings(
 
             # Verify traces exist for all runs
             for result in results:
-                stmt = (
-                    select(Traces)
-                    .where(Traces.analysis_result_id == result.id)
-                )
+                stmt = select(Traces).where(Traces.analysis_result_id == result.id)
                 traces = session.exec(stmt).all()
                 assert len(traces) > 0, f"No traces found for run {result.id}"
     finally:
