@@ -190,6 +190,9 @@ def _plot_cross_correlation_data(
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+
     # ---------------- Hover + Click interaction ---------------- #
     _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr)
 
@@ -259,3 +262,27 @@ def _attach_heatmap_interaction(
     # Remember handlers so we can disconnect on next call
     plot.setProperty("ccorr_hover_handler", _on_mouse_moved)
     plot.setProperty("ccorr_click_handler", _on_mouse_clicked)
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Correlation",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

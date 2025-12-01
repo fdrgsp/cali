@@ -5,16 +5,14 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pyqtgraph as pg
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import (
-    _get_data_analysis_for_run,
     _get_spike_synchrony,
     _get_spike_synchrony_matrix,
-    _get_traces_for_run,
 )
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -123,6 +121,9 @@ def _plot_spike_synchrony_data(
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+
     # ROI ordering is the dict key order
     active_roi_ids = [int(roi_id) for roi_id in spike_trains.keys()]
 
@@ -197,6 +198,30 @@ def _attach_spike_sync_interaction(
     plot.setProperty("spike_sync_click_handler", _on_mouse_clicked)
 
 
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Synchrony",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
+
+
 # -----------------------------------------------------------------------------#
 # Lag retrieval
 # -----------------------------------------------------------------------------#
@@ -208,7 +233,6 @@ def _get_lag(
 ) -> int | None:
     """Get the lag value for synchrony from AnalysisSettings."""
     from cali.sqlmodel._model import (
-        FOV,
         AnalysisSettings,
         CaliResult,
         Experiment,
@@ -265,21 +289,26 @@ def _get_spike_trains_from_rois(
     dict[str, np.ndarray] | None
         Dictionary mapping ROI label_value strings to binary spike arrays.
     """
-    from cali.sqlmodel._model import FOV, ROI
+    from cali.sqlmodel._model import ROI
 
     spike_trains: dict[str, np.ndarray] = {}
 
-    # Query ROIs from database
+    # Query ROIs from database with optimized joins
     with Session(engine) as session:
         stmt = (
-            select(ROI)
-            .join(FOV)
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.active) == True)  # noqa: E712
-            .options(
-                selectinload(ROI.traces_history),
-                selectinload(ROI.data_analysis_history),
-            )
         )
 
         # IMPORTANT: subset by label_value (to match other plots)
@@ -287,15 +316,12 @@ def _get_spike_trains_from_rois(
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
         stmt = stmt.order_by(col(ROI.label_value))
-        roi_results = session.exec(stmt).all()
+        roi_results: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
 
     if len(roi_results) < 2:
         return None
 
-    for roi in roi_results:
-        traces = _get_traces_for_run(roi, run_id)
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-
+    for roi, traces, data_analysis in roi_results:
         if traces is None or data_analysis is None:
             continue
 

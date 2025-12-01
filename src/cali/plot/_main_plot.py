@@ -41,9 +41,11 @@ from ._single_wells_plots.metrics._plot_calcium_amplitudes_and_frequencies_data 
 from ._single_wells_plots.metrics._plot_calcium_peaks_iei_data import _plot_iei_data
 from ._single_wells_plots.metrics._plot_cell_size import _plot_cell_size_data
 from ._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
+    _generate_intensity_heatmap,
     _generate_raster_plot,
 )
 from ._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
+    _generate_spike_intensity_heatmap,
     _generate_spike_raster_plot,
 )
 from ._single_wells_plots.spikes._plot_inferred_spikes import (
@@ -158,9 +160,11 @@ INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity An
 RASTER_PLOT = "Calcium Peaks Raster Plot"
 RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
 RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
+INTENSITY_HEATMAP = "Calcium Intensity Heatmap (Deconvolved ΔF/F)"
 INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes Raster Plot"
 INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes Raster Plot Colored by Amplitude"
 INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
+SPIKE_INTENSITY_HEATMAP = "Inferred Spikes Intensity Heatmap"
 CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Global Synchrony"
 CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
 CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
@@ -339,6 +343,13 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
+    name=INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_generate_intensity_heatmap,
+    category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
@@ -358,6 +369,13 @@ AnalysisProduct(
     name=INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=True),
+    category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=SPIKE_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_generate_spike_intensity_heatmap,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )

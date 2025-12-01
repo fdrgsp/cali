@@ -9,12 +9,10 @@ from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
 from scipy.signal import correlate
 from scipy.spatial.distance import squareform
 from scipy.stats import zscore
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._util import _get_data_analysis_for_run, _get_traces_for_run
-from cali.sqlmodel._model import FOV, ROI, Traces
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -40,17 +38,22 @@ def _calculate_spike_cross_correlation(
     spike_trains: list[np.ndarray] = []
     rois_idxs: list[int] = []
 
-    # Query ROIs from database
+    # Query ROIs from database with optimized joins
     with Session(engine) as session:
         stmt = (
-            select(ROI)
-            .join(FOV)
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.active) == True)  # noqa: E712
-            .options(
-                selectinload(ROI.traces_history),
-                selectinload(ROI.data_analysis_history),
-            )
         )
 
         # IMPORTANT: use label_value for ROI subset, not ROI.id
@@ -58,13 +61,10 @@ def _calculate_spike_cross_correlation(
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
         stmt = stmt.order_by(col(ROI.label_value))
-        roi_results: list[ROI] = session.exec(stmt).all()
+        roi_results: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
 
     # Extract spike trains for the active ROIs
-    for roi in roi_results:
-        traces: Traces | None = _get_traces_for_run(roi, run_id)
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-
+    for roi, traces, data_analysis in roi_results:
         if traces is None or data_analysis is None:
             continue
 
@@ -197,6 +197,9 @@ def _plot_spike_cross_correlation_data(
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+
     # ---------------- Hover + Click interaction ---------------- #
     _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr)
 
@@ -262,6 +265,30 @@ def _attach_spike_corr_interaction(
     # Remember handlers so we can disconnect on next call
     plot.setProperty("spike_ccorr_hover_handler", _on_mouse_moved)
     plot.setProperty("spike_ccorr_click_handler", _on_mouse_clicked)
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Correlation",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
 
 
 # -----------------------------------------------------------------------------#

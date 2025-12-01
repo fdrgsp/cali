@@ -293,3 +293,198 @@ def _attach_click_handlers_raster(
 
     scene.sigMouseClicked.connect(_on_mouse_clicked)
     plot.setProperty("spike_raster_click_handler", _on_mouse_clicked)
+
+
+def _generate_spike_intensity_heatmap(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    *,
+    run_id: int,
+) -> None:
+    """Generate intensity heatmap with spike data color-coded.
+
+    Each ROI is displayed as a horizontal row, with the full inferred spike
+    signal represented by color intensity (viridis colormap).
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    plot.setTitle("Inferred Spikes Intensity Heatmap")
+
+    # ------------------------ Query DB ------------------------ #
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .outerjoin(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+        )
+
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, Traces, DataAnalysis | None]] = session.exec(
+            stmt
+        ).all()
+
+    if not roi_data:
+        cali_logger.warning("No ROI data found for spike intensity heatmap.")
+        _draw_centered_message_pg(
+            plot,
+            "No ROI data found for this FOV.\nPlease check the selected run and FOV.",
+        )
+        return
+
+    # ------------------------ Collect spike trace data ------------------------ #
+    traces_list: list[np.ndarray] = []
+    active_rois: list[int] = []
+    rois_rec_time: list[float] = []
+
+    for roi, traces, data_analysis in roi_data:
+        if traces is None or traces.inferred_spikes is None:
+            continue
+
+        spike_trace = np.asarray(traces.inferred_spikes, dtype=float)
+        if spike_trace.size == 0:
+            continue
+
+        traces_list.append(spike_trace)
+        active_rois.append(roi.label_value)
+
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
+
+    if not traces_list:
+        cali_logger.warning("No spike trace data found for intensity heatmap.")
+        _draw_centered_message_pg(
+            plot,
+            "No spike trace data available for this FOV.\n"
+            "Please check the selected run.",
+        )
+        return
+
+    # Stack traces into 2D array (n_rois x n_frames)
+    traces_array = np.vstack(traces_list)
+    _n_rois, _n_frames = traces_array.shape
+
+    # Compute percentile-based bounds (robust to outliers)
+    vmin_raw = float(np.percentile(traces_array, 5))
+    vmax_raw = float(np.percentile(traces_array, 95))
+
+    # Ensure valid bounds
+    if vmax_raw <= vmin_raw:
+        vmax_raw = vmin_raw + 0.1
+
+    # Normalize to [0, 1] for proper colormap visualization
+    traces_normalized = (traces_array - vmin_raw) / (vmax_raw - vmin_raw)
+    traces_normalized = np.clip(traces_normalized, 0, 1)
+
+    # ------------------------ Create heatmap ------------------------ #
+    img = pg.ImageItem(traces_normalized)
+
+    # Apply viridis colormap (data is now in [0, 1])
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0, 1, 256))
+    img.setLevels((0, 1))
+
+    plot.addItem(img)
+
+    # Viewbox settings
+    vb.invertY(False)  # Keep top ROI at top
+    vb.setAspectLocked(False)  # Allow independent x/y scaling
+    vb.enableAutoRange(x=True, y=True)
+
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI")
+
+    # Hide Y tick values (ROI indices are just ordinal)
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    # Time axis (using first trace as reference)
+    sample_trace = traces_list[0] if traces_list else None
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+
+    # ------------------------ Colorbar ------------------------ #
+    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_spike_intensity(widget, plot, active_rois)
+
+
+def _add_spike_intensity_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+) -> None:
+    """Add a ColorBarItem to the spike intensity heatmap widget layout."""
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label="Spike Intensity",
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
+
+
+def _attach_click_handlers_spike_intensity(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    active_roi_labels: list[int],
+) -> None:
+    """Map clicked Y row → ROI label, and emit roiSelected."""
+    from pyqtgraph import Point
+
+    scene = plot.scene()
+    vb = plot.getViewBox()
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+
+        p: Point = vb.mapSceneToView(pos)
+        y = float(p.y())
+        idx = round(y)
+        if 0 <= idx < len(active_roi_labels):
+            widget.roiSelected.emit(str(active_roi_labels[idx]))
+
+    old_click = plot.property("spike_intensity_heatmap_click_handler")
+    if old_click is not None:
+        try:
+            scene.sigMouseClicked.disconnect(old_click)
+        except (TypeError, RuntimeError):
+            pass
+
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+    plot.setProperty("spike_intensity_heatmap_click_handler", _on_mouse_clicked)

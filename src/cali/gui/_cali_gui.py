@@ -372,9 +372,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/spontaneous/results.cali"
         # self._output_path = "tests/test_data/spontaneous/"
 
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/tiffs.cali"
-        # self._initialize_from_database(self._database_path, self._data_path)
+        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        self._initialize_from_database(self._database_path, self._data_path)
 
         # USED IN TESTS -------------------------------------------------
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -382,9 +382,9 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        self._output_path = "tests/test_data/2pos/"
+        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/2pos/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
@@ -404,7 +404,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         """Initialize the widget with the given database path."""
         # SHOW LOADING BAR ------------------------------------------------------------
-        self._init_loading_bar("Initializing cali from database...", False)
+        self._init_loading_bar("📚 Initializing cali from database...", False)
 
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
@@ -479,7 +479,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         """Initialize the widget with given datastore and analysis path."""
         # SHOW LOADING BAR ------------------------------------------------------------
-        self._init_loading_bar("Initializing cali from directories...", False)
+        self._init_loading_bar("📂 Initializing cali from directories...", False)
 
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
@@ -493,9 +493,6 @@ class CaliGui(QMainWindow):
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_properties(self._database_path)
-
-        print("-------1--------", self._database_path)
-        print("-------1--------", Path(self._database_path).exists())
 
         # CHECK IF DATABASE EXISTS ----------------------------------------------------
         if Path(self._database_path).exists():
@@ -1477,6 +1474,8 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
+        self._init_loading_bar(f"💿 Loading Run {run_id}...", False)
+
         try:
             # Load the selected analysis result
             result = CaliResult.load_from_database(
@@ -1594,7 +1593,10 @@ class CaliGui(QMainWindow):
             # Refresh the image viewer to update labels with the new detection settings
             self._on_fov_table_selection_changed()
 
+            self._loading_bar.hide()
+
         except Exception as e:
+            self._loading_bar.hide()
             show_error_dialog(self, f"Failed to load run settings: {e}")
             cali_logger.error(f"❌ Failed to load run #{run_id}: {e}")
 
@@ -2033,11 +2035,9 @@ class CaliGui(QMainWindow):
 
     def _update_progress(self, value: int | str) -> None:
         """Update the progress bar value."""
-        print("----------", value)
         if isinstance(value, str):
             show_error_dialog(self, value)
         else:
-            print("++++++++++", value)
             self._loading_bar.setValue(value)
 
     def _on_loading_finished(self) -> None:

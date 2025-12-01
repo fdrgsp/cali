@@ -157,6 +157,9 @@ def _plot_peak_event_synchrony_data(
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+
     # Use same ROI ordering as in peak_trains.keys()
     active_roi_ids = [int(roi_id) for roi_id in peak_trains.keys()]
 
@@ -271,3 +274,27 @@ def _attach_synchrony_heatmap_interaction(
     # Remember handlers so we can disconnect next time
     plot.setProperty("sync_hover_handler", _on_mouse_moved)
     plot.setProperty("sync_click_handler", _on_mouse_clicked)
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Synchrony",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
