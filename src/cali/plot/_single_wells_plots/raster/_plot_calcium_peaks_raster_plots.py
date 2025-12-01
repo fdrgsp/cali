@@ -2,20 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import matplotlib.cm as cm
 import numpy as np
+import pyqtgraph as pg
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_click_for_raster
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
 def _generate_raster_plot(
@@ -28,35 +27,31 @@ def _generate_raster_plot(
     amplitude_colors: bool = False,
     colorbar: bool = False,
 ) -> None:
-    """Generate a raster plot by querying database directly.
+    """Generate a raster plot using pyqtgraph by querying database directly."""
+    plot = widget.plot_item
+    assert plot is not None
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Graph widget to plot on
-    engine : Engine
-        SQLAlchemy Engine connected to the database
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    run_id : int
-        The run ID to filter by
-    rois : list[int] | None
-        List of ROI label values to plot. If None, plots all ROIs.
-    amplitude_colors : bool
-        Whether to color lines by peak amplitude
-    colorbar : bool
-        Whether to show a colorbar for amplitude coloring
-    """
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
-    # Disable status bar x/y display
-    ax.format_coord = lambda x, y: ""
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
 
-    ax.set_title(
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    title = (
         "Calcium Peaks Raster Plot Colored by Amplitude"
         if amplitude_colors
         else "Calcium Peaks Raster Plot"
     )
+    plot.setTitle(title)
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -82,22 +77,13 @@ def _generate_raster_plot(
         roi_data: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
 
     if not roi_data:
-        ax.text(
-            0.5,
-            0.5,
-            "No ROI data found for this FOV.",
-            ha="center",
-            va="center",
-            fontsize=12,
-            transform=ax.transAxes,
-        )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setTitle("Calcium Peaks Raster Plot\nNo ROI data found for this FOV.")
+        plot.setLabel("bottom", "Frames")
+        plot.setLabel("left", "ROI (rows)")
         return
 
     # ------------------------ Collect events & metadata ------------------------ #
-    event_data: list[list[float]] = []
+    event_data: list[np.ndarray] = []
     rois_rec_time: list[float] = []
     active_rois: list[int] = []
     sample_trace: list[float] | None = None
@@ -105,12 +91,18 @@ def _generate_raster_plot(
     min_amp = float("inf")
     max_amp = float("-inf")
 
+    # We need a version of roi_data filtered for ROIs that have peaks, to keep
+    # colors aligned with event_data rows.
+    filtered_roi_data: list[tuple[ROI, Traces, DataAnalysis]] = []
+
     for roi, traces, data_analysis in roi_data:
         if (
             not data_analysis.peaks_dec_dff
             or not data_analysis.peaks_amplitudes_dec_dff
         ):
             continue
+
+        filtered_roi_data.append((roi, traces, data_analysis))
 
         # Active ROIs in raster order
         active_rois.append(roi.label_value)
@@ -124,65 +116,79 @@ def _generate_raster_plot(
             sample_trace = traces.corrected_trace
 
         # Peaks indices per ROI (frames)
-        event_data.append(list(data_analysis.peaks_dec_dff))
+        event_data.append(np.asarray(data_analysis.peaks_dec_dff, dtype=float))
 
-        # Track amp range for coloring
+        # Track amplitude range for coloring
         if amplitude_colors:
-            amps = data_analysis.peaks_amplitudes_dec_dff
-            min_amp = min(min_amp, min(amps))
-            max_amp = max(max_amp, max(amps))
+            amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
+            if amps.size > 0:
+                min_amp = min(min_amp, float(amps.min()))
+                max_amp = max(max_amp, float(amps.max()))
 
     if not event_data:
-        ax.text(
-            0.5,
-            0.5,
-            "No peak data available for this FOV.",
-            ha="center",
-            va="center",
-            fontsize=12,
-            transform=ax.transAxes,
-        )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setTitle("Calcium Peaks Raster Plot\nNo peak data available for this FOV.")
+        plot.setLabel("bottom", "Frames")
+        plot.setLabel("left", "ROI (rows)")
         return
 
-    # ------------------------ Colors ------------------------ #
-    colors: list = []
+    # ------------------------ Colors per ROI ------------------------ #
+    colors: list[tuple[int, int, int, int]] = []
 
-    if amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
-        # Compute normalization bounds shared by line colors and colorbar
+    if (
+        amplitude_colors
+        and np.isfinite(min_amp)
+        and np.isfinite(max_amp)
+        and filtered_roi_data
+    ):
         vmin, vmax = _compute_amp_norm_bounds(min_amp, max_amp)
-        colors = _generate_amplitude_colors(roi_data, vmin, vmax)
+        cmap = colormaps.get("viridis")
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+        for _roi, _traces, da in filtered_roi_data:
+            amps = np.asarray(da.peaks_amplitudes_dec_dff, dtype=float)
+            if amps.size == 0:
+                colors.append((255, 255, 255, 255))
+                continue
+            avg_amp = float(amps.mean())
+            rgba = cmap(norm(avg_amp))  # floats in [0, 1]
+            r, g, b, a = [int(255 * c) for c in rgba]
+            colors.append((r, g, b, a))
     else:
-        # Fallback: ALL black
-        n_rois = len(event_data)
-        colors = ["black"] * n_rois
-        amplitude_colors = False  # no valid amp range → plain raster
+        # Fallback: all white points
+        amplitude_colors = False
+        colors = [(255, 255, 255, 255)] * len(event_data)
 
-    # ------------------------ Plot raster ------------------------ #
-    ax.eventplot(event_data, colors=colors, linewidth=2)
+    # ------------------------ Plot raster (one row per ROI) ------------------------ #
+    for row_idx, (events, color) in enumerate(zip(event_data, colors)):
+        if events.size == 0:
+            continue
+        y_vals = np.full_like(events, row_idx, dtype=float)
+        item = pg.ScatterPlotItem(
+            x=events,
+            y=y_vals,
+            pen=None,
+            brush=pg.mkBrush(*color),
+            size=3,
+        )
+        plot.addItem(item)
 
-    ax.set_ylabel("ROIs")
-    ax.set_yticks([])
-    ax.set_yticklabels([])
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI (rows)")
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
 
-    _update_time_axis(ax, rois_rec_time, sample_trace)
+    # Hide numeric Y tick labels (rows are just ordinal)
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    plot.getViewBox().enableAutoRange(x=True, y=True)
 
     # ------------------------ Colorbar ------------------------ #
-    if amplitude_colors and colorbar:
-        vmin, vmax = _compute_amp_norm_bounds(min_amp, max_amp)
-        norm = Normalize(vmin=vmin, vmax=vmax)
-        cbar = widget.figure.colorbar(
-            cm.ScalarMappable(norm=norm, cmap="viridis"),
-            ax=ax,
-        )
-        cbar.set_label("Amplitude")
+    if colorbar and amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
+        _add_colorbar_to_widget(widget, vmin, vmax)
 
-    widget.figure.tight_layout()
-
-    _add_hover_functionality(ax, widget, active_rois)
-    widget.canvas.draw()
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_raster(widget, plot, active_rois)
 
 
 def _compute_amp_norm_bounds(min_amp: float, max_amp: float) -> tuple[float, float]:
@@ -190,61 +196,87 @@ def _compute_amp_norm_bounds(min_amp: float, max_amp: float) -> tuple[float, flo
     if not np.isfinite(min_amp) or not np.isfinite(max_amp):
         return 0.0, 1.0
 
-    # Try to compress the top end a bit (to avoid single huge outliers dominating)
     vmax = max_amp * 0.5
     if vmax <= min_amp:
         vmax = max_amp
     if vmax <= min_amp:
-        vmax = min_amp + 0.1  # tiny range if everything is almost equal
+        vmax = min_amp + 0.1
 
     vmin = min_amp
     return vmin, vmax
 
 
-def _generate_amplitude_colors(
-    roi_data: list[tuple[ROI, Traces, DataAnalysis]],
-    vmin: float,
-    vmax: float,
-) -> list:
-    """Assign one color per ROI based on average amplitude."""
-    norm_amp_color = Normalize(vmin=vmin, vmax=vmax)
-    cmap = colormaps.get_cmap("viridis")
-
-    colors: list = []
-    for _, _traces, data_analysis in roi_data:
-        if not (data_analysis and data_analysis.peaks_amplitudes_dec_dff):
-            continue
-
-        avg_amp = float(np.mean(data_analysis.peaks_amplitudes_dec_dff))
-        colors.append(cmap(norm_amp_color(avg_amp)))
-
-    # Note: this assumes roi_data was filtered in the same way as event_data
-    # (only ROIs with valid peaks), which is true in _generate_raster_plot.
-    return colors
-
-
-def _add_hover_functionality(
-    ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
-) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click_for_raster(ax, widget, active_rois, picker_tolerance=5)
-
-
-def _update_time_axis(
-    ax: Axes, rois_rec_time: list[float], trace: list[float] | None
+def _update_time_axis_pg_frames(
+    plot: pg.PlotItem,
+    rois_rec_time: list[float],
+    trace: list[float] | None,
 ) -> None:
     """Set x-axis as time (s) if total recording time is available, else frames."""
-    if trace is None or sum(rois_rec_time) <= 0:
-        ax.set_xlabel("Frames")
+    if trace is None or not rois_rec_time or sum(rois_rec_time) <= 0:
+        plot.setLabel("bottom", "Frames")
+        return
+
+    total_frames = len(trace) if trace is not None else 1
+    if total_frames <= 1:
+        plot.setLabel("bottom", "Frames")
         return
 
     avg_rec_time = int(np.mean(rois_rec_time))
-    total_frames = len(trace) if trace is not None else 1
-
-    tick_interval = avg_rec_time / total_frames
     x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
+    tick_interval = avg_rec_time / total_frames
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
 
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(x_labels)
-    ax.set_xlabel("Time (s)")
+    axis = plot.getAxis("bottom")
+    axis.setTicks([list(zip(x_ticks.tolist(), x_labels))])
+    plot.setLabel("bottom", "Time (s)")
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label="Amplitude (dec ΔF/F)",
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
+
+
+def _attach_click_handlers_raster(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    active_roi_labels: list[int],
+) -> None:
+    """Map clicked Y row → ROI label, and emit roiSelected."""
+    from pyqtgraph import Point
+
+    scene = plot.scene()
+    vb = plot.getViewBox()
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+
+        p: Point = vb.mapSceneToView(pos)
+        y = float(p.y())
+        idx = round(y)
+        if 0 <= idx < len(active_roi_labels):
+            widget.roiSelected.emit(str(active_roi_labels[idx]))
+
+    old_click = plot.property("amp_raster_click_handler")
+    if old_click is not None:
+        try:
+            scene.sigMouseClicked.disconnect(old_click)
+        except (TypeError, RuntimeError):
+            pass
+
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+    plot.setProperty("amp_raster_click_handler", _on_mouse_clicked)

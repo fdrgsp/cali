@@ -103,6 +103,9 @@ class _SingleWellGraphWidget(QWidget):
         self.legend.setParentItem(self.plot_item.graphicsItem())
         self.legend.setVisible(False)
 
+        # Colorbar for raster plots (initially None, created when needed)
+        self.colorbar: pg.ColorBarItem | None = None
+
         # Global pg config tweaks (optional)
         pg.setConfigOptions(antialias=False)
         # pg.setConfigOptions(antialias=True, background="w", foreground="k")
@@ -210,6 +213,11 @@ class _SingleWellGraphWidget(QWidget):
         if hasattr(self, "legend") and self.legend is not None:
             self.legend.clear()
             self.legend.setVisible(False)
+
+        # 7) Remove colorbar if present
+        if hasattr(self, "colorbar") and self.colorbar is not None:
+            self.plot_item.layout.removeItem(self.colorbar)
+            self.colorbar = None
 
     def set_combo_text_red(self, state: bool) -> None:
         """Set the combo text color to red if state is True or to black otherwise."""

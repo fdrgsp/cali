@@ -150,7 +150,7 @@ def _get_calcium_peaks_events_from_rois(
             .where(col(ROI.active) == True)  # noqa: E712
         )
         if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
         results = session.exec(stmt).all()
         roi_data = results

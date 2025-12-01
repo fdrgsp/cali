@@ -350,11 +350,11 @@ def _draw_population_activity_pg(
         name="Raw Population Activity",
     )
 
-    # Smoothed activity (blue)
+    # Smoothed activity (yellow)
     plot.plot(
         time_axis,
         smoothed_activity,
-        pen=pg.mkPen("c", width=2),
+        pen=pg.mkPen("yellow", width=3),
         name="Smoothed Population Activity",
     )
 
@@ -362,7 +362,7 @@ def _draw_population_activity_pg(
     the_line = pg.InfiniteLine(
         pos=threshold_value,
         angle=0,
-        pen=pg.mkPen("y", width=2, style=pg.QtCore.Qt.PenStyle.DashLine),
+        pen=pg.mkPen("yellow", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
     )
     the_line.setZValue(5)
     plot.addItem(the_line)
@@ -379,6 +379,7 @@ def _draw_population_activity_pg(
         region = pg.LinearRegionItem(
             values=[t0, t1],
             brush=pg.mkBrush(0, 255, 0, 60),
+            pen=pg.mkPen(None),  # Remove border lines
             movable=False,
         )
         region.setZValue(1)

@@ -3,17 +3,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -55,40 +54,30 @@ def _plot_iei_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot inter-event interval data by querying the database.
+    """Plot inter-event interval data by querying the database (pyqtgraph).
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Graph widget to plot on
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    rois : list[int] | None
-        List of ROI label values to plot. If None, plots all ROIs.
-    run_id : int | None
-        The run ID to filter by, None for latest (currently required)
+    For each ROI:
+    - Mean IEI ± SEM as a white point + error bar
+    - Individual IEI values as light-gray background points
     """
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
-    # Disable status bar x/y display
-    ax.format_coord = lambda x, y: ""
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
 
     if run_id is None:
         cali_logger.warning("No run_id provided for IEI plot.")
-        ax.text(
-            0.5,
-            0.5,
-            "No analysis run selected.\nPlease select a run from the dropdown.",
-            ha="center",
-            va="center",
-            fontsize=12,
-            transform=ax.transAxes,
+        plot.setTitle(
+            "No analysis run selected.\nPlease select a run from the dropdown."
         )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
     # Query database for ROI + DataAnalysis
@@ -111,82 +100,127 @@ def _plot_iei_data(
         roi_data: list[tuple[ROI, DataAnalysis]] = session.exec(stmt).all()
 
     if not roi_data:
-        ax.text(
-            0.5,
-            0.5,
-            "No ROI analysis data found for this FOV.",
-            ha="center",
-            va="center",
-            fontsize=12,
-            transform=ax.transAxes,
-        )
-        ax.axis("off")
-        widget.figure.tight_layout()
-        widget.canvas.draw()
+        plot.setTitle("No ROI analysis data found for this FOV.")
+        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
-    for roi, data_analysis in roi_data:
-        _plot_metrics(ax, roi, data_analysis)
+    # --- Collect IEI stats per ROI ---
+    x_vals: list[float] = []
+    y_means: list[float] = []
+    y_sem: list[float] = []
+    roi_labels: list[int] = []
+    gray_x: list[float] = []
+    gray_y: list[float] = []
 
-    _set_graph_title_and_labels(ax)
-    _add_hover_functionality(ax, widget)
+    for idx, (roi, da) in enumerate(roi_data):
+        if not da.iei:
+            continue
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+        iei = np.asarray(da.iei, dtype=float)
+        if iei.size == 0:
+            continue
 
+        # Mean IEI
+        mean_iei = float(np.mean(iei))
 
-def _plot_metrics(
-    ax: Axes,
-    roi: ROI,
-    data_analysis: DataAnalysis,
-) -> None:
-    """Plot inter-event intervals for a single ROI."""
-    if not data_analysis.iei:
+        # SEM = std / sqrt(N)
+        if iei.size > 1:
+            std_iei = float(np.std(iei, ddof=1))
+            sem_iei = std_iei / np.sqrt(iei.size)
+        else:
+            sem_iei = 0.0
+
+        x = float(idx)  # internal x-position; we'll hide numeric ticks
+        x_vals.append(x)
+        y_means.append(mean_iei)
+        y_sem.append(sem_iei)
+        roi_labels.append(roi.label_value)
+
+        # gray background points (individual IEIs)
+        gray_x.extend([x] * iei.size)
+        gray_y.extend(iei.tolist())
+
+    if not x_vals:
+        plot.setTitle("No inter-event interval data available.")
+        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
-    iei = np.asarray(data_analysis.iei, dtype=float)
+    x_arr = np.asarray(x_vals, dtype=float)
+    y_arr = np.asarray(y_means, dtype=float)
+    sem_arr = np.asarray(y_sem, dtype=float)
 
-    # Mean IEI
-    mean_iei = float(np.mean(iei))
-
-    # SEM = std / sqrt(N), not mean / sqrt(N)
-    if iei.size > 1:
-        std_iei = float(np.std(iei, ddof=1))
-        sem_iei = std_iei / np.sqrt(iei.size)
+    # Determine colors based on number of ROIs
+    n_rois = len(roi_labels)
+    if n_rois == 1:
+        colors = ["w"]
     else:
-        sem_iei = 0.0
+        colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 
-    ax.errorbar(
-        [float(roi.label_value)],
-        [mean_iei],
-        yerr=[sem_iei],
-        fmt="o",
-        label=f"ROI {roi.label_value}",
-        capsize=5,
-        picker=5,  # Enable picking on errorbar
+    # --- Individual IEIs (gray background) ---
+    if gray_x:
+        gray_scatter = pg.ScatterPlotItem(
+            x=np.asarray(gray_x, dtype=float),
+            y=np.asarray(gray_y, dtype=float),
+            pen=None,
+            brush=pg.mkBrush(150, 150, 150, 160),
+            size=5,
+        )
+        plot.addItem(gray_scatter)
+
+    # --- Error bars for mean ± SEM ---
+    err_item = pg.ErrorBarItem(
+        x=x_arr,
+        y=y_arr,
+        top=sem_arr,
+        bottom=sem_arr,
+        beam=0.2,
+        pen=pg.mkPen("w", width=1),
     )
+    plot.addItem(err_item)
 
-    ax.scatter(
-        [float(roi.label_value)] * iei.size,
-        iei,
-        alpha=0.5,
-        color="lightgray",
-        s=30,
-        label=f"ROI {roi.label_value}",  # Add label so scatter is pickable
-        picker=True,  # Enable picking on scatter
+    # --- Mean points (clickable, with ROI label in data) - colored per ROI ---
+    mean_scatter = pg.ScatterPlotItem(
+        x=x_arr,
+        y=y_arr,
+        pen=[pg.mkPen(c) for c in colors],
+        brush=[pg.mkBrush(c) for c in colors],
+        size=7,
+        data=[str(lbl) for lbl in roi_labels],
     )
+    plot.addItem(mean_scatter)
+
+    _set_graph_title_and_labels_pg(plot)
+    _attach_click_handlers_iei(widget, mean_scatter)
+
+    # Hide numeric x tick labels (keep axis label "ROIs")
+    axis = plot.getAxis("bottom")
+    axis.setTicks([])
+    axis.setStyle(showValues=False)
+
+    plot.getViewBox().enableAutoRange(x=True, y=True)
 
 
-def _set_graph_title_and_labels(ax: Axes) -> None:
-    """Set axis labels based on the plotted data."""
+def _set_graph_title_and_labels_pg(plot: pg.PlotItem) -> None:
+    """Set axis labels based on the plotted data (pyqtgraph version)."""
     title = "Calcium Peaks Inter-Event Intervals (s, Mean ± SEM - Deconvolved ΔF/F)"
-    ax.set_title(title)
-    ax.set_ylabel("Inter-Event Interval (s)")
-    ax.set_xlabel("ROIs")
-    ax.set_xticks([])
-    ax.set_xticklabels([])
+    plot.setTitle(title)
+    plot.setLabel("left", "Inter-Event Interval (s)")
+    plot.setLabel("bottom", "ROIs")
 
 
-def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click(ax, widget, picker_tolerance=5)
+def _attach_click_handlers_iei(
+    widget: _SingleWellGraphWidget,
+    scatter: pg.ScatterPlotItem,
+) -> None:
+    """Click on a mean IEI point → emit widget.roiSelected(str(label))."""
+
+    def _on_clicked(item: pg.ScatterPlotItem, points: list[pg.SpotItem]) -> None:
+        if not points:
+            return
+        data = points[0].data()
+        if data is not None:
+            widget.roiSelected.emit(str(data))
+
+    scatter.sigClicked.connect(_on_clicked)

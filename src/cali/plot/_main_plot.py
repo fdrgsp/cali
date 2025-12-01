@@ -129,8 +129,8 @@ ANALYSIS_PRODUCTS: list[AnalysisProduct] = []
 # TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
 # fmt: off
 RAW_TRACES = "Calcium Raw Traces"
+NORMALIZED_TRACES = "Calcium Raw Normalized Traces"
 CORRECTED_TRACES = "Calcium Neuropil Corrected Traces"
-NORMALIZED_TRACES = "Calcium Normalized Traces"
 DFF = "Calcium ΔF/F0 Traces"
 DFF_NORMALIZED = "Calcium ΔF/F0 Normalized  Traces "
 DEC_DFF_NORMALIZED_ACTIVE_ONLY = "Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)"  # noqa: E501
@@ -197,7 +197,7 @@ AnalysisProduct(
 AnalysisProduct(
     name=NORMALIZED_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_traces_data, normalize=True),
+    analyzer=partial(_plot_traces_data, raw=True, normalize=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )

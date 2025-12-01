@@ -386,6 +386,10 @@ class CaliGui(QMainWindow):
         self._database_path = "tests/test_data/2pos/result_2pos.cali"
         self._output_path = "tests/test_data/2pos/"
 
+        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+
         # self._database_path = "tests/test_data/2pos/result_2pos.cali"
         # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
         # self._initialize_from_database(self._database_path, self._data_path)
@@ -489,6 +493,9 @@ class CaliGui(QMainWindow):
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_properties(self._database_path)
+
+        print("-------1--------", self._database_path)
+        print("-------1--------", Path(self._database_path).exists())
 
         # CHECK IF DATABASE EXISTS ----------------------------------------------------
         if Path(self._database_path).exists():
@@ -2026,9 +2033,11 @@ class CaliGui(QMainWindow):
 
     def _update_progress(self, value: int | str) -> None:
         """Update the progress bar value."""
+        print("----------", value)
         if isinstance(value, str):
             show_error_dialog(self, value)
         else:
+            print("++++++++++", value)
             self._loading_bar.setValue(value)
 
     def _on_loading_finished(self) -> None:
