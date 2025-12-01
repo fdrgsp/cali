@@ -20,12 +20,10 @@ ask to claude:
 
 - menu to save and load settings in CaliGui, they are dataclasses so we can save as json
 
-- replece red color in plot combo with unclickable item
-
-- ⚠️ fix bug: after deleting one run, I get some unique trace error...
-
 - code and widget to load own label images for segmentation
 
 - ⁇ to simplify the code, is it worth to have the runs in a different db???
 
 - export tab to export tables and labels
+
+- add a button to reset settings in each tab to default values

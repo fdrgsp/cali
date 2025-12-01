@@ -1475,6 +1475,10 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
+        # return early if the selected run is already active
+        if run_id == self._runs_panel.get_selected_run_id():
+            return
+
         self._init_loading_bar(f"💿 Loading Run {run_id}...", False)
 
         try:
@@ -1705,10 +1709,10 @@ class CaliGui(QMainWindow):
                 return
 
             # check if the FOV has been analyzed (has ROIs with data)
-            has_analysis = self._has_fov_analysis(value)
+            # has_analysis = self._has_fov_analysis(value)
 
             # update the graphs combo boxes
-            self._update_single_wells_graphs_combo(combo_red=(not has_analysis))
+            self._update_single_wells_graphs_combo()
 
     def _highlight_roi(self, roi: str | list[str]) -> None:
         """Highlight the selected roi in the image viewer."""
@@ -1754,9 +1758,7 @@ class CaliGui(QMainWindow):
 
             if value is None:
                 self._image_viewer.setData(None, None)
-                self._update_single_wells_graphs_combo(
-                    combo_red=True, clear=True, set_title=""
-                )
+                self._update_single_wells_graphs_combo(clear=True, set_title="")
                 return
 
             if self._data is None:
@@ -1783,9 +1785,7 @@ class CaliGui(QMainWindow):
 
             # Check if the FOV has been analyzed (has ROIs with data)
             has_analysis = self._has_fov_analysis(value)
-            self._update_single_wells_graphs_combo(
-                combo_red=(not has_analysis), clear=(not has_analysis)
-            )
+            self._update_single_wells_graphs_combo(clear=(not has_analysis))
             self._loading_bar.hide()
         except Exception as e:
             msg = f"❌ Failed to load FOV:\n{e}"
@@ -1977,26 +1977,20 @@ class CaliGui(QMainWindow):
     def _update_single_wells_graphs_combo(
         self,
         set_title: str | None = None,
-        combo_red: bool = False,
         clear: bool = False,
     ) -> None:
         for sw_graph in self.SW_GRAPHS:
+            # Always set FOV if set_title is provided (including empty string to reset)
             if set_title is not None:
                 sw_graph.fov = set_title
 
             if clear:
                 sw_graph.clear_plot()
 
-            sw_graph.set_combo_text_red(combo_red)
-
     def _update_multi_wells_graphs_combo(self) -> None:
-        if self._database_path is None:
-            has_analysis = False
-        else:
-            has_analysis = has_experiment_analysis(self._database_path)
-
-        for mw_graph in self.MW_GRAPHS:
-            mw_graph.set_combo_text_red(not has_analysis)
+        # Combo boxes now automatically disable unavailable items
+        # based on pipeline stage availability
+        pass
 
     # MENU SAVE ACTIONS----------------------------------------------------------------
 

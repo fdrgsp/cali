@@ -25,12 +25,14 @@ from sqlmodel import Session, col, select
 from superqt.fonticon import icon
 
 from cali.plot._main_plot import (
+    ANALYSIS_PRODUCTS,
     AnalysisGroup,
+    PipelineStage,
     get_available_plots,
     plot_single_well_data,
     requires_active_rois,
 )
-from cali.sqlmodel import FOV, ROI, AnalysisSettings, CaliResult
+from cali.sqlmodel import FOV, ROI, AnalysisSettings, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -107,8 +109,6 @@ class _SingleWellGraphWidget(QWidget):
         # no toolbar - pan/zoom etc are built-in with mouse in pyqtgraph
         layout.addWidget(self.plot_widget)
 
-        self.set_combo_text_red(True)
-
         self._combo.currentTextChanged.connect(self._on_combo_changed)
 
     # ------------------------------------------------------------------ #
@@ -129,6 +129,7 @@ class _SingleWellGraphWidget(QWidget):
     @fov.setter
     def fov(self, fov: str) -> None:
         self._fov = fov
+        self._update_combo_box()  # Update combo box when FOV changes
         self._on_combo_changed(self._combo.currentText())
 
     @property
@@ -170,12 +171,62 @@ class _SingleWellGraphWidget(QWidget):
             result = session.exec(stmt).first()
             self._experiment_type = result if result else None
 
+    def _check_pipeline_stage_availability(self) -> tuple[bool, bool, bool]:
+        """Check which pipeline stages have been completed.
+
+        Returns
+        -------
+        tuple[bool, bool, bool]
+            (has_detection, has_extraction, has_analysis)
+        """
+        if self._engine is None or self._run_id is None or not self._fov:
+            return (False, False, False)
+
+        with Session(self._engine) as session:
+            # Check for ROIs (detection)
+            has_detection = bool(
+                session.exec(
+                    select(ROI.id).join(FOV).where(col(FOV.name) == self._fov).limit(1)
+                ).first()
+            )
+
+            # Check for Traces (extraction)
+            has_extraction = bool(
+                session.exec(
+                    select(Traces.id)
+                    .join(ROI)
+                    .join(FOV)
+                    .where(col(FOV.name) == self._fov)
+                    .where(col(Traces.analysis_result_id) == self._run_id)
+                    .limit(1)
+                ).first()
+            )
+
+            # Check for DataAnalysis (analysis)
+            has_analysis = bool(
+                session.exec(
+                    select(DataAnalysis.id)
+                    .join(ROI)
+                    .join(FOV)
+                    .where(col(FOV.name) == self._fov)
+                    .where(col(DataAnalysis.analysis_result_id) == self._run_id)
+                    .limit(1)
+                ).first()
+            )
+
+        return (has_detection, has_extraction, has_analysis)
+
     def _update_combo_box(self) -> None:
-        """Rebuild the combo box based on current experiment type filter."""
+        """Rebuild combo box based on experiment type and data availability."""
+        # Check which pipeline stages are available
+        has_detection, has_extraction, has_analysis = (
+            self._check_pipeline_stage_availability()
+        )
+
         # Get available plots filtered by experiment type
         combo_options = get_available_plots(
             group=AnalysisGroup.SINGLE_WELL,
-            has_detection=True,
+            has_detection=True,  # Show all plots, but we'll disable unavailable ones
             has_extraction=True,
             has_analysis=True,
             experiment_type=self._experiment_type,
@@ -192,19 +243,50 @@ class _SingleWellGraphWidget(QWidget):
         none_item = QStandardItem("None")
         model.appendRow(none_item)
 
+        # Create a mapping of plot names to their pipeline stage requirements
+        plot_requirements = {
+            product.name: product.pipeline_stage
+            for product in ANALYSIS_PRODUCTS
+            if product.group == AnalysisGroup.SINGLE_WELL
+        }
+
         # Add categorized plots
         for key, value in combo_options.items():
             section = QStandardItem(key)
             section.setFlags(Qt.ItemFlag.NoItemFlags)
             section.setData(True, SECTION_ROLE)
             model.appendRow(section)
-            for item in value:
-                model.appendRow(QStandardItem(item))
+            for plot_name in value:
+                item = QStandardItem(plot_name)
 
-        # Try to restore previous selection if still valid
+                # Check if this plot's required stage is available
+                required_stage = plot_requirements.get(plot_name)
+                is_available = True
+
+                if required_stage == PipelineStage.DETECTION:
+                    is_available = has_detection
+                elif required_stage == PipelineStage.EXTRACTION:
+                    is_available = has_detection and has_extraction
+                elif required_stage == PipelineStage.ANALYSIS:
+                    is_available = has_detection and has_extraction and has_analysis
+
+                # Disable item if data not available
+                if not is_available:
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    # Make it visually distinct (grayed out)
+                    item.setForeground(Qt.GlobalColor.gray)
+
+                model.appendRow(item)
+
+        # Try to restore previous selection if still valid and enabled
         idx = self._combo.findText(current_text)
         if idx >= 0:
-            self._combo.setCurrentIndex(idx)
+            # Check if the item is enabled
+            item = model.item(idx)
+            if item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                self._combo.setCurrentIndex(idx)
+            else:
+                self._combo.setCurrentIndex(0)  # Default to "None"
         else:
             self._combo.setCurrentIndex(0)  # Default to "None"
 
@@ -266,13 +348,6 @@ class _SingleWellGraphWidget(QWidget):
             self.plot_item.layout.removeItem(self.colorbar)
             self.colorbar = None
 
-    def set_combo_text_red(self, state: bool) -> None:
-        """Set the combo text color to red if state is True or to black otherwise."""
-        if state:
-            self._combo.setStyleSheet(f"color: {RED};")
-        else:
-            self._combo.setStyleSheet("")
-
     # ------------------------------------------------------------------ #
     # Internal slots
     # ------------------------------------------------------------------ #
@@ -280,7 +355,13 @@ class _SingleWellGraphWidget(QWidget):
         """Update the graph when the combo box is changed."""
         # clear the plot
         self.clear_plot()
-        if text == "None" or not self._fov or not self._engine or self._run_id is None:
+        if (
+            not text
+            or text == "None"
+            or not self._fov
+            or not self._engine
+            or self._run_id is None
+        ):
             return
 
         plot_single_well_data(
