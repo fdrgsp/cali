@@ -162,7 +162,7 @@ def _get_calcium_peaks_events_from_rois(
     # First pass: determine max_frames from any trace that has data,
     # or from maximum peak frame number
     max_frames = 0
-    for roi, traces, data_analysis in roi_data:
+    for _, traces, data_analysis in roi_data:
         if traces and traces.corrected_trace is not None:
             max_frames = max(max_frames, len(traces.corrected_trace))
         if data_analysis and data_analysis.peaks_dec_dff:
