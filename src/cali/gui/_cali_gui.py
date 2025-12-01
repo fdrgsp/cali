@@ -156,10 +156,6 @@ class CaliGui(QMainWindow):
 
         # TABLE FOR THE FIELDS OF VIEW ------------------------------------------------
         self._fov_table = _FOVTable(self)
-        self._fov_table.itemSelectionChanged.connect(
-            self._on_fov_table_selection_changed
-        )
-        self._fov_table.doubleClicked.connect(self._on_fov_double_click)
 
         # IMAGE VIEWER ----------------------------------------------------------------
         self._image_viewer = _ImageViewer(self)
@@ -334,6 +330,11 @@ class CaliGui(QMainWindow):
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
 
+        self._fov_table.itemSelectionChanged.connect(
+            self._on_fov_table_selection_changed
+        )
+        self._fov_table.doubleClicked.connect(self._on_fov_double_click)
+
         self._runs_panel.runSelected.connect(self._on_run_item_selected)
         self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
 
@@ -372,9 +373,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/spontaneous/results.cali"
         # self._output_path = "tests/test_data/spontaneous/"
 
-        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        self._initialize_from_database(self._database_path, self._data_path)
+        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # USED IN TESTS -------------------------------------------------
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -382,9 +383,9 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/2pos/"
+        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        self._output_path = "tests/test_data/2pos/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
@@ -1747,41 +1748,49 @@ class CaliGui(QMainWindow):
 
     def _on_fov_table_selection_changed(self) -> None:
         """Update the image viewer with the first frame of the selected FOV."""
-        self._image_viewer._clear_highlight()
-        value = self._fov_table.value() if self._fov_table.selectedItems() else None
+        try:
+            self._image_viewer._clear_highlight()
+            value = self._fov_table.value() if self._fov_table.selectedItems() else None
 
-        if value is None:
-            self._image_viewer.setData(None, None)
-            self._update_single_wells_graphs_combo(
-                combo_red=True, clear=True, set_title=""
+            if value is None:
+                self._image_viewer.setData(None, None)
+                self._update_single_wells_graphs_combo(
+                    combo_red=True, clear=True, set_title=""
+                )
+                return
+
+            if self._data is None:
+                return
+
+            if not self._data.sequence:
+                return
+
+            # get a single frame for the selected FOV (at 2/3 of the time points)
+            t = int(len(self._data.sequence.stage_positions) / 3 * 2)
+            data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
+            # get labels and neuropil masks if they exist
+            roi_labels, neuropil_labels = self._get_labels(value)
+            # flip data and labels or will look different from the StackViewer
+            data = np.flip(data, axis=0)
+            roi_labels = np.flip(roi_labels, axis=0) if roi_labels is not None else None
+            neuropil_labels = (
+                np.flip(neuropil_labels, axis=0)
+                if neuropil_labels is not None
+                else None
             )
-            return
+            self._image_viewer.setData(data, roi_labels, neuropil_labels)
+            self._set_graphs_fov(value)
 
-        if self._data is None:
-            return
-
-        if not self._data.sequence:
-            return
-
-        # get a single frame for the selected FOV (at 2/3 of the time points)
-        t = int(len(self._data.sequence.stage_positions) / 3 * 2)
-        data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
-        # get labels and neuropil masks if they exist
-        roi_labels, neuropil_labels = self._get_labels(value)
-        # flip data and labels vertically or will look different from the StackViewer
-        data = np.flip(data, axis=0)
-        roi_labels = np.flip(roi_labels, axis=0) if roi_labels is not None else None
-        neuropil_labels = (
-            np.flip(neuropil_labels, axis=0) if neuropil_labels is not None else None
-        )
-        self._image_viewer.setData(data, roi_labels, neuropil_labels)
-        self._set_graphs_fov(value)
-
-        # Check if the FOV has been analyzed (has ROIs with data)
-        has_analysis = self._has_fov_analysis(value)
-        self._update_single_wells_graphs_combo(
-            combo_red=(not has_analysis), clear=(not has_analysis)
-        )
+            # Check if the FOV has been analyzed (has ROIs with data)
+            has_analysis = self._has_fov_analysis(value)
+            self._update_single_wells_graphs_combo(
+                combo_red=(not has_analysis), clear=(not has_analysis)
+            )
+            self._loading_bar.hide()
+        except Exception as e:
+            msg = f"❌ Failed to load FOV:\n{e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
 
     def _has_fov_analysis(self, value: WellInfo) -> bool:
         """Check if the given FOV has been analyzed (has ROIs with data).

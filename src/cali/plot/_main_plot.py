@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from typing_extensions import TypeAlias
 
+from cali._constants import EVOKED
+
 from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
@@ -21,6 +23,16 @@ from ._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
 )
 from ._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
+)
+from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
+    _plot_non_stimulated_calcium_correlation,
+    _plot_non_stimulated_calcium_synchrony,
+    _plot_non_stimulated_spike_correlation,
+    _plot_non_stimulated_spike_synchrony,
+    _plot_stimulated_calcium_correlation,
+    _plot_stimulated_calcium_synchrony,
+    _plot_stimulated_spike_correlation,
+    _plot_stimulated_spike_synchrony,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
     _plot_spike_cross_correlation_data,
@@ -109,6 +121,8 @@ class AnalysisProduct:
         Category for grouping in the UI (e.g., "Calcium Traces", "Evoked Experiment")
     pipeline_stage : PipelineStage
         Minimum pipeline stage required to generate this plot
+    experiment_type : str | None
+        Required experiment type ("evoked" or "spontaneous"), None for all types
     """
 
     name: str
@@ -116,6 +130,7 @@ class AnalysisProduct:
     analyzer: AnyAnalyzer
     category: str = "General"
     pipeline_stage: PipelineStage = PipelineStage.ANALYSIS
+    experiment_type: str | None = None  # "evoked", "spontaneous", or None for all
 
     def __post_init__(self) -> None:
         """Register this product in the global registry."""
@@ -183,6 +198,14 @@ STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
 NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
 STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
 NON_STIMULATED_PEAKS_FREQ = "Non-Stimulated Calcium Peaks Frequencies"
+STIMULATED_CALCIUM_SYNCHRONY = "Stimulated Calcium Peaks Synchrony"
+NON_STIMULATED_CALCIUM_SYNCHRONY = "Non-Stimulated Calcium Peaks Synchrony"
+STIMULATED_CALCIUM_CORRELATION = "Stimulated Calcium Peaks Cross-Correlation"
+NON_STIMULATED_CALCIUM_CORRELATION = "Non-Stimulated Calcium Peaks Cross-Correlation"
+STIMULATED_SPIKE_SYNCHRONY = "Stimulated Inferred Spikes Synchrony"
+NON_STIMULATED_SPIKE_SYNCHRONY = "Non-Stimulated Inferred Spikes Synchrony"
+STIMULATED_SPIKE_CORRELATION = "Stimulated Inferred Spikes Cross-Correlation"
+NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Cross-Correlation"
 NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
 NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
@@ -481,6 +504,7 @@ AnalysisProduct(
     analyzer=partial(_visualize_stimulated_area, stimulated_area=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_ROIS,
@@ -488,6 +512,7 @@ AnalysisProduct(
     analyzer=partial(_visualize_stimulated_area, with_rois=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_ROIS_WITH_STIMULATED_AREA,
@@ -495,6 +520,7 @@ AnalysisProduct(
     analyzer=partial(_visualize_stimulated_area, with_rois=True, stimulated_area=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_PEAKS_AMP,
@@ -502,6 +528,7 @@ AnalysisProduct(
     analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=NON_STIMULATED_PEAKS_AMP,
@@ -509,6 +536,7 @@ AnalysisProduct(
     analyzer=_plot_stim_or_not_stim_peaks_amplitude,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
@@ -516,6 +544,7 @@ AnalysisProduct(
     analyzer=_plot_stimulated_vs_non_stimulated_roi_traces,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
@@ -523,6 +552,7 @@ AnalysisProduct(
     analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_traces, with_peaks=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
@@ -530,6 +560,7 @@ AnalysisProduct(
     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER,
@@ -537,8 +568,72 @@ AnalysisProduct(
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
 )
-
+AnalysisProduct(
+    name=STIMULATED_CALCIUM_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_calcium_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_CALCIUM_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_calcium_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_SPIKE_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_spike_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_SPIKE_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_spike_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_CALCIUM_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_non_stimulated_calcium_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_CALCIUM_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_non_stimulated_calcium_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_non_stimulated_spike_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_non_stimulated_spike_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
 
 # Cell Size Group
 AnalysisProduct(
@@ -756,8 +851,9 @@ def get_available_plots(
     has_detection: bool = False,
     has_extraction: bool = False,
     has_analysis: bool = False,
+    experiment_type: str | None = None,
 ) -> dict[str, list[str]]:
-    """Filter available plots based on completed pipeline stages.
+    """Filter available plots based on completed pipeline stages and experiment type.
 
     Parameters
     ----------
@@ -769,13 +865,15 @@ def get_available_plots(
         Whether extraction has been completed
     has_analysis : bool
         Whether analysis has been completed
+    experiment_type : str | None
+        Experiment type (use EVOKED constant for evoked experiments), None to show all
 
     Returns
     -------
     dict[str, list[str]]
         Dictionary mapping category headers to list of available plot names
     """
-    # Group products by category, filtering by pipeline stage
+    # Group products by category, filtering by pipeline stage and experiment type
     categories: dict[str, list[str]] = {}
     for product in ANALYSIS_PRODUCTS:
         if product.group != group:
@@ -787,6 +885,13 @@ def get_available_plots(
         if product.pipeline_stage == PipelineStage.EXTRACTION and not has_extraction:
             continue
         if product.pipeline_stage == PipelineStage.ANALYSIS and not has_analysis:
+            continue
+
+        # Filter by experiment type
+        if (
+            product.experiment_type is not None
+            and experiment_type != product.experiment_type
+        ):
             continue
 
         # Add to categories

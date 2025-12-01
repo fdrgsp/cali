@@ -25,11 +25,12 @@ from sqlmodel import Session, col, select
 from superqt.fonticon import icon
 
 from cali.plot._main_plot import (
-    SINGLE_WELL_COMBO_OPTIONS_DICT,
+    AnalysisGroup,
+    get_available_plots,
     plot_single_well_data,
     requires_active_rois,
 )
-from cali.sqlmodel import FOV, ROI
+from cali.sqlmodel import FOV, ROI, AnalysisSettings, CaliResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,25 +55,13 @@ class _SingleWellGraphWidget(QWidget):
         self._engine: Engine | None = None
         self._run_id: int | None = None
         self._fov: str = ""
+        self._experiment_type: str | None = None
 
         # ------------------------------------------------------------------ #
         # Top combo + save button
         # ------------------------------------------------------------------ #
         self._combo = QComboBox(self)
-        model = QStandardItemModel()
-        self._combo.setModel(model)
-
-        # add the "None" selectable option to the combo box
-        none_item = QStandardItem("None")
-        model.appendRow(none_item)
-
-        for key, value in SINGLE_WELL_COMBO_OPTIONS_DICT.items():
-            section = QStandardItem(key)
-            section.setFlags(Qt.ItemFlag.NoItemFlags)
-            section.setData(True, SECTION_ROLE)
-            model.appendRow(section)
-            for item in value:
-                model.appendRow(QStandardItem(item))
+        self._update_combo_box()  # Initialize with no experiment type filter
 
         self._save_btn = QPushButton("Save Image", self)
         self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
@@ -151,6 +140,8 @@ class _SingleWellGraphWidget(QWidget):
     def run_id(self, run_id: int | None) -> None:
         """Set the current run ID and refresh the plot."""
         self._run_id = run_id
+        self._update_experiment_type()
+        self._update_combo_box()
         self._on_combo_changed(self._combo.currentText())
 
     @property
@@ -160,6 +151,62 @@ class _SingleWellGraphWidget(QWidget):
     @engine.setter
     def engine(self, engine: Engine | None) -> None:
         self._engine = engine
+
+    # ------------------------------------------------------------------ #
+    # Private helpers
+    # ------------------------------------------------------------------ #
+    def _update_experiment_type(self) -> None:
+        """Query the current run's experiment type from the database."""
+        if self._engine is None or self._run_id is None:
+            self._experiment_type = None
+            return
+
+        with Session(self._engine) as session:
+            stmt = (
+                select(AnalysisSettings.experiment_type)
+                .join(CaliResult)
+                .where(col(CaliResult.id) == self._run_id)
+            )
+            result = session.exec(stmt).first()
+            self._experiment_type = result if result else None
+
+    def _update_combo_box(self) -> None:
+        """Rebuild the combo box based on current experiment type filter."""
+        # Get available plots filtered by experiment type
+        combo_options = get_available_plots(
+            group=AnalysisGroup.SINGLE_WELL,
+            has_detection=True,
+            has_extraction=True,
+            has_analysis=True,
+            experiment_type=self._experiment_type,
+        )
+
+        # Store current selection
+        current_text = self._combo.currentText()
+
+        # Rebuild the combo box model
+        model = QStandardItemModel()
+        self._combo.setModel(model)
+
+        # Add "None" option
+        none_item = QStandardItem("None")
+        model.appendRow(none_item)
+
+        # Add categorized plots
+        for key, value in combo_options.items():
+            section = QStandardItem(key)
+            section.setFlags(Qt.ItemFlag.NoItemFlags)
+            section.setData(True, SECTION_ROLE)
+            model.appendRow(section)
+            for item in value:
+                model.appendRow(QStandardItem(item))
+
+        # Try to restore previous selection if still valid
+        idx = self._combo.findText(current_text)
+        if idx >= 0:
+            self._combo.setCurrentIndex(idx)
+        else:
+            self._combo.setCurrentIndex(0)  # Default to "None"
 
     # ------------------------------------------------------------------ #
     # Public helpers used by plot functions
