@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -58,11 +59,15 @@ def run_ids(db_engine: Engine) -> list[int]:
 
 
 @pytest.fixture
-def widget(qtbot: QtBot) -> _SingleWellGraphWidget:
+def widget(qtbot: QtBot) -> Generator[_SingleWellGraphWidget, None, None]:
     """Create a _SingleWellGraphWidget for testing."""
     widget = _SingleWellGraphWidget(None)  # type: ignore
     qtbot.addWidget(widget)
-    return widget
+    yield widget
+    # Clean up engine to prevent ResourceWarning
+    if widget.engine is not None:
+        widget.engine.dispose(close=True)
+        widget.engine = None
 
 
 def get_all_plot_names() -> list[str]:

@@ -58,7 +58,7 @@ def temp_db_with_detection(tmp_path: Path) -> Path:
         session.add(detection_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -104,7 +104,7 @@ def temp_db_with_extraction(tmp_path: Path) -> Path:
         session.add(extraction_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -159,7 +159,7 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         session.add(analysis_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -230,7 +230,7 @@ def temp_db_with_runs(tmp_path: Path) -> Path:
             session.add(result)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -558,7 +558,7 @@ def test_check_positions_missing_detection(
     missing = gui._check_positions_missing_detection(1, [0, 1, 2])
     assert missing == [1, 2]
 
-    engine.dispose()
+    engine.dispose(close=True)
     gui.close()
 
 
@@ -620,7 +620,7 @@ def test_check_positions_missing_extraction(
     missing = gui._check_positions_missing_extraction(1, 1, [0, 1, 2])
     assert missing == [1, 2]
 
-    engine.dispose()
+    engine.dispose(close=True)
     gui.close()
 
 
@@ -742,5 +742,5 @@ def test_runs_panel_delete_run(
         remaining_ids = {r.id for r in remaining_results}
         assert run_id not in remaining_ids
 
-    engine.dispose()
+    engine.dispose(close=True)
     panel.close()

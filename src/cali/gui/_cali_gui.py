@@ -13,7 +13,7 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     WellPlateView,
 )
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QAction, QIcon
+from qtpy.QtGui import QAction, QCloseEvent, QIcon
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QGridLayout,
@@ -77,13 +77,11 @@ from ._util import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from cali.readers import (
-        OMEZarrReader,
-        TensorstoreZarrReader,
-    )
 
 from cali.logger import cali_logger
 from cali.readers import (
+    OMEZarrReader,
+    TensorstoreZarrReader,
     TiffCollectionReader,
 )
 
@@ -398,7 +396,120 @@ class CaliGui(QMainWindow):
         # fmt: on
         # _____________________________________________________________________________
 
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        """Override closeEvent to properly dispose of database connections."""
+        # Dispose of all graph widget engines
+        for sw_graph in self.SW_GRAPHS:
+            if sw_graph.engine is not None:
+                sw_graph.engine.dispose(close=True)
+                sw_graph.engine = None
+
+        for mw_graph in self.MW_GRAPHS:
+            if mw_graph.engine is not None:
+                mw_graph.engine.dispose(close=True)
+                mw_graph.engine = None
+
+        # Call parent closeEvent
+        super().closeEvent(a0)
+
     # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _load_data_or_configure_tiff(
+        self, data_path: str
+    ) -> tuple[
+        TiffCollectionReader | Any | None,
+        dict[str, Any] | None,
+        str | None,
+        dict[str, Any] | None,
+    ]:
+        """Load data from path or configure TIFF collection if needed.
+
+        Returns
+        -------
+        tuple
+            Tuple of (data, tiff_file_map, tiff_plate_type, tiff_metadata)
+        """
+        tiff_file_map = tiff_plate_type = tiff_metadata = None
+        data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        data = load_data_from_path(data_path)
+
+        # if data is None and the data_path is a tiff folder, try to create
+        # a TiffCollectionReader
+        if data is None:
+            d_path = Path(data_path)
+            tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
+            if tiff_list:
+                # Show TiffCollectionWidget to configure TIFF files
+                self._tiff_collection_widget.set_tiff_files(tiff_list)
+                if self._tiff_collection_widget.exec():
+                    data = self._tiff_collection_widget.value()
+                    tiff_file_map, tiff_plate_type, tiff_metadata = (
+                        data.to_experiment_tiff_config()
+                    )
+                    cali_logger.info("📋 `TiffCollectionReader` Configured.")
+                else:
+                    return None, None, None, None
+            else:
+                msg = (
+                    f"❌ No valid data found at {data_path}! "
+                    "Expected zarr datastore or TIFF file folder."
+                )
+                show_error_dialog(self, msg)
+                cali_logger.error(msg)
+                return None, None, None, None
+
+        return data, tiff_file_map, tiff_plate_type, tiff_metadata
+
+    def _validate_data(self, data: TiffCollectionReader | Any | None) -> bool:
+        """Validate data and show errors if invalid.
+
+        Returns
+        -------
+        bool
+            True if data is valid, False otherwise.
+        """
+        if data is None:
+            msg = (
+                f"❌ Unsupported file format! Currently, Only "
+                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                "TiffCollectionReader are supported."
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return False
+
+        if data.sequence is None:
+            msg = (
+                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "the useq.MDASequence in the datastore metadata!"
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return False
+
+        return True
+
+    def _finalize_initialization(self, experiment: Experiment) -> None:
+        """Finalize GUI initialization with experiment data."""
+        # PLATE--------------------------------------------------------------------
+        plate_plan = experiment_to_useq_plate_plan(experiment)
+        if plate_plan is not None:
+            self._draw_plate_with_selection(plate_plan)
+        else:
+            cali_logger.warning("❌ Plate plan not found in experiment.")
+
+        # UPDATE GUI-------------------------------------------------------------------
+        if self._data is not None and self._data.sequence is not None:
+            self._update_gui_plate_plan(self._data.sequence.stage_positions)
+
+        # UPDATE GUI SETTINGS ---------------------------------------------------------
+        if self._database_path is not None:
+            self._update_gui_settings(self._database_path, experiment=experiment)
+
+        # HIDE LOADING BAR ------------------------------------------------------------
+        self._loading_bar.hide()
 
     def _initialize_from_database(
         self, database_path: str | Path, data_path: str | Path
@@ -430,25 +541,7 @@ class CaliGui(QMainWindow):
         else:
             self._data = load_data_from_path(data_path)
 
-        if self._data is None:
-            msg = (
-                f"❌ Unsupported file format! Currently, Only "
-                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                "TiffCollectionReader are supported."
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
-
-        if self._data.sequence is None:
-            msg = (
-                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                "the useq.MDASequence in the datastore metadata!"
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
+        if not self._validate_data(self._data):
             return
 
         # ASSIGN VARIABLES ------------------------------------------------------------
@@ -459,18 +552,8 @@ class CaliGui(QMainWindow):
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_properties(self._database_path)
 
-        # PLATE------------------------------------------------------------------------
-        plate_plan = experiment_to_useq_plate_plan(experiment)
-        if plate_plan is not None:
-            self._draw_plate_with_selection(plate_plan)
-        else:
-            cali_logger.warning("❌ Plate plan not found in experiment.")
-
-        # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_settings(self._database_path, experiment=experiment)
-
-        # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()
+        # FINALIZE---------------------------------------------------------------------
+        self._finalize_initialization(experiment)
 
     def _initialize_from_directories(
         self,
@@ -525,59 +608,21 @@ class CaliGui(QMainWindow):
                 else:
                     self._data = load_data_from_path(data_path)
 
-                if self._data is None:
-                    msg = (
-                        f"❌ Unsupported file format! Currently, Only "
-                        f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                        "TiffCollectionReader are supported."
-                    )
-                    show_error_dialog(self, msg)
-                    cali_logger.error(msg)
-                    self._loading_bar.hide()
-                    return
-
-                if self._data.sequence is None:
-                    show_error_dialog(
-                        self,
-                        "❌ useq.MDASequence not found! Cannot use the  `CaliGui` "
-                        "without the useq.MDASequence in the datastore metadata!",
-                    )
-                    self._loading_bar.hide()
+                if not self._validate_data(self._data):
                     return
 
             else:
-                # DATA-----------------------------------------------------------------
-                tiff_file_map = tiff_plate_type = tiff_metadata = None
-                self._data = load_data_from_path(data_path)
-                # if data is None and the data_path is a tiff folder, try to create
-                # a TiffCollectionReader
-                if self._data is None:
-                    d_path = Path(data_path)
-                    tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
-                    if tiff_list:
-                        # Show TiffCollectionWidget to configure TIFF files
-                        self._tiff_collection_widget.set_tiff_files(tiff_list)
-                        if self._tiff_collection_widget.exec():
-                            self._data = self._tiff_collection_widget.value()
-                            tiff_file_map, tiff_plate_type, tiff_metadata = (
-                                self._data.to_experiment_tiff_config()
-                            )
-                            cali_logger.info("📋 `TiffCollectionReader` Configured.")
-                        else:
-                            self._loading_bar.hide()
-                            return
-                    else:
-                        msg = (
-                            f"❌ No valid data found at {data_path}! "
-                            "Expected zarr datastore or TIFF file folder."
-                        )
-                        show_error_dialog(self, msg)
-                        cali_logger.error(msg)
-                        self._loading_bar.hide()
-                        return
-
                 # User chose to overwrite - create new database
                 cali_logger.info(f"💾 Overwriting database at {self._database_path}")
+
+                # DATA-----------------------------------------------------------------
+                result = self._load_data_or_configure_tiff(data_path)
+                if result[0] is None:
+                    self._loading_bar.hide()
+                    return
+                self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+                # CREATE AND SAVE EXPERIMENT ------------------------------------------
                 experiment = Experiment.create_from_data(
                     name="Cali Experiment",
                     data_path=data_path,
@@ -590,46 +635,18 @@ class CaliGui(QMainWindow):
                     experiment, output_path, database_name=database_name, overwrite=True
                 )
 
-            # PLATE--------------------------------------------------------------------
-            # draw plate
-            plate_plan = experiment_to_useq_plate_plan(experiment)
-            if plate_plan is not None:
-                self._draw_plate_with_selection(plate_plan)
-            else:
-                cali_logger.warning("❌ Plate plan not found in experiment.")
-
         else:
-            # DATA -----------------------------------------------------------------
-            tiff_file_map = tiff_plate_type = tiff_metadata = None
-            self._data = load_data_from_path(data_path)
-            # if data is None and the data_path is a tiff folder, try to create
-            # a TiffCollectionReader
-            if self._data is None:
-                d_path = Path(data_path)
-                tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
-                if tiff_list:
-                    # Show TiffCollectionWidget to configure TIFF files
-                    self._tiff_collection_widget.set_tiff_files(tiff_list)
-                    if self._tiff_collection_widget.exec():
-                        self._data = self._tiff_collection_widget.value()
-                        tiff_file_map, tiff_plate_type, tiff_metadata = (
-                            self._data.to_experiment_tiff_config()
-                        )
-                        cali_logger.info("📋 `TiffCollectionReader` Configured.")
-                    else:
-                        self._loading_bar.hide()
-                        return
-                else:
-                    msg = (
-                        f"❌ No valid data found at {data_path}! "
-                        "Expected zarr datastore or TIFF file folder."
-                    )
-                    show_error_dialog(self, msg)
-                    cali_logger.error(msg)
-                    self._loading_bar.hide()
-                    return
+            # CREATE NEW DATABASE ------------------------------------------------------
+            cali_logger.info(f"💾 Creating new database at {self._database_path}")
 
-            # CREATE THE EXPERIMENT BASED ON DATA -------------------------------------
+            # DATA -----------------------------------------------------------------
+            result = self._load_data_or_configure_tiff(data_path)
+            if result[0] is None:
+                self._loading_bar.hide()
+                return
+            self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+            # CREATE AND SAVE EXPERIMENT -------------------------------------------
             experiment = Experiment.create_from_data(
                 name="Cali Experiment",
                 data_path=data_path,
@@ -638,46 +655,20 @@ class CaliGui(QMainWindow):
                 tiff_plate_type=tiff_plate_type,
                 tiff_metadata=tiff_metadata,
             )
-
-            # SAVE THE EXPERIMENT TO A NEW DATABASE------------------------------------
-            cali_logger.info(f"💾 Creating new database at {self._database_path}")
             save_experiment_to_database(
                 experiment, output_path, database_name=database_name, overwrite=True
             )
 
-        # DATA---------------------------------------------------------------------
+        # RELOAD DATA IF NEEDED --------------------------------------------------------
         # skip loading data if already loaded as TiffCollectionReader
         if not isinstance(self._data, TiffCollectionReader):
             self._data = load_data_from_path(data_path)
 
-        if self._data is None:
-            msg = (
-                f"❌ Unsupported file format! Currently, Only "
-                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                "TiffCollectionReader are supported."
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
+        if not self._validate_data(self._data):
             return
 
-        if self._data.sequence is None:
-            show_error_dialog(
-                self,
-                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                "the useq.MDASequence in the datastore metadata!",
-            )
-            self._loading_bar.hide()
-            return
-
-        # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_plate_plan(self._data.sequence.stage_positions)
-
-        # UPDATE GUI SETTINGS ---------------------------------------------------------
-        self._update_gui_settings(self._database_path, experiment=experiment)
-
-        # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()
+        # FINALIZE---------------------------------------------------------------------
+        self._finalize_initialization(experiment)
 
     def _update_gui_settings(
         self, database_path: Path | str, experiment: Experiment | None = None

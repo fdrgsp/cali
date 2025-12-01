@@ -62,7 +62,7 @@ def experiment_to_useq_plate(
             ) from e
 
     # Determine plate type from the stored plate_type
-    if plate.plate_type:
+    if plate and plate.plate_type:
         # Try to create from standard name (e.g., "96-well", "384-well")
         try:
             return useq.WellPlate.from_str(plate.plate_type)
