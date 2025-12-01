@@ -1,978 +1,211 @@
-"""Tests for plotting functions.
-
-This module tests all plotting functions to ensure they correctly query the database
-and generate visualizations without errors.
-"""
+# testing data: "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+# testing database: "tests/test_data/test_for_plot/result_for_plots.cali"
+# testing database is an evoked experiment and contains 2 Runs:
+#  - Run-1: without nuuropil
+#  - Run-2: with nuuropil
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
-from matplotlib.figure import Figure
-from sqlmodel import create_engine
+from sqlalchemy import create_engine
+from sqlmodel import Session, select
+
+from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+from cali.plot._main_plot import SINGLE_WELL_COMBO_OPTIONS_DICT, plot_single_well_data
+from cali.sqlmodel import FOV, CaliResult
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from pytestqt.qtbot import QtBot
     from sqlalchemy.engine import Engine
 
-
-@pytest.fixture
-def evoked_db_path() -> Path:
-    """Return path to evoked experiment test database."""
-    path = Path("tests/test_data/evoked/results.cali")
-    if not path.exists():
-        pytest.skip(f"Evoked test database not found at {path}")
-    return path
+# Test data paths
+TEST_DB = (
+    Path(__file__).parent / "test_data" / "test_for_plot" / "result_for_plots.cali"
+)
 
 
 @pytest.fixture
-def evoked_engine(evoked_db_path: Path) -> Generator[Engine, None, None]:
-    """Create engine for evoked experiment database."""
-    engine = create_engine(f"sqlite:///{evoked_db_path}")
+def db_engine() -> Generator[Engine, None, None]:
+    """Create database engine for test database."""
+    db_path = TEST_DB
+    assert db_path.exists(), f"Test database not found: {db_path}"
+    engine = create_engine(f"sqlite:///{db_path}")
     yield engine
-    engine.dispose()
+    engine.dispose()  # Close all connections
 
 
 @pytest.fixture
-def mock_widget() -> MagicMock:
-    """Create a mock graph widget for plotting tests."""
-    widget = MagicMock()
-    widget.figure = Figure()
-    widget.canvas = MagicMock()
-    widget.roiSelected = MagicMock()
-    widget.roiSelected.emit = MagicMock()
+def fov_name(db_engine: Engine) -> str:
+    """Get the first FOV name from the database."""
+    with Session(db_engine) as session:
+        fov = session.exec(select(FOV)).first()
+        assert fov is not None, "No FOV found in database"
+        return fov.name
 
-    # Mock the plate viewer attribute (needed for some plots)
-    widget._plate_viewer = MagicMock()
-    widget._plate_viewer.pv_labels_path = None
 
-    # Wrap Figure methods to track calls while still executing them
-    original_clear = widget.figure.clear
-    original_add_subplot = widget.figure.add_subplot
-    original_tight_layout = widget.figure.tight_layout
+@pytest.fixture
+def run_ids(db_engine: Engine) -> list[int]:
+    """Get all run IDs from the database."""
+    with Session(db_engine) as session:
+        results = session.exec(select(CaliResult.id)).all()
+        assert len(results) >= 1, "No runs found in database"
+        return [r for r in results if r is not None]
 
-    widget.figure.clear = MagicMock(side_effect=original_clear)
-    widget.figure.add_subplot = MagicMock(side_effect=original_add_subplot)
-    widget.figure.tight_layout = MagicMock(side_effect=original_tight_layout)
 
+@pytest.fixture
+def widget(qtbot: QtBot) -> _SingleWellGraphWidget:
+    """Create a _SingleWellGraphWidget for testing."""
+    widget = _SingleWellGraphWidget(None)  # type: ignore
+    qtbot.addWidget(widget)
     return widget
 
 
-def test_plot_stimulated_vs_non_stimulated_traces(
-    mock_widget: MagicMock, evoked_engine: Engine
+def get_all_plot_names() -> list[str]:
+    """Get all available plot names from the registry."""
+    plots = []
+    for _category, names in SINGLE_WELL_COMBO_OPTIONS_DICT.items():
+        plots.extend(names)
+    return plots
+
+
+@pytest.mark.parametrize("plot_name", get_all_plot_names())
+def test_all_plots_render_without_error(
+    plot_name: str,
+    widget: _SingleWellGraphWidget,
+    db_engine: Engine,
+    fov_name: str,
+    run_ids: list[int],
 ) -> None:
-    """Test plotting stimulated vs non-stimulated normalized traces."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stimulated_vs_non_stimulated_roi_traces,
-    )
+    """Test that all plots can be rendered without errors."""
+    widget.engine = db_engine
 
-    # Test with valid data
-    _plot_stimulated_vs_non_stimulated_roi_traces(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-        with_peaks=False,
-    )
+    # Use the first run ID
+    run_id = run_ids[0]
 
-    # Verify figure was drawn
-    assert mock_widget.canvas.draw.called
-    assert len(mock_widget.figure.axes) > 0
+    # Attempt to plot - should not raise any exceptions
+    try:
+        plot_single_well_data(
+            widget=widget,
+            engine=db_engine,
+            fov_name=fov_name,
+            text=plot_name,
+            run_id=run_id,
+            rois=None,  # Test with all ROIs
+        )
+
+        # Verify plot has been populated
+        assert widget.plot_item is not None, f"Plot item not created for {plot_name}"
+
+        # Some plots might not have items if there's insufficient data, that's ok
+        # The important thing is no exceptions were raised
+
+    except Exception as e:
+        pytest.fail(f"Plot '{plot_name}' raised exception: {e}")
 
 
-def test_plot_stimulated_vs_non_stimulated_traces_with_peaks(
-    mock_widget: MagicMock, evoked_engine: Engine
+@pytest.mark.parametrize("plot_name", get_all_plot_names())
+def test_plots_with_roi_subset(
+    plot_name: str,
+    widget: _SingleWellGraphWidget,
+    db_engine: Engine,
+    fov_name: str,
+    run_ids: list[int],
 ) -> None:
-    """Test plotting stimulated vs non-stimulated traces with peaks."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stimulated_vs_non_stimulated_roi_traces,
-    )
+    """Test plots with a subset of ROIs selected."""
+    widget.engine = db_engine
+    run_id = run_ids[0]
 
-    _plot_stimulated_vs_non_stimulated_roi_traces(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=[1, 2],
-        run_id=1,
-        with_peaks=True,
-    )
+    # Test with first 5 ROIs
+    roi_subset = list(range(1, 6))
 
-    assert mock_widget.canvas.draw.called
+    try:
+        plot_single_well_data(
+            widget=widget,
+            engine=db_engine,
+            fov_name=fov_name,
+            text=plot_name,
+            run_id=run_id,
+            rois=roi_subset,
+        )
+
+        assert widget.plot_item is not None, f"Plot item not created for {plot_name}"
+
+    except Exception as e:
+        pytest.fail(f"Plot '{plot_name}' with ROI subset raised exception: {e}")
 
 
-def test_plot_stimulated_vs_non_stimulated_traces_no_run(
-    mock_widget: MagicMock, evoked_engine: Engine
+def test_multiple_runs(
+    widget: _SingleWellGraphWidget, db_engine: Engine, fov_name: str, run_ids: list[int]
 ) -> None:
-    """Test plotting with no run_id selected."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stimulated_vs_non_stimulated_roi_traces,
-    )
+    """Test that plots work with different runs."""
+    # Test a representative plot with each run
+    plot_name = "Calcium Deconvolved ΔF/F0 Traces with Peaks"
 
-    _plot_stimulated_vs_non_stimulated_roi_traces(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=None,
-        with_peaks=False,
-    )
+    for run_id in run_ids:
+        plot_single_well_data(
+            widget=widget,
+            engine=db_engine,
+            fov_name=fov_name,
+            text=plot_name,
+            run_id=run_id,
+            rois=None,
+        )
 
-    # Should show message about no run selected
-    assert mock_widget.canvas.draw.called
+        assert widget.plot_item is not None
+        assert len(widget.plot_item.items) > 0, f"No items for run {run_id}"  # type: ignore[union-attr]
 
 
-def test_plot_stimulated_vs_non_stimulated_spike_traces(
-    mock_widget: MagicMock, evoked_engine: Engine
+def test_widget_clear_plot(
+    widget: _SingleWellGraphWidget, db_engine: Engine, fov_name: str, run_ids: list[int]
 ) -> None:
-    """Test plotting stimulated vs non-stimulated spike traces."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stimulated_vs_non_stimulated_spike_traces,
-    )
-
-    _plot_stimulated_vs_non_stimulated_spike_traces(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-    )
-
-    assert mock_widget.canvas.draw.called
-    assert len(mock_widget.figure.axes) > 0
-
-
-def test_plot_stimulated_peak_amplitudes(
-    mock_widget: MagicMock, evoked_engine: Engine
-) -> None:
-    """Test plotting stimulated ROI peak amplitudes."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stim_or_not_stim_peaks_amplitude,
-    )
-
-    # Test stimulated ROIs
-    _plot_stim_or_not_stim_peaks_amplitude(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-        stimulated=True,
-    )
-
-    assert mock_widget.canvas.draw.called
-
-
-def test_plot_non_stimulated_peak_amplitudes(
-    mock_widget: MagicMock, evoked_engine: Engine
-) -> None:
-    """Test plotting non-stimulated ROI peak amplitudes."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_stim_or_not_stim_peaks_amplitude,
-    )
-
-    # Test non-stimulated ROIs
-    _plot_stim_or_not_stim_peaks_amplitude(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-        stimulated=False,
-    )
-
-    assert mock_widget.canvas.draw.called
-
-
-def test_visualize_stimulated_area(
-    mock_widget: MagicMock, evoked_engine: Engine
-) -> None:
-    """Test visualizing stimulated area."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _visualize_stimulated_area,
-    )
-
-    _visualize_stimulated_area(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-        with_rois=True,
-        stimulated_area=False,
-    )
-
-    assert mock_widget.canvas.draw.called
-
-
-def test_plot_evoked_experiment_data(
-    mock_widget: MagicMock, evoked_engine: Engine
-) -> None:
-    """Test main evoked experiment data plotting function."""
-    from cali.plot._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (  # noqa E50
-        _plot_evoked_experiment_data,
-    )
-
-    _plot_evoked_experiment_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-        stimulated_area=False,
-        with_rois=False,
-        with_peaks=False,
-    )
-
-    assert mock_widget.canvas.draw.called
-
-
-# ============================================================================
-# CALCIUM TRACES TESTS
-# ============================================================================
-
-
-def test_plot_calcium_traces_raw(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting raw calcium traces."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=True,
-        dff=False,
-        dec=False,
-        normalize=False,
-        with_peaks=False,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.figure.add_subplot.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_dff(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting ΔF/F calcium traces."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=False,
-        dff=True,
-        dec=False,
-        normalize=False,
-        with_peaks=False,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_dec_dff(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting deconvolved ΔF/F traces."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=False,
-        with_peaks=False,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_normalized(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting normalized traces with global percentile scaling."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=True,
-        with_peaks=False,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_with_peaks(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting traces with detected peaks."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=False,
-        with_peaks=True,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_active_only(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting only active ROIs."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=False,
-        with_peaks=False,
-        active_only=True,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_with_thresholds(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting single ROI with threshold visualization."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    # Must specify a single ROI for thresholds to show
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=[1],
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=False,
-        with_peaks=True,
-        active_only=False,
-        thresholds=True,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-def test_plot_calcium_traces_specific_rois(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting specific ROIs."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
-        _plot_traces_data,
-    )
-
-    _plot_traces_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=[1, 2],
-        raw=False,
-        dff=False,
-        dec=True,
-        normalize=False,
-        with_peaks=False,
-        active_only=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called_once()
-    mock_widget.canvas.draw.assert_called_once()
-
-
-# ============================================================================
-# INFERRED SPIKES TESTS
-# ============================================================================
-
-
-def test_plot_inferred_spikes_raw(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting raw inferred spikes."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=True,
-        normalize=False,
-        active_only=False,
-        dec_dff=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spikes_normalized(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting normalized inferred spikes."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=True,
-        normalize=True,
-        active_only=False,
-        dec_dff=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spikes_with_dec_dff(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spikes with deconvolved dff traces."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=True,
-        normalize=False,
-        active_only=False,
-        dec_dff=True,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spikes_active_only(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spikes for active ROIs only."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        raw=True,
-        normalize=False,
-        active_only=True,
-        dec_dff=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spikes_with_threshold(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spikes with threshold for single ROI."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=[1],
-        raw=True,
-        normalize=False,
-        active_only=False,
-        dec_dff=False,
-        thresholds=True,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spikes_specific_rois(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spikes for specific ROIs."""
-    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
-        _plot_inferred_spikes,
-    )
-
-    _plot_inferred_spikes(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=[1, 2],
-        raw=True,
-        normalize=False,
-        active_only=False,
-        dec_dff=False,
-        thresholds=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# Raster Plot Tests
-# ============================================================================
-
-
-def test_plot_calcium_peaks_raster(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peaks raster plot."""
-    from cali.plot._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
-        _generate_raster_plot,
-    )
-
-    _generate_raster_plot(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-        amplitude_colors=False,
-        colorbar=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_calcium_peaks_raster_with_amplitude_colors(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peaks raster with amplitude colors."""
-    from cali.plot._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
-        _generate_raster_plot,
-    )
-
-    _generate_raster_plot(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-        amplitude_colors=True,
-        colorbar=True,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spike_raster(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spike raster."""
-    from cali.plot._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
-        _generate_spike_raster_plot,
-    )
-
-    _generate_spike_raster_plot(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-        amplitude_colors=False,
-        colorbar=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# Peak Amplitudes and Frequencies Tests
-# ============================================================================
-
-
-def test_plot_calcium_amplitudes(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peak amplitudes."""
-    from cali.plot._single_wells_plots.metrics import (
-        _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
-    )
-
-    amp_freq_module._plot_amplitude_and_frequency_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-        amp=True,
-        freq=False,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_calcium_frequencies(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peak frequencies."""
-    from cali.plot._single_wells_plots.metrics import (
-        _plot_calcium_amplitudes_and_frequencies_data as amp_freq_module,
-    )
-
-    amp_freq_module._plot_amplitude_and_frequency_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-        amp=False,
-        freq=True,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# IEI (Inter-Event Interval) Tests
-# ============================================================================
-
-
-def test_plot_calcium_peaks_iei(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peaks inter-event intervals."""
-    from cali.plot._single_wells_plots.metrics._plot_calcium_peaks_iei_data import (
-        _plot_iei_data,
-    )
-
-    _plot_iei_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
+    """Test that clear_plot properly resets the widget."""
+    widget.engine = db_engine
+    run_id = run_ids[0]
+
+    # Plot something
+    plot_single_well_data(
+        widget=widget,
+        engine=db_engine,
+        fov_name=fov_name,
+        text="Calcium ΔF/F0 Traces",
+        run_id=run_id,
         rois=None,
     )
 
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
+    assert len(widget.plot_item.items) > 0  # type: ignore[union-attr]
+
+    # Clear the plot
+    widget.clear_plot()
+
+    # Check that plot is cleared
+    assert len(widget.plot_item.items) == 0  # type: ignore[union-attr]
+    assert widget.plot_item.titleLabel.text == ""  # type: ignore[union-attr]
+
+    # Check colorbar is removed
+    assert widget.colorbar is None
 
 
-# ============================================================================
-# Network and Correlation Tests
-# ============================================================================
-
-
-def test_plot_calcium_network_connectivity(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
+def test_plot_with_single_roi(
+    widget: _SingleWellGraphWidget, db_engine: Engine, fov_name: str, run_ids: list[int]
 ) -> None:
-    """Test plotting calcium network connectivity."""
-    from cali.plot._single_wells_plots.correlation._plot_calcium_network_connectivity import (  # noqa E50
-        _plot_connectivity_network_data,
+    """Test plots with single ROI selected (should use white color)."""
+    widget.engine = db_engine
+    run_id = run_ids[0]
+
+    # Test with single ROI
+    plot_single_well_data(
+        widget=widget,
+        engine=db_engine,
+        fov_name=fov_name,
+        text="Calcium ΔF/F0 Traces",
+        run_id=run_id,
+        rois=[1],  # Single ROI
     )
 
-    _plot_connectivity_network_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_calcium_peaks_correlation(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peaks correlation heatmap."""
-    from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (  # noqa E50
-        _plot_cross_correlation_data,
-    )
-
-    _plot_cross_correlation_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spike_correlation(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spike correlation heatmap."""
-    from cali.plot._single_wells_plots.correlation._plot_inferred_spike_correlation import (  # noqa E50
-        _plot_spike_cross_correlation_data,
-    )
-
-    _plot_spike_cross_correlation_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# Synchrony Tests
-# ============================================================================
-
-
-def test_plot_calcium_peaks_synchrony(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting calcium peaks synchrony."""
-    from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (  # noqa E50
-        _plot_peak_event_synchrony_data,
-    )
-
-    _plot_peak_event_synchrony_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-def test_plot_inferred_spike_synchrony(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spike synchrony."""
-    from cali.plot._single_wells_plots.correlation._plot_inferred_spike_synchrony import (  # noqa E50
-        _plot_spike_synchrony_data,
-    )
-
-    _plot_spike_synchrony_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# Burst Activity Tests
-# ============================================================================
-
-
-def test_plot_inferred_spike_burst_activity(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting inferred spike burst activity."""
-    from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (  # noqa E501
-        _plot_inferred_spike_burst_activity,
-    )
-
-    _plot_inferred_spike_burst_activity(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        rois=None,
-        run_id=1,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-
-# ============================================================================
-# Cell Size Tests
-# ============================================================================
-
-
-def test_plot_cell_size(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting cell size distribution."""
-    from cali.plot._single_wells_plots.metrics._plot_cell_size import (
-        _plot_cell_size_data,
-    )
-
-    _plot_cell_size_data(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
-
-    # Verify that scatter points were actually plotted
-    # The plot should have at least one scatter collection
-    axes = mock_widget.figure.get_axes()
-    assert len(axes) == 1, "Should have exactly one subplot"
-    ax = axes[0]
-
-    # Check that scatter points were added (should have at least one PathCollection)
-    scatter_collections = [
-        child
-        for child in ax.get_children()
-        if hasattr(child, "get_offsets") and hasattr(child, "get_offsets")
-    ]
-    assert len(scatter_collections) > 0, (
-        "Should have plotted scatter points for ROIs with cell_size data"
-    )
-
-    # Verify the scatter collection has data points
-    scatter = scatter_collections[0]
-    offsets = scatter.get_offsets()
-    assert len(offsets) > 0, "Scatter plot should contain data points"
-
-
-# ============================================================================
-# Neuropil Traces Tests
-# ============================================================================
-
-
-def test_plot_neuropil_traces(
-    evoked_engine: Engine,
-    mock_widget: MagicMock,
-) -> None:
-    """Test plotting neuropil traces."""
-    from cali.plot._single_wells_plots.calcium_traces._plot_neuropil_traces import (
-        _plot_neuropil_traces,
-    )
-
-    _plot_neuropil_traces(
-        widget=mock_widget,
-        engine=evoked_engine,
-        fov_name="B5_0000",
-        run_id=1,
-        rois=None,
-    )
-
-    mock_widget.figure.clear.assert_called()
-    mock_widget.canvas.draw.assert_called()
+    assert widget.plot_item is not None
+    assert len(widget.plot_item.items) > 0  # type: ignore[union-attr]

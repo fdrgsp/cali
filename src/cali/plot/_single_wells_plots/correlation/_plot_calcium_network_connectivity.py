@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from _dev._hover_utils import setup_pick_click_for_heatmap
 
-from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
