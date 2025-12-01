@@ -33,8 +33,8 @@ from ._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
     _plot_stimulated_vs_non_stimulated_spike_traces,
-    _visualize_stimulated_area,
 )
+from ._single_wells_plots.evoked._stimulation_area import _visualize_stimulated_area
 from ._single_wells_plots.metrics._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )

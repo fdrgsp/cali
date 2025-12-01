@@ -322,7 +322,7 @@ def _draw_peaks_and_thresholds(
             pen=None,
             symbol="o",
             symbolBrush=pg.mkBrush("yellow"),
-            symbolSize=6,
+            symbolSize=5,
         )
 
     # Thresholds only if single ROI case

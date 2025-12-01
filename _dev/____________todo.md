@@ -27,3 +27,9 @@ ask to claude:
 - ⚠️ fix bug: after deleting one run, I get some unique trace error...
 
 - add a loading bar when switching between runs in CaliGui
+
+- code and widget to load own label images for segmentation
+
+- ⁇ to simplify the code, is it worth to have the runs in a different db???
+
+- export tab to export tables and labels
