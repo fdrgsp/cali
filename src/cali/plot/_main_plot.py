@@ -28,7 +28,7 @@ from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
 from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
 )
-from ._single_wells_plots.evoked._plolt_evoked_experiment_data_plots import (
+from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
@@ -260,7 +260,7 @@ AnalysisProduct(
 AnalysisProduct(
     name=CORRECTED_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_traces_data,
+    analyzer=partial(_plot_neuropil_traces, corrected=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )

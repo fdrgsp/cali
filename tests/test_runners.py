@@ -2477,3 +2477,135 @@ def test_run_run_delete_all_run(
             assert len(results) == 1
     finally:
         engine.dispose()
+
+
+def test_delete_run_and_recreate_same_settings(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test deleting a run and recreating with same settings (regression test).
+
+    This reproduces the bug:
+    - run1: detection=1, extraction=1, analysis=1
+    - run2: detection=1, extraction=2, analysis=1
+    - run3: detection=1, extraction=2, analysis=2
+    - Delete run3
+    - run4: detection=1, extraction=2, analysis=2 (same as deleted run3)
+
+    Should NOT cause "already present in this session" error.
+    """
+    runner = CaliRunner()
+
+    # Run 1: ds + es1 + as1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        ),
+        extraction_settings=ExtractionSettings(neuropil_inner_radius=5),
+        analysis_settings=AnalysisSettings(peaks_height_value=10.0),
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 1
+            run1_id = results[0].id
+    finally:
+        engine.dispose()
+
+    # Run 2: ds + es2 + as1
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        ),
+        extraction_settings=ExtractionSettings(neuropil_inner_radius=10),
+        analysis_settings=AnalysisSettings(peaks_height_value=10.0),
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 2
+            run2_id = next(r.id for r in results if r.id != run1_id)
+    finally:
+        engine.dispose()
+
+    # Run 3: ds + es2 + as2
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        ),
+        extraction_settings=ExtractionSettings(neuropil_inner_radius=10),
+        analysis_settings=AnalysisSettings(peaks_height_value=15.0),
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 3
+            run3_id = next(r.id for r in results if r.id not in (run1_id, run2_id))
+    finally:
+        engine.dispose()
+
+    # Delete run 3
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            run3 = session.get(CaliResult, run3_id)
+            assert run3 is not None
+            session.delete(run3)
+            session.commit()
+    finally:
+        engine.dispose()
+
+    # Run 4: ds + es2 + as2 (same as deleted run3) - should NOT fail
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(
+            method="cellpose", model_type=MODEL, diameter=30.0
+        ),
+        extraction_settings=ExtractionSettings(neuropil_inner_radius=10),
+        analysis_settings=AnalysisSettings(peaks_height_value=15.0),
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify we have 3 results (run1, run2, run4)
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            results = session.exec(select(CaliResult)).all()
+            assert len(results) == 3
+
+            # Verify traces exist for all runs
+            for result in results:
+                stmt = (
+                    select(Traces)
+                    .where(Traces.analysis_result_id == result.id)
+                )
+                traces = session.exec(stmt).all()
+                assert len(traces) > 0, f"No traces found for run {result.id}"
+    finally:
+        engine.dispose()

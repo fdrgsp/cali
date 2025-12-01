@@ -12,8 +12,10 @@ from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel._model import (
     FOV,
     ROI,
+    DataAnalysis,
     Experiment,
     Plate,
+    Traces,
     Well,
 )
 
@@ -249,12 +251,16 @@ def commit_fov_result(
                         trace.roi = None  # type: ignore[assignment]
                         trace.roi_id = None
 
-                        # Add to session only if not already present
-                        # (avoids "already present" error but also "not in session"
-                        # warning)
-                        if trace not in session:
+                        # Check if trace with this ID already exists in session
+                        # (avoids "already present in this session" error)
+                        if trace.id is not None:
+                            existing_in_session = session.get(Traces, trace.id)
+                            if existing_in_session is not None:
+                                # Use existing trace from session instead
+                                trace = existing_in_session
+                        else:
+                            # New trace without ID - add to session
                             session.add(trace)
-                            # session.merge(trace)
 
                         # Now set to the correct matching_roi
                         trace.roi_id = matching_roi.id
@@ -281,12 +287,18 @@ def commit_fov_result(
                         data_analysis.roi = None  # type: ignore[assignment]
                         data_analysis.roi_id = None
 
-                        # Add to session only if not already present
-                        # (avoids "already present" error but also "not in session"
-                        # warning)
-                        if data_analysis not in session:
+                        # Check if data_analysis with this ID already exists in session
+                        # (avoids "already present in this session" error)
+                        if data_analysis.id is not None:
+                            existing_in_session = session.get(
+                                DataAnalysis, data_analysis.id
+                            )
+                            if existing_in_session is not None:
+                                # Use existing data_analysis from session instead
+                                data_analysis = existing_in_session
+                        else:
+                            # New data_analysis without ID - add to session
                             session.add(data_analysis)
-                            # session.merge(data_analysis)
 
                         # Now set to the correct matching_roi
                         data_analysis.roi_id = matching_roi.id

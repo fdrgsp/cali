@@ -48,7 +48,7 @@ def _plot_traces_data(
     # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
 
-    # --- 1) Get data from DB ---
+    # --- 1) Get data from DB -----
     data = _get_traces_and_metadata(
         engine,
         fov_name,
@@ -60,12 +60,6 @@ def _plot_traces_data(
         active_only=active_only,
     )
     if data is None:
-        # Special message when user requested corrected trace but none exists
-        # (i.e. no raw/dff/dec flags → we use trace_obj.corrected_trace)
-        if not raw and not dff and not dec:
-            plot.setTitle("No Neuropil Correction Available.")
-            plot.setLabel("bottom", "Frames")
-            plot.setLabel("left", "Fluorescence (a.u.)")
         return
 
     Y, labels, data_analysis_list, rois_rec_time = data
@@ -206,14 +200,13 @@ def _get_traces_and_metadata(
 def _get_trace(
     raw: bool, dff: bool, dec: bool, trace_obj: Traces
 ) -> list[float] | np.ndarray | None:
-    if dff:
+    trace = None
+    if raw:
+        trace = trace_obj.raw_trace
+    elif dff:
         trace = trace_obj.dff
     elif dec:
         trace = trace_obj.dec_dff
-    elif raw:
-        trace = trace_obj.raw_trace
-    else:
-        trace = trace_obj.corrected_trace
     return trace
 
 
