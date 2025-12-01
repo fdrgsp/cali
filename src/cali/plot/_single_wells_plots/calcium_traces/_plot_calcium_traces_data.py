@@ -60,6 +60,12 @@ def _plot_traces_data(
         active_only=active_only,
     )
     if data is None:
+        # Special message when user requested corrected trace but none exists
+        # (i.e. no raw/dff/dec flags → we use trace_obj.corrected_trace)
+        if not raw and not dff and not dec:
+            plot.setTitle("No Neuropil Correction Available.")
+            plot.setLabel("bottom", "Frames")
+            plot.setLabel("left", "Fluorescence (a.u.)")
         return
 
     Y, labels, data_analysis_list, rois_rec_time = data
@@ -420,7 +426,7 @@ def _set_graph_title_and_labels_pg(
         y_lbl = "ROIs" if normalize else "Deconvolved ΔF/F"
     else:
         title = "Normalized Calcium Traces" if normalize else "Raw Calcium Traces"
-        y_lbl = "ROIs" if normalize else "Fluorescence Intensity"
+        y_lbl = "ROIs" if normalize else "Fluorescence (a.u.)"
     if with_peaks:
         title += " with Peaks"
 

@@ -195,13 +195,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=CORRECTED_TRACES,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_traces_data,
-    category="Calcium Traces",
-    pipeline_stage=PipelineStage.EXTRACTION,
-)
-AnalysisProduct(
     name=NORMALIZED_TRACES,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, normalize=True),
@@ -263,6 +256,13 @@ AnalysisProduct(
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, with_peaks=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=CORRECTED_TRACES,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_traces_data,
+    category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
     name=NEUROPIL_TRACES,
