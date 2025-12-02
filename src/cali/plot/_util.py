@@ -133,6 +133,7 @@ def _get_calcium_peaks_events_from_rois(
 
         if run_id is None:
             cali_logger.warning("No run_id provided for peak event extraction.")
+
         # Optimized query
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -150,27 +151,41 @@ def _get_calcium_peaks_events_from_rois(
             .where(col(ROI.active) == True)  # noqa: E712
         )
         if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
         results = session.exec(stmt).all()
         roi_data = results
 
-    peak_trains: dict[str, np.ndarray] = {}
-
     if len(roi_data) < 2:
         return None
+
+    # First pass: determine max_frames from any trace that has data,
+    # or from maximum peak frame number
+    max_frames = 0
+    for _, traces, data_analysis in roi_data:
+        if traces and traces.corrected_trace is not None:
+            max_frames = max(max_frames, len(traces.corrected_trace))
+        if data_analysis and data_analysis.peaks_dec_dff:
+            max_peak = max((int(p) for p in data_analysis.peaks_dec_dff), default=0)
+            max_frames = max(max_frames, max_peak + 1)
+
+    if max_frames == 0:
+        cali_logger.warning(
+            f"Cannot determine number of frames for FOV '{fov_name}'. "
+            "No trace data or peaks found."
+        )
+        return None
+
+    peak_trains: dict[str, np.ndarray] = {}
 
     for roi, traces, data_analysis in roi_data:
         if traces is None or data_analysis is None:
             continue
 
-        corrected_trace = traces.corrected_trace
         peaks_dec_dff = data_analysis.peaks_dec_dff
 
-        if corrected_trace is None or peaks_dec_dff is None or len(peaks_dec_dff) == 0:
+        if peaks_dec_dff is None or len(peaks_dec_dff) == 0:
             continue
-
-        max_frames = len(corrected_trace)
 
         # Create binary peak event train
         peak_train = np.zeros(max_frames, dtype=np.float32)

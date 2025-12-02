@@ -1,34 +1,35 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+import contextlib
+from typing import TYPE_CHECKING
 
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
+import numpy as np
+import pyqtgraph as pg
 
-from cali.plot._hover_utils import setup_pick_click_for_heatmap
+from cali.logger import cali_logger
 from cali.plot._util import (
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
     _get_calcium_peaks_events_from_rois,
 )
-
-if TYPE_CHECKING:
-    import numpy as np
-    from matplotlib.image import AxesImage
-    from sqlalchemy.engine import Engine
-
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from cali.logger import cali_logger
 from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
+if TYPE_CHECKING:
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
+    from sqlalchemy.engine import Engine
 
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+
+# -----------------------------------------------------------------------------#
+# Helpers: retrieval from ROI histories (kept for compatibility)
+# -----------------------------------------------------------------------------#
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     """Get the Traces object for a specific run from the ROI's traces_history."""
     if not roi_model.traces_history:
         return None
     if run_id is None:
-        return roi_model.traces_history[0] if roi_model.traces_history else None
+        return roi_model.traces_history[0]
     for trace in roi_model.traces_history:
         if trace.analysis_result_id == run_id:
             return trace
@@ -42,22 +43,18 @@ def _get_data_analysis_for_run(
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return (
-            roi_model.data_analysis_history[0]
-            if roi_model.data_analysis_history
-            else None
-        )
+        return roi_model.data_analysis_history[0]
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
-    return (
-        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
-    )
+    # Fall back to first entry (for backwards compatibility)
+    return roi_model.data_analysis_history[0]
 
 
+# -----------------------------------------------------------------------------#
+# Main plotting entry point (pyqtgraph version)
+# -----------------------------------------------------------------------------#
 def _plot_peak_event_synchrony_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -65,122 +62,121 @@ def _plot_peak_event_synchrony_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot peak event-based synchrony analysis.
+    """Plot peak event-based synchrony analysis (pyqtgraph heatmap)."""
+    plot = widget.plot_item
+    assert plot is not None
 
-    Parameters
-    ----------
-    widget: _SingleWellGraphWidget
-        widget to plot on
-    engine: Engine
-        Database engine
-    fov_name: str
-        Name of the FOV
-    rois: list[int] | None
-        List of ROI indices to include, None for all
-    run_id: int | None
-        The run ID to filter by, None for latest
-    """
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
+    # Clear previous plot
+    plot.clear()
 
+    # Hide shared legend if present (we don't want it here)
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    # 1) Get peak trains per ROI
     peak_trains = _get_calcium_peaks_events_from_rois(engine, fov_name, rois, run_id)
     if peak_trains is None or len(peak_trains) < 2:
         cali_logger.warning(
             "Insufficient peak data for synchrony analysis. "
             "Ensure at least two ROIs with calcium peaks are selected."
         )
+        plot.setTitle("Peak Event Synchrony\n(No data)")
+        plot.setLabel("bottom", "ROI index")
+        plot.setLabel("left", "ROI index")
         return
 
+    # 2) Get jitter window from settings
     jit = _get_jit(engine, fov_name, rois, run_id)
     if jit is None:
         cali_logger.warning(
             "No valid jitter window value found for synchrony analysis."
         )
+        plot.setTitle("Peak Event Synchrony\n(No jitter window)")
+        plot.setLabel("bottom", "ROI index")
+        plot.setLabel("left", "ROI index")
         return
 
-    # Convert peak trains to peak event data dict for correlation-based synchrony
+    # 3) Build peak event data dict (ROI -> list[float])
     peak_event_data_dict = {
-        roi_name: cast("list[float]", peak_train.astype(float).tolist())
+        roi_name: peak_train.astype(float).tolist()
         for roi_name, peak_train in peak_trains.items()
     }
 
-    # Use jitter window method for calcium peaks - better suited for discrete
-    # events with inherent timing uncertainty due to biology and frame rate limits
+    # 4) Compute synchrony matrix once (jitter window method)
     synchrony_matrix = _get_calcium_peaks_event_synchrony_matrix(
-        peak_event_data_dict, method="jitter_window", jitter_window=jit
+        peak_event_data_dict,
+        method="jitter_window",
+        jitter_window=jit,
     )
-
     if synchrony_matrix is None:
         cali_logger.warning(
             "Failed to calculate synchrony matrix. "
             "Ensure peak event data is valid and contains sufficient data."
         )
+        plot.setTitle("Peak Event Synchrony\n(Failed to compute matrix)")
+        plot.setLabel("bottom", "ROI index")
+        plot.setLabel("left", "ROI index")
         return
 
-    # Calculate global synchrony metric using peak event-specific function
+    # 5) Global synchrony metric
     global_synchrony = _get_calcium_peaks_event_synchrony(synchrony_matrix)
     if global_synchrony is None:
         global_synchrony = 0.0
 
-    title = (
+    base_title = (
         f"Global Synchrony (Median: {global_synchrony:.4f})\n"
-        f"(Calcium Peaks Events - Jitter Window Method)\n"
+        f"(Calcium Peaks Events - Jitter Window Method)"
     )
 
-    img = ax.imshow(synchrony_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
-    cbar = widget.figure.colorbar(
-        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
-        ax=ax,
-    )
-    cbar.set_label("Peak Event Synchrony Index")
+    sync = np.asarray(synchrony_matrix, dtype=float)
 
-    ax.set_title(title)
-    ax.set_ylabel("ROI")
-    ax.set_yticklabels([])
-    ax.set_yticks([])
-    ax.set_xlabel("ROI")
-    ax.set_xticklabels([])
-    ax.set_xticks([])
+    # ---------------- IMAGE ITEM (centered-ish, square) ---------------- #
+    img = pg.ImageItem(sync)
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
-    # events with inherent timing uncertainty due to biology and frame rate limits
-    synchrony_matrix = _get_calcium_peaks_event_synchrony_matrix(
-        peak_event_data_dict, method="jitter_window", jitter_window=jit
-    )
+    # viridis colormap
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))  # fixed [0, 1]
 
-    if synchrony_matrix is None:
-        cali_logger.warning(
-            "Failed to calculate synchrony matrix. "
-            "Ensure peak event data is valid and contains sufficient data."
-        )
-        return
+    plot.addItem(img)
 
-    # Calculate global synchrony metric using peak event-specific function
-    global_synchrony = _get_calcium_peaks_event_synchrony(synchrony_matrix)
-    if global_synchrony is None:
-        global_synchrony = 0.0
+    vb = plot.getViewBox()
 
-    title = (
-        f"Global Synchrony (Median: {global_synchrony:.4f})\n"
-        f"(Calcium Peaks Events - Jitter Window Method)\n"
-    )
+    # Make (0,0) top-left like imshow
+    vb.invertY(True)
 
-    ax.set_title(title)
-    ax.set_ylabel("ROI")
-    ax.set_yticklabels([])
-    ax.set_yticks([])
-    ax.set_xlabel("ROI")
-    ax.set_xticklabels([])
-    ax.set_xticks([])
+    # keep it square
+    vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
+    plot.setTitle(base_title)
+    plot.setLabel("bottom", "ROI index")
+    plot.setLabel("left", "ROI index")
+
+    # Hide axis tick labels (same behaviour as MPL version)
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+
+    # Use same ROI ordering as in peak_trains.keys()
     active_roi_ids = [int(roi_id) for roi_id in peak_trains.keys()]
-    _add_hover_functionality(img, widget, active_roi_ids, synchrony_matrix)
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+    # ---------------- Hover + Click interaction ---------------- #
+    _attach_synchrony_heatmap_interaction(
+        widget,
+        plot,
+        vb,
+        active_roi_ids,
+        sync,
+        base_title=base_title,
+    )
 
 
+# -----------------------------------------------------------------------------#
+# Settings: jitter window retrieval (unchanged from MPL version)
+# -----------------------------------------------------------------------------#
 def _get_jit(
     engine: Engine, fov_name: str, rois: list[int] | None, run_id: int | None = None
 ) -> int | None:
@@ -190,7 +186,7 @@ def _get_jit(
     from cali.sqlmodel._model import AnalysisSettings
 
     with Session(engine) as session:
-        # Get the AnalysisSettings from the run
+        # Prefer settings from the given run
         if run_id is not None:
             result = session.get(CaliResult, run_id)
             if result and result.analysis_settings_id is not None:
@@ -214,11 +210,91 @@ def _get_jit(
     return None
 
 
-def _add_hover_functionality(
-    image: AxesImage,
+# -----------------------------------------------------------------------------#
+# Hover + click helper (synchrony-specific)
+# -----------------------------------------------------------------------------#
+def _attach_synchrony_heatmap_interaction(
     widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    viewbox: pg.ViewBox,
     rois: list[int],
-    synchrony_matrix: np.ndarray,
+    values: np.ndarray,
+    base_title: str,
 ) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click_for_heatmap(image.axes, widget, rois, synchrony_matrix)
+    """
+    Attach interaction to the synchrony heatmap.
+
+    - Hover: show ROI_i, ROI_j, value in the title
+    - Click: emit widget.roiSelected with a list [roi_i, roi_j]
+    """
+    n_rows, n_cols = values.shape
+    scene = plot.scene()
+
+    # Avoid stacking multiple handlers on repeated calls
+    old_hover = plot.property("sync_hover_handler")
+    old_click = plot.property("sync_click_handler")
+    if old_hover is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseMoved.disconnect(old_hover)
+    if old_click is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseClicked.disconnect(old_click)
+
+    def _on_mouse_moved(pos: pg.Point) -> None:
+        if not plot.sceneBoundingRect().contains(pos):
+            plot.setTitle(base_title)
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col = round(mouse_point.x())
+        row = round(mouse_point.y())
+        if 0 <= row < n_rows and 0 <= col < n_cols:
+            roi_i = rois[row]
+            roi_j = rois[col]
+            val = float(values[row, col])
+            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+        else:
+            plot.setTitle(base_title)
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col = round(mouse_point.x())
+        row = round(mouse_point.y())
+        if 0 <= row < n_rows and 0 <= col < n_cols:
+            roi_i = rois[row]
+            roi_j = rois[col]
+            # Emit as list[str] to match your highlight logic
+            widget.roiSelected.emit([str(roi_i), str(roi_j)])
+
+    scene.sigMouseMoved.connect(_on_mouse_moved)
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+
+    # Remember handlers so we can disconnect next time
+    plot.setProperty("sync_hover_handler", _on_mouse_moved)
+    plot.setProperty("sync_click_handler", _on_mouse_clicked)
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Synchrony",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

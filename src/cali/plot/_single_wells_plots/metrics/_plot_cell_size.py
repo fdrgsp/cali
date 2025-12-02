@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._hover_utils import setup_pick_click
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -39,12 +40,9 @@ def _get_data_analysis_for_run(
             if roi_model.data_analysis_history
             else None
         )
-    # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
     return (
         roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
     )
@@ -57,82 +55,146 @@ def _plot_cell_size_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot cell size data by querying database directly.
+    """Plot cell size per ROI using pyqtgraph."""
+    plot = widget.plot_item
+    assert plot is not None
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Graph widget to plot on
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    rois : list[int] | None
-        List of ROI label values to plot. If None, plots all ROIs.
-    run_id : int | None
-        The run ID to filter by, None for latest
-    """
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
+    plot.clear()
 
-    # Query database for ROI data
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    if run_id is None:
+        cali_logger.warning("No run_id provided for cell size plot.")
+        plot.setTitle(
+            "Cell Size per ROI\nNo analysis run selected. Please select a run."
+        )
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "Cell Size (a.u.)")
+        return
+
+    # ---------------------- DB QUERY ---------------------- #
     with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None
-        if run_id is None:
-            cali_logger.warning("No run_id provided for cell size plot.")
-            return
 
         result = session.get(CaliResult, run_id)
         if result:
             detection_settings_id = result.detection_settings_id
 
-        # Build query to get ROIs for this FOV that have cell_size data
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Filter by detection settings if we have a run_id
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
-        # Only include ROIs that have cell_size data (indicates they were extracted)
+        # Only include ROIs that have cell_size data
         stmt = stmt.where(col(ROI.cell_size).is_not(None))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
-
         roi_models = session.exec(stmt).all()
 
+    if not roi_models:
+        plot.setTitle("Cell Size per ROI\nNo cell size data found for this FOV.")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "Cell Size (a.u.)")
+        return
+
+    # ---------------------- PREP DATA ---------------------- #
+    roi_labels: list[int] = []
+    cell_sizes: list[float] = []
     units = ""
 
     for roi in roi_models:
         if roi.cell_size is None:
             continue
+        roi_labels.append(roi.label_value)
+        cell_sizes.append(float(roi.cell_size))
         if not units and roi.cell_size_units:
             units = roi.cell_size_units
-        ax.scatter(
-            roi.label_value,
-            roi.cell_size,
-            label=f"ROI {roi.label_value}",
-            picker=True,  # Enable picking on scatter
-            s=50,  # Larger size for easier clicking
-        )
 
-    ax.set_xlabel("ROI")
-    ax.set_xticks([])
-    ax.set_xticklabels([])
-    ax.set_ylabel(f"Cell Size ({units})")
-    ax.set_title("Cell Size per ROI")
+    if not roi_labels:
+        plot.setTitle("Cell Size per ROI\nNo cell size data found for this FOV.")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "Cell Size (a.u.)")
+        return
 
-    _add_hover_functionality(ax, widget)
+    if not units:
+        units = "a.u."
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+    x_positions = np.arange(len(roi_labels), dtype=float)
+    y_values = np.asarray(cell_sizes, dtype=float)
+
+    # Single ScatterPlotItem for all ROIs
+    scatter = pg.ScatterPlotItem(
+        x=x_positions,
+        y=y_values,
+        pen=None,
+        brush=pg.mkBrush(200, 200, 255, 200),
+        size=7,
+    )
+    plot.addItem(scatter)
+
+    # Store ROI labels on plot for click-mapping
+    plot.setProperty("cell_size_roi_labels", roi_labels)
+
+    # ---------------------- AXES & TITLE ---------------------- #
+    plot.setTitle("Cell Size per ROI")
+    plot.setLabel("left", f"Cell Size ({units})")
+    plot.setLabel("bottom", "ROI")
+
+    # No numeric tick labels on X (only axis label "ROI")
+    x_axis = plot.getAxis("bottom")
+    x_axis.setTicks([])  # remove tick labels
+    x_axis.setStyle(showValues=False)
+
+    # Let Y axis auto-generate ticks and show labels
+    y_axis = plot.getAxis("left")
+    y_axis.setStyle(showValues=True)
+    y_axis.setTicks(None)
+
+    plot.getViewBox().enableAutoRange(x=True, y=True)
+
+    # ---------------------- CLICK → roiSelected ---------------------- #
+    _attach_click_handlers_cell_size(widget, plot)
 
 
-def _add_hover_functionality(ax: Axes, widget: _SingleWellGraphWidget) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click(ax, widget, picker_tolerance=5)
+def _attach_click_handlers_cell_size(
+    widget: _SingleWellGraphWidget, plot: pg.PlotItem
+) -> None:
+    """Map mouse click x position to nearest ROI label in cell-size plot."""
+    from pyqtgraph import Point
+
+    scene = plot.scene()
+    vb = plot.getViewBox()
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+
+        p: Point = vb.mapSceneToView(pos)
+        x = float(p.x())
+
+        roi_labels: list[int] | None = plot.property("cell_size_roi_labels")
+        if not roi_labels:
+            return
+
+        idx = round(x)
+        if 0 <= idx < len(roi_labels):
+            widget.roiSelected.emit(str(roi_labels[idx]))
+
+    # Disconnect previous handler if present
+    old_click = plot.property("cell_size_click_handler")
+    if old_click is not None:
+        try:
+            scene.sigMouseClicked.disconnect(old_click)
+        except (TypeError, RuntimeError):
+            pass
+
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+    plot.setProperty("cell_size_click_handler", _on_mouse_clicked)

@@ -13,11 +13,12 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     WellPlateView,
 )
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QAction, QIcon
+from qtpy.QtGui import QAction, QCloseEvent, QIcon
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QMainWindow,
     QMenu,
     QMenuBar,
@@ -59,10 +60,11 @@ from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
 from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
-from ._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
+from ._graph_widgets import _MultilWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
+from ._pygraph_plot_widgets import _SingleWellGraphWidget
 from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
@@ -75,13 +77,11 @@ from ._util import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from cali.readers import (
-        OMEZarrReader,
-        TensorstoreZarrReader,
-    )
 
 from cali.logger import cali_logger
 from cali.readers import (
+    OMEZarrReader,
+    TensorstoreZarrReader,
     TiffCollectionReader,
 )
 
@@ -154,10 +154,6 @@ class CaliGui(QMainWindow):
 
         # TABLE FOR THE FIELDS OF VIEW ------------------------------------------------
         self._fov_table = _FOVTable(self)
-        self._fov_table.itemSelectionChanged.connect(
-            self._on_fov_table_selection_changed
-        )
-        self._fov_table.doubleClicked.connect(self._on_fov_double_click)
 
         # IMAGE VIEWER ----------------------------------------------------------------
         self._image_viewer = _ImageViewer(self)
@@ -256,20 +252,33 @@ class CaliGui(QMainWindow):
         # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
         self._vis_sub_tab.addTab(self._single_well_vis_tab, "Single Wells")
-        single_well_vis_layout = QGridLayout(self._single_well_vis_tab)
+        single_well_vis_layout = QVBoxLayout(self._single_well_vis_tab)
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
 
         self._single_well_graph_1 = _SingleWellGraphWidget(self)
-        self._single_well_graph_2 = _SingleWellGraphWidget(self)
+        # self._single_well_graph_2 = _SingleWellGraphWidget(self)
         self._single_well_graph_3 = _SingleWellGraphWidget(self)
 
-        single_well_vis_layout.addWidget(self._single_well_graph_1, 0, 0)
-        single_well_vis_layout.addWidget(self._single_well_graph_2, 0, 1)
-        single_well_vis_layout.addWidget(self._single_well_graph_3, 1, 0, 1, 2)
+        # Create top widget for graphs 1 and 2 side by side
+        top_widget = QWidget()
+        top_layout = QHBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(5)
+        top_layout.addWidget(self._single_well_graph_1)
+        # top_layout.addWidget(self._single_well_graph_2)
+
+        # Create vertical splitter between top (graphs 1&2) and graph 3
+        vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        vertical_splitter.setContentsMargins(0, 0, 0, 0)
+        vertical_splitter.setChildrenCollapsible(False)
+        vertical_splitter.addWidget(top_widget)
+        vertical_splitter.addWidget(self._single_well_graph_3)
+
+        single_well_vis_layout.addWidget(vertical_splitter)
         self.SW_GRAPHS = [
             self._single_well_graph_1,
-            self._single_well_graph_2,
+            # self._single_well_graph_2,
             self._single_well_graph_3,
         ]
 
@@ -319,6 +328,11 @@ class CaliGui(QMainWindow):
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
 
+        self._fov_table.itemSelectionChanged.connect(
+            self._on_fov_table_selection_changed
+        )
+        self._fov_table.doubleClicked.connect(self._on_fov_double_click)
+
         self._runs_panel.runSelected.connect(self._on_run_item_selected)
         self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
 
@@ -358,8 +372,8 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/spontaneous/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/tiffs.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # USED IN TESTS -------------------------------------------------
         # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
@@ -367,9 +381,13 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/2pos/"
+        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        self._output_path = "tests/test_data/2pos/"
+
+        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # self._database_path = "tests/test_data/2pos/result_2pos.cali"
         # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
@@ -378,14 +396,127 @@ class CaliGui(QMainWindow):
         # fmt: on
         # _____________________________________________________________________________
 
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        """Override closeEvent to properly dispose of database connections."""
+        # Dispose of all graph widget engines
+        for sw_graph in self.SW_GRAPHS:
+            if sw_graph.engine is not None:
+                sw_graph.engine.dispose(close=True)
+                sw_graph.engine = None
+
+        for mw_graph in self.MW_GRAPHS:
+            if mw_graph.engine is not None:
+                mw_graph.engine.dispose(close=True)
+                mw_graph.engine = None
+
+        # Call parent closeEvent
+        super().closeEvent(a0)
+
     # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _load_data_or_configure_tiff(
+        self, data_path: str
+    ) -> tuple[
+        TiffCollectionReader | Any | None,
+        dict[str, Any] | None,
+        str | None,
+        dict[str, Any] | None,
+    ]:
+        """Load data from path or configure TIFF collection if needed.
+
+        Returns
+        -------
+        tuple
+            Tuple of (data, tiff_file_map, tiff_plate_type, tiff_metadata)
+        """
+        tiff_file_map = tiff_plate_type = tiff_metadata = None
+        data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        data = load_data_from_path(data_path)
+
+        # if data is None and the data_path is a tiff folder, try to create
+        # a TiffCollectionReader
+        if data is None:
+            d_path = Path(data_path)
+            tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
+            if tiff_list:
+                # Show TiffCollectionWidget to configure TIFF files
+                self._tiff_collection_widget.set_tiff_files(tiff_list)
+                if self._tiff_collection_widget.exec():
+                    data = self._tiff_collection_widget.value()
+                    tiff_file_map, tiff_plate_type, tiff_metadata = (
+                        data.to_experiment_tiff_config()
+                    )
+                    cali_logger.info("📋 `TiffCollectionReader` Configured.")
+                else:
+                    return None, None, None, None
+            else:
+                msg = (
+                    f"❌ No valid data found at {data_path}! "
+                    "Expected zarr datastore or TIFF file folder."
+                )
+                show_error_dialog(self, msg)
+                cali_logger.error(msg)
+                return None, None, None, None
+
+        return data, tiff_file_map, tiff_plate_type, tiff_metadata
+
+    def _validate_data(self, data: TiffCollectionReader | Any | None) -> bool:
+        """Validate data and show errors if invalid.
+
+        Returns
+        -------
+        bool
+            True if data is valid, False otherwise.
+        """
+        if data is None:
+            msg = (
+                f"❌ Unsupported file format! Currently, Only "
+                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
+                "TiffCollectionReader are supported."
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return False
+
+        if data.sequence is None:
+            msg = (
+                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
+                "the useq.MDASequence in the datastore metadata!"
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return False
+
+        return True
+
+    def _finalize_initialization(self, experiment: Experiment) -> None:
+        """Finalize GUI initialization with experiment data."""
+        # PLATE--------------------------------------------------------------------
+        plate_plan = experiment_to_useq_plate_plan(experiment)
+        if plate_plan is not None:
+            self._draw_plate_with_selection(plate_plan)
+        else:
+            cali_logger.warning("❌ Plate plan not found in experiment.")
+
+        # UPDATE GUI-------------------------------------------------------------------
+        if self._data is not None and self._data.sequence is not None:
+            self._update_gui_plate_plan(self._data.sequence.stage_positions)
+
+        # UPDATE GUI SETTINGS ---------------------------------------------------------
+        if self._database_path is not None:
+            self._update_gui_settings(self._database_path, experiment=experiment)
+
+        # HIDE LOADING BAR ------------------------------------------------------------
+        self._loading_bar.hide()
 
     def _initialize_from_database(
         self, database_path: str | Path, data_path: str | Path
     ) -> None:
         """Initialize the widget with the given database path."""
         # SHOW LOADING BAR ------------------------------------------------------------
-        self._init_loading_bar("Initializing cali from database...", False)
+        self._init_loading_bar("📚 Initializing cali from database...", False)
 
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
@@ -410,25 +541,7 @@ class CaliGui(QMainWindow):
         else:
             self._data = load_data_from_path(data_path)
 
-        if self._data is None:
-            msg = (
-                f"❌ Unsupported file format! Currently, Only "
-                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                "TiffCollectionReader are supported."
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
-            return
-
-        if self._data.sequence is None:
-            msg = (
-                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                "the useq.MDASequence in the datastore metadata!"
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
+        if not self._validate_data(self._data):
             return
 
         # ASSIGN VARIABLES ------------------------------------------------------------
@@ -437,20 +550,10 @@ class CaliGui(QMainWindow):
         self._output_path = str(Path(database_path).parent)
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path(self._database_path)
+        self._update_graph_properties(self._database_path)
 
-        # PLATE------------------------------------------------------------------------
-        plate_plan = experiment_to_useq_plate_plan(experiment)
-        if plate_plan is not None:
-            self._draw_plate_with_selection(plate_plan)
-        else:
-            cali_logger.warning("❌ Plate plan not found in experiment.")
-
-        # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_settings(self._database_path, experiment=experiment)
-
-        # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()
+        # FINALIZE---------------------------------------------------------------------
+        self._finalize_initialization(experiment)
 
     def _initialize_from_directories(
         self,
@@ -460,7 +563,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         """Initialize the widget with given datastore and analysis path."""
         # SHOW LOADING BAR ------------------------------------------------------------
-        self._init_loading_bar("Initializing cali from directories...", False)
+        self._init_loading_bar("📂 Initializing cali from directories...", False)
 
         # CLEARING---------------------------------------------------------------------
         self._clear_widget_before_initialization()
@@ -473,7 +576,7 @@ class CaliGui(QMainWindow):
         self._output_path = output_path
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_with_database_path(self._database_path)
+        self._update_graph_properties(self._database_path)
 
         # CHECK IF DATABASE EXISTS ----------------------------------------------------
         if Path(self._database_path).exists():
@@ -505,59 +608,21 @@ class CaliGui(QMainWindow):
                 else:
                     self._data = load_data_from_path(data_path)
 
-                if self._data is None:
-                    msg = (
-                        f"❌ Unsupported file format! Currently, Only "
-                        f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                        "TiffCollectionReader are supported."
-                    )
-                    show_error_dialog(self, msg)
-                    cali_logger.error(msg)
-                    self._loading_bar.hide()
-                    return
-
-                if self._data.sequence is None:
-                    show_error_dialog(
-                        self,
-                        "❌ useq.MDASequence not found! Cannot use the  `CaliGui` "
-                        "without the useq.MDASequence in the datastore metadata!",
-                    )
-                    self._loading_bar.hide()
+                if not self._validate_data(self._data):
                     return
 
             else:
-                # DATA-----------------------------------------------------------------
-                tiff_file_map = tiff_plate_type = tiff_metadata = None
-                self._data = load_data_from_path(data_path)
-                # if data is None and the data_path is a tiff folder, try to create
-                # a TiffCollectionReader
-                if self._data is None:
-                    d_path = Path(data_path)
-                    tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
-                    if tiff_list:
-                        # Show TiffCollectionWidget to configure TIFF files
-                        self._tiff_collection_widget.set_tiff_files(tiff_list)
-                        if self._tiff_collection_widget.exec():
-                            self._data = self._tiff_collection_widget.value()
-                            tiff_file_map, tiff_plate_type, tiff_metadata = (
-                                self._data.to_experiment_tiff_config()
-                            )
-                            cali_logger.info("📋 `TiffCollectionReader` Configured.")
-                        else:
-                            self._loading_bar.hide()
-                            return
-                    else:
-                        msg = (
-                            f"❌ No valid data found at {data_path}! "
-                            "Expected zarr datastore or TIFF file folder."
-                        )
-                        show_error_dialog(self, msg)
-                        cali_logger.error(msg)
-                        self._loading_bar.hide()
-                        return
-
                 # User chose to overwrite - create new database
                 cali_logger.info(f"💾 Overwriting database at {self._database_path}")
+
+                # DATA-----------------------------------------------------------------
+                result = self._load_data_or_configure_tiff(data_path)
+                if result[0] is None:
+                    self._loading_bar.hide()
+                    return
+                self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+                # CREATE AND SAVE EXPERIMENT ------------------------------------------
                 experiment = Experiment.create_from_data(
                     name="Cali Experiment",
                     data_path=data_path,
@@ -570,46 +635,18 @@ class CaliGui(QMainWindow):
                     experiment, output_path, database_name=database_name, overwrite=True
                 )
 
-            # PLATE--------------------------------------------------------------------
-            # draw plate
-            plate_plan = experiment_to_useq_plate_plan(experiment)
-            if plate_plan is not None:
-                self._draw_plate_with_selection(plate_plan)
-            else:
-                cali_logger.warning("❌ Plate plan not found in experiment.")
-
         else:
-            # DATA -----------------------------------------------------------------
-            tiff_file_map = tiff_plate_type = tiff_metadata = None
-            self._data = load_data_from_path(data_path)
-            # if data is None and the data_path is a tiff folder, try to create
-            # a TiffCollectionReader
-            if self._data is None:
-                d_path = Path(data_path)
-                tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
-                if tiff_list:
-                    # Show TiffCollectionWidget to configure TIFF files
-                    self._tiff_collection_widget.set_tiff_files(tiff_list)
-                    if self._tiff_collection_widget.exec():
-                        self._data = self._tiff_collection_widget.value()
-                        tiff_file_map, tiff_plate_type, tiff_metadata = (
-                            self._data.to_experiment_tiff_config()
-                        )
-                        cali_logger.info("📋 `TiffCollectionReader` Configured.")
-                    else:
-                        self._loading_bar.hide()
-                        return
-                else:
-                    msg = (
-                        f"❌ No valid data found at {data_path}! "
-                        "Expected zarr datastore or TIFF file folder."
-                    )
-                    show_error_dialog(self, msg)
-                    cali_logger.error(msg)
-                    self._loading_bar.hide()
-                    return
+            # CREATE NEW DATABASE ------------------------------------------------------
+            cali_logger.info(f"💾 Creating new database at {self._database_path}")
 
-            # CREATE THE EXPERIMENT BASED ON DATA -------------------------------------
+            # DATA -----------------------------------------------------------------
+            result = self._load_data_or_configure_tiff(data_path)
+            if result[0] is None:
+                self._loading_bar.hide()
+                return
+            self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+            # CREATE AND SAVE EXPERIMENT -------------------------------------------
             experiment = Experiment.create_from_data(
                 name="Cali Experiment",
                 data_path=data_path,
@@ -618,46 +655,20 @@ class CaliGui(QMainWindow):
                 tiff_plate_type=tiff_plate_type,
                 tiff_metadata=tiff_metadata,
             )
-
-            # SAVE THE EXPERIMENT TO A NEW DATABASE------------------------------------
-            cali_logger.info(f"💾 Creating new database at {self._database_path}")
             save_experiment_to_database(
                 experiment, output_path, database_name=database_name, overwrite=True
             )
 
-        # DATA---------------------------------------------------------------------
+        # RELOAD DATA IF NEEDED --------------------------------------------------------
         # skip loading data if already loaded as TiffCollectionReader
         if not isinstance(self._data, TiffCollectionReader):
             self._data = load_data_from_path(data_path)
 
-        if self._data is None:
-            msg = (
-                f"❌ Unsupported file format! Currently, Only "
-                f"{WRITERS[ZARR_TESNSORSTORE][0]}, {WRITERS[OME_ZARR][0]} and "
-                "TiffCollectionReader are supported."
-            )
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            self._loading_bar.hide()
+        if not self._validate_data(self._data):
             return
 
-        if self._data.sequence is None:
-            show_error_dialog(
-                self,
-                "❌ useq.MDASequence not found! Cannot use the  `CaliGui` without "
-                "the useq.MDASequence in the datastore metadata!",
-            )
-            self._loading_bar.hide()
-            return
-
-        # UPDATE GUI-------------------------------------------------------------------
-        self._update_gui_plate_plan(self._data.sequence.stage_positions)
-
-        # UPDATE GUI SETTINGS ---------------------------------------------------------
-        self._update_gui_settings(self._database_path, experiment=experiment)
-
-        # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()
+        # FINALIZE---------------------------------------------------------------------
+        self._finalize_initialization(experiment)
 
     def _update_gui_settings(
         self, database_path: Path | str, experiment: Experiment | None = None
@@ -1146,7 +1157,7 @@ class CaliGui(QMainWindow):
         # repopulate detection settings combobox
         if self._database_path:
             self._populate_settings(self._database_path)
-            self._update_graph_with_database_path(self._database_path)
+            self._update_graph_properties(self._database_path)
         # update GUI with the latest run (latest run is at the end of the list)
         last_idx = self._runs_panel._runs_list.count() - 1
         # select last run (no signal emitted)
@@ -1350,17 +1361,9 @@ class CaliGui(QMainWindow):
         # reset runs panel
         self._runs_panel.clear()
 
-    def _update_graph_with_database_path(self, database_path: Path | str) -> None:
+    def _update_graph_properties(self, database_path: Path | str) -> None:
         """Update all graph widgets with the current database path and engine."""
         from sqlmodel import create_engine
-
-        # Dispose old engines to ensure connections are closed
-        for sw_graph in self.SW_GRAPHS:
-            if sw_graph.engine is not None:
-                sw_graph.engine.dispose(close=True)
-        for mw_graph in self.MW_GRAPHS:
-            if mw_graph.engine is not None:
-                mw_graph.engine.dispose(close=True)
 
         # Create new SQLAlchemy engine for database queries
         engine = create_engine(
@@ -1370,17 +1373,21 @@ class CaliGui(QMainWindow):
             pool_pre_ping=True,
         )
 
-        # Update all graph widgets with new database path and engine
         for sw_graph in self.SW_GRAPHS:
+            if sw_graph.engine is not None:
+                sw_graph.engine.dispose(close=True)
             sw_graph.database_path = database_path
             sw_graph.engine = engine
-            # Refresh the plot with new data
-            sw_graph._on_combo_changed(sw_graph._combo.currentText())
+            # Reset the plot to "None" to avoid plot loading issues
+            sw_graph._combo.setCurrentText("None")
+
         for mw_graph in self.MW_GRAPHS:
+            if mw_graph.engine is not None:
+                mw_graph.engine.dispose(close=True)
             mw_graph.database_path = database_path
             mw_graph.engine = engine
-            # Refresh the plot with new data
-            mw_graph._on_combo_changed(mw_graph._combo.currentText())
+            # Reset the plot to "None" to avoid plot loading issues
+            mw_graph._combo.setCurrentText("None")
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
@@ -1458,6 +1465,8 @@ class CaliGui(QMainWindow):
         """
         if self._database_path is None:
             return
+
+        self._init_loading_bar(f"💿 Loading Run {run_id}...", False)
 
         try:
             # Load the selected analysis result
@@ -1576,7 +1585,10 @@ class CaliGui(QMainWindow):
             # Refresh the image viewer to update labels with the new detection settings
             self._on_fov_table_selection_changed()
 
+            self._loading_bar.hide()
+
         except Exception as e:
+            self._loading_bar.hide()
             show_error_dialog(self, f"Failed to load run settings: {e}")
             cali_logger.error(f"❌ Failed to load run #{run_id}: {e}")
 
@@ -1684,10 +1696,10 @@ class CaliGui(QMainWindow):
                 return
 
             # check if the FOV has been analyzed (has ROIs with data)
-            has_analysis = self._has_fov_analysis(value)
+            # has_analysis = self._has_fov_analysis(value)
 
             # update the graphs combo boxes
-            self._update_single_wells_graphs_combo(combo_red=(not has_analysis))
+            self._update_single_wells_graphs_combo()
 
     def _highlight_roi(self, roi: str | list[str]) -> None:
         """Highlight the selected roi in the image viewer."""
@@ -1727,41 +1739,45 @@ class CaliGui(QMainWindow):
 
     def _on_fov_table_selection_changed(self) -> None:
         """Update the image viewer with the first frame of the selected FOV."""
-        self._image_viewer._clear_highlight()
-        value = self._fov_table.value() if self._fov_table.selectedItems() else None
+        try:
+            self._image_viewer._clear_highlight()
+            value = self._fov_table.value() if self._fov_table.selectedItems() else None
 
-        if value is None:
-            self._image_viewer.setData(None, None)
-            self._update_single_wells_graphs_combo(
-                combo_red=True, clear=True, set_title=""
+            if value is None:
+                self._image_viewer.setData(None, None)
+                self._update_single_wells_graphs_combo(clear=True, set_title="")
+                return
+
+            if self._data is None:
+                return
+
+            if not self._data.sequence:
+                return
+
+            # get a single frame for the selected FOV (at 2/3 of the time points)
+            t = int(len(self._data.sequence.stage_positions) / 3 * 2)
+            data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
+            # get labels and neuropil masks if they exist
+            roi_labels, neuropil_labels = self._get_labels(value)
+            # flip data and labels or will look different from the StackViewer
+            data = np.flip(data, axis=0)
+            roi_labels = np.flip(roi_labels, axis=0) if roi_labels is not None else None
+            neuropil_labels = (
+                np.flip(neuropil_labels, axis=0)
+                if neuropil_labels is not None
+                else None
             )
-            return
+            self._image_viewer.setData(data, roi_labels, neuropil_labels)
+            self._set_graphs_fov(value)
 
-        if self._data is None:
-            return
-
-        if not self._data.sequence:
-            return
-
-        # get a single frame for the selected FOV (at 2/3 of the time points)
-        t = int(len(self._data.sequence.stage_positions) / 3 * 2)
-        data = cast("np.ndarray", self._data.isel(p=value.pos_idx, t=t, c=0))
-        # get labels and neuropil masks if they exist
-        roi_labels, neuropil_labels = self._get_labels(value)
-        # flip data and labels vertically or will look different from the StackViewer
-        data = np.flip(data, axis=0)
-        roi_labels = np.flip(roi_labels, axis=0) if roi_labels is not None else None
-        neuropil_labels = (
-            np.flip(neuropil_labels, axis=0) if neuropil_labels is not None else None
-        )
-        self._image_viewer.setData(data, roi_labels, neuropil_labels)
-        self._set_graphs_fov(value)
-
-        # Check if the FOV has been analyzed (has ROIs with data)
-        has_analysis = self._has_fov_analysis(value)
-        self._update_single_wells_graphs_combo(
-            combo_red=(not has_analysis), clear=(not has_analysis)
-        )
+            # Check if the FOV has been analyzed (has ROIs with data)
+            has_analysis = self._has_fov_analysis(value)
+            self._update_single_wells_graphs_combo(clear=(not has_analysis))
+            self._loading_bar.hide()
+        except Exception as e:
+            msg = f"❌ Failed to load FOV:\n{e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
 
     def _has_fov_analysis(self, value: WellInfo) -> bool:
         """Check if the given FOV has been analyzed (has ROIs with data).
@@ -1948,26 +1964,20 @@ class CaliGui(QMainWindow):
     def _update_single_wells_graphs_combo(
         self,
         set_title: str | None = None,
-        combo_red: bool = False,
         clear: bool = False,
     ) -> None:
         for sw_graph in self.SW_GRAPHS:
+            # Always set FOV if set_title is provided (including empty string to reset)
             if set_title is not None:
                 sw_graph.fov = set_title
 
             if clear:
                 sw_graph.clear_plot()
 
-            sw_graph.set_combo_text_red(combo_red)
-
     def _update_multi_wells_graphs_combo(self) -> None:
-        if self._database_path is None:
-            has_analysis = False
-        else:
-            has_analysis = has_experiment_analysis(self._database_path)
-
-        for mw_graph in self.MW_GRAPHS:
-            mw_graph.set_combo_text_red(not has_analysis)
+        # Combo boxes now automatically disable unavailable items
+        # based on pipeline stage availability
+        pass
 
     # MENU SAVE ACTIONS----------------------------------------------------------------
 

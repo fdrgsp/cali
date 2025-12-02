@@ -3,25 +3,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pyqtgraph as pg
 from scipy.ndimage import gaussian_filter1d
 
+from cali.logger import cali_logger
 from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from cali.logger import cali_logger
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
+# -----------------------------------------------------------------------------#
+# Helpers: retrieval from ROI histories
+# -----------------------------------------------------------------------------#
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     """Get the Traces object for a specific run from the ROI's traces_history."""
     if not roi_model.traces_history:
         return None
     if run_id is None:
-        return roi_model.traces_history[0] if roi_model.traces_history else None
+        return roi_model.traces_history[0]
     for trace in roi_model.traces_history:
         if trace.analysis_result_id == run_id:
             return trace
@@ -35,22 +37,19 @@ def _get_data_analysis_for_run(
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return (
-            roi_model.data_analysis_history[0]
-            if roi_model.data_analysis_history
-            else None
-        )
+        return roi_model.data_analysis_history[0]
     # First try to find exact match
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
     # Fall back to first entry (for backwards compatibility with data that has
     # analysis_result_id=None)
-    return (
-        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
-    )
+    return roi_model.data_analysis_history[0]
 
 
+# -----------------------------------------------------------------------------#
+# Main plotting entry point (pyqtgraph version)
+# -----------------------------------------------------------------------------#
 def _plot_inferred_spike_burst_activity(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -58,103 +57,123 @@ def _plot_inferred_spike_burst_activity(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot burst detection and network state analysis for inferred spikes.
+    """Plot burst detection and network state analysis for inferred spikes (pyqtgraph).
 
-    This function analyzes population-level spike activity to detect synchronized
-    burst events and display comprehensive burst statistics.
-
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Widget to plot on
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV
-    rois : list[int] | None
-        List of ROI indices to include, None for all active ROIs
-    run_id : int | None
-        The run ID to filter by, None for latest
+    This analyzes population-level spike activity to detect synchronized burst events
+    and displays burst statistics.
     """
-    widget.figure.clear()
+    plot = widget.plot_item
+    assert plot is not None
 
+    # Clear previous plot
+    plot.clear()
+
+    # Hide shared legend if you use one elsewhere
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    # Make sure viewbox is reset (important when switching from other plot types)
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+    vb.enableAutoRange(x=True, y=True)
+
+    # --- 1) Get burst parameters from AnalysisSettings ---
     burst_params = _get_burst_parameters(engine, fov_name, rois, run_id)
     if burst_params is None:
         cali_logger.warning("Burst parameters not found in ROI data.")
+        plot.setTitle("Population Burst Activity\n(No burst parameters found)")
+        plot.setLabel("bottom", "Time (s)")
+        plot.setLabel("left", "Population Activity")
         return
+
     burst_threshold, min_burst_duration, smoothing_sigma = burst_params
 
-    # Get spike trains and calculate population activity
-    spike_trains, _, time_axis = _get_population_spike_data(
+    # --- 2) Get population spike data ---
+    spike_trains, _roi_names, time_axis = _get_population_spike_data(
         engine, fov_name, rois, run_id
     )
 
-    if spike_trains is None or len(spike_trains) < 2:
+    if spike_trains is None or spike_trains.shape[0] < 2:
         cali_logger.warning(
             "Not enough active ROIs with spikes to plot population activity."
         )
+        plot.setTitle("Population Burst Activity\n(Not enough spike data)")
+        plot.setLabel("bottom", "Time (s)")
+        plot.setLabel("left", "Population Activity")
         return
 
-    # Calculate population activity
+    # --- 3) Population activity (mean over ROIs) ---
     population_activity = np.mean(spike_trains, axis=0)
 
-    # Smooth population activity for burst detection
-    smoothed_activity = gaussian_filter1d(population_activity, sigma=smoothing_sigma)
+    # --- 4) Smooth population activity for burst detection ---
+    if smoothing_sigma > 0:
+        smoothed_activity = gaussian_filter1d(
+            population_activity, sigma=smoothing_sigma, mode="nearest"
+        )
+    else:
+        smoothed_activity = population_activity
 
-    # Detect bursts
-    bursts = _detect_population_bursts(
-        smoothed_activity, burst_threshold / 100, min_burst_duration
+    # --- 5) Detect bursts (burst_threshold is in %) ---
+    the_value = burst_threshold / 100.0
+    bursts = _detect_population_bursts(smoothed_activity, the_value, min_burst_duration)
+
+    # --- 6) Draw traces + threshold + burst regions ---
+    _draw_population_activity_pg(
+        plot,
+        time_axis=time_axis,
+        raw_activity=population_activity,
+        smoothed_activity=smoothed_activity,
+        bursts=bursts,
+        threshold_value=the_value,
     )
 
-    # Create single plot layout
-    fig = widget.figure
-    ax = fig.add_subplot(111)
-
-    # Plot population activity with burst detection
-    _plot_population_activity(
-        ax,
-        population_activity,
-        smoothed_activity,
-        time_axis,
-        bursts,
-        burst_threshold / 100,
+    # --- 7) Stats text in title ---
+    stats_text = _burst_statistics_text(bursts, time_axis)
+    title = (
+        "Population Activity and Burst Detection (Thresholded Spike Data)\n"
+        f"{stats_text}"
     )
+    plot.setTitle(title)
 
-    # Add statistics legend below the plot
-    _add_burst_statistics_legend(ax, bursts, time_axis)
+    plot.setLabel("bottom", "Time (s)")
+    plot.setLabel("left", "Population Activity")
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+    # Auto-range once everything is added
+    vb.enableAutoRange(x=True, y=True)
 
 
+# -----------------------------------------------------------------------------#
+# Burst parameter retrieval
+# -----------------------------------------------------------------------------#
 def _get_burst_parameters(
     engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
+    fov_name: str,  # kept for API symmetry; currently unused
+    rois: list[int] | None = None,  # kept for API symmetry; currently unused
     run_id: int | None = None,
 ) -> tuple[float, int, float] | None:
-    """Get burst detection parameters from AnalysisSettings."""
+    """Get burst detection parameters from AnalysisSettings.
+
+    Returns (burst_threshold, burst_min_duration, burst_gaussian_sigma) if found.
+    """
     from sqlmodel import Session, select
 
     from cali.sqlmodel._model import AnalysisSettings
 
     with Session(engine) as session:
-        # Get the AnalysisSettings from the run
-        if run_id is None:
-            cali_logger.warning("No run_id provided for burst parameters retrieval.")
-            return None
+        # Prefer settings from the given run_id
+        if run_id is not None:
+            result = session.get(CaliResult, run_id)
+            if result and result.analysis_settings_id is not None:
+                settings = session.get(AnalysisSettings, result.analysis_settings_id)
+                if settings:
+                    return (
+                        settings.burst_threshold,
+                        settings.burst_min_duration,
+                        settings.burst_gaussian_sigma,
+                    )
 
-        result = session.get(CaliResult, run_id)
-        if result and result.analysis_settings_id is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings_id)
-            if settings:
-                return (
-                    settings.burst_threshold,
-                    settings.burst_min_duration,
-                    settings.burst_gaussian_sigma,
-                )
-
-        # Fallback: get settings from the first available run
+        # Fallback: get settings from the first available run that has them
         stmt = (
             select(CaliResult)
             .where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
@@ -174,6 +193,9 @@ def _get_burst_parameters(
     return None
 
 
+# -----------------------------------------------------------------------------#
+# Population spike data extraction
+# -----------------------------------------------------------------------------#
 def _get_population_spike_data(
     engine: Engine,
     fov_name: str,
@@ -182,21 +204,9 @@ def _get_population_spike_data(
 ) -> tuple[np.ndarray | None, list[str], np.ndarray]:
     """Extract population spike data from database.
 
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    fov_name : str
-        Name of the FOV
-    rois : list[int] | None
-        List of ROI indices to include, None for all active ROIs
-    run_id : int | None
-        The run ID to filter by, None for latest
-
     Returns
     -------
-    tuple[np.ndarray | None, list[str], np.ndarray]
-        Tuple of (spike_trains_array, roi_names, time_axis)
+    (spike_trains_array, roi_names, time_axis)
     """
     from sqlalchemy.orm import selectinload
     from sqlmodel import Session, col, select
@@ -212,74 +222,78 @@ def _get_population_spike_data(
                 detection_settings_id = result.detection_settings_id
 
         stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
+
         if rois is not None:
-            stmt = stmt.where(col(ROI.id).in_(rois))
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
         # Filter by detection settings if we have a run_id
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
+
         stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
             selectinload(ROI.traces_history),
             selectinload(ROI.data_analysis_history),
         )
+
         roi_results = session.exec(stmt).all()
 
     spike_trains: list[np.ndarray] = []
     roi_names: list[str] = []
-    max_length = 0
     rois_rec_time: list[float] = []
 
     for roi in roi_results:
-        # Get traces for this run
         traces = _get_traces_for_run(roi, run_id)
         if traces is None or not traces.inferred_spikes:
             continue
 
-        # Get threshold from DataAnalysis if available
+        spikes = np.asarray(traces.inferred_spikes, dtype=float)
+
         data_analysis = _get_data_analysis_for_run(roi, run_id)
-        threshold = data_analysis.inferred_spikes_threshold if data_analysis else 0
-        threshold = threshold or 0
+        threshold = data_analysis.inferred_spikes_threshold if data_analysis else 0.0
+        if threshold is None:
+            threshold = 0.0
 
-        # Get thresholded spike data from Traces
-        thresholded_spikes = [s if s > threshold else 0 for s in traces.inferred_spikes]
+        # Threshold + binarize
+        spikes[spikes <= threshold] = 0.0
+        spike_train = (spikes > 0.0).astype(float)
 
-        # Convert spike probabilities to binary spike train
-        spike_train = (np.array(thresholded_spikes) > 0.0).astype(float)
-        if np.sum(spike_train) > 0:  # Only include ROIs with at least one spike
-            spike_trains.append(spike_train)
-            roi_names.append(str(roi.label_value))
-            max_length = max(max_length, len(spike_train))
+        if spike_train.sum() == 0:
+            continue
 
-            # Store recording time for time axis calculation
-            if data_analysis and data_analysis.total_recording_time_sec is not None:
-                rois_rec_time.append(data_analysis.total_recording_time_sec)
+        spike_trains.append(spike_train)
+        roi_names.append(str(roi.label_value))
+
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
 
     if len(spike_trains) < 2:
         return None, [], np.array([])
 
-    # Pad all spike trains to same length
-    padded_trains: list[np.ndarray] = []
-    for train in spike_trains:
-        if len(train) < max_length:
-            padded = np.zeros(max_length, dtype=np.float64)
-            padded[: len(train)] = train
-            padded_trains.append(padded)
+    # Pad / truncate to common length
+    lengths = np.array([len(t) for t in spike_trains], dtype=int)
+    max_length = int(lengths.max())
+
+    spike_trains_array = np.zeros((len(spike_trains), max_length), dtype=float)
+    for i, train in enumerate(spike_trains):
+        L = len(train)
+        if L >= max_length:
+            spike_trains_array[i, :] = train[:max_length]
         else:
-            truncated = np.array(train[:max_length], dtype=np.float64)
-            padded_trains.append(truncated)
+            spike_trains_array[i, :L] = train
 
-    spike_trains_array = np.array(padded_trains)
-
-    # Create time axis using recording time if available
+    # Time axis from recording time if available, else frames @ 10Hz
     if rois_rec_time:
-        avg_rec_time = np.mean(rois_rec_time)
-        time_axis = np.linspace(0, avg_rec_time, max_length)
+        avg_rec_time = float(np.mean(rois_rec_time))
+        time_axis = np.linspace(0.0, avg_rec_time, max_length)
     else:
-        # Fallback to frame-based time axis (assuming 10 Hz sampling rate)
         time_axis = np.arange(max_length) / 10.0
 
     return spike_trains_array, roi_names, time_axis
 
 
+# -----------------------------------------------------------------------------#
+# Burst detection (vectorized)
+# -----------------------------------------------------------------------------#
 def _detect_population_bursts(
     population_activity: np.ndarray,
     burst_threshold: float,
@@ -287,172 +301,130 @@ def _detect_population_bursts(
 ) -> list[tuple[int, int]]:
     """Detect population bursts in the smoothed activity.
 
-    Parameters
-    ----------
-    population_activity : np.ndarray
-        Population activity signal
-    burst_threshold : float
-        Threshold for burst detection
-    min_duration : int
-        Minimum burst duration in samples
-
-    Returns
-    -------
-    list[tuple[int, int]]
-        List of (start, end) indices for detected bursts
+    Returns list of (start, end) indices; end is exclusive.
     """
-    # Find regions above threshold
+    if population_activity.size == 0:
+        return []
+
     above_threshold = population_activity > burst_threshold
+    if not np.any(above_threshold):
+        return []
 
-    # Find start and end points of bursts
-    bursts = []
-    in_burst = False
-    burst_start = 0
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
 
-    for i, is_active in enumerate(above_threshold):
-        if is_active and not in_burst:
-            # Start of new burst
-            burst_start = i
-            in_burst = True
-        elif not is_active and in_burst:
-            # End of burst
-            burst_duration = i - burst_start
-            if burst_duration >= min_duration:
-                bursts.append((burst_start, i))
-            in_burst = False
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
 
-    # Handle case where burst extends to end of recording
-    if in_burst:
-        burst_duration = len(above_threshold) - burst_start
-        if burst_duration >= min_duration:
-            bursts.append((burst_start, len(above_threshold)))
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
 
+    durations = ends - starts
+    valid = durations >= min_duration
+
+    bursts: list[tuple[int, int]] = [
+        (int(s), int(e)) for s, e, v in zip(starts, ends, valid) if v
+    ]
     return bursts
 
 
-def _plot_population_activity(
-    ax: Axes,
+# -----------------------------------------------------------------------------#
+# pyqtgraph drawing helpers
+# -----------------------------------------------------------------------------#
+def _draw_population_activity_pg(
+    plot: pg.PlotItem,
+    time_axis: np.ndarray,
     raw_activity: np.ndarray,
     smoothed_activity: np.ndarray,
-    time_axis: np.ndarray,
     bursts: list[tuple[int, int]],
-    threshold: float,
+    threshold_value: float,
 ) -> None:
-    """Plot population activity with burst detection threshold.
+    """Draw population activity + threshold + burst regions in pyqtgraph."""
+    # Raw activity (light gray)
+    plot.plot(
+        time_axis,
+        raw_activity,
+        pen=pg.mkPen((200, 200, 200), width=1),
+        name="Raw Population Activity",
+    )
 
-    Parameters
-    ----------
-    ax : Axes
-        Matplotlib axes to plot on
-    raw_activity : np.ndarray
-        Raw population activity
-    smoothed_activity : np.ndarray
-        Smoothed population activity
-    time_axis : np.ndarray
-        Time axis in seconds
-    bursts : list[tuple[int, int]]
-        List of burst periods
-    threshold : float
-        Burst detection threshold
-    """
-    ax.plot(time_axis, raw_activity, "lightgray", label="Raw Population Activity")
-    ax.plot(
+    # Smoothed activity (yellow)
+    plot.plot(
         time_axis,
         smoothed_activity,
-        "blue",
-        linewidth=2,
-        label="Smoothed Population Activity",
-    )
-    ax.axhline(
-        y=threshold,
-        color="black",
-        linestyle="--",
-        label=f"Burst Threshold ({threshold:.2f})",
+        pen=pg.mkPen("yellow", width=3),
+        name="Smoothed Population Activity",
     )
 
-    # Highlight burst periods
-    for burst_start, burst_end in bursts:
-        t_start = time_axis[burst_start]
-        t_end = (
-            time_axis[burst_end - 1] if burst_end < len(time_axis) else time_axis[-1]
+    # Threshold line
+    the_line = pg.InfiniteLine(
+        pos=threshold_value,
+        angle=0,
+        pen=pg.mkPen("yellow", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
+    )
+    the_line.setZValue(5)
+    plot.addItem(the_line)
+
+    # Burst regions (green translucent)
+    for start_idx, end_idx in bursts:
+        start_idx = max(start_idx, 0)
+        end_idx = min(end_idx, len(time_axis))
+        if end_idx <= start_idx:
+            continue
+        t0 = float(time_axis[start_idx])
+        t1 = float(time_axis[end_idx - 1])
+
+        region = pg.LinearRegionItem(
+            values=[t0, t1],
+            brush=pg.mkBrush(0, 255, 0, 60),
+            pen=pg.mkPen(None),  # Remove border lines
+            movable=False,
         )
-        ax.axvspan(t_start, t_end, alpha=0.3, color="green")
-
-    ax.set_ylabel("Population Activity")
-    ax.set_xlabel("Time (s)")
-    ax.set_title("Population Activity and Burst Detection (Thresholded Spike Data)")
-    ax.legend(loc="upper left", fontsize=8)
-    ax.grid(True, alpha=0.3)
+        region.setZValue(1)
+        plot.addItem(region)
 
 
-def _add_burst_statistics_legend(
-    ax: Axes,
+# -----------------------------------------------------------------------------#
+# Burst statistics → title text
+# -----------------------------------------------------------------------------#
+def _burst_statistics_text(
     bursts: list[tuple[int, int]],
     time_axis: np.ndarray,
-) -> None:
-    """Add a legend below the plot showing burst statistics.
+) -> str:
+    """Return a compact string with burst statistics."""
+    if not bursts or time_axis.size == 0:
+        return "Burst Statistics: No bursts detected"
 
-    Parameters
-    ----------
-    ax : Axes
-        Matplotlib axes to add legend to
-    bursts : list[tuple[int, int]]
-        List of burst periods
-    time_axis : np.ndarray
-        Time axis in seconds
-    """
-    if not bursts:
-        # Add a simple legend indicating no bursts
-        ax.text(
-            0.5,
-            0.95,
-            "Burst Statistics: No bursts detected",
-            transform=ax.transAxes,
-            fontsize=10,
-            ha="center",
-            bbox={"boxstyle": "round,pad=0.3", "facecolor": "lightgray", "alpha": 0.8},
-        )
-        return
-
-    # Calculate burst statistics
-    burst_durations = []
-    burst_intervals = []
+    burst_durations: list[float] = []
+    burst_intervals: list[float] = []
 
     for i, (start, end) in enumerate(bursts):
-        duration = (time_axis[end - 1] - time_axis[start]) if end > start else 0
+        start = max(start, 0)
+        end = min(end, len(time_axis))
+        if end <= start:
+            continue
+
+        duration = float(time_axis[end - 1] - time_axis[start])
         burst_durations.append(duration)
 
         if i > 0:
             prev_end = bursts[i - 1][1]
-            interval = time_axis[start] - time_axis[prev_end - 1]
+            prev_end = min(prev_end, len(time_axis))
+            interval = float(time_axis[start] - time_axis[prev_end - 1])
             burst_intervals.append(interval)
 
-    # Calculate statistics
-    count = len(bursts)
-    avg_duration = np.mean(burst_durations) if burst_durations else 0
-    avg_interval = np.mean(burst_intervals) if burst_intervals else 0
+    count = len(burst_durations)
+    avg_duration = float(np.mean(burst_durations)) if burst_durations else 0.0
+    avg_interval = float(np.mean(burst_intervals)) if burst_intervals else 0.0
 
-    # Calculate burst rate (bursts per minute)
-    total_time = time_axis[-1] - time_axis[0]  # in seconds
-    burst_rate = (count / total_time) * 60 if total_time > 0 else 0
+    total_time = float(time_axis[-1] - time_axis[0])
+    burst_rate = (count / total_time) * 60.0 if total_time > 0 else 0.0
 
-    # Create statistics text
-    stats_text = (
+    return (
         f"Count: {count}, "
         f"Avg Duration: {avg_duration:.2f}s, "
         f"Avg Interval: {avg_interval:.2f}s, "
         f"Rate: {burst_rate:.2f} bursts/min"
-    )
-
-    # Add text box below the plot, under the x-axis label
-    ax.text(
-        0.5,
-        -0.25,
-        stats_text,
-        transform=ax.transAxes,
-        fontsize=10,
-        ha="center",
-        va="top",
-        bbox={"boxstyle": "round,pad=0.3", "facecolor": "lightblue", "alpha": 0.8},
-        wrap=True,
     )

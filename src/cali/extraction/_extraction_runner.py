@@ -555,9 +555,14 @@ class ExtractionRunner:
             return None
 
         # Create Traces object (extraction product)
+        corrected_trace = (
+            cast("list[float]", roi_trace.tolist())
+            if neuropil_trace is not None
+            else None
+        )
         traces = Traces(
             raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
-            corrected_trace=cast("list[float]", roi_trace.tolist()),
+            corrected_trace=corrected_trace,
             neuropil_trace=(
                 cast("list[float]", neuropil_trace.tolist())
                 if neuropil_trace is not None

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from _dev._hover_utils import setup_pick_click_for_heatmap
 
-from cali.plot._hover_utils import setup_pick_click_for_heatmap
 from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
     _calculate_cross_correlation,
 )
@@ -208,6 +208,10 @@ def _plot_connectivity_matrix_data(
     ax.set_yticks([])
     ax.set_xticklabels([])
     ax.set_yticklabels([])
+
+    # Disable coordinate display
+    for ax in widget.figure.axes:
+        ax.format_coord = lambda x, y: ""
 
     # Add hover functionality
     _add_hover_functionality_connectivity_matrix(

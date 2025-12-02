@@ -1,34 +1,33 @@
 from __future__ import annotations
 
-import itertools
+import contextlib
 from typing import TYPE_CHECKING
 
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 import numpy as np
+import pyqtgraph as pg
 from scipy.signal import correlate
 from scipy.stats import zscore
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_click_for_heatmap
-from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
+from cali.logger import cali_logger
+from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.image import AxesImage
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from cali.logger import cali_logger
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
+# -----------------------------------------------------------------------------#
+# Helpers: retrieval from ROI histories
+# -----------------------------------------------------------------------------#
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     """Get the Traces object for a specific run from the ROI's traces_history."""
     if not roi_model.traces_history:
         return None
     if run_id is None:
-        return roi_model.traces_history[0] if roi_model.traces_history else None
+        return roi_model.traces_history[0]
     for trace in roi_model.traces_history:
         if trace.analysis_result_id == run_id:
             return trace
@@ -42,85 +41,61 @@ def _get_data_analysis_for_run(
     if not roi_model.data_analysis_history:
         return None
     if run_id is None:
-        return (
-            roi_model.data_analysis_history[0]
-            if roi_model.data_analysis_history
-            else None
-        )
-    # First try to find exact match
+        return roi_model.data_analysis_history[0]
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
-    return (
-        roi_model.data_analysis_history[0] if roi_model.data_analysis_history else None
-    )
+    return roi_model.data_analysis_history[0]
 
 
+# -----------------------------------------------------------------------------#
+# Cross-correlation computation
+# -----------------------------------------------------------------------------#
 def _calculate_cross_correlation(
     engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
-    """Calculate the cross-correlation matrix for the active ROIs."""
+    """Calculate the cross-correlation matrix for the active ROIs.
+
+    Value = maximum normalized cross-correlation over all lags.
+    ROIs are indexed by ROI.label_value (to match your other plots).
+    """
+    if run_id is None:
+        cali_logger.warning("No run ID specified for cross-correlation plot.")
+        return None, None
+
     with Session(engine) as session:
-        roi_data = []  # List of (ROI, Traces)
-
-        if run_id is not None:
-            # Optimized query
-            stmt = (
-                select(ROI, Traces)
-                .join(FOV, ROI.fov_id == FOV.id)
-                .join(
-                    Traces,
-                    (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-                )
-                .where(col(FOV.name) == fov_name)
-                .where(col(ROI.active) == True)  # noqa: E712
+        stmt = (
+            select(ROI, Traces)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
+            .where(col(FOV.name) == fov_name)
+            .where(col(ROI.active) == True)  # noqa: E712
+        )
+        # IMPORTANT: use label_value for ROI subset, not ROI.id
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-            if rois is not None:
-                stmt = stmt.where(col(ROI.id).in_(rois))
+        roi_data: list[tuple[ROI, Traces]] = session.exec(stmt).all()
 
-            results = session.exec(stmt).all()
-            roi_data = results
-        else:
-            # Legacy behavior
-            # Get detection_settings_id from the run if run_id is provided
-            detection_settings_id: int | None = None
-            if run_id is not None:
-                result = session.get(CaliResult, run_id)
-                if result:
-                    detection_settings_id = result.detection_settings_id
-
-            stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-            if rois is not None:
-                stmt = stmt.where(col(ROI.id).in_(rois))
-            # Filter by detection settings if we have a run_id
-            if detection_settings_id is not None:
-                stmt = stmt.where(
-                    col(ROI.detection_settings_id) == detection_settings_id
-                )
-            stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-                selectinload(ROI.traces_history),
-            )
-            roi_results = session.exec(stmt).all()
-
-            for r in roi_results:
-                t = _get_traces_for_run(r, None)
-                if t:
-                    roi_data.append((r, t))
-
-    traces: list[list[float]] = []
+    traces: list[np.ndarray] = []
     rois_idxs: list[int] = []
 
     for roi, roi_traces in roi_data:
         if roi_traces is None or roi_traces.dec_dff is None or roi.label_value is None:
             continue
-        rois_idxs.append(roi.label_value)
-        traces.append(roi_traces.dec_dff)
+
+        tr = np.asarray(roi_traces.dec_dff, dtype=float)
+        if tr.ndim != 1 or tr.size == 0:
+            continue
+
+        rois_idxs.append(int(roi.label_value))
+        traces.append(tr)
 
     if len(rois_idxs) <= 1:
         cali_logger.warning(
@@ -129,21 +104,33 @@ def _calculate_cross_correlation(
         )
         return None, None
 
-    traces_array = np.array(traces)  # shape (n_rois, n_frames)
-
+    traces_array = np.vstack(traces)  # (n_rois, n_frames)
     dff_zero_mean = zscore(traces_array, axis=1)
 
     n_rois = len(rois_idxs)
-    correlation_matrix_active = np.zeros((n_rois, n_rois))
-    for i, j in itertools.product(range(n_rois), range(n_rois)):
+    correlation_matrix_active = np.empty((n_rois, n_rois), dtype=float)
+
+    norms = np.linalg.norm(dff_zero_mean, axis=1)
+    norms[norms == 0] = np.finfo(float).eps
+
+    np.fill_diagonal(correlation_matrix_active, 1.0)
+
+    for i in range(n_rois):
         x = dff_zero_mean[i]
-        y = dff_zero_mean[j]
-        corr = correlate(x, y, mode="full", method="fft")
-        corr /= np.linalg.norm(x) * np.linalg.norm(y)  # normalises magnitude
-        correlation_matrix_active[i, j] = np.max(corr)
+        for j in range(i + 1, n_rois):
+            y = dff_zero_mean[j]
+            corr = correlate(x, y, mode="full", method="fft")
+            corr /= norms[i] * norms[j]
+            max_corr = float(np.max(corr))
+            correlation_matrix_active[i, j] = max_corr
+            correlation_matrix_active[j, i] = max_corr
+
     return correlation_matrix_active, rois_idxs
 
 
+# -----------------------------------------------------------------------------#
+# Plotting with pyqtgraph
+# -----------------------------------------------------------------------------#
 def _plot_cross_correlation_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -151,147 +138,151 @@ def _plot_cross_correlation_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
+    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph)."""
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    plot.clear()
+
+    # Hide shared legend if present (we don't want it here)
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
 
     correlation_matrix, rois_idxs = _calculate_cross_correlation(
         engine, fov_name, rois, run_id
     )
 
     if correlation_matrix is None or rois_idxs is None:
+        plot.setTitle("Pairwise Cross-Correlation Matrix\n(No data)")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
         return
 
-    ax.set_title("Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events)")
-    ax.set_xlabel("ROI")
-    ax.set_xticks([])
-    ax.set_xticklabels([])
-    ax.set_ylabel("ROI")
-    ax.set_yticks([])
-    ax.set_yticklabels([])
+    corr = correlation_matrix
+    corr.shape[0]
 
-    cbar = widget.figure.colorbar(
-        cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
-        ax=ax,
-    )
-    cbar.set_label("Cross-Correlation Index")
+    # ---------------- IMAGE ITEM (centered, full view) ---------------- #
+    img = pg.ImageItem(corr)
 
-    img = ax.imshow(correlation_matrix, cmap="viridis", vmin=0, vmax=1, picker=True)
+    # viridis colormap
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))  # fixed [0, 1]
 
-    _add_hover_functionality_cross_corr(img, widget, rois_idxs, correlation_matrix)
+    plot.addItem(img)
 
-    widget.figure.tight_layout()
-    widget.canvas.draw()
+    # ViewBox & geometry
+    vb = plot.getViewBox()
+
+    # Make (0,0) top-left like imshow
+    vb.invertY(True)
+
+    # keep it square
+    vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
+
+    plot.setTitle("Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events)")
+    plot.setLabel("bottom", "ROI index")
+    plot.setLabel("left", "ROI index")
+
+    # Hide axis tick labels (like the MPL version)
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    # Add colorbar
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+
+    # ---------------- Hover + Click interaction ---------------- #
+    _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr)
 
 
-def _add_hover_functionality_cross_corr(
-    image: AxesImage,
+# -----------------------------------------------------------------------------#
+# Hover + click helper
+# -----------------------------------------------------------------------------#
+def _attach_heatmap_interaction(
     widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    viewbox: pg.ViewBox,
     rois: list[int],
     values: np.ndarray,
 ) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click_for_heatmap(image.axes, widget, rois, values)
+    """
+    Attach interaction to the heatmap.
+
+    - Hover: show ROI_i, ROI_j, value in the title
+    - Click: emit widget.roiSelected with a tuple (roi_i, roi_j)
+    """
+    n_rows, n_cols = values.shape
+    scene = plot.scene()
+
+    # If we reconnect many times, avoid stacking multiple handlers
+    old_hover = plot.property("ccorr_hover_handler")
+    old_click = plot.property("ccorr_click_handler")
+    if old_hover is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseMoved.disconnect(old_hover)
+    if old_click is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseClicked.disconnect(old_click)
+
+    base_title = "Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events)"
+
+    def _on_mouse_moved(pos: pg.Point) -> None:
+        if not plot.sceneBoundingRect().contains(pos):
+            plot.setTitle(base_title)
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col = round(mouse_point.x())
+        row = round(mouse_point.y())
+        if 0 <= row < n_rows and 0 <= col < n_cols:
+            roi_i = rois[row]
+            roi_j = rois[col]
+            val = float(values[row, col])
+            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+        else:
+            plot.setTitle(base_title)
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col = round(mouse_point.x())
+        row = round(mouse_point.y())
+        if 0 <= row < n_rows and 0 <= col < n_cols:
+            roi_i = rois[row]
+            roi_j = rois[col]
+            # Emit tuple; roiSelected is Signal(object), so this is fine
+            widget.roiSelected.emit([str(roi_i), str(roi_j)])
+
+    scene.sigMouseMoved.connect(_on_mouse_moved)
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+
+    # Remember handlers so we can disconnect on next call
+    plot.setProperty("ccorr_hover_handler", _on_mouse_moved)
+    plot.setProperty("ccorr_click_handler", _on_mouse_clicked)
 
 
-# def _plot_hierarchical_clustering_data(
-#     widget: _SingleWellGraphWidget,
-#     engine: Engine,
-#     fov_name: str,
-#     rois: list[int] | None = None,
-#     run_id: int | None = None,
-#     use_dendrogram: bool = False,
-# ) -> None:
-#     widget.figure.clear()
-#     ax = widget.figure.add_subplot(111)
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+    label: str = "Correlation",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
 
-#     correlation_matrix, rois_idxs = _calculate_cross_correlation(
-#         engine, fov_name, rois, run_id
-#     )
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label=label,
+    )
 
-#     if correlation_matrix is None or rois_idxs is None:
-#         return
-
-#     if use_dendrogram:
-#         _plot_hierarchical_clustering_dendrogram(ax, correlation_matrix, rois_idxs)
-#     else:
-#         _plot_hierarchical_clustering_map(widget, ax, correlation_matrix, rois_idxs)
-
-#     ax.set_xlabel("ROI")
-
-#     widget.figure.tight_layout()
-#     widget.canvas.draw()
-
-
-# def _plot_hierarchical_clustering_dendrogram(
-#     ax: Axes,
-#     correlation_matrix: np.ndarray,
-#     rois_idxs: list[int],
-# ) -> None:
-#     """Plot the hierarchical clustering dendrogram."""
-#     ax.set_title(
-#         "Pairwise Cross-Correlation - Hierarchical Clustering Dendrogram\n"
-#         "(Calcium Peaks Events)"
-#     )
-#     ax.set_ylabel("Distance")
-#     correlation_matrix = np.round(correlation_matrix, decimals=8)
-#     dist_condensed = squareform(1 - np.abs(correlation_matrix))
-#     Z = linkage(dist_condensed, method="complete")
-#     labels = [str(i) for i in rois_idxs]
-#     dendrogram(Z, ax=ax, labels=labels, leaf_rotation=90, leaf_font_size=12)
-
-
-# def _plot_hierarchical_clustering_map(
-#     widget: _SingleWellGraphWidget,
-#     ax: Axes,
-#     correlation_matrix: np.ndarray,
-#     rois_idxs: list[int],
-# ) -> None:
-#     """Plot the hierarchical clustering map."""
-#     correlation_matrix = np.round(correlation_matrix, decimals=8)
-#     dist_condensed = squareform(1 - np.abs(correlation_matrix))
-#     order = leaves_list(linkage(dist_condensed, method="complete"))
-#     reordered_matrix = correlation_matrix[order][:, order]
-#     ax.set_title(
-#         "Pairwise Cross-Correlation - Hierarchical Clustering Map\n"
-#         "(Calcium Peaks Events)"
-#     )
-#     ax.set_ylabel("ROI")
-#     ax.set_yticklabels([])
-#     ax.set_yticks([])
-#     ax.set_xticklabels([])
-#     ax.set_xticks([])
-#     image = ax.imshow(reordered_matrix, cmap="viridis")
-
-#     cbar = widget.figure.colorbar(
-#         cm.ScalarMappable(cmap="viridis", norm=mcolors.Normalize(vmin=0, vmax=1)),
-#         ax=ax,
-#     )
-#     cbar.set_label("Cross-Correlation Index")
-
-#     _add_hover_functionality_clustering(
-#         image, widget, rois_idxs, order, reordered_matrix
-#     )
-
-
-# def _add_hover_functionality_clustering(
-#     image: AxesImage,
-#     widget: _SingleWellGraphWidget,
-#     rois: list[int],
-#     order: list[int],
-#     values: np.ndarray,
-# ) -> None:
-#     """Add hover functionality using mplcursors."""
-#     cursor = mplcursors.cursor(image, hover=mplcursors.HoverMode.Transient)
-
-#     @cursor.connect("add")  # type: ignore [misc]
-#     def on_add(sel: mplcursors.Selection) -> None:
-#         x, y = map(int, np.round(sel.target))
-#         roi_x, roi_y = rois[order[x]], rois[order[y]]
-
-#         sel.annotation.set(
-#             text=f"ROI {roi_x} ↔ ROI {roi_y}\nvalue: {values[y, x]:0.2f}",
-#             fontsize=8,
-#             color="black",
-#         )
-
-#         widget.roiSelected.emit([str(roi_x), str(roi_y)])
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

@@ -450,10 +450,10 @@ class _RunsPanel(QGroupBox):
         extraction_icon = "❌" if result.extraction_settings_id is None else "✅"
         extraction_incomplete = ""
         if result.extraction_settings_id is not None:
-            # Check if extraction is incomplete (detected > extracted)
+            # Check if extraction is incomplete (detected != extracted)
             detected = set(result.positions_detected or [])
             extracted = set(result.positions_extracted or [])
-            if detected and extracted and len(detected) > len(extracted):
+            if detected and extracted and len(detected) != len(extracted):
                 extraction_incomplete = " ⚠️"
 
         item_text += (
@@ -465,11 +465,16 @@ class _RunsPanel(QGroupBox):
         analysis_icon = "❌" if result.analysis_settings_id is None else "✅"
         analysis_incomplete = ""
         if result.analysis_settings_id is not None:
-            # Check if analysis is incomplete (extracted > analyzed)
-            extracted = set(result.positions_extracted or [])
+            # Check if analysis is incomplete (detected != analyzed)
+            detected = set(result.positions_detected or [])
             analyzed = set(result.positions_analyzed or [])
-            if extracted and analyzed and len(extracted) > len(analyzed):
+            if detected and analyzed and len(detected) != len(analyzed):
                 analysis_incomplete = " ⚠️"
+            # Check if analysis is incomplete (extracted != analyzed)
+            # extracted = set(result.positions_extracted or [])
+            # analyzed = set(result.positions_analyzed or [])
+            # if extracted and analyzed and len(extracted) != len(analyzed):
+            #     analysis_incomplete = " ⚠️"
 
         item_text += (
             f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"

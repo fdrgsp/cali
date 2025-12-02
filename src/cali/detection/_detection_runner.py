@@ -402,7 +402,7 @@ class DetectionRunner:
         label_values = label_values[label_values > 0]
 
         if len(label_values) == 0:
-            cali_logger.warning(f"No cells detected in {fov_name}")
+            cali_logger.warning(f"⚠️ No cells detected in {fov_name}")
             return None
 
         # Extract fov_number from name (e.g., "B2_0001" -> 1)

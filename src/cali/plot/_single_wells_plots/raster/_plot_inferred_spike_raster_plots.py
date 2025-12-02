@@ -2,22 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import matplotlib.cm as cm
 import numpy as np
+import pyqtgraph as pg
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
-from cali.plot._hover_utils import setup_pick_click_for_raster
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
+    from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _SingleWellGraphWidget
-
-from cali.logger import cali_logger
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
 def _generate_spike_raster_plot(
@@ -30,38 +28,29 @@ def _generate_spike_raster_plot(
     amplitude_colors: bool = False,
     colorbar: bool = False,
 ) -> None:
-    """Generate a spike raster plot using thresholded spike data.
+    """Generate a spike raster plot using thresholded spike data (pyqtgraph)."""
+    plot = widget.plot_item
+    assert plot is not None
 
-    ...by querying database directly.
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
 
-    Parameters
-    ----------
-    widget : _SingleWellGraphWidget
-        Graph widget to plot on
-    engine : Engine
-        SQLAlchemy Engine connected to the database
-    fov_name : str
-        Name of the FOV (e.g., "B5_0000")
-    run_id : int
-        The run ID to filter by
-    rois : list[int] | None
-        List of ROI label values to plot. If None, plots all ROIs.
-    amplitude_colors : bool
-        Whether to color by amplitude
-    colorbar : bool
-        Whether to show colorbar
-    """
-    # clear the figure
-    widget.figure.clear()
-    ax = widget.figure.add_subplot(111)
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
 
-    ax.set_title("Inferred Spikes Raster Plot")
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
 
-    # Query database for ROI data
+    plot.setTitle("Inferred Spikes Raster Plot")
+
+    # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
-        roi_data = []  # List of (ROI, Traces, DataAnalysis)
-
-        # Optimized query
         stmt = (
             select(ROI, Traces, DataAnalysis)
             .join(FOV, ROI.fov_id == FOV.id)
@@ -77,173 +66,425 @@ def _generate_spike_raster_plot(
             .where(col(FOV.name) == fov_name)
         )
 
-        # Filter by specific ROIs if requested
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        # Order by label_value for consistent plotting
         stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
 
-        results = session.exec(stmt).all()
-        roi_data = results
+    if not roi_data:
+        cali_logger.warning("No ROI data found for spike raster plot.")
+        _draw_centered_message_pg(
+            plot,
+            "No ROI data found for this FOV.\nPlease check the selected run and FOV.",
+        )
+        return
 
-    # initialize required lists and variables
-    event_data: list[list[int]] = []
-    colors: list = []  # Colors for eventplot (can be strings or tuples)
+    # ------------------------ Collect events ------------------------ #
+    event_data: list[np.ndarray] = []  # per-ROI array of spike indices
+    per_roi_spike_amplitudes: list[np.ndarray] = []
     rois_rec_time: list[float] = []
-    total_frames: int = 0
+    active_rois: list[int] = []
+    sample_trace: list[float] | None = None
 
-    # if amplitude colors are used, determine min/max amplitude range
-    min_amp, max_amp = (float("inf"), float("-inf")) if amplitude_colors else (0, 0)
+    min_amp = float("inf")
+    max_amp = float("-inf")
 
-    active_rois = []
-    # loop over the ROI models and get the spike events for each ROI
     for roi, traces, data_analysis in roi_data:
         if data_analysis is None or not traces.inferred_spikes:
             continue
 
-        # Get thresholded spikes (values above threshold)
-        threshold = data_analysis.inferred_spikes_threshold or 0
-        thresholded_spikes = [s if s > threshold else 0 for s in traces.inferred_spikes]
+        threshold = data_analysis.inferred_spikes_threshold or 0.0
+        inferred = np.asarray(traces.inferred_spikes, dtype=float)
 
-        if not any(s > 0 for s in thresholded_spikes):
+        # Thresholded spikes
+        above_the = inferred > threshold
+        if not np.any(above_the):
             continue
 
-        # Find spike event times (indices where spike values are above threshold)
-        spike_times = []
-        spike_amplitudes = []
+        spike_times = np.where(above_the)[0]
+        spike_amplitudes = inferred[above_the]
 
-        for i, spike_val in enumerate(thresholded_spikes):
-            if spike_val > 0:  # Above threshold
-                spike_times.append(i)
-                spike_amplitudes.append(spike_val)
-
-        if not spike_times:
+        if spike_times.size == 0:
             continue
 
-        # store the active ROIs
         active_rois.append(roi.label_value)
+        event_data.append(spike_times.astype(float))
+        per_roi_spike_amplitudes.append(spike_amplitudes.astype(float))
 
-        # convert the x-axis frames to seconds
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        # assuming all traces have the same number of frames
-        if (
-            not total_frames
-            and traces is not None
-            and traces.corrected_trace is not None
-        ):
-            total_frames = len(traces.corrected_trace)
+        if sample_trace is None and traces.corrected_trace is not None:
+            sample_trace = traces.corrected_trace
 
-        # store event data (spike times)
-        event_data.append(spike_times)
-
-        if amplitude_colors and spike_amplitudes:
-            # calculate min and max amplitudes for color normalization
-            min_amp = min(min_amp, min(spike_amplitudes))
-            max_amp = max(max_amp, max(spike_amplitudes))
-        else:
-            # assign default color if not using amplitude-based coloring
-            colors.append(f"C{roi.label_value - 1}")
+        if amplitude_colors and spike_amplitudes.size > 0:
+            min_amp = min(min_amp, float(spike_amplitudes.min()))
+            max_amp = max(max_amp, float(spike_amplitudes.max()))
 
     if not event_data:
         cali_logger.warning(
-            "No spike data available for the selected ROIs.\n"
-            "Please check the data or ROI selection."
+            "No spike data above threshold for the selected ROIs and run."
+        )
+        _draw_centered_message_pg(
+            plot,
+            "No spike data above threshold.\n"
+            "Try adjusting thresholds or selecting different ROIs.",
         )
         return
 
-    # create the color palette for the raster plot
-    if amplitude_colors:
-        _generate_spike_amplitude_colors(roi_data, min_amp, max_amp, colors)
+    # ------------------------ Colors per spike ------------------------ #
+    per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
-    # plot the raster plot
-    ax.eventplot(event_data, colors=colors)
+    if amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
+        vmin, vmax = _compute_amp_norm_bounds(min_amp, max_amp)
+        norm_amp_color = Normalize(vmin=vmin, vmax=vmax)
+        cmap = colormaps.get_cmap("viridis")
 
-    # set the axis labels
-    ax.set_ylabel("ROIs")
-    ax.set_yticklabels([])
-    ax.set_yticks([])
+        for amps in per_roi_spike_amplitudes:
+            row_cols: list[tuple[int, int, int, int]] = []
+            for a in amps:
+                rgba = cmap(norm_amp_color(float(a)))  # floats in [0,1]
+                r, g, b, a_ = [int(255 * c) for c in rgba]
+                row_cols.append((r, g, b, a_))
+            per_roi_colors.append(row_cols)
+    else:
+        amplitude_colors = False
+        for times in event_data:
+            # same length, all white
+            per_roi_colors.append([(255, 255, 255, 255)] * len(times))
 
-    # use any trace to get total number of frames (they should all be the same)
-    sample_trace = None
-    for _, traces, _ in roi_data:
-        if traces and traces.corrected_trace is not None:
-            sample_trace = traces.corrected_trace
-            break
+    # ------------------------ Plot raster (one row per ROI) ------------------------ #
+    for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
+        if times.size == 0:
+            continue
 
-    _update_time_axis(ax, rois_rec_time, sample_trace)
+        y_vals = np.full_like(times, row_idx, dtype=float)
+        spots = []
+        for x, y, color in zip(times, y_vals, row_colors):
+            spots.append(
+                {
+                    "pos": (float(x), float(y)),
+                    "brush": pg.mkBrush(*color),
+                    "pen": None,
+                    "size": 3,
+                }
+            )
 
-    # add the colorbar if amplitude colors are used
-    if amplitude_colors and colorbar:
-        # Use the same logic as in color generation
-        vmax = min_amp + (max_amp - min_amp) * 0.6  # Use 50% of the range
-        cbar = widget.figure.colorbar(
-            cm.ScalarMappable(norm=Normalize(vmin=min_amp, vmax=vmax), cmap="viridis"),
-            ax=ax,
-        )
-        cbar.set_label("Spike Amplitude")
+        item = pg.ScatterPlotItem(spots=spots)
+        item.setProperty("roi_label", str(active_rois[row_idx]))
+        plot.addItem(item)
 
-    widget.figure.tight_layout()
-    _add_hover_functionality(ax, widget, active_rois)
-    widget.canvas.draw()
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI (rows)")
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+
+    # Hide y tick values
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    plot.getViewBox().enableAutoRange(x=True, y=True)
+
+    # ------------------------ Colorbar ------------------------ #
+    if colorbar and amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
+        _add_colorbar_to_widget(widget, vmin, vmax)
+
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_raster(widget, plot, active_rois)
 
 
-def _generate_spike_amplitude_colors(
-    roi_data: list[tuple[ROI, Traces, DataAnalysis]],
-    min_amp: float,
-    max_amp: float,
-    colors: list,
+def _draw_centered_message_pg(plot: pg.PlotItem, text: str) -> None:
+    """Utility to draw a centered multi-line message and hide axes (pyqtgraph)."""
+    plot.clear()
+    text_item = pg.TextItem(text, anchor=(0.5, 0.5), color="w")
+    plot.addItem(text_item)
+    text_item.setPos(0, 0)
+    plot.getViewBox().autoRange()
+    plot.setTitle("")  # leave title empty for message
+
+
+def _compute_amp_norm_bounds(min_amp: float, max_amp: float) -> tuple[float, float]:
+    """Compute robust vmin/vmax for amplitude normalization (same logic as MPL)."""
+    if not np.isfinite(min_amp) or not np.isfinite(max_amp):
+        return 0.0, 1.0
+
+    # Use a reduced range (e.g. 60% of full) to make mid/high values more visible
+    vmax = min_amp + (max_amp - min_amp) * 0.6
+    if vmax <= min_amp:
+        vmax = max_amp
+    if vmax <= min_amp:
+        vmax = min_amp + 0.1  # tiny positive range if everything is almost equal
+
+    vmin = min_amp
+    return vmin, vmax
+
+
+def _update_time_axis_pg_frames(
+    plot: pg.PlotItem,
+    rois_rec_time: list[float],
+    trace: list[float] | None,
 ) -> None:
-    """Assign colors based on individual spike amplitudes for raster plot."""
-    # Always use a reduced range to make yellow colors more visible
-    # Use the midpoint between min and max as vmax for better color distribution
-    vmax = min_amp + (max_amp - min_amp) * 0.5  # Use 50% of the range
-    norm_amp_color = Normalize(vmin=min_amp, vmax=vmax)
-    cmap = colormaps.get_cmap("viridis")
-
-    for _, traces, data_analysis in roi_data:
-        if data_analysis and traces.inferred_spikes:
-            threshold = data_analysis.inferred_spikes_threshold or 0
-            thresholded_spikes = [
-                s if s > threshold else 0 for s in traces.inferred_spikes
-            ]
-
-            # Get individual spike amplitudes and create colors for each spike event
-            spike_colors = []
-            for spike_val in thresholded_spikes:
-                if spike_val > 0:  # This is a spike event
-                    # Color each spike based on its individual amplitude
-                    color = cmap(norm_amp_color(spike_val))
-                    spike_colors.append(color)
-
-            if spike_colors:
-                colors.append(spike_colors)
-
-
-def _add_hover_functionality(
-    ax: Axes, widget: _SingleWellGraphWidget, active_rois: list[int]
-) -> None:
-    """Add hover functionality using efficient pick events."""
-    setup_pick_click_for_raster(ax, widget, active_rois, picker_tolerance=5)
-
-
-def _update_time_axis(
-    ax: Axes, rois_rec_time: list[float], trace: list[float] | None
-) -> None:
-    """Update the x-axis to show time in seconds if recording time is available."""
-    if trace is None or sum(rois_rec_time) <= 0:
-        ax.set_xlabel("Frames")
+    """Set bottom axis as time (s) if total recording time is available, else frames."""
+    if trace is None or not rois_rec_time or sum(rois_rec_time) <= 0:
+        plot.setLabel("bottom", "Frames")
         return
-    # get the average total recording time in seconds
-    avg_rec_time = int(np.mean(rois_rec_time))
-    # get total number of frames from the trace
+
     total_frames = len(trace) if trace is not None else 1
-    # compute tick positions
-    tick_interval = avg_rec_time / total_frames
+    if total_frames <= 1:
+        plot.setLabel("bottom", "Frames")
+        return
+
+    avg_rec_time = int(np.mean(rois_rec_time))
     x_ticks = np.linspace(0, total_frames, num=5, dtype=int)
+    tick_interval = avg_rec_time / total_frames
     x_labels = [str(int(t * tick_interval)) for t in x_ticks]
-    ax.set_xticks(x_ticks)
-    ax.set_xticklabels(x_labels)
-    ax.set_xlabel("Time (s)")
+
+    axis = plot.getAxis("bottom")
+    axis.setTicks([list(zip(x_ticks.tolist(), x_labels))])
+    plot.setLabel("bottom", "Time (s)")
+
+
+def _add_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label="Spike Amplitude",
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
+
+
+def _attach_click_handlers_raster(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    active_roi_labels: list[int],
+) -> None:
+    """Map clicked Y row → ROI label and emit widget.roiSelected."""
+    from pyqtgraph import Point
+
+    scene = plot.scene()
+    vb = plot.getViewBox()
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+        p: Point = vb.mapSceneToView(pos)
+        y = float(p.y())
+        idx = round(y)
+        if 0 <= idx < len(active_roi_labels):
+            widget.roiSelected.emit(str(active_roi_labels[idx]))
+
+    old_click = plot.property("spike_raster_click_handler")
+    if old_click is not None:
+        try:
+            scene.sigMouseClicked.disconnect(old_click)
+        except (TypeError, RuntimeError):
+            pass
+
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+    plot.setProperty("spike_raster_click_handler", _on_mouse_clicked)
+
+
+def _generate_spike_intensity_heatmap(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    *,
+    run_id: int,
+) -> None:
+    """Generate intensity heatmap with spike data color-coded.
+
+    Each ROI is displayed as a horizontal row, with the full inferred spike
+    signal represented by color intensity (viridis colormap).
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    plot.setTitle("Inferred Spikes Intensity Heatmap")
+
+    # ------------------------ Query DB ------------------------ #
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .outerjoin(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+        )
+
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, Traces, DataAnalysis | None]] = session.exec(
+            stmt
+        ).all()
+
+    if not roi_data:
+        cali_logger.warning("No ROI data found for spike intensity heatmap.")
+        _draw_centered_message_pg(
+            plot,
+            "No ROI data found for this FOV.\nPlease check the selected run and FOV.",
+        )
+        return
+
+    # ------------------------ Collect spike trace data ------------------------ #
+    traces_list: list[np.ndarray] = []
+    active_rois: list[int] = []
+    rois_rec_time: list[float] = []
+
+    for roi, traces, data_analysis in roi_data:
+        if traces is None or traces.inferred_spikes is None:
+            continue
+
+        spike_trace = np.asarray(traces.inferred_spikes, dtype=float)
+        if spike_trace.size == 0:
+            continue
+
+        traces_list.append(spike_trace)
+        active_rois.append(roi.label_value)
+
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
+
+    if not traces_list:
+        cali_logger.warning("No spike trace data found for intensity heatmap.")
+        _draw_centered_message_pg(
+            plot,
+            "No spike trace data available for this FOV.\n"
+            "Please check the selected run.",
+        )
+        return
+
+    # Stack traces into 2D array (n_rois x n_frames)
+    traces_array = np.vstack(traces_list)
+    _n_rois, _n_frames = traces_array.shape
+
+    # Compute percentile-based bounds (robust to outliers)
+    vmin_raw = float(np.percentile(traces_array, 5))
+    vmax_raw = float(np.percentile(traces_array, 95))
+
+    # Ensure valid bounds
+    if vmax_raw <= vmin_raw:
+        vmax_raw = vmin_raw + 0.1
+
+    # Normalize to [0, 1] for proper colormap visualization
+    traces_normalized = (traces_array - vmin_raw) / (vmax_raw - vmin_raw)
+    traces_normalized = np.clip(traces_normalized, 0, 1)
+
+    # ------------------------ Create heatmap ------------------------ #
+    img = pg.ImageItem(traces_normalized)
+
+    # Apply viridis colormap (data is now in [0, 1])
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0, 1, 256))
+    img.setLevels((0, 1))
+
+    plot.addItem(img)
+
+    # Viewbox settings
+    vb.invertY(False)  # Keep top ROI at top
+    vb.setAspectLocked(False)  # Allow independent x/y scaling
+    vb.enableAutoRange(x=True, y=True)
+
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI")
+
+    # Hide Y tick values (ROI indices are just ordinal)
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    # Time axis (using first trace as reference)
+    sample_trace = traces_list[0] if traces_list else None
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+
+    # ------------------------ Colorbar ------------------------ #
+    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_spike_intensity(widget, plot, active_rois)
+
+
+def _add_spike_intensity_colorbar_to_widget(
+    widget: _SingleWellGraphWidget,
+    vmin: float,
+    vmax: float,
+) -> None:
+    """Add a ColorBarItem to the spike intensity heatmap widget layout."""
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get("viridis"),
+        width=15,
+        label="Spike Intensity",
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
+
+
+def _attach_click_handlers_spike_intensity(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    active_roi_labels: list[int],
+) -> None:
+    """Map clicked Y row → ROI label, and emit roiSelected."""
+    from pyqtgraph import Point
+
+    scene = plot.scene()
+    vb = plot.getViewBox()
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+
+        p: Point = vb.mapSceneToView(pos)
+        y = float(p.y())
+        idx = round(y)
+        if 0 <= idx < len(active_roi_labels):
+            widget.roiSelected.emit(str(active_roi_labels[idx]))
+
+    old_click = plot.property("spike_intensity_heatmap_click_handler")
+    if old_click is not None:
+        try:
+            scene.sigMouseClicked.disconnect(old_click)
+        except (TypeError, RuntimeError):
+            pass
+
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+    plot.setProperty("spike_intensity_heatmap_click_handler", _on_mouse_clicked)

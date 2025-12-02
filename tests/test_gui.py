@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytestqt.qtbot import QtBot
@@ -10,6 +11,7 @@ from cali.gui import CaliGui
 from cali.gui._run_widget import CaliRunSettings
 from cali.sqlmodel._model import (
     AnalysisSettings,
+    CaliResult,
     DetectionSettings,
     Experiment,
     ExtractionSettings,
@@ -56,7 +58,7 @@ def temp_db_with_detection(tmp_path: Path) -> Path:
         session.add(detection_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -102,7 +104,7 @@ def temp_db_with_extraction(tmp_path: Path) -> Path:
         session.add(extraction_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
     return db_path
 
 
@@ -157,7 +159,78 @@ def temp_db_with_analysis(tmp_path: Path) -> Path:
         session.add(analysis_settings)
         session.commit()
 
-    engine.dispose()
+    engine.dispose(close=True)
+    return db_path
+
+
+@pytest.fixture
+def temp_db_with_runs(tmp_path: Path) -> Path:
+    """Create a temporary database with some CaliResult runs."""
+    db_path = tmp_path / "test_runs.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    from cali.sqlmodel._model import SQLModel
+
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        # Create experiment
+        experiment = Experiment(
+            name="Test Experiment",
+            description=f"Experiment from data at {tmp_path / 'data.zarr'}",
+        )
+        session.add(experiment)
+        session.commit()
+        session.refresh(experiment)
+        assert experiment.id is not None
+
+        # Create detection settings
+        detection_settings = DetectionSettings(
+            method="cellpose",
+            model_type="cyto3",
+            diameter=30.0,
+            cellprob_threshold=0.0,
+            flow_threshold=0.4,
+        )
+        session.add(detection_settings)
+        session.commit()
+
+        # Create extraction settings
+        extraction_settings = ExtractionSettings(
+            neuropil_inner_radius=2,
+            neuropil_min_pixels=50,
+            neuropil_correction_factor=0.7,
+            decay_constant=0.5,
+            dff_window=100,
+            threads=THREADS,
+        )
+        session.add(extraction_settings)
+        session.commit()
+
+        # Create analysis settings
+        analysis_settings = AnalysisSettings(
+            peaks_prominence_multiplier=3.0,
+            peaks_distance=10,
+            threads=THREADS,
+        )
+        session.add(analysis_settings)
+        session.commit()
+
+        # Create some CaliResult entries
+        for _i in range(3):
+            result = CaliResult(
+                experiment=experiment.id,
+                detection_settings_id=detection_settings.id,
+                extraction_settings_id=extraction_settings.id,
+                analysis_settings_id=analysis_settings.id,
+                positions_detected=[0, 1],
+                positions_extracted=[0, 1],
+                positions_analyzed=[0, 1],
+            )
+            session.add(result)
+        session.commit()
+
+    engine.dispose(close=True)
     return db_path
 
 
@@ -485,7 +558,7 @@ def test_check_positions_missing_detection(
     missing = gui._check_positions_missing_detection(1, [0, 1, 2])
     assert missing == [1, 2]
 
-    engine.dispose()
+    engine.dispose(close=True)
     gui.close()
 
 
@@ -547,7 +620,7 @@ def test_check_positions_missing_extraction(
     missing = gui._check_positions_missing_extraction(1, 1, [0, 1, 2])
     assert missing == [1, 2]
 
-    engine.dispose()
+    engine.dispose(close=True)
     gui.close()
 
 
@@ -615,3 +688,59 @@ def test_analysis_only_requires_both_ids(
     assert "Detection ID" in error_calls[0] and "Extraction ID" in error_calls[0]
 
     gui.close()
+
+
+def test_runs_panel_delete_run(
+    qtbot: QtBot, temp_db_with_runs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test deleting a run using _RunsPanel."""
+    from qtpy.QtWidgets import QMessageBox
+
+    from cali.gui._runs_panel import _RunsPanel
+
+    # Create the runs panel
+    panel = _RunsPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+
+    # Set the database path
+    panel.set_database_path(str(temp_db_with_runs))
+
+    # Check that runs are loaded
+    assert panel._runs_list.count() == 3
+
+    # Select the first run
+    first_item = panel._runs_list.item(0)
+    assert first_item is not None
+    run_id = first_item.data(Qt.ItemDataRole.UserRole)
+    assert run_id is not None
+    panel._runs_list.setCurrentItem(first_item)
+
+    # Mock QMessageBox.warning to return Yes
+    def mock_warning(*args: Any, **kwargs: Any) -> QMessageBox.StandardButton:
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr("cali.gui._runs_panel.QMessageBox.warning", mock_warning)
+
+    # Simulate clicking delete button
+    panel._delete_selected_run()
+
+    # Check that the run was deleted
+    panel.refresh_runs()
+    assert panel._runs_list.count() == 2
+
+    # Verify the run is gone from database
+    engine = create_engine(f"sqlite:///{temp_db_with_runs}")
+    with Session(engine) as session:
+        from sqlmodel import select
+
+        from cali.sqlmodel._model import CaliResult
+
+        remaining_results = session.exec(select(CaliResult)).all()
+        assert len(remaining_results) == 2
+        # Check that the deleted run_id is not in remaining
+        remaining_ids = {r.id for r in remaining_results}
+        assert run_id not in remaining_ids
+
+    engine.dispose(close=True)
+    panel.close()

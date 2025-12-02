@@ -333,7 +333,13 @@ class _SingleWellGraphWidget(QWidget):
         """Update the graph when the combo box is changed."""
         # clear the plot
         self.clear_plot()
-        if text == "None" or not self._fov or not self._engine or self._run_id is None:
+        if (
+            not text
+            or text == "None"
+            or not self._fov
+            or not self._engine
+            or self._run_id is None
+        ):
             return
 
         plot_single_well_data(
