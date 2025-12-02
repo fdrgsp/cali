@@ -77,9 +77,16 @@ def test_cancel_between_detection_and_extraction(
             assert detection_completed
 
             # When cancelled between detection and extraction,
-            # no CaliResult is created (extraction was requested but didn't run)
+            # a detection-only CaliResult should be created with
+            # only the detection_settings_id (no extraction/analysis)
             result = session.exec(select(CaliResult)).first()
-            assert result is None
+            assert result is not None
+            assert result.detection_settings_id is not None
+            assert result.extraction_settings_id is None
+            assert result.analysis_settings_id is None
+            assert result.positions_detected == [0, 1]
+            assert result.positions_extracted is None
+            assert result.positions_analyzed is None
 
             # However, ROIs should still exist from detection (they were committed)
             rois = list(session.exec(select(ROI)).all())

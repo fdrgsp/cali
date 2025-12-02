@@ -444,9 +444,31 @@ class CaliRunner:
                                 f"with completed detected positions: {completed}"
                             )
 
-                # Check for cancellation before extraction
+                # Check for cancellation after detection completes
+                # If cancelled and we were planning to run extraction/analysis,
+                # we need to create a detection-only result for the completed positions
                 if self._detection_runner._cancellation_event.is_set():
-                    cali_logger.info("🛑 Run cancelled after detection!")
+                    if (
+                        positions_processed_detection
+                        and detection_result_id is None
+                        and experiment.id is not None
+                    ):
+                        # Create a detection-only result for what we completed
+                        detection_result_id, _ = self._create_or_update_analysis_result(
+                            session=session,
+                            experiment_id=experiment.id,
+                            detection_settings_id=det_id,
+                            extraction_settings_id=None,
+                            analysis_settings_id=None,
+                            plate_map_hash=plate_map_hash,
+                            positions_detected=sorted(positions_processed_detection),
+                        )
+                        session.commit()
+                        cali_logger.info(
+                            f"📝 Created CaliResult ID {detection_result_id} for "
+                            f"cancelled run with detected positions: "
+                            f"{sorted(positions_processed_detection)}"
+                        )
                     return
 
                 # 7. Run extraction if settings provided

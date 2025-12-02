@@ -3,7 +3,7 @@ import threading
 # ignore deprecation warnings from oasis
 import warnings
 from collections.abc import Generator, Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import datetime
 from typing import Callable, cast
 
@@ -169,7 +169,8 @@ class ExtractionRunner:
                 )
                 return
 
-            futures = (
+            # Convert generator to list to get all futures at once
+            futures = [
                 executor.submit(
                     analyze,
                     dataset,
@@ -178,10 +179,14 @@ class ExtractionRunner:
                     fov,
                 )
                 for fov in fovs
-            )
+            ]
 
-            for future in as_completed(futures):
-                # Check for cancellation at the start of each iteration
+            # Process completed futures with cancellation checks
+            # Use a timeout to periodically check for cancellation even if no futures
+            # have completed
+            completed_futures: set[Future] = set()
+            while len(completed_futures) < len(futures):
+                # Check for cancellation before waiting for futures
                 if cancel_event.is_set():
                     cali_logger.info(
                         "🚮 Cancellation requested, shutting down executor..."
@@ -190,15 +195,24 @@ class ExtractionRunner:
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
 
-                try:
-                    # Commit the results to database if we got any
-                    if (fov_result := future.result()) is not None:
-                        yield fov_result
-                except Exception:
-                    import traceback
+                # Wait for futures with short timeout to enable responsive cancellation
+                done, _ = wait(futures, timeout=0.5, return_when=FIRST_COMPLETED)
 
-                    full_tb = traceback.format_exc()
-                    cali_logger.error(f"Exception in extraction thread: {full_tb}")
+                # Process newly completed futures
+                for future in done:
+                    if future in completed_futures:
+                        continue
+                    completed_futures.add(future)
+
+                    try:
+                        # Commit the results to database if we got any
+                        if (fov_result := future.result()) is not None:
+                            yield fov_result
+                    except Exception:
+                        import traceback
+
+                        full_tb = traceback.format_exc()
+                        cali_logger.error(f"Exception in extraction thread: {full_tb}")
 
     def _analyze_position(
         self,
@@ -290,7 +304,7 @@ class ExtractionRunner:
                 cali_logger.info(
                     f"🚮 Cancellation requested during processing of {fov_name}"
                 )
-                break
+                return None
 
             # Get the existing ROI from detection
             existing_roi = roi_map.get(label_value)
