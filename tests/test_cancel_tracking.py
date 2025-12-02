@@ -427,3 +427,93 @@ def test_partial_positions_subset_requested(
             assert fov_positions == {1}
     finally:
         engine.dispose()
+
+
+def test_cancel_event_resets_between_runs(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+) -> None:
+    """Test that cancellation event is cleared at the start of each run.
+
+    This verifies that calling cancel() before a run doesn't affect that run
+    (the event is cleared when the run starts).
+    """
+    runner = CaliRunner(commit_batch_size=1)
+
+    with patch(
+        "cali.detection._detection_runner.DetectionRunner._run_cellpose"
+    ) as mock:
+
+        def mock_detection(
+            dataset: Any,
+            detection_settings: Any,
+            position_indices: list[int],
+            *args: Any,
+            **kwargs: Any,
+        ) -> Iterator[FOV]:
+            for pos_idx in position_indices:
+                yield create_mock_fov(pos_idx)
+
+        mock.side_effect = mock_detection
+
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
+
+        # Call cancel BEFORE running - should have no effect
+        # because run() clears the cancellation event at the start
+        runner.cancel()
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=detection_settings,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[0],
+        )
+
+        # Verify run completed successfully despite cancel() being called before
+        engine = create_engine(f"sqlite:///{test_db_path}")
+        try:
+            with Session(engine) as session:
+                result = session.exec(select(CaliResult)).first()
+                assert result is not None
+                # Run should complete successfully (cancel was cleared at start)
+                assert result.positions_detected == [0]
+        finally:
+            engine.dispose()
+
+        # Now test that a SECOND run on the SAME runner also works
+        # (verifies the cancellation event is reset for subsequent runs too)
+        detection_settings_2 = DetectionSettings(
+            method="cellpose", model_type="cyto3", batch_size=1
+        )
+
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=detection_settings_2,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[1],
+        )
+
+        # Verify second run also completed successfully
+        engine = create_engine(f"sqlite:///{test_db_path}")
+        try:
+            with Session(engine) as session:
+                results = list(session.exec(select(CaliResult)).all())
+                # Should have 2 results now
+                assert len(results) == 2
+
+                # Find the result for position 1
+                pos1_result = None
+                for r in results:
+                    if r.positions_detected == [1]:
+                        pos1_result = r
+                        break
+
+                assert pos1_result is not None, "Second run should complete"
+        finally:
+            engine.dispose()

@@ -223,6 +223,10 @@ class CaliRunner:
 
         Yields progress strings during execution.
         """
+        # Reset cancellation events at the start of each run
+        self._detection_runner._cancellation_event.clear()
+        self._extraction_runner._cancellation_event.clear()
+
         # 0. Make sure data are ready
         dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
         tiff_settings = experiment.tiff_collection_settings(dataset_path)
@@ -514,6 +518,10 @@ class CaliRunner:
                                     f"🎭 Loaded stimulation mask from "
                                     f"{stim_mask_file.name}"
                                 )
+
+                        # Eagerly load stimulation_mask relationship before detaching
+                        # This prevents lazy loading errors in threads
+                        _ = analysis_settings_obj.stimulation_mask
 
                     if analysis_settings_obj is not None:
                         # Detach for thread safety
@@ -1259,7 +1267,11 @@ class CaliRunner:
         list[FOV]
             FOVs with ROIs and masks eagerly loaded from database
         """
+        import time
+
         from sqlalchemy.orm import joinedload
+
+        start = time.perf_counter()
 
         # More efficient: filter ROIs in the query join
         fovs = (
@@ -1280,6 +1292,8 @@ class CaliRunner:
             .unique()
             .all()
         )
+        end = time.perf_counter() - start
+        cali_logger.debug(f"Loaded {len(fovs)} FOVs from DB in {end:.2f} seconds")
 
         # joinedload still loads all ROIs due to relationship behavior
         # Still need to filter the ROI collection itself
@@ -1459,8 +1473,8 @@ class CaliRunner:
         # Check for detection-only result to update when running detection-only
         if extraction_settings_id is None and analysis_settings_id is None:
             # First, check for ANY existing result with same detection settings
-            # (regardless of extraction/analysis settings) to avoid orphan results
-            any_result_with_detection = session.exec(
+            # (regardless of extraction/analysis settings)
+            all_results_with_detection = session.exec(
                 select(CaliResult)
                 .where(
                     CaliResult.experiment == experiment_id,
@@ -1472,9 +1486,56 @@ class CaliRunner:
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                 )
-            ).first()
+            ).all()
 
-            if any_result_with_detection:
+            if len(all_results_with_detection) > 1:
+                # Multiple runs exist with the same detection but different
+                # extraction/analysis settings. User must disambiguate by
+                # specifying extraction and/or analysis settings.
+
+                # Check what varies across results
+                extraction_ids = {
+                    r.extraction_settings_id
+                    for r in all_results_with_detection
+                    if r.extraction_settings_id is not None
+                }
+                analysis_ids = {
+                    r.analysis_settings_id
+                    for r in all_results_with_detection
+                    if r.analysis_settings_id is not None
+                }
+
+                if analysis_ids:
+                    # Different analysis settings exist
+                    msg = (
+                        f"Multiple runs exist with the same detection settings "
+                        f"(ID {detection_settings_id}) but different analysis "
+                        f"settings. Please specify both extraction_settings and "
+                        f"analysis_settings to indicate which run the new "
+                        f"detected positions should be added to."
+                    )
+                elif extraction_ids:
+                    # Different extraction settings exist (no analysis)
+                    msg = (
+                        f"Multiple runs exist with the same detection settings "
+                        f"(ID {detection_settings_id}) but different extraction "
+                        f"settings. Please specify extraction_settings to "
+                        f"indicate which run the new detected positions should "
+                        f"be added to."
+                    )
+                else:
+                    # This shouldn't happen, but handle gracefully
+                    msg = (
+                        f"Multiple runs exist with detection settings ID "
+                        f"{detection_settings_id}. Please specify extraction_settings "
+                        f"and/or analysis_settings to disambiguate."
+                    )
+
+                cali_logger.error(msg)
+                raise ValueError(msg)
+
+            if all_results_with_detection:
+                any_result_with_detection = all_results_with_detection[0]
                 assert isinstance(any_result_with_detection, CaliResult)
                 # Update the most complete existing result's detected positions
                 if positions_detected is not None:
