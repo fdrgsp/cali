@@ -34,6 +34,9 @@ def _generate_raster_plot(
     plot.clear()
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Reset to default (True = y-axis inverted)
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -284,8 +287,8 @@ def _generate_intensity_heatmap(
 ) -> None:
     """Generate an intensity heatmap showing full trace data color-coded by intensity.
 
-    Each ROI is displayed as a horizontal row, with the full trace signal
-    represented by color intensity (viridis colormap).
+    Each ROI is displayed as a single horizontal row; within a row, color varies
+    only along X (frames), not along Y.
     """
     plot = widget.plot_item
     assert plot is not None
@@ -293,9 +296,13 @@ def _generate_intensity_heatmap(
     plot.clear()
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Reset to default (True = y-axis inverted)
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
+        # layout is an attribute, not a callable
         widget.plot_item.layout.removeItem(widget.colorbar)
         widget.colorbar = None
 
@@ -365,47 +372,45 @@ def _generate_intensity_heatmap(
         plot.setLabel("left", "ROI")
         return
 
-    # Stack traces into 2D array (n_rois x n_frames)
+    # Stack traces into 2D array: shape = (n_rois, n_frames)
     traces_array = np.vstack(traces_list)
-    _n_rois, _n_frames = traces_array.shape
+    n_rois, n_frames = traces_array.shape
 
-    # Compute percentile-based bounds (robust to outliers)
+    # Percentile-based bounds (robust to outliers) in *raw* units
     vmin_raw = float(np.percentile(traces_array, 5))
     vmax_raw = float(np.percentile(traces_array, 95))
-
-    # Ensure valid bounds
     if vmax_raw <= vmin_raw:
         vmax_raw = vmin_raw + 0.1
 
-    # Normalize to [0, 1] for proper colormap visualization
-    traces_normalized = (traces_array - vmin_raw) / (vmax_raw - vmin_raw)
-    traces_normalized = np.clip(traces_normalized, 0, 1)
-
     # ------------------------ Create heatmap ------------------------ #
-    img = pg.ImageItem(traces_normalized)
+    img = pg.ImageItem(traces_array)
 
-    # Apply viridis colormap (data is now in [0, 1])
+    # Make sure axis 0 = rows (y), axis 1 = columns (x) and disable smoothing
+    img.setOpts(
+        axisOrder="row-major",  # first index = row (ROI), second = column (frame)
+        autoDownsample=False,  # no resampling artifacts
+        levels=(vmin_raw, vmax_raw),
+        smooth=False,  # nearest-neighbor style; no vertical gradients
+    )
+
     cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0, 1, 256))
-    img.setLevels((0, 1))
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
-    # Viewbox settings
-    vb.invertY(False)  # Keep top ROI at top
-    vb.setAspectLocked(False)  # Allow independent x/y scaling
+    # Viewbox: keep ROI 0 at top, each ROI as a single "row"
+    vb.invertY(False)
+    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
     vb.enableAutoRange(x=True, y=True)
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")
-
-    # Hide Y tick values (ROI indices are just ordinal)
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
 
-    # Time axis (using first trace as reference)
-    sample_trace = traces_list[0] if traces_list else None
+    # Time axis (first trace as reference)
+    sample_trace = traces_list[0]
     _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
 
     # ------------------------ Colorbar ------------------------ #

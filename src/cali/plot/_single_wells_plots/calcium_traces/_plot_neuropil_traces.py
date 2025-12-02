@@ -125,6 +125,10 @@ def _plot_neuropil_traces(
     assert plot is not None
 
     plot.clear()
+    # Reset ViewBox settings that might have been set by raster plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+
     # clear_plot already hid & cleared widget.legend, but just in case:
     if hasattr(widget, "legend") and widget.legend is not None:
         if hasattr(widget.legend, "clear"):

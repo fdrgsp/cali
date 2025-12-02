@@ -35,6 +35,9 @@ def _generate_spike_raster_plot(
     plot.clear()
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Reset to default (True = y-axis inverted)
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -47,7 +50,7 @@ def _generate_spike_raster_plot(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Raster Plot")
+    plot.setTitle("Inferred Spikes Raster Plot (Thresholded)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -315,6 +318,9 @@ def _generate_spike_intensity_heatmap(
     plot.clear()
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Reset to default (True = y-axis inverted)
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -327,7 +333,7 @@ def _generate_spike_intensity_heatmap(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Intensity Heatmap")
+    plot.setTitle("Inferred Spikes Intensity Heatmap (Raw Signal)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -392,45 +398,43 @@ def _generate_spike_intensity_heatmap(
 
     # Stack traces into 2D array (n_rois x n_frames)
     traces_array = np.vstack(traces_list)
-    _n_rois, _n_frames = traces_array.shape
+    n_rois, n_frames = traces_array.shape
 
-    # Compute percentile-based bounds (robust to outliers)
+    # Percentile-based bounds (robust to outliers) in raw units
     vmin_raw = float(np.percentile(traces_array, 5))
     vmax_raw = float(np.percentile(traces_array, 95))
-
-    # Ensure valid bounds
     if vmax_raw <= vmin_raw:
         vmax_raw = vmin_raw + 0.1
 
-    # Normalize to [0, 1] for proper colormap visualization
-    traces_normalized = (traces_array - vmin_raw) / (vmax_raw - vmin_raw)
-    traces_normalized = np.clip(traces_normalized, 0, 1)
-
     # ------------------------ Create heatmap ------------------------ #
-    img = pg.ImageItem(traces_normalized)
+    img = pg.ImageItem(traces_array)
 
-    # Apply viridis colormap (data is now in [0, 1])
+    # Treat axis 0 as rows (ROI), axis 1 as columns (frames), no smoothing/downsampling
+    img.setOpts(
+        axisOrder="row-major",
+        autoDownsample=False,
+        smooth=False,
+        levels=(vmin_raw, vmax_raw),
+    )
+
     cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0, 1, 256))
-    img.setLevels((0, 1))
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
-    # Viewbox settings
-    vb.invertY(False)  # Keep top ROI at top
-    vb.setAspectLocked(False)  # Allow independent x/y scaling
+    # Viewbox settings: one flat band per ROI
+    vb.invertY(False)
+    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
     vb.enableAutoRange(x=True, y=True)
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")
-
-    # Hide Y tick values (ROI indices are just ordinal)
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
 
     # Time axis (using first trace as reference)
-    sample_trace = traces_list[0] if traces_list else None
+    sample_trace = traces_list[0]
     _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
 
     # ------------------------ Colorbar ------------------------ #
@@ -490,3 +494,161 @@ def _attach_click_handlers_spike_intensity(
 
     scene.sigMouseClicked.connect(_on_mouse_clicked)
     plot.setProperty("spike_intensity_heatmap_click_handler", _on_mouse_clicked)
+
+
+def _generate_spike_intensity_heatmap_thresholded(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    *,
+    run_id: int,
+) -> None:
+    """Generate intensity heatmap with thresholded spike data.
+
+    Each ROI is displayed as a horizontal row, showing only spike events
+    that exceed the detection threshold (binary: 0 or spike amplitude).
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    plot.setTitle("Inferred Spikes Intensity Heatmap (Thresholded)")
+
+    # ------------------------ Query DB ------------------------ #
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+        )
+
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
+
+    if not roi_data:
+        cali_logger.warning(
+            "No ROI data found for thresholded spike intensity heatmap."
+        )
+        _draw_centered_message_pg(
+            plot,
+            "No ROI data found for this FOV.\nPlease check the selected run and FOV.",
+        )
+        return
+
+    # ------------------------ Collect thresholded spike data ------------------------ #
+    traces_list: list[np.ndarray] = []
+    active_rois: list[int] = []
+    rois_rec_time: list[float] = []
+
+    for roi, traces, data_analysis in roi_data:
+        if traces is None or traces.inferred_spikes is None:
+            continue
+
+        threshold = data_analysis.inferred_spikes_threshold or 0.0
+        spike_signal = np.asarray(traces.inferred_spikes, dtype=float)
+
+        # Apply threshold: keep amplitudes above threshold, set rest to 0
+        thresholded_signal = np.where(spike_signal > threshold, spike_signal, 0.0)
+
+        if thresholded_signal.size == 0 or np.all(thresholded_signal == 0):
+            continue
+
+        traces_list.append(thresholded_signal)
+        active_rois.append(roi.label_value)
+
+        if data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
+
+    if not traces_list:
+        cali_logger.warning("No thresholded spike data found for intensity heatmap.")
+        _draw_centered_message_pg(
+            plot,
+            "No spike data above threshold for this FOV.\n"
+            "Try adjusting thresholds or selecting different ROIs.",
+        )
+        return
+
+    # Stack traces into 2D array (n_rois x n_frames)
+    traces_array = np.vstack(traces_list)
+    n_rois, n_frames = traces_array.shape
+
+    # Get non-zero values for robust scaling
+    non_zero_vals = traces_array[traces_array > 0]
+    if non_zero_vals.size > 0:
+        vmin_raw = 0.0  # Always start at 0 for thresholded data
+        vmax_raw = float(np.percentile(non_zero_vals, 95))
+        if vmax_raw <= vmin_raw:
+            vmax_raw = float(non_zero_vals.max())
+        if vmax_raw <= vmin_raw:
+            vmax_raw = 1.0
+    else:
+        vmin_raw = 0.0
+        vmax_raw = 1.0
+
+    # ------------------------ Create heatmap ------------------------ #
+    img = pg.ImageItem(traces_array)
+
+    # Treat axis 0 as rows (ROI), axis 1 as columns (frames)
+    img.setOpts(
+        axisOrder="row-major",
+        autoDownsample=False,
+        smooth=False,
+        interpolate=False,  # No interpolation for discrete spikes
+        levels=(vmin_raw, vmax_raw),
+    )
+
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+
+    plot.addItem(img)
+
+    # Viewbox settings: one flat band per ROI
+    vb.invertY(False)
+    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.enableAutoRange(x=True, y=True)
+
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI")
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    # Time axis (using first trace as reference)
+    sample_trace = traces_list[0]
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+
+    # ------------------------ Colorbar ------------------------ #
+    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_spike_intensity(widget, plot, active_rois)

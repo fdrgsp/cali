@@ -92,7 +92,7 @@ def main(args: Sequence[str] | None = None) -> None:
     from fonticon_mdi6 import MDI6
     from superqt.fonticon import icon
 
-    from cali.logger import cali_logger
+    from cali.logger import cali_logger, set_console_level
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Cali - Calcium Imaging Analysis")
@@ -108,6 +108,7 @@ def main(args: Sequence[str] | None = None) -> None:
     # Set logger level
     log_level = getattr(logging, parsed_args.logger.upper())
     cali_logger.setLevel(log_level)
+    set_console_level(log_level)  # Also set console handler level
     cali_logger.info(f"Logger level set to {parsed_args.logger.upper()}")
 
     app = QApplication([])

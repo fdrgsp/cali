@@ -42,9 +42,12 @@ def _visualize_stimulated_area(
 
     # Clear previous content
     plot.clear()
-
-    # Make sure the view is “image-like”
+    # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Make sure the view is "image-like"
     vb.invertY(True)  # origin at top-left like images
     vb.setAspectLocked(True)  # keep pixels square
 

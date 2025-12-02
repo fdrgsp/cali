@@ -1,6 +1,5 @@
 # TODO
 
-- numba?
 - fix csv export of analysis results
 
 - CaImAn
@@ -24,3 +23,5 @@ ask to claude:
 - export tab to export tables and labels
 
 - add a button to reset settings in each tab to default values
+
+- is good to have a button with a lock simbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.

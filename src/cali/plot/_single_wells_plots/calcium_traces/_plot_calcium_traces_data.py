@@ -44,6 +44,9 @@ def _plot_traces_data(
     assert plot is not None
 
     plot.clear()
+    # Reset ViewBox settings that might have been set by raster plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
 
     # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
