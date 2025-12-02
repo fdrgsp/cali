@@ -24,4 +24,4 @@ ask to claude:
 
 - add a button to reset settings in each tab to default values
 
-- is good to have a button with a lock simbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
+- is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
