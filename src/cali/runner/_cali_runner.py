@@ -395,18 +395,10 @@ class CaliRunner:
                                 f"💾 Committed batch of {self.commit_batch_size} FOVs "
                                 f"(total: {fov_count}/{len(positions_for_detection)})"
                             )
-                            # Clear session to free memory
-                            session.expunge_all()
-                            # Re-attach settings objects for next iteration
-                            detection_settings = session.merge(detection_settings)
-                            if extraction_settings_obj is not None:
-                                extraction_settings_obj = session.merge(
-                                    extraction_settings_obj
-                                )
-                            if analysis_settings_obj is not None:
-                                analysis_settings_obj = session.merge(
-                                    analysis_settings_obj
-                                )
+                            # Expunge FOV only after commit to free memory
+                            # Must check if fov is still in session first
+                            if fov in session:
+                                session.expunge(fov)
 
                         positions_processed_detection.append(pos_idx)
 
@@ -417,15 +409,7 @@ class CaliRunner:
                         cali_logger.info(
                             f"💾 Final commit for remaining {remaining} FOVs"
                         )
-                        session.expunge_all()
-                        # Re-attach settings objects
-                        detection_settings = session.merge(detection_settings)
-                        if extraction_settings_obj is not None:
-                            extraction_settings_obj = session.merge(
-                                extraction_settings_obj
-                            )
-                        if analysis_settings_obj is not None:
-                            analysis_settings_obj = session.merge(analysis_settings_obj)
+                        # No need to expunge settings - they stay attached throughout
 
                     # Log detection completion
                     if positions_processed_detection:
@@ -457,8 +441,7 @@ class CaliRunner:
 
                 # 7. Run extraction if settings provided
                 if extraction_settings_obj is not None:
-                    # Eagerly load all scalar attributes before detaching
-                    # This prevents DetachedInstanceError when accessing later
+                    # Eager load scalars before detaching for thread safety
                     _ = (
                         extraction_settings_obj.threads,
                         extraction_settings_obj.neuropil_inner_radius,
@@ -467,33 +450,20 @@ class CaliRunner:
                         extraction_settings_obj.decay_constant,
                         extraction_settings_obj.dff_window,
                     )
-
-                    # Detach settings for thread safety
-                    # This prevents "session is in committed state" errors in threads
                     session.expunge(extraction_settings_obj)
 
                     if analysis_settings_obj is not None:
-                        # Eagerly load all scalar attributes before detaching
+                        # Eager load scalars before detaching
                         _ = (
                             analysis_settings_obj.threads,
                             analysis_settings_obj.peaks_height_value,
                             analysis_settings_obj.peaks_height_mode,
                             analysis_settings_obj.peaks_distance,
                             analysis_settings_obj.peaks_prominence_multiplier,
-                            analysis_settings_obj.calcium_sync_jitter_window,
-                            analysis_settings_obj.calcium_network_threshold,
                             analysis_settings_obj.spike_threshold_value,
                             analysis_settings_obj.spike_threshold_mode,
-                            analysis_settings_obj.burst_threshold,
-                            analysis_settings_obj.burst_min_duration,
-                            analysis_settings_obj.burst_gaussian_sigma,
-                            analysis_settings_obj.spikes_sync_cross_corr_lag,
                             analysis_settings_obj.experiment_type,
                             analysis_settings_obj.stimulation_mask_path,
-                            analysis_settings_obj.led_power_equation,
-                            analysis_settings_obj.led_pulse_duration,
-                            analysis_settings_obj.led_pulse_powers,
-                            analysis_settings_obj.led_pulse_on_frames,
                         )
 
                         # Load stimulation mask from file if path provided but
@@ -540,9 +510,8 @@ class CaliRunner:
                                     f"{stim_mask_file.name}"
                                 )
 
-                        # Ensure stimulation_mask is detached for thread safety
-                        if analysis_settings_obj.stimulation_mask:
-                            session.expunge(analysis_settings_obj.stimulation_mask)
+                    if analysis_settings_obj is not None:
+                        # Detach for thread safety
                         session.expunge(analysis_settings_obj)
 
                     yield "📈 Running Extraction" + (
@@ -770,20 +739,21 @@ class CaliRunner:
         list[int]
             Positions that need detection. Empty list means skip all.
         """
-        # Check which positions already have ROIs with this detection
-        existing_positions = session.exec(
-            select(FOV.position_index)
-            .join(ROI)
-            .where(
-                ROI.detection_settings_id == detection_settings_id,
-                FOV.position_index.in_(global_position_indices),  # type: ignore
-            )
-            .distinct()
-        ).all()
+        # More efficient: convert to set directly
+        existing_positions = set(
+            session.exec(
+                select(FOV.position_index)
+                .join(ROI)
+                .where(
+                    ROI.detection_settings_id == detection_settings_id,
+                    FOV.position_index.in_(global_position_indices),  # type: ignore
+                )
+                .distinct()
+            ).all()
+        )
 
-        existing_pos_set = set(existing_positions)
         positions_needing_detection = [
-            p for p in global_position_indices if p not in existing_pos_set
+            p for p in global_position_indices if p not in existing_positions
         ]
 
         if not positions_needing_detection:
@@ -793,9 +763,9 @@ class CaliRunner:
             )
             return []
 
-        if existing_pos_set:
+        if existing_positions:
             cali_logger.info(
-                f"⚠️  Detection exists for {len(existing_pos_set)} position(s) "
+                f"⚠️  Detection exists for {len(existing_positions)} position(s) "
                 f"but missing for {len(positions_needing_detection)} position(s): "
                 f"{positions_needing_detection}. "
                 "Running detection for missing positions."
@@ -832,27 +802,27 @@ class CaliRunner:
         list[int]
             Positions that need extraction. Empty list means skip all.
         """
-        # Find positions that already have Traces with this extraction_settings_id
-        # and detection_settings_id combination
-        existing_positions = session.exec(
-            select(FOV.position_index)
-            .join(ROI)
-            .join(Traces)
-            .where(
-                ROI.detection_settings_id == detection_settings_id,
-                Traces.analysis_result_id.in_(  # type: ignore
-                    select(CaliResult.id).where(
-                        CaliResult.extraction_settings_id == extraction_settings_id
-                    )
-                ),
-                FOV.position_index.in_(global_position_indices),  # type: ignore
-            )
-            .distinct()
-        ).all()
+        # Optimize by using set directly
+        existing_positions = set(
+            session.exec(
+                select(FOV.position_index)
+                .join(ROI)
+                .join(Traces)
+                .where(
+                    ROI.detection_settings_id == detection_settings_id,
+                    Traces.analysis_result_id.in_(  # type: ignore
+                        select(CaliResult.id).where(
+                            CaliResult.extraction_settings_id == extraction_settings_id
+                        )
+                    ),
+                    FOV.position_index.in_(global_position_indices),  # type: ignore
+                )
+                .distinct()
+            ).all()
+        )
 
-        existing_pos_set = set(existing_positions)
         positions_needing_extraction = [
-            p for p in global_position_indices if p not in existing_pos_set
+            p for p in global_position_indices if p not in existing_positions
         ]
 
         if not positions_needing_extraction:
@@ -864,9 +834,9 @@ class CaliRunner:
             )
             return []
 
-        if existing_pos_set:
+        if existing_positions:
             cali_logger.info(
-                f"⚠️ Extraction exists for {len(existing_pos_set)} position(s) "
+                f"⚠️ Extraction exists for {len(existing_positions)} position(s) "
                 f"but missing for {len(positions_needing_extraction)} position(s): "
                 f"{positions_needing_extraction}. "
                 "Running extraction for missing positions."
@@ -906,28 +876,28 @@ class CaliRunner:
         list[int]
             Positions that need analysis. Empty list means skip all.
         """
-        # Find positions that already have Traces with this combination of
-        # detection_settings_id, extraction_settings_id, and analysis_settings_id
-        existing_positions = session.exec(
-            select(FOV.position_index)
-            .join(ROI)
-            .join(Traces)
-            .where(
-                ROI.detection_settings_id == detection_settings_id,
-                Traces.analysis_result_id.in_(  # type: ignore
-                    select(CaliResult.id).where(
-                        CaliResult.extraction_settings_id == extraction_settings_id,
-                        CaliResult.analysis_settings_id == analysis_settings_id,
-                    )
-                ),
-                FOV.position_index.in_(global_position_indices),  # type: ignore
-            )
-            .distinct()
-        ).all()
+        # Optimize by using set directly
+        existing_positions = set(
+            session.exec(
+                select(FOV.position_index)
+                .join(ROI)
+                .join(Traces)
+                .where(
+                    ROI.detection_settings_id == detection_settings_id,
+                    Traces.analysis_result_id.in_(  # type: ignore
+                        select(CaliResult.id).where(
+                            CaliResult.extraction_settings_id == extraction_settings_id,
+                            CaliResult.analysis_settings_id == analysis_settings_id,
+                        )
+                    ),
+                    FOV.position_index.in_(global_position_indices),  # type: ignore
+                )
+                .distinct()
+            ).all()
+        )
 
-        existing_pos_set = set(existing_positions)
         positions_needing_analysis = [
-            p for p in global_position_indices if p not in existing_pos_set
+            p for p in global_position_indices if p not in existing_positions
         ]
 
         if not positions_needing_analysis:
@@ -939,9 +909,9 @@ class CaliRunner:
             )
             return []
 
-        if existing_pos_set:
+        if existing_positions:
             cali_logger.info(
-                f"⚠️ Analysis exists for {len(existing_pos_set)} position(s) "
+                f"⚠️ Analysis exists for {len(existing_positions)} position(s) "
                 f"but missing for {len(positions_needing_analysis)} position(s): "
                 f"{positions_needing_analysis}. Running analysis for missing positions."
             )
@@ -1012,6 +982,8 @@ class CaliRunner:
         This implements settings deduplication - if identical settings exist,
         reuse them via pointer (foreign key) instead of creating duplicates.
         """
+        from sqlalchemy.orm import exc as orm_exc
+
         from cali.sqlmodel._model import DetectionSettings
 
         if isinstance(detection_settings, int):
@@ -1031,7 +1003,20 @@ class CaliRunner:
             )
             return existing
 
-        elif detection_settings.id is None:
+        # Check if the object is detached and needs reattaching
+        try:
+            settings_id = detection_settings.id
+        except orm_exc.DetachedInstanceError:
+            # Object was detached - merge it back into session
+            detection_settings = session.merge(detection_settings)
+            assert isinstance(detection_settings, DetectionSettings)
+            cali_logger.info(
+                f"♻️ Reattached DetectionSettings ID {detection_settings.id} "
+                f"(method: {detection_settings.method})"
+            )
+            return detection_settings
+
+        if settings_id is None:
             # Check if identical settings already exist
             all_settings: list[DetectionSettings] = list(
                 session.exec(select(DetectionSettings)).all()
@@ -1266,9 +1251,15 @@ class CaliRunner:
         """
         from sqlalchemy.orm import joinedload
 
+        # More efficient: filter ROIs in the query join
         fovs = (
             session.exec(
                 select(FOV)
+                .join(
+                    ROI,
+                    (ROI.fov_id == FOV.id)
+                    & (ROI.detection_settings_id == detection_settings_id),
+                )
                 .where(FOV.position_index.in_(position_indices))  # type: ignore
                 .options(
                     joinedload(FOV.rois).joinedload(ROI.roi_mask),
@@ -1280,22 +1271,16 @@ class CaliRunner:
             .all()
         )
 
-        # Filter to only include ROIs with matching detection_settings_id
-        # Note: We can't easily filter eager loaded collections in the query
-        # with selectinload so we filter in Python.
-        filtered_fovs = []
+        # joinedload still loads all ROIs due to relationship behavior
+        # Still need to filter the ROI collection itself
         for fov in fovs:
-            # Keep only ROIs with matching detection settings
-            matching_rois = [
+            fov.rois = [
                 roi
                 for roi in fov.rois
                 if roi.detection_settings_id == detection_settings_id
             ]
-            if matching_rois:
-                fov.rois = matching_rois
-                filtered_fovs.append(fov)
 
-        return filtered_fovs
+        return [fov for fov in fovs if fov.rois]
 
     def _create_or_update_analysis_result(
         self,
