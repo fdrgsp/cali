@@ -50,7 +50,8 @@ def create_mock_fov(
             width=256,
         )
 
-        roi = ROI(label_value=i, roi_mask=mask)
+        # Use placeholder fov_id=0, will be set by commit_fov_result
+        roi = ROI(label_value=i, roi_mask=mask, fov_id=0)
         rois.append(roi)
 
     fov.rois = rois

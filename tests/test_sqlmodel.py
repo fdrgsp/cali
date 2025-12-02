@@ -1057,10 +1057,9 @@ def test_db_to_useq_plate_error_cases(temp_db: TempDB) -> None:
         session.commit()
         session.refresh(exp)
 
-        # Test experiment_to_useq_plate with no plate - this should raise AttributeError
-        # because experiment.plate is None
-        with pytest.raises(AttributeError):
-            experiment_to_useq_plate(exp)
+        # Test experiment_to_useq_plate with no plate - should return None
+        result = experiment_to_useq_plate(exp)
+        assert result is None, "Should return None when experiment has no plate"
 
 
 def test_useq_plate_to_db_with_positions(temp_db: TempDB) -> None:
