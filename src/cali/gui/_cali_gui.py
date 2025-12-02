@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -65,6 +66,7 @@ from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
 from ._pygraph_plot_widgets import _SingleWellGraphWidget
+from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
@@ -381,9 +383,9 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        self._output_path = "tests/test_data/2pos/"
+        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/2pos/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
@@ -731,7 +733,13 @@ class CaliGui(QMainWindow):
                     statement = select(DetectionSettings).where(
                         DetectionSettings.id.in_(detection_ids)  # type: ignore
                     )
+                    query_start = time.perf_counter()
                     results = session.exec(statement).all()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: populate detection settings took {query_time:.3f}s "
+                        f"(found {len(results)} settings)"
+                    )
                     for d_settings in results:
                         if d_settings.id is not None:
                             settings_list.append((d_settings.id, d_settings.method))
@@ -816,6 +824,7 @@ class CaliGui(QMainWindow):
         try:
             with Session(engine) as session:
                 # Find positions that already have ROIs with this detection
+                query_start = time.perf_counter()
                 existing_positions = session.exec(
                     select(FOV.position_index)
                     .join(ROI)
@@ -825,6 +834,11 @@ class CaliGui(QMainWindow):
                     )
                     .distinct()
                 ).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: check missing detection took {query_time:.3f}s "
+                    f"(found {len(existing_positions)} existing)"
+                )
 
                 existing_set = set(existing_positions)
                 return [p for p in positions if p not in existing_set]
@@ -868,6 +882,7 @@ class CaliGui(QMainWindow):
         try:
             with Session(engine) as session:
                 # Find positions that have Traces with this combination
+                query_start = time.perf_counter()
                 existing_positions = session.exec(
                     select(FOV.position_index)
                     .join(ROI)
@@ -884,6 +899,11 @@ class CaliGui(QMainWindow):
                     )
                     .distinct()
                 ).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: check missing extraction took {query_time:.3f}s "
+                    f"(found {len(existing_positions)} existing)"
+                )
 
                 existing_set = set(existing_positions)
                 return [p for p in positions if p not in existing_set]
@@ -1061,6 +1081,89 @@ class CaliGui(QMainWindow):
                 range(len(self._data.sequence.stage_positions))
             )
 
+            # Check for ambiguous runs BEFORE starting detection
+            # This prevents wasted work if user needs to disambiguate
+            if (
+                value.run_detection
+                and not value.run_extraction
+                and not value.run_analysis
+                and detection_settings is not None
+            ):
+                # Detection-only mode: check if multiple runs exist
+                from sqlmodel import Session, create_engine, select
+
+                engine = create_engine(
+                    f"sqlite:///{self._database_path}",
+                    echo=False,
+                    connect_args={"timeout": 30.0, "check_same_thread": False},
+                    pool_pre_ping=True,
+                )
+
+                try:
+                    with Session(engine) as session:
+                        # Get detection settings ID
+                        if isinstance(detection_settings, int):
+                            detection_settings_id = detection_settings
+                        else:
+                            # Need to check if this detection settings exists
+                            from cali.runner._cali_runner import CaliRunner
+
+                            runner_temp = CaliRunner()
+                            det_settings_obj = (
+                                runner_temp._get_or_create_detection_settings(
+                                    session, detection_settings
+                                )
+                            )
+                            detection_settings_id = det_settings_obj.id
+
+                        # Check for multiple runs with same detection
+                        from cali.sqlmodel._model import CaliResult
+
+                        query_start = time.perf_counter()
+                        all_results = list(
+                            session.exec(
+                                select(CaliResult).where(
+                                    CaliResult.experiment == experiment.id,
+                                    CaliResult.detection_settings_id
+                                    == detection_settings_id,
+                                )
+                            ).all()
+                        )
+                        query_time = time.perf_counter() - query_start
+                        cali_logger.debug(
+                            f"DB query: pre-flight ambiguity check took "
+                            f"{query_time:.3f}s (found {len(all_results)} runs)"
+                        )
+
+                        if len(all_results) > 1:
+                            # Multiple runs exist - show dialog
+                            selected_run_id = RunSelectionDialog.select_run(
+                                parent=self,
+                                runs=all_results,
+                                message=(
+                                    "Multiple runs exist with the same "
+                                    f"detection settings (ID {detection_settings_id})."
+                                    "\n\nPlease select which run should receive "
+                                    "the new detections:"
+                                ),
+                            )
+
+                            if selected_run_id is None:
+                                # User cancelled
+                                return
+
+                            # Get selected run's settings
+                            selected_run = next(
+                                r for r in all_results if r.id == selected_run_id
+                            )
+
+                            # Update settings to match selected run
+                            detection_settings = detection_settings_id
+                            extraction_settings = selected_run.extraction_settings_id
+                            analysis_settings = selected_run.analysis_settings_id
+                finally:
+                    engine.dispose()
+
             # Initialize progress bar and timer
             self._run_cali_wdg.reset_progress_bar()
             self._run_cali_wdg.set_progress_bar_text("🚀 Initializing...")
@@ -1069,41 +1172,204 @@ class CaliGui(QMainWindow):
             # Save plate map data to database before running
             self._save_plate_map_to_database()
 
-            # Create a generator function wrapper for create_worker
-            def _run_generator() -> Generator[str, None, None]:
-                assert self._data is not None
-                assert self._database_path is not None
-                result = self._runner.run(
-                    experiment,
-                    self._data.path,
-                    detection_settings,
-                    extraction_settings=extraction_settings,
-                    analysis_settings=analysis_settings,
-                    global_position_indices=pos,
-                    database_name=Path(self._database_path).name,
-                    output_path=Path(self._output_path) if self._output_path else None,
-                    as_generator=True,
+            # Try to run, but catch ambiguity errors
+            try:
+                # Create a generator function wrapper for create_worker
+                def _run_generator() -> Generator[str, None, None]:
+                    assert self._data is not None
+                    assert self._database_path is not None
+                    assert detection_settings is not None  # Ensured by pre-flight check
+                    result = self._runner.run(
+                        experiment,
+                        self._data.path,
+                        detection_settings,
+                        extraction_settings=extraction_settings,
+                        analysis_settings=analysis_settings,
+                        global_position_indices=pos,
+                        database_name=Path(self._database_path).name,
+                        output_path=(
+                            Path(self._output_path) if self._output_path else None
+                        ),
+                        as_generator=True,
+                    )
+                    assert result is not None
+                    yield from result
+
+                # disable gui before running
+                self._enable(False)
+
+                create_worker(
+                    _run_generator,
+                    _start_thread=True,
+                    _connect={
+                        "errored": self._on_worker_errored,
+                        "yielded": self._on_worker_yield,
+                        "finished": self._on_worker_finished,
+                    },
                 )
-                assert result is not None
-                yield from result
-
-            # disable gui before running
-            self._enable(False)
-
-            create_worker(
-                _run_generator,
-                _start_thread=True,
-                _connect={
-                    "errored": self._on_worker_errored,
-                    "yielded": self._on_worker_yield,
-                    "finished": self._on_worker_finished,
-                },
-            )
+            except ValueError as e:
+                # Check if this is an ambiguity error
+                error_msg = str(e)
+                if "Multiple runs exist" in error_msg and "same detection" in error_msg:
+                    # This is an ambiguity error - show dialog to select run
+                    # (Should be rare now due to pre-flight check)
+                    assert detection_settings is not None  # Required for run to start
+                    self._handle_ambiguous_runs(
+                        error_msg,
+                        experiment,
+                        detection_settings,
+                        extraction_settings,
+                        analysis_settings,
+                        pos,
+                    )
+                else:
+                    # Re-raise other ValueErrors
+                    raise
         except Exception as e:
             self._enable(True)
             msg = f"❌ Failed to run cali:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
+
+    def _handle_ambiguous_runs(
+        self,
+        error_msg: str,
+        experiment: Experiment,
+        detection_settings: DetectionSettings | int,
+        extraction_settings: Any,
+        analysis_settings: Any,
+        positions: list[int],
+    ) -> None:
+        """Handle ambiguous run selection when multiple compatible runs exist.
+
+        Parameters
+        ----------
+        error_msg : str
+            The error message from the runner
+        experiment : Experiment
+            The experiment being run
+        detection_settings : DetectionSettings | int
+            Detection settings or ID
+        extraction_settings : Any
+            Extraction settings, ID, or None
+        analysis_settings : Any
+            Analysis settings, ID, or None
+        positions : list[int]
+            Positions to process
+        """
+        from sqlmodel import Session, create_engine, select
+
+        # Query database for all compatible runs
+        assert self._database_path is not None
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            echo=False,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+
+        # Get detection settings ID
+        if isinstance(detection_settings, int):
+            detection_settings_id = detection_settings
+        else:
+            # Need to get the ID from the database
+            with Session(engine) as session:
+                # Find or create detection settings
+                from cali.runner._cali_runner import CaliRunner
+
+                runner = CaliRunner()
+                detection_settings_id = runner._get_or_create_detection_settings(
+                    session, detection_settings
+                )
+
+        compatible_runs: list[CaliResult] = []
+        try:
+            with Session(engine) as session:
+                # Query all runs with matching detection settings
+                stmt = select(CaliResult).where(
+                    CaliResult.experiment == experiment.id,
+                    CaliResult.detection_settings_id == detection_settings_id,
+                )
+                query_start = time.perf_counter()
+                compatible_runs = list(session.exec(stmt).all())
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: post-error ambiguity check took {query_time:.3f}s "
+                    f"(found {len(compatible_runs)} runs)"
+                )
+        finally:
+            engine.dispose()
+
+        if not compatible_runs:
+            show_error_dialog(
+                self,
+                "No compatible runs found. Please check your settings.",
+            )
+            return
+
+        # Show the selection dialog
+        selected_run_id = RunSelectionDialog.select_run(
+            parent=self,
+            runs=compatible_runs,
+            message=error_msg,
+        )
+
+        if selected_run_id is None:
+            # User cancelled - don't run anything
+            return
+
+        # Get the selected run's settings
+        selected_run = next(r for r in compatible_runs if r.id == selected_run_id)
+
+        # Ensure we have detection settings
+        if selected_run.detection_settings_id is None:
+            show_error_dialog(
+                self,
+                "Selected run has no detection settings. This should not happen.",
+            )
+            return
+
+        # Re-run with the selected run's settings explicitly specified
+        # This will tell CaliRunner which run to add the positions to
+        assert self._data is not None
+
+        # Initialize progress bar and timer
+        self._run_cali_wdg.reset_progress_bar()
+        self._run_cali_wdg.set_progress_bar_text("🚀 Initializing...")
+        self._elapsed_timer.start()
+
+        # Create generator with explicit settings from selected run
+        def _run_generator() -> Generator[str, None, None]:
+            assert self._data is not None
+            assert self._database_path is not None
+            assert selected_run.detection_settings_id is not None
+            result = self._runner.run(
+                experiment,
+                self._data.path,
+                detection_settings=selected_run.detection_settings_id,
+                extraction_settings=selected_run.extraction_settings_id,
+                analysis_settings=selected_run.analysis_settings_id,
+                global_position_indices=positions,
+                database_name=Path(self._database_path).name,
+                output_path=Path(self._output_path) if self._output_path else None,
+                as_generator=True,
+            )
+            assert result is not None
+            yield from result
+
+        # Disable GUI before running
+        self._enable(False)
+
+        create_worker(
+            _run_generator,
+            _start_thread=True,
+            _connect={
+                "errored": self._on_worker_errored,
+                "yielded": self._on_worker_yield,
+                "finished": self._on_worker_finished,
+            },
+        )
 
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
@@ -1215,7 +1481,12 @@ class CaliGui(QMainWindow):
                         .where(Condition.name == name)
                         .where(Condition.condition_type == condition_type)
                     )
+                    query_start = time.perf_counter()
                     existing = session.exec(stmt).first()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: condition lookup took {query_time:.3f}s"
+                    )
                     if existing:
                         existing.color = color
                         condition_cache[key] = existing
@@ -1864,7 +2135,13 @@ class CaliGui(QMainWindow):
                             ROI.detection_settings_id == detection_settings_id
                         )
 
+                    query_start = time.perf_counter()
                     rois = session.exec(stmt).all()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: visualize mask ROIs took {query_time:.3f}s "
+                        f"(found {len(rois)} ROIs)"
+                    )
 
                     if not rois:
                         return None, None
@@ -1911,7 +2188,13 @@ class CaliGui(QMainWindow):
                                 selectinload(Traces.neuropil_mask),
                             )
                         )
+                        query_start = time.perf_counter()
                         traces = session.exec(traces_stmt).all()
+                        query_time = time.perf_counter() - query_start
+                        cali_logger.debug(
+                            f"DB query: visualize mask traces took {query_time:.3f}s "
+                            f"(found {len(traces)} traces)"
+                        )
 
                         # Build neuropil mask from Traces
                         for trace in traces:

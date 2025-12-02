@@ -144,6 +144,10 @@ def _plot_cross_correlation_data(
 
     # Clear previous plot
     plot.clear()
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -282,6 +286,7 @@ def _add_colorbar_to_widget(
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label=label,
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)

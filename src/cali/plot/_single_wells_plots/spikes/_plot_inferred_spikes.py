@@ -91,6 +91,9 @@ def _plot_inferred_spikes(
     assert plot is not None
 
     plot.clear()
+    # Reset ViewBox settings that might have been set by raster plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
 
     # thresholds only if a single ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -314,7 +317,7 @@ def _plot_spike_trace(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "k",
+                "yellow",
                 style=pg.QtCore.Qt.PenStyle.DashLine,
                 width=2,
             ),

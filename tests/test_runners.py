@@ -825,6 +825,78 @@ def test_cali_runner_stimulation_mask_mocked(
         engine.dispose()
 
 
+def test_cali_runner_stimulation_mask_thread_safe(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    tmp_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that stimulation mask is accessible in extraction threads (no lazy load).
+
+    This test verifies the fix for the DetachedInstanceError that occurred when
+    analysis_settings.stimulation_mask was accessed in threads after the settings
+    object was detached from the session.
+    """
+    import tifffile
+
+    # Create dummy mask file
+    mask_path = tmp_path / "stim_mask.tif"
+    mask_data = np.zeros((256, 256), dtype=np.uint8)
+    mask_data[10:20, 10:20] = 1
+    tifffile.imwrite(mask_path, mask_data)
+
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2,
+        neuropil_min_pixels=50,
+        threads=5,  # Multiple threads!
+    )
+
+    analysis_settings = AnalysisSettings(
+        peaks_height_value=1.0,
+        peaks_height_mode="std",
+        peaks_distance=10,
+        experiment_type="Evoked Activity",
+        stimulation_mask_path=str(mask_path),
+        threads=5,  # Multiple threads!
+    )
+
+    # Run full pipeline - should not raise DetachedInstanceError
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify mask was loaded and ROIs were marked as stimulated
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ans = session.exec(select(AnalysisSettings)).first()
+            assert ans is not None
+            assert ans.stimulation_mask_id is not None
+
+            # Check that some ROIs were processed
+            from cali.sqlmodel._model import Traces
+
+            traces = session.exec(select(Traces)).all()
+            assert len(traces) > 0, "Extraction should have created traces"
+
+    finally:
+        engine.dispose()
+
+
 def test_detection_runner_2d_data(
     test_db_path: Path,
     test_experiment: Experiment,

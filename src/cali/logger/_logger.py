@@ -16,6 +16,20 @@ LOGGER.addHandler(file_handler)
 
 # Console handler
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)  # Show INFO and above in console
+console_handler.setLevel(logging.INFO)  # Default: show INFO and above in console
 console_handler.setFormatter(formatter)
 LOGGER.addHandler(console_handler)
+
+
+def set_console_level(level: int | str) -> None:
+    """Set the console handler level dynamically.
+
+    This allows the console output level to be changed at runtime,
+    e.g., via CLI arguments.
+
+    Args:
+        level: Logging level (e.g., logging.DEBUG, logging.INFO, or "DEBUG", "INFO")
+    """
+    if isinstance(level, str):
+        level = getattr(logging, level.upper())
+    console_handler.setLevel(level)

@@ -151,6 +151,10 @@ def _plot_spike_cross_correlation_data(
 
     # Full reset handled by widget.clear_plot(), but clear again just in case
     plot.clear()
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -285,6 +289,7 @@ def _add_colorbar_to_widget(
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label=label,
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)
@@ -307,6 +312,10 @@ def _plot_spike_hierarchical_clustering_data(
     assert plot is not None
 
     plot.clear()
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
 
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -343,6 +352,10 @@ def _plot_spike_hierarchical_clustering_dendrogram(
 ) -> None:
     """Plot the hierarchical clustering dendrogram for spike correlation data."""
     plot.clear()
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
 
     plot.setTitle(
         "Pairwise Cross-Correlation - Hierarchical Clustering Dendrogram\n"
@@ -387,6 +400,10 @@ def _plot_spike_hierarchical_clustering_map(
 ) -> None:
     """Plot the hierarchical clustering heatmap for spike correlation data."""
     plot.clear()
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
 
     # Stabilize numerics
     correlation_matrix = np.round(correlation_matrix, decimals=8)

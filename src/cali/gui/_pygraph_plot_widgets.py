@@ -318,6 +318,8 @@ class _SingleWellGraphWidget(QWidget):
 
         # 3) Reset ViewBox transforms and ranges
         vb = plot.getViewBox()
+        # Reset any limits that might have been set by raster/heatmap plots
+        vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
         # back to normal "math" orientation for traces
         vb.invertY(False)
         # allow non-square aspect by default
