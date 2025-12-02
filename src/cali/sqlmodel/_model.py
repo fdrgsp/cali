@@ -371,7 +371,9 @@ class Experiment(SQLModel, table=True):
             else:
                 # Only load plate and wells (skip FOVs and ROIs)
                 plate_chain = selectinload(Experiment.plate).selectinload(Plate.wells)
-                statement = select(Experiment).options(plate_chain)
+                statement = select(Experiment).options(
+                    plate_chain.selectinload(Well.conditions)
+                )
 
             # Filter by ID if provided, otherwise get first experiment
             if id is not None:
