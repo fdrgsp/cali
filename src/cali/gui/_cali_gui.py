@@ -1466,10 +1466,6 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
-        # return early if the selected run is already active
-        if run_id == self._runs_panel.get_selected_run_id():
-            return
-
         self._init_loading_bar(f"💿 Loading Run {run_id}...", False)
 
         try:

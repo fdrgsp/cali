@@ -1463,34 +1463,45 @@ class CaliRunner:
 
         # Check for detection-only result to update when running detection-only
         if extraction_settings_id is None and analysis_settings_id is None:
-            detection_only_result = session.exec(
-                select(CaliResult).where(
+            # First, check for ANY existing result with same detection settings
+            # (regardless of extraction/analysis settings) to avoid orphan results
+            any_result_with_detection = session.exec(
+                select(CaliResult)
+                .where(
                     CaliResult.experiment == experiment_id,
                     CaliResult.detection_settings_id == detection_settings_id,
-                    CaliResult.extraction_settings_id.is_(None),  # type: ignore
+                )
+                .order_by(
+                    # Prefer more complete results
+                    # (analysis > extraction > detection-only)
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
+                    CaliResult.extraction_settings_id.is_(None),  # type: ignore
                 )
             ).first()
 
-            if detection_only_result:
-                assert isinstance(detection_only_result, CaliResult)
-                # Update positions for detection-only run
+            if any_result_with_detection:
+                assert isinstance(any_result_with_detection, CaliResult)
+                # Update the most complete existing result's detected positions
                 if positions_detected is not None:
-                    old = set(detection_only_result.positions_detected or [])
+                    old = set(any_result_with_detection.positions_detected or [])
                     new = set(positions_detected)
-                    detection_only_result.positions_detected = sorted(old | new)
+                    any_result_with_detection.positions_detected = sorted(old | new)
 
-                session.add(detection_only_result)
+                session.add(any_result_with_detection)
                 session.commit()
-                session.refresh(detection_only_result)
+                session.refresh(any_result_with_detection)
 
-                cali_logger.info(
-                    f"📝 Updated detection-only CaliResult ID "
-                    f"{detection_only_result.id} with new positions "
-                    f"(detected={detection_only_result.positions_detected})"
+                result_type = self._get_result_type(
+                    any_result_with_detection.extraction_settings_id,
+                    any_result_with_detection.analysis_settings_id,
                 )
-                assert detection_only_result.id is not None
-                return (detection_only_result.id, False)  # False: not newly created
+                cali_logger.info(
+                    f"📝 Updated {result_type} CaliResult ID "
+                    f"{any_result_with_detection.id} with new detected positions "
+                    f"(detected={any_result_with_detection.positions_detected})"
+                )
+                assert any_result_with_detection.id is not None
+                return (any_result_with_detection.id, False)  # False: not newly created
 
         # Check for result with same detection/extraction (regardless of analysis)
         # when we're running detection+extraction without analysis
