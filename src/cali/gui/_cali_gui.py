@@ -400,6 +400,9 @@ class CaliGui(QMainWindow):
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
+        # Save plate map data before closing
+        self._save_plate_map_to_database()
+
         # Dispose of all graph widget engines
         for sw_graph in self.SW_GRAPHS:
             if sw_graph.engine is not None:
@@ -1457,8 +1460,18 @@ class CaliGui(QMainWindow):
         )
         try:
             with Session(engine) as session:
-                exp = Experiment.load_from_db(self._database_path, session=session)
-                if exp.plate is None or exp.plate.wells is None:
+                # Load experiment manually without expunge_all
+                from sqlalchemy.orm import selectinload
+
+                from cali.sqlmodel._model import Plate, Well
+
+                stmt = select(Experiment).options(
+                    selectinload(Experiment.plate)
+                    .selectinload(Plate.wells)
+                    .selectinload(Well.conditions)
+                )
+                exp = session.exec(stmt).first()
+                if exp is None or exp.plate is None or exp.plate.wells is None:
                     return
 
                 # cache ensures we reuse the same Condition instance in-memory
@@ -1503,7 +1516,8 @@ class CaliGui(QMainWindow):
 
                 # Assign conditions per well
                 for well in exp.plate.wells:
-                    well.conditions = []
+                    # Clear existing conditions
+                    well.conditions.clear()
 
                     # genotype
                     for plate_data in genotype_data:
@@ -1527,7 +1541,8 @@ class CaliGui(QMainWindow):
                             well.conditions.append(condition)
                             break
 
-                # Objects are already bound to this session; no need to merge plate
+                # Flush to ensure relationship changes are tracked
+                session.flush()
                 session.commit()
         finally:
             engine.dispose(close=True)
