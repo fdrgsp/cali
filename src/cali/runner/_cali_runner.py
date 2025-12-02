@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -972,8 +973,13 @@ class CaliRunner:
                 with Session(engine) as session:
                     from cali.sqlmodel._model import Experiment
 
+                    query_start = time.perf_counter()
                     db_exp = cast(
                         "Experiment", session.exec(select(Experiment)).first()
+                    )
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: experiment lookup took {query_time:.3f}s"
                     )
                     # Check if they match using __eq__ (compares name)
                     if experiment != db_exp:
@@ -1036,8 +1042,14 @@ class CaliRunner:
 
         if settings_id is None:
             # Check if identical settings already exist
+            query_start = time.perf_counter()
             all_settings: list[DetectionSettings] = list(
                 session.exec(select(DetectionSettings)).all()
+            )
+            query_time = time.perf_counter() - query_start
+            cali_logger.debug(
+                f"DB query: detection settings lookup took {query_time:.3f}s "
+                f"(found {len(all_settings)} existing)"
             )
             for candidate in all_settings:
                 if detection_settings == candidate:
@@ -1267,21 +1279,14 @@ class CaliRunner:
         list[FOV]
             FOVs with ROIs and masks eagerly loaded from database
         """
-        import time
-
         from sqlalchemy.orm import joinedload
 
         start = time.perf_counter()
 
-        # More efficient: filter ROIs in the query join
+        # Load FOVs with eager loading of related data
         fovs = (
             session.exec(
                 select(FOV)
-                .join(
-                    ROI,
-                    (ROI.fov_id == FOV.id)
-                    & (ROI.detection_settings_id == detection_settings_id),
-                )
                 .where(FOV.position_index.in_(position_indices))  # type: ignore
                 .options(
                     joinedload(FOV.rois).joinedload(ROI.roi_mask),
@@ -1474,6 +1479,7 @@ class CaliRunner:
         if extraction_settings_id is None and analysis_settings_id is None:
             # First, check for ANY existing result with same detection settings
             # (regardless of extraction/analysis settings)
+            query_start = time.perf_counter()
             all_results_with_detection = session.exec(
                 select(CaliResult)
                 .where(
@@ -1487,6 +1493,11 @@ class CaliRunner:
                     CaliResult.extraction_settings_id.is_(None),  # type: ignore
                 )
             ).all()
+            query_time = time.perf_counter() - query_start
+            cali_logger.debug(
+                f"DB query: ambiguity check took {query_time:.3f}s "
+                f"(found {len(all_results_with_detection)} results)"
+            )
 
             if len(all_results_with_detection) > 1:
                 # Multiple runs exist with the same detection but different

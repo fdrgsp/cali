@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -732,7 +733,13 @@ class CaliGui(QMainWindow):
                     statement = select(DetectionSettings).where(
                         DetectionSettings.id.in_(detection_ids)  # type: ignore
                     )
+                    query_start = time.perf_counter()
                     results = session.exec(statement).all()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: populate detection settings took {query_time:.3f}s "
+                        f"(found {len(results)} settings)"
+                    )
                     for d_settings in results:
                         if d_settings.id is not None:
                             settings_list.append((d_settings.id, d_settings.method))
@@ -817,6 +824,7 @@ class CaliGui(QMainWindow):
         try:
             with Session(engine) as session:
                 # Find positions that already have ROIs with this detection
+                query_start = time.perf_counter()
                 existing_positions = session.exec(
                     select(FOV.position_index)
                     .join(ROI)
@@ -826,6 +834,11 @@ class CaliGui(QMainWindow):
                     )
                     .distinct()
                 ).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: check missing detection took {query_time:.3f}s "
+                    f"(found {len(existing_positions)} existing)"
+                )
 
                 existing_set = set(existing_positions)
                 return [p for p in positions if p not in existing_set]
@@ -869,6 +882,7 @@ class CaliGui(QMainWindow):
         try:
             with Session(engine) as session:
                 # Find positions that have Traces with this combination
+                query_start = time.perf_counter()
                 existing_positions = session.exec(
                     select(FOV.position_index)
                     .join(ROI)
@@ -885,6 +899,11 @@ class CaliGui(QMainWindow):
                     )
                     .distinct()
                 ).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: check missing extraction took {query_time:.3f}s "
+                    f"(found {len(existing_positions)} existing)"
+                )
 
                 existing_set = set(existing_positions)
                 return [p for p in positions if p not in existing_set]
@@ -1100,6 +1119,7 @@ class CaliGui(QMainWindow):
                         # Check for multiple runs with same detection
                         from cali.sqlmodel._model import CaliResult
 
+                        query_start = time.perf_counter()
                         all_results = list(
                             session.exec(
                                 select(CaliResult).where(
@@ -1108,6 +1128,11 @@ class CaliGui(QMainWindow):
                                     == detection_settings_id,
                                 )
                             ).all()
+                        )
+                        query_time = time.perf_counter() - query_start
+                        cali_logger.debug(
+                            f"DB query: pre-flight ambiguity check took "
+                            f"{query_time:.3f}s (found {len(all_results)} runs)"
                         )
 
                         if len(all_results) > 1:
@@ -1162,9 +1187,9 @@ class CaliGui(QMainWindow):
                         analysis_settings=analysis_settings,
                         global_position_indices=pos,
                         database_name=Path(self._database_path).name,
-                        output_path=Path(self._output_path)
-                        if self._output_path
-                        else None,
+                        output_path=(
+                            Path(self._output_path) if self._output_path else None
+                        ),
                         as_generator=True,
                     )
                     assert result is not None
@@ -1266,7 +1291,13 @@ class CaliGui(QMainWindow):
                     CaliResult.experiment == experiment.id,
                     CaliResult.detection_settings_id == detection_settings_id,
                 )
+                query_start = time.perf_counter()
                 compatible_runs = list(session.exec(stmt).all())
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: post-error ambiguity check took {query_time:.3f}s "
+                    f"(found {len(compatible_runs)} runs)"
+                )
         finally:
             engine.dispose()
 
@@ -1450,7 +1481,12 @@ class CaliGui(QMainWindow):
                         .where(Condition.name == name)
                         .where(Condition.condition_type == condition_type)
                     )
+                    query_start = time.perf_counter()
                     existing = session.exec(stmt).first()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: condition lookup took {query_time:.3f}s"
+                    )
                     if existing:
                         existing.color = color
                         condition_cache[key] = existing
@@ -2099,7 +2135,13 @@ class CaliGui(QMainWindow):
                             ROI.detection_settings_id == detection_settings_id
                         )
 
+                    query_start = time.perf_counter()
                     rois = session.exec(stmt).all()
+                    query_time = time.perf_counter() - query_start
+                    cali_logger.debug(
+                        f"DB query: visualize mask ROIs took {query_time:.3f}s "
+                        f"(found {len(rois)} ROIs)"
+                    )
 
                     if not rois:
                         return None, None
@@ -2146,7 +2188,13 @@ class CaliGui(QMainWindow):
                                 selectinload(Traces.neuropil_mask),
                             )
                         )
+                        query_start = time.perf_counter()
                         traces = session.exec(traces_stmt).all()
+                        query_time = time.perf_counter() - query_start
+                        cali_logger.debug(
+                            f"DB query: visualize mask traces took {query_time:.3f}s "
+                            f"(found {len(traces)} traces)"
+                        )
 
                         # Build neuropil mask from Traces
                         for trace in traces:

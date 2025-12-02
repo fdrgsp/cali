@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -144,7 +145,13 @@ class _RunsPanel(QGroupBox):
                     .where(CaliResult.detection_settings_id == DetectionSettings.id)
                     .order_by(CaliResult.created_at)
                 )
+                query_start = time.perf_counter()
                 results = session.exec(stmt).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: load runs took {query_time:.3f}s "
+                    f"(found {len(results)} runs)"
+                )
 
                 for result, detection_settings in results:
                     self._add_run_item(result, detection_settings)
@@ -286,7 +293,13 @@ class _RunsPanel(QGroupBox):
             with Session(engine) as session:
                 # Get all detection settings IDs directly from the table
                 stmt = select(DetectionSettings.id)
+                query_start = time.perf_counter()
                 results = session.exec(stmt).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: get detection settings IDs took {query_time:.3f}s "
+                    f"(found {len(results)} IDs)"
+                )
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)
             return sorted(ids)
@@ -321,7 +334,13 @@ class _RunsPanel(QGroupBox):
             with Session(engine) as session:
                 # Get all extraction settings IDs directly from the table
                 stmt = select(ExtractionSettings.id)
+                query_start = time.perf_counter()
                 results = session.exec(stmt).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: get extraction settings IDs took {query_time:.3f}s "
+                    f"(found {len(results)} IDs)"
+                )
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)
             return sorted(ids)
@@ -351,7 +370,13 @@ class _RunsPanel(QGroupBox):
             with Session(engine) as session:
                 # Get all unique analysis settings IDs
                 stmt = select(CaliResult.analysis_settings_id).distinct()
+                query_start = time.perf_counter()
                 results = session.exec(stmt).all()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: get analysis settings IDs took {query_time:.3f}s "
+                    f"(found {len(results)} IDs)"
+                )
                 ids = {r for r in results if r is not None}
             engine.dispose(close=True)
             return sorted(ids)
@@ -406,7 +431,12 @@ class _RunsPanel(QGroupBox):
 
                 # Order by created_at desc and take first
                 query = query.order_by(desc(CaliResult.created_at))
+                query_start = time.perf_counter()
                 matching_run = session.exec(query).first()
+                query_time = time.perf_counter() - query_start
+                cali_logger.debug(
+                    f"DB query: highlight run by settings took {query_time:.3f}s"
+                )
 
             engine.dispose(close=True)
 

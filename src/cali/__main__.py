@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import logging
 import sys
 import traceback
 from pathlib import Path
@@ -89,6 +91,24 @@ def main(args: Sequence[str] | None = None) -> None:
     """Run the cali application."""
     from fonticon_mdi6 import MDI6
     from superqt.fonticon import icon
+
+    from cali.logger import cali_logger
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Cali - Calcium Imaging Analysis")
+    parser.add_argument(
+        "--logger",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level (default: INFO)",
+    )
+    parsed_args = parser.parse_args(args)
+
+    # Set logger level
+    log_level = getattr(logging, parsed_args.logger.upper())
+    cali_logger.setLevel(log_level)
+    cali_logger.info(f"Logger level set to {parsed_args.logger.upper()}")
 
     app = QApplication([])
     app.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
