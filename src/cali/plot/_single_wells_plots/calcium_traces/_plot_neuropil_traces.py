@@ -98,7 +98,7 @@ def _plot_neuropil_traces(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
-    corrected: bool = True,
+    corrected: bool = False,
 ) -> None:
     """Plot neuropil-related traces using pyqtgraph.
 

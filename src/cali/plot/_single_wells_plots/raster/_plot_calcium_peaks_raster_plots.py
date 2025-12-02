@@ -228,12 +228,13 @@ def _add_colorbar_to_widget(
     vmax: float,
 ) -> None:
     """Add a ColorBarItem to the widget layout."""
-    # Create ColorBarItem
+    # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label="Amplitude (dec ΔF/F)",
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)
@@ -426,6 +427,7 @@ def _add_intensity_colorbar_to_widget(
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label="Intensity (dec ΔF/F)",
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)

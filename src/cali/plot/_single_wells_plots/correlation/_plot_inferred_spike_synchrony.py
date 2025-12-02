@@ -216,6 +216,7 @@ def _add_colorbar_to_widget(
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label=label,
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)

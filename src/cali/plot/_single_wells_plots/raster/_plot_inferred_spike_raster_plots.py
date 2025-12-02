@@ -251,12 +251,13 @@ def _add_colorbar_to_widget(
     vmax: float,
 ) -> None:
     """Add a ColorBarItem to the widget layout."""
-    # Create ColorBarItem
+    # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label="Spike Amplitude",
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)
@@ -445,12 +446,13 @@ def _add_spike_intensity_colorbar_to_widget(
     vmax: float,
 ) -> None:
     """Add a ColorBarItem to the spike intensity heatmap widget layout."""
-    # Create ColorBarItem
+    # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
         label="Spike Intensity",
+        interactive=False,
     )
 
     # Add to plot layout (row 2, column 3 = right side)
