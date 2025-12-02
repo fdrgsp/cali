@@ -23,6 +23,77 @@ from cali.sqlmodel import (
 from tests.test_runners import create_mock_fov
 
 
+def test_cancel_between_detection_and_extraction(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+) -> None:
+    """Test cancellation after detection but before extraction starts."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    # Track when detection completes
+    detection_completed = False
+
+    def mock_detection(
+        dataset: Any,
+        detection_settings: Any,
+        position_indices: list[int],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Iterator[FOV]:
+        nonlocal detection_completed
+        for pos_idx in position_indices:
+            yield create_mock_fov(pos_idx)
+        # Mark detection as complete
+        detection_completed = True
+        # Cancel after detection completes but before extraction
+        runner.cancel()
+
+    with patch(
+        "cali.detection._detection_runner.DetectionRunner._run_cellpose",
+        side_effect=mock_detection,
+    ):
+        detection_settings = DetectionSettings(
+            method="cellpose", model_type="cpsam", batch_size=1
+        )
+        extraction_settings = ExtractionSettings(dff_window=100, threads=1)
+
+        # Run with both detection and extraction settings
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=detection_settings,
+            extraction_settings=extraction_settings,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[0, 1],
+        )
+
+    # Verify database state
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # Detection should have completed
+            assert detection_completed
+
+            # When cancelled between detection and extraction,
+            # no CaliResult is created (extraction was requested but didn't run)
+            result = session.exec(select(CaliResult)).first()
+            assert result is None
+
+            # However, ROIs should still exist from detection (they were committed)
+            rois = list(session.exec(select(ROI)).all())
+            assert len(rois) > 0  # Detection created and committed ROIs
+
+            # Verify no traces exist (extraction didn't run)
+            from cali.sqlmodel import Traces
+
+            traces = list(session.exec(select(Traces)).all())
+            assert len(traces) == 0  # No extraction means no traces
+    finally:
+        engine.dispose()
+
+
 def test_detection_cancel_after_partial_completion(
     test_db_path: Path,
     test_experiment: Experiment,

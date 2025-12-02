@@ -439,6 +439,11 @@ class CaliRunner:
                                 f"with completed detected positions: {completed}"
                             )
 
+                # Check for cancellation before extraction
+                if self._detection_runner._cancellation_event.is_set():
+                    cali_logger.info("🛑 Run cancelled after detection!")
+                    return
+
                 # 7. Run extraction if settings provided
                 if extraction_settings_obj is not None:
                     # Eager load scalars before detaching for thread safety
@@ -588,6 +593,11 @@ class CaliRunner:
                     fov_count = 0
 
                     for i in range(0, len(positions_for_extraction), batch_size):
+                        # Check for cancellation before each batch
+                        if self._extraction_runner._cancellation_event.is_set():
+                            cali_logger.info("🛑 Run cancelled during extraction!")
+                            return
+
                         batch_positions = positions_for_extraction[i : i + batch_size]
 
                         # Prepare FOVs for this batch

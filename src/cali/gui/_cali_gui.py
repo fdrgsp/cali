@@ -381,13 +381,13 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        self._output_path = "tests/test_data/2pos/"
+        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/2pos/"
 
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
+        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # self._database_path = "tests/test_data/2pos/result_2pos.cali"
         # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
