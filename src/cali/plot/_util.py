@@ -313,7 +313,7 @@ def _get_calcium_peaks_event_synchrony_matrix(
 @njit(cache=True, parallel=True)  # type: ignore
 def _compute_jitter_synchrony_matrix_numba(
     peak_array: np.ndarray, jitter_window: int
-) -> np.ndarray:
+) -> np.ndarray:  # pragma: no cover
     """Numba-optimized computation of full synchrony matrix using jitter window.
 
     Uses parallel execution for dramatic speedup with many ROIs.
@@ -344,7 +344,7 @@ def _compute_jitter_synchrony_matrix_numba(
 @njit(cache=True)  # type: ignore
 def _jitter_window_synchrony_numba(
     events_i: np.ndarray, events_j: np.ndarray, jitter_window: int
-) -> float:
+) -> float:  # pragma: no cover
     """Numba-optimized jitter window synchrony calculation.
 
     For each peak in ROI i, check if there's a peak in ROI j within ±jitter_window.
@@ -508,16 +508,21 @@ def _get_spikes_over_threshold(
             .where(col(FOV.name) == fov_name)
             .where(col(ROI.id) == roi_id)
             .options(
-                selectinload(ROI.data_analysis),
+                selectinload(ROI.data_analysis_history),
+                selectinload(ROI.traces_history),
             )
         )
         roi = session.exec(stmt).first()
 
-    if roi is None or roi.data_analysis is None:
+    if roi is None or not roi.data_analysis_history or not roi.traces_history:
         return None
 
-    inferred_spikes = roi.data_analysis.inferred_spikes
-    inferred_spikes_threshold = roi.data_analysis.inferred_spikes_threshold
+    # Use the first entry (legacy behavior)
+    da = roi.data_analysis_history[0]
+    trace = roi.traces_history[0]
+
+    inferred_spikes = trace.inferred_spikes
+    inferred_spikes_threshold = da.inferred_spikes_threshold
 
     if inferred_spikes is None or inferred_spikes_threshold is None:
         return None
