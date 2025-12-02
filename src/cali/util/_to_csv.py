@@ -83,6 +83,10 @@ SINGLE_VALUES = [
 ]
 # fmt: on
 
+# ------------------------------------------------------------------------------
+# NOTE: THIS IS OLD, WILL NEED TO BE REPLACED WITH NEW EXPORT UTILITIES LATER
+# ------------------------------------------------------------------------------
+
 
 def save_trace_data_to_csv(
     path: str | Path,

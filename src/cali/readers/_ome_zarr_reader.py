@@ -22,7 +22,6 @@ except ImportError:  # if zarr >= 3.0.0
     from zarr import Group
 
 
-EVENT = "Event"
 FRAME_META = "frame_meta"
 ARRAY_DIMS = "_ARRAY_DIMENSIONS"
 
