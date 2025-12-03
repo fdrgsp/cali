@@ -38,6 +38,63 @@ MODEL = "cpsam"  # cellpose4
 # MODEL = "cyto3"  # cellpose3
 
 
+def create_stimulation_mask_file(tmp_path: Path, name: str = "stim_mask.tif") -> Path:
+    """Create a dummy stimulation mask file for testing.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Temporary directory path
+    name : str
+        Filename for the mask, default "stim_mask.tif"
+
+    Returns
+    -------
+    Path
+        Path to the created mask file
+    """
+    import tifffile
+
+    mask_path = tmp_path / name
+    mask_data = np.zeros((256, 256), dtype=np.uint8)
+    mask_data[10:20, 10:20] = 1
+    tifffile.imwrite(mask_path, mask_data)
+    return mask_path
+
+
+def verify_mask_fields(
+    mask: Mask, mask_type: str = "roi", expected_dims: tuple[int, int] = (256, 256)
+) -> None:
+    """Verify that all mask fields are accessible and properly populated.
+
+    This helper ensures mask fields are eagerly loaded and not triggering
+    lazy loading errors in detached SQLAlchemy objects.
+
+    Parameters
+    ----------
+    mask : Mask
+        The mask object to verify
+    mask_type : str
+        Expected mask type ("roi" or "stimulation")
+    expected_dims : tuple[int, int]
+        Expected (height, width) dimensions
+    """
+    assert mask.coords_y is not None, f"coords_y should be loaded for {mask_type}"
+    assert mask.coords_x is not None, f"coords_x should be loaded for {mask_type}"
+    assert mask.height is not None, f"height should be loaded for {mask_type}"
+    assert mask.width is not None, f"width should be loaded for {mask_type}"
+    assert mask.mask_type == mask_type, f"mask_type should be '{mask_type}'"
+
+    # Verify coordinates are populated
+    if mask_type == "roi":
+        assert len(mask.coords_y) > 0, "coords_y should not be empty"
+        assert len(mask.coords_x) > 0, "coords_x should not be empty"
+
+    # Verify dimensions
+    assert mask.height == expected_dims[0], f"height should be {expected_dims[0]}"
+    assert mask.width == expected_dims[1], f"width should be {expected_dims[1]}"
+
+
 def create_mock_fov(
     position_index: int = 0, num_rois: int = 3, name: str | None = None
 ) -> FOV:
@@ -769,13 +826,8 @@ def test_cali_runner_stimulation_mask_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test loading stimulation mask from file with mocked detection."""
-    import tifffile
-
-    # Create dummy mask file
-    mask_path = tmp_path / "stim_mask.tif"
-    mask_data = np.zeros((256, 256), dtype=np.uint8)
-    mask_data[10:20, 10:20] = 1
-    tifffile.imwrite(mask_path, mask_data)
+    # Create dummy mask file using helper
+    mask_path = create_stimulation_mask_file(tmp_path)
 
     runner = CaliRunner(commit_batch_size=1)
 
@@ -825,27 +877,36 @@ def test_cali_runner_stimulation_mask_mocked(
         engine.dispose()
 
 
-def test_cali_runner_stimulation_mask_thread_safe(
+@pytest.mark.parametrize(
+    "include_analysis",
+    [
+        pytest.param(False, id="extraction_only"),
+        pytest.param(True, id="full_analysis"),
+    ],
+)
+def test_cali_runner_mask_fields_thread_safe(
     test_db_path: Path,
     test_experiment: Experiment,
     data_path: Path,
     tmp_path: Path,
     mock_detection_runner: MagicMock,
+    include_analysis: bool,
 ) -> None:
-    """Test that stimulation mask is accessible in extraction threads (no lazy load).
+    """Test that mask fields are eagerly loaded and accessible in threads.
 
-    This test verifies the fix for the DetachedInstanceError that occurred when
-    analysis_settings.stimulation_mask was accessed in threads after the settings
-    object was detached from the session.
+    This test verifies the fix for DetachedInstanceError that occurred when
+    mask fields were accessed in threads after objects were detached from session.
+
+    Tests both:
+    - ROI mask field loading (always)
+    - Stimulation mask field loading (when include_analysis=True)
+
+    Parameters
+    ----------
+    include_analysis : bool
+        If True, tests full pipeline with stimulation mask.
+        If False, tests extraction-only with just ROI masks.
     """
-    import tifffile
-
-    # Create dummy mask file
-    mask_path = tmp_path / "stim_mask.tif"
-    mask_data = np.zeros((256, 256), dtype=np.uint8)
-    mask_data[10:20, 10:20] = 1
-    tifffile.imwrite(mask_path, mask_data)
-
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -855,19 +916,22 @@ def test_cali_runner_stimulation_mask_thread_safe(
     extraction_settings = ExtractionSettings(
         neuropil_inner_radius=2,
         neuropil_min_pixels=50,
-        threads=5,  # Multiple threads!
+        threads=5,  # Multiple threads to expose concurrency issues
     )
 
-    analysis_settings = AnalysisSettings(
-        peaks_height_value=1.0,
-        peaks_height_mode="std",
-        peaks_distance=10,
-        experiment_type="Evoked Activity",
-        stimulation_mask_path=str(mask_path),
-        threads=5,  # Multiple threads!
-    )
+    analysis_settings = None
+    if include_analysis:
+        mask_path = create_stimulation_mask_file(tmp_path)
+        analysis_settings = AnalysisSettings(
+            peaks_height_value=1.0,
+            peaks_height_mode="std",
+            peaks_distance=10,
+            experiment_type="Evoked Activity",
+            stimulation_mask_path=str(mask_path),
+            threads=5,  # Multiple threads
+        )
 
-    # Run full pipeline - should not raise DetachedInstanceError
+    # Run pipeline - should not raise DetachedInstanceError
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -879,17 +943,36 @@ def test_cali_runner_stimulation_mask_thread_safe(
         global_position_indices=[0, 1],
     )
 
-    # Verify mask was loaded and ROIs were marked as stimulated
+    # Verify mask fields are accessible (would fail with lazy load error)
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            ans = session.exec(select(AnalysisSettings)).first()
-            assert ans is not None
-            assert ans.stimulation_mask_id is not None
+            # Always verify ROI mask fields
+            rois = session.exec(select(ROI)).all()
+            assert len(rois) > 0, "Detection should have created ROIs"
 
             # Check that some ROIs were processed
             from cali.sqlmodel._model import Traces
 
+            for roi in rois:
+                assert roi.roi_mask is not None, f"ROI {roi.id} should have a mask"
+                verify_mask_fields(roi.roi_mask, mask_type="roi")
+
+            # Verify stimulation mask fields if analysis was run
+            if include_analysis:
+                ans = session.exec(select(AnalysisSettings)).first()
+                assert ans is not None
+                assert ans.stimulation_mask_id is not None
+
+                stim_mask = session.get(Mask, ans.stimulation_mask_id)
+                assert stim_mask is not None
+                verify_mask_fields(stim_mask, mask_type="stimulation")
+
+                # Verify analysis was performed
+                data_analysis = session.exec(select(DataAnalysis)).all()
+                assert len(data_analysis) > 0, "Analysis should have created data"
+
+            # Verify extraction was performed
             traces = session.exec(select(Traces)).all()
             assert len(traces) > 0, "Extraction should have created traces"
 

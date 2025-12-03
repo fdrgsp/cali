@@ -2166,3 +2166,139 @@ def test_settings_load_from_database_coverage(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         AnalysisSettings.load_from_database(db_path, id=999)
+
+
+def test_has_fov_analysis(temp_db: TempDB) -> None:
+    """Test has_fov_analysis function."""
+    from cali.sqlmodel._util import has_fov_analysis
+
+    engine, db_path = temp_db
+
+    # Create experiment with FOV and ROI
+    with Session(engine) as session:
+        exp = Experiment(name="Test", data_path="/test")
+        plate = Plate(name="96-well", rows=8, columns=12, experiment=exp)
+        well = Well(name="A1", row=0, column=0, plate=plate)
+        fov = FOV(name="A1_0000", position_index=0, well=well)
+        roi = ROI(label_value=1, fov=fov)
+        session.add(exp)
+        session.commit()
+        roi_id = roi.id
+
+    # FOV exists but has no traces yet
+    assert not has_fov_analysis(db_path, "A1_0000")
+
+    # Add traces to the ROI
+    with Session(engine) as session:
+        roi = session.get(ROI, roi_id)
+        assert roi is not None
+        trace = Traces(
+            raw_trace=[1.0, 2.0, 3.0],
+            corrected_trace=[1.0, 2.0, 3.0],
+            roi=roi,
+        )
+        session.add(trace)
+        session.commit()
+
+    # Now it should have analysis
+    assert has_fov_analysis(db_path, "A1_0000")
+
+    # Non-existent FOV
+    assert not has_fov_analysis(db_path, "Z99_9999")
+
+
+def test_has_experiment_analysis(temp_db: TempDB) -> None:
+    """Test has_experiment_analysis function."""
+    from cali.sqlmodel._util import has_experiment_analysis
+
+    engine, db_path = temp_db
+
+    # Empty database
+    assert not has_experiment_analysis(db_path)
+
+    # Create experiment with FOV and ROI
+    with Session(engine) as session:
+        exp = Experiment(name="Test", data_path="/test")
+        plate = Plate(name="96-well", rows=8, columns=12, experiment=exp)
+        well = Well(name="A1", row=0, column=0, plate=plate)
+        fov = FOV(name="A1_0000", position_index=0, well=well)
+        roi = ROI(label_value=1, fov=fov)
+        session.add(exp)
+        session.commit()
+        roi_id = roi.id
+
+    # No analysis yet
+    assert not has_experiment_analysis(db_path)
+
+    # Add traces
+    with Session(engine) as session:
+        roi = session.get(ROI, roi_id)
+        assert roi is not None
+        trace = Traces(
+            raw_trace=[1.0, 2.0, 3.0],
+            corrected_trace=[1.0, 2.0, 3.0],
+            roi=roi,
+        )
+        session.add(trace)
+        session.commit()
+
+    # Now it has analysis
+    assert has_experiment_analysis(db_path)
+
+
+def test_load_experiment_from_database_not_exists() -> None:
+    """Test load_experiment_from_database with non-existent database."""
+    from cali.sqlmodel._util import load_experiment_from_database
+
+    result = load_experiment_from_database("/nonexistent/path.db")
+    assert result is None
+
+
+def test_load_experiment_from_database_by_name(temp_db: TempDB) -> None:
+    """Test load_experiment_from_database with specific experiment name."""
+    from cali.sqlmodel._util import load_experiment_from_database
+
+    engine, db_path = temp_db
+
+    # Create two experiments
+    with Session(engine) as session:
+        exp1 = Experiment(name="Experiment1", data_path="/test1")
+        exp2 = Experiment(name="Experiment2", data_path="/test2")
+        session.add(exp1)
+        session.add(exp2)
+        session.commit()
+
+    # Load specific experiment
+    loaded = load_experiment_from_database(db_path, experiment_name="Experiment2")
+    assert loaded is not None
+    assert loaded.name == "Experiment2"
+
+    # Load non-existent experiment
+    loaded = load_experiment_from_database(db_path, experiment_name="NonExistent")
+    assert loaded is None
+
+
+def test_save_experiment_to_database_overwrite(tmp_path: Path) -> None:
+    """Test save_experiment_to_database with overwrite."""
+    from cali.sqlmodel._util import save_experiment_to_database
+
+    exp = Experiment(name="Test", data_path="/test")
+    plate = Plate(name="96-well", rows=8, columns=12, experiment=exp)
+    well = Well(name="A1", row=0, column=0, plate=plate)
+    FOV(name="A1_0000", position_index=0, well=well)
+
+    # Save first time
+    save_experiment_to_database(exp, tmp_path, database_name="test.db")
+    db_path = tmp_path / "test.db"
+    assert db_path.exists()
+
+    # Save again with overwrite=True
+    exp2 = Experiment(name="Test2", data_path="/test2")
+    save_experiment_to_database(exp2, tmp_path, database_name="test.db", overwrite=True)
+
+    # Verify it was overwritten
+    from cali.sqlmodel._util import load_experiment_from_database
+
+    loaded = load_experiment_from_database(db_path)
+    assert loaded is not None
+    assert loaded.name == "Test2"

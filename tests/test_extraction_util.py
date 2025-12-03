@@ -1,8 +1,9 @@
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
-from cali.extraction._util import _calculate_bg, calculate_dff
+from cali.extraction._util import _calculate_bg, calculate_dff, get_iei
 
 
 def test_calculate_dff() -> None:
@@ -34,3 +35,78 @@ def test_calculate_bg() -> None:
     # window But the implementation might be different. Just check shape and no nans.
     assert bg.shape == data.shape
     assert not np.any(np.isnan(bg))
+
+
+@pytest.mark.parametrize(
+    "peaks,elapsed_time_ms,expected",
+    [
+        # Test case 1: Normal case with 3 peaks
+        (
+            np.array([10, 20, 30]),
+            [i * 10.0 for i in range(40)],  # 10ms intervals
+            [0.1, 0.1],  # IEI in seconds: (200-100)/1000, (300-200)/1000
+        ),
+        # Test case 2: Two peaks close together
+        (
+            np.array([5, 6]),
+            [i * 100.0 for i in range(10)],  # 100ms intervals
+            [0.1],  # IEI: (600-500)/1000
+        ),
+        # Test case 3: Multiple peaks with varying intervals
+        (
+            np.array([0, 10, 15, 25]),
+            [i * 50.0 for i in range(30)],  # 50ms intervals
+            [0.5, 0.25, 0.5],  # IEIs: (500-0)/1000, (750-500)/1000, (1250-750)/1000
+        ),
+    ],
+)
+def test_get_iei_valid(
+    peaks: np.ndarray, elapsed_time_ms: list[float], expected: list[float]
+) -> None:
+    """Test get_iei with valid inputs."""
+    result = get_iei(peaks, elapsed_time_ms)
+    assert result is not None
+    np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "peaks,elapsed_time_ms,reason",
+    [
+        # Test case 1: Only one peak
+        (np.array([5]), [i * 10.0 for i in range(10)], "single peak"),
+        # Test case 2: No peaks
+        (np.array([]), [i * 10.0 for i in range(10)], "no peaks"),
+        # Test case 3: Empty time list
+        (np.array([5, 10]), [], "empty time list"),
+        # Test case 4: Single time point
+        (np.array([0]), [100.0], "single time point"),
+    ],
+    ids=["single_peak", "no_peaks", "empty_time_list", "single_time_point"],
+)
+def test_get_iei_returns_none(
+    peaks: np.ndarray, elapsed_time_ms: list[float], reason: str
+) -> None:
+    """Test get_iei returns None for invalid inputs."""
+    result = get_iei(peaks, elapsed_time_ms)
+    assert result is None, f"Expected None for {reason}"
+
+
+def test_get_iei_exact_values() -> None:
+    """Test get_iei with exact values to verify calculation."""
+    # Peaks at indices 100, 200, 300
+    peaks = np.array([100, 200, 300])
+    # Time stamps: 0ms, 1ms, 2ms, ..., 400ms
+    elapsed_time_ms = [float(i) for i in range(401)]
+
+    result = get_iei(peaks, elapsed_time_ms)
+    assert result is not None
+
+    # Expected IEI:
+    # Peak at index 100 -> time 100ms
+    # Peak at index 200 -> time 200ms
+    # Peak at index 300 -> time 300ms
+    # IEI 1: (200-100) = 100ms = 0.1s
+    # IEI 2: (300-200) = 100ms = 0.1s
+    expected = [0.1, 0.1]
+
+    np.testing.assert_allclose(result, expected, rtol=1e-6)
