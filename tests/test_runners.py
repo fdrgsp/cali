@@ -2678,3 +2678,67 @@ def test_delete_run_and_recreate_same_settings(
                 assert len(traces) > 0, f"No traces found for run {result.id}"
     finally:
         engine.dispose()
+
+
+def test_force_replaces_results(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that force=True deletes old results and creates new ones."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose",
+        model_type=MODEL,
+        diameter=30.0,
+    )
+
+    # First run
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Get ROI IDs from first run
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            rois_1 = session.exec(select(ROI)).all()
+            assert len(rois_1) > 0
+            # Mark them to verify deletion
+            for r in rois_1:
+                r.active = True
+                session.add(r)
+            session.commit()
+    finally:
+        engine.dispose()
+
+    # Second run with force=True
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+        force=True,
+    )
+
+    # Get ROIs from second run
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            rois_2 = session.exec(select(ROI)).all()
+            assert len(rois_2) > 0
+
+            # Verify they are new (active should be None)
+            for r in rois_2:
+                assert r.active is None, "ROI should be new and not have active=True"
+    finally:
+        engine.dispose()
