@@ -121,6 +121,7 @@ class CaliRunner:
         database_name: str | None = None,
         output_path: str | Path | None = None,
         overwrite: bool = False,
+        force: bool = False,
         echo: bool = False,
         as_generator: bool = False,
     ) -> Generator[str, None, None] | None:
@@ -167,6 +168,10 @@ class CaliRunner:
             parent directory.
         overwrite : bool
             Whether to overwrite existing database
+        force : bool
+            Whether to force re-run even if results exist.
+            If True, existing results for the specified settings and positions
+            will be deleted and re-computed.
         echo : bool
             Enable SQLAlchemy echo for database operations
         as_generator : bool
@@ -194,6 +199,7 @@ class CaliRunner:
             database_name=database_name,
             output_path=output_path,
             overwrite=overwrite,
+            force=force,
             echo=echo,
         )
 
@@ -218,6 +224,7 @@ class CaliRunner:
         database_name: str | None = None,
         output_path: str | Path | None = None,
         overwrite: bool = False,
+        force: bool = False,
         echo: bool = False,
     ) -> Generator[str, None, None]:
         """Internal generator for run progress.
@@ -338,8 +345,13 @@ class CaliRunner:
                     )
 
                 positions_for_detection = self._get_positions_for_detection(
-                    session, det_id, global_position_indices
+                    session, det_id, global_position_indices, force=force
                 )
+
+                if force and positions_for_detection:
+                    self._delete_detection_results(
+                        session, det_id, list(positions_for_detection)
+                    )
 
                 yield "🔍 Running Detection..."
 
@@ -563,6 +575,7 @@ class CaliRunner:
                             extraction_settings_id,  # type: ignore
                             analysis_settings_id,
                             global_position_indices,
+                            force=force,
                         )
                     else:
                         # Extraction-only mode: check for existing extraction results
@@ -571,6 +584,7 @@ class CaliRunner:
                             det_id,
                             extraction_settings_id,  # type: ignore
                             global_position_indices,
+                            force=force,
                         )
 
                     if not positions_for_extraction:
@@ -612,6 +626,15 @@ class CaliRunner:
                                     positions_extracted=list(positions_for_extraction),
                                 )
                             )
+
+                    if (
+                        force
+                        and analysis_result_id is not None
+                        and positions_for_extraction
+                    ):
+                        self._delete_extraction_results(
+                            session, analysis_result_id, list(positions_for_extraction)
+                        )
 
                     # Process in batches
                     # Use a batch size that is at least the number of threads to
@@ -754,11 +777,92 @@ class CaliRunner:
 
     # ==================== PRIVATE HELPER METHODS ====================
 
+    def _delete_detection_results(
+        self, session: Session, detection_settings_id: int, positions: list[int]
+    ) -> None:
+        """Delete existing detection results (ROIs) for specific positions."""
+        cali_logger.info(
+            f"🗑️ Deleting existing detection results for {len(positions)} positions..."
+        )
+
+        from cali.sqlmodel import FOV, ROI
+
+        # Select ROIs to delete
+        statement = (
+            select(ROI)
+            .join(FOV)
+            .where(
+                ROI.detection_settings_id == detection_settings_id,
+                FOV.position_index.in_(positions),  # type: ignore
+            )
+        )
+        rois_to_delete = session.exec(statement).all()
+
+        if rois_to_delete:
+            for roi in rois_to_delete:
+                session.delete(roi)
+            session.commit()
+            cali_logger.info(f"🗑️ Deleted {len(rois_to_delete)} existing ROIs.")
+
+    def _delete_extraction_results(
+        self, session: Session, analysis_result_id: int, positions: list[int]
+    ) -> None:
+        """Delete existing extraction/analysis results for specific positions."""
+        cali_logger.info(
+            f"🗑️ Deleting existing extraction/analysis results for "
+            f"{len(positions)} positions..."
+        )
+
+        from cali.sqlmodel import FOV, ROI, DataAnalysis, Traces
+
+        # Delete Traces
+        traces_stmt = (
+            select(Traces)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                Traces.analysis_result_id == analysis_result_id,
+                FOV.position_index.in_(positions),  # type: ignore
+            )
+        )
+        traces_to_delete = session.exec(traces_stmt).all()
+
+        # Delete DataAnalysis
+        da_stmt = (
+            select(DataAnalysis)
+            .join(ROI)
+            .join(FOV)
+            .where(
+                DataAnalysis.analysis_result_id == analysis_result_id,
+                FOV.position_index.in_(positions),  # type: ignore
+            )
+        )
+        da_to_delete = session.exec(da_stmt).all()
+
+        count = 0
+        if traces_to_delete:
+            for t in traces_to_delete:
+                session.delete(t)
+            count += len(traces_to_delete)
+
+        if da_to_delete:
+            for da in da_to_delete:
+                session.delete(da)
+            count += len(da_to_delete)
+
+        if count > 0:
+            session.commit()
+            cali_logger.info(
+                f"🗑️ Deleted {len(traces_to_delete)} traces and "
+                f"{len(da_to_delete)} analysis records."
+            )
+
     def _get_positions_for_detection(
         self,
         session: Session,
         detection_settings_id: int,
         global_position_indices: Sequence[int],
+        force: bool = False,
     ) -> list[int]:
         """Get positions that need detection.
 
@@ -774,12 +878,17 @@ class CaliRunner:
             Detection settings ID to check
         global_position_indices : Sequence[int]
             Positions to check
+        force : bool
+            If True, returns all positions regardless of existing results.
 
         Returns
         -------
         list[int]
             Positions that need detection. Empty list means skip all.
         """
+        if force:
+            return list(global_position_indices)
+
         # More efficient: convert to set directly
         existing_positions = set(
             session.exec(
@@ -820,6 +929,7 @@ class CaliRunner:
         detection_settings_id: int,
         extraction_settings_id: int,
         global_position_indices: Sequence[int],
+        force: bool = False,
     ) -> list[int]:
         """Get positions that need extraction.
 
@@ -837,12 +947,17 @@ class CaliRunner:
             Extraction settings ID to check
         global_position_indices : Sequence[int]
             Positions to check
+        force : bool
+            If True, returns all positions regardless of existing results.
 
         Returns
         -------
         list[int]
             Positions that need extraction. Empty list means skip all.
         """
+        if force:
+            return list(global_position_indices)
+
         # Optimize by using set directly
         existing_positions = set(
             session.exec(
@@ -892,6 +1007,7 @@ class CaliRunner:
         extraction_settings_id: int,
         analysis_settings_id: int,
         global_position_indices: Sequence[int],
+        force: bool = False,
     ) -> list[int]:
         """Get positions that need analysis.
 
@@ -911,12 +1027,17 @@ class CaliRunner:
             Analysis settings ID to check
         global_position_indices : Sequence[int]
             Positions to check
+        force : bool
+            If True, returns all positions regardless of existing results.
 
         Returns
         -------
         list[int]
             Positions that need analysis. Empty list means skip all.
         """
+        if force:
+            return list(global_position_indices)
+
         # Optimize by using set directly
         existing_positions = set(
             session.exec(
