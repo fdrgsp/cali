@@ -535,23 +535,29 @@ def _create_pyqtgraph_bar_plot(
     bar_label : str
         Label for the bar in the legend
     """
-    # Filter based on condition toggles
+    # Filter based on condition toggles and respect user-defined order
     cond_list: dict[str, bool] = widget.conditions
     if not cond_list or len(cond_list) != len(data["conditions"]):
         # Initialize all conditions as enabled
         cond_list = dict.fromkeys(data["conditions"], True)
         widget.conditions = cond_list
 
-    # Filter data based on toggles
-    filtered_data = [
-        (cond, mean, sem, fov_vals)
+    # Create a mapping from condition name to data
+    data_map = {
+        cond: (mean, sem, fov_vals)
         for cond, mean, sem, fov_vals in zip(
             data["conditions"],
             data["means"],
             data["sems"],
             data["fov_values_list"],
         )
-        if cond_list.get(cond, True)
+    }
+
+    # Build filtered data in the order defined by cond_list (which preserves user order)
+    filtered_data = [
+        (cond, *data_map[cond])
+        for cond in cond_list.keys()
+        if cond_list[cond] and cond in data_map
     ]
 
     if not filtered_data:

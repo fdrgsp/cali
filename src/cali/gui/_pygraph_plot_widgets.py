@@ -7,16 +7,18 @@ from typing import TYPE_CHECKING
 import pyqtgraph as pg
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QIcon, QMouseEvent, QStandardItem, QStandardItemModel
+from qtpy.QtGui import QIcon, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
-    QAction,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMenu,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -508,163 +510,7 @@ class _SingleWellGraphWidget(QWidget):
         # Easiest: grab the widget pixels and save
         pixmap = self.plot_widget.grab()
         pixmap.save(filename)
-        # Alternatively, use pyqtgraph exporters if you want vector formats.
-
-
-class _PersistentMenu(QMenu):
-    """A QMenu that stays open when checkable actions are triggered."""
-
-    def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:
-        """Override mouseReleaseEvent to prevent menu closing on checkable actions."""
-        if a0 is None:
-            super().mouseReleaseEvent(a0)
-            return
-
-        action = self.actionAt(a0.pos())
-        if action and action.isCheckable():
-            # Toggle the action state manually
-            action.setChecked(not action.isChecked())
-            # Emit the triggered signal manually
-            action.triggered.emit(action.isChecked())
-            # Don't call the parent implementation to prevent menu closing
-            return
-        # For non-checkable actions, use default behavior (close menu)
-        super().mouseReleaseEvent(a0)
-
-
-class _DisplaySingleWellTraces(QGroupBox):
-    def __init__(self, parent: _SingleWellGraphWidget) -> None:
-        super().__init__(parent)
-        self.setTitle("Choose which ROI to display")
-        self.setCheckable(True)
-        self.setChecked(False)
-
-        self.setToolTip(
-            "By default, the widget will display the traces form all the ROIs from the "
-            "current FOV. Here you can choose to only display a subset of ROIs. You "
-            "can input a range (e.g. 1-10 to plot the first 10 ROIs), single ROIs "
-            "(e.g. 30, 33 to plot ROI 30 and 33) or, if you only want to pick n random "
-            "ROIs, you can type 'rnd' followed by the number or ROIs you want to "
-            "display (e.g. rnd10 to plot 10 random ROIs)."
-        )
-
-        self.setSizePolicy(
-            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        )
-
-        self._graph: _SingleWellGraphWidget = parent
-
-        self._roi_le = QLineEdit()
-        self._roi_le.setPlaceholderText("e.g. 1-10, 30, 33 or rnd10")
-        # when pressing enter in the line edit, update the graph
-        self._roi_le.returnPressed.connect(self._update)
-        self._update_btn = QPushButton("Update", self)
-
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.addWidget(QLabel("ROIs:"))
-        main_layout.addWidget(self._roi_le)
-        main_layout.addWidget(self._update_btn)
-        self._update_btn.clicked.connect(self._update)
-
-        self.toggled.connect(self._on_toggle)
-
-    def _on_toggle(self, state: bool) -> None:
-        """Enable or disable the random spin box and the update button."""
-        if not state:
-            self._graph._on_combo_changed(self._graph._combo.currentText())
-        else:
-            self._update()
-
-    def _update(self) -> None:
-        """Update the graph with random traces."""
-        self._graph.clear_plot()
-        text = self._graph._combo.currentText()
-
-        # Get database path and FOV name
-        if not self._graph._database_path or not self._graph._fov:
-            return
-
-        # Get ROI selection
-        rois = self._parse_roi_selection()
-
-        if rois is None or not self._graph._engine or self._graph._run_id is None:
-            return
-
-        plot_single_well_data(
-            self._graph,
-            self._graph._engine,
-            self._graph._fov,
-            text,
-            rois=rois,
-            run_id=self._graph._run_id,
-        )
-
-    def _parse_roi_selection(self) -> list[int] | None:
-        """Return the list of ROIs to be displayed."""
-        text = self._roi_le.text()
-        if not text:
-            return None
-
-        # Handle random ROI selection (e.g., "rnd10")
-        # This queries the database to get all available ROIs for the current FOV
-        # and randomly selects the requested number
-        if text[:3] == "rnd" and text[3:].isdigit():
-            num_rois = int(text[3:])
-            if not self._graph._database_path or not self._graph._fov:
-                return None
-
-            # Check if the current plot requires only active ROIs
-            plot_name = self._graph._combo.currentText()
-            active_only = requires_active_rois(plot_name)
-
-            # Query database to get all available ROI label values for this FOV
-            if not self._graph._engine:
-                return None
-
-            with Session(self._graph._engine) as session:
-                # Get all ROI label values for this FOV
-                stmt = (
-                    select(ROI.label_value)
-                    .join(FOV)
-                    .where(col(FOV.name) == self._graph._fov)
-                    .order_by(col(ROI.label_value))
-                )
-
-                # Filter for active ROIs if the plot requires it
-                if active_only:
-                    stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-
-                roi_label_values = session.exec(stmt).all()
-
-                if not roi_label_values:
-                    return None
-
-                # Randomly select the requested number of ROIs
-                selected_rois = random.sample(
-                    roi_label_values, min(num_rois, len(roi_label_values))
-                )
-                return sorted(selected_rois)
-
-        # Parse the input string for specific ROI numbers
-        rois = self._parse_input(text)
-
-        return rois or None
-
-    def _parse_input(self, input_str: str) -> list[int]:
-        """Parse the input string and return a list of ROIs."""
-        parts = input_str.split(",")
-        numbers: list[int] = []
-        for part in parts:
-            part = part.strip()  # remove any leading/trailing whitespace
-            if "-" in part:
-                with contextlib.suppress(ValueError):
-                    start, end = map(int, part.split("-"))
-                    numbers.extend(range(start, end + 1))
-            else:
-                with contextlib.suppress(ValueError):
-                    numbers.append(int(part))
-        return numbers
+        # Alternatively, use pyqtgraph exporters if you want vector formats.\
 
 
 class _MultilWellGraphWidget(QWidget):
@@ -691,6 +537,9 @@ class _MultilWellGraphWidget(QWidget):
         self._conditions_btn = QPushButton("Conditions...", self)
         self._conditions_btn.setEnabled(False)
         self._conditions_btn.clicked.connect(self._show_conditions_menu)
+        self._conditions_btn.setToolTip(
+            "Use the Conditions dialog to reorder and toggle visibility of conditions."
+        )
 
         self._save_btn = QPushButton("Save Image", self)
         self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
@@ -891,27 +740,226 @@ class _MultilWellGraphWidget(QWidget):
         pixmap.save(filename)
 
     def _show_conditions_menu(self) -> None:
-        """Show a context menu with condition checkboxes."""
-        menu = _PersistentMenu(self)
+        """Show a dialog for reordering and toggling conditions."""
+        if not self._conditions:
+            return
 
-        for condition, state in self._conditions.items():
-            action = QAction(condition, self)
-            action.setCheckable(True)
-            action.setChecked(state)
-            action.triggered.connect(
-                lambda checked, text=condition: self._on_condition_toggled(
-                    checked, text
-                )
-            )
-            menu.addAction(action)
+        dialog = _ConditionsDialog(self._conditions, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Get the new condition order and states
+            new_conditions = dialog.get_conditions()
+            self._conditions = new_conditions
+            # Redraw the plot with the new order
+            self._on_combo_changed(self._combo.currentText())
 
-        # Show the menu at the button position
-        button_pos = self._conditions_btn.mapToGlobal(
-            self._conditions_btn.rect().bottomLeft()
+
+class _DisplaySingleWellTraces(QGroupBox):
+    def __init__(self, parent: _SingleWellGraphWidget) -> None:
+        super().__init__(parent)
+        self.setTitle("Choose which ROI to display")
+        self.setCheckable(True)
+        self.setChecked(False)
+
+        self.setToolTip(
+            "By default, the widget will display the traces form all the ROIs from the "
+            "current FOV. Here you can choose to only display a subset of ROIs. You "
+            "can input a range (e.g. 1-10 to plot the first 10 ROIs), single ROIs "
+            "(e.g. 30, 33 to plot ROI 30 and 33) or, if you only want to pick n random "
+            "ROIs, you can type 'rnd' followed by the number or ROIs you want to "
+            "display (e.g. rnd10 to plot 10 random ROIs)."
         )
-        menu.exec(button_pos)
 
-    def _on_condition_toggled(self, checked: bool, condition: str) -> None:
-        """Handle when a condition checkbox is toggled."""
-        self._conditions[condition] = checked
-        self._on_combo_changed(self._combo.currentText())
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        )
+
+        self._graph: _SingleWellGraphWidget = parent
+
+        self._roi_le = QLineEdit()
+        self._roi_le.setPlaceholderText("e.g. 1-10, 30, 33 or rnd10")
+        # when pressing enter in the line edit, update the graph
+        self._roi_le.returnPressed.connect(self._update)
+        self._update_btn = QPushButton("Update", self)
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.addWidget(QLabel("ROIs:"))
+        main_layout.addWidget(self._roi_le)
+        main_layout.addWidget(self._update_btn)
+        self._update_btn.clicked.connect(self._update)
+
+        self.toggled.connect(self._on_toggle)
+
+    def _on_toggle(self, state: bool) -> None:
+        """Enable or disable the random spin box and the update button."""
+        if not state:
+            self._graph._on_combo_changed(self._graph._combo.currentText())
+        else:
+            self._update()
+
+    def _update(self) -> None:
+        """Update the graph with random traces."""
+        self._graph.clear_plot()
+        text = self._graph._combo.currentText()
+
+        # Get database path and FOV name
+        if not self._graph._database_path or not self._graph._fov:
+            return
+
+        # Get ROI selection
+        rois = self._parse_roi_selection()
+
+        if rois is None or not self._graph._engine or self._graph._run_id is None:
+            return
+
+        plot_single_well_data(
+            self._graph,
+            self._graph._engine,
+            self._graph._fov,
+            text,
+            rois=rois,
+            run_id=self._graph._run_id,
+        )
+
+    def _parse_roi_selection(self) -> list[int] | None:
+        """Return the list of ROIs to be displayed."""
+        text = self._roi_le.text()
+        if not text:
+            return None
+
+        # Handle random ROI selection (e.g., "rnd10")
+        # This queries the database to get all available ROIs for the current FOV
+        # and randomly selects the requested number
+        if text[:3] == "rnd" and text[3:].isdigit():
+            num_rois = int(text[3:])
+            if not self._graph._database_path or not self._graph._fov:
+                return None
+
+            # Check if the current plot requires only active ROIs
+            plot_name = self._graph._combo.currentText()
+            active_only = requires_active_rois(plot_name)
+
+            # Query database to get all available ROI label values for this FOV
+            if not self._graph._engine:
+                return None
+
+            with Session(self._graph._engine) as session:
+                # Get all ROI label values for this FOV
+                stmt = (
+                    select(ROI.label_value)
+                    .join(FOV)
+                    .where(col(FOV.name) == self._graph._fov)
+                    .order_by(col(ROI.label_value))
+                )
+
+                # Filter for active ROIs if the plot requires it
+                if active_only:
+                    stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
+
+                roi_label_values = session.exec(stmt).all()
+
+                if not roi_label_values:
+                    return None
+
+                # Randomly select the requested number of ROIs
+                selected_rois = random.sample(
+                    roi_label_values, min(num_rois, len(roi_label_values))
+                )
+                return sorted(selected_rois)
+
+        # Parse the input string for specific ROI numbers
+        rois = self._parse_input(text)
+
+        return rois or None
+
+    def _parse_input(self, input_str: str) -> list[int]:
+        """Parse the input string and return a list of ROIs."""
+        parts = input_str.split(",")
+        numbers: list[int] = []
+        for part in parts:
+            part = part.strip()  # remove any leading/trailing whitespace
+            if "-" in part:
+                with contextlib.suppress(ValueError):
+                    start, end = map(int, part.split("-"))
+                    numbers.extend(range(start, end + 1))
+            else:
+                with contextlib.suppress(ValueError):
+                    numbers.append(int(part))
+        return numbers
+
+
+class _ConditionsDialog(QDialog):
+    """Dialog for reordering and toggling conditions via drag-and-drop."""
+
+    def __init__(self, conditions: dict[str, bool], parent: QWidget) -> None:
+        """Initialize the conditions dialog.
+
+        Parameters
+        ----------
+        conditions : dict[str, bool]
+            Dictionary of condition names and their enabled state
+        parent : QWidget
+            Parent widget
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Condition Order and Visibility")
+        self.setModal(True)
+        self.resize(400, 500)
+
+        # Store original conditions
+        self._original_conditions = conditions.copy()
+
+        # Create list widget with drag-and-drop enabled
+        self._list_widget = QListWidget(self)
+        self._list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self._list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
+
+        # Populate list with conditions
+        for condition, enabled in conditions.items():
+            item = QListWidgetItem(condition)
+            item.setFlags(
+                item.flags()
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsDragEnabled
+            )
+            check_state = Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
+            item.setCheckState(check_state)
+            self._list_widget.addItem(item)
+
+        # Instructions label
+        instructions = QLabel(
+            "Drag conditions to reorder them. Uncheck to hide from plot.",
+            self,
+        )
+        instructions.setWordWrap(True)
+
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        # Layout
+        layout = QVBoxLayout(self)
+        layout.addWidget(instructions)
+        layout.addWidget(self._list_widget)
+        layout.addWidget(button_box)
+
+    def get_conditions(self) -> dict[str, bool]:
+        """Return the reordered conditions with their enabled state.
+
+        Returns
+        -------
+        dict[str, bool]
+            Dictionary of condition names in the new order with their enabled state
+        """
+        conditions = {}
+        for i in range(self._list_widget.count()):
+            item = self._list_widget.item(i)
+            if item is not None:
+                condition_name = item.text()
+                is_enabled = item.checkState() == Qt.CheckState.Checked
+                conditions[condition_name] = is_enabled
+        return conditions
