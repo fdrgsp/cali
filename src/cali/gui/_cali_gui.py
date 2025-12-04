@@ -61,11 +61,10 @@ from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
 from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
-from ._graph_widgets import _MultilWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
-from ._pygraph_plot_widgets import _SingleWellGraphWidget
+from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
@@ -383,17 +382,21 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/evoked/"
 
         # 2 pos data
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/2pos/"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/multi_pos/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
         # self._initialize_from_database(self._database_path, self._data_path)
+
+        self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        self._output_path = "tests/test_data/multi_pos/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1664,16 +1667,14 @@ class CaliGui(QMainWindow):
                 sw_graph.engine.dispose(close=True)
             sw_graph.database_path = database_path
             sw_graph.engine = engine
-            # Reset the plot to "None" to avoid plot loading issues
-            sw_graph._combo.setCurrentText("None")
+            sw_graph.clear_plot()
 
         for mw_graph in self.MW_GRAPHS:
             if mw_graph.engine is not None:
                 mw_graph.engine.dispose(close=True)
             mw_graph.database_path = database_path
             mw_graph.engine = engine
-            # Reset the plot to "None" to avoid plot loading issues
-            mw_graph._combo.setCurrentText("None")
+            mw_graph.clear_plot()
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
@@ -1973,17 +1974,12 @@ class CaliGui(QMainWindow):
         # skip if the tab is the Detection & Analysis tab
         if idx == 0:
             return
-
         # if visualization tab is selected (main tab index 1)
         if idx == 1:
             # get the current fov
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
                 return
-
-            # check if the FOV has been analyzed (has ROIs with data)
-            # has_analysis = self._has_fov_analysis(value)
-
             # update the graphs combo boxes
             self._update_single_wells_graphs_combo()
 
@@ -1998,6 +1994,11 @@ class CaliGui(QMainWindow):
         """Update the FOV table when a well is selected."""
         self._fov_table.clear()
         self._image_viewer._clear_highlight()
+
+        # Clear plots and reset FOV to ensure reload when selecting same well again
+        for sw_graph in self.SW_GRAPHS:
+            sw_graph.clear_plot()
+            sw_graph.fov = ""
 
         if self._data is None:
             return
@@ -2031,7 +2032,7 @@ class CaliGui(QMainWindow):
 
             if value is None:
                 self._image_viewer.setData(None, None)
-                self._update_single_wells_graphs_combo(clear=True, set_title="")
+                self._update_single_wells_graphs_combo(clear=True)
                 return
 
             if self._data is None:
@@ -2054,11 +2055,11 @@ class CaliGui(QMainWindow):
                 else None
             )
             self._image_viewer.setData(data, roi_labels, neuropil_labels)
-            self._set_graphs_fov(value)
-
-            # Check if the FOV has been analyzed (has ROIs with data)
-            has_analysis = self._has_fov_analysis(value)
-            self._update_single_wells_graphs_combo(clear=(not has_analysis))
+            # Update graph widgets with new FOV - this will trigger plot reload
+            # Use the FOV name directly - it already contains the full identifier
+            # (e.g., "B5_0000" for well B5, position 0000)
+            title = value.fov.name or f"Position {value.pos_idx}"
+            self._update_single_wells_graphs_combo(set_fov=title)
             self._loading_bar.hide()
         except Exception as e:
             msg = f"❌ Failed to load FOV:\n{e}"
@@ -2089,15 +2090,6 @@ class CaliGui(QMainWindow):
             return False
 
         return has_fov_analysis(self._database_path, fov_name)
-
-    def _set_graphs_fov(self, value: WellInfo | None) -> None:
-        """Set the FOV title for the graphs."""
-        if value is None:
-            return
-        # Use the FOV name directly - it already contains the full identifier
-        # (e.g., "B5_0000" for well B5, position 0000)
-        title = value.fov.name or f"Position {value.pos_idx}"
-        self._update_single_wells_graphs_combo(set_title=title)
 
     def _get_labels(
         self, value: WellInfo
@@ -2261,15 +2253,26 @@ class CaliGui(QMainWindow):
 
     def _update_single_wells_graphs_combo(
         self,
-        set_title: str | None = None,
+        set_fov: str | None = None,
         clear: bool = False,
     ) -> None:
-        for sw_graph in self.SW_GRAPHS:
-            # Always set FOV if set_title is provided (including empty string to reset)
-            if set_title is not None:
-                sw_graph.fov = set_title
+        """Update single-well graph widgets.
 
-            if clear:
+        Parameters
+        ----------
+        set_fov : str | None
+            If provided, set the FOV and update combo availability + reload plot.
+            If None, don't change FOV.
+        clear : bool
+            If True, clear the plot (used when deselecting FOV). Combo selection
+            persists.
+        """
+        for sw_graph in self.SW_GRAPHS:
+            # Set FOV if provided - this will update combo availability and reload plot
+            if set_fov is not None:
+                sw_graph.fov = set_fov
+            # Just clear plot if requested (combo selection stays)
+            elif clear:
                 sw_graph.clear_plot()
 
     def _update_multi_wells_graphs_combo(self) -> None:

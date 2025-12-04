@@ -7,11 +7,16 @@ preload torch here to ensure proper DLL loading order.
 """
 
 import sys
+import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 from cali.sqlmodel import Experiment
+from cali.sqlmodel._util import create_database_and_tables
 
 # Import torch before pytest-qt initializes on Windows
 if sys.platform == "win32":
@@ -19,6 +24,35 @@ if sys.platform == "win32":
         import torch  # noqa: F401
     except (ImportError, OSError):
         # Torch/cellpose might not be installed, that's ok
+        pass
+
+
+TempDB = tuple[Engine, Path]
+
+
+@pytest.fixture
+def temp_db() -> Generator[TempDB, None, None]:
+    """Create a temporary SQLite database for testing."""
+    import gc
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    create_database_and_tables(engine)
+
+    yield engine, db_path
+
+    # Cleanup - dispose engine before deleting file
+    # Dispose with close=True to close all checked-in connections (Python 3.13)
+    engine.dispose(close=True)
+    # Force garbage collection to ensure connections are closed
+    gc.collect()
+    # Delete the database file
+    try:
+        db_path.unlink(missing_ok=True)
+    except PermissionError:
+        # On Windows, file might still be locked
         pass
 
 

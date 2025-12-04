@@ -190,6 +190,7 @@ class _ProgressBarWidget(QDialog):
         self._progress_bar = QProgressBar()
         self._progress_bar.setMinimumWidth(200)
         self._progress_bar.setValue(0)
+        self.showPercentage(True)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Optional, Self, cast
 
 import numpy as np
 import useq
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import selectinload
 from sqlmodel import (
     JSON,
@@ -1292,7 +1293,8 @@ class Condition(SQLModel, table=True):  # type: ignore[call-arg]
     id : int | None
         Primary key, auto-generated
     name : str
-        Unique condition name (e.g., "WT", "KO", "Vehicle", "Drug_10uM")
+        Condition name (e.g., "WT", "KO", "Vehicle", "Drug_10uM")
+        The combination of name + condition_type must be unique.
     condition_type : str
         Type of condition ("genotype", "treatment", "other")
     color : str | None
@@ -1302,9 +1304,13 @@ class Condition(SQLModel, table=True):  # type: ignore[call-arg]
     """
 
     __tablename__ = "condition"
+    __table_args__ = (
+        UniqueConstraint("name", "condition_type", name="uq_condition_name_type"),
+        {"sqlite_autoincrement": True},
+    )
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(unique=True, index=True)
+    name: str = Field(index=True)
     condition_type: str = Field(index=True)  # "genotype", "treatment", etc.
     color: str | None = None
     description: str | None = None

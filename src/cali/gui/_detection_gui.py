@@ -29,8 +29,20 @@ from cali.gui._util import (
 if TYPE_CHECKING:
     from cali.sqlmodel._model import DetectionSettings
 
-FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+MODEL_TYPE = "cpsam"
+try:
+    from importlib.metadata import PackageNotFoundError, version
 
+    try:
+        _cp_ver_str = version("cellpose")
+        _cp_major = int(_cp_ver_str.split(".")[0])
+        MODEL_TYPE = "cpsam" if _cp_major >= 4 else "cyto3"
+    except (PackageNotFoundError, ValueError):
+        pass
+except ImportError:
+    pass
+
+FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 CUSTOM_MODEL_PATH = (
     Path(__file__).parent.parent
     / "detection"
@@ -41,7 +53,7 @@ CUSTOM_MODEL_PATH = (
 
 @dataclass(frozen=True)
 class CellposeSettings:
-    model_type: str = "cpsam"
+    model_type: str = MODEL_TYPE
     model_path: str | None = None
     diameter: float | None = None
     cellprob_threshold: float = 0.0
@@ -454,12 +466,16 @@ class _CellposeDetectionWidget(QGroupBox):
         if not self._cp_is_installed:
             return
 
-        self._models_combo.setCurrentText(value.model_type)
+        # Set model type using findText to ensure it exists
+        model_idx = self._models_combo.findText(value.model_type)
+        if model_idx >= 0:
+            self._models_combo.setCurrentIndex(model_idx)
+
+        # Set custom model path if applicable
         if value.model_type == "custom" and value.model_path is not None:
             self._browse_custom_model.setValue(value.model_path)
-            self._browse_custom_model.show()
-        else:
-            self._browse_custom_model.hide()
+
+        # Set other parameters
         self._diameter_spin.setValue(0 if value.diameter is None else value.diameter)
         self._cellprob_threshold_spin.setValue(value.cellprob_threshold)
         self._flow_threshold_spin.setValue(value.flow_threshold)

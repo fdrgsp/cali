@@ -9,6 +9,7 @@ from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QMouseEvent, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
+    QAction,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -29,6 +30,7 @@ from cali.plot._main_plot import (
     AnalysisGroup,
     PipelineStage,
     get_available_plots,
+    plot_multi_well_data,
     plot_single_well_data,
     requires_active_rois,
 )
@@ -63,7 +65,7 @@ class _SingleWellGraphWidget(QWidget):
         # Top combo + save button
         # ------------------------------------------------------------------ #
         self._combo = QComboBox(self)
-        self._update_combo_box()  # Initialize with no experiment type filter
+        self._rebuild_combo_box()
 
         self._save_btn = QPushButton("Save Image", self)
         self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
@@ -128,9 +130,41 @@ class _SingleWellGraphWidget(QWidget):
 
     @fov.setter
     def fov(self, fov: str) -> None:
+        old_fov = self._fov
         self._fov = fov
-        self._update_combo_box()  # Update combo box when FOV changes
-        self._on_combo_changed(self._combo.currentText())
+
+        # Check if current selection was disabled before update
+        current_text = self._combo.currentText()
+        was_disabled = False
+        if current_text and current_text != "None":
+            model = self._combo.model()
+            if isinstance(model, QStandardItemModel):
+                idx = self._combo.findText(current_text)
+                if idx >= 0:
+                    item = model.item(idx)
+                    if item:
+                        was_disabled = not (item.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+        # Update combo item availability based on new FOV data
+        self._update_combo_item_availability()
+
+        # Check if current selection is now enabled (after update)
+        is_now_enabled = False
+        if current_text and current_text != "None":
+            model = self._combo.model()
+            if isinstance(model, QStandardItemModel):
+                idx = self._combo.findText(current_text)
+                if idx >= 0:
+                    item = model.item(idx)
+                    if item:
+                        is_now_enabled = bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+        # Reload plot if:
+        # 1. FOV changed AND new FOV is not empty, OR
+        # 2. Current selection went from disabled to enabled
+        should_reload = (old_fov != fov and fov) or (was_disabled and is_now_enabled)
+        if should_reload:
+            self._reload_current_plot()
 
     @property
     def run_id(self) -> int | None:
@@ -140,10 +174,14 @@ class _SingleWellGraphWidget(QWidget):
     @run_id.setter
     def run_id(self, run_id: int | None) -> None:
         """Set the current run ID and refresh the plot."""
+        old_run_id = self._run_id
         self._run_id = run_id
         self._update_experiment_type()
-        self._update_combo_box()
-        self._on_combo_changed(self._combo.currentText())
+        # Rebuild combo box when run changes (experiment type may have changed)
+        self._rebuild_combo_box(preserve_selection=True)
+        # Reload plot if run changed
+        if old_run_id != run_id:
+            self._reload_current_plot()
 
     @property
     def engine(self) -> Engine | None:
@@ -216,8 +254,15 @@ class _SingleWellGraphWidget(QWidget):
 
         return (has_detection, has_extraction, has_analysis)
 
-    def _update_combo_box(self) -> None:
-        """Rebuild combo box based on experiment type and data availability."""
+    def _rebuild_combo_box(self, preserve_selection: bool = False) -> None:
+        """Rebuild combo box based on experiment type and data availability.
+
+        Parameters
+        ----------
+        preserve_selection : bool
+            If True, attempt to preserve the current selection.
+            If False, reset to "None".
+        """
         # Check which pipeline stages are available
         has_detection, has_extraction, has_analysis = (
             self._check_pipeline_stage_availability()
@@ -226,14 +271,14 @@ class _SingleWellGraphWidget(QWidget):
         # Get available plots filtered by experiment type
         combo_options = get_available_plots(
             group=AnalysisGroup.SINGLE_WELL,
-            has_detection=True,  # Show all plots, but we'll disable unavailable ones
+            has_detection=True,
             has_extraction=True,
             has_analysis=True,
             experiment_type=self._experiment_type,
         )
 
-        # Store current selection
-        current_text = self._combo.currentText()
+        # Store current selection if preserving
+        current_text = self._combo.currentText() if preserve_selection else "None"
 
         # Rebuild the combo box model
         model = QStandardItemModel()
@@ -273,22 +318,98 @@ class _SingleWellGraphWidget(QWidget):
                 # Disable item if data not available
                 if not is_available:
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
-                    # Make it visually distinct (grayed out)
-                    item.setForeground(Qt.GlobalColor.gray)
 
                 model.appendRow(item)
 
-        # Try to restore previous selection if still valid and enabled
-        idx = self._combo.findText(current_text)
-        if idx >= 0:
-            # Check if the item is enabled
-            item = model.item(idx)
-            if item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
-                self._combo.setCurrentIndex(idx)
+        # Try to restore previous selection if preserving and still valid
+        if preserve_selection:
+            idx = self._combo.findText(current_text)
+            if idx >= 0:
+                # Check if the item is enabled
+                item = model.item(idx)
+                if item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                    self._combo.setCurrentIndex(idx)
+                    return
+            self._combo.setCurrentIndex(0)
+            return
+
+        # Default to "None" if not preserving or selection not found
+        self._combo.setCurrentIndex(0)
+
+    def _update_combo_item_availability(self) -> None:
+        """Update combo items enabled/disabled state based on FOV data.
+
+        This method does NOT rebuild the combo or change the selection.
+        It only updates which items are clickable based on data availability.
+        """
+        # Check which pipeline stages are available for current FOV
+        has_detection, has_extraction, has_analysis = (
+            self._check_pipeline_stage_availability()
+        )
+
+        # Get the model
+        model = self._combo.model()
+        if not isinstance(model, QStandardItemModel):
+            return
+
+        # Create a mapping of plot names to their pipeline stage requirements
+        plot_requirements = {
+            product.name: product.pipeline_stage
+            for product in ANALYSIS_PRODUCTS
+            if product.group == AnalysisGroup.SINGLE_WELL
+        }
+
+        # Update each item's enabled/disabled state
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if not item:
+                continue
+
+            # Skip "None" and section headers
+            if item.text() == "None" or item.data(SECTION_ROLE):
+                continue
+
+            # Check if this plot's required stage is available
+            required_stage = plot_requirements.get(item.text())
+            is_available = True
+
+            if required_stage == PipelineStage.DETECTION:
+                is_available = has_detection
+            elif required_stage == PipelineStage.EXTRACTION:
+                is_available = has_detection and has_extraction
+            elif required_stage == PipelineStage.ANALYSIS:
+                is_available = has_detection and has_extraction and has_analysis
+
+            # Update item state
+            if is_available:
+                item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
             else:
-                self._combo.setCurrentIndex(0)  # Default to "None"
-        else:
-            self._combo.setCurrentIndex(0)  # Default to "None"
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+    def _reload_current_plot(self) -> None:
+        """Reload the currently selected plot with new data.
+
+        Or clear if data unavailable. This preserves the combo selection
+        but updates the plot content.
+        """
+        current_text = self._combo.currentText()
+        if not current_text or current_text == "None":
+            self.clear_plot()
+            return
+
+        # Check if current selection is enabled
+        model = self._combo.model()
+        if isinstance(model, QStandardItemModel):
+            idx = self._combo.findText(current_text)
+            if idx >= 0:
+                item = model.item(idx)
+                if item and not (item.flags() & Qt.ItemFlag.ItemIsEnabled):
+                    # Selection is disabled - clear plot but keep selection
+                    self.clear_plot()
+                    return
+
+        # Reload the plot with current selection
+        self._on_combo_changed(current_text)
 
     # ------------------------------------------------------------------ #
     # Public helpers used by plot functions
@@ -544,3 +665,253 @@ class _DisplaySingleWellTraces(QGroupBox):
                 with contextlib.suppress(ValueError):
                     numbers.append(int(part))
         return numbers
+
+
+class _MultilWellGraphWidget(QWidget):
+    """Multi-well graph widget using pyqtgraph for bar plots across conditions."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(200)
+
+        self._database_path: str | None = None
+        self._engine: Engine | None = None
+        self._run_id: int | None = None
+        self._experiment_type: str | None = None
+        self._conditions: dict[str, bool] = {}
+
+        # ------------------------------------------------------------------ #
+        # Top combo + conditions button + save button
+        # ------------------------------------------------------------------ #
+        self._combo = QComboBox(self)
+        self._rebuild_combo_box()  # Initialize with no experiment type filter
+
+        self._conditions_btn = QPushButton("Conditions...", self)
+        self._conditions_btn.setEnabled(False)
+        self._conditions_btn.clicked.connect(self._show_conditions_menu)
+
+        self._save_btn = QPushButton("Save Image", self)
+        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
+        self._save_btn.clicked.connect(self._on_save)
+
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(5)
+        top.addWidget(self._combo, 1)
+        top.addWidget(self._conditions_btn, 0)
+        top.addWidget(self._save_btn, 0)
+
+        # ------------------------------------------------------------------ #
+        # pyqtgraph canvas for bar plots
+        # ------------------------------------------------------------------ #
+        self.plot_widget = pg.PlotWidget(self)
+        self.plot_item = self.plot_widget.getPlotItem()
+        self.plot_item.showGrid(x=False, y=True, alpha=0.3)
+
+        # Global pg config tweaks (optional)
+        pg.setConfigOptions(antialias=False)
+
+        # Layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.addLayout(top)
+        layout.addWidget(self.plot_widget)
+
+        self._combo.currentTextChanged.connect(self._on_combo_changed)
+
+    # ------------------------------------------------------------------ #
+    # Properties
+    # ------------------------------------------------------------------ #
+    @property
+    def database_path(self) -> str | None:
+        return self._database_path
+
+    @database_path.setter
+    def database_path(self, path: Path | str | None) -> None:
+        self._database_path = str(path) if path is not None else None
+
+    @property
+    def conditions(self) -> dict[str, bool]:
+        """Return the dict of conditions and their enabled state."""
+        return self._conditions
+
+    @conditions.setter
+    def conditions(self, conditions: dict[str, bool]) -> None:
+        self._conditions = conditions
+
+    @property
+    def run_id(self) -> int | None:
+        """Return the current run ID (CaliResult.id)."""
+        return self._run_id
+
+    @run_id.setter
+    def run_id(self, run_id: int | None) -> None:
+        """Set the current run ID and refresh the plot."""
+        old_run_id = self._run_id
+        self._run_id = run_id
+        self._update_experiment_type()
+        # Rebuild combo box when run changes (experiment type may have changed)
+        self._rebuild_combo_box(preserve_selection=True)
+        # Reload plot if run changed
+        if old_run_id != run_id:
+            self._on_combo_changed(self._combo.currentText())
+
+    @property
+    def engine(self) -> Engine | None:
+        return self._engine
+
+    @engine.setter
+    def engine(self, engine: Engine | None) -> None:
+        self._engine = engine
+
+    # ------------------------------------------------------------------ #
+    # Private helpers
+    # ------------------------------------------------------------------ #
+    def _update_experiment_type(self) -> None:
+        """Query the current run's experiment type from the database."""
+        if self._engine is None or self._run_id is None:
+            self._experiment_type = None
+            return
+
+        with Session(self._engine) as session:
+            stmt = (
+                select(AnalysisSettings.experiment_type)
+                .join(CaliResult)
+                .where(col(CaliResult.id) == self._run_id)
+            )
+            result = session.exec(stmt).first()
+            self._experiment_type = result if result else None
+
+    def _rebuild_combo_box(self, preserve_selection: bool = False) -> None:
+        """Rebuild combo box based on experiment type.
+
+        Parameters
+        ----------
+        preserve_selection : bool
+            If True, attempt to preserve the current selection.
+            If False, reset to "None".
+        """
+        # Get available plots filtered by experiment type
+        combo_options = get_available_plots(
+            group=AnalysisGroup.MULTI_WELL,
+            has_detection=True,
+            has_extraction=True,
+            has_analysis=True,
+            experiment_type=self._experiment_type,
+        )
+
+        # Store current selection if preserving
+        current_text = self._combo.currentText() if preserve_selection else "None"
+
+        # Rebuild the combo box model
+        model = QStandardItemModel()
+        self._combo.setModel(model)
+
+        # Add "None" option
+        none_item = QStandardItem("None")
+        model.appendRow(none_item)
+
+        # Add categorized plots
+        for key, value in combo_options.items():
+            section = QStandardItem(key)
+            section.setFlags(Qt.ItemFlag.NoItemFlags)
+            section.setData(True, SECTION_ROLE)
+            model.appendRow(section)
+            for plot_name in value:
+                item = QStandardItem(plot_name)
+                model.appendRow(item)
+
+        # Try to restore previous selection if preserving and still valid
+        if preserve_selection:
+            idx = self._combo.findText(current_text)
+            if idx >= 0:
+                self._combo.setCurrentIndex(idx)
+                return
+
+        # Default to "None" if not preserving or selection not found
+        self._combo.setCurrentIndex(0)
+
+    # ------------------------------------------------------------------ #
+    # Public helpers used by plot functions
+    # ------------------------------------------------------------------ #
+    def clear_plot(self) -> None:
+        """Completely reset the plot before drawing a new one."""
+        plot = self.plot_item
+        if plot is None:
+            return
+
+        # Clear all items
+        plot.clear()
+
+        # Reset ViewBox transforms and ranges
+        vb = plot.getViewBox()
+        vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+        vb.invertY(False)
+        vb.setAspectLocked(False)
+        vb.enableAutoRange(x=True, y=True)
+
+        # Reset axes
+        for axis_name in ("left", "bottom"):
+            axis = plot.getAxis(axis_name)
+            axis.setTicks(None)
+            axis.setStyle(showValues=True)
+
+        # Reset labels & title
+        plot.setTitle("")
+        plot.setLabel("left", "")
+        plot.setLabel("bottom", "")
+
+    # ------------------------------------------------------------------ #
+    # Internal slots
+    # ------------------------------------------------------------------ #
+    def _on_combo_changed(self, text: str) -> None:
+        """Update the graph when the combo box is changed."""
+        self.clear_plot()
+        self._conditions_btn.setEnabled(text != "None")
+        if text == "None" or not self._engine:
+            return
+
+        plot_multi_well_data(self, text, self._engine, run_id=self._run_id)
+
+    def _on_save(self) -> None:
+        """Save the current plot as an image file."""
+        name = self._combo.currentText().replace(" ", "_")
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image",
+            name,
+            "PNG Image (*.png);;JPEG Image (*.jpg);;TIFF Image (*.tiff)",
+        )
+        if not filename:
+            return
+
+        pixmap = self.plot_widget.grab()
+        pixmap.save(filename)
+
+    def _show_conditions_menu(self) -> None:
+        """Show a context menu with condition checkboxes."""
+        menu = _PersistentMenu(self)
+
+        for condition, state in self._conditions.items():
+            action = QAction(condition, self)
+            action.setCheckable(True)
+            action.setChecked(state)
+            action.triggered.connect(
+                lambda checked, text=condition: self._on_condition_toggled(
+                    checked, text
+                )
+            )
+            menu.addAction(action)
+
+        # Show the menu at the button position
+        button_pos = self._conditions_btn.mapToGlobal(
+            self._conditions_btn.rect().bottomLeft()
+        )
+        menu.exec(button_pos)
+
+    def _on_condition_toggled(self, checked: bool, condition: str) -> None:
+        """Handle when a condition checkbox is toggled."""
+        self._conditions[condition] = checked
+        self._on_combo_changed(self._combo.currentText())
