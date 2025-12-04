@@ -168,9 +168,12 @@ def test_condition_label_consistency_across_wells(temp_db: TempDB) -> None:
 def test_condition_label_with_stimulation_status(temp_db: TempDB) -> None:
     """Test that stimulation status is appended to condition labels.
 
-    For evoked experiments.
+    Only for evoked experiments - spontaneous experiments should not have
+    stimulation suffixes even if ROI.stimulated is set.
     """
     engine, _ = temp_db
+
+    from cali._constants import EVOKED, SPONTANEOUS
 
     exp = Experiment(name="TestExperiment")
     plate = Plate(experiment=exp, name="TestPlate", plate_type="96-well")
@@ -208,17 +211,30 @@ def test_condition_label_with_stimulation_status(temp_db: TempDB) -> None:
             stimulated=None,
         )
 
-        # Test stimulated ROI
-        label_stim = _get_condition_label(well, roi_stimulated)
+        # Test EVOKED experiment - should add stimulation suffix
+        label_stim = _get_condition_label(well, roi_stimulated, EVOKED)
         assert label_stim == f"WT_Drug_{EVK_STIM}"
 
-        # Test non-stimulated ROI
-        label_non_stim = _get_condition_label(well, roi_non_stimulated)
+        label_non_stim = _get_condition_label(well, roi_non_stimulated, EVOKED)
         assert label_non_stim == f"WT_Drug_{EVK_NON_STIM}"
 
-        # Test ROI without stimulation info (spontaneous experiment)
-        label_no_stim = _get_condition_label(well, roi_no_stim_info)
-        assert label_no_stim == "WT_Drug"  # No suffix
+        # Test SPONTANEOUS experiment - should NOT add stimulation suffix
+        # even if ROI has stimulated attribute set
+        label_stim_spont = _get_condition_label(well, roi_stimulated, SPONTANEOUS)
+        assert label_stim_spont == "WT_Drug"  # No suffix for spontaneous
+
+        label_non_stim_spont = _get_condition_label(
+            well, roi_non_stimulated, SPONTANEOUS
+        )
+        assert label_non_stim_spont == "WT_Drug"  # No suffix for spontaneous
+
+        # Test ROI without stimulation info
+        label_no_stim = _get_condition_label(well, roi_no_stim_info, EVOKED)
+        assert label_no_stim == "WT_Drug"  # No suffix when stimulated is None
+
+        # Test without experiment_type (backward compatibility)
+        label_no_exp_type = _get_condition_label(well, roi_stimulated)
+        assert label_no_exp_type == "WT_Drug"  # No suffix without experiment type
 
         # Test without passing ROI (backward compatibility)
         label_no_roi = _get_condition_label(well)

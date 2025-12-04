@@ -13,8 +13,8 @@ import pyqtgraph as pg
 from pyqtgraph import BarGraphItem
 from sqlmodel import Session, col, select
 
-from cali._constants import EVK_NON_STIM, EVK_STIM
-from cali.sqlmodel import FOV, ROI, DataAnalysis, Well
+from cali._constants import EVK_NON_STIM, EVK_STIM, EVOKED
+from cali.sqlmodel import FOV, ROI, AnalysisSettings, DataAnalysis, Well
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -31,7 +31,9 @@ class BarPlotData(TypedDict):
     fov_values_list: list[np.ndarray]
 
 
-def _get_condition_label(well: Well, roi: ROI | None = None) -> str:
+def _get_condition_label(
+    well: Well, roi: ROI | None = None, experiment_type: str | None = None
+) -> str:
     """Get a human-readable label for a well's conditions.
 
     Parameters
@@ -40,6 +42,10 @@ def _get_condition_label(well: Well, roi: ROI | None = None) -> str:
         Well object with conditions
     roi : ROI | None
         Optional ROI to include stimulation status for evoked experiments
+    experiment_type : str | None
+        Type of experiment (e.g., "Evoked Activity", "Spontaneous Activity").
+        If provided and equals EVOKED, stimulation status will be appended
+        for ROIs with stimulated attribute.
 
     Returns
     -------
@@ -56,8 +62,8 @@ def _get_condition_label(well: Well, roi: ROI | None = None) -> str:
         # Join condition names with underscore
         base_label = "_".join(c.name for c in sorted_conditions)
 
-    # Append stimulation status for evoked experiments
-    if roi is not None and roi.stimulated is not None:
+    # Append stimulation status ONLY for evoked experiments
+    if experiment_type == EVOKED and roi is not None and roi.stimulated is not None:
         stim_suffix = EVK_STIM if roi.stimulated else EVK_NON_STIM
         return f"{base_label}_{stim_suffix}"
 
@@ -86,6 +92,20 @@ def _query_roi_parameter_by_condition(
         Nested dict: {condition_label: {fov_name: [values]}}
     """
     with Session(engine) as session:
+        # Get experiment type if run_id is provided
+        experiment_type = None
+        if run_id is not None:
+            from cali.sqlmodel import CaliResult
+
+            stmt_exp_type = (
+                select(AnalysisSettings.experiment_type)
+                .join(
+                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
+                )
+                .where(CaliResult.id == run_id)
+            )
+            experiment_type = session.exec(stmt_exp_type).first()
+
         # Build query - start from DataAnalysis and join backwards
         stmt = (
             select(DataAnalysis, ROI, FOV, Well)
@@ -110,7 +130,7 @@ def _query_roi_parameter_by_condition(
                 continue
 
             # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi)
+            cond_label = _get_condition_label(well, roi, experiment_type)
 
             # Initialize nested structure if needed
             if cond_label not in data:
@@ -148,6 +168,20 @@ def _query_roi_attribute_by_condition(
         Nested dict: {condition_label: {fov_name: [values]}}
     """
     with Session(engine) as session:
+        # Get experiment type if run_id is provided
+        experiment_type = None
+        if run_id is not None:
+            from cali.sqlmodel import CaliResult
+
+            stmt_exp_type = (
+                select(AnalysisSettings.experiment_type)
+                .join(
+                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
+                )
+                .where(CaliResult.id == run_id)
+            )
+            experiment_type = session.exec(stmt_exp_type).first()
+
         # Build query - start from ROI and join to FOV and Well
         stmt = (
             select(ROI, FOV, Well)
@@ -174,7 +208,7 @@ def _query_roi_attribute_by_condition(
                 continue
 
             # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi)
+            cond_label = _get_condition_label(well, roi, experiment_type)
 
             # Initialize nested structure if needed
             if cond_label not in data:
@@ -206,6 +240,20 @@ def _query_fov_percentage_active(
         Nested dict: {condition_label: {fov_name: (percentage, n_total)}}
     """
     with Session(engine) as session:
+        # Get experiment type if run_id is provided
+        experiment_type = None
+        if run_id is not None:
+            from cali.sqlmodel import CaliResult
+
+            stmt_exp_type = (
+                select(AnalysisSettings.experiment_type)
+                .join(
+                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
+                )
+                .where(CaliResult.id == run_id)
+            )
+            experiment_type = session.exec(stmt_exp_type).first()
+
         # Get all ROIs grouped by FOV - start from ROI and join backwards
         stmt = (
             select(ROI, FOV, Well)
@@ -226,7 +274,7 @@ def _query_fov_percentage_active(
         data: dict[str, dict[str, tuple[int, int]]] = {}
         for roi, fov, well in results:
             # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi)
+            cond_label = _get_condition_label(well, roi, experiment_type)
 
             if cond_label not in data:
                 data[cond_label] = {}
