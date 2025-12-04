@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pyqtgraph as pg
 from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -526,7 +527,7 @@ class _MultilWellGraphWidget(QWidget):
         self._engine: Engine | None = None
         self._run_id: int | None = None
         self._experiment_type: str | None = None
-        self._conditions: dict[str, bool] = {}
+        self._conditions: dict[str, dict[str, bool | str]] = {}
 
         # ------------------------------------------------------------------ #
         # Top combo + conditions button + save button
@@ -582,12 +583,12 @@ class _MultilWellGraphWidget(QWidget):
         self._database_path = str(path) if path is not None else None
 
     @property
-    def conditions(self) -> dict[str, bool]:
+    def conditions(self) -> dict[str, dict[str, bool | str]]:
         """Return the dict of conditions and their enabled state."""
         return self._conditions
 
     @conditions.setter
-    def conditions(self, conditions: dict[str, bool]) -> None:
+    def conditions(self, conditions: dict[str, dict[str, bool | str]]) -> None:
         self._conditions = conditions
 
     @property
@@ -888,23 +889,85 @@ class _DisplaySingleWellTraces(QGroupBox):
         return numbers
 
 
-class _ConditionsDialog(QDialog):
-    """Dialog for reordering and toggling conditions via drag-and-drop."""
+class _ConditionItemWidget(QWidget):
+    """Widget for a single condition in the conditions dialog."""
 
-    def __init__(self, conditions: dict[str, bool], parent: QWidget) -> None:
-        """Initialize the conditions dialog.
+    # Available colors for conditions
+    COLORS: ClassVar[dict[str, str]] = {
+        "gray": "#808080",
+        "green": "#00FF00",
+        "magenta": "#FF00FF",
+        "red": "#FF0000",
+        "blue": "#0000FF",
+        "cyan": "#00FFFF",
+        "yellow": "#FFFF00",
+        "orange": "#FFA500",
+    }
+
+    def __init__(self, name: str, visible: bool, color: str, parent: QWidget) -> None:
+        """Initialize the condition item widget.
 
         Parameters
         ----------
-        conditions : dict[str, bool]
-            Dictionary of condition names and their enabled state
+        name : str
+            Condition name
+        visible : bool
+            Whether condition is visible
+        color : str
+            Color name for the condition
         parent : QWidget
             Parent widget
         """
         super().__init__(parent)
-        self.setWindowTitle("Condition Order and Visibility")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(10)
+
+        # Checkbox for visibility
+        self._checkbox = QCheckBox(name, self)
+        self._checkbox.setChecked(visible)
+        layout.addWidget(self._checkbox)
+
+        # Color combo box
+        self._color_combo = QComboBox(self)
+        for color_name in self.COLORS:
+            self._color_combo.addItem(color_name)
+        self._color_combo.setCurrentText(color)
+        layout.addWidget(self._color_combo)
+
+    def get_name(self) -> str:
+        """Return the condition name."""
+        return self._checkbox.text()  # type: ignore
+
+    def is_visible(self) -> bool:
+        """Return whether the condition is visible."""
+        return self._checkbox.isChecked()  # type: ignore
+
+    def get_color(self) -> str:
+        """Return the selected color."""
+        return self._color_combo.currentText()  # type: ignore
+
+
+class _ConditionsDialog(QDialog):
+    """Dialog for reordering and toggling conditions via drag-and-drop."""
+
+    def __init__(
+        self, conditions: dict[str, dict[str, bool | str]], parent: QWidget
+    ) -> None:
+        """Initialize the conditions dialog.
+
+        Parameters
+        ----------
+        conditions : dict[str, dict[str, bool | str]]
+            Dictionary of condition names to dicts with 'visible' and 'color' keys
+        parent : QWidget
+            Parent widget
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Condition Order, Visibility, and Color")
         self.setModal(True)
-        self.resize(400, 500)
+        # self.resize(500, 500)
 
         # Store original conditions
         self._original_conditions = conditions.copy()
@@ -915,20 +978,26 @@ class _ConditionsDialog(QDialog):
         self._list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         # Populate list with conditions
-        for condition, enabled in conditions.items():
-            item = QListWidgetItem(condition)
-            item.setFlags(
-                item.flags()
-                | Qt.ItemFlag.ItemIsUserCheckable
-                | Qt.ItemFlag.ItemIsDragEnabled
-            )
-            check_state = Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
-            item.setCheckState(check_state)
+        max(len(name) for name in conditions.keys())
+        for condition, cond_info in conditions.items():
+            enabled = bool(cond_info.get("visible", True))
+            color = str(cond_info.get("color", "gray"))
+
+            # Create item and custom widget
+            item = QListWidgetItem(self._list_widget)
+            widget = _ConditionItemWidget(condition, enabled, color, self._list_widget)
+
+            # Make item draggable
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled)
+
+            # Set the custom widget as the item widget
+            item.setSizeHint(widget.sizeHint())
             self._list_widget.addItem(item)
+            self._list_widget.setItemWidget(item, widget)
 
         # Instructions label
         instructions = QLabel(
-            "Drag conditions to reorder them. Uncheck to hide from plot.",
+            "Drag conditions to reorder them. Uncheck to hide. Select color for bars.",
             self,
         )
         instructions.setWordWrap(True)
@@ -947,19 +1016,25 @@ class _ConditionsDialog(QDialog):
         layout.addWidget(self._list_widget)
         layout.addWidget(button_box)
 
-    def get_conditions(self) -> dict[str, bool]:
-        """Return the reordered conditions with their enabled state.
+    def get_conditions(self) -> dict[str, dict[str, bool | str]]:
+        """Return the reordered conditions with their enabled state and color.
 
         Returns
         -------
-        dict[str, bool]
-            Dictionary of condition names in the new order with their enabled state
+        dict[str, dict[str, bool | str]]
+            Dictionary mapping condition name to dict with 'visible' and 'color' keys
         """
         conditions = {}
         for i in range(self._list_widget.count()):
             item = self._list_widget.item(i)
             if item is not None:
-                condition_name = item.text()
-                is_enabled = item.checkState() == Qt.CheckState.Checked
-                conditions[condition_name] = is_enabled
-        return conditions
+                widget = self._list_widget.itemWidget(item)
+                if isinstance(widget, _ConditionItemWidget):
+                    condition_name = widget.get_name()
+                    is_enabled = widget.is_visible()
+                    color = widget.get_color()
+                    conditions[condition_name] = {
+                        "visible": is_enabled,
+                        "color": color,
+                    }
+        return conditions  # type: ignore

@@ -22,6 +22,48 @@ if TYPE_CHECKING:
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 
 
+def _get_default_color(condition: str) -> str:
+    """Get the default color for a condition based on its name.
+
+    Parameters
+    ----------
+    condition : str
+        Condition name (e.g., "c1_g1_evk_stim")
+
+    Returns
+    -------
+    str
+        Color name: "green" for evk_stim, "magenta" for evk_non_stim, "gray" otherwise
+    """
+    if condition.endswith(EVK_STIM):
+        return "green"
+    elif condition.endswith(EVK_NON_STIM):
+        return "magenta"
+    else:
+        return "gray"
+
+
+def _get_default_conditions(
+    conditions: list[str],
+) -> dict[str, dict[str, bool | str]]:
+    """Create default conditions dict with colors based on condition names.
+
+    Parameters
+    ----------
+    conditions : list[str]
+        List of condition names
+
+    Returns
+    -------
+    dict[str, dict[str, bool | str]]
+        Dictionary mapping condition name to dict with 'visible' and 'color' keys
+    """
+    return {
+        cond: {"visible": True, "color": _get_default_color(cond)}
+        for cond in conditions
+    }
+
+
 class BarPlotData(TypedDict):
     """Type definition for bar plot data."""
 
@@ -536,10 +578,10 @@ def _create_pyqtgraph_bar_plot(
         Label for the bar in the legend
     """
     # Filter based on condition toggles and respect user-defined order
-    cond_list: dict[str, bool] = widget.conditions
+    cond_list: dict[str, dict[str, bool | str]] = widget.conditions
     if not cond_list or len(cond_list) != len(data["conditions"]):
-        # Initialize all conditions as enabled
-        cond_list = dict.fromkeys(data["conditions"], True)
+        # Initialize all conditions as enabled with default colors
+        cond_list = _get_default_conditions(data["conditions"])
         widget.conditions = cond_list
 
     # Create a mapping from condition name to data
@@ -557,7 +599,7 @@ def _create_pyqtgraph_bar_plot(
     filtered_data = [
         (cond, *data_map[cond])
         for cond in cond_list.keys()
-        if cond_list[cond] and cond in data_map
+        if cond_list[cond]["visible"] and cond in data_map
     ]
 
     if not filtered_data:
@@ -568,17 +610,20 @@ def _create_pyqtgraph_bar_plot(
         list, zip(*filtered_data)
     )
 
+    # Get colors for filtered conditions
+    filtered_colors = [cond_list[cond]["color"] for cond in filtered_conditions]
+
     plot_item = widget.plot_item
 
     # X positions for bars
     x = np.arange(len(filtered_conditions))
 
-    # Create bar graph
+    # Create bar graph with individual colors
     bar_graph = BarGraphItem(
         x=x,
         height=filtered_means,
         width=0.6,
-        brush=pg.mkBrush("gray"),
+        brushes=[pg.mkBrush(color) for color in filtered_colors],
     )
     plot_item.addItem(bar_graph)
 

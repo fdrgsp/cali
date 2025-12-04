@@ -517,7 +517,7 @@ def _get_spikes_over_threshold(
     if roi is None or not roi.data_analysis_history or not roi.traces_history:
         return None
 
-    # Use the first entry (legacy behavior)
+    # Use the first entry
     da = roi.data_analysis_history[0]
     trace = roi.traces_history[0]
 

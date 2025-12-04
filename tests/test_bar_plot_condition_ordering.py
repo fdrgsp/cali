@@ -29,10 +29,10 @@ def test_condition_ordering_logic() -> None:
 
     # User has reordered conditions (this is what widget.conditions contains)
     cond_list = {
-        "treatment_A": True,
-        "knockout": True,
-        "control": True,
-        "treatment_B": False,  # Hidden
+        "treatment_A": {"visible": True, "color": "green"},
+        "knockout": {"visible": True, "color": "gray"},
+        "control": {"visible": True, "color": "gray"},
+        "treatment_B": {"visible": False, "color": "magenta"},  # Hidden
     }
 
     # Create a mapping from condition name to data (same logic as in the function)
@@ -50,7 +50,7 @@ def test_condition_ordering_logic() -> None:
     filtered_data = [
         (cond, *data_map[cond])
         for cond in cond_list.keys()
-        if cond_list[cond] and cond in data_map
+        if cond_list[cond]["visible"] and cond in data_map
     ]
 
     # Extract conditions
@@ -84,7 +84,12 @@ def test_condition_ordering_preserves_new_order() -> None:
     }
 
     # User reverses the order
-    cond_list = {"D": True, "C": True, "B": True, "A": True}
+    cond_list = {
+        "D": {"visible": True, "color": "gray"},
+        "C": {"visible": True, "color": "gray"},
+        "B": {"visible": True, "color": "gray"},
+        "A": {"visible": True, "color": "gray"},
+    }
 
     data_map = {
         cond: (mean, sem, fov_vals)
@@ -99,7 +104,7 @@ def test_condition_ordering_preserves_new_order() -> None:
     filtered_data = [
         (cond, *data_map[cond])
         for cond in cond_list.keys()
-        if cond_list[cond] and cond in data_map
+        if cond_list[cond]["visible"] and cond in data_map
     ]
 
     filtered_conditions = [item[0] for item in filtered_data]
