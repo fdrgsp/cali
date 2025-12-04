@@ -710,6 +710,7 @@ AnalysisProduct(
     category="General",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
+# All multi-well bar plots with on-the-fly calculations are now implemented
 AnalysisProduct(
     name="Calcium Peak Events Global Synchrony Bar Plot",
     group=AnalysisGroup.MULTI_WELL,

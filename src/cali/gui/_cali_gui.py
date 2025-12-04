@@ -381,10 +381,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
 
-        # 2 pos data
         # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/multi_pos/"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/exp.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
@@ -394,9 +393,20 @@ class CaliGui(QMainWindow):
         # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
         # self._initialize_from_database(self._database_path, self._data_path)
 
-        self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        self._output_path = "tests/test_data/multi_pos/"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._output_path = "tests/test_data/multi_pos/"
+
+        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
+        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        # self._output_path = "tests/test_data/test_for_plot/"
+
+        self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
+        self._data_path = "/Volumes/T7 Shield/Phenix/out"
+        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        self._initialize_from_directories(
+            self._data_path, self._output_path, "phenix.cali"
+        )
 
         # fmt: on
         # _____________________________________________________________________________
@@ -447,6 +457,10 @@ class CaliGui(QMainWindow):
             d_path = Path(data_path)
             tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
             if tiff_list:
+                from rich import print
+
+                print("Configuring TiffCollectionReader...")
+                print(tiff_list)
                 # Show TiffCollectionWidget to configure TIFF files
                 self._tiff_collection_widget.set_tiff_files(tiff_list)
                 if self._tiff_collection_widget.exec():
