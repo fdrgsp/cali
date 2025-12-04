@@ -929,12 +929,20 @@ class _ConditionItemWidget(QWidget):
         self._checkbox.setChecked(visible)
         layout.addWidget(self._checkbox)
 
+        layout.addStretch(1)
+
         # Color combo box
         self._color_combo = QComboBox(self)
         for color_name in self.COLORS:
             self._color_combo.addItem(color_name)
         self._color_combo.setCurrentText(color)
         layout.addWidget(self._color_combo)
+
+        # Drag handle icon (three horizontal lines)
+        drag_handle = QLabel("≡", self)
+        drag_handle.setStyleSheet("font-size: 16px;")
+        drag_handle.setToolTip("Drag to reorder")
+        layout.addWidget(drag_handle)
 
     def get_name(self) -> str:
         """Return the condition name."""
