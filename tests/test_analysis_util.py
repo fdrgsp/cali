@@ -102,3 +102,167 @@ def test_get_overlap_roi_with_stimulated_area_mismatch_shape() -> None:
 
     with pytest.raises(ValueError, match="must have the same dimensions"):
         get_overlap_roi_with_stimulated_area(stim_mask, roi_mask)
+
+
+# ==================== Additional edge case tests ====================
+
+
+@pytest.mark.parametrize(
+    "roi_coords,stim_coords,expected_overlap",
+    [
+        # ROI and stimulation are identical
+        (
+            (slice(20, 40), slice(20, 40)),
+            (slice(20, 40), slice(20, 40)),
+            1.0,
+        ),
+        # ROI is subset of stimulation
+        (
+            (slice(25, 35), slice(25, 35)),
+            (slice(20, 40), slice(20, 40)),
+            1.0,
+        ),
+        # Stimulation is subset of ROI (partial overlap)
+        (
+            (slice(20, 50), slice(20, 50)),
+            (slice(30, 40), slice(30, 40)),
+            100.0 / 900.0,  # 10*10 / 30*30
+        ),
+        # No overlap at all
+        (
+            (slice(10, 20), slice(10, 20)),
+            (slice(50, 60), slice(50, 60)),
+            0.0,
+        ),
+        # Edge touching (no actual overlap)
+        (
+            (slice(10, 20), slice(10, 20)),
+            (slice(20, 30), slice(20, 30)),
+            0.0,
+        ),
+    ],
+)
+def test_get_overlap_parametrized(
+    roi_coords: tuple, stim_coords: tuple, expected_overlap: float
+) -> None:
+    """Parametrized test for various overlap scenarios."""
+    stim_mask = np.zeros((100, 100), dtype=np.uint8)
+    roi_mask = np.zeros((100, 100), dtype=np.uint8)
+
+    stim_mask[stim_coords] = 1
+    roi_mask[roi_coords] = 1
+
+    overlap = get_overlap_roi_with_stimulated_area(stim_mask, roi_mask)
+    assert abs(overlap - expected_overlap) < 1e-6
+
+
+def test_create_stimulation_mask_various_noise_levels(tmp_path: Path) -> None:
+    """Test create_stimulation_mask with different noise levels."""
+    # Low noise - should detect bright region clearly
+    img = np.random.randint(0, 30, (100, 100), dtype=np.uint8)
+    img[30:70, 30:70] = 250
+    file_path = tmp_path / "low_noise.tif"
+    tifffile.imwrite(file_path, img)
+
+    mask = create_stimulation_mask(str(file_path))
+    assert np.array_equal(np.unique(mask), [0, 1])
+    # Center should be detected
+    assert mask[50, 50] == 1
+
+
+def test_create_stimulation_mask_multiple_regions(tmp_path: Path) -> None:
+    """Test create_stimulation_mask with multiple bright regions."""
+    img = np.zeros((100, 100), dtype=np.uint8)
+    # Two separate bright regions
+    img[20:30, 20:30] = 200
+    img[70:80, 70:80] = 200
+
+    file_path = tmp_path / "multi_region.tif"
+    tifffile.imwrite(file_path, img)
+
+    mask = create_stimulation_mask(str(file_path))
+    assert mask.dtype == np.uint8
+    # Both regions should be detected
+    assert mask[25, 25] == 1
+    assert mask[75, 75] == 1
+
+
+def test_create_stimulation_mask_edge_region(tmp_path: Path) -> None:
+    """Test create_stimulation_mask with bright region at edge."""
+    img = np.random.randint(0, 50, (100, 100), dtype=np.uint8)
+    # Bright region at corner
+    img[0:20, 0:20] = 250
+
+    file_path = tmp_path / "edge_region.tif"
+    tifffile.imwrite(file_path, img)
+
+    mask = create_stimulation_mask(str(file_path))
+    assert mask.dtype == np.uint8
+    # Should handle edge regions
+    assert mask[10, 10] == 1
+
+
+def test_create_stimulation_mask_uniform_dark(tmp_path: Path) -> None:
+    """Test create_stimulation_mask with uniformly dark image."""
+    img = np.ones((100, 100), dtype=np.uint8) * 10
+
+    file_path = tmp_path / "uniform_dark.tif"
+    tifffile.imwrite(file_path, img)
+
+    mask = create_stimulation_mask(str(file_path))
+    # Result should be all zeros or all ones depending on threshold
+    # At minimum, should not crash and return valid mask
+    assert mask.dtype == np.uint8
+    assert mask.shape == (100, 100)
+
+
+def test_get_overlap_complex_shapes() -> None:
+    """Test get_overlap with complex non-rectangular shapes."""
+    stim_mask = np.zeros((100, 100), dtype=np.uint8)
+    roi_mask = np.zeros((100, 100), dtype=np.uint8)
+
+    # Create circular stimulation area
+    y, x = np.ogrid[:100, :100]
+    stim_circle = (x - 50) ** 2 + (y - 50) ** 2 <= 20**2
+    stim_mask[stim_circle] = 1
+
+    # Create circular ROI completely inside
+    roi_circle = (x - 50) ** 2 + (y - 50) ** 2 <= 10**2
+    roi_mask[roi_circle] = 1
+
+    overlap = get_overlap_roi_with_stimulated_area(stim_mask, roi_mask)
+    # ROI should be completely inside stimulation
+    assert overlap == 1.0
+
+
+def test_get_overlap_partial_circular() -> None:
+    """Test get_overlap with partially overlapping circles."""
+    stim_mask = np.zeros((100, 100), dtype=np.uint8)
+    roi_mask = np.zeros((100, 100), dtype=np.uint8)
+
+    y, x = np.ogrid[:100, :100]
+
+    # Stimulation circle centered at (40, 50)
+    stim_circle = (x - 40) ** 2 + (y - 50) ** 2 <= 15**2
+    stim_mask[stim_circle] = 1
+
+    # ROI circle centered at (60, 50) - partially overlapping
+    roi_circle = (x - 60) ** 2 + (y - 50) ** 2 <= 15**2
+    roi_mask[roi_circle] = 1
+
+    overlap = get_overlap_roi_with_stimulated_area(stim_mask, roi_mask)
+    # Should be partial overlap
+    assert 0.0 < overlap < 1.0
+
+
+def test_create_stimulation_mask_already_binary_zeros(tmp_path: Path) -> None:
+    """Test create_stimulation_mask with binary mask that's all zeros."""
+    img = np.zeros((100, 100), dtype=np.uint8)
+    img[20:40, 20:40] = 1
+
+    file_path = tmp_path / "binary_zeros.tif"
+    tifffile.imwrite(file_path, img)
+
+    mask = create_stimulation_mask(str(file_path))
+    # Should return the same binary mask
+    np.testing.assert_array_equal(mask, img)
