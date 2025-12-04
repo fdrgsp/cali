@@ -408,6 +408,15 @@ class CaliGui(QMainWindow):
         #     self._data_path, self._output_path, "phenix.cali"
         # )
 
+        # ===========================
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/multi_pos/"
+
+        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
+        # self._output_path = "tests/test_data/test_for_plot/"
+
         # fmt: on
         # _____________________________________________________________________________
 

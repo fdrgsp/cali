@@ -31,3 +31,6 @@ ask to claude:
 - add "database only" tab in the init widget to open a database without the actual data loading so only the plotting and analysis can be done.
 
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.
+
+
+- is there something wrong with the multithreading? it seems slower if I multithread...
