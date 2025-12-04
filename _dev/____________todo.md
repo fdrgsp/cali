@@ -32,5 +32,8 @@ ask to claude:
 
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.
 
-
 - is there something wrong with the multithreading? it seems slower if I multithread...
+
+- multi-plot is too slow, how can we fix this?
+
+- can we have burst oplots (analysis for calcium traces as well (and not only for spike analysis?)
