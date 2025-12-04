@@ -978,7 +978,6 @@ class _ConditionsDialog(QDialog):
         self._list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         # Populate list with conditions
-        max(len(name) for name in conditions.keys())
         for condition, cond_info in conditions.items():
             enabled = bool(cond_info.get("visible", True))
             color = str(cond_info.get("color", "gray"))
