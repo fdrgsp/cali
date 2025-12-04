@@ -85,7 +85,7 @@ def test_initialize_from_database_success(
     from cali.runner import CaliRunner
     from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
 
-    data_path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
+    data_path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
     db_path = tmp_path / "test.cali"
 
     # Create experiment with database
@@ -151,7 +151,7 @@ def test_initialize_from_directories_new_database(
     gui: CaliGui, qtbot: QtBot, tmp_path: Path
 ) -> None:
     """Test creating new database from directories."""
-    data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+    data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
     output_path = tmp_path
     db_name = "new_test.cali"
 
@@ -175,7 +175,7 @@ def test_initialize_from_directories_existing_db_no_overwrite(
     from cali.runner import CaliRunner
     from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
 
-    data_path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
+    data_path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
     db_name = "existing.cali"
 
     exp = Experiment(name="Existing", description="Existing experiment")
@@ -209,7 +209,7 @@ def test_initialize_from_directories_existing_db_overwrite(
     """Test overwriting existing database when user chooses to overwrite."""
     from cali.sqlmodel import save_experiment_to_database
 
-    data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+    data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
     db_name = "to_overwrite.cali"
 
     exp = Experiment(name="Old", description="Old experiment")
@@ -259,7 +259,7 @@ def test_initialize_appends_cali_extension(
     gui: CaliGui, qtbot: QtBot, tmp_path: Path
 ) -> None:
     """Test that .cali extension is automatically appended if missing."""
-    data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+    data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
     db_name = "test_db"  # No .cali extension
 
     gui._initialize_from_directories(str(data_path), str(tmp_path), db_name)
@@ -295,7 +295,7 @@ def test_initialize_updates_graph_properties(
     from cali.runner import CaliRunner
     from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
 
-    data_path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
+    data_path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
     db_path = tmp_path / "test.cali"
 
     exp = Experiment(name="Test", description="Test")

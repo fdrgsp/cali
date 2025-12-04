@@ -27,3 +27,5 @@ ask to claude:
 - add a button to reset settings in each tab to default values
 
 - is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
+
+- add "database only" tab in the init widget to open a database without the actual data loading so only the plotting and analysis can be done.

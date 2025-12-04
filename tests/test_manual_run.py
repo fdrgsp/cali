@@ -72,7 +72,7 @@ def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
     """Test manual execution of the pipeline components."""
     # Setup paths
-    dataset_path = Path("tests/test_data/2pos/evk.tensorstore.zarr")
+    dataset_path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
     if not dataset_path.exists():
         pytest.skip(f"Test data not found at {dataset_path}")
 

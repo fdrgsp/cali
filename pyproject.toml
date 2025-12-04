@@ -81,6 +81,7 @@ dev = [
     "pytest",
     "rich",
     "ruff",
+    "pytest-xdist>=3.8.0",
 ]
 
 [project.urls]

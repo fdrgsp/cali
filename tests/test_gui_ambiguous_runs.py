@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock
 
-import pytest
 from qtpy.QtWidgets import QApplication
 
 from cali.gui._run_selection_dialog import RunSelectionDialog
@@ -82,19 +81,3 @@ def test_run_selection_dialog_get_selected() -> None:
     # Select first item
     dialog._runs_list.setCurrentRow(0)
     assert dialog.get_selected_run_id() == 1
-
-
-@pytest.mark.skip(reason="Requires full GUI setup and interaction")
-def test_gui_handles_ambiguous_detection() -> None:
-    """Test that GUI properly catches and handles ambiguous detection errors.
-
-    This is a placeholder for manual/integration testing.
-    The actual test would require:
-    1. Creating a test database with multiple runs
-    2. Instantiating CaliGui
-    3. Triggering detection-only mode
-    4. Verifying dialog appears
-    5. Simulating user selection
-    6. Verifying correct run is used
-    """
-    pass
