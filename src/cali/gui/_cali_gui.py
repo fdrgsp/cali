@@ -401,12 +401,12 @@ class CaliGui(QMainWindow):
         # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
         # self._output_path = "tests/test_data/test_for_plot/"
 
-        self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
-        self._data_path = "/Volumes/T7 Shield/Phenix/out"
-        self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-        self._initialize_from_directories(
-            self._data_path, self._output_path, "phenix.cali"
-        )
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
+        # self._data_path = "/Volumes/T7 Shield/Phenix/out"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        # self._initialize_from_directories(
+        #     self._data_path, self._output_path, "phenix.cali"
+        # )
 
         # fmt: on
         # _____________________________________________________________________________
