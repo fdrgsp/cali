@@ -481,8 +481,8 @@ class _ExperimentTypeWidget(QWidget):
             self._experiment_type_combo.currentText(),
             self._led_power_equation_le.text(),
             self._led_pulse_duration_spin.value(),
-            self._parse_to_list(self._led_powers_le.text()),
-            self._parse_to_list(self._led_pulse_on_frames_le.text()),  # type: ignore
+            self._parse_float_list(self._led_powers_le.text()),
+            self._parse_int_list(self._led_pulse_on_frames_le.text()),
             self._stimulation_area_path_dialog.value(),
         )
 
@@ -518,14 +518,24 @@ class _ExperimentTypeWidget(QWidget):
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
-    def _parse_to_list(self, text: str) -> list[int | float]:
-        """Parse a comma-separated string into a list of floats."""
-        parsed: list[float | int] = []
+    def _parse_int_list(self, text: str) -> list[int]:
+        """Parse a comma-separated string into a list of integers."""
+        parsed: list[int] = []
         for val in text.split(","):
             val = val.strip()
             try:
-                power = float(val)
-                parsed.append(power)
+                parsed.append(int(float(val)))  # float() first handles "3.0" input
+            except ValueError:
+                continue
+        return parsed
+
+    def _parse_float_list(self, text: str) -> list[float]:
+        """Parse a comma-separated string into a list of floats."""
+        parsed: list[float] = []
+        for val in text.split(","):
+            val = val.strip()
+            try:
+                parsed.append(float(val))
             except ValueError:
                 continue
         return parsed

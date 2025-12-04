@@ -30,6 +30,4 @@ ask to claude:
 
 - add "database only" tab in the init widget to open a database without the actual data loading so only the plotting and analysis can be done.
 
-- the plate map is in the extraction settings gui but is not in the extraction setting object. this means that we cannot have different runs with different plate maps because the run will always use the last one saved in the extraction settings. How can we enable this? should we modify the model? or have the plate map as settings as well? what is the best approach? please evaluate the best options and fix it.
-
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.

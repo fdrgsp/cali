@@ -77,8 +77,19 @@ class CaliResult(SQLModel, table=True):
         Foreign key to extraction settings used (None for detection-only runs)
     analysis_settings_id: int | None
         Foreign key to analysis settings used (None for extraction-only runs)
+    plate_maps : dict[str, dict[str, str]] | None
+        Plate map configuration used for this specific run.
+        Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
+                 "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
+        Allows different runs to have different plate map configurations.
+    plate_map_hash : str | None
+        SHA256 hash of plate_maps for tracking changes
+    positions_detected : list[int] | None
+        List of position indices that completed detection
+    positions_extracted : list[int] | None
+        List of position indices that completed extraction
     positions_analyzed : list[int] | None
-        List of position indices that were analyzed
+        List of position indices that completed analysis
     traces : list[Traces]
         All trace results from this analysis run
     data_analysis_results : list[DataAnalysis]
@@ -102,6 +113,13 @@ class CaliResult(SQLModel, table=True):
         default=None, foreign_key="analysis_settings.id"
     )
 
+    # Plate map configuration for this specific run
+    # Stores the plate_maps used at the time of this analysis run,
+    # allowing different runs to have different plate map configurations
+    plate_maps: dict[str, dict[str, str]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+
     # Plate map versioning - hash of plate_maps dict to track changes
     plate_map_hash: str | None = Field(default=None)
 
@@ -122,7 +140,7 @@ class CaliResult(SQLModel, table=True):
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
-          positions_analyzed, plate_map_hash
+          positions_analyzed, plate_maps, plate_map_hash
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -137,6 +155,7 @@ class CaliResult(SQLModel, table=True):
             and self.positions_detected == other.positions_detected
             and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
+            and self.plate_maps == other.plate_maps
             and self.plate_map_hash == other.plate_map_hash
         )
 
@@ -144,6 +163,8 @@ class CaliResult(SQLModel, table=True):
         """Custom hash that excludes created_at for consistency with __eq__.
 
         Note: id is excluded since it's None before database insertion.
+        plate_maps is excluded from hash because it's a mutable dict,
+        but plate_map_hash captures its content.
         """
         return hash(
             (

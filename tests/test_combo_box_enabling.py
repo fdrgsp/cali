@@ -104,8 +104,8 @@ def test_combo_disabled_with_only_run_id(
     assert not has_ana
 
     # All items should still be disabled
-    # (55 plots: 47 spontaneous + 8 evoked, because exp_type is "Evoked Activity")
-    # (Added thresholded spike intensity heatmap)
+    # (61 plots: 47 spontaneous + 14 evoked, because exp_type is "Evoked Activity")
+    # (Added thresholded spike intensity heatmap + 6 new stim/non-stim heatmaps)
     model = widget._combo.model()
     disabled_count = sum(
         1
@@ -115,7 +115,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 55
+    assert disabled_count == 61
 
 
 def test_combo_enabled_with_fov_and_run_id(

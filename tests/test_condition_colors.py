@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from qtpy.QtWidgets import QWidget
 
 from cali.gui._pygraph_plot_widgets import _ConditionsDialog
-from cali.plot._multi_wells_plots._multi_well_bar_plot import (
+from cali.plot._multi_wells_plots._util import (
     _get_default_color,
     _get_default_conditions,
 )

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from cali.plot._multi_wells_plots._multi_well_bar_plot import BarPlotData
+    from cali.plot._multi_wells_plots._util import BarPlotData
 
 
 def test_condition_ordering_logic() -> None:

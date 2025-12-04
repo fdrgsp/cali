@@ -124,8 +124,8 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    # All items disabled (55 plots: 47 spontaneous + 8 evoked for "Evoked" exp_type)
-    assert disabled_count == 55
+    # All items disabled (61 plots: 47 spontaneous + 14 evoked for "Evoked" exp_type)
+    assert disabled_count == 61
 
 
 def test_combo_enabled_with_fov_and_run_id(

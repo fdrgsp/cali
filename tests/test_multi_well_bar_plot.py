@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sqlmodel import Session
 
 from cali._constants import EVK_NON_STIM, EVK_STIM
-from cali.plot._multi_wells_plots._multi_well_bar_plot import _get_condition_label
+from cali.plot._multi_wells_plots._util import _get_condition_label
 from cali.sqlmodel import ROI, Condition, Experiment, Plate, Well
 
 if TYPE_CHECKING:
@@ -52,13 +52,13 @@ def test_condition_label_ordering(temp_db: TempDB) -> None:
         session.refresh(well1)
         session.refresh(well2)
 
-        # Both should produce the same label (genotype before treatment)
+        # Both should produce the same label (treatment before genotype)
         label1 = _get_condition_label(well1)
         label2 = _get_condition_label(well2)
 
-        # Should always be genotype_treatment regardless of storage order
-        assert label1 == "WT_Drug"
-        assert label2 == "WT_Drug"
+        # Should always be treatment_genotype regardless of storage order
+        assert label1 == "Drug_WT"
+        assert label2 == "Drug_WT"
         assert label1 == label2
 
 
@@ -125,9 +125,8 @@ def test_condition_label_multiple_condition_types(temp_db: TempDB) -> None:
 
         label = _get_condition_label(well)
 
-        # Should be sorted alphabetically by condition_type:
-        # genotype, other, treatment
-        assert label == "KO_Special_Drug"
+        # Should be sorted by priority: treatment (1), genotype (2), other (999)
+        assert label == "Drug_KO_Special"
 
 
 def test_condition_label_consistency_across_wells(temp_db: TempDB) -> None:
@@ -161,7 +160,7 @@ def test_condition_label_consistency_across_wells(temp_db: TempDB) -> None:
 
         # All wells should produce the same label
         labels = [_get_condition_label(well) for well in wells]
-        assert all(label == "WT_Control" for label in labels)
+        assert all(label == "Control_WT" for label in labels)
         assert len(set(labels)) == 1  # All labels are identical
 
 
@@ -213,29 +212,29 @@ def test_condition_label_with_stimulation_status(temp_db: TempDB) -> None:
 
         # Test EVOKED experiment - should add stimulation suffix
         label_stim = _get_condition_label(well, roi_stimulated, EVOKED)
-        assert label_stim == f"WT_Drug_{EVK_STIM}"
+        assert label_stim == f"Drug_WT_{EVK_STIM}"
 
         label_non_stim = _get_condition_label(well, roi_non_stimulated, EVOKED)
-        assert label_non_stim == f"WT_Drug_{EVK_NON_STIM}"
+        assert label_non_stim == f"Drug_WT_{EVK_NON_STIM}"
 
         # Test SPONTANEOUS experiment - should NOT add stimulation suffix
         # even if ROI has stimulated attribute set
         label_stim_spont = _get_condition_label(well, roi_stimulated, SPONTANEOUS)
-        assert label_stim_spont == "WT_Drug"  # No suffix for spontaneous
+        assert label_stim_spont == "Drug_WT"  # No suffix for spontaneous
 
         label_non_stim_spont = _get_condition_label(
             well, roi_non_stimulated, SPONTANEOUS
         )
-        assert label_non_stim_spont == "WT_Drug"  # No suffix for spontaneous
+        assert label_non_stim_spont == "Drug_WT"  # No suffix for spontaneous
 
         # Test ROI without stimulation info
         label_no_stim = _get_condition_label(well, roi_no_stim_info, EVOKED)
-        assert label_no_stim == "WT_Drug"  # No suffix when stimulated is None
+        assert label_no_stim == "Drug_WT"  # No suffix when stimulated is None
 
         # Test without experiment_type (backward compatibility)
         label_no_exp_type = _get_condition_label(well, roi_stimulated)
-        assert label_no_exp_type == "WT_Drug"  # No suffix without experiment type
+        assert label_no_exp_type == "Drug_WT"  # No suffix without experiment type
 
         # Test without passing ROI (backward compatibility)
         label_no_roi = _get_condition_label(well)
-        assert label_no_roi == "WT_Drug"  # No suffix
+        assert label_no_roi == "Drug_WT"  # No suffix

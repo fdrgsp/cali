@@ -286,13 +286,15 @@ class CaliRunner:
 
         try:
             with Session(engine) as session:
-                # Get experiment with plate data for plate_map_hash computation
+                # Get experiment with plate data for plate_map computation
                 from cali.sqlmodel._model import Experiment as ExperimentModel
 
                 exp_in_db = session.get(ExperimentModel, experiment.id)
+                plate_maps: dict[str, dict[str, str]] | None = None
                 plate_map_hash: str | None = None
-                if exp_in_db and exp_in_db.plate:
-                    plate_map_hash = compute_plate_map_hash(exp_in_db.plate.plate_maps)
+                if exp_in_db and exp_in_db.plate and exp_in_db.plate.plate_maps:
+                    plate_maps = exp_in_db.plate.plate_maps
+                    plate_map_hash = compute_plate_map_hash(plate_maps)
 
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
@@ -377,6 +379,7 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
+                            plate_maps=plate_maps,
                             plate_map_hash=plate_map_hash,
                             positions_detected=list(positions_for_detection),
                         )
@@ -472,6 +475,7 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
+                            plate_maps=plate_maps,
                             plate_map_hash=plate_map_hash,
                             positions_detected=sorted(positions_processed_detection),
                         )
@@ -556,7 +560,13 @@ class CaliRunner:
 
                         # Eagerly load stimulation_mask relationship before detaching
                         # This prevents lazy loading errors in threads
-                        _ = analysis_settings_obj.stimulation_mask
+                        if analysis_settings_obj.stimulation_mask is not None:
+                            # Access all mask attributes to force SQLAlchemy to
+                            # load them
+                            _ = analysis_settings_obj.stimulation_mask.coords_y
+                            _ = analysis_settings_obj.stimulation_mask.coords_x
+                            _ = analysis_settings_obj.stimulation_mask.height
+                            _ = analysis_settings_obj.stimulation_mask.width
 
                     if analysis_settings_obj is not None:
                         # Detach for thread safety
@@ -606,6 +616,7 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=analysis_settings_id,
+                                    plate_maps=plate_maps,
                                     plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
@@ -621,6 +632,7 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=None,
+                                    plate_maps=plate_maps,
                                     plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
@@ -1461,6 +1473,7 @@ class CaliRunner:
         detection_settings_id: int,
         extraction_settings_id: int | None,
         analysis_settings_id: int | None,
+        plate_maps: dict[str, dict[str, str]] | None = None,
         plate_map_hash: str | None = None,
         positions_detected: list[int] | None = None,
         positions_extracted: list[int] | None = None,
@@ -1487,6 +1500,10 @@ class CaliRunner:
             Extraction settings ID (None for detection-only)
         analysis_settings_id : int | None
             Analysis settings ID (None for extraction-only or detection-only)
+        plate_maps : dict[str, dict[str, str]] | None
+            Plate map configuration for this run.
+            Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
+                     "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
         plate_map_hash : str | None
             Hash of the plate_maps dict to track changes. Different plate maps
             create separate results even with identical extraction settings.
@@ -1826,6 +1843,7 @@ class CaliRunner:
             detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             analysis_settings_id=analysis_settings_id,
+            plate_maps=plate_maps,
             plate_map_hash=plate_map_hash,
             positions_detected=positions_detected,
             positions_extracted=positions_extracted,
