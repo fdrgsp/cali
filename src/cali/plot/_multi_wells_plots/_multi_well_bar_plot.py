@@ -13,6 +13,7 @@ import pyqtgraph as pg
 from pyqtgraph import BarGraphItem
 from sqlmodel import Session, col, select
 
+from cali._constants import EVK_NON_STIM, EVK_STIM
 from cali.sqlmodel import FOV, ROI, DataAnalysis, Well
 
 if TYPE_CHECKING:
@@ -30,28 +31,37 @@ class BarPlotData(TypedDict):
     fov_values_list: list[np.ndarray]
 
 
-def _get_condition_label(well: Well) -> str:
+def _get_condition_label(well: Well, roi: ROI | None = None) -> str:
     """Get a human-readable label for a well's conditions.
 
     Parameters
     ----------
     well : Well
         Well object with conditions
+    roi : ROI | None
+        Optional ROI to include stimulation status for evoked experiments
 
     Returns
     -------
     str
-        Formatted condition label (e.g., "c1_g1" for two conditions)
+        Formatted condition label (e.g., "c1_g1" for two conditions,
+        or "c1_g1_evk_stim" for evoked experiments with stimulated ROIs)
     """
     if not well.conditions:
-        return f"Well_{well.name}"
+        base_label = f"Well_{well.name}"
+    else:
+        # Sort conditions by condition_type to ensure consistent naming order
+        # (e.g., genotype always before treatment)
+        sorted_conditions = sorted(well.conditions, key=lambda c: c.condition_type)
+        # Join condition names with underscore
+        base_label = "_".join(c.name for c in sorted_conditions)
 
-    # Sort conditions by condition_type to ensure consistent naming order
-    # (e.g., genotype always before treatment)
-    sorted_conditions = sorted(well.conditions, key=lambda c: c.condition_type)
+    # Append stimulation status for evoked experiments
+    if roi is not None and roi.stimulated is not None:
+        stim_suffix = EVK_STIM if roi.stimulated else EVK_NON_STIM
+        return f"{base_label}_{stim_suffix}"
 
-    # Join condition names with underscore
-    return "_".join(c.name for c in sorted_conditions)
+    return base_label
 
 
 def _query_roi_parameter_by_condition(
@@ -93,14 +103,14 @@ def _query_roi_parameter_by_condition(
 
         # Group by condition and FOV
         data: dict[str, dict[str, list[float]]] = {}
-        for analysis, _roi, fov, well in results:
+        for analysis, roi, fov, well in results:
             # Get value for this ROI
             value = getattr(analysis, parameter, None)
             if value is None:
                 continue
 
-            # Get condition label
-            cond_label = _get_condition_label(well)
+            # Get condition label (including stimulation status for evoked exps)
+            cond_label = _get_condition_label(well, roi)
 
             # Initialize nested structure if needed
             if cond_label not in data:
@@ -163,8 +173,8 @@ def _query_roi_attribute_by_condition(
             if value is None:
                 continue
 
-            # Get condition label
-            cond_label = _get_condition_label(well)
+            # Get condition label (including stimulation status for evoked exps)
+            cond_label = _get_condition_label(well, roi)
 
             # Initialize nested structure if needed
             if cond_label not in data:
@@ -215,7 +225,8 @@ def _query_fov_percentage_active(
         # Group by condition and FOV, count active vs total
         data: dict[str, dict[str, tuple[int, int]]] = {}
         for roi, fov, well in results:
-            cond_label = _get_condition_label(well)
+            # Get condition label (including stimulation status for evoked exps)
+            cond_label = _get_condition_label(well, roi)
 
             if cond_label not in data:
                 data[cond_label] = {}

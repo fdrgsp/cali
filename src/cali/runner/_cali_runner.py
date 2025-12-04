@@ -511,10 +511,10 @@ class CaliRunner:
                         )
 
                         # Load stimulation mask from file if path provided but
-                        # mask not yet loaded
+                        # mask ID not yet set
                         if (
                             analysis_settings_obj.stimulation_mask_path
-                            and analysis_settings_obj.stimulation_mask is None
+                            and analysis_settings_obj.stimulation_mask_id is None
                         ):
                             import tifffile
 

@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Session
 
+from cali._constants import EVK_NON_STIM, EVK_STIM
 from cali.plot._multi_wells_plots._multi_well_bar_plot import _get_condition_label
-from cali.sqlmodel import Condition, Experiment, Plate, Well
+from cali.sqlmodel import ROI, Condition, Experiment, Plate, Well
 
 if TYPE_CHECKING:
     from tests.conftest import TempDB
@@ -162,3 +163,63 @@ def test_condition_label_consistency_across_wells(temp_db: TempDB) -> None:
         labels = [_get_condition_label(well) for well in wells]
         assert all(label == "WT_Control" for label in labels)
         assert len(set(labels)) == 1  # All labels are identical
+
+
+def test_condition_label_with_stimulation_status(temp_db: TempDB) -> None:
+    """Test that stimulation status is appended to condition labels.
+
+    For evoked experiments.
+    """
+    engine, _ = temp_db
+
+    exp = Experiment(name="TestExperiment")
+    plate = Plate(experiment=exp, name="TestPlate", plate_type="96-well")
+
+    genotype = Condition(name="WT", condition_type="genotype", color="blue")
+    treatment = Condition(name="Drug", condition_type="treatment", color="green")
+
+    well = Well(
+        plate=plate,
+        name="A1",
+        row=0,
+        column=0,
+        conditions=[genotype, treatment],
+    )
+
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        session.refresh(well)
+
+        # Create ROIs with different stimulation statuses
+        roi_stimulated = ROI(
+            label_value=1,
+            fov_id=None,  # Not important for this test
+            stimulated=True,
+        )
+        roi_non_stimulated = ROI(
+            label_value=2,
+            fov_id=None,
+            stimulated=False,
+        )
+        roi_no_stim_info = ROI(
+            label_value=3,
+            fov_id=None,
+            stimulated=None,
+        )
+
+        # Test stimulated ROI
+        label_stim = _get_condition_label(well, roi_stimulated)
+        assert label_stim == f"WT_Drug_{EVK_STIM}"
+
+        # Test non-stimulated ROI
+        label_non_stim = _get_condition_label(well, roi_non_stimulated)
+        assert label_non_stim == f"WT_Drug_{EVK_NON_STIM}"
+
+        # Test ROI without stimulation info (spontaneous experiment)
+        label_no_stim = _get_condition_label(well, roi_no_stim_info)
+        assert label_no_stim == "WT_Drug"  # No suffix
+
+        # Test without passing ROI (backward compatibility)
+        label_no_roi = _get_condition_label(well)
+        assert label_no_roi == "WT_Drug"  # No suffix
