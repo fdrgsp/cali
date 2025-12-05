@@ -48,8 +48,6 @@ from cali._constants import (
 from ._util import _BrowseWidget, create_divider_line
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from cali.sqlmodel import AnalysisSettings
 
 
@@ -316,20 +314,6 @@ class _AnalysisGUI(QWidget):
                 else None
             ),
         )
-
-    def to_json(self, path: str | Path) -> None:
-        """Save the detection settings to a JSON file.
-
-        Parameters
-        ----------
-        path : str | Path
-            The file path to save the JSON settings.
-        """
-        import json
-        from dataclasses import asdict
-
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(asdict(self.value()), f, indent=4)
 
 
 class _ExperimentTypeWidget(QWidget):

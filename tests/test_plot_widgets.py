@@ -18,7 +18,7 @@ from qtpy.QtGui import QStandardItemModel
 from sqlmodel import Session, create_engine, select
 
 from cali.gui import CaliGui
-from cali.gui._detection_gui import CellposeSettings
+from cali.gui._detection_gui import CellposeSettingsData
 from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 from cali.sqlmodel._model import FOV
 
@@ -439,7 +439,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
 
     # Create custom settings
     custom_model_path = str(tmp_path / "custom_model.pth")
-    custom_settings = CellposeSettings(
+    custom_settings = CellposeSettingsData(
         model_type="custom",
         model_path=custom_model_path,
         diameter=30,
@@ -458,7 +458,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
     assert detection_wdg._cellprob_threshold_spin.value() == -0.5
 
     # Switch to default model
-    default_settings = CellposeSettings()
+    default_settings = CellposeSettingsData()
     detection_wdg.setValue(default_settings)
     qtbot.wait(50)
 
@@ -499,7 +499,7 @@ def test_detection_model_findtext_handles_missing_item(qtbot: QtBot) -> None:
     detection_wdg = gui._detection_wdg._cellpose_wdg
 
     # Try to set a non-existent model type
-    invalid_settings = CellposeSettings(
+    invalid_settings = CellposeSettingsData(
         model_type="nonexistent_model",
         diameter=25,
     )

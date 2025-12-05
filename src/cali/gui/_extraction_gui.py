@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
@@ -30,9 +29,6 @@ from cali.sqlmodel import ExtractionSettings
 from ._util import (
     create_divider_line,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -196,20 +192,6 @@ class _ExtractionGUI(QWidget):
         )
 
         return settings
-
-    def to_json(self, path: str | Path) -> None:
-        """Save the detection settings to a JSON file.
-
-        Parameters
-        ----------
-        path : str | Path
-            The file path to save the JSON settings.
-        """
-        import json
-        from dataclasses import asdict
-
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(asdict(self.value()), f, indent=4)
 
 
 class _NeuropilCorrectionWidget(QWidget):

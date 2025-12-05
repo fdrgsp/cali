@@ -16,8 +16,6 @@ ask to claude:
 
 - general improvement of how the database is handled during cali pipeline
 
-- ⚡️ menu to save and load settings in CaliGui, they are dataclasses so we can save as json
-
 - code and widget to load own label images for segmentation
 
 - ⁇ to simplify the code, is it worth to have the runs in a different db???
@@ -39,3 +37,6 @@ ask to claude:
 - make overall markdown of cali runner pipeline
 
 - inferred spike raster is not continuous...even if there are no gap within the timepoint...
+
+- add connectivity, etc...
+
