@@ -395,7 +395,7 @@ def test_load_settings_with_evoked_experiment_data(
                 "led_pulse_duration": 5.0,
                 "led_pulse_powers": [10.0, 20.0, 30.0],
                 "led_pulse_on_frames": [10, 20, 30],
-                "stimulation_area_path": "/path/to/stim/mask.tif",
+                "stimulation_area_path": r"/path/to/stim/mask.tif",
             },
         },
     }
