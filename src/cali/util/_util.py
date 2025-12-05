@@ -365,19 +365,6 @@ def update_fovs_in_database(
     try:
         with Session(engine) as session:
             for fov in fov_list:
-                # Transfer temporary attributes to relationships
-                # (ExtractionRunner stores traces in _new_traces temporarily)
-                for roi in fov.rois:
-                    if hasattr(roi, "_new_traces"):
-                        for trace in roi._new_traces:
-                            roi.traces_history.append(trace)
-                        delattr(roi, "_new_traces")
-
-                    if hasattr(roi, "_new_data_analysis"):
-                        for data_analysis in roi._new_data_analysis:
-                            roi.data_analysis_history.append(data_analysis)
-                        delattr(roi, "_new_data_analysis")
-
                 # Load existing FOV from database by position_index to get the ID
                 from sqlmodel import select
 
@@ -403,6 +390,29 @@ def update_fovs_in_database(
                         if db_roi:
                             roi.id = db_roi.id
                             roi.fov_id = db_roi.fov_id
+
+                # Transfer temporary attributes to relationships
+                # (ExtractionRunner stores traces in _new_traces temporarily)
+                for roi in fov.rois:
+                    if hasattr(roi, "_new_traces"):
+                        for trace in roi._new_traces:
+                            roi.traces_history.append(trace)
+                        delattr(roi, "_new_traces")
+
+                    if hasattr(roi, "_new_data_analysis"):
+                        for data_analysis in roi._new_data_analysis:
+                            roi.data_analysis_history.append(data_analysis)
+                        delattr(roi, "_new_data_analysis")
+
+                # Process temporary new FOV analysis
+                # Add directly to the session instead of using relationship
+                # (avoids DetachedInstanceError when fov isn't in session)
+                if hasattr(fov, "_new_fov_analysis"):
+                    for fov_analysis in fov._new_fov_analysis:
+                        # Set the fov_id directly since we now know the ID
+                        fov_analysis.fov_id = fov.id
+                        session.add(fov_analysis)
+                    delattr(fov, "_new_fov_analysis")
 
                 session.merge(fov)
             session.commit()

@@ -131,6 +131,7 @@ def _query_roi_parameter_by_condition(
     engine: Engine,
     parameter: str,
     run_id: int | None = None,
+    include_stim_status: bool = False,
 ) -> dict[str, dict[str, list[float]]]:
     """Query ROI-level parameters grouped by condition and FOV.
 
@@ -142,6 +143,9 @@ def _query_roi_parameter_by_condition(
         Parameter name from DataAnalysis (e.g., 'dec_dff_frequency')
     run_id : int | None
         Filter by specific analysis run
+    include_stim_status : bool
+        If True, include stimulation status in condition labels for evoked experiments.
+        Default is False (general plots don't split by stim status).
 
     Returns
     -------
@@ -149,9 +153,9 @@ def _query_roi_parameter_by_condition(
         Nested dict: {condition_label: {fov_name: [values]}}
     """
     with Session(engine) as session:
-        # Get experiment type if run_id is provided
+        # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
-        if run_id is not None:
+        if include_stim_status and run_id is not None:
             from cali.sqlmodel import CaliResult
 
             stmt_exp_type = (
@@ -186,8 +190,11 @@ def _query_roi_parameter_by_condition(
             if value is None:
                 continue
 
-            # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi, experiment_type)
+            # Get condition label (only include stim status if requested)
+            if include_stim_status:
+                cond_label = _get_condition_label(well, roi, experiment_type)
+            else:
+                cond_label = _get_condition_label(well)
 
             # Initialize nested structure if needed
             if cond_label not in data:
@@ -204,6 +211,7 @@ def _query_roi_attribute_by_condition(
     engine: Engine,
     attribute: str,
     run_id: int | None = None,
+    include_stim_status: bool = False,
 ) -> dict[str, dict[str, list[float]]]:
     """Query ROI-table attributes grouped by condition and FOV.
 
@@ -218,6 +226,9 @@ def _query_roi_attribute_by_condition(
         Attribute name from ROI (e.g., 'cell_size')
     run_id : int | None
         Filter by specific analysis run (to get ROIs from that run)
+    include_stim_status : bool
+        If True, include stimulation status in condition labels for evoked experiments.
+        Default is False (general plots don't split by stim status).
 
     Returns
     -------
@@ -225,9 +236,9 @@ def _query_roi_attribute_by_condition(
         Nested dict: {condition_label: {fov_name: [values]}}
     """
     with Session(engine) as session:
-        # Get experiment type if run_id is provided
+        # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
-        if run_id is not None:
+        if include_stim_status and run_id is not None:
             from cali.sqlmodel import CaliResult
 
             stmt_exp_type = (
@@ -264,8 +275,11 @@ def _query_roi_attribute_by_condition(
             if value is None:
                 continue
 
-            # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi, experiment_type)
+            # Get condition label (only include stim status if requested)
+            if include_stim_status:
+                cond_label = _get_condition_label(well, roi, experiment_type)
+            else:
+                cond_label = _get_condition_label(well)
 
             # Initialize nested structure if needed
             if cond_label not in data:

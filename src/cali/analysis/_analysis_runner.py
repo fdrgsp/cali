@@ -46,7 +46,7 @@ class AnalysisRunner:
 
     def cancel(self) -> None:
         """Request cancellation of the analysis process."""
-        cali_logger.info("🗑️ Analysis cancellation requested...")
+        cali_logger.info("🚮 Analysis cancellation requested...")
         self._cancellation_event.set()
 
     def run(
@@ -210,6 +210,17 @@ class AnalysisRunner:
                 roi._new_data_analysis.append(data_analysis)
                 roi.active = active
                 roi.stimulated = stimulated
+
+        # Compute FOV-level analysis (correlation/synchrony) after all ROIs processed
+        if not self._check_for_abort_requested():
+            from cali.analysis._fov_analysis import compute_fov_analysis
+
+            fov_analysis = compute_fov_analysis(fov, analysis_settings)
+            if fov_analysis is not None:
+                # Store in temporary attribute for later commit``
+                if not hasattr(fov, "_new_fov_analysis"):
+                    fov._new_fov_analysis = []
+                fov._new_fov_analysis.append(fov_analysis)
 
         return fov
 

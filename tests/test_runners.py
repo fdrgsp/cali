@@ -28,6 +28,7 @@ from cali.sqlmodel import (
     DetectionSettings,
     Experiment,
     ExtractionSettings,
+    FOVAnalysis,
     Mask,
     Traces,
 )
@@ -2823,5 +2824,128 @@ def test_force_replaces_results(
             # Verify they are new (active should be None)
             for r in rois_2:
                 assert r.active is None, "ROI should be new and not have active=True"
+    finally:
+        engine.dispose()
+
+
+def test_fov_analysis_computed_on_full_pipeline(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that FOVAnalysis is computed and stored when running full pipeline.
+
+    Note: FOVAnalysis is only created if there are at least 2 active ROIs
+    with valid trace data. With mock data, we verify the database schema
+    and relationships work correctly.
+    """
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose",
+        model_type=MODEL,
+        diameter=30.0,
+    )
+
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2,
+        neuropil_min_pixels=50,
+        dff_window=100,
+        threads=THREADS,
+    )
+
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0,
+        threads=THREADS,
+    )
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # Get FOVs and check the analysis relationship works
+            fovs = session.exec(select(FOV)).all()
+            assert len(fovs) == 2, "Should have 2 FOVs"
+
+            # Verify that fov_analysis_history relationship works
+            for fov in fovs:
+                # The relationship should be accessible even if empty
+                _ = fov.fov_analysis_history
+
+            # Get any FOVAnalysis that was created
+            fov_analyses = session.exec(select(FOVAnalysis)).all()
+
+            # With mock data, FOVAnalysis may or may not be created depending
+            # on whether peaks are detected. Check that if created, fields
+            # are properly populated.
+            for fov_analysis in fov_analyses:
+                assert fov_analysis.fov_id is not None
+                assert fov_analysis.analysis_result_id is not None
+                assert fov_analysis.active_roi_labels is not None
+                assert isinstance(fov_analysis.active_roi_labels, list)
+                # Matrices should be present if FOVAnalysis was created
+                assert fov_analysis.calcium_peaks_correlation_matrix is not None
+                assert fov_analysis.calcium_peaks_synchrony_matrix is not None
+
+            # Verify CaliResult relationship
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            # The relationship should be accessible
+            _ = result.fov_analysis_results
+
+    finally:
+        engine.dispose()
+
+
+def test_fov_analysis_not_created_without_analysis(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that FOVAnalysis is NOT created when only running detection/extraction."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose",
+        model_type=MODEL,
+        diameter=30.0,
+    )
+
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2,
+        neuropil_min_pixels=50,
+        dff_window=100,
+        threads=THREADS,
+    )
+
+    # Run without analysis settings
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # Verify no FOVAnalysis was created (no analysis settings)
+            fov_analyses = session.exec(select(FOVAnalysis)).all()
+            assert len(fov_analyses) == 0, "No FOVAnalysis without analysis settings"
     finally:
         engine.dispose()

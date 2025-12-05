@@ -16,7 +16,6 @@ from cali.logger import cali_logger
 from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
-from cali.sqlmodel._plate_map_util import compute_plate_map_hash
 from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
@@ -286,22 +285,6 @@ class CaliRunner:
 
         try:
             with Session(engine) as session:
-                # Get experiment with plate data for plate_map computation
-                from cali.sqlmodel._model import Experiment as ExperimentModel
-
-                exp_in_db = session.get(ExperimentModel, experiment.id)
-                plate_maps: dict[str, dict[str, str]] | None = None
-                plate_map_hash: str | None = None
-                if exp_in_db and exp_in_db.plate and exp_in_db.plate.plate_maps:
-                    plate_maps = exp_in_db.plate.plate_maps
-                    plate_map_hash = compute_plate_map_hash(plate_maps)
-                    cali_logger.info(
-                        f"📋 Plate maps loaded from database: {plate_maps}"
-                    )
-                    cali_logger.info(f"🔑 Plate map hash: {plate_map_hash}")
-                else:
-                    cali_logger.info("📋 No plate maps found in database")
-
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
                     session, detection_settings
@@ -385,8 +368,6 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
-                            plate_maps=plate_maps,
-                            plate_map_hash=plate_map_hash,
                             positions_detected=list(positions_for_detection),
                         )
                     )
@@ -481,8 +462,6 @@ class CaliRunner:
                             detection_settings_id=det_id,
                             extraction_settings_id=None,
                             analysis_settings_id=None,
-                            plate_maps=plate_maps,
-                            plate_map_hash=plate_map_hash,
                             positions_detected=sorted(positions_processed_detection),
                         )
                         session.commit()
@@ -591,7 +570,6 @@ class CaliRunner:
                             extraction_settings_id,  # type: ignore
                             analysis_settings_id,
                             global_position_indices,
-                            plate_map_hash=plate_map_hash,
                             force=force,
                         )
                     else:
@@ -623,8 +601,6 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=analysis_settings_id,
-                                    plate_maps=plate_maps,
-                                    plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                     positions_analyzed=list(positions_for_extraction),
@@ -639,8 +615,6 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=None,
-                                    plate_maps=plate_maps,
-                                    plate_map_hash=plate_map_hash,
                                     positions_detected=list(positions_for_extraction),
                                     positions_extracted=list(positions_for_extraction),
                                 )
@@ -726,6 +700,18 @@ class CaliRunner:
                                                 data_analysis
                                             )
                                         delattr(roi, "_new_data_analysis")
+
+                                # Process temporary new FOV analysis
+                                # Add directly to session instead of using relationship
+                                # (avoids DetachedInstanceError)
+                                if hasattr(fov, "_new_fov_analysis"):
+                                    for fov_analysis in fov._new_fov_analysis:
+                                        fov_analysis.analysis_result_id = (
+                                            analysis_result_id
+                                        )
+                                        fov_analysis.fov_id = fov.id
+                                        session.add(fov_analysis)
+                                    delattr(fov, "_new_fov_analysis")
 
                             fov_count += 1
                             yield "PROGRESS:UPDATE"
@@ -1026,7 +1012,6 @@ class CaliRunner:
         extraction_settings_id: int,
         analysis_settings_id: int,
         global_position_indices: Sequence[int],
-        plate_map_hash: str | None = None,
         force: bool = False,
     ) -> list[int]:
         """Get positions that need analysis.
@@ -1047,8 +1032,6 @@ class CaliRunner:
             Analysis settings ID to check
         global_position_indices : Sequence[int]
             Positions to check
-        plate_map_hash : str | None
-            Plate map hash to check. Different plate maps should create separate runs.
         force : bool
             If True, returns all positions regardless of existing results.
 
@@ -1066,14 +1049,6 @@ class CaliRunner:
             CaliResult.extraction_settings_id == extraction_settings_id,
             CaliResult.analysis_settings_id == analysis_settings_id,
         )
-
-        # Add plate_map_hash filter to differentiate runs
-        if plate_map_hash is None:
-            result_subquery = result_subquery.where(CaliResult.plate_map_hash.is_(None))  # type: ignore
-        else:
-            result_subquery = result_subquery.where(
-                CaliResult.plate_map_hash == plate_map_hash
-            )
 
         existing_positions = set(
             session.exec(
@@ -1466,6 +1441,7 @@ class CaliRunner:
                     joinedload(FOV.rois).joinedload(ROI.roi_mask),
                     joinedload(FOV.rois).joinedload(ROI.traces_history),
                     joinedload(FOV.rois).joinedload(ROI.data_analysis_history),
+                    joinedload(FOV.fov_analysis_history),
                 )
             )
             .unique()
@@ -1492,8 +1468,6 @@ class CaliRunner:
         detection_settings_id: int,
         extraction_settings_id: int | None,
         analysis_settings_id: int | None,
-        plate_maps: dict[str, dict[str, str]] | None = None,
-        plate_map_hash: str | None = None,
         positions_detected: list[int] | None = None,
         positions_extracted: list[int] | None = None,
         positions_analyzed: list[int] | None = None,
@@ -1501,8 +1475,8 @@ class CaliRunner:
         """Create or update a CaliResult entry with progressive stage tracking.
 
         Handles progressive analysis stages:
-        1. If exact match exists (same detection, extraction, analysis,
-           plate_map), merge positions
+        1. If exact match exists (same detection, extraction, analysis settings),
+           merge positions
         2. If partial match exists (same detection/extraction but less complete),
            upgrade the existing result with new settings
         3. Otherwise, create new result and clean up superseded ones
@@ -1519,13 +1493,6 @@ class CaliRunner:
             Extraction settings ID (None for detection-only)
         analysis_settings_id : int | None
             Analysis settings ID (None for extraction-only or detection-only)
-        plate_maps : dict[str, dict[str, str]] | None
-            Plate map configuration for this run.
-            Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
-                     "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
-        plate_map_hash : str | None
-            Hash of the plate_maps dict to track changes. Different plate maps
-            create separate results even with identical extraction settings.
         positions_detected : list[int] | None
             Positions with detection results (ROIs)
         positions_extracted : list[int] | None
@@ -1565,12 +1532,6 @@ class CaliRunner:
             query = query.where(CaliResult.analysis_settings_id.is_(None))  # type: ignore
         else:
             query = query.where(CaliResult.analysis_settings_id == analysis_settings_id)
-
-        # Include plate_map_hash in exact match check
-        if plate_map_hash is None:
-            query = query.where(CaliResult.plate_map_hash.is_(None))  # type: ignore
-        else:
-            query = query.where(CaliResult.plate_map_hash == plate_map_hash)
 
         exact_match = session.exec(query).first()
 
@@ -1862,8 +1823,6 @@ class CaliRunner:
             detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             analysis_settings_id=analysis_settings_id,
-            plate_maps=plate_maps,
-            plate_map_hash=plate_map_hash,
             positions_detected=positions_detected,
             positions_extracted=positions_extracted,
             positions_analyzed=positions_analyzed,

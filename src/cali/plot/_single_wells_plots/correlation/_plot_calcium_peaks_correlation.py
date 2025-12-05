@@ -5,12 +5,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from scipy.signal import correlate
-from scipy.stats import zscore
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -20,112 +19,111 @@ if TYPE_CHECKING:
 
 
 # -----------------------------------------------------------------------------#
-# Helpers: retrieval from ROI histories
+# Database query for pre-computed correlation matrix
 # -----------------------------------------------------------------------------#
-def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
-    """Get the Traces object for a specific run from the ROI's traces_history."""
-    if not roi_model.traces_history:
-        return None
-    if run_id is None:
-        return roi_model.traces_history[0]
-    for trace in roi_model.traces_history:
-        if trace.analysis_result_id == run_id:
-            return trace
-    return None
-
-
-def _get_data_analysis_for_run(
-    roi_model: ROI, run_id: int | None
-) -> DataAnalysis | None:
-    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
-    if not roi_model.data_analysis_history:
-        return None
-    if run_id is None:
-        return roi_model.data_analysis_history[0]
-    for analysis in roi_model.data_analysis_history:
-        if analysis.analysis_result_id == run_id:
-            return analysis
-    return roi_model.data_analysis_history[0]
-
-
-# -----------------------------------------------------------------------------#
-# Cross-correlation computation
-# -----------------------------------------------------------------------------#
-def _calculate_cross_correlation(
+def _get_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
-    rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
-    """Calculate the cross-correlation matrix for the active ROIs.
+    """Get the pre-computed calcium peaks correlation matrix from database.
 
-    Value = maximum normalized cross-correlation over all lags.
-    ROIs are indexed by ROI.label_value (to match your other plots).
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    fov_name : str
+        Name of the FOV
+    run_id : int | None
+        Filter by specific analysis run
+
+    Returns
+    -------
+    tuple[np.ndarray | None, list[int] | None]
+        (correlation_matrix, roi_labels) or (None, None) if not found
     """
     if run_id is None:
         cali_logger.warning("No run ID specified for cross-correlation plot.")
         return None, None
 
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces)
-            .join(FOV, ROI.fov_id == FOV.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .where(col(FOV.name) == fov_name)
+                .where(col(FOVAnalysis.analysis_result_id) == run_id)
             )
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-        # IMPORTANT: use label_value for ROI subset, not ROI.id
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        roi_data: list[tuple[ROI, Traces]] = session.exec(stmt).all()
+            fov_analysis = session.exec(stmt).first()
 
-    traces: list[np.ndarray] = []
-    rois_idxs: list[int] = []
+            if fov_analysis is None:
+                cali_logger.debug(
+                    f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
+                )
+                return None, None
 
-    for roi, roi_traces in roi_data:
-        if roi_traces is None or roi_traces.dec_dff is None or roi.label_value is None:
-            continue
+            if (
+                fov_analysis.calcium_peaks_correlation_matrix is None
+                or fov_analysis.active_roi_labels is None
+            ):
+                cali_logger.debug(
+                    f"FOVAnalysis for {fov_name} has no correlation matrix"
+                )
+                return None, None
 
-        tr = np.asarray(roi_traces.dec_dff, dtype=float)
-        if tr.ndim != 1 or tr.size == 0:
-            continue
+            corr_matrix = np.asarray(
+                fov_analysis.calcium_peaks_correlation_matrix, dtype=float
+            )
+            roi_labels = list(fov_analysis.active_roi_labels)
 
-        rois_idxs.append(int(roi.label_value))
-        traces.append(tr)
-
-    if len(rois_idxs) <= 1:
-        cali_logger.warning(
-            "Not enough active ROIs to calculate cross-correlation. "
-            "At least two active ROIs are required."
-        )
+            return corr_matrix, roi_labels
+    except OperationalError:
+        # Table doesn't exist in older databases
+        cali_logger.debug("FOVAnalysis table not found in database")
         return None, None
 
-    traces_array = np.vstack(traces)  # (n_rois, n_frames)
-    dff_zero_mean = zscore(traces_array, axis=1)
 
-    n_rois = len(rois_idxs)
-    correlation_matrix_active = np.empty((n_rois, n_rois), dtype=float)
+def _filter_matrix_by_rois(
+    matrix: np.ndarray,
+    roi_labels: list[int],
+    selected_rois: list[int] | None,
+) -> tuple[np.ndarray, list[int]]:
+    """Filter a correlation/synchrony matrix to only include selected ROIs.
 
-    norms = np.linalg.norm(dff_zero_mean, axis=1)
-    norms[norms == 0] = np.finfo(float).eps
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Full NxN matrix
+    roi_labels : list[int]
+        ROI labels corresponding to matrix indices
+    selected_rois : list[int] | None
+        ROIs to filter to, or None to keep all
 
-    np.fill_diagonal(correlation_matrix_active, 1.0)
+    Returns
+    -------
+    tuple[np.ndarray, list[int]]
+        (filtered_matrix, filtered_roi_labels)
+    """
+    if selected_rois is None:
+        return matrix, roi_labels
 
-    for i in range(n_rois):
-        x = dff_zero_mean[i]
-        for j in range(i + 1, n_rois):
-            y = dff_zero_mean[j]
-            corr = correlate(x, y, mode="full", method="fft")
-            corr /= norms[i] * norms[j]
-            max_corr = float(np.max(corr))
-            correlation_matrix_active[i, j] = max_corr
-            correlation_matrix_active[j, i] = max_corr
+    # Find indices of selected ROIs in the full matrix
+    indices = []
+    filtered_labels = []
+    for i, label in enumerate(roi_labels):
+        if label in selected_rois:
+            indices.append(i)
+            filtered_labels.append(label)
 
-    return correlation_matrix_active, rois_idxs
+    if len(indices) < 2:
+        return matrix, roi_labels  # Return full matrix if too few ROIs selected
+
+    # Extract submatrix
+    indices_arr = np.array(indices)
+    filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
+
+    return filtered_matrix, filtered_labels
 
 
 # -----------------------------------------------------------------------------#
@@ -159,18 +157,27 @@ def _plot_cross_correlation_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    correlation_matrix, rois_idxs = _calculate_cross_correlation(
-        engine, fov_name, rois, run_id
+    # Query pre-computed correlation matrix from database
+    correlation_matrix, roi_labels = _get_correlation_matrix_from_db(
+        engine, fov_name, run_id
     )
 
-    if correlation_matrix is None or rois_idxs is None:
-        plot.setTitle("Pairwise Cross-Correlation Matrix\n(No data)")
+    if correlation_matrix is None or roi_labels is None:
+        plot.setTitle(f"Pairwise Cross-Correlation Matrix\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
 
-    corr = correlation_matrix
-    corr.shape[0]
+    # Filter to selected ROIs if specified
+    corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
+
+    if len(rois_idxs) < 2:
+        plot.setTitle(
+            f"Pairwise Cross-Correlation Matrix\n(Need ≥2 ROIs){title_suffix}"
+        )
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
+        return
 
     # ---------------- IMAGE ITEM (centered, full view) ---------------- #
     img = pg.ImageItem(corr)

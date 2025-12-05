@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import numpy as np
 import pytest
 
@@ -12,14 +10,6 @@ def test_calculate_dff() -> None:
     dff = calculate_dff(data, window=5, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
-
-
-def test_calculate_dff_plot() -> None:
-    """Test calculate_dff with plot=True."""
-    data = np.array([100, 110, 120], dtype=float)
-    with patch("matplotlib.pyplot.show") as mock_show:
-        calculate_dff(data, window=3, percentile=10, plot=True)
-        mock_show.assert_called_once()
 
 
 def test_calculate_bg() -> None:

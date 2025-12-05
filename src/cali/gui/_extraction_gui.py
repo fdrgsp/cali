@@ -3,24 +3,19 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QDialog,
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
 
 from cali._constants import (
     DEFAULT_DFF_WINDOW,
@@ -30,14 +25,9 @@ from cali._constants import (
 )
 from cali.sqlmodel import ExtractionSettings
 
-from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     create_divider_line,
 )
-
-if TYPE_CHECKING:
-    import useq
-
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -46,9 +36,6 @@ FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 class ExtractionSettingsData:
     """Data structure to hold the extraction settings."""
 
-    plate_map_data: (
-        tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]] | None
-    ) = None
     trace_extraction_data: TraceExtractionData | None = None
 
 
@@ -112,7 +99,6 @@ class _ExtractionGUI(QWidget):
         threads_layout.addWidget(self._threads)
 
         # EXTRACTION WIDGETS ---------------------------------------------------------
-        self._plate_map_wdg = _PlateMapWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
 
@@ -126,8 +112,6 @@ class _ExtractionGUI(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         # add extraction widgets to scroll area
-        group_layout.addWidget(create_divider_line("Plate Map"))
-        group_layout.addWidget(self._plate_map_wdg)
         group_layout.addWidget(create_divider_line("Neuropil Settings"))
         group_layout.addWidget(self._neuropil_wdg)
         group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
@@ -146,7 +130,6 @@ class _ExtractionGUI(QWidget):
         # STYLING ---------------------------------------------------------------------
         fix_width = self._neuropil_wdg._neuropil_inner_radius_lbl.sizeHint().width()
         self._trace_extraction_wdg.set_labels_width(fix_width)
-        self._plate_map_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
@@ -156,15 +139,11 @@ class _ExtractionGUI(QWidget):
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
         return ExtractionSettingsData(
-            self._plate_map_wdg.value(),
             self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
         """Set the values of the widget."""
-        if value.plate_map_data is not None:
-            plate, genotype_map, treatment_map = value.plate_map_data
-            self._plate_map_wdg.setValue(plate, genotype_map, treatment_map)
         if value.trace_extraction_data is not None:
             self._trace_extraction_wdg.setValue(value.trace_extraction_data)
             # Also set the neuropil widget from trace extraction data
@@ -177,7 +156,6 @@ class _ExtractionGUI(QWidget):
 
     def reset(self) -> None:
         """Reset the widget to default values."""
-        self._plate_map_wdg.clear()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
 
@@ -212,96 +190,6 @@ class _ExtractionGUI(QWidget):
         )
 
         return settings
-
-
-class _PlateMapWidget(QWidget):
-    """Widget to show and edit the plate maps."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self._plate: useq.WellPlate | None = None
-
-        # label
-        self._plate_map_lbl = QLabel("Set/Edit Plate Map:")
-        self._plate_map_lbl.setSizePolicy(*FIXED)
-
-        # button to show the plate map dialog
-        self._plate_map_btn = QPushButton("Show/Edit Plate Map")
-        self._plate_map_btn.setIcon(icon(MDI6.view_comfy))
-        self._plate_map_btn.clicked.connect(self._show_plate_map_dialog)
-
-        # dialog to show the plate maps
-        self._plate_map_dialog = QDialog(self)
-        plate_map_layout = QHBoxLayout(self._plate_map_dialog)
-        plate_map_layout.setContentsMargins(10, 10, 10, 10)
-        plate_map_layout.setSpacing(5)
-        self._plate_map_genotype = PlateMapWidget(self, title="Genotype Map")
-        self._plate_map_treatment = PlateMapWidget(self, title="Treatment Map")
-        plate_map_layout.addWidget(self._plate_map_genotype)
-        plate_map_layout.addWidget(self._plate_map_treatment)
-
-        # main layout
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._plate_map_lbl)
-        layout.addWidget(self._plate_map_btn)
-        layout.addStretch(1)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(
-        self,
-    ) -> tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]]:
-        """Get the plate map data."""
-        return (
-            self._plate,
-            self._plate_map_genotype.value(),
-            self._plate_map_treatment.value(),
-        )
-
-    def setValue(
-        self,
-        plate: useq.WellPlate | None,
-        genotype_map: list[PlateMapData],
-        treatment_map: list[PlateMapData],
-    ) -> None:
-        """Set the plate map data."""
-        self.setPlate(plate)
-        self._plate_map_genotype.setValue(genotype_map)
-        self._plate_map_treatment.setValue(treatment_map)
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the labels."""
-        self._plate_map_lbl.setFixedWidth(width)
-
-    def setPlate(self, plate: useq.WellPlate | None) -> None:
-        """Set the plate for the plate maps."""
-        self._plate = plate
-        if plate is None:
-            self.clear()
-            return
-        self._plate_map_genotype.setPlate(plate)
-        self._plate_map_treatment.setPlate(plate)
-
-    def clear(self) -> None:
-        """Clear the plate map data."""
-        self._plate_map_genotype.clear()
-        self._plate_map_treatment.clear()
-
-    # PRIVATE METHODS -----------------------------------------------------------------
-
-    def _show_plate_map_dialog(self) -> None:
-        """Show the plate map dialog."""
-        # ensure the dialog is visible and properly positioned
-        if self._plate_map_dialog.isHidden() or not self._plate_map_dialog.isVisible():
-            self._plate_map_dialog.show()
-        # always try to bring to front and activate
-        self._plate_map_dialog.raise_()
-        self._plate_map_dialog.activateWindow()
-        # force focus on the dialog
-        self._plate_map_dialog.setFocus()
 
 
 class _NeuropilCorrectionWidget(QWidget):

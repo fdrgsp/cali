@@ -122,7 +122,7 @@ def _query_evoked_amplitudes_by_condition(
                 continue
 
             # Build condition label (without power/pulse)
-            cond_label = _get_condition_label(well, fov.name)
+            cond_label = _get_condition_label(well)
 
             # Store amplitudes grouped by power_pulse
             for power_pulse, amplitude_list in amps.items():

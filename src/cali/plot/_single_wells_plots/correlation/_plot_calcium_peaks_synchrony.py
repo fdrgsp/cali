@@ -5,14 +5,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
+from sqlalchemy.exc import OperationalError
+from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._util import (
-    _get_calcium_peaks_event_synchrony,
-    _get_calcium_peaks_event_synchrony_matrix,
-    _get_calcium_peaks_events_from_rois,
-)
-from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -22,34 +19,93 @@ if TYPE_CHECKING:
 
 
 # -----------------------------------------------------------------------------#
-# Helpers: retrieval from ROI histories (kept for compatibility)
+# Database query for pre-computed synchrony matrix
 # -----------------------------------------------------------------------------#
-def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
-    """Get the Traces object for a specific run from the ROI's traces_history."""
-    if not roi_model.traces_history:
-        return None
+def _get_synchrony_matrix_from_db(
+    engine: Engine,
+    fov_name: str,
+    run_id: int | None = None,
+) -> tuple[np.ndarray | None, list[int] | None, float | None]:
+    """Get the pre-computed calcium peaks synchrony matrix from database.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    fov_name : str
+        Name of the FOV
+    run_id : int | None
+        Filter by specific analysis run
+
+    Returns
+    -------
+    tuple[np.ndarray | None, list[int] | None, float | None]
+        (synchrony_matrix, roi_labels, global_synchrony) or (None, None, None)
+    """
     if run_id is None:
-        return roi_model.traces_history[0]
-    for trace in roi_model.traces_history:
-        if trace.analysis_result_id == run_id:
-            return trace
-    return None
+        cali_logger.warning("No run ID specified for synchrony plot.")
+        return None, None, None
+
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .where(col(FOV.name) == fov_name)
+                .where(col(FOVAnalysis.analysis_result_id) == run_id)
+            )
+
+            fov_analysis = session.exec(stmt).first()
+
+            if fov_analysis is None:
+                cali_logger.debug(
+                    f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
+                )
+                return None, None, None
+
+            if (
+                fov_analysis.calcium_peaks_synchrony_matrix is None
+                or fov_analysis.active_roi_labels is None
+            ):
+                cali_logger.debug(f"FOVAnalysis for {fov_name} has no synchrony matrix")
+                return None, None, None
+
+            sync_matrix = np.asarray(
+                fov_analysis.calcium_peaks_synchrony_matrix, dtype=float
+            )
+            roi_labels = list(fov_analysis.active_roi_labels)
+            global_sync = fov_analysis.global_calcium_peaks_synchrony
+
+            return sync_matrix, roi_labels, global_sync
+    except OperationalError:
+        # Table doesn't exist in older databases
+        cali_logger.debug("FOVAnalysis table not found in database")
+        return None, None, None
 
 
-def _get_data_analysis_for_run(
-    roi_model: ROI, run_id: int | None
-) -> DataAnalysis | None:
-    """Get DataAnalysis for a specific run from ROI's data_analysis_history."""
-    if not roi_model.data_analysis_history:
-        return None
-    if run_id is None:
-        return roi_model.data_analysis_history[0]
-    # First try to find exact match
-    for analysis in roi_model.data_analysis_history:
-        if analysis.analysis_result_id == run_id:
-            return analysis
-    # Fall back to first entry (for backwards compatibility)
-    return roi_model.data_analysis_history[0]
+def _filter_matrix_by_rois(
+    matrix: np.ndarray,
+    roi_labels: list[int],
+    selected_rois: list[int] | None,
+) -> tuple[np.ndarray, list[int]]:
+    """Filter a synchrony matrix to only include selected ROIs."""
+    if selected_rois is None:
+        return matrix, roi_labels
+
+    indices = []
+    filtered_labels = []
+    for i, label in enumerate(roi_labels):
+        if label in selected_rois:
+            indices.append(i)
+            filtered_labels.append(label)
+
+    if len(indices) < 2:
+        return matrix, roi_labels
+
+    indices_arr = np.array(indices)
+    filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
+
+    return filtered_matrix, filtered_labels
 
 
 # -----------------------------------------------------------------------------#
@@ -83,62 +139,46 @@ def _plot_peak_event_synchrony_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    # 1) Get peak trains per ROI
-    peak_trains = _get_calcium_peaks_events_from_rois(engine, fov_name, rois, run_id)
-    if peak_trains is None or len(peak_trains) < 2:
+    # Query pre-computed synchrony matrix from database
+    sync_matrix, roi_labels, global_synchrony = _get_synchrony_matrix_from_db(
+        engine, fov_name, run_id
+    )
+
+    if sync_matrix is None or roi_labels is None:
         cali_logger.warning(
-            "Insufficient peak data for synchrony analysis. "
-            "Ensure at least two ROIs with peak events are selected."
+            "No synchrony data found for this FOV. Ensure analysis has been run."
         )
         plot.setTitle(f"Peak Event Synchrony\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI index")
         plot.setLabel("left", "ROI index")
         return
 
-    # 2) Get jitter window from settings
-    jit = _get_jit(engine, fov_name, rois, run_id)
-    if jit is None:
-        cali_logger.warning(
-            "No valid jitter window value found for synchrony analysis."
-        )
-        plot.setTitle("Peak Event Synchrony\n(No jitter window)")
+    # Filter to selected ROIs if specified
+    sync, active_roi_ids = _filter_matrix_by_rois(sync_matrix, roi_labels, rois)
+
+    if len(active_roi_ids) < 2:
+        cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
+        plot.setTitle(f"Peak Event Synchrony\n(Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI index")
         plot.setLabel("left", "ROI index")
         return
 
-    # 3) Build peak event data dict (ROI -> list[float])
-    peak_event_data_dict = {
-        roi_name: peak_train.astype(float).tolist()
-        for roi_name, peak_train in peak_trains.items()
-    }
-
-    # 4) Compute synchrony matrix once (jitter window method)
-    synchrony_matrix = _get_calcium_peaks_event_synchrony_matrix(
-        peak_event_data_dict,
-        method="jitter_window",
-        jitter_window=jit,
-    )
-    if synchrony_matrix is None:
-        cali_logger.warning(
-            "Failed to calculate synchrony matrix. "
-            "Ensure peak event data is valid and contains sufficient data."
-        )
-        plot.setTitle(f"Peak Event Synchrony\n(Failed to compute matrix){title_suffix}")
-        plot.setLabel("bottom", "ROI index")
-        plot.setLabel("left", "ROI index")
-        return
-
-    # 5) Global synchrony metric
-    global_synchrony = _get_calcium_peaks_event_synchrony(synchrony_matrix)
-    if global_synchrony is None:
+    # Recalculate global synchrony if ROI subset is selected
+    if rois is not None and len(rois) < len(roi_labels):
+        # Calculate median of off-diagonal elements
+        n = sync.shape[0]
+        if n > 1:
+            mask = ~np.eye(n, dtype=bool)
+            global_synchrony = float(np.median(sync[mask]))
+        else:
+            global_synchrony = 0.0
+    elif global_synchrony is None:
         global_synchrony = 0.0
 
     base_title = (
         f"Global Synchrony (Median: {global_synchrony:.4f})\n"
         f"(Calcium Peaks Events - Jitter Window Method){title_suffix}"
     )
-
-    sync = np.asarray(synchrony_matrix, dtype=float)
 
     # ---------------- IMAGE ITEM (centered-ish, square) ---------------- #
     img = pg.ImageItem(sync)
@@ -156,7 +196,7 @@ def _plot_peak_event_synchrony_data(
     vb.invertY(True)
 
     # keep it square
-    vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
+    vb.setAspectLocked(True)
 
     plot.setTitle(base_title)
     plot.setLabel("bottom", "ROI index")
@@ -169,9 +209,6 @@ def _plot_peak_event_synchrony_data(
     # Add colorbar
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
 
-    # Use same ROI ordering as in peak_trains.keys()
-    active_roi_ids = [int(roi_id) for roi_id in peak_trains.keys()]
-
     # ---------------- Hover + Click interaction ---------------- #
     _attach_synchrony_heatmap_interaction(
         widget,
@@ -181,42 +218,6 @@ def _plot_peak_event_synchrony_data(
         sync,
         base_title=base_title,
     )
-
-
-# -----------------------------------------------------------------------------#
-# Settings: jitter window retrieval (unchanged from MPL version)
-# -----------------------------------------------------------------------------#
-def _get_jit(
-    engine: Engine, fov_name: str, rois: list[int] | None, run_id: int | None = None
-) -> int | None:
-    """Get the jitter window value for synchrony from database."""
-    from sqlmodel import Session, select
-
-    from cali.sqlmodel._model import AnalysisSettings
-
-    with Session(engine) as session:
-        # Prefer settings from the given run
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result and result.analysis_settings_id is not None:
-                settings = session.get(AnalysisSettings, result.analysis_settings_id)
-                if settings:
-                    return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
-
-        # Fallback: get settings from the first available run
-        stmt = (
-            select(CaliResult)
-            .where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
-            .limit(1)
-        )
-        result = session.exec(stmt).first()
-        if result and result.analysis_settings_id is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings_id)
-            if settings:
-                return settings.calcium_sync_jitter_window  # type: ignore[no-any-return]
-
-    cali_logger.warning("No valid analysis settings found for synchrony analysis.")
-    return None
 
 
 # -----------------------------------------------------------------------------#

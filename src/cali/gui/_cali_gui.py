@@ -63,6 +63,7 @@ from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
+from ._plate_map import _PlateMapWidget
 from ._plate_plan_wizard import PlatePlanWizard
 from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
@@ -153,6 +154,9 @@ class CaliGui(QMainWindow):
         self._plate_view.setDragMode(WellPlateView.DragMode.NoDrag)
         self._plate_view.setSelectionMode(WellPlateView.SelectionMode.SingleSelection)
 
+        # PLATE MAP WIDGET ------------------------------------------------------------
+        self._plate_map_wdg = _PlateMapWidget(self)
+
         # TABLE FOR THE FIELDS OF VIEW ------------------------------------------------
         self._fov_table = _FOVTable(self)
 
@@ -163,12 +167,19 @@ class CaliGui(QMainWindow):
         # LEFT WIDGETS ----------------------------------------------------------------
 
         # SPLITTER FOR THE PLATE MAP AND THE FOV TABLE --------------------------------
+        top_wdg = QWidget()
+        top = QVBoxLayout(top_wdg)
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(5)
+        top.addWidget(self._plate_view)
+        top.addWidget(self._plate_map_wdg)
+
         self.splitter_top_left = QSplitter(
             parent=self, orientation=Qt.Orientation.Vertical
         )
         self.splitter_top_left.setContentsMargins(0, 0, 0, 0)
         self.splitter_top_left.setChildrenCollapsible(False)
-        self.splitter_top_left.addWidget(self._plate_view)
+        self.splitter_top_left.addWidget(top_wdg)
         self.splitter_top_left.addWidget(self._fov_table)
         top_left_group = QGroupBox()
         top_left_layout = QVBoxLayout(top_left_group)
@@ -352,6 +363,9 @@ class CaliGui(QMainWindow):
         self._elapsed_timer.elapsed_time_updated.connect(
             self._run_cali_wdg.set_time_label
         )
+
+        # connect plate map widget to save when OK is clicked
+        self._plate_map_wdg.plateMapSaved.connect(self._save_plate_map_to_database)
 
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
@@ -719,7 +733,7 @@ class CaliGui(QMainWindow):
         plate = experiment_to_useq_plate(experiment)
         plate_map_data = experiment_to_plate_map_data(experiment)
         if plate_map_data is not None and plate is not None:
-            self._extraction_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
+            self._plate_map_wdg.setValue(plate, *plate_map_data)
 
     def _populate_settings(self, database_path: Path | str) -> None:
         """Populate the settings combobox in the run widget.
@@ -1463,7 +1477,7 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
-        plate_map_data = self._extraction_wdg._plate_map_wdg.value()
+        plate_map_data = self._plate_map_wdg.value()
         _, genotype_data, treatment_data = plate_map_data
 
         # Load experiment and update it with plate map data
@@ -1614,6 +1628,7 @@ class CaliGui(QMainWindow):
         # Disable other GUI components
         self._fov_table.setEnabled(state)
         self._plate_view.setEnabled(state)
+        self._plate_map_wdg.setEnabled(state)
         self._image_viewer.setEnabled(state)
         self._runs_panel.setEnabled(state)
 

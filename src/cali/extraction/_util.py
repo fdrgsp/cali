@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 
 def calculate_dff(
-    data: np.ndarray, window: int = 100, percentile: int = 10, plot: bool = False
+    data: np.ndarray, window: int = 100, percentile: int = 10
 ) -> np.ndarray:
     """Calculate the delta F/F using a sliding window and a percentile.
 
@@ -17,8 +16,6 @@ def calculate_dff(
         Size of the moving window for the background calculation. Default is 100.
     percentile : int
         Percentile to use for the background calculation. Default is 10.
-    plot : bool
-        Whether to show a plot of the background and trace. Default is False.
 
     Returns
     -------
@@ -28,15 +25,6 @@ def calculate_dff(
     dff: np.ndarray = np.array([])
     bg: np.ndarray = _calculate_bg(data, window, percentile)
     dff = (data - bg) / bg
-
-    # plot background and trace
-    if plot:
-        plt.figure(figsize=(10, 8))
-        plt.plot(bg, label="background", color="black")
-        plt.plot(data, label="trace", color="green")
-        plt.legend()
-        plt.show()
-
     return dff
 
 

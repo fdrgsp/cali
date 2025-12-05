@@ -16,13 +16,13 @@ ask to claude:
 
 - general improvement of how the database is handled during cali pipeline
 
-- menu to save and load settings in CaliGui, they are dataclasses so we can save as json
+- ⚡️ menu to save and load settings in CaliGui, they are dataclasses so we can save as json
 
 - code and widget to load own label images for segmentation
 
 - ⁇ to simplify the code, is it worth to have the runs in a different db???
 
-- export tab to export tables and labels
+- ⚡️ export tab to export tables and labels
 
 - add a button to reset settings in each tab to default values
 
@@ -36,4 +36,4 @@ ask to claude:
 
 - multi-plot is too slow, how can we fix this?
 
-- can we have burst oplots (analysis for calcium traces as well (and not only for spike analysis?)
+- ⚡️ add burst analysis to runner and remove from plat

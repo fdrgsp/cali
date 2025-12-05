@@ -13,7 +13,7 @@ from ..src.cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plo
 from ..src.cali.plot._single_wells_plots.metrics._plot_calcium_amplitudes_and_frequencies_data import (
     _plot_amplitude_and_frequency_data,
 )
-from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_network_connectivity import (
+from ._plot_calcium_network_connectivity import (
     _plot_connectivity_matrix_data,
     _plot_connectivity_network_data,
 )
@@ -21,13 +21,21 @@ from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_peaks_correla
     _plot_cross_correlation_data,
     _plot_hierarchical_clustering_data,
 )
-from ..src.cali.plot._single_wells_plots.metrics._plot_calcium_peaks_iei_data import _plot_iei_data
-from ..src.cali.plot._single_wells_plots.rester_plots._plot_calcium_peaks_raster_plots import _generate_raster_plot
+from ..src.cali.plot._single_wells_plots.metrics._plot_calcium_peaks_iei_data import (
+    _plot_iei_data,
+)
+from ..src.cali.plot._single_wells_plots.rester_plots._plot_calcium_peaks_raster_plots import (
+    _generate_raster_plot,
+)
 from ..src.cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
-from ..src.cali.plot._single_wells_plots._plot_calcium_traces_data import _plot_traces_data
-from ..src.cali.plot._single_wells_plots.metrics._plot_cell_size import _plot_cell_size_data
+from ..src.cali.plot._single_wells_plots._plot_calcium_traces_data import (
+    _plot_traces_data,
+)
+from ..src.cali.plot._single_wells_plots.metrics._plot_cell_size import (
+    _plot_cell_size_data,
+)
 from ..src.cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
@@ -48,7 +56,9 @@ from ..src.cali.plot._single_wells_plots.inferred_spikes._plot_inferred_spikes i
 from ..src.cali.plot._single_wells_plots._plot_neuropil_traces import (
     _plot_neuropil_traces,
 )
-from ..src.cali.plot._single_wells_plots._plot_neuropil_visualization import _plot_neuropil_masks
+from ..src.cali.plot._single_wells_plots._plot_neuropil_visualization import (
+    _plot_neuropil_masks,
+)
 
 if TYPE_CHECKING:
     from cali.gui._graph_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget

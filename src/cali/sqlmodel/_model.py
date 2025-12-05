@@ -77,13 +77,6 @@ class CaliResult(SQLModel, table=True):
         Foreign key to extraction settings used (None for detection-only runs)
     analysis_settings_id: int | None
         Foreign key to analysis settings used (None for extraction-only runs)
-    plate_maps : dict[str, dict[str, str]] | None
-        Plate map configuration used for this specific run.
-        Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
-                 "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
-        Allows different runs to have different plate map configurations.
-    plate_map_hash : str | None
-        SHA256 hash of plate_maps for tracking changes
     positions_detected : list[int] | None
         List of position indices that completed detection
     positions_extracted : list[int] | None
@@ -113,16 +106,6 @@ class CaliResult(SQLModel, table=True):
         default=None, foreign_key="analysis_settings.id"
     )
 
-    # Plate map configuration for this specific run
-    # Stores the plate_maps used at the time of this analysis run,
-    # allowing different runs to have different plate map configurations
-    plate_maps: dict[str, dict[str, str]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-
-    # Plate map versioning - hash of plate_maps dict to track changes
-    plate_map_hash: str | None = Field(default=None)
-
     # Progressive tracking of pipeline stages
     positions_detected: list[int] | None = Field(default=None, sa_column=Column(JSON))
     positions_extracted: list[int] | None = Field(default=None, sa_column=Column(JSON))
@@ -133,6 +116,9 @@ class CaliResult(SQLModel, table=True):
     data_analysis_results: list["DataAnalysis"] = Relationship(
         back_populates="analysis_result"
     )
+    fov_analysis_results: list["FOVAnalysis"] = Relationship(
+        back_populates="analysis_result"
+    )
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes created_at for semantic comparison.
@@ -140,7 +126,7 @@ class CaliResult(SQLModel, table=True):
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
-          positions_analyzed, plate_maps, plate_map_hash
+          positions_analyzed
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -155,16 +141,12 @@ class CaliResult(SQLModel, table=True):
             and self.positions_detected == other.positions_detected
             and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
-            and self.plate_maps == other.plate_maps
-            and self.plate_map_hash == other.plate_map_hash
         )
 
     def __hash__(self) -> int:
         """Custom hash that excludes created_at for consistency with __eq__.
 
         Note: id is excluded since it's None before database insertion.
-        plate_maps is excluded from hash because it's a mutable dict,
-        but plate_map_hash captures its content.
         """
         return hash(
             (
@@ -175,7 +157,6 @@ class CaliResult(SQLModel, table=True):
                 tuple(self.positions_detected) if self.positions_detected else None,
                 tuple(self.positions_extracted) if self.positions_extracted else None,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
-                self.plate_map_hash,
             )
         )
 
@@ -1453,6 +1434,9 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     well: "Well" = Relationship(back_populates="fovs")
     rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
+    fov_analysis_history: list["FOVAnalysis"] = Relationship(
+        back_populates="fov", cascade_delete=True
+    )
 
 
 class ROI(SQLModel, table=True):  # type: ignore[call-arg]
@@ -1671,6 +1655,83 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
     analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
+
+
+class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+    """FOV-level analysis results (correlation and synchrony matrices).
+
+    This class stores FOV-wide analysis metrics that describe relationships
+    between ROIs, such as correlation and synchrony matrices. These are
+    computed once during analysis and stored for efficient retrieval.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this analysis was created
+    fov_id : int | None
+        Foreign key to parent FOV
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this result
+    active_roi_labels : list[int] | None
+        Ordered list of active ROI label_values used for matrix indexing.
+        Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
+    calcium_peaks_correlation_matrix : list[list[float]] | None
+        Pairwise cross-correlation matrix for dec_dff traces (NxN for N active ROIs)
+    calcium_peaks_synchrony_matrix : list[list[float]] | None
+        Pairwise synchrony matrix for calcium peak events (jitter window method)
+    global_calcium_peaks_synchrony : float | None
+        Median of off-diagonal synchrony values (global synchrony metric)
+    spike_correlation_matrix : list[list[float]] | None
+        Pairwise cross-correlation matrix for binary spike trains
+    spike_synchrony_matrix : list[list[float]] | None
+        Pairwise synchrony matrix for spike events (cross-correlation method)
+    global_spike_synchrony : float | None
+        Median of off-diagonal spike synchrony values
+    fov : FOV
+        Parent FOV
+    analysis_result : CaliResult
+        The analysis run that created this result
+    """
+
+    __tablename__ = "fov_analysis"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys
+    fov_id: int | None = Field(
+        default=None, foreign_key="fov.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
+    )
+
+    # ROI ordering for matrix interpretation
+    active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
+
+    # Calcium peaks correlation and synchrony (from dec_dff and peak events)
+    calcium_peaks_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    calcium_peaks_synchrony_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_calcium_peaks_synchrony: float | None = None
+
+    # Spike correlation and synchrony (from inferred spikes)
+    spike_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    spike_synchrony_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_synchrony: float | None = None
+
+    # Relationships
+    fov: "FOV" = Relationship(back_populates="fov_analysis_history")
+    analysis_result: "CaliResult" = Relationship(back_populates="fov_analysis_results")
 
 
 class Mask(SQLModel, table=True):  # type: ignore[call-arg]
