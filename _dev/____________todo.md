@@ -34,6 +34,8 @@ ask to claude:
 
 - is there something wrong with the multithreading? it seems slower if I multithread...
 
-- multi-plot is too slow, how can we fix this?
+- ask to carefully evaluate correlation code and make a detailed markdown with description
 
-- ⚡️ add burst analysis to runner and remove from plat
+- make overall markdown of cali runner pipeline
+
+- inferred spike raster is not continuous...even if there are no gap within the timepoint...

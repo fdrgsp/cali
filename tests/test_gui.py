@@ -659,7 +659,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._extraction_settings_combo.setCurrentIndex(1)
     # Detection combo is empty (no detection ID selected)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Detection ID" in error_calls[0]
@@ -672,7 +672,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._extraction_settings_combo.clear()
     gui._run_cali_wdg._extraction_settings_combo.addItem("Select...", None)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Extraction ID" in error_calls[0]
@@ -682,7 +682,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._detection_settings_combo.clear()
     gui._run_cali_wdg._detection_settings_combo.addItem("Select...", None)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Detection ID" in error_calls[0] and "Extraction ID" in error_calls[0]

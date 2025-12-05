@@ -16,8 +16,8 @@ class TestPlotDisplayIntegration:
         """Create a CaliGui instance with test data."""
         gui = CaliGui()
         qtbot.addWidget(gui)
-        gui._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-        gui._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        gui._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        gui._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
         gui._initialize_from_database(gui._database_path, gui._data_path)
         return gui
 

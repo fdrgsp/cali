@@ -1,5 +1,5 @@
-# testing data: "tests/test_data/test_for_plot/evk.tensorstore.zarr"
-# testing database: "tests/test_data/test_for_plot/result_for_plots.cali"
+# testing data: "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+# testing database: "tests/test_data/data_and_db_for_tests/test_db.cali"
 # testing database is an evoked experiment and contains 2 Runs:
 #  - Run-1: without nuuropil
 #  - Run-2: with nuuropil
@@ -26,9 +26,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
 # Test data paths
-TEST_DB = (
-    Path(__file__).parent / "test_data" / "test_for_plot" / "result_for_plots.cali"
-)
+TEST_DB = Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
 
 
 @pytest.fixture

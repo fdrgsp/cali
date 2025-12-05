@@ -496,7 +496,7 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
     )
     from cali.sqlmodel._util import load_experiment_from_database
 
-    test_data_path = Path("tests/test_data/evoked/evk.tensorstore.zarr")
+    test_data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     test_output_path = Path("tests/test_data/evoked/evk_analysis")
 
     # Copy data to tmp_path

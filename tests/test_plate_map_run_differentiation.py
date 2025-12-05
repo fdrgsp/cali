@@ -99,7 +99,7 @@ def test_plate_maps_stored_in_plate(tmp_path: Path) -> None:
     # Create experiment with initial plate_maps (both genotype and treatment)
     experiment = Experiment.create_from_data(
         name="plate_map_test",
-        data_path=Path("tests/test_data/test_for_plot/evk.tensorstore.zarr"),
+        data_path=Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"),
         plate_maps={
             "genotype": {"B5": "WT", "B6": "KO"},
             "treatment": {"B5": "Vehicle", "B6": "Drug"},

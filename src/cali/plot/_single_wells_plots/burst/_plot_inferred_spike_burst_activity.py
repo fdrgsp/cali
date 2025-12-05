@@ -87,7 +87,7 @@ def _plot_inferred_spike_burst_activity(
         plot.setLabel("left", "Population Activity")
         return
 
-    burst_threshold, min_burst_duration, smoothing_sigma = burst_params
+    burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
 
     # --- 2) Get population spike data ---
     spike_trains, _roi_names, time_axis = _get_population_spike_data(
@@ -103,22 +103,39 @@ def _plot_inferred_spike_burst_activity(
         plot.setLabel("left", "Population Activity")
         return
 
-    # --- 3) Population activity (mean over ROIs) ---
+    # --- 3) Compute frame rate from time axis ---
+    # Derive FPS from the time axis (total_time / num_frames)
+    num_frames = len(time_axis)
+    if num_frames > 1:
+        total_time_sec = float(time_axis[-1] - time_axis[0])
+        frame_rate = (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
+    else:
+        frame_rate = 10.0  # fallback
+
+    # Convert parameters from time units to frame units
+    min_burst_duration_frames = max(
+        1, int((min_burst_duration_ms / 1000.0) * frame_rate)
+    )
+    smoothing_sigma_frames = smoothing_sigma_sec * frame_rate
+
+    # --- 4) Population activity (mean over ROIs) ---
     population_activity = np.mean(spike_trains, axis=0)
 
-    # --- 4) Smooth population activity for burst detection ---
-    if smoothing_sigma > 0:
+    # --- 5) Smooth population activity for burst detection ---
+    if smoothing_sigma_frames > 0:
         smoothed_activity = gaussian_filter1d(
-            population_activity, sigma=smoothing_sigma, mode="nearest"
+            population_activity, sigma=smoothing_sigma_frames, mode="nearest"
         )
     else:
         smoothed_activity = population_activity
 
-    # --- 5) Detect bursts (burst_threshold is in %) ---
+    # --- 6) Detect bursts (burst_threshold is in %) ---
     the_value = burst_threshold / 100.0
-    bursts = _detect_population_bursts(smoothed_activity, the_value, min_burst_duration)
+    bursts = _detect_population_bursts(
+        smoothed_activity, the_value, min_burst_duration_frames
+    )
 
-    # --- 6) Draw traces + threshold + burst regions ---
+    # --- 7) Draw traces + threshold + burst regions ---
     _draw_population_activity_pg(
         plot,
         time_axis=time_axis,
@@ -128,7 +145,7 @@ def _plot_inferred_spike_burst_activity(
         threshold_value=the_value,
     )
 
-    # --- 7) Stats text in title ---
+    # --- 8) Stats text in title ---
     stats_text = _burst_statistics_text(bursts, time_axis)
     title = (
         "Population Activity and Burst Detection (Thresholded Spike Data)\n"
@@ -151,10 +168,12 @@ def _get_burst_parameters(
     fov_name: str,  # kept for API symmetry; currently unused
     rois: list[int] | None = None,  # kept for API symmetry; currently unused
     run_id: int | None = None,
-) -> tuple[float, int, float] | None:
+) -> tuple[float, float, float] | None:
     """Get burst detection parameters from AnalysisSettings.
 
-    Returns (burst_threshold, burst_min_duration, burst_gaussian_sigma) if found.
+    Returns (burst_threshold, burst_min_duration_ms, burst_gaussian_sigma) if found.
+    All returned in original units from database (threshold in %, duration in ms, sigma
+    in seconds).
     """
     from sqlmodel import Session, select
 
@@ -169,8 +188,8 @@ def _get_burst_parameters(
                 if settings:
                     return (
                         settings.burst_threshold,
-                        settings.burst_min_duration,
-                        settings.burst_gaussian_sigma,
+                        settings.burst_min_duration,  # milliseconds
+                        settings.burst_gaussian_sigma,  # seconds
                     )
 
         # Fallback: get settings from the first available run that has them
@@ -185,8 +204,8 @@ def _get_burst_parameters(
             if settings:
                 return (
                     settings.burst_threshold,
-                    settings.burst_min_duration,
-                    settings.burst_gaussian_sigma,
+                    settings.burst_min_duration,  # milliseconds
+                    settings.burst_gaussian_sigma,  # seconds
                 )
 
     cali_logger.warning("No valid analysis settings found for burst parameters.")

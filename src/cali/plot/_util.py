@@ -1,5 +1,4 @@
 import re
-import threading
 from typing import Callable
 
 import numpy as np
@@ -12,11 +11,7 @@ from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 from cali.sqlmodel._util import ROIData
-
-# Global lock to protect numba parallel=True functions from concurrent access
-# Numba's workqueue threading layer is not threadsafe and crashes when accessed
-# from multiple Python threads simultaneously
-_NUMBA_LOCK = threading.Lock()
+from cali.util._util import _NUMBA_LOCK
 
 
 def equation_from_str(equation: str) -> Callable | None:

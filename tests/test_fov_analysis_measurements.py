@@ -121,14 +121,14 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
 
     fov.rois = [roi1, roi2]
 
-    # Create analysis settings
+    # Create analysis settings (values in milliseconds)
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=2,
-        calcium_peaks_max_lag=5,
-        spikes_sync_cross_corr_lag=5,
+        calcium_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
+        calcium_peaks_max_lag=500,  # 5 frames at 10fps = 500ms
+        spikes_sync_cross_corr_lag=500,  # 5 frames at 10fps = 500ms
     )
 
-    # Compute FOV analysis
+    # Compute analysis
     fov_analysis = compute_fov_analysis(fov, settings)
 
     assert fov_analysis is not None
@@ -187,11 +187,11 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
 
     fov.rois = [roi1, roi2]
 
-    # Create analysis settings
+    # Create analysis settings (values in milliseconds)
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=2,
-        calcium_peaks_max_lag=5,
-        spikes_sync_cross_corr_lag=5,
+        calcium_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
+        calcium_peaks_max_lag=500,  # 5 frames at 10fps = 500ms
+        spikes_sync_cross_corr_lag=500,  # 5 frames at 10fps = 500ms
     )
 
     # Compute FOV analysis
@@ -284,8 +284,10 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     fov.rois = [roi1, roi2]
 
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=2,  # Too small to capture 5-frame shift
-        calcium_peaks_max_lag=10,  # Large enough to capture shift
+        # Too small to capture 5-frame shift (2 frames at 10fps)
+        calcium_sync_jitter_window=200,
+        # Large enough to capture shift (10 frames at 10fps)
+        calcium_peaks_max_lag=1000,
     )
 
     fov_analysis = compute_fov_analysis(fov, settings)

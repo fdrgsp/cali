@@ -64,7 +64,7 @@ def _get_correlation_matrix_from_db(
                 return None, None
 
             if (
-                fov_analysis.calcium_peaks_correlation_matrix is None
+                fov_analysis.calcium_peaks_max_lag_correlation_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
                 cali_logger.debug(
@@ -73,7 +73,7 @@ def _get_correlation_matrix_from_db(
                 return None, None
 
             corr_matrix = np.asarray(
-                fov_analysis.calcium_peaks_correlation_matrix, dtype=float
+                fov_analysis.calcium_peaks_max_lag_correlation_matrix, dtype=float
             )
             roi_labels = list(fov_analysis.active_roi_labels)
 

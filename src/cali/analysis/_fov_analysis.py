@@ -1,8 +1,9 @@
 """FOV-level analysis functions for computing correlation and synchrony matrices.
 
 This module provides functions to compute pairwise correlation and synchrony
-matrices across all active ROIs in a FOV. These metrics are computed once
-during analysis and stored in the FOVAnalysis table for efficient retrieval.
+matrices across all active ROIs in a FOV, as well as population-level burst
+detection. These metrics are computed once during analysis and stored in the
+FOVAnalysis table for efficient retrieval.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 
 from cali.logger import cali_logger
 from cali.plot._util import (
@@ -32,7 +34,7 @@ def compute_fov_analysis(
 
     This function calculates 6 pairwise metrics for all active ROIs in a FOV:
 
-    Calcium Peaks Metrics:
+    Calcium Traces and Peaks Metrics:
     1. Zero-lag Pearson correlation on DF/F traces
     2. Jitter synchrony on calcium peak events
     3. Max lag correlation on calcium peak events
@@ -146,15 +148,26 @@ def compute_fov_analysis(
     # 1. Zero-lag correlation on DF/F traces
     calcium_dff_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
 
+    # Convert milliseconds to frames using frame_rate
+    frame_rate = analysis_settings.frame_rate  # frames per second
+
+    # Helper function to convert ms to frames
+    def ms_to_frames(ms: float) -> int:
+        """Convert milliseconds to frames based on frame rate."""
+        # ms / 1000 = seconds
+        # seconds * fps = frames
+        return max(0, int((ms / 1000.0) * frame_rate))
+
     # 2. Jitter synchrony on calcium peaks
     calcium_peaks_jitter_sync_matrix = None
     global_calcium_peaks_jitter_sync = None
     if len(peak_events_dict) >= 2:
-        jitter_window = analysis_settings.calcium_sync_jitter_window
+        jitter_window_ms = analysis_settings.calcium_sync_jitter_window
+        jitter_window_frames = ms_to_frames(jitter_window_ms)
         calcium_peaks_jitter_sync_matrix = _get_calcium_peaks_event_synchrony_matrix(
             peak_events_dict,
             method="jitter_window",
-            jitter_window=jitter_window,
+            jitter_window=jitter_window_frames,
         )
         if calcium_peaks_jitter_sync_matrix is not None:
             global_calcium_peaks_jitter_sync = _get_calcium_peaks_event_synchrony(
@@ -165,11 +178,12 @@ def compute_fov_analysis(
     calcium_peaks_max_lag_corr_matrix = None
     global_calcium_peaks_max_lag_corr = None
     if len(peak_events_dict) >= 2:
-        max_lag = analysis_settings.calcium_peaks_max_lag
+        max_lag_ms = analysis_settings.calcium_peaks_max_lag
+        max_lag_frames = ms_to_frames(max_lag_ms)
         calcium_peaks_max_lag_corr_matrix = _get_calcium_peaks_event_synchrony_matrix(
             peak_events_dict,
             method="cross_correlation",
-            max_lag=max_lag,
+            max_lag=max_lag_frames,
         )
         if calcium_peaks_max_lag_corr_matrix is not None:
             global_calcium_peaks_max_lag_corr = _get_calcium_peaks_event_synchrony(
@@ -191,26 +205,42 @@ def compute_fov_analysis(
         spike_corr_matrix = _compute_cross_correlation_matrix(spike_trains)
 
         # 2. Max lag correlation on spikes
-        max_lag = analysis_settings.spikes_sync_cross_corr_lag
+        max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
+        max_lag_frames = ms_to_frames(max_lag_ms)
         spike_max_lag_corr_matrix = _get_spike_synchrony_matrix(
             spike_data_dict,
             method="cross_correlation",
-            max_lag=max_lag,
+            max_lag=max_lag_frames,
         )
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
         # 3. Jitter synchrony on spikes
-        jitter_window = analysis_settings.calcium_sync_jitter_window
+        jitter_window_ms = analysis_settings.calcium_sync_jitter_window
+        jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix = _get_spike_synchrony_matrix(
             spike_data_dict,
             method="jitter_window",
-            jitter_window=jitter_window,
+            jitter_window=jitter_window_frames,
         )
         if spike_jitter_sync_matrix is not None:
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
 
-    # Create FOVAnalysis object with all 6 measurements
+    # --- Burst detection on population spike activity ---
+    burst_count: int | None = None
+    burst_avg_duration: float | None = None
+    burst_avg_interval: float | None = None
+
+    if len(spike_trains) >= 2:
+        burst_count, burst_avg_duration, burst_avg_interval = _detect_population_bursts(
+            spike_trains=spike_trains,
+            frame_rate=analysis_settings.frame_rate,
+            burst_threshold_percent=analysis_settings.burst_threshold,
+            min_duration_ms=analysis_settings.burst_min_duration,
+            gaussian_sigma_sec=analysis_settings.burst_gaussian_sigma,
+        )
+
+    # Create FOVAnalysis object with all measurements
     fov_analysis = FOVAnalysis(
         active_roi_labels=roi_labels,
         # Calcium metrics
@@ -247,6 +277,10 @@ def compute_fov_analysis(
             else None
         ),
         global_spike_jitter_synchrony=global_spike_jitter_sync,
+        # Population burst metrics
+        burst_count=burst_count,
+        burst_avg_duration=burst_avg_duration,
+        burst_avg_interval=burst_avg_interval,
     )
 
     return fov_analysis
@@ -331,3 +365,115 @@ def _compute_cross_correlation_matrix(
             correlation_matrix[j, i] = r0
 
     return correlation_matrix
+
+
+def _detect_population_bursts(
+    spike_trains: list[np.ndarray],
+    frame_rate: float,
+    burst_threshold_percent: float,
+    min_duration_ms: float,
+    gaussian_sigma_sec: float,
+) -> tuple[int, float | None, float | None]:
+    """Detect bursts in population spike activity.
+
+    Computes mean population activity, smooths it, and detects periods
+    above threshold that exceed minimum duration.
+
+    Parameters
+    ----------
+    spike_trains : list[np.ndarray]
+        List of binary spike trains for active ROIs
+    frame_rate : float
+        Frame rate in Hz (frames per second)
+    burst_threshold_percent : float
+        Threshold as percentage (e.g., 65.0 for 65%)
+    min_duration_ms : float
+        Minimum burst duration in milliseconds
+    gaussian_sigma_sec : float
+        Gaussian smoothing sigma in seconds
+
+    Returns
+    -------
+    tuple[int, float | None, float | None]
+        - burst_count: Number of bursts detected
+        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
+        - burst_avg_interval: Average inter-burst interval in seconds
+          (Noneif < 2 bursts)
+    """
+    if len(spike_trains) < 2:
+        return 0, None, None
+
+    # Stack spike trains and compute population activity (mean across ROIs)
+    spike_array = np.vstack(spike_trains)  # (n_rois, n_frames)
+    population_activity = np.mean(spike_array, axis=0)  # (n_frames,)
+
+    if population_activity.size == 0:
+        return 0, None, None
+
+    # Convert parameters to frame units
+    min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
+    gaussian_sigma_frames = gaussian_sigma_sec * frame_rate
+
+    # Smooth population activity
+    if gaussian_sigma_frames > 0:
+        smoothed_activity = gaussian_filter1d(
+            population_activity, sigma=gaussian_sigma_frames, mode="nearest"
+        )
+    else:
+        smoothed_activity = population_activity
+
+    # Convert threshold from percent to fraction
+    burst_threshold = burst_threshold_percent / 100.0
+
+    # Detect regions above threshold
+    above_threshold = smoothed_activity > burst_threshold
+    if not np.any(above_threshold):
+        return 0, None, None
+
+    # Find burst start and end points
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
+
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+
+    # Handle edge cases
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
+
+    # Filter bursts by minimum duration
+    burst_starts_list: list[int] = []
+    burst_ends_list: list[int] = []
+    burst_durations_sec: list[float] = []
+
+    for start_idx, end_idx in zip(starts, ends):
+        duration_frames = end_idx - start_idx
+        if duration_frames >= min_duration_frames:
+            burst_starts_list.append(int(start_idx))
+            burst_ends_list.append(int(end_idx))
+            # Convert duration to seconds
+            duration_sec = duration_frames / frame_rate
+            burst_durations_sec.append(duration_sec)
+
+    burst_count = len(burst_durations_sec)
+
+    if burst_count == 0:
+        return 0, None, None
+
+    # Calculate average duration
+    burst_avg_duration = float(np.mean(burst_durations_sec))
+
+    # Calculate inter-burst intervals (time from end of one burst to start of next)
+    burst_avg_interval: float | None = None
+    if burst_count >= 2:
+        intervals_sec: list[float] = []
+        for i in range(1, burst_count):
+            # Interval = frames between bursts / frame_rate
+            interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
+            interval_sec = interval_frames / frame_rate
+            intervals_sec.append(interval_sec)
+        burst_avg_interval = float(np.mean(intervals_sec))
+
+    return burst_count, burst_avg_duration, burst_avg_interval

@@ -5,11 +5,13 @@ This module contains pure functions for analyzing extracted traces:
 - Inter-event interval (IEI) calculation
 - Frequency computation
 - Amplitude extraction
+- Burst detection in individual ROI traces
 """
 
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 
 from cali._constants import GLOBAL_HEIGHT, GLOBAL_SPIKE_THRESHOLD
@@ -172,3 +174,98 @@ def calculate_inter_event_intervals(
         iei.append(interval)
 
     return iei
+
+
+def detect_bursts_in_trace(
+    dec_dff: np.ndarray,
+    elapsed_time_ms: list[float],
+    burst_threshold: float,
+    min_duration_ms: float,
+    gaussian_sigma: float = 1.0,
+) -> tuple[int, float | None, float | None]:
+    """Detect bursts in a deconvolved calcium trace.
+
+    A burst is defined as a continuous period where the smoothed trace
+    exceeds the burst threshold for at least the minimum duration.
+
+    Parameters
+    ----------
+    dec_dff : np.ndarray
+        Deconvolved dF/F trace
+    elapsed_time_ms : list[float]
+        List of elapsed times for each frame (milliseconds)
+    burst_threshold : float
+        Threshold value for burst detection (% dF/F)
+    min_duration_ms : float
+        Minimum burst duration in milliseconds
+    gaussian_sigma : float
+        Sigma for Gaussian smoothing (default 1.0)
+
+    Returns
+    -------
+    tuple[int, float | None, float | None]
+        - burst_count: Number of bursts detected
+        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
+        - burst_avg_interval: Average inter-burst interval in seconds
+          (None if < 2 bursts)
+    """
+    if len(dec_dff) == 0 or len(elapsed_time_ms) == 0:
+        return 0, None, None
+
+    # Smooth the trace
+    if gaussian_sigma > 0:
+        smoothed = gaussian_filter1d(dec_dff, sigma=gaussian_sigma)
+    else:
+        smoothed = dec_dff
+
+    # Find regions above threshold
+    above_threshold = smoothed > burst_threshold
+    if not np.any(above_threshold):
+        return 0, None, None
+
+    # Find burst start and end points
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
+
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+
+    # Handle edge cases
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
+
+    # Calculate burst durations and filter by minimum duration
+    burst_starts = []
+    burst_ends = []
+    burst_durations_sec = []
+
+    for start_idx, end_idx in zip(starts, ends):
+        duration_ms = elapsed_time_ms[end_idx - 1] - elapsed_time_ms[start_idx]
+        if duration_ms >= min_duration_ms:
+            burst_starts.append(start_idx)
+            burst_ends.append(end_idx)
+            burst_durations_sec.append(duration_ms / 1000.0)  # Convert to seconds
+
+    burst_count = len(burst_durations_sec)
+
+    if burst_count == 0:
+        return 0, None, None
+
+    burst_avg_duration = float(np.mean(burst_durations_sec))
+
+    # Calculate inter-burst intervals (time from end of one burst to start of next)
+    if burst_count < 2:
+        burst_avg_interval = None
+    else:
+        intervals_sec = []
+        for i in range(1, burst_count):
+            interval_ms = (
+                elapsed_time_ms[burst_starts[i]]
+                - elapsed_time_ms[burst_ends[i - 1] - 1]
+            )
+            intervals_sec.append(interval_ms / 1000.0)  # Convert to seconds
+        burst_avg_interval = float(np.mean(intervals_sec))
+
+    return burst_count, burst_avg_duration, burst_avg_interval

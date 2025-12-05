@@ -1,0 +1,151 @@
+"""Rebuild test_db.cali from tests.json schema.
+
+This script regenerates the test database when the SQLModel schema changes.
+It reads tests/test_data/data_and_db_for_tests/tests.json and creates a fresh
+test_db.cali file with the specified data.
+
+Usage:
+    python tests/rebuild_test_db.py
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# Add src to path so we can import cali modules
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from cali.runner import CaliRunner
+from cali.sqlmodel import (
+    AnalysisSettings,
+    DetectionSettings,
+    Experiment,
+    ExtractionSettings,
+)
+
+
+def rebuild_test_database() -> None:
+    """Rebuild test database from JSON schema."""
+    # Load schema
+    schema_path = Path(__file__).parent / "tests.json"
+    with open(schema_path) as f:
+        schema = json.load(f)
+
+    print(f"📖 Loaded schema from {schema_path}")
+    print(f"   Description: {schema['description']}")
+
+    # Prepare paths
+    data_path = Path(schema["dataset_path"])
+    db_path = schema_path.parent / "test_db.cali"
+
+    # Remove existing database
+    if db_path.exists():
+        db_path.unlink()
+        print(f"🗑️  Removed old test database: {db_path}")
+
+    print(f"🔨 Building new database at {db_path}")
+
+    # Create experiment with plate structure
+    experiment = Experiment.create(
+        name=schema["experiment"]["name"],
+        description=schema["experiment"]["description"],
+        plate_type="96-well",
+        well_names=["B5", "B6"],  # Only these wells are used
+        fovs_per_well=1,
+        plate_maps={
+            "genotype": {"B5": "g1", "B6": "g2"},
+            "treatment": {"B5": "t1", "B6": "t2"},
+        },
+    )
+
+    # Create runner
+    runner = CaliRunner()
+
+    # Process each run configuration
+    for run_idx, run_config in enumerate(schema["runs"], 1):
+        print(f"\n▶  Processing run {run_idx}/{len(schema['runs'])}")
+        print(f"   {run_config['description']}")
+
+        # Get settings from schema
+        ds_idx = run_config["detection_settings_index"]
+        ds_config = schema["detection_settings"][ds_idx]
+        es_idx = run_config["extraction_settings_index"]
+        es_config = schema["extraction_settings"][es_idx]
+
+        # Create DetectionSettings
+        detection_settings = DetectionSettings(
+            created_at=datetime.now(),
+            method=ds_config["method"],
+            model_type=ds_config["model_type"],
+            diameter=ds_config["diameter"],
+            flow_threshold=ds_config["flow_threshold"],
+            cellprob_threshold=ds_config["cellprob_threshold"],
+            min_size=ds_config["min_size"],
+        )
+
+        # Create ExtractionSettings
+        extraction_settings = ExtractionSettings(
+            created_at=datetime.now(),
+            neuropil_inner_radius=es_config["neuropil_inner_radius"],
+            neuropil_min_pixels=es_config["neuropil_min_pixels"],
+            neuropil_correction_factor=es_config["neuropil_correction_factor"],
+            decay_constant=es_config["decay_constant"],
+            dff_window=es_config["dff_window"],
+            frame_rate=es_config["frame_rate"],
+            threads=es_config["threads"],
+        )
+
+        # Create AnalysisSettings if specified
+        analysis_settings = None
+        if run_config["analysis_settings_index"] is not None:
+            as_config = schema["analysis_settings"][
+                run_config["analysis_settings_index"]
+            ]
+            analysis_settings = AnalysisSettings(
+                created_at=datetime.now(),
+                peaks_height_value=as_config["peaks_height_value"],
+                peaks_height_mode=as_config["peaks_height_mode"],
+                peaks_distance=as_config["peaks_distance"],
+                peaks_prominence_multiplier=as_config["peaks_prominence_multiplier"],
+                calcium_sync_jitter_window=as_config["calcium_sync_jitter_window"],
+                calcium_peaks_max_lag=as_config["calcium_peaks_max_lag"],
+                calcium_network_threshold=as_config["calcium_network_threshold"],
+                spike_threshold_value=as_config["spike_threshold_value"],
+                spike_threshold_mode=as_config["spike_threshold_mode"],
+                burst_threshold=as_config["burst_threshold"],
+                burst_min_duration=as_config["burst_min_duration"],
+                burst_gaussian_sigma=as_config["burst_gaussian_sigma"],
+                spikes_sync_cross_corr_lag=as_config["spikes_sync_cross_corr_lag"],
+                frame_rate=as_config["frame_rate"],
+                experiment_type=as_config["experiment_type"],
+                led_power_equation=as_config.get("led_power_equation"),
+                led_pulse_duration=as_config.get("led_pulse_duration"),
+                led_pulse_powers=as_config.get("led_pulse_powers"),
+                led_pulse_on_frames=as_config.get("led_pulse_on_frames"),
+                stimulation_mask_path=as_config.get("stimulation_mask_path"),
+                threads=as_config["threads"],
+            )
+
+        # Run the pipeline
+        positions = run_config["positions_to_analyze"]
+        print(f"   🚀 Running pipeline for positions: {positions}")
+        runner.run(
+            experiment=experiment,
+            dataset_path=data_path,
+            detection_settings=detection_settings,
+            extraction_settings=extraction_settings,
+            analysis_settings=analysis_settings,
+            global_position_indices=run_config["positions_to_analyze"],
+            output_path=db_path.parent,
+            database_name=db_path.name,
+        )
+
+    print(f"\n✅ Database rebuild complete: {db_path}")
+    print("   Use this database for all tests")
+
+
+if __name__ == "__main__":
+    rebuild_test_database()

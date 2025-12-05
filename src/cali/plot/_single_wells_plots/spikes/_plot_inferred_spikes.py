@@ -432,13 +432,29 @@ def _plot_inferred_spikes_normalized_with_bursts(
     # Use global ROI set for burst parameters and population data
     burst_params = _get_burst_parameters(engine, fov_name, rois=None, run_id=run_id)
     if burst_params is not None:
-        burst_threshold, min_burst_duration, smoothing_sigma = burst_params
+        burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
 
-        spike_trains_array, _, _time_axis = _get_population_spike_data(
+        spike_trains_array, _, time_axis = _get_population_spike_data(
             engine, fov_name, rois=None, run_id=run_id
         )
 
         if spike_trains_array is not None:
+            # Compute frame rate from time axis
+            num_frames = len(time_axis)
+            if num_frames > 1:
+                total_time_sec = float(time_axis[-1] - time_axis[0])
+                frame_rate = (
+                    (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
+                )
+            else:
+                frame_rate = 10.0
+
+            # Convert parameters to frame units
+            min_burst_duration = max(
+                1, int((min_burst_duration_ms / 1000.0) * frame_rate)
+            )
+            smoothing_sigma = smoothing_sigma_sec * frame_rate
+
             population_activity = np.mean(spike_trains_array, axis=0)
 
             # Smooth before detection

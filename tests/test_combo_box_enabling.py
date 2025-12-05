@@ -30,7 +30,7 @@ def widget_with_db(
 ) -> Generator[tuple[_SingleWellGraphWidget, str, str], None, None]:
     """Create a widget connected to the test database with full pipeline results."""
     # Use existing test database
-    db_path = "tests/test_data/multi_pos/result_2pos.cali"
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 
     # Get the FOV name from the database
     engine = create_engine(f"sqlite:///{db_path}")

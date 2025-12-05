@@ -292,7 +292,7 @@ def _add_analysis_settings_to_tree(
         peaks_node.add(
             f"Height: {settings.peaks_height_value} ({settings.peaks_height_mode})"
         )
-        peaks_node.add(f"Distance: {settings.peaks_distance} frames")
+        peaks_node.add(f"Distance: {settings.peaks_distance} ms")
         peaks_node.add(f"Prominence multiplier: {settings.peaks_prominence_multiplier}")
 
         # Spike detection
@@ -305,14 +305,19 @@ def _add_analysis_settings_to_tree(
         # Burst analysis
         burst_node = settings_node.add("💥 [green]Burst Analysis[/green]")
         burst_node.add(f"Threshold: {settings.burst_threshold}%")
-        burst_node.add(f"Min duration: {settings.burst_min_duration}s")
+        burst_node.add(f"Min duration: {settings.burst_min_duration}ms")
         burst_node.add(f"Gaussian sigma: {settings.burst_gaussian_sigma}s")
 
         # Synchrony
         sync_node = settings_node.add("🔗 [green]Synchrony Analysis[/green]")
-        sync_node.add(f"Calcium jitter window: {settings.calcium_sync_jitter_window}")
+        sync_node.add(f"Calcium jitter window: {settings.calcium_sync_jitter_window}ms")
+        sync_node.add(f"Calcium peaks max lag: {settings.calcium_peaks_max_lag}ms")
         sync_node.add(f"Network threshold: {settings.calcium_network_threshold}%")
-        sync_node.add(f"Spike cross-corr lag: {settings.spikes_sync_cross_corr_lag}")
+        sync_node.add(f"Spike synchrony lag: {settings.spikes_sync_cross_corr_lag}ms")
+
+        # Peak detection
+        peak_node = settings_node.add("📊 [green]Peak Detection[/green]")
+        peak_node.add(f"Minimum peaks distance: {settings.peaks_distance}ms")
 
         # Stimulation parameters (if evoked)
         if (

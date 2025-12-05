@@ -64,7 +64,7 @@ def _get_spike_synchrony_matrix_from_db(
                 return None, None, None
 
             if (
-                fov_analysis.spike_synchrony_matrix is None
+                fov_analysis.spike_jitter_synchrony_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
                 cali_logger.debug(
@@ -72,9 +72,11 @@ def _get_spike_synchrony_matrix_from_db(
                 )
                 return None, None, None
 
-            sync_matrix = np.asarray(fov_analysis.spike_synchrony_matrix, dtype=float)
+            sync_matrix = np.asarray(
+                fov_analysis.spike_jitter_synchrony_matrix, dtype=float
+            )
             roi_labels = list(fov_analysis.active_roi_labels)
-            global_sync = fov_analysis.global_spike_synchrony
+            global_sync = fov_analysis.global_spike_jitter_synchrony
 
             return sync_matrix, roi_labels, global_sync
     except OperationalError:

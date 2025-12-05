@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
@@ -19,6 +20,7 @@ from qtpy.QtWidgets import (
 
 from cali._constants import (
     DEFAULT_DFF_WINDOW,
+    DEFAULT_FRAME_RATE,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
@@ -28,6 +30,9 @@ from cali.sqlmodel import ExtractionSettings
 from ._util import (
     create_divider_line,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -52,8 +57,9 @@ class NeuropilData:
 class TraceExtractionData:
     """Data structure to hold the trace extraction settings."""
 
-    dff_window_size: int
-    decay_constant: float
+    dff_window_size: float  # milliseconds
+    decay_constant: float  # seconds
+    frame_rate: float  # frames per second
     neuropil_inner_radius: int
     neuropil_min_pixels: int
     neuropil_correction_factor: float
@@ -186,10 +192,24 @@ class _ExtractionGUI(QWidget):
             dff_window=(
                 trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
             ),
-            # frame_rate=self._frame_rate_wdg.value(),
+            frame_rate=trace_data.frame_rate if trace_data else DEFAULT_FRAME_RATE,
         )
 
         return settings
+
+    def to_json(self, path: str | Path) -> None:
+        """Save the detection settings to a JSON file.
+
+        Parameters
+        ----------
+        path : str | Path
+            The file path to save the JSON settings.
+        """
+        import json
+        from dataclasses import asdict
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(asdict(self.value()), f, indent=4)
 
 
 class _NeuropilCorrectionWidget(QWidget):
@@ -311,29 +331,56 @@ class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # Frame Rate widget
+        self._frame_rate_wdg = QWidget(self)
+        self._frame_rate_wdg.setToolTip(
+            "Acquisition frame rate in frames per second (fps).\n\n"
+            "This is used to convert time-based parameters (e.g., DFF window in "
+            "milliseconds) to frames for processing.\n\n"
+            "Tip: This is typically the inverse of exposure time:\n"
+            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
+            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+        )
+        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
+        self._frame_rate_lbl.setSizePolicy(*FIXED)
+        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setDecimals(2)
+        self._frame_rate_spin.setRange(0.01, 1000.0)
+        self._frame_rate_spin.setSingleStep(1.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
+        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
+        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
+        frame_rate_layout.setSpacing(5)
+        frame_rate_layout.addWidget(self._frame_rate_lbl)
+        frame_rate_layout.addWidget(self._frame_rate_spin)
+
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
         self._dff_wdg.setToolTip(
-            "Controls the sliding window size for calculating ΔF/F₀ baseline "
-            "(expressed in frames).\n\n"
-            "The algorithm uses a sliding window to estimate the background "
-            "fluorescence:\n"
-            "• For each timepoint, calculates the 10th percentile within the window\n"
-            "• Window extends from current timepoint backwards by window_size/2 "
-            "frames\n"
-            "• ΔF/F₀ = (fluorescence - background) / background\n\n"
-            "Window size considerations:\n"
-            "• Larger values (200-500): More stable baseline, good for slow drifts\n"
-            "• Smaller values (50-100): More adaptive, follows local fluorescence "
-            "changes\n"
-            "• Too small (<20): May track signal itself, reducing ΔF/F₀ sensitivity\n"
-            "• Too large (>1000): May not adapt to legitimate baseline shifts."
+            "Sliding Window Size for ΔF/F₀ Baseline (milliseconds)\n\n"
+            "Controls the duration of the sliding window used to estimate the baseline "
+            "fluorescence F₀ for ΔF/F₀ computation in single-photon calcium imaging."
+            "\n\nHow the baseline is computed:\n"
+            "• A centered sliding window is taken around each timepoint\n"
+            "• The 10th percentile of fluorescence values within that window is used as"
+            " the baseline F₀\n"
+            "• ΔF/F₀ is calculated as: (F - F₀) / F₀\n\n"
+            "Choosing the window size:\n"
+            "• Large windows (10000-60000 ms): Very stable baseline; best for "
+            "recordings with slow drift or bleaching\n"
+            "• Medium windows (5000-15000 ms): Good all-purpose choice; follows "
+            "baseline variations without tracking individual transients too closely\n"
+            "• Small windows (<2000 ms): Baseline begins to follow the activity itself,"
+            " which can reduce ΔF/F₀ amplitude and distort transients; not recommended"
+            " in most cases\n\n"
+            "Recommended default: 5000-10000 ms (5-10 seconds), depending on frame rate"
+            " and expected drift. Default: 10000 ms (15 seconds)"
         )
-        self._dff_lbl = QLabel("ΔF/F0 Window Size:")
+        self._dff_lbl = QLabel("ΔF/F0 Window (ms):")
         self._dff_lbl.setSizePolicy(*FIXED)
-        self._dff_window_size_spin = QSpinBox(self)
-        self._dff_window_size_spin.setRange(0, 10000)
-        self._dff_window_size_spin.setSingleStep(1)
+        self._dff_window_size_spin = QDoubleSpinBox(self)
+        self._dff_window_size_spin.setRange(0.1, 1000000)
+        self._dff_window_size_spin.setSingleStep(100)
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         dff_layout = QHBoxLayout(self._dff_wdg)
         dff_layout.setContentsMargins(0, 0, 0, 0)
@@ -366,6 +413,7 @@ class _TraceExtractionWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
+        layout.addWidget(self._frame_rate_wdg)
         layout.addWidget(self._dff_wdg)
         layout.addWidget(self._dec_wdg)
 
@@ -373,6 +421,7 @@ class _TraceExtractionWidget(QWidget):
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
+        self._frame_rate_lbl.setFixedWidth(width)
         self._dff_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
 
@@ -381,6 +430,7 @@ class _TraceExtractionWidget(QWidget):
         return TraceExtractionData(
             self._dff_window_size_spin.value(),
             self._decay_constant_spin.value(),
+            self._frame_rate_spin.value(),
             neuropil_data.neuropil_inner_radius,
             neuropil_data.neuropil_min_pixels,
             neuropil_data.neuropil_correction_factor,
@@ -390,8 +440,10 @@ class _TraceExtractionWidget(QWidget):
         """Set the values of the widget."""
         self._dff_window_size_spin.setValue(value.dff_window_size)
         self._decay_constant_spin.setValue(value.decay_constant)
+        self._frame_rate_spin.setValue(value.frame_rate)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         self._decay_constant_spin.setValue(0.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)

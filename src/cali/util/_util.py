@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,11 @@ from cali.sqlmodel._model import (
     Traces,
     Well,
 )
+
+# Global lock to protect numba parallel=True functions from concurrent access
+# Numba's workqueue threading layer is not threadsafe and crashes when accessed
+# from multiple Python threads simultaneously
+_NUMBA_LOCK = threading.Lock()
 
 
 def load_data_from_path(

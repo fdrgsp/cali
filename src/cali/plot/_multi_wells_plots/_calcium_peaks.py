@@ -89,7 +89,7 @@ def _query_calcium_peaks_correlation_by_condition(
 ) -> dict[str, dict[str, float]]:
     """Query mean calcium peaks correlation per FOV, grouped by condition.
 
-    Uses pre-computed calcium_peaks_correlation_matrix from FOVAnalysis.
+    Uses pre-computed calcium_peaks_max_lag_correlation_matrix from FOVAnalysis.
     Returns the mean of off-diagonal elements as the global correlation metric.
 
     Parameters
@@ -126,12 +126,12 @@ def _query_calcium_peaks_correlation_by_condition(
 
             data: dict[str, dict[str, float]] = {}
             for fov_analysis, fov, well in results:
-                if fov_analysis.calcium_peaks_correlation_matrix is None:
+                if fov_analysis.calcium_peaks_max_lag_correlation_matrix is None:
                     continue
 
                 # Calculate mean of off-diagonal correlation values
                 corr_matrix = np.asarray(
-                    fov_analysis.calcium_peaks_correlation_matrix, dtype=float
+                    fov_analysis.calcium_peaks_max_lag_correlation_matrix, dtype=float
                 )
                 n = corr_matrix.shape[0]
                 if n < 2:

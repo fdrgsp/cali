@@ -40,9 +40,8 @@ from cali._constants import (
     DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_DFF_WINDOW,
+    DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
-    DEFAULT_MIN_BURST_DURATION,
-    DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     MULTIPLIER,
@@ -871,9 +870,11 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor : float
         Neuropil correction factor (0-1)
     decay_constant : float
-        Decay constant for deconvolution
+        Decay constant for deconvolution (seconds)
     dff_window : int
-        Window size for ΔF/F baseline calculation
+        Window size for ΔF/F baseline calculation (milliseconds)
+    frame_rate : float
+        Acquisition frame rate (frames per second)
     threads : int
         Number of threads to use for analysis (default: 1)
     """
@@ -888,7 +889,8 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor: float = 0.0
 
     decay_constant: float = 0.0
-    dff_window: int = DEFAULT_DFF_WINDOW
+    dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
+    frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
     threads: int = Field(default=1)
 
@@ -906,6 +908,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
+            and self.frame_rate == other.frame_rate
             # and self.threads == other.threads
         )
 
@@ -918,6 +921,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.neuropil_correction_factor,
                 self.decay_constant,
                 self.dff_window,
+                self.frame_rate,
                 # self.threads,
             )
         )
@@ -1007,11 +1011,13 @@ class AnalysisSettings(SQLModel, table=True):
     peaks_height_mode : str
         Mode for peak height ("multiplier" or "absolute")
     peaks_distance : int
-        Minimum distance between peaks (frames)
+        Minimum distance between peaks (milliseconds)
     peaks_prominence_multiplier : float
         Multiplier for peak prominence threshold
     calcium_sync_jitter_window : int
-        Jitter window for calcium synchrony (frames)
+        Jitter window for calcium synchrony (milliseconds)
+    calcium_peaks_max_lag : int
+        Max lag for calcium peaks cross-correlation (milliseconds)
     calcium_network_threshold : float
         Percentile threshold for network connectivity (0-100)
     spike_threshold_value : float
@@ -1021,11 +1027,13 @@ class AnalysisSettings(SQLModel, table=True):
     burst_threshold : float
         Threshold for burst detection (%)
     burst_min_duration : int
-        Minimum burst duration (seconds)
+        Minimum burst duration (milliseconds)
     burst_gaussian_sigma : float
         Gaussian sigma for burst smoothing (seconds)
     spikes_sync_cross_corr_lag : int
-        Max lag for spike synchrony cross-correlation (frames)
+        Max lag for spike synchrony cross-correlation (milliseconds)
+    frame_rate : float
+        Acquisition frame rate (frames per second)
     led_power_equation : str | None
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
@@ -1057,18 +1065,20 @@ class AnalysisSettings(SQLModel, table=True):
 
     peaks_height_value: float = DEFAULT_HEIGHT
     peaks_height_mode: str = MULTIPLIER
-    peaks_distance: int = DEFAULT_PEAKS_DISTANCE
+    peaks_distance: float = 200.0  # milliseconds (2 frames at 10fps)
     peaks_prominence_multiplier: float = 1.0
-    calcium_sync_jitter_window: int = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
-    calcium_peaks_max_lag: int = DEFAULT_CALCIUM_PEAKS_MAX_LAG
+    calcium_sync_jitter_window: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # ms
+    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # ms
     calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
     spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
     spike_threshold_mode: str = MULTIPLIER
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
-    burst_min_duration: int = DEFAULT_MIN_BURST_DURATION
+    burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
-    spikes_sync_cross_corr_lag: int = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+    spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
+
+    frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
     stimulation_mask_path: str | None = None
@@ -1114,6 +1124,7 @@ class AnalysisSettings(SQLModel, table=True):
             and self.burst_min_duration == other.burst_min_duration
             and self.burst_gaussian_sigma == other.burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
+            and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
             and self.led_pulse_powers == other.led_pulse_powers
@@ -1140,6 +1151,7 @@ class AnalysisSettings(SQLModel, table=True):
                 self.burst_min_duration,
                 self.burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
+                self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,
                 tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
@@ -1701,6 +1713,12 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Jitter synchrony on spike events (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
         Median of off-diagonal spike jitter synchrony values
+    burst_count : int | None
+        Number of population bursts detected in the FOV
+    burst_avg_duration : float | None
+        Average duration of population bursts (seconds)
+    burst_avg_interval : float | None
+        Average interval between population bursts (seconds)
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
@@ -1754,6 +1772,11 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     global_spike_jitter_synchrony: float | None = None
+
+    # Population burst metrics
+    burst_count: int | None = None
+    burst_avg_duration: float | None = None
+    burst_avg_interval: float | None = None
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="fov_analysis_history")

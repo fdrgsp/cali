@@ -64,17 +64,17 @@ def _get_synchrony_matrix_from_db(
                 return None, None, None
 
             if (
-                fov_analysis.calcium_peaks_synchrony_matrix is None
+                fov_analysis.calcium_peaks_jitter_synchrony_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
                 cali_logger.debug(f"FOVAnalysis for {fov_name} has no synchrony matrix")
                 return None, None, None
 
             sync_matrix = np.asarray(
-                fov_analysis.calcium_peaks_synchrony_matrix, dtype=float
+                fov_analysis.calcium_peaks_jitter_synchrony_matrix, dtype=float
             )
             roi_labels = list(fov_analysis.active_roi_labels)
-            global_sync = fov_analysis.global_calcium_peaks_synchrony
+            global_sync = fov_analysis.global_calcium_peaks_jitter_synchrony
 
             return sync_matrix, roi_labels, global_sync
     except OperationalError:

@@ -179,7 +179,7 @@ def _query_burst_metrics_by_condition(
     if burst_params is None:
         return {}
 
-    burst_threshold, min_burst_duration, smoothing_sigma = burst_params
+    burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
 
     with Session(engine) as session:
         # Get all FOV names grouped by condition
@@ -203,6 +203,22 @@ def _query_burst_metrics_by_condition(
 
             if spike_trains is None or len(spike_trains) < 2:
                 continue
+
+            # Compute frame rate from time axis
+            num_frames = len(time_axis)
+            if num_frames > 1:
+                total_time_sec = float(time_axis[-1] - time_axis[0])
+                frame_rate = (
+                    (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
+                )
+            else:
+                frame_rate = 10.0
+
+            # Convert parameters to frame units
+            min_burst_duration = max(
+                1, int((min_burst_duration_ms / 1000.0) * frame_rate)
+            )
+            smoothing_sigma = smoothing_sigma_sec * frame_rate
 
             # Calculate population activity
             population_activity = np.mean(spike_trains, axis=0)

@@ -204,6 +204,20 @@ class _DetectionGUI(QWidget):
 
         return settings
 
+    def to_json(self, path: str | Path) -> None:
+        """Save the detection settings to a JSON file.
+
+        Parameters
+        ----------
+        path : str | Path
+            The file path to save the JSON settings.
+        """
+        import json
+        from dataclasses import asdict
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(asdict(self.value()), f, indent=4)
+
     # PRIVATE METHODS -----------------------------------------------------------------
 
     def _on_detection_method_toggled(self, checked: bool) -> None:

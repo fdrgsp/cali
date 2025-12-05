@@ -1,0 +1,79 @@
+{
+  "description": "Test database schema for all tests. Modify this file and run rebuild_test_db.py to regenerate test_db.cali when models change.",
+  "dataset_path": "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
+  "experiment": {
+    "name": "Cali Experiment",
+    "description": "Experiment from data at tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr."
+  },
+  "detection_settings": [
+    {
+      "method": "cellpose",
+      "model_type": "cpsam",
+      "diameter": null,
+      "flow_threshold": 0.4,
+      "cellprob_threshold": 0.0,
+      "min_size": 10
+    }
+  ],
+  "extraction_settings": [
+    {
+      "neuropil_inner_radius": 2,
+      "neuropil_min_pixels": 200,
+      "neuropil_correction_factor": 0.6,
+      "decay_constant": 0.0,
+      "dff_window": 10000.0,
+      "frame_rate": 10.0,
+      "threads": 3
+    },
+    {
+      "neuropil_inner_radius": 0,
+      "neuropil_min_pixels": 0,
+      "neuropil_correction_factor": 0.0,
+      "decay_constant": 0.0,
+      "dff_window": 10000.0,
+      "frame_rate": 10.0,
+      "threads": 3
+    }
+  ],
+  "analysis_settings": [
+    {
+      "peaks_height_value": 2.0,
+      "peaks_height_mode": "multiplier",
+      "peaks_distance": 200.0,
+      "peaks_prominence_multiplier": 1.0,
+      "calcium_sync_jitter_window": 200.0,
+      "calcium_peaks_max_lag": 500.0,
+      "calcium_network_threshold": 90.0,
+      "spike_threshold_value": 1.0,
+      "spike_threshold_mode": "multiplier",
+      "burst_threshold": 65.0,
+      "burst_min_duration": 500.0,
+      "burst_gaussian_sigma": 0.5,
+      "spikes_sync_cross_corr_lag": 500.0,
+      "frame_rate": 10.0,
+      "experiment_type": "Evoked Activity",
+      "led_power_equation": "",
+      "led_pulse_duration": 100.0,
+      "led_pulse_powers": [2.0, 4.0, 6.0],
+      "led_pulse_on_frames": [3, 53, 103],
+      "stimulation_mask_path": "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/stimulation_mask.tif",
+      "threads": 3
+    }
+  ],
+  "runs": [
+    {
+      "description": "Full analysis run with evoked settings",
+      "detection_settings_index": 0,
+      "extraction_settings_index": 0,
+      "analysis_settings_index": 0,
+      "positions_to_analyze": [0, 1]
+    },
+    {
+      "description": "Analysis run with no neuropil correction",
+      "detection_settings_index": 0,
+      "extraction_settings_index": 1,
+      "analysis_settings_index": 0,
+      "positions_to_analyze": [0, 1]
+    }
+  ]
+}

@@ -40,7 +40,7 @@ def test_db_path() -> Path:
     from pathlib import Path
 
     return (
-        Path(__file__).parent / "test_data" / "test_for_plot" / "result_for_plots.cali"
+        Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
     )
 
 

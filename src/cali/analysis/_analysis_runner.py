@@ -217,7 +217,7 @@ class AnalysisRunner:
 
             fov_analysis = compute_fov_analysis(fov, analysis_settings)
             if fov_analysis is not None:
-                # Store in temporary attribute for later commit``
+                # Store in temporary attribute for later commit
                 if not hasattr(fov, "_new_fov_analysis"):
                     fov._new_fov_analysis = []
                 fov._new_fov_analysis.append(fov_analysis)
@@ -272,8 +272,11 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return None
 
-        # Detect peaks
-        min_distance_frames = analysis_settings.peaks_distance
+        # Detect peaks - convert milliseconds to frames
+        min_distance_ms = analysis_settings.peaks_distance
+        min_distance_frames = max(
+            1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
+        )
         peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
             dec_dff,
             peaks_height_dec_dff,

@@ -10,6 +10,5 @@ This module provides tools for analyzing extracted trace data:
 """
 
 from ._analysis_runner import AnalysisRunner
-from ._fov_analysis import compute_fov_analysis
 
-__all__ = ["AnalysisRunner", "compute_fov_analysis"]
+__all__ = ["AnalysisRunner"]
