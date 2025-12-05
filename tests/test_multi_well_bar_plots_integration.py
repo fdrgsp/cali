@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pyqtgraph import BarGraphItem
 from qtpy.QtWidgets import QWidget
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, create_engine, select
 
@@ -43,6 +44,28 @@ def multi_well_widget_with_data(
     """Create multi-well widget with real test database."""
     db_path = "tests/test_data/multi_pos/result_2pos.cali"
     engine = create_engine(f"sqlite:///{db_path}")
+
+    # Migrate schema if needed - add new columns that don't exist
+    # This must happen BEFORE any model queries
+    with engine.connect() as conn:
+        try:
+            # Check if column exists by trying to select it
+            conn.execute(
+                text("SELECT calcium_peaks_max_lag FROM analysis_settings LIMIT 1")
+            )
+        except OperationalError:
+            # Column doesn't exist, add it
+            try:
+                conn.execute(
+                    text(
+                        "ALTER TABLE analysis_settings "
+                        "ADD COLUMN calcium_peaks_max_lag INTEGER DEFAULT 5"
+                    )
+                )
+                conn.commit()
+            except OperationalError:
+                # Failed to add column, rollback
+                conn.rollback()
 
     # Get a valid run_id from the database
     with Session(engine) as session:

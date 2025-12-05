@@ -37,6 +37,7 @@ from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
+    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_DFF_WINDOW,
     DEFAULT_HEIGHT,
@@ -1059,6 +1060,7 @@ class AnalysisSettings(SQLModel, table=True):
     peaks_distance: int = DEFAULT_PEAKS_DISTANCE
     peaks_prominence_multiplier: float = 1.0
     calcium_sync_jitter_window: int = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+    calcium_peaks_max_lag: int = DEFAULT_CALCIUM_PEAKS_MAX_LAG
     calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
     spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
@@ -1104,6 +1106,7 @@ class AnalysisSettings(SQLModel, table=True):
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
             and self.calcium_sync_jitter_window == other.calcium_sync_jitter_window
+            and self.calcium_peaks_max_lag == other.calcium_peaks_max_lag
             and self.calcium_network_threshold == other.calcium_network_threshold
             and self.spike_threshold_value == other.spike_threshold_value
             and self.spike_threshold_mode == other.spike_threshold_mode
@@ -1129,6 +1132,7 @@ class AnalysisSettings(SQLModel, table=True):
                 self.peaks_distance,
                 self.peaks_prominence_multiplier,
                 self.calcium_sync_jitter_window,
+                self.calcium_peaks_max_lag,
                 self.calcium_network_threshold,
                 self.spike_threshold_value,
                 self.spike_threshold_mode,
@@ -1677,18 +1681,26 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     active_roi_labels : list[int] | None
         Ordered list of active ROI label_values used for matrix indexing.
         Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
-    calcium_peaks_correlation_matrix : list[list[float]] | None
-        Pairwise cross-correlation matrix for dec_dff traces (NxN for N active ROIs)
-    calcium_peaks_synchrony_matrix : list[list[float]] | None
-        Pairwise synchrony matrix for calcium peak events (jitter window method)
-    global_calcium_peaks_synchrony : float | None
-        Median of off-diagonal synchrony values (global synchrony metric)
+    calcium_dff_correlation_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
+    calcium_peaks_jitter_synchrony_matrix : list[list[float]] | None
+        Jitter synchrony on calcium peak events (NxN for N active ROIs)
+    global_calcium_peaks_jitter_synchrony : float | None
+        Median of off-diagonal jitter synchrony values
+    calcium_peaks_max_lag_correlation_matrix : list[list[float]] | None
+        Max lag correlation on calcium peak events (NxN for N active ROIs)
+    global_calcium_peaks_max_lag_correlation : float | None
+        Median of off-diagonal max lag correlation values
     spike_correlation_matrix : list[list[float]] | None
-        Pairwise cross-correlation matrix for binary spike trains
-    spike_synchrony_matrix : list[list[float]] | None
-        Pairwise synchrony matrix for spike events (cross-correlation method)
-    global_spike_synchrony : float | None
-        Median of off-diagonal spike synchrony values
+        Zero-lag Pearson correlation on binary spike trains (NxN for N active ROIs)
+    spike_max_lag_correlation_matrix : list[list[float]] | None
+        Max lag correlation on spike events (NxN for N active ROIs)
+    global_spike_max_lag_correlation : float | None
+        Median of off-diagonal spike max lag correlation values
+    spike_jitter_synchrony_matrix : list[list[float]] | None
+        Jitter synchrony on spike events (NxN for N active ROIs)
+    global_spike_jitter_synchrony : float | None
+        Median of off-diagonal spike jitter synchrony values
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
@@ -1711,23 +1723,37 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     # ROI ordering for matrix interpretation
     active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
-    # Calcium peaks correlation and synchrony (from dec_dff and peak events)
-    calcium_peaks_correlation_matrix: list[list[float]] | None = Field(
+    # Calcium peaks metrics (from dec_dff traces and peak events)
+    # 1. Zero-lag correlation on DF/F traces
+    calcium_dff_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    calcium_peaks_synchrony_matrix: list[list[float]] | None = Field(
+    # 2. Jitter synchrony on calcium peaks
+    calcium_peaks_jitter_synchrony_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    global_calcium_peaks_synchrony: float | None = None
+    global_calcium_peaks_jitter_synchrony: float | None = None
+    # 3. Max lag correlation on calcium peaks
+    calcium_peaks_max_lag_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_calcium_peaks_max_lag_correlation: float | None = None
 
-    # Spike correlation and synchrony (from inferred spikes)
+    # Spike metrics (from inferred spikes)
+    # 1. Zero-lag correlation on spike trains
     spike_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    spike_synchrony_matrix: list[list[float]] | None = Field(
+    # 2. Max lag correlation on spikes
+    spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    global_spike_synchrony: float | None = None
+    global_spike_max_lag_correlation: float | None = None
+    # 3. Jitter synchrony on spikes
+    spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_jitter_synchrony: float | None = None
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="fov_analysis_history")

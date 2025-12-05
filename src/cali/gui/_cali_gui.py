@@ -1903,6 +1903,7 @@ class CaliGui(QMainWindow):
                             calcium_synchrony_jitter=(
                                 a_settings.calcium_sync_jitter_window
                             ),
+                            calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
                             calcium_network_threshold=(
                                 a_settings.calcium_network_threshold
                             ),

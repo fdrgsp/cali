@@ -36,7 +36,7 @@ def _query_calcium_peaks_synchrony_by_condition(
 ) -> dict[str, dict[str, float]]:
     """Query calcium peaks synchrony per FOV, grouped by condition.
 
-    Uses pre-computed global_calcium_peaks_synchrony from FOVAnalysis.
+    Uses pre-computed global_calcium_peaks_jitter_synchrony from FOVAnalysis.
 
     Parameters
     ----------
@@ -63,18 +63,18 @@ def _query_calcium_peaks_synchrony_by_condition(
 
             # Only include FOVs with valid synchrony data
             stmt = stmt.where(
-                col(FOVAnalysis.global_calcium_peaks_synchrony).is_not(None)
+                col(FOVAnalysis.global_calcium_peaks_jitter_synchrony).is_not(None)
             )
 
             results = session.exec(stmt).all()
 
             data: dict[str, dict[str, float]] = {}
             for fov_analysis, fov, well in results:
-                if fov_analysis.global_calcium_peaks_synchrony is None:
+                if fov_analysis.global_calcium_peaks_jitter_synchrony is None:
                     continue
                 cond_label = _get_condition_label(well)
                 data.setdefault(cond_label, {})[fov.name] = (
-                    fov_analysis.global_calcium_peaks_synchrony
+                    fov_analysis.global_calcium_peaks_jitter_synchrony
                 )
 
         return data
@@ -119,7 +119,7 @@ def _query_calcium_peaks_correlation_by_condition(
 
             # Only include FOVs with valid correlation data
             stmt = stmt.where(
-                col(FOVAnalysis.calcium_peaks_correlation_matrix).is_not(None)
+                col(FOVAnalysis.calcium_dff_correlation_matrix).is_not(None)
             )
 
             results = session.exec(stmt).all()

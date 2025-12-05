@@ -24,7 +24,10 @@ def calculate_dff(
     """
     dff: np.ndarray = np.array([])
     bg: np.ndarray = _calculate_bg(data, window, percentile)
-    dff = (data - bg) / bg
+    # make sure we don't divide by zero
+    eps = np.finfo(float).eps
+    bg_safe = np.maximum(bg, eps)
+    dff = (data - bg_safe) / bg_safe
     return dff
 
 

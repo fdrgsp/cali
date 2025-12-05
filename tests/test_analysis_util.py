@@ -332,24 +332,24 @@ def test_compute_fov_analysis_with_active_rois() -> None:
     assert result.fov_id is None  # Not yet persisted
     assert result.active_roi_labels == [1, 2, 3]
 
-    # Check correlation matrices are computed
-    assert result.calcium_peaks_correlation_matrix is not None
-    assert len(result.calcium_peaks_correlation_matrix) == 3
-    assert len(result.calcium_peaks_correlation_matrix[0]) == 3
+    # Check calcium correlation matrices are computed
+    assert result.calcium_dff_correlation_matrix is not None
+    assert len(result.calcium_dff_correlation_matrix) == 3
+    assert len(result.calcium_dff_correlation_matrix[0]) == 3
 
-    # Check synchrony matrices are computed
-    assert result.calcium_peaks_synchrony_matrix is not None
-    assert len(result.calcium_peaks_synchrony_matrix) == 3
+    # Check calcium synchrony matrices are computed
+    assert result.calcium_peaks_jitter_synchrony_matrix is not None
+    assert len(result.calcium_peaks_jitter_synchrony_matrix) == 3
 
     # Check spike matrices
     assert result.spike_correlation_matrix is not None
-    assert result.spike_synchrony_matrix is not None
+    assert result.spike_jitter_synchrony_matrix is not None
 
     # Check global synchrony values are reasonable
-    assert result.global_calcium_peaks_synchrony is not None
-    assert 0 <= result.global_calcium_peaks_synchrony <= 1
-    assert result.global_spike_synchrony is not None
-    assert 0 <= result.global_spike_synchrony <= 1
+    assert result.global_calcium_peaks_jitter_synchrony is not None
+    assert 0 <= result.global_calcium_peaks_jitter_synchrony <= 1
+    assert result.global_spike_jitter_synchrony is not None
+    assert 0 <= result.global_spike_jitter_synchrony <= 1
 
 
 def test_compute_fov_analysis_insufficient_rois() -> None:

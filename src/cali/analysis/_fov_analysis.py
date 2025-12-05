@@ -30,9 +30,20 @@ def compute_fov_analysis(
 ) -> FOVAnalysis | None:
     """Compute FOV-level correlation and synchrony analysis.
 
-    This function calculates pairwise correlation and synchrony matrices
-    for all active ROIs in a FOV. It requires that ROIs have traces and
-    data_analysis attached (either via history or _new_* attributes).
+    This function calculates 6 pairwise metrics for all active ROIs in a FOV:
+
+    Calcium Peaks Metrics:
+    1. Zero-lag Pearson correlation on DF/F traces
+    2. Jitter synchrony on calcium peak events
+    3. Max lag correlation on calcium peak events
+
+    Spike Metrics:
+    4. Zero-lag Pearson correlation on spike trains
+    5. Max lag correlation on spike events
+    6. Jitter synchrony on spike events
+
+    It requires that ROIs have traces and data_analysis attached
+    (either via history or _new_* attributes).
 
     Parameters
     ----------
@@ -131,60 +142,111 @@ def compute_fov_analysis(
         )
         return None
 
-    # Compute calcium peaks cross-correlation matrix
-    calcium_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
+    # Compute calcium peaks metrics (3 measurements):
+    # 1. Zero-lag correlation on DF/F traces
+    calcium_dff_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
 
-    # Compute calcium peaks synchrony matrix (jitter window method)
-    calcium_sync_matrix = None
-    global_calcium_sync = None
+    # 2. Jitter synchrony on calcium peaks
+    calcium_peaks_jitter_sync_matrix = None
+    global_calcium_peaks_jitter_sync = None
     if len(peak_events_dict) >= 2:
         jitter_window = analysis_settings.calcium_sync_jitter_window
-        calcium_sync_matrix = _get_calcium_peaks_event_synchrony_matrix(
+        calcium_peaks_jitter_sync_matrix = _get_calcium_peaks_event_synchrony_matrix(
             peak_events_dict,
             method="jitter_window",
             jitter_window=jitter_window,
         )
-        if calcium_sync_matrix is not None:
-            global_calcium_sync = _get_calcium_peaks_event_synchrony(
-                calcium_sync_matrix
+        if calcium_peaks_jitter_sync_matrix is not None:
+            global_calcium_peaks_jitter_sync = _get_calcium_peaks_event_synchrony(
+                calcium_peaks_jitter_sync_matrix
             )
 
-    # Compute spike correlation and synchrony matrices
+    # 3. Max lag correlation on calcium peaks
+    calcium_peaks_max_lag_corr_matrix = None
+    global_calcium_peaks_max_lag_corr = None
+    if len(peak_events_dict) >= 2:
+        max_lag = analysis_settings.calcium_peaks_max_lag
+        calcium_peaks_max_lag_corr_matrix = _get_calcium_peaks_event_synchrony_matrix(
+            peak_events_dict,
+            method="cross_correlation",
+            max_lag=max_lag,
+        )
+        if calcium_peaks_max_lag_corr_matrix is not None:
+            global_calcium_peaks_max_lag_corr = _get_calcium_peaks_event_synchrony(
+                calcium_peaks_max_lag_corr_matrix
+            )
+
+    # Compute spike metrics (3 measurements):
+    # 1. Zero-lag correlation on spike trains
     spike_corr_matrix = None
-    spike_sync_matrix = None
-    global_spike_sync = None
+    # 2. Max lag correlation on spikes
+    spike_max_lag_corr_matrix = None
+    global_spike_max_lag_corr = None
+    # 3. Jitter synchrony on spikes
+    spike_jitter_sync_matrix = None
+    global_spike_jitter_sync = None
 
     if len(spike_data_dict) >= 2:
-        # Spike cross-correlation
+        # 1. Zero-lag Pearson correlation on spike trains
         spike_corr_matrix = _compute_cross_correlation_matrix(spike_trains)
 
-        # Spike synchrony (cross-correlation method)
+        # 2. Max lag correlation on spikes
         max_lag = analysis_settings.spikes_sync_cross_corr_lag
-        spike_sync_matrix = _get_spike_synchrony_matrix(
+        spike_max_lag_corr_matrix = _get_spike_synchrony_matrix(
             spike_data_dict,
             method="cross_correlation",
             max_lag=max_lag,
         )
-        if spike_sync_matrix is not None:
-            global_spike_sync = _get_spike_synchrony(spike_sync_matrix)
+        if spike_max_lag_corr_matrix is not None:
+            global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-    # Create FOVAnalysis object
+        # 3. Jitter synchrony on spikes
+        jitter_window = analysis_settings.calcium_sync_jitter_window
+        spike_jitter_sync_matrix = _get_spike_synchrony_matrix(
+            spike_data_dict,
+            method="jitter_window",
+            jitter_window=jitter_window,
+        )
+        if spike_jitter_sync_matrix is not None:
+            global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
+
+    # Create FOVAnalysis object with all 6 measurements
     fov_analysis = FOVAnalysis(
         active_roi_labels=roi_labels,
-        calcium_peaks_correlation_matrix=(
-            calcium_corr_matrix.tolist() if calcium_corr_matrix is not None else None
+        # Calcium metrics
+        calcium_dff_correlation_matrix=(
+            calcium_dff_corr_matrix.tolist()
+            if calcium_dff_corr_matrix is not None
+            else None
         ),
-        calcium_peaks_synchrony_matrix=(
-            calcium_sync_matrix.tolist() if calcium_sync_matrix is not None else None
+        calcium_peaks_jitter_synchrony_matrix=(
+            calcium_peaks_jitter_sync_matrix.tolist()
+            if calcium_peaks_jitter_sync_matrix is not None
+            else None
         ),
-        global_calcium_peaks_synchrony=global_calcium_sync,
+        global_calcium_peaks_jitter_synchrony=global_calcium_peaks_jitter_sync,
+        calcium_peaks_max_lag_correlation_matrix=(
+            calcium_peaks_max_lag_corr_matrix.tolist()
+            if calcium_peaks_max_lag_corr_matrix is not None
+            else None
+        ),
+        global_calcium_peaks_max_lag_correlation=global_calcium_peaks_max_lag_corr,
+        # Spike metrics
         spike_correlation_matrix=(
             spike_corr_matrix.tolist() if spike_corr_matrix is not None else None
         ),
-        spike_synchrony_matrix=(
-            spike_sync_matrix.tolist() if spike_sync_matrix is not None else None
+        spike_max_lag_correlation_matrix=(
+            spike_max_lag_corr_matrix.tolist()
+            if spike_max_lag_corr_matrix is not None
+            else None
         ),
-        global_spike_synchrony=global_spike_sync,
+        global_spike_max_lag_correlation=global_spike_max_lag_corr,
+        spike_jitter_synchrony_matrix=(
+            spike_jitter_sync_matrix.tolist()
+            if spike_jitter_sync_matrix is not None
+            else None
+        ),
+        global_spike_jitter_synchrony=global_spike_jitter_sync,
     )
 
     return fov_analysis

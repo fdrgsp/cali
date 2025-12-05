@@ -34,7 +34,7 @@ def _query_spike_synchrony_by_condition(
 ) -> dict[str, dict[str, float]]:
     """Query spike synchrony per FOV, grouped by condition.
 
-    Uses pre-computed global_spike_synchrony from FOVAnalysis.
+    Uses pre-computed global_spike_jitter_synchrony from FOVAnalysis.
 
     Parameters
     ----------
@@ -60,17 +60,19 @@ def _query_spike_synchrony_by_condition(
                 stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
 
             # Only include FOVs with valid synchrony data
-            stmt = stmt.where(col(FOVAnalysis.global_spike_synchrony).is_not(None))
+            stmt = stmt.where(
+                col(FOVAnalysis.global_spike_jitter_synchrony).is_not(None)
+            )
 
             results = session.exec(stmt).all()
 
             data: dict[str, dict[str, float]] = {}
             for fov_analysis, fov, well in results:
-                if fov_analysis.global_spike_synchrony is None:
+                if fov_analysis.global_spike_jitter_synchrony is None:
                     continue
                 cond_label = _get_condition_label(well)
                 data.setdefault(cond_label, {})[fov.name] = (
-                    fov_analysis.global_spike_synchrony
+                    fov_analysis.global_spike_jitter_synchrony
                 )
 
         return data
