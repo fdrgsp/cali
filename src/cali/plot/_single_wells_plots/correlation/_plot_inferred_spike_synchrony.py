@@ -99,8 +99,10 @@ def _filter_matrix_by_rois(
             indices.append(i)
             filtered_labels.append(label)
 
+    # Return the filtered labels even if there are fewer than 2
+    # (the caller should check for insufficient ROIs)
     if len(indices) < 2:
-        return matrix, roi_labels
+        return matrix[:0, :0], filtered_labels  # Empty matrix with filtered labels
 
     indices_arr = np.array(indices)
     filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
