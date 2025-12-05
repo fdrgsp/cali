@@ -295,6 +295,12 @@ class CaliRunner:
                 if exp_in_db and exp_in_db.plate and exp_in_db.plate.plate_maps:
                     plate_maps = exp_in_db.plate.plate_maps
                     plate_map_hash = compute_plate_map_hash(plate_maps)
+                    cali_logger.info(
+                        f"📋 Plate maps loaded from database: {plate_maps}"
+                    )
+                    cali_logger.info(f"🔑 Plate map hash: {plate_map_hash}")
+                else:
+                    cali_logger.info("📋 No plate maps found in database")
 
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
@@ -585,6 +591,7 @@ class CaliRunner:
                             extraction_settings_id,  # type: ignore
                             analysis_settings_id,
                             global_position_indices,
+                            plate_map_hash=plate_map_hash,
                             force=force,
                         )
                     else:
@@ -1019,6 +1026,7 @@ class CaliRunner:
         extraction_settings_id: int,
         analysis_settings_id: int,
         global_position_indices: Sequence[int],
+        plate_map_hash: str | None = None,
         force: bool = False,
     ) -> list[int]:
         """Get positions that need analysis.
@@ -1039,6 +1047,8 @@ class CaliRunner:
             Analysis settings ID to check
         global_position_indices : Sequence[int]
             Positions to check
+        plate_map_hash : str | None
+            Plate map hash to check. Different plate maps should create separate runs.
         force : bool
             If True, returns all positions regardless of existing results.
 
@@ -1051,6 +1061,20 @@ class CaliRunner:
             return list(global_position_indices)
 
         # Optimize by using set directly
+        # Build subquery for CaliResult filtering
+        result_subquery = select(CaliResult.id).where(
+            CaliResult.extraction_settings_id == extraction_settings_id,
+            CaliResult.analysis_settings_id == analysis_settings_id,
+        )
+
+        # Add plate_map_hash filter to differentiate runs
+        if plate_map_hash is None:
+            result_subquery = result_subquery.where(CaliResult.plate_map_hash.is_(None))  # type: ignore
+        else:
+            result_subquery = result_subquery.where(
+                CaliResult.plate_map_hash == plate_map_hash
+            )
+
         existing_positions = set(
             session.exec(
                 select(FOV.position_index)
@@ -1058,12 +1082,7 @@ class CaliRunner:
                 .join(Traces)
                 .where(
                     ROI.detection_settings_id == detection_settings_id,
-                    Traces.analysis_result_id.in_(  # type: ignore
-                        select(CaliResult.id).where(
-                            CaliResult.extraction_settings_id == extraction_settings_id,
-                            CaliResult.analysis_settings_id == analysis_settings_id,
-                        )
-                    ),
+                    Traces.analysis_result_id.in_(result_subquery),  # type: ignore
                     FOV.position_index.in_(global_position_indices),  # type: ignore
                 )
                 .distinct()

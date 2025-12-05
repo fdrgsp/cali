@@ -1584,27 +1584,26 @@ def test_experiment_to_plate_map_data(
         session.refresh(simple_experiment)
 
         # Convert to plate map format
-        cond1_data, cond2_data = experiment_to_plate_map_data(simple_experiment)
+        genotype_data, treatment_data = experiment_to_plate_map_data(simple_experiment)
 
-        # Verify condition_1 (genotype)
-        assert len(cond1_data) == 1
-        assert cond1_data[0].name == "B5"
-        assert cond1_data[0].row_col == (1, 4)
-        assert cond1_data[0].condition == ("WT", "blue")
+        # Verify genotype data
+        assert len(genotype_data) == 1
+        assert genotype_data[0].name == "B5"
+        assert genotype_data[0].row_col == (1, 4)
+        assert genotype_data[0].condition == ("WT", "blue")
 
-        # Verify condition_2 (treatment)
-        assert len(cond2_data) == 1
-        assert cond2_data[0].name == "B5"
-        assert cond2_data[0].row_col == (1, 4)
-        assert cond2_data[0].condition == ("Control", "gray")
+        # Verify treatment data
+        assert len(treatment_data) == 1
+        assert treatment_data[0].name == "B5"
+        assert treatment_data[0].row_col == (1, 4)
+        assert treatment_data[0].condition == ("Control", "gray")
 
 
 def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
     """Test plate map conversion with multiple wells.
 
-    Note: The order of conditions in a well's condition list is not guaranteed
-    by SQLModel/SQLAlchemy when using many-to-many relationships. This test
-    verifies that the conversion function works correctly regardless of order.
+    Verifies that the conversion function correctly groups conditions by type
+    (genotype vs treatment), not by position in the well's conditions list.
     """
     engine, _ = temp_db
 
@@ -1630,34 +1629,38 @@ def test_experiment_to_plate_map_data_multiple_wells(temp_db: TempDB) -> None:
         session.refresh(exp)
 
         # Convert to plate map format
-        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+        genotype_data, treatment_data = experiment_to_plate_map_data(exp)
 
         # Verify we have 4 wells total
-        assert len(cond1_data) == 4
-        assert len(cond2_data) == 4
+        assert len(genotype_data) == 4
+        assert len(treatment_data) == 4
 
         # Check that all wells are present
-        well_names_1 = {data.name for data in cond1_data}
-        well_names_2 = {data.name for data in cond2_data}
-        assert well_names_1 == {"A1", "A2", "B1", "B2"}
-        assert well_names_2 == {"A1", "A2", "B1", "B2"}
+        genotype_well_names = {data.name for data in genotype_data}
+        treatment_well_names = {data.name for data in treatment_data}
+        assert genotype_well_names == {"A1", "A2", "B1", "B2"}
+        assert treatment_well_names == {"A1", "A2", "B1", "B2"}
 
-        # Verify that each well has two conditions (one in each list)
-        for well_name in ["A1", "A2", "B1", "B2"]:
-            cond1_entry = next(d for d in cond1_data if d.name == well_name)
-            cond2_entry = next(d for d in cond2_data if d.name == well_name)
+        # Verify that genotype_data only contains genotypes
+        genotype_names = {data.condition[0] for data in genotype_data}
+        assert genotype_names == {"WT", "KO"}
 
-            # Each condition should be one of our defined conditions
-            assert cond1_entry.condition[0] in ["WT", "KO", "Drug", "Vehicle"]
-            assert cond2_entry.condition[0] in ["WT", "KO", "Drug", "Vehicle"]
+        # Verify that treatment_data only contains treatments
+        treatment_names = {data.condition[0] for data in treatment_data}
+        assert treatment_names == {"Drug", "Vehicle"}
 
-            # The two conditions for each well should be different
-            assert cond1_entry.condition[0] != cond2_entry.condition[0]
+        # Verify specific well mappings
+        genotype_map = {d.name: d.condition[0] for d in genotype_data}
+        treatment_map = {d.name: d.condition[0] for d in treatment_data}
 
-            # Colors should match condition names
-            color_map = {"WT": "blue", "KO": "red", "Drug": "green", "Vehicle": "gray"}
-            assert cond1_entry.condition[1] == color_map[cond1_entry.condition[0]]
-            assert cond2_entry.condition[1] == color_map[cond2_entry.condition[0]]
+        assert genotype_map["A1"] == "WT"
+        assert treatment_map["A1"] == "Vehicle"
+        assert genotype_map["A2"] == "WT"
+        assert treatment_map["A2"] == "Drug"
+        assert genotype_map["B1"] == "KO"
+        assert treatment_map["B1"] == "Vehicle"
+        assert genotype_map["B2"] == "KO"
+        assert treatment_map["B2"] == "Drug"
 
 
 def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
@@ -1676,11 +1679,11 @@ def test_experiment_to_plate_map_data_no_conditions(temp_db: TempDB) -> None:
         session.refresh(exp)
 
         # Convert to plate map format
-        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+        genotype_data, treatment_data = experiment_to_plate_map_data(exp)
 
         # Should return empty lists when wells have no conditions
-        assert len(cond1_data) == 0
-        assert len(cond2_data) == 0
+        assert len(genotype_data) == 0
+        assert len(treatment_data) == 0
 
 
 def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
@@ -1696,11 +1699,68 @@ def test_experiment_to_plate_map_data_no_plate(temp_db: TempDB) -> None:
         session.refresh(exp)
 
         # Convert to plate map format
-        cond1_data, cond2_data = experiment_to_plate_map_data(exp)
+        genotype_data, treatment_data = experiment_to_plate_map_data(exp)
 
-        # Should return empty lists when there's no plate
-        assert len(cond1_data) == 0
-        assert len(cond2_data) == 0
+        # Should return empty lists when experiment has no plate
+        assert len(genotype_data) == 0
+        assert len(treatment_data) == 0
+
+
+def test_experiment_to_plate_map_data_returns_by_type_not_position(
+    temp_db: TempDB,
+) -> None:
+    """Test that plate map data is returned by condition_type, not position.
+
+    This is a regression test for a bug where conditions were returned
+    positionally (condition_1, condition_2) instead of by type
+    (genotype, treatment), causing data to be scrambled when reloading.
+
+    If treatment is stored as condition_1 and genotype as condition_2,
+    the function should still return genotype first and treatment second.
+    """
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        # Create experiment
+        exp = Experiment(name="position_vs_type_test")
+        plate = Plate(experiment=exp, name="24-well")
+
+        # Create conditions
+        genotype = Condition(name="KO", condition_type="genotype", color="red")
+        treatment = Condition(name="DrugA", condition_type="treatment", color="green")
+
+        # CRITICAL: Add treatment FIRST, genotype SECOND to test position-independence
+        # This simulates the bug scenario where dict iteration order affects storage
+        Well(
+            plate=plate,
+            name="A1",
+            row=0,
+            column=0,
+            conditions=[treatment, genotype],  # Treatment first!
+        )
+
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        # Convert to plate map format
+        genotype_data, treatment_data = experiment_to_plate_map_data(exp)
+
+        # Verify we get exactly one entry of each type
+        assert len(genotype_data) == 1
+        assert len(treatment_data) == 1
+
+        # Verify genotype data is in first list (by type, not position!)
+        assert genotype_data[0].name == "A1"
+        assert genotype_data[0].condition == ("KO", "red")
+
+        # Verify treatment data is in second list (by type, not position!)
+        assert treatment_data[0].name == "A1"
+        assert treatment_data[0].condition == ("DrugA", "green")
+
+        # The key assertion: even though treatment was added first (position 0),
+        # it should be returned in the treatment_data list (by type)
+        # This would fail with the old position-based implementation
 
 
 def test_experiment_create_from_tiff_data(tmp_path: Path) -> None:

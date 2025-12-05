@@ -80,7 +80,9 @@ def _plot_stimulated_calcium_synchrony(
 ) -> None:
     """Plot calcium peaks synchrony for stimulated ROIs only."""
     filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_peak_event_synchrony_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_peak_event_synchrony_data(
+        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
+    )
 
 
 def _plot_stimulated_calcium_correlation(
@@ -92,7 +94,9 @@ def _plot_stimulated_calcium_correlation(
 ) -> None:
     """Plot calcium peaks cross-correlation for stimulated ROIs only."""
     filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_cross_correlation_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_cross_correlation_data(
+        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
+    )
 
 
 # =============================================================================
@@ -111,7 +115,14 @@ def _plot_non_stimulated_calcium_synchrony(
     filtered_rois = _filter_rois_by_stimulation(
         engine, fov_name, rois, stimulated=False
     )
-    _plot_peak_event_synchrony_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_peak_event_synchrony_data(
+        widget,
+        engine,
+        fov_name,
+        filtered_rois,
+        run_id,
+        title_suffix=" (Non-Stimulated)",
+    )
 
 
 def _plot_non_stimulated_calcium_correlation(
@@ -125,7 +136,14 @@ def _plot_non_stimulated_calcium_correlation(
     filtered_rois = _filter_rois_by_stimulation(
         engine, fov_name, rois, stimulated=False
     )
-    _plot_cross_correlation_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_cross_correlation_data(
+        widget,
+        engine,
+        fov_name,
+        filtered_rois,
+        run_id,
+        title_suffix=" (Non-Stimulated)",
+    )
 
 
 # =============================================================================
@@ -142,7 +160,9 @@ def _plot_stimulated_spike_synchrony(
 ) -> None:
     """Plot inferred spikes synchrony for stimulated ROIs only."""
     filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_synchrony_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_spike_synchrony_data(
+        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
+    )
 
 
 def _plot_stimulated_spike_correlation(
@@ -154,7 +174,9 @@ def _plot_stimulated_spike_correlation(
 ) -> None:
     """Plot inferred spikes cross-correlation for stimulated ROIs only."""
     filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_cross_correlation_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_spike_cross_correlation_data(
+        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
+    )
 
 
 # =============================================================================
@@ -173,7 +195,14 @@ def _plot_non_stimulated_spike_synchrony(
     filtered_rois = _filter_rois_by_stimulation(
         engine, fov_name, rois, stimulated=False
     )
-    _plot_spike_synchrony_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_spike_synchrony_data(
+        widget,
+        engine,
+        fov_name,
+        filtered_rois,
+        run_id,
+        title_suffix=" (Non-Stimulated)",
+    )
 
 
 def _plot_non_stimulated_spike_correlation(
@@ -187,4 +216,11 @@ def _plot_non_stimulated_spike_correlation(
     filtered_rois = _filter_rois_by_stimulation(
         engine, fov_name, rois, stimulated=False
     )
-    _plot_spike_cross_correlation_data(widget, engine, fov_name, filtered_rois, run_id)
+    _plot_spike_cross_correlation_data(
+        widget,
+        engine,
+        fov_name,
+        filtered_rois,
+        run_id,
+        title_suffix=" (Non-Stimulated)",
+    )

@@ -413,9 +413,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-        # self._output_path = "tests/test_data/test_for_plot/"
+        self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
+        self._output_path = "tests/test_data/test_for_plot/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -466,10 +466,6 @@ class CaliGui(QMainWindow):
             d_path = Path(data_path)
             tiff_list = list(d_path.glob("*.tif")) + list(d_path.glob("*.tiff"))
             if tiff_list:
-                from rich import print
-
-                print("Configuring TiffCollectionReader...")
-                print(tiff_list)
                 # Show TiffCollectionWidget to configure TIFF files
                 self._tiff_collection_widget.set_tiff_files(tiff_list)
                 if self._tiff_collection_widget.exec():
@@ -1470,10 +1466,8 @@ class CaliGui(QMainWindow):
         plate_map_data = self._extraction_wdg._plate_map_wdg.value()
         _, genotype_data, treatment_data = plate_map_data
 
-        if not genotype_data and not treatment_data:
-            return
-
         # Load experiment and update it with plate map data
+        # Note: We need to update even if both are empty, to clear plate_maps
         from sqlmodel import Session, create_engine, select
 
         from cali.sqlmodel._model import Condition
@@ -1486,6 +1480,12 @@ class CaliGui(QMainWindow):
         )
         try:
             with Session(engine) as session:
+                # Check if experiment table exists (database is initialized)
+                from sqlalchemy import inspect
+
+                inspector = inspect(engine)
+                if "experiment" not in inspector.get_table_names():
+                    return
                 # Load experiment manually without expunge_all
                 from sqlalchemy.orm import selectinload
 
@@ -1540,6 +1540,13 @@ class CaliGui(QMainWindow):
                     condition_cache[key] = cond
                     return cond
 
+                # Build plate_maps dictionary for hash computation
+                plate_maps: dict[str, dict[str, str]] = {}
+                if genotype_data:
+                    plate_maps["genotype"] = {}
+                if treatment_data:
+                    plate_maps["treatment"] = {}
+
                 # Assign conditions per well
                 for well in exp.plate.wells:
                     # Clear existing conditions
@@ -1554,6 +1561,8 @@ class CaliGui(QMainWindow):
                                 condition_type="genotype",
                             )
                             well.conditions.append(condition)
+                            # Add to plate_maps dictionary
+                            plate_maps["genotype"][well.name] = plate_data.condition[0]
                             break
 
                     # treatment
@@ -1565,7 +1574,14 @@ class CaliGui(QMainWindow):
                                 condition_type="treatment",
                             )
                             well.conditions.append(condition)
+                            # Add to plate_maps dictionary
+                            plate_maps["treatment"][well.name] = plate_data.condition[0]
                             break
+
+                # Save plate_maps to plate for hash computation
+                exp.plate.plate_maps = plate_maps if plate_maps else None
+
+                cali_logger.info(f"💾 Saving plate_maps to database: {plate_maps}")
 
                 # Flush to ensure relationship changes are tracked
                 session.flush()

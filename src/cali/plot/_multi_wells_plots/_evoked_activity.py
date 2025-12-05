@@ -85,7 +85,7 @@ def _query_evoked_amplitudes_by_condition(
 
         results = session.exec(stmt).all()
 
-        # Group by condition and FOV
+        # Group by condition and FOV and power_pulse
         data: dict[str, dict[str, dict[str, list[float]]]] = {}
 
         for roi, fov, well, traces, analysis, settings in results:
@@ -121,7 +121,7 @@ def _query_evoked_amplitudes_by_condition(
             if not amps:
                 continue
 
-            # Build condition label
+            # Build condition label (without power/pulse)
             cond_label = _get_condition_label(well, fov.name)
 
             # Store amplitudes grouped by power_pulse
@@ -135,8 +135,14 @@ def _query_evoked_amplitudes_by_condition(
 
 def _aggregate_evoked_data_to_condition_stats(
     data_by_condition: dict[str, dict[str, dict[str, list[float]]]],
-) -> dict[str, BarPlotData]:
-    """Aggregate evoked amplitude data to condition-level statistics per power/pulse.
+) -> BarPlotData:
+    """Aggregate evoked amplitude data across all power/pulse combinations.
+
+    Flattens power/pulse combinations into condition names for unified plotting.
+    For example, "Control" with powers [2.0%, 4.0%] becomes:
+    ["Control (2.0%)", "Control (4.0%)"]
+
+    Results are ordered first by condition name, then by LED power (ascending).
 
     Parameters
     ----------
@@ -145,25 +151,52 @@ def _aggregate_evoked_data_to_condition_stats(
 
     Returns
     -------
-    dict[str, BarPlotData]
-        Dict mapping power_pulse to aggregated plot data
+    BarPlotData
+        Aggregated plot data with power/pulse in condition names
     """
-    # First, reorganize by power_pulse → condition → fov → values
-    by_power_pulse: dict[str, dict[str, dict[str, list[float]]]] = {}
+    # Reorganize to flatten structure: condition_power → fov → values
+    # Also track the numeric power value for sorting
+    flattened: dict[str, dict[str, list[float]]] = {}
+    power_values: dict[str, float] = {}  # Maps condition_with_power to numeric power
 
     for condition, fov_dict in data_by_condition.items():
         for fov, power_pulse_dict in fov_dict.items():
             for power_pulse, amplitudes in power_pulse_dict.items():
-                by_power_pulse.setdefault(power_pulse, {}).setdefault(
-                    condition, {}
-                ).setdefault(fov, []).extend(amplitudes)
+                # Extract power value from power_pulse string
+                # Format is "X.X%" or "X.XXXmW/cm²", followed by "_duration"
+                power_str = power_pulse.split("_")[0]  # Get just the power part
 
-    # Now aggregate each power_pulse group
-    result = {}
-    for power_pulse, condition_data in by_power_pulse.items():
-        result[power_pulse] = _aggregate_fov_data_to_condition_stats(condition_data)
+                # Extract numeric value for sorting
+                # Handle both "5.0%" and "5.000mW/cm²" formats
+                import re
 
-    return result
+                numeric_match = re.search(r"(\d+\.?\d*)", power_str)
+                numeric_power = float(numeric_match.group(1)) if numeric_match else 0.0
+
+                # Create new condition name with power
+                condition_with_power = f"{condition} ({power_str})"
+
+                flattened.setdefault(condition_with_power, {}).setdefault(
+                    fov, []
+                ).extend(amplitudes)
+
+                # Store the numeric power for sorting
+                power_values[condition_with_power] = numeric_power
+
+    # Sort by condition name first, then by power value
+    # Extract base condition name (everything before the last opening parenthesis)
+    def sort_key(cond_with_power: str) -> tuple[str, float]:
+        base_condition = cond_with_power.rsplit(" (", 1)[0]
+        power = power_values.get(cond_with_power, 0.0)
+        return (base_condition, power)
+
+    sorted_conditions = sorted(flattened.keys(), key=sort_key)
+
+    # Rebuild flattened dict in sorted order
+    sorted_flattened = {cond: flattened[cond] for cond in sorted_conditions}
+
+    # Aggregate all flattened conditions
+    return _aggregate_fov_data_to_condition_stats(sorted_flattened)
 
 
 def plot_stimulated_peaks_amplitude_bar_plot(
@@ -187,21 +220,12 @@ def plot_stimulated_peaks_amplitude_bar_plot(
         widget.plot_widget.setTitle(f"{text}<br>(No Data)")
         return
 
-    # Aggregate by power/pulse
-    plot_data_by_power = _aggregate_evoked_data_to_condition_stats(data_by_condition)
-
-    if not plot_data_by_power:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # For now, plot the first power/pulse combination
-    # TODO: Add UI to select which power/pulse to display
-    power_pulse = next(iter(plot_data_by_power.keys()))
-    plot_data = plot_data_by_power[power_pulse]
+    # Aggregate data (flattens power/pulse into condition names)
+    plot_data = _aggregate_evoked_data_to_condition_stats(data_by_condition)
 
     if not plot_data["conditions"]:
         widget.clear_plot()
+        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
         return
 
     # Create the plot
@@ -210,7 +234,7 @@ def plot_stimulated_peaks_amplitude_bar_plot(
         data=plot_data,
         parameter=text,
         units="ΔF/F0",
-        title_suffix=f" ({power_pulse})",
+        title_suffix="",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 
@@ -236,21 +260,12 @@ def plot_non_stimulated_peaks_amplitude_bar_plot(
         widget.plot_widget.setTitle(f"{text}<br>(No Data)")
         return
 
-    # Aggregate by power/pulse
-    plot_data_by_power = _aggregate_evoked_data_to_condition_stats(data_by_condition)
-
-    if not plot_data_by_power:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # For now, plot the first power/pulse combination
-    # TODO: Add UI to select which power/pulse to display
-    power_pulse = next(iter(plot_data_by_power.keys()))
-    plot_data = plot_data_by_power[power_pulse]
+    # Aggregate data (flattens power/pulse into condition names)
+    plot_data = _aggregate_evoked_data_to_condition_stats(data_by_condition)
 
     if not plot_data["conditions"]:
         widget.clear_plot()
+        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
         return
 
     # Create the plot
@@ -259,6 +274,6 @@ def plot_non_stimulated_peaks_amplitude_bar_plot(
         data=plot_data,
         parameter=text,
         units="ΔF/F0",
-        title_suffix=f" ({power_pulse})",
+        title_suffix="",
         bar_label="Weighted Mean ± Pooled SEM",
     )
