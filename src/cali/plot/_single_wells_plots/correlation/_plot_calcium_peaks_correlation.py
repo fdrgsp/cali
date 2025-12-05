@@ -137,8 +137,13 @@ def _plot_cross_correlation_data(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    title_suffix: str = "",
 ) -> None:
-    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph)."""
+    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
+
+    title_suffix : str
+        Optional suffix to add to plot titles (e.g., " - Stimulated")
+    """
     plot = widget.plot_item
     assert plot is not None
 
@@ -186,7 +191,8 @@ def _plot_cross_correlation_data(
     # keep it square
     vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
-    plot.setTitle("Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events)")
+    title = f"Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events){title_suffix}"
+    plot.setTitle(title)
     plot.setLabel("bottom", "ROI index")
     plot.setLabel("left", "ROI index")
 

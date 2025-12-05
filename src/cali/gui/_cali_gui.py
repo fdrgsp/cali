@@ -61,11 +61,10 @@ from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
 from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
 from ._extraction_gui import _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
-from ._graph_widgets import _MultilWellGraphWidget
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
 from ._plate_plan_wizard import PlatePlanWizard
-from ._pygraph_plot_widgets import _SingleWellGraphWidget
+from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
@@ -382,18 +381,41 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/evoked/results.cali"
         # self._output_path = "tests/test_data/evoked/"
 
-        # 2 pos data
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/2pos/"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/exp.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
-        # self._database_path = "tests/test_data/2pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/2pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
         # self._initialize_from_database(self._database_path, self._data_path)
+
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._output_path = "tests/test_data/multi_pos/"
+
+        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
+        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        # self._output_path = "tests/test_data/test_for_plot/"
+
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
+        # self._data_path = "/Volumes/T7 Shield/Phenix/out"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        # self._initialize_from_directories(
+        #     self._data_path, self._output_path, "phenix.cali"
+        # )
+
+        # ===========================
+        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
+        # self._output_path = "tests/test_data/multi_pos/"
+
+        self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
+        self._output_path = "tests/test_data/test_for_plot/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1444,10 +1466,8 @@ class CaliGui(QMainWindow):
         plate_map_data = self._extraction_wdg._plate_map_wdg.value()
         _, genotype_data, treatment_data = plate_map_data
 
-        if not genotype_data and not treatment_data:
-            return
-
         # Load experiment and update it with plate map data
+        # Note: We need to update even if both are empty, to clear plate_maps
         from sqlmodel import Session, create_engine, select
 
         from cali.sqlmodel._model import Condition
@@ -1460,6 +1480,12 @@ class CaliGui(QMainWindow):
         )
         try:
             with Session(engine) as session:
+                # Check if experiment table exists (database is initialized)
+                from sqlalchemy import inspect
+
+                inspector = inspect(engine)
+                if "experiment" not in inspector.get_table_names():
+                    return
                 # Load experiment manually without expunge_all
                 from sqlalchemy.orm import selectinload
 
@@ -1514,6 +1540,13 @@ class CaliGui(QMainWindow):
                     condition_cache[key] = cond
                     return cond
 
+                # Build plate_maps dictionary for hash computation
+                plate_maps: dict[str, dict[str, str]] = {}
+                if genotype_data:
+                    plate_maps["genotype"] = {}
+                if treatment_data:
+                    plate_maps["treatment"] = {}
+
                 # Assign conditions per well
                 for well in exp.plate.wells:
                     # Clear existing conditions
@@ -1528,6 +1561,8 @@ class CaliGui(QMainWindow):
                                 condition_type="genotype",
                             )
                             well.conditions.append(condition)
+                            # Add to plate_maps dictionary
+                            plate_maps["genotype"][well.name] = plate_data.condition[0]
                             break
 
                     # treatment
@@ -1539,7 +1574,14 @@ class CaliGui(QMainWindow):
                                 condition_type="treatment",
                             )
                             well.conditions.append(condition)
+                            # Add to plate_maps dictionary
+                            plate_maps["treatment"][well.name] = plate_data.condition[0]
                             break
+
+                # Save plate_maps to plate for hash computation
+                exp.plate.plate_maps = plate_maps if plate_maps else None
+
+                cali_logger.info(f"💾 Saving plate_maps to database: {plate_maps}")
 
                 # Flush to ensure relationship changes are tracked
                 session.flush()
@@ -1664,16 +1706,14 @@ class CaliGui(QMainWindow):
                 sw_graph.engine.dispose(close=True)
             sw_graph.database_path = database_path
             sw_graph.engine = engine
-            # Reset the plot to "None" to avoid plot loading issues
-            sw_graph._combo.setCurrentText("None")
+            sw_graph.clear_plot()
 
         for mw_graph in self.MW_GRAPHS:
             if mw_graph.engine is not None:
                 mw_graph.engine.dispose(close=True)
             mw_graph.database_path = database_path
             mw_graph.engine = engine
-            # Reset the plot to "None" to avoid plot loading issues
-            mw_graph._combo.setCurrentText("None")
+            mw_graph.clear_plot()
 
     def _update_graph_with_run_id(self, run_id: int | None) -> None:
         """Update all graph widgets with the selected run ID.
@@ -1973,17 +2013,12 @@ class CaliGui(QMainWindow):
         # skip if the tab is the Detection & Analysis tab
         if idx == 0:
             return
-
         # if visualization tab is selected (main tab index 1)
         if idx == 1:
             # get the current fov
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
             if value is None:
                 return
-
-            # check if the FOV has been analyzed (has ROIs with data)
-            # has_analysis = self._has_fov_analysis(value)
-
             # update the graphs combo boxes
             self._update_single_wells_graphs_combo()
 
@@ -1998,6 +2033,11 @@ class CaliGui(QMainWindow):
         """Update the FOV table when a well is selected."""
         self._fov_table.clear()
         self._image_viewer._clear_highlight()
+
+        # Clear plots and reset FOV to ensure reload when selecting same well again
+        for sw_graph in self.SW_GRAPHS:
+            sw_graph.clear_plot()
+            sw_graph.fov = ""
 
         if self._data is None:
             return
@@ -2031,7 +2071,7 @@ class CaliGui(QMainWindow):
 
             if value is None:
                 self._image_viewer.setData(None, None)
-                self._update_single_wells_graphs_combo(clear=True, set_title="")
+                self._update_single_wells_graphs_combo(clear=True)
                 return
 
             if self._data is None:
@@ -2054,11 +2094,11 @@ class CaliGui(QMainWindow):
                 else None
             )
             self._image_viewer.setData(data, roi_labels, neuropil_labels)
-            self._set_graphs_fov(value)
-
-            # Check if the FOV has been analyzed (has ROIs with data)
-            has_analysis = self._has_fov_analysis(value)
-            self._update_single_wells_graphs_combo(clear=(not has_analysis))
+            # Update graph widgets with new FOV - this will trigger plot reload
+            # Use the FOV name directly - it already contains the full identifier
+            # (e.g., "B5_0000" for well B5, position 0000)
+            title = value.fov.name or f"Position {value.pos_idx}"
+            self._update_single_wells_graphs_combo(set_fov=title)
             self._loading_bar.hide()
         except Exception as e:
             msg = f"❌ Failed to load FOV:\n{e}"
@@ -2089,15 +2129,6 @@ class CaliGui(QMainWindow):
             return False
 
         return has_fov_analysis(self._database_path, fov_name)
-
-    def _set_graphs_fov(self, value: WellInfo | None) -> None:
-        """Set the FOV title for the graphs."""
-        if value is None:
-            return
-        # Use the FOV name directly - it already contains the full identifier
-        # (e.g., "B5_0000" for well B5, position 0000)
-        title = value.fov.name or f"Position {value.pos_idx}"
-        self._update_single_wells_graphs_combo(set_title=title)
 
     def _get_labels(
         self, value: WellInfo
@@ -2261,15 +2292,26 @@ class CaliGui(QMainWindow):
 
     def _update_single_wells_graphs_combo(
         self,
-        set_title: str | None = None,
+        set_fov: str | None = None,
         clear: bool = False,
     ) -> None:
-        for sw_graph in self.SW_GRAPHS:
-            # Always set FOV if set_title is provided (including empty string to reset)
-            if set_title is not None:
-                sw_graph.fov = set_title
+        """Update single-well graph widgets.
 
-            if clear:
+        Parameters
+        ----------
+        set_fov : str | None
+            If provided, set the FOV and update combo availability + reload plot.
+            If None, don't change FOV.
+        clear : bool
+            If True, clear the plot (used when deselecting FOV). Combo selection
+            persists.
+        """
+        for sw_graph in self.SW_GRAPHS:
+            # Set FOV if provided - this will update combo availability and reload plot
+            if set_fov is not None:
+                sw_graph.fov = set_fov
+            # Just clear plot if requested (combo selection stays)
+            elif clear:
                 sw_graph.clear_plot()
 
     def _update_multi_wells_graphs_combo(self) -> None:

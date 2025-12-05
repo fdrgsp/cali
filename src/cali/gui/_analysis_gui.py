@@ -481,8 +481,8 @@ class _ExperimentTypeWidget(QWidget):
             self._experiment_type_combo.currentText(),
             self._led_power_equation_le.text(),
             self._led_pulse_duration_spin.value(),
-            self._parse_to_list(self._led_powers_le.text()),
-            self._parse_to_list(self._led_pulse_on_frames_le.text()),  # type: ignore
+            self._parse_float_list(self._led_powers_le.text()),
+            self._parse_int_list(self._led_pulse_on_frames_le.text()),
             self._stimulation_area_path_dialog.value(),
         )
 
@@ -518,14 +518,24 @@ class _ExperimentTypeWidget(QWidget):
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
-    def _parse_to_list(self, text: str) -> list[int | float]:
-        """Parse a comma-separated string into a list of floats."""
-        parsed: list[float | int] = []
+    def _parse_int_list(self, text: str) -> list[int]:
+        """Parse a comma-separated string into a list of integers."""
+        parsed: list[int] = []
         for val in text.split(","):
             val = val.strip()
             try:
-                power = float(val)
-                parsed.append(power)
+                parsed.append(int(float(val)))  # float() first handles "3.0" input
+            except ValueError:
+                continue
+        return parsed
+
+    def _parse_float_list(self, text: str) -> list[float]:
+        """Parse a comma-separated string into a list of floats."""
+        parsed: list[float] = []
+        for val in text.split(","):
+            val = val.strip()
+            try:
+                parsed.append(float(val))
             except ValueError:
                 continue
         return parsed
@@ -677,13 +687,16 @@ class _CalciumPeaksWidget(QWidget):
         self._calcium_synchrony_wdg = QWidget(self)
         self._calcium_synchrony_wdg.setToolTip(
             "Calcium Peak Synchrony Analysis Settings\n\n"
-            "Jitter Window Parameter:\n"
-            "Controls the temporal tolerance for detecting synchronous "
-            "calcium peaks.\n\n"
-            "What the value means:\n"
+            "Temporal Tolerance Parameter:\n"
+            "Controls the maximum time window (in frames) for detecting synchronous "
+            "calcium peaks between ROI pairs.\n\n"
+            "How it works:\n"
             "• Value = 2: Peaks within ±2 frames are considered synchronous\n"
-            "• Larger values detect more synchrony but may include false positives\n"
-            "• Smaller values are more strict but may miss genuine synchrony\n\n"
+            "• Compares timing of calcium peaks between all ROI pairs\n"
+            "• Larger values: More permissive, detects more synchrony but may "
+            "include false positives\n"
+            "• Smaller values: More strict, may miss genuine synchrony with "
+            "slight timing offsets\n\n"
             "Example with Jitter = 2:\n"
             "ROI 1 peaks: [10, 25, 40]  ROI 2 peaks: [12, 24, 41]\n"
             "Result: All pairs are synchronous (differences ≤ 2 frames)."
@@ -940,14 +953,18 @@ class _SpikeWidget(QWidget):
         self._spike_synchrony_wdg = QWidget(self)
         self._spike_synchrony_wdg.setToolTip(
             "Inferred Spike Synchrony Analysis Settings\n\n"
-            "Max Lag Parameter:\n"
-            "Controls the maximum temporal offset for cross-correlation analysis.\n\n"
-            "What the value means:\n"
+            "Temporal Tolerance Parameter:\n"
+            "Controls the maximum time window (in frames) for cross-correlation "
+            "analysis between ROI pairs.\n\n"
+            "How it works:\n"
             "• Value = 5: Checks correlations within ±5 frames window\n"
             "• Algorithm slides one spike train over another, looking for "
             "best match within this range\n"
             "• Takes the MAXIMUM correlation found within the lag window\n"
-            "• Larger values are more permissive, smaller values more strict\n\n"
+            "• Larger values: More permissive, detects more synchrony but may "
+            "include false positives\n"
+            "• Smaller values: More strict, may miss genuine synchrony with "
+            "slight timing offsets\n\n"
             "Example with Max Lag = 5:\n"
             "ROI 1 spikes: [10, 25, 40]  ROI 2 spikes: [12, 24, 41]\n"
             "Algorithm finds high correlation at lag +2 and -1 frames\n"

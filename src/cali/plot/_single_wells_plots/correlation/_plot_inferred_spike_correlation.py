@@ -144,8 +144,13 @@ def _plot_spike_cross_correlation_data(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    title_suffix: str = "",
 ) -> None:
-    """Plot pairwise cross-correlation matrix for spike trains (pyqtgraph)."""
+    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
+
+    title_suffix : str
+        Optional suffix to add to plot titles (e.g., " - Stimulated")
+    """
     plot = widget.plot_item
     assert plot is not None
 
@@ -193,7 +198,8 @@ def _plot_spike_cross_correlation_data(
     vb.setAspectLocked(True)  # keep it square
     vb.enableAutoRange(x=True, y=True)
 
-    plot.setTitle("Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data)")
+    title = f"Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data){title_suffix}"
+    plot.setTitle(title)
     plot.setLabel("bottom", "ROI index")
     plot.setLabel("left", "ROI index")
 
@@ -205,7 +211,7 @@ def _plot_spike_cross_correlation_data(
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
 
     # ---------------- Hover + Click interaction ---------------- #
-    _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr)
+    _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr, title_suffix)
 
 
 def _attach_spike_corr_interaction(
@@ -214,12 +220,16 @@ def _attach_spike_corr_interaction(
     viewbox: pg.ViewBox,
     rois: list[int],
     values: np.ndarray,
+    title_suffix: str = "",
 ) -> None:
     """
     Attach interaction to the spike correlation heatmap.
 
     - Hover: show ROI_i, ROI_j, value in the title
     - Click: emit widget.roiSelected with [roi_i, roi_j] as strings
+
+    title_suffix : str
+        Optional suffix to add to plot titles (e.g., " - Stimulated")
     """
     n_rows, n_cols = values.shape
     scene = plot.scene()
@@ -234,7 +244,9 @@ def _attach_spike_corr_interaction(
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseClicked.disconnect(old_click)
 
-    base_title = "Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data)"
+    base_title = (
+        f"Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data){title_suffix}"
+    )
 
     def _on_mouse_moved(pos: pg.QtCore.QPointF) -> None:
         if not plot.sceneBoundingRect().contains(pos):

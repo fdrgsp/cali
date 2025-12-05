@@ -149,6 +149,7 @@ filterwarnings = [
     "ignore:nperseg.*is greater than signal length:UserWarning",
     "ignore::FutureWarning",
     "ignore:Conversion of an array with ndim > 0 to a scalar:DeprecationWarning",
+    "ignore:'count' is passed as positional argument:DeprecationWarning:vispy",
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html

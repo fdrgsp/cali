@@ -63,21 +63,7 @@ class TiffCollectionWidget(QDialog):
         self.setWindowTitle("TIFF Collection Configuration")
         self.setWindowIcon(icon(MDI6.file_image_outline))
 
-        # Handle single path or sequence of paths
-        if tiff_files is None:
-            tiff_files = []
-        elif isinstance(tiff_files, (str, Path)):
-            tiff_path = Path(tiff_files)
-            if tiff_path.is_dir():
-                # Find all TIFF files in directory
-                tiff_files = sorted(
-                    list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff"))
-                )
-            else:
-                # Single file provided
-                tiff_files = [tiff_path]
-
-        self._tiff_files = sorted(Path(f) for f in tiff_files)
+        self._tiff_files: list[Path] = []
         self._file_map: dict[tuple[int, int], list[Path]] = {}
 
         # LEFT: Well plate widget
@@ -231,6 +217,8 @@ class TiffCollectionWidget(QDialog):
 
         self.resize(1000, 600)
 
+        self.set_tiff_files(tiff_files or [])
+
     # -------------------------PUBLIC METHODS-------------------------
 
     def set_tiff_files(self, tiff_files: Sequence[Path | str] | Path | str) -> None:
@@ -242,31 +230,38 @@ class TiffCollectionWidget(QDialog):
             Either a list of TIFF file paths, or a single directory path
             to search for TIFF files (.tif and .tiff extensions)
         """
+        tiff_files_list: list[Path] = []
         # Handle single path or sequence of paths
         if isinstance(tiff_files, (str, Path)):
             tiff_path = Path(tiff_files)
             if tiff_path.is_dir():
                 # Find all TIFF files in directory
-                tiff_files = sorted(
+                tiff_files_list = sorted(
                     list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff"))
                 )
             else:
                 # Single file provided
-                tiff_files = [tiff_path]
+                tiff_files_list = [tiff_path]
+        else:
+            tiff_files_list = [Path(f) for f in tiff_files]
 
-        if not tiff_files:
-            raise ValueError("tiff_files cannot be empty.")
-
-        self._tiff_files = sorted(Path(f) for f in tiff_files)
+        # clear existing data
         self._file_map.clear()
+        self._assigned_list.clear()
+        self._available_list.clear()
+        self._tiff_files.clear()
+
+        if not tiff_files_list:
+            return
+
+        # Remove hidden files starting with "." (e.g. on MacOS)
+        tiff_files_list = [p for p in tiff_files_list if not p.name.startswith(".")]
+
+        self._tiff_files = sorted(Path(f) for f in tiff_files_list)
 
         # Update available files list
-        self._available_list.clear()
         for tiff_file in self._tiff_files:
             self._available_list.addItem(tiff_file.name)
-
-        # Clear assigned files list
-        self._assigned_list.clear()
 
     def value(self) -> TiffCollectionReader:
         """Get the configured TiffCollectionReader parameters.

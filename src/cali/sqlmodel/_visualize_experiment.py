@@ -117,6 +117,25 @@ def print_cali_results(
                 f"📊 [bold cyan]Analysis Result #{result.id}[/bold cyan]"
             )
             result_tree.add(f"📅 Created: [dim]{result.created_at}[/dim]")
+
+            # Plate maps (if available)
+            if result.plate_maps:
+                plate_maps_node = result_tree.add(
+                    "🗺️ [bold green]Plate Maps (per-run configuration)[/bold green]"
+                )
+                for condition_type, well_mapping in result.plate_maps.items():
+                    condition_node = plate_maps_node.add(
+                        f"📋 {condition_type.capitalize()}"
+                    )
+                    # Show a sample of wells (first 5)
+                    sample_wells = list(well_mapping.items())[:5]
+                    for well_name, value in sample_wells:
+                        condition_node.add(f"{well_name}: {value}")
+                    if len(well_mapping) > 5:
+                        condition_node.add(
+                            f"[dim]... and {len(well_mapping) - 5} more[/dim]"
+                        )
+
             # Positions analyzed first
             if positions:
                 positions_node = result_tree.add(

@@ -30,8 +30,13 @@ def _plot_spike_synchrony_data(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    title_suffix: str = "",
 ) -> None:
-    """Plot spike-based synchrony analysis (pyqtgraph heatmap)."""
+    """Plot spike-based synchrony analysis (pyqtgraph heatmap).
+
+    title_suffix : str
+        Optional suffix to add to plot titles (e.g., " - Stimulated")
+    """
     plot = widget.plot_item
     assert plot is not None
 
@@ -54,7 +59,7 @@ def _plot_spike_synchrony_data(
             "Insufficient spike data for synchrony analysis. "
             "Ensure at least two ROIs with spikes are selected."
         )
-        plot.setTitle("Spike Synchrony\n(No data)")
+        plot.setTitle(f"Spike Synchrony\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -63,7 +68,7 @@ def _plot_spike_synchrony_data(
     lag = _get_lag(engine, fov_name, rois, run_id)
     if lag is None:
         cali_logger.warning("No valid lag value found for synchrony analysis.")
-        plot.setTitle("Spike Synchrony\n(No lag setting)")
+        plot.setTitle(f"Spike Synchrony\n(No lag setting){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -86,7 +91,7 @@ def _plot_spike_synchrony_data(
             "Failed to compute synchrony matrix. "
             "Ensure spike data is valid and contains sufficient ROIs."
         )
-        plot.setTitle("Spike Synchrony\n(Computation failed)")
+        plot.setTitle(f"Spike Synchrony\n(Computation failed){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -95,7 +100,7 @@ def _plot_spike_synchrony_data(
     global_synchrony = _get_spike_synchrony(synchrony_matrix) or 0.0
     title = (
         f"Global Synchrony (Median: {global_synchrony:.4f})\n"
-        f"(Thresholded Spike Data - Cross-Correlation Method)\n"
+        f"(Thresholded Spike Data - Cross-Correlation Method){title_suffix}\n"
     )
 
     sync = synchrony_matrix

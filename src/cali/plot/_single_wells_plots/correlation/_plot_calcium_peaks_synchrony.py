@@ -61,8 +61,13 @@ def _plot_peak_event_synchrony_data(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    title_suffix: str = "",
 ) -> None:
-    """Plot peak event-based synchrony analysis (pyqtgraph heatmap)."""
+    """Plot peak event-based synchrony analysis (pyqtgraph heatmap).
+
+    title_suffix : str
+        Optional suffix to add to plot titles (e.g., " - Stimulated")
+    """
     plot = widget.plot_item
     assert plot is not None
 
@@ -83,9 +88,9 @@ def _plot_peak_event_synchrony_data(
     if peak_trains is None or len(peak_trains) < 2:
         cali_logger.warning(
             "Insufficient peak data for synchrony analysis. "
-            "Ensure at least two ROIs with calcium peaks are selected."
+            "Ensure at least two ROIs with peak events are selected."
         )
-        plot.setTitle("Peak Event Synchrony\n(No data)")
+        plot.setTitle(f"Peak Event Synchrony\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI index")
         plot.setLabel("left", "ROI index")
         return
@@ -118,7 +123,7 @@ def _plot_peak_event_synchrony_data(
             "Failed to calculate synchrony matrix. "
             "Ensure peak event data is valid and contains sufficient data."
         )
-        plot.setTitle("Peak Event Synchrony\n(Failed to compute matrix)")
+        plot.setTitle(f"Peak Event Synchrony\n(Failed to compute matrix){title_suffix}")
         plot.setLabel("bottom", "ROI index")
         plot.setLabel("left", "ROI index")
         return
@@ -130,7 +135,7 @@ def _plot_peak_event_synchrony_data(
 
     base_title = (
         f"Global Synchrony (Median: {global_synchrony:.4f})\n"
-        f"(Calcium Peaks Events - Jitter Window Method)"
+        f"(Calcium Peaks Events - Jitter Window Method){title_suffix}"
     )
 
     sync = np.asarray(synchrony_matrix, dtype=float)

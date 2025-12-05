@@ -117,6 +117,15 @@ class ExtractionRunner:
             "TiffCollectionReader instance."
         )
 
+        # Eagerly load stimulation_mask attributes to prevent lazy loading issues
+        # in thread pool workers
+        if analysis_settings is not None and analysis_settings.stimulation_mask:
+            # Access the attributes to force SQLAlchemy to load them
+            _ = analysis_settings.stimulation_mask.coords_y
+            _ = analysis_settings.stimulation_mask.coords_x
+            _ = analysis_settings.stimulation_mask.height
+            _ = analysis_settings.stimulation_mask.width
+
         cali_logger.info(f"⚡️ Using {extraction_settings.threads} threads")
 
         # Execute analysis in parallel and yield results

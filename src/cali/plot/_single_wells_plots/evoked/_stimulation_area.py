@@ -147,10 +147,6 @@ def _visualize_stimulated_area(
                 )
                 labels[roi_mask] = roi.label_value
 
-        # Flip to match bottom-left / bottom-right orientation expectations
-        labels = np.flipud(labels)
-        labels = np.fliplr(labels)
-
         # Convert labels to RGBA image: green = stim, magenta = non-stim
         img_rgba = np.zeros((H, W, 4), dtype=np.uint8)
         img_rgba[..., 3] = 255  # alpha
@@ -167,7 +163,7 @@ def _visualize_stimulated_area(
                 color = (255, 0, 255, 255)  # magenta
             img_rgba[mask_lbl] = color
 
-        img_item = pg.ImageItem(img_rgba)
+        img_item = pg.ImageItem(img_rgba, axisOrder="row-major")
         plot.addItem(img_item)
 
         # Place pixels so centers are at integer coords (0..W-1, 0..H-1)
@@ -175,7 +171,7 @@ def _visualize_stimulated_area(
         img_item.setRect(rect)
         vb.setRange(rect, padding=0.0)
 
-        # Overlay stimulation mask contours (yellow) - stim_mask NOT flipped
+        # Overlay stimulation mask contours (yellow)
         if stimulated_area and stim_mask is not None:
             conts = find_contours(stim_mask.astype(float), level=0.5)
             for c in conts:
@@ -206,10 +202,8 @@ def _visualize_stimulated_area(
     # ------------------ ONLY STIM AREA ------------------ #
     elif stimulated_area and stim_mask is not None:
         H, W = stim_mask.shape
-        stim_mask = np.flipud(stim_mask)
-        stim_mask = np.fliplr(stim_mask)
 
-        img_item = pg.ImageItem(stim_mask.astype(float))
+        img_item = pg.ImageItem(stim_mask.astype(float), axisOrder="row-major")
 
         # Use cmap.Colormap("gray") → LUT for pyqtgraph
         gray_cmap = cmap.Colormap("gray")

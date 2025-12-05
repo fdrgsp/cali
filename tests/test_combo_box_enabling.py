@@ -1,14 +1,27 @@
-"""Test combo box enabling/disabling based on pipeline stage availability."""
+"""Test GUI plot widget behavior: combo boxes, FOV changes, and plot display.
 
-from collections.abc import Generator
+This module consolidates tests for:
+- Combo box enabling/disabling based on pipeline stage availability
+- Plot display and rendering
+- FOV switching behavior
+- Combo selection persistence across state changes
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
-from pytestqt.qtbot import QtBot
 from qtpy.QtCore import Qt
 from sqlmodel import Session, create_engine, select
 
 from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 from cali.sqlmodel._model import FOV
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from pytestqt.qtbot import QtBot
 
 
 @pytest.fixture(scope="function")
@@ -41,6 +54,11 @@ def widget_with_db(
     yield widget, db_path, fov_name
 
     engine.dispose(close=True)
+
+
+# ============================================================================
+# Combo Box Enabling/Disabling Tests
+# ============================================================================
 
 
 def test_combo_disabled_without_fov_or_run(
@@ -86,8 +104,8 @@ def test_combo_disabled_with_only_run_id(
     assert not has_ana
 
     # All items should still be disabled
-    # (55 plots: 47 spontaneous + 8 evoked, because exp_type is "Evoked Activity")
-    # (Added thresholded spike intensity heatmap)
+    # (61 plots: 47 spontaneous + 14 evoked, because exp_type is "Evoked Activity")
+    # (Added thresholded spike intensity heatmap + 6 new stim/non-stim heatmaps)
     model = widget._combo.model()
     disabled_count = sum(
         1
@@ -97,7 +115,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 55
+    assert disabled_count == 61
 
 
 def test_combo_enabled_with_fov_and_run_id(

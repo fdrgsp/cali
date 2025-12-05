@@ -625,7 +625,7 @@ def test_check_positions_missing_extraction(
 
 
 def test_analysis_only_requires_both_ids(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Test that analysis-only mode requires both detection and extraction IDs."""
     from unittest.mock import MagicMock
@@ -634,7 +634,7 @@ def test_analysis_only_requires_both_ids(
     qtbot.addWidget(gui)
 
     # Set up mock data
-    gui._database_path = "test.cali"
+    gui._database_path = str(tmp_path / "test.cali")
     gui._data = MagicMock()
     gui._data.sequence = MagicMock()
     gui._data.sequence.stage_positions = [MagicMock()]

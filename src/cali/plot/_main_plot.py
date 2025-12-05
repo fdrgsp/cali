@@ -9,6 +9,21 @@ from typing_extensions import TypeAlias
 
 from cali._constants import EVOKED
 
+from ._multi_wells_plots import (
+    plot_burst_avg_duration_bar_plot,
+    plot_burst_avg_interval_bar_plot,
+    plot_burst_count_bar_plot,
+    plot_burst_rate_bar_plot,
+    plot_calcium_peaks_amplitude_bar_plot,
+    plot_calcium_peaks_frequency_bar_plot,
+    plot_calcium_peaks_iei_bar_plot,
+    plot_calcium_peaks_synchrony_bar_plot,
+    plot_cell_size_bar_plot,
+    plot_non_stimulated_peaks_amplitude_bar_plot,
+    plot_percentage_active_bar_plot,
+    plot_spike_synchrony_bar_plot,
+    plot_stimulated_peaks_amplitude_bar_plot,
+)
 from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
@@ -41,6 +56,9 @@ from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
+    _plot_calcium_intensity_heatmap_by_stim_status,
+    _plot_spike_intensity_heatmap_by_stim_status,
+    _plot_spike_intensity_heatmap_thresholded_by_stim_status,
     _plot_stim_or_not_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
@@ -69,8 +87,10 @@ from ._single_wells_plots.spikes._plot_inferred_spikes import (
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from cali.gui._graph_widgets import _MultilWellGraphWidget
-    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.gui._pygraph_plot_widgets import (
+        _MultilWellGraphWidget,
+        _SingleWellGraphWidget,
+    )
 
 
 from cali.logger import cali_logger
@@ -182,6 +202,12 @@ INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes (Thresholded) Raster Plot Colo
 INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes (Thresholded) Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
 SPIKE_INTENSITY_HEATMAP = "Inferred Spikes Intensity Heatmap"
 SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Inferred Spikes Intensity Heatmap (Thresholded)"
+STIMULATED_CALCIUM_INTENSITY_HEATMAP = "Stimulated Calcium Intensity Heatmap"
+NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP = "Non-Stimulated Calcium Intensity Heatmap"
+STIMULATED_SPIKE_INTENSITY_HEATMAP = "Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
+NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
+STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
+NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Global Synchrony"
 CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
 CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
@@ -580,6 +606,54 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
+    name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=False),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_SPIKE_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=True),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=True),  # noqa: E501
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
     name=STIMULATED_CALCIUM_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_calcium_synchrony,
@@ -653,170 +727,106 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.DETECTION,
 )
 
-# # Multi-Well Analysis Products ------------------------------------------------------
-# # These plot CSV bar plots from grouped analysis data
+# Multi-Well Analysis Products --------------------------------------------------------
+# These plot bar plots from database queries across multiple wells
 
-# # General Multi-Well Products
-# AnalysisProduct(
-#     name="Cell Size Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Cell Size",
-#         suffix="cell_size",
-#         units="μm²",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Percentage of Active Cells (Based on Calcium Peaks) Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Percentage of Active Cells",
-#         suffix="percentage_active",
-#         add_to_title="Based on Calcium Peaks",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Calcium Peaks Amplitude Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Calcium Peaks Amplitude",
-#         suffix="amplitude",
-#         add_to_title=" (Deconvolved ΔF/F0)",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Calcium Peaks Frequency Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Calcium Peaks Frequency",
-#         suffix="frequency",
-#         add_to_title=" (Deconvolved ΔF/F0)",
-#         units="Hz",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Calcium Peaks Inter-Event Interval Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Calcium Peaks Inter-Event Interval",
-#         suffix="iei",
-#         add_to_title=" (Deconvolved ΔF/F0)",
-#         units="Sec",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Calcium Peak Events Global Synchrony Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Calcium Peak Events Global Synchrony",
-#         suffix="calcium_peaks_synchrony",
-#         add_to_title="(Median)",
-#         units="Index",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Inferred Spikes Global Synchrony Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Inferred Spikes Global Synchrony",
-#         suffix="spike_synchrony",
-#         add_to_title="(Median - Thresholded Data)",
-#         units="Index",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Burst Count Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Burst Count",
-#         suffix="burst_activity",
-#         burst_metric="count",
-#         add_to_title="(Inferred Spikes)",
-#         units="Count",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Burst Average Duration Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Burst Average Duration",
-#         suffix="burst_activity",
-#         burst_metric="avg_duration_sec",
-#         add_to_title="(Inferred Spikes)",
-#         units="Sec",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Burst Average Interval Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Burst Average Interval",
-#         suffix="burst_activity",
-#         burst_metric="avg_interval_sec",
-#         add_to_title="(Inferred Spikes)",
-#         units="Sec",
-#     ),
-#     category="General",
-# )
-# AnalysisProduct(
-#     name="Burst Rate Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         parameter="Burst Rate",
-#         suffix="burst_activity",
-#         burst_metric="rate_burst_per_min",
-#         add_to_title="(Inferred Spikes)",
-#         units="Bursts/min",
-#     ),
-#     category="General",
-# )
+# General Multi-Well Products
+AnalysisProduct(
+    name="Cell Size Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_cell_size_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.DETECTION,
+)
+AnalysisProduct(
+    name="Percentage of Active Cells Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_percentage_active_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Calcium Peaks Amplitude Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_amplitude_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Calcium Peaks Frequency Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_frequency_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Calcium Peaks Inter-Event Interval Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_iei_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+# All multi-well bar plots with on-the-fly calculations are now implemented
+AnalysisProduct(
+    name="Calcium Peak Events Global Synchrony Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_synchrony_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Global Synchrony Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_synchrony_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Burst Count Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_count_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Burst Average Duration Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_avg_duration_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Burst Average Interval Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_avg_interval_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Burst Rate Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_rate_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 
-# # Evoked Experiment Multi-Well Products
-# AnalysisProduct(
-#     name="Stimulated Calcium Peaks Amplitude Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         stimulated=True,
-#         parameter="Calcium Peaks Amplitude",
-#         suffix="calcium_peaks_amplitudes_stimulated",
-#         add_to_title=" (Stimulated - Deconvolved ΔF/F0)",
-#     ),
-#     category="Evoked Experiment",
-# )
-# AnalysisProduct(
-#     name="Non-Stimulated Calcium Peaks Amplitude Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=partial(
-#         _plot_csv_bar_plot_wrapper,
-#         stimulated=False,
-#         parameter="Calcium Peaks Amplitude",
-#         suffix="calcium_peaks_amplitudes_non_stimulated",
-#         add_to_title=" (Non-Stimulated - Deconvolved ΔF/F0)",
-#     ),
-#     category="Evoked Experiment",
-# )
-
+# Evoked Multi-Well Products
+AnalysisProduct(
+    name="Stimulated Peaks Amplitude Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_stimulated_peaks_amplitude_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Non-Stimulated Peaks Amplitude Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
 
 # DATABASE HELPERS ====================================================================
 # Helper functions to extract plotting data from database models
@@ -1038,7 +1048,7 @@ def plot_multi_well_data(
     """
     # Handle empty/invalid selection
     if not text or text == "None" or text in MULTI_WELL_COMBO_OPTIONS_DICT.keys():
-        widget.figure.clear()
+        widget.clear_plot()
         return
 
     try:
@@ -1051,9 +1061,9 @@ def plot_multi_well_data(
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Multi-well analysis '{text}' not found in registry")
-        widget.figure.clear()
+        widget.clear_plot()
 
     except Exception as e:
         cali_logger.error(f"Error plotting multi-well data for '{text}': {e}")
-        widget.figure.clear()
+        widget.clear_plot()
         raise
