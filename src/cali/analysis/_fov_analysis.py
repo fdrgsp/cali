@@ -10,8 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.signal import correlate
-from scipy.stats import zscore
 
 from cali.logger import cali_logger
 from cali.plot._util import (
@@ -195,43 +193,79 @@ def compute_fov_analysis(
 def _compute_cross_correlation_matrix(
     traces: list[np.ndarray],
 ) -> np.ndarray | None:
-    """Compute pairwise cross-correlation matrix for traces.
+    """Compute pairwise Pearson correlation matrix for traces (zero-lag).
 
-    Uses z-scored traces and max cross-correlation over all lags.
+    Uses z-scored traces and computes standard Pearson correlation coefficient
+    at zero lag, following the approach used in CaImAn and standard practice.
+
+    Note: This computes zero-lag correlation (standard Pearson R), not max
+    cross-correlation across lags. For lag-invariant correlation, use synchrony
+    metrics instead.
 
     Parameters
     ----------
     traces : list[np.ndarray]
-        List of 1D trace arrays (all same length)
+        List of 1D trace arrays (must all be same length)
 
     Returns
     -------
     np.ndarray | None
-        NxN correlation matrix, or None if insufficient data
+        NxN correlation matrix with values in [-1, 1], or None if insufficient data
+
+    Raises
+    ------
+    ValueError
+        If traces have different lengths
     """
     if len(traces) < 2:
         return None
 
-    # Stack and z-score
+    # Verify all traces have same length
+    lengths = [len(t) for t in traces]
+    if len(set(lengths)) > 1:
+        raise ValueError(
+            f"All traces must have same length. Got lengths: {set(lengths)}"
+        )
+
+    # Stack traces
     traces_array = np.vstack(traces)  # (n_rois, n_frames)
-    dff_zero_mean = zscore(traces_array, axis=1)
+
+    # Manually z-score to handle constant traces without warnings
+    # Z-score: (x - mean(x)) / std(x)
+    means = traces_array.mean(axis=1, keepdims=True)
+    stds = traces_array.std(axis=1, keepdims=True, ddof=1)
+
+    # Replace zero std (constant traces) with 1 to avoid division by zero
+    # This will make constant traces have zero mean and all zeros after normalization
+    stds[stds == 0] = 1.0
+
+    dff_zero_mean = (traces_array - means) / stds
 
     n_rois = len(traces)
-    correlation_matrix = np.empty((n_rois, n_rois), dtype=float)
+    correlation_matrix = np.zeros((n_rois, n_rois), dtype=float)
 
+    # Compute norms for normalization
     norms = np.linalg.norm(dff_zero_mean, axis=1)
+    # Avoid division by zero (constant trace after z-scoring)
     norms[norms == 0] = np.finfo(float).eps
 
+    # Diagonal is always 1 (perfect self-correlation)
     np.fill_diagonal(correlation_matrix, 1.0)
 
+    # Compute zero-lag Pearson correlation for all pairs
     for i in range(n_rois):
         x = dff_zero_mean[i]
         for j in range(i + 1, n_rois):
             y = dff_zero_mean[j]
-            corr = correlate(x, y, mode="full", method="fft")
-            corr /= norms[i] * norms[j]
-            max_corr = float(np.max(corr))
-            correlation_matrix[i, j] = max_corr
-            correlation_matrix[j, i] = max_corr
+
+            # Pearson correlation at zero lag: r = <x, y> / (||x|| ||y||)
+            # After z-scoring, this is just the normalized dot product
+            r0 = np.dot(x, y) / (norms[i] * norms[j])
+
+            # Clamp to [-1, 1] to handle numerical errors
+            r0 = np.clip(r0, -1.0, 1.0)
+
+            correlation_matrix[i, j] = r0
+            correlation_matrix[j, i] = r0
 
     return correlation_matrix
