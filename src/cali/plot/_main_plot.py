@@ -408,22 +408,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_RASTER_PLOT_AMP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(
-        _generate_spike_raster_plot, amplitude_colors=True, colorbar=False
-    ),
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_generate_spike_raster_plot, amplitude_colors=True, colorbar=True),
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name=SPIKE_INTENSITY_HEATMAP,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_intensity_heatmap,
