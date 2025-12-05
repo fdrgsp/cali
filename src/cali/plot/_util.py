@@ -1,4 +1,5 @@
 import re
+import threading
 from typing import Callable
 
 import numpy as np
@@ -11,6 +12,11 @@ from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 from cali.sqlmodel._util import ROIData
+
+# Global lock to protect numba parallel=True functions from concurrent access
+# Numba's workqueue threading layer is not threadsafe and crashes when accessed
+# from multiple Python threads simultaneously
+_NUMBA_LOCK = threading.Lock()
 
 
 def equation_from_str(equation: str) -> Callable | None:
@@ -275,9 +281,10 @@ def _get_calcium_peaks_event_synchrony_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
-        synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
-            peak_array, jitter_window
-        )
+        with _NUMBA_LOCK:
+            synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
+                peak_array, jitter_window
+            )
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
@@ -586,9 +593,10 @@ def _get_spike_synchrony_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
-        synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
-            binary_spikes, jitter_window
-        )
+        with _NUMBA_LOCK:
+            synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
+                binary_spikes, jitter_window
+            )
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
