@@ -507,14 +507,16 @@ class CaliGui(QMainWindow):
 
             # detection
             detection = settings.get("detection", {})
-            self._detection_wdg.setValue(CellposeSettingsData(**detection))
+            if detection:
+                self._detection_wdg.setValue(CellposeSettingsData(**detection))
 
             # extraction
             extraction = settings.get("extraction", {})
             ext_settings = extraction.get("trace_extraction_data", {})
-            self._extraction_wdg.setValue(
-                ExtractionSettingsData(TraceExtractionData(**ext_settings))
-            )
+            if ext_settings:
+                self._extraction_wdg.setValue(
+                    ExtractionSettingsData(TraceExtractionData(**ext_settings))
+                )
 
             # analysis
             analysis = settings.get("analysis", {})
@@ -523,9 +525,17 @@ class CaliGui(QMainWindow):
             experiment_type_data = analysis.get("experiment_type_data", {})
             self._analysis_wdg.setValue(
                 AnalysisSettingsData(
-                    calcium_peaks_data=CalciumPeaksData(**calcium_peaks_data),
-                    spikes_data=SpikeData(**spikes_data),
-                    experiment_type_data=ExperimentTypeData(**experiment_type_data),
+                    calcium_peaks_data=(
+                        CalciumPeaksData(**calcium_peaks_data)
+                        if calcium_peaks_data
+                        else None
+                    ),
+                    spikes_data=(SpikeData(**spikes_data) if spikes_data else None),
+                    experiment_type_data=(
+                        ExperimentTypeData(**experiment_type_data)
+                        if experiment_type_data
+                        else None
+                    ),
                 )
             )
 

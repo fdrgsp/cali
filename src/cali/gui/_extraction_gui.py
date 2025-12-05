@@ -44,21 +44,21 @@ class ExtractionSettingsData:
 class NeuropilData:
     """Data structure to hold the neuropil correction settings."""
 
-    neuropil_inner_radius: int
-    neuropil_min_pixels: int
-    neuropil_correction_factor: float
+    neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
+    neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
+    neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
 
 
 @dataclass(frozen=True)
 class TraceExtractionData:
     """Data structure to hold the trace extraction settings."""
 
-    dff_window_size: float  # milliseconds
-    decay_constant: float  # seconds
-    frame_rate: float  # frames per second
-    neuropil_inner_radius: int
-    neuropil_min_pixels: int
-    neuropil_correction_factor: float
+    dff_window_size: float = DEFAULT_DFF_WINDOW  # milliseconds
+    decay_constant: float = 0.0  # seconds
+    frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
+    neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
+    neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
+    neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
 
 
 class _ExtractionGUI(QWidget):

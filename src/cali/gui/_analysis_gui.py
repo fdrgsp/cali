@@ -79,25 +79,25 @@ class ExperimentTypeData:
 class CalciumPeaksData:
     """Data structure to hold the calcium peaks settings."""
 
-    peaks_height: float
-    peaks_height_mode: str
-    peaks_distance: float  # milliseconds
-    peaks_prominence_multiplier: float
-    calcium_synchrony_jitter: float  # milliseconds
-    calcium_peaks_max_lag: float  # milliseconds
-    calcium_network_threshold: float
+    peaks_height: float = DEFAULT_HEIGHT
+    peaks_height_mode: str = MULTIPLIER
+    peaks_distance: float = DEFAULT_PEAKS_DISTANCE  # milliseconds
+    peaks_prominence_multiplier: float = 2.0
+    calcium_synchrony_jitter: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # milliseconds
+    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # milliseconds
+    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
 
 @dataclass(frozen=True)
 class SpikeData:
     """Data structure to hold the spikes settings."""
 
-    spike_threshold: float
-    spike_threshold_mode: str
-    burst_threshold: float
-    burst_min_duration: float  # milliseconds
-    burst_blur_sigma: float
-    synchrony_lag: float  # milliseconds
+    spike_threshold: float = DEFAULT_SPIKE_THRESHOLD
+    spike_threshold_mode: str = MULTIPLIER
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
+    burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
+    synchrony_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # milliseconds
 
 
 class _AnalysisGUI(QWidget):
