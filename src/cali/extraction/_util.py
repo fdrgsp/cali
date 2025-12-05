@@ -46,7 +46,7 @@ def calculate_dff(
     return dff
 
 
-@njit(cache=True, parallel=True)  # type: ignore
+@njit(cache=True)  # type: ignore
 def _calculate_bg_numba(
     trace: np.ndarray, window: int, percentile: float
 ) -> np.ndarray:
