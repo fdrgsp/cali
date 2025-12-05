@@ -85,7 +85,7 @@ class _DetectionGUI(QWidget):
         detection_scroll_area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
-        # add cellpose and caiman widgets to scroll area
+        # add cellpose widgets to scroll area
         group_layout.addWidget(self._cellpose_wdg)
         group_layout.addStretch(1)
         detection_scroll_area.setWidget(group_wdg)

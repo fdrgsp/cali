@@ -52,7 +52,7 @@ class DetectionRunner:
         """Run detection and yield FOV results with ROIs and masks.
 
         Automatically selects the appropriate detection method based on
-        detection_settings.method ("cellpose" or "caiman").
+        detection_settings.method (e.g. "cellpose").
 
         This method performs pure computation and does not interact with the database.
         Database operations (checking for duplicates, saving results) should be
@@ -106,61 +106,15 @@ class DetectionRunner:
                 detection_settings=detection_settings,
                 position_indices=global_position_indices,
             )
-        elif detection_settings.method == "caiman":
-            yield from self._run_caiman(
-                dataset=dataset,
-                detection_settings=detection_settings,
-                global_position_indices=global_position_indices,
-            )
         else:
             msg = (
                 f"❌ Unknown detection method: {detection_settings.method}. "
-                "Supported methods: 'cellpose', 'caiman'"
+                "Supported methods: 'cellpose'"
             )
             cali_logger.error(msg)
             raise ValueError(msg)
 
     # ---------------------PRIVATE METHODS --------------------- #
-
-    def _run_caiman(
-        self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
-        detection_settings: DetectionSettings,
-        global_position_indices: Sequence[int],
-    ) -> Generator[FOV, None, None]:
-        """Run CaImAn detection and return FOV results with ROIs and masks.
-
-        Parameters
-        ----------
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
-            Data reader instance for imaging data
-        detection_settings : DetectionSettings
-            Detection parameters (method should be "caiman")
-        global_position_indices : Sequence[int]
-            Position indices to process
-
-        Returns
-        -------
-        list[FOV]
-            List of FOV objects with ROIs and masks
-        """
-        try:
-            import caiman  # noqa: F401
-        except ModuleNotFoundError as e:
-            cali_logger.error("CaImAn is not installed!")
-            raise ModuleNotFoundError(
-                "CaImAn detection requires the CaImAn package.\n\n"
-                "To install CaImAn:\n"
-                "• uv sync --extra caiman\n"
-                "• pip install caiman\n"
-            ) from e
-
-        cali_logger.info("🔍 Running CaImAn Detection...")
-
-        # TODO: Implement CaImAn detection
-        cali_logger.warning("CaImAn detection not yet implemented")
-
-        return  # type: ignore
 
     def _run_cellpose(
         self,

@@ -694,7 +694,7 @@ class DetectionSettings(SQLModel, table=True):
     created_at : datetime
         When these settings were created
     method : str
-        Detection method ("cellpose" or "caiman")
+        Detection method (e.g. "cellpose")
     model_type : str
         Cellpose model type ("cpsam", "cyto3", "custom", etc.)
     custom_model : str | None
@@ -719,7 +719,7 @@ class DetectionSettings(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Detection method
-    method: str = Field(default="cellpose", index=True)  # "cellpose" or "caiman"
+    method: str = Field(default="cellpose", index=True)
 
     # Cellpose settings
     model_type: str = "cpsam"
@@ -787,7 +787,7 @@ class DetectionSettings(SQLModel, table=True):
             ID of specific detection settings to load. If None, loads based on
             method or all settings.
         method : str | None
-            Filter by detection method ("cellpose" or "caiman"). If None and
+            Filter by detection method ("cellpose"). If None and
             id is None, loads all settings.
         session : Session | None
             Optional existing session to use. If None, creates a new one.

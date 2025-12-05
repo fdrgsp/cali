@@ -780,17 +780,6 @@ def test_cali_result_positions_sorted() -> None:
     assert result.positions_analyzed == [5, 2, 8, 1, 3]
 
 
-def test_detection_settings_caiman_method() -> None:
-    """Test DetectionSettings with caiman method."""
-    ds = DetectionSettings(
-        method="caiman",
-        model_type="N/A",  # Not used for caiman
-    )
-
-    assert ds.method == "caiman"
-    assert ds.model_type == "N/A"
-
-
 def test_multiple_experiments_same_settings(test_db: Path) -> None:
     """Test same settings reused across multiple experiments."""
     from cali.sqlmodel._util import create_database_and_tables
@@ -974,18 +963,13 @@ def test_detection_settings_inequality_cases() -> None:
     ds1 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=30)
     ds2 = DetectionSettings(method="cellpose", model_type="cpsam", diameter=40)
     ds3 = DetectionSettings(method="cellpose", model_type="cyto2", diameter=30)
-    ds4 = DetectionSettings(method="caiman", model_type="N/A", diameter=30)
 
     # Different diameters
     assert ds1 != ds2
     # Different model types
     assert ds1 != ds3
-    # Different methods
-    assert ds1 != ds4
     # All different from each other
     assert ds2 != ds3
-    assert ds2 != ds4
-    assert ds3 != ds4
 
 
 def test_analysis_settings_inequality_cases() -> None:
@@ -1211,7 +1195,9 @@ def test_cali_result_load_from_database_by_experiment(
     try:
         with Session(engine) as session:
             d_settings1 = DetectionSettings(method="cellpose", model_type="cpsam")
-            d_settings2 = DetectionSettings(method="caiman", model_type="N/A")
+            d_settings2 = DetectionSettings(
+                method="cellpose", model_type="cpsam", min_size=13
+            )
             session.add_all([d_settings1, d_settings2])
             session.commit()
             session.refresh(d_settings1)
