@@ -323,9 +323,10 @@ class _TraceExtractionWidget(QWidget):
             "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
             "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
         )
-        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
+        self._frame_rate_lbl = QLabel("Frame Rate:")
         self._frame_rate_lbl.setSizePolicy(*FIXED)
         self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setSuffix(" fps")
         self._frame_rate_spin.setDecimals(2)
         self._frame_rate_spin.setRange(0.01, 1000.0)
         self._frame_rate_spin.setSingleStep(1.0)
@@ -395,7 +396,6 @@ class _TraceExtractionWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
-        layout.addWidget(self._frame_rate_wdg)
         layout.addWidget(self._dff_wdg)
         layout.addWidget(self._dec_wdg)
 
@@ -403,7 +403,6 @@ class _TraceExtractionWidget(QWidget):
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
-        self._frame_rate_lbl.setFixedWidth(width)
         self._dff_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
 
@@ -412,7 +411,6 @@ class _TraceExtractionWidget(QWidget):
         return TraceExtractionData(
             self._dff_window_size_spin.value(),
             self._decay_constant_spin.value(),
-            self._frame_rate_spin.value(),
             neuropil_data.neuropil_inner_radius,
             neuropil_data.neuropil_min_pixels,
             neuropil_data.neuropil_correction_factor,
@@ -422,10 +420,8 @@ class _TraceExtractionWidget(QWidget):
         """Set the values of the widget."""
         self._dff_window_size_spin.setValue(value.dff_window_size)
         self._decay_constant_spin.setValue(value.decay_constant)
-        self._frame_rate_spin.setValue(value.frame_rate)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         self._decay_constant_spin.setValue(0.0)
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
