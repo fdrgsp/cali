@@ -313,30 +313,6 @@ class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Frame Rate widget
-        self._frame_rate_wdg = QWidget(self)
-        self._frame_rate_wdg.setToolTip(
-            "Acquisition frame rate in frames per second (fps).\n\n"
-            "This is used to convert time-based parameters (e.g., DFF window in "
-            "milliseconds) to frames for processing.\n\n"
-            "Tip: This is typically the inverse of exposure time:\n"
-            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
-            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
-        )
-        self._frame_rate_lbl = QLabel("Frame Rate:")
-        self._frame_rate_lbl.setSizePolicy(*FIXED)
-        self._frame_rate_spin = QDoubleSpinBox(self)
-        self._frame_rate_spin.setSuffix(" fps")
-        self._frame_rate_spin.setDecimals(2)
-        self._frame_rate_spin.setRange(0.01, 1000.0)
-        self._frame_rate_spin.setSingleStep(1.0)
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
-        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
-        frame_rate_layout.setSpacing(5)
-        frame_rate_layout.addWidget(self._frame_rate_lbl)
-        frame_rate_layout.addWidget(self._frame_rate_spin)
-
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
         self._dff_wdg.setToolTip(
