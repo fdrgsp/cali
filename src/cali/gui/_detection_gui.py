@@ -292,7 +292,7 @@ class _CellposeDetectionWidget(QGroupBox):
         self._min_size_label = QLabel("Min Mask Size:", self._min_size_wdg)
         self._min_size_label.setSizePolicy(*FIXED)
         self._min_size_spin = QSpinBox(self._min_size_wdg)
-        self._min_size_spin.setSuffix(" px")
+        self._min_size_spin.setSuffix(" pixels")
         self._min_size_spin.setRange(1, 10000)
         self._min_size_spin.setValue(15)
         min_size_layout.addWidget(self._min_size_label)
