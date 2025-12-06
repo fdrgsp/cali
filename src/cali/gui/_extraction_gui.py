@@ -66,6 +66,7 @@ class TraceExtractionData:
 
     dff_window_size: float = DEFAULT_DFF_WINDOW  # milliseconds
     decay_constant: float = 0.0  # seconds
+    frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
     neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
     neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
     neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
@@ -158,11 +159,12 @@ class _ExtractionGUI(QWidget):
 
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
+        metadata_data = self._metadata_wdg.value()
         return ExtractionSettingsData(
             trace_extraction_data=self._trace_extraction_wdg.value(
-                self._neuropil_wdg.value()
+                self._neuropil_wdg.value(), metadata_data.frame_rate
             ),
-            metadata_data=self._metadata_wdg.value(),
+            metadata_data=metadata_data,
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -410,11 +412,14 @@ class _TraceExtractionWidget(QWidget):
         self._dff_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
 
-    def value(self, neuropil_data: NeuropilData) -> TraceExtractionData:
+    def value(
+        self, neuropil_data: NeuropilData, frame_rate: float
+    ) -> TraceExtractionData:
         """Get the current values of the widget."""
         return TraceExtractionData(
             self._dff_window_size_spin.value(),
             self._decay_constant_spin.value(),
+            frame_rate,
             neuropil_data.neuropil_inner_radius,
             neuropil_data.neuropil_min_pixels,
             neuropil_data.neuropil_correction_factor,

@@ -66,9 +66,11 @@ def test_save_settings_creates_valid_json(
     extraction = settings["extraction"]
     assert "trace_extraction_data" in extraction
     trace_data = extraction["trace_extraction_data"]
-    assert "frame_rate" in trace_data
     assert "decay_constant" in trace_data
     assert "dff_window_size" in trace_data
+    assert "metadata_data" in extraction
+    metadata_data = extraction["metadata_data"]
+    assert "frame_rate" in metadata_data
 
     # Verify analysis settings exist
     analysis = settings["analysis"]
@@ -156,7 +158,7 @@ def test_load_settings_restores_gui_state(
 
     # Verify extraction settings
     assert extraction_value.trace_extraction_data is not None
-    assert extraction_value.trace_extraction_data.frame_rate == 25.0
+    assert extraction_value.trace_extraction_data.frame_rate == 10.0
     assert extraction_value.trace_extraction_data.decay_constant == 0.6
     assert extraction_value.trace_extraction_data.dff_window_size == 2500.0
 

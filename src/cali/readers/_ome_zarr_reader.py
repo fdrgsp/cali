@@ -88,7 +88,6 @@ class OMEZarrReader:
             self._sequence = None
         return self._sequence
 
-    @property
     def metadata(self) -> list[dict]:
         """Return the unstructured full metadata."""
         # concatenate the metadata for all the positions

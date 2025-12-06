@@ -107,14 +107,18 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
 
     # Create ROI 1
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
-    traces1 = Traces(dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10)
+    traces1 = Traces(
+        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10, dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10
+    )
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(peaks_dec_dff=[5, 15, 25, 35, 45])
     roi1._new_data_analysis = [data_analysis1]
 
     # Create ROI 2
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
-    traces2 = Traces(dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10)
+    traces2 = Traces(
+        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10, dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10
+    )
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(peaks_dec_dff=[6, 16, 26, 36, 46])  # Shifted by 1
     roi2._new_data_analysis = [data_analysis2]
@@ -159,6 +163,7 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
     # Create ROI 1
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
     traces1 = Traces(
+        dff=[1.0] * 50,
         dec_dff=[1.0] * 50,
         inferred_spikes=spike_pattern.tolist(),
     )
@@ -175,6 +180,7 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
 
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
     traces2 = Traces(
+        dff=[1.0] * 50,
         dec_dff=[1.0] * 50,
         inferred_spikes=spike_pattern2.tolist(),
     )
@@ -267,7 +273,7 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
     peak_array1 = np.zeros(50)
     peak_array1[[10, 20, 30]] = 1.0
-    traces1 = Traces(dec_dff=peak_array1.tolist())
+    traces1 = Traces(dff=peak_array1.tolist(), dec_dff=peak_array1.tolist())
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(peaks_dec_dff=[10, 20, 30])
     roi1._new_data_analysis = [data_analysis1]
@@ -276,7 +282,7 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
     peak_array2 = np.zeros(50)
     peak_array2[[15, 25, 35]] = 1.0
-    traces2 = Traces(dec_dff=peak_array2.tolist())
+    traces2 = Traces(dff=peak_array2.tolist(), dec_dff=peak_array2.tolist())
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(peaks_dec_dff=[15, 25, 35])
     roi2._new_data_analysis = [data_analysis2]

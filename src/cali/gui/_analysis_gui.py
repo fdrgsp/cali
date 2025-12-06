@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from superqt.utils import signals_blocked
 
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
@@ -528,7 +529,8 @@ class _ExperimentTypeWidget(QWidget):
                 ", ".join(str(frame) for frame in value.led_pulse_on_frames)
             )
         if value.experiment_type is not None:
-            self._experiment_type_combo.setCurrentText(value.experiment_type)
+            with signals_blocked(self._experiment_type_combo):
+                self._experiment_type_combo.setCurrentText(value.experiment_type)
             # update visibility based on experiment type
             self._on_activity_changed(value.experiment_type)
 

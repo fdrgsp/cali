@@ -2136,6 +2136,8 @@ class CaliGui(QMainWindow):
                 return
             if isinstance(meta, dict):
                 meta = [meta]
+            elif callable(meta):  # ome zarr reader
+                meta = meta()
             pixel_size = meta[0].get("pixel_size_um", None)
             exposure_ms = meta[0].get("exposure_ms", None)
             frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
@@ -2183,6 +2185,8 @@ class CaliGui(QMainWindow):
                 return
             if isinstance(meta, dict):
                 meta = [meta]
+            elif callable(meta):  # ome zarr reader
+                meta = meta()
             exposure_ms = meta[0].get("exposure_ms", None)
             frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
             self._analysis_wdg._metadata_wdg.setValue(frame_rate)
