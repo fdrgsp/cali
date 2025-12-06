@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QIcon, QStandardItemModel
 from qtpy.QtWidgets import (
@@ -17,7 +16,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from ._util import create_divider_line, parse_lineedit_text
 
@@ -90,17 +89,17 @@ class _RunCaliWidget(QWidget):
 
         self._save_settings_btn = QPushButton("Save Settings")
         self._save_settings_btn.setSizePolicy(*FIXED)
-        self._save_settings_btn.setIcon(QIcon(icon(MDI6.content_save_cog)))
+        self._save_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-cog")))
         self._load_settings_btn = QPushButton("Load Settings")
         self._load_settings_btn.setSizePolicy(*FIXED)
-        self._load_settings_btn.setIcon(QIcon(icon(MDI6.file_upload_outline)))
+        self._load_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:file-upload-outline")))
 
         self._run_btn = QPushButton("Run")
         self._run_btn.setSizePolicy(*FIXED)
-        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
+        self._run_btn.setIcon(QIconifyIcon("mdi:play", color=GREEN))
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.setSizePolicy(*FIXED)
-        self._cancel_btn.setIcon(QIcon(icon(MDI6.stop, color=RED)))
+        self._cancel_btn.setIcon(QIcon(QIconifyIcon("mdi:stop", color=RED)))
 
         # positions selector
         self._positions_wdg = _ChoosePositionsWidget(self)

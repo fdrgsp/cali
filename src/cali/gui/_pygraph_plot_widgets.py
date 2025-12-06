@@ -5,7 +5,6 @@ import random
 from typing import TYPE_CHECKING, ClassVar
 
 import pyqtgraph as pg
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
@@ -26,7 +25,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from sqlmodel import Session, col, select
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from cali.plot._main_plot import (
     ANALYSIS_PRODUCTS,
@@ -71,7 +70,7 @@ class _SingleWellGraphWidget(QWidget):
         self._rebuild_combo_box()
 
         self._save_btn = QPushButton("Save Image", self)
-        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
+        self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
 
         top = QHBoxLayout()
@@ -543,7 +542,7 @@ class _MultilWellGraphWidget(QWidget):
         )
 
         self._save_btn = QPushButton("Save Image", self)
-        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
+        self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
 
         top = QHBoxLayout()

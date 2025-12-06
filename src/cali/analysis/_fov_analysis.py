@@ -34,33 +34,6 @@ def compute_fov_analysis(
 
     This function calculates 6 pairwise metrics for all active ROIs in a FOV:
 
-    DF/F Calcium Traces:
-    0. Zero-lag Pearson correlation on DF/F traces ✅
-    1. Max-lag Pearson correlation on DF/F traces
-        - use 
-
-    Deconvolved DF/F Calcium Traces:
-    2. Zero-lag Pearson correlation on Deconvolved DF/F traces ✅
-    3. Max-lag Pearson correlation on Deconvolved DF/F traces
-
-    Deconvolved DF/F Calcium Peaks:
-    4. Max lag correlation on calcium peak events
-    5. Jitter synchrony on calcium peak events ✅
-
-    Inferred Spikes:
-    6. Zero-lag Pearson correlation on spike trains ✅
-    7. Max lag correlation on spike events ✅
-    8. Jitter synchrony on spike events ✅
-    """
-
-def compute_fov_analysis(
-    fov: FOV,
-    analysis_settings: AnalysisSettings,
-) -> FOVAnalysis | None:
-    """Compute FOV-level correlation and synchrony analysis.
-
-    This function calculates 6 pairwise metrics for all active ROIs in a FOV:
-
     Calcium Traces Metrics:
     0. Zero-lag Pearson correlation on DF/F traces
     1. Zero-lag Pearson correlation on Deconvolved DF/F traces

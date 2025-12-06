@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import tifffile
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -23,7 +22,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
@@ -260,11 +259,11 @@ class CellposeSegmentationWidget(QWidget):
 
         self._run_btn = QPushButton("Run")
         self._run_btn.setSizePolicy(*FIXED)
-        self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
+        self._run_btn.setIcon(QIconifyIcon("mdi:play", color=GREEN))
         self._run_btn.clicked.connect(self.run)
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.setSizePolicy(*FIXED)
-        self._cancel_btn.setIcon(icon(MDI6.stop, color=RED))
+        self._cancel_btn.setIcon(QIconifyIcon("mdi:stop", color=RED))
         self._cancel_btn.clicked.connect(self.cancel)
 
         self._progress_label = QLabel("[0/0]")

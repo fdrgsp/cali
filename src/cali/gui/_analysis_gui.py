@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QComboBox,
@@ -17,7 +16,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QRadioButton,
     QScrollArea,
     QSizePolicy,
@@ -25,7 +23,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
 
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
@@ -33,6 +30,7 @@ from cali._constants import (
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
     DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
+    DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
     DEFAULT_PEAKS_DISTANCE,
@@ -45,6 +43,7 @@ from cali._constants import (
     SPONTANEOUS,
 )
 
+from ._extraction_gui import FromMetaButton
 from ._util import _BrowseWidget, create_divider_line
 
 if TYPE_CHECKING:
@@ -61,6 +60,7 @@ class AnalysisSettingsData:
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
     experiment_type_data: ExperimentTypeData | None = None
+    frame_rate: float = DEFAULT_FRAME_RATE
 
 
 @dataclass(frozen=True)
@@ -143,6 +143,7 @@ class _AnalysisGUI(QWidget):
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
+        self._metadata_wdg = _MetadataWidget(self)
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
         analysis_scroll_area = QScrollArea()
@@ -160,6 +161,8 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._calcium_peaks_wdg)
         group_layout.addWidget(create_divider_line("Spikes and Bursts"))
         group_layout.addWidget(self._spike_wdg)
+        group_layout.addWidget(create_divider_line("Metadata"))
+        group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
         group_layout.addStretch(1)
@@ -176,6 +179,7 @@ class _AnalysisGUI(QWidget):
         self._experiment_type_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
+        self._metadata_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
 
     # PUBLIC METHODS ------------------------------------------------------------------
@@ -185,12 +189,18 @@ class _AnalysisGUI(QWidget):
         """Signal emitted when the 'Load From Metadata' button is clicked."""
         return self._experiment_type_wdg.from_metadata
 
+    @property
+    def from_metadata_frame_rate(self) -> None:
+        """Signal emitted when the metadata 'Load From Metadata' button is clicked."""
+        return self._metadata_wdg.from_metadata
+
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
         return AnalysisSettingsData(
             self._calcium_peaks_wdg.value(),
             self._spike_wdg.value(),
             self._experiment_type_wdg.value(),
+            self._metadata_wdg.value(),
         )
 
     def setValue(self, value: AnalysisSettingsData) -> None:
@@ -201,6 +211,7 @@ class _AnalysisGUI(QWidget):
             self._spike_wdg.setValue(value.spikes_data)
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
+        self._metadata_wdg.setValue(value.frame_rate)
 
     def enable(self, enable: bool) -> None:
         """Enable or disable the widget."""
@@ -213,6 +224,7 @@ class _AnalysisGUI(QWidget):
         self._experiment_type_wdg.reset()
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
+        self._metadata_wdg.reset()
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
@@ -234,6 +246,7 @@ class _AnalysisGUI(QWidget):
         return AnalysisSettings(
             created_at=datetime.now(),
             threads=self._threads.value(),
+            frame_rate=settings.frame_rate,
             peaks_height_value=(
                 peaks_data.peaks_height if peaks_data else DEFAULT_HEIGHT
             ),
@@ -568,15 +581,6 @@ class _ExperimentTypeWidget(QWidget):
             self._led_powers_wdg.hide()
             self._led_pulse_on_frames_wdg.hide()
             self._from_meta_btn.hide()
-
-
-class FromMetaButton(QPushButton):
-    """Custom button for loading metadata from files."""
-
-    def __init__(self, parent: QWidget | None = None, text: str = "") -> None:
-        super().__init__(text, parent)
-        self.setIcon(icon(MDI6.file_document, color="white"))
-        self.setFixedWidth(200)
 
 
 class _PeaksHeightWidget(QWidget):
@@ -1103,3 +1107,73 @@ class _SpikeWidget(QWidget):
             )
         )
         self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
+
+
+class _MetadataWidget(QWidget):
+    """Widget for metadata settings - frame rate only for analysis."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # Frame Rate widget
+        self._frame_rate_wdg = QWidget(self)
+        self._frame_rate_wdg.setToolTip(
+            "Acquisition frame rate in frames per second (fps).\\n\\n"
+            "This is used to convert time-based parameters (e.g., peaks distance in "
+            "milliseconds, jitter windows) to frames for processing.\\n\\n"
+            "Tip: This is typically the inverse of exposure time:\\n"
+            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\\n"
+            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+        )
+        self._frame_rate_lbl = QLabel("Frame Rate:")
+        self._frame_rate_lbl.setSizePolicy(*FIXED)
+        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setSuffix(" fps")
+        self._frame_rate_spin.setDecimals(2)
+        self._frame_rate_spin.setRange(0.01, 1000.0)
+        self._frame_rate_spin.setSingleStep(1.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
+        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
+        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
+        frame_rate_layout.setSpacing(5)
+        frame_rate_layout.addWidget(self._frame_rate_lbl)
+        frame_rate_layout.addWidget(self._frame_rate_spin)
+
+        # FromMetaButton
+        self._from_meta_btn = FromMetaButton(self, "Load From Metadata")
+        self._from_meta_btn.setToolTip(
+            "Try to load frame rate from the acquisition metadata."
+        )
+        self._from_meta_btn.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+
+        # Main layout: frame rate field + button horizontally
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addWidget(self._frame_rate_wdg)
+        layout.addWidget(self._from_meta_btn)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    @property
+    def from_metadata(self) -> None:
+        """Signal emitted when the 'Load From Metadata' button is clicked."""
+        return self._from_meta_btn.clicked  # type: ignore
+
+    def set_labels_width(self, width: int) -> None:
+        """Set the width of the labels."""
+        self._frame_rate_lbl.setFixedWidth(width)
+
+    def value(self) -> float:
+        """Get the current frame rate value."""
+        return self._frame_rate_spin.value()  # type: ignore
+
+    def setValue(self, value: float) -> None:
+        """Set the frame rate value."""
+        self._frame_rate_spin.setValue(value)
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)

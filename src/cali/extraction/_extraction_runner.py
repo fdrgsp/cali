@@ -536,7 +536,12 @@ class ExtractionRunner:
 
         # get the size of the roi in µm or px if µm is not available
         roi_size_pixel = masked_data.shape[1]  # area
-        px_size = meta[0].get("pixel_size_um", None)
+        # Try to get pixel size from settings first, then from metadata
+        px_size = (
+            extraction_settings.pixel_size
+            if extraction_settings.pixel_size is not None
+            else meta[0].get("pixel_size_um", None)
+        )
         # Convert to µm² if pixel size is available, otherwise use pixels
         roi_size = roi_size_pixel * (px_size**2) if px_size else roi_size_pixel
         roi_size_units = "µm" if px_size is not None else "pixel"
@@ -564,11 +569,24 @@ class ExtractionRunner:
 
         # calculate the dff of the roi trace
         # (using corrected trace if neuropil is enabled)
+        # Try to get frame rate from settings first, then from metadata
+        if extraction_settings.frame_rate is not None:
+            frame_rate = extraction_settings.frame_rate
+        else:
+            exposure_ms = meta[0].get("exposure_ms", None)
+            if exposure_ms is None:
+                msg = (
+                    "❌ Frame rate or exposure time must be provided in "
+                    "extraction settings or metadata."
+                )
+                cali_logger.error(msg)
+                raise ValueError(msg)
+            frame_rate = 1000.0 / exposure_ms
         with _NUMBA_LOCK:
             dff = calculate_dff(
                 roi_trace,
                 window_ms=extraction_settings.dff_window,
-                frame_rate=extraction_settings.frame_rate,
+                frame_rate=frame_rate,
             )
 
         # Check for cancellation after DFF calculation

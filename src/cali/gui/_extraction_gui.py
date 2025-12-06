@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QDoubleSpinBox,
@@ -18,7 +17,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from cali._constants import (
     DEFAULT_DFF_WINDOW,
@@ -108,7 +107,7 @@ class _ExtractionGUI(QWidget):
         threads_layout = QHBoxLayout(threads_wdg)
         threads_layout.setContentsMargins(0, 0, 0, 0)
         threads_layout.setSpacing(5)
-        threads_layout.addWidget(threads_lbl)
+        threads_layout.addWidget(self._threads_lbl)
         threads_layout.addWidget(self._threads)
 
         # EXTRACTION WIDGETS ---------------------------------------------------------
@@ -126,12 +125,12 @@ class _ExtractionGUI(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         # add extraction widgets to scroll area
-        group_layout.addWidget(create_divider_line("Metadata"))
-        group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Neuropil Settings"))
         group_layout.addWidget(self._neuropil_wdg)
         group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
         group_layout.addWidget(self._trace_extraction_wdg)
+        group_layout.addWidget(create_divider_line("Metadata"))
+        group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
         group_layout.addStretch(1)
@@ -148,9 +147,14 @@ class _ExtractionGUI(QWidget):
         self._metadata_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
-        threads_lbl.setFixedWidth(fix_width)
+        self._threads_lbl.setFixedWidth(fix_width)
 
     # PUBLIC METHODS ------------------------------------------------------------------
+
+    @property
+    def from_metadata(self) -> None:
+        """Signal emitted when the 'Load From Metadata' button is clicked."""
+        return self._metadata_wdg.from_metadata
 
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
@@ -425,3 +429,122 @@ class _TraceExtractionWidget(QWidget):
         """Reset the widget to default values."""
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         self._decay_constant_spin.setValue(0.0)
+
+
+class _MetadataWidget(QWidget):
+    """Widget for metadata settings including pixel size and frame rate."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # Pixel Size widget
+        self._pixel_size_wdg = QWidget(self)
+        self._pixel_size_wdg.setToolTip(
+            "Physical size of each pixel in micrometers (µm).\n\n"
+            "Used to convert pixel-based measurements to physical units.\n"
+            "Set to 0 to use pixels as the unit (no conversion).\n\n"
+            "Default: 0 (use pixels)"
+        )
+        self._pixel_size_lbl = QLabel("Pixel Size:")
+        self._pixel_size_lbl.setSizePolicy(*FIXED)
+        self._pixel_size_spin = QDoubleSpinBox(self)
+        self._pixel_size_spin.setSuffix(" µm")
+        self._pixel_size_spin.setDecimals(4)
+        self._pixel_size_spin.setRange(0.0, 100.0)
+        self._pixel_size_spin.setSingleStep(0.1)
+        self._pixel_size_spin.setValue(0.0)
+        self._pixel_size_spin.setSpecialValueText("Use Pixels")
+        pixel_size_layout = QHBoxLayout(self._pixel_size_wdg)
+        pixel_size_layout.setContentsMargins(0, 0, 0, 0)
+        pixel_size_layout.setSpacing(5)
+        pixel_size_layout.addWidget(self._pixel_size_lbl)
+        pixel_size_layout.addWidget(self._pixel_size_spin)
+
+        # Frame Rate widget
+        self._frame_rate_wdg = QWidget(self)
+        self._frame_rate_wdg.setToolTip(
+            "Acquisition frame rate in frames per second (fps).\n\n"
+            "This is used to convert time-based parameters (e.g., DFF window in "
+            "milliseconds) to frames for processing.\n\n"
+            "Tip: This is typically the inverse of exposure time:\n"
+            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
+            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+        )
+        self._frame_rate_lbl = QLabel("Frame Rate:")
+        self._frame_rate_lbl.setSizePolicy(*FIXED)
+        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setSuffix(" fps")
+        self._frame_rate_spin.setDecimals(2)
+        self._frame_rate_spin.setRange(0.01, 1000.0)
+        self._frame_rate_spin.setSingleStep(1.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
+        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
+        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
+        frame_rate_layout.setSpacing(5)
+        frame_rate_layout.addWidget(self._frame_rate_lbl)
+        frame_rate_layout.addWidget(self._frame_rate_spin)
+
+        # Left side: metadata fields vertically
+        left_layout = QVBoxLayout()
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(5)
+        left_layout.addWidget(self._pixel_size_wdg)
+        left_layout.addWidget(self._frame_rate_wdg)
+
+        # Right side: FromMetaButton extending vertically
+        self._from_meta_btn = FromMetaButton(self, "Load From Metadata")
+        self._from_meta_btn.setToolTip(
+            "Try to load pixel size and frame rate from the acquisition metadata."
+        )
+        self._from_meta_btn.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+        )
+
+        # Main layout: left fields + right button
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addLayout(left_layout)
+        layout.addWidget(self._from_meta_btn)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    @property
+    def from_metadata(self) -> None:
+        """Signal emitted when the 'Load From Metadata' button is clicked."""
+        return self._from_meta_btn.clicked  # type: ignore
+
+    def set_labels_width(self, width: int) -> None:
+        """Set the width of the labels."""
+        self._pixel_size_lbl.setFixedWidth(width)
+        self._frame_rate_lbl.setFixedWidth(width)
+
+    def value(self) -> MetadataData:
+        """Get the current values of the widget."""
+        pixel_size = self._pixel_size_spin.value()
+        return MetadataData(
+            pixel_size=pixel_size if pixel_size > 0 else None,
+            frame_rate=self._frame_rate_spin.value(),
+        )
+
+    def setValue(self, value: MetadataData) -> None:
+        """Set the values of the widget."""
+        if value.pixel_size is not None:
+            self._pixel_size_spin.setValue(value.pixel_size)
+        else:
+            self._pixel_size_spin.setValue(0.0)
+        self._frame_rate_spin.setValue(value.frame_rate)
+
+    def reset(self) -> None:
+        """Reset the widget to default values."""
+        self._pixel_size_spin.setValue(0.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
+
+
+class FromMetaButton(QPushButton):
+    """Custom button for loading metadata from files."""
+
+    def __init__(self, parent: QWidget | None = None, text: str = "") -> None:
+        super().__init__(text, parent)
+        self.setIcon(QIconifyIcon("mdi:file-document-box-search"))
+        self.setFixedWidth(200)
