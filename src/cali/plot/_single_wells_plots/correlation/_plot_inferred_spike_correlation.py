@@ -183,7 +183,7 @@ def _plot_spike_cross_correlation_data(
     vb.setAspectLocked(True)  # keep it square
     vb.enableAutoRange(x=True, y=True)
 
-    title = f"Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data){title_suffix}"
+    title = f"Zero-Lag Pearson Correlation\n(Inferred Spike Trains){title_suffix}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI index")
     plot.setLabel("left", "ROI index")

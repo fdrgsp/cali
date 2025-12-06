@@ -86,7 +86,7 @@ def test_combo_disabled_without_fov_or_run(
     )
 
     # All plots should be disabled (36 plots require pipeline stages)
-    assert disabled_count == 36
+    assert disabled_count == 39
 
 
 def test_combo_disabled_with_only_run_id(
@@ -115,7 +115,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 59
+    assert disabled_count == 62
 
 
 def test_combo_enabled_with_fov_and_run_id(

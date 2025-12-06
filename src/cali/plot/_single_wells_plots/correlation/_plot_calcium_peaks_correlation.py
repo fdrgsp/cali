@@ -198,7 +198,7 @@ def _plot_cross_correlation_data(
     # keep it square
     vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
-    title = f"Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events){title_suffix}"
+    title = f"Max-Lag Cross-Correlation\n(Calcium Peaks Events){title_suffix}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI index")
     plot.setLabel("left", "ROI index")

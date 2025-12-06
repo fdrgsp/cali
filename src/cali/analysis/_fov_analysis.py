@@ -34,18 +34,20 @@ def compute_fov_analysis(
 
     This function calculates 6 pairwise metrics for all active ROIs in a FOV:
 
-    Calcium Traces Metrics:
+    DF/F Calcium Traces:
     0. Zero-lag Pearson correlation on DF/F traces
+
+    Deconvolved DF/F Calcium Traces:
     1. Zero-lag Pearson correlation on Deconvolved DF/F traces
 
-    Calcium Peaks Metrics:
-    2. Jitter synchrony on calcium peak events
-    3. Max lag correlation on calcium peak events
+    Calcium Peaks:
+    3. Event xCorr (lag) on calcium peak events
+    4. Jitter synchrony on calcium peak events
 
-    Spike Metrics:
-    4. Zero-lag Pearson correlation on spike trains
-    5. Max lag correlation on spike events
-    6. Jitter synchrony on spike events
+    Inferred Spikes:
+    5. Zero-lag Pearson correlation on spike trains
+    6. Max-lag CCG (correlation from spike timing)
+    7. Jitter synchrony on spike events
 
     It requires that ROIs have traces and data_analysis attached
     (either via history or _new_* attributes).

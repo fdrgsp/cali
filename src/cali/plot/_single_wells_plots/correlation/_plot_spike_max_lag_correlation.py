@@ -9,7 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
+from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
 
 # -----------------------------------------------------------------------------#
-# Database query for pre-computed synchrony matrix
+# Database query for pre-computed spike max-lag correlation matrix
 # -----------------------------------------------------------------------------#
-def _get_synchrony_matrix_from_db(
+def _get_spike_max_lag_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
-) -> tuple[np.ndarray | None, list[int] | None, float | None, float | None]:
-    """Get the pre-computed calcium peaks synchrony matrix from database.
+) -> tuple[np.ndarray | None, list[int] | None]:
+    """Get the pre-computed spike max-lag correlation matrix from database.
 
     Parameters
     ----------
@@ -39,13 +39,12 @@ def _get_synchrony_matrix_from_db(
 
     Returns
     -------
-    tuple[np.ndarray | None, list[int] | None, float | None, float | None]
-        (synchrony_matrix, roi_labels, global_synchrony, jitter_window_ms)
-        or (None, None, None, None)
+    tuple[np.ndarray | None, list[int] | None]
+        (correlation_matrix, roi_labels) or (None, None) if not found
     """
     if run_id is None:
-        cali_logger.warning("No run ID specified for synchrony plot.")
-        return None, None, None, None
+        cali_logger.warning("No run ID specified for spike max-lag correlation plot.")
+        return None, None
 
     try:
         with Session(engine) as session:
@@ -62,40 +61,28 @@ def _get_synchrony_matrix_from_db(
                 cali_logger.debug(
                     f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
                 )
-                return None, None, None, None
+                return None, None
 
             if (
-                fov_analysis.calcium_peaks_jitter_synchrony_matrix is None
+                fov_analysis.spike_max_lag_correlation_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
-                cali_logger.debug(f"FOVAnalysis for {fov_name} has no synchrony matrix")
-                return None, None, None, None
+                cali_logger.debug(
+                    f"FOVAnalysis for {fov_name} has no spike max-lag "
+                    "correlation matrix"
+                )
+                return None, None
 
-            # Get jitter window from analysis settings
-            cali_result = session.exec(
-                select(CaliResult).where(CaliResult.id == run_id)
-            ).first()
-            jitter_window_ms = None
-            if cali_result and cali_result.analysis_settings_id:
-                analysis_settings = session.exec(
-                    select(AnalysisSettings).where(
-                        AnalysisSettings.id == cali_result.analysis_settings_id
-                    )
-                ).first()
-                if analysis_settings:
-                    jitter_window_ms = analysis_settings.calcium_sync_jitter_window
-
-            sync_matrix = np.asarray(
-                fov_analysis.calcium_peaks_jitter_synchrony_matrix, dtype=float
+            corr_matrix = np.asarray(
+                fov_analysis.spike_max_lag_correlation_matrix, dtype=float
             )
             roi_labels = list(fov_analysis.active_roi_labels)
-            global_sync = fov_analysis.global_calcium_peaks_jitter_synchrony
 
-            return sync_matrix, roi_labels, global_sync, jitter_window_ms
+            return corr_matrix, roi_labels
     except OperationalError:
         # Table doesn't exist in older databases
         cali_logger.debug("FOVAnalysis table not found in database")
-        return None, None, None, None
+        return None, None
 
 
 def _filter_matrix_by_rois(
@@ -103,10 +90,26 @@ def _filter_matrix_by_rois(
     roi_labels: list[int],
     selected_rois: list[int] | None,
 ) -> tuple[np.ndarray, list[int]]:
-    """Filter a synchrony matrix to only include selected ROIs."""
+    """Filter a correlation/synchrony matrix to only include selected ROIs.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Full NxN matrix
+    roi_labels : list[int]
+        ROI labels corresponding to matrix indices
+    selected_rois : list[int] | None
+        ROIs to filter to, or None to keep all
+
+    Returns
+    -------
+    tuple[np.ndarray, list[int]]
+        (filtered_matrix, filtered_roi_labels)
+    """
     if selected_rois is None:
         return matrix, roi_labels
 
+    # Find indices of selected ROIs in the full matrix
     indices = []
     filtered_labels = []
     for i, label in enumerate(roi_labels):
@@ -114,11 +117,10 @@ def _filter_matrix_by_rois(
             indices.append(i)
             filtered_labels.append(label)
 
-    # Return the filtered labels even if there are fewer than 2
-    # (the caller should check for insufficient ROIs)
     if len(indices) < 2:
-        return matrix[:0, :0], filtered_labels  # Empty matrix with filtered labels
+        return matrix, roi_labels  # Return full matrix if too few ROIs selected
 
+    # Extract submatrix
     indices_arr = np.array(indices)
     filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
 
@@ -126,9 +128,9 @@ def _filter_matrix_by_rois(
 
 
 # -----------------------------------------------------------------------------#
-# Main plotting entry point (pyqtgraph version)
+# Plotting with pyqtgraph
 # -----------------------------------------------------------------------------#
-def _plot_peak_event_synchrony_data(
+def _plot_spike_max_lag_correlation_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -136,7 +138,7 @@ def _plot_peak_event_synchrony_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot peak event-based synchrony analysis (pyqtgraph heatmap).
+    """Plot the spike max-lag cross-correlation matrix as a heatmap (pyqtgraph).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
@@ -156,55 +158,34 @@ def _plot_peak_event_synchrony_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    # Query pre-computed synchrony matrix from database
-    sync_matrix, roi_labels, global_synchrony, jitter_window_ms = (
-        _get_synchrony_matrix_from_db(engine, fov_name, run_id)
+    # Query pre-computed correlation matrix from database
+    correlation_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
+        engine, fov_name, run_id
     )
 
-    if sync_matrix is None or roi_labels is None:
-        cali_logger.warning(
-            "No synchrony data found for this FOV. Ensure analysis has been run."
+    if correlation_matrix is None or roi_labels is None:
+        plot.setTitle(
+            f"Max-Lag Cross-Correlation\n"
+            f"(Inferred Spike Trains - No data){title_suffix}"
         )
-        plot.setTitle(f"Peak Event Synchrony\n(No data){title_suffix}")
-        plot.setLabel("bottom", "ROI index")
-        plot.setLabel("left", "ROI index")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
         return
 
     # Filter to selected ROIs if specified
-    sync, active_roi_ids = _filter_matrix_by_rois(sync_matrix, roi_labels, rois)
+    corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
 
-    if len(active_roi_ids) < 2:
-        cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
-        plot.setTitle(f"Peak Event Synchrony\n(Need ≥2 ROIs){title_suffix}")
-        plot.setLabel("bottom", "ROI index")
-        plot.setLabel("left", "ROI index")
+    if len(rois_idxs) < 2:
+        plot.setTitle(
+            f"Max-Lag Cross-Correlation\n"
+            f"(Inferred Spike Trains - Need ≥2 ROIs){title_suffix}"
+        )
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
         return
 
-    # Recalculate global synchrony if ROI subset is selected
-    if rois is not None and len(rois) < len(roi_labels):
-        # Calculate median of off-diagonal elements
-        n = sync.shape[0]
-        if n > 1:
-            mask = ~np.eye(n, dtype=bool)
-            global_synchrony = float(np.median(sync[mask]))
-        else:
-            global_synchrony = 0.0
-    elif global_synchrony is None:
-        global_synchrony = 0.0
-
-    # Format jitter window for title
-    if jitter_window_ms is not None:
-        jitter_str = f"±{jitter_window_ms:.1f}ms"
-    else:
-        jitter_str = "±window"
-
-    base_title = (
-        f"Jitter Synchrony ({jitter_str})\n"
-        f"Global Median: {global_synchrony:.4f}{title_suffix}"
-    )
-
-    # ---------------- IMAGE ITEM (centered-ish, square) ---------------- #
-    img = pg.ImageItem(sync)
+    # ---------------- IMAGE ITEM (centered, full view) ---------------- #
+    img = pg.ImageItem(corr)
 
     # viridis colormap
     cmap = pg.colormap.get("viridis")
@@ -213,6 +194,7 @@ def _plot_peak_event_synchrony_data(
 
     plot.addItem(img)
 
+    # ViewBox & geometry
     vb = plot.getViewBox()
 
     # Make (0,0) top-left like imshow
@@ -221,57 +203,53 @@ def _plot_peak_event_synchrony_data(
     # keep it square
     vb.setAspectLocked(True)
 
-    plot.setTitle(base_title)
+    title = f"Max-Lag Cross-Correlation\n(Inferred Spike Trains){title_suffix}"
+    plot.setTitle(title)
     plot.setLabel("bottom", "ROI index")
     plot.setLabel("left", "ROI index")
 
-    # Hide axis tick labels (same behaviour as MPL version)
+    # Hide axis tick labels (like the MPL version)
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
     # Add colorbar
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
 
     # ---------------- Hover + Click interaction ---------------- #
-    _attach_synchrony_heatmap_interaction(
-        widget,
-        plot,
-        vb,
-        active_roi_ids,
-        sync,
-        base_title=base_title,
-    )
+    _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr, title_suffix)
 
 
 # -----------------------------------------------------------------------------#
-# Hover + click helper (synchrony-specific)
+# Hover + click helper
 # -----------------------------------------------------------------------------#
-def _attach_synchrony_heatmap_interaction(
+def _attach_heatmap_interaction(
     widget: _SingleWellGraphWidget,
     plot: pg.PlotItem,
     viewbox: pg.ViewBox,
     rois: list[int],
     values: np.ndarray,
-    base_title: str,
+    title_suffix: str = "",
 ) -> None:
     """
-    Attach interaction to the synchrony heatmap.
+    Attach interaction to the heatmap.
 
     - Hover: show ROI_i, ROI_j, value in the title
-    - Click: emit widget.roiSelected with a list [roi_i, roi_j]
+    - Click: emit widget.roiSelected with a tuple (roi_i, roi_j)
     """
     n_rows, n_cols = values.shape
     scene = plot.scene()
 
-    # Avoid stacking multiple handlers on repeated calls
-    old_hover = plot.property("sync_hover_handler")
-    old_click = plot.property("sync_click_handler")
+    # If we reconnect many times, avoid stacking multiple handlers
+    old_hover = plot.property("spike_maxlag_hover_handler")
+    old_click = plot.property("spike_maxlag_click_handler")
     if old_hover is not None:
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseMoved.disconnect(old_hover)
     if old_click is not None:
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseClicked.disconnect(old_click)
+
+    base_title = f"Max-Lag Cross-Correlation\n(Inferred Spike Trains){title_suffix}"
 
     def _on_mouse_moved(pos: pg.Point) -> None:
         if not plot.sceneBoundingRect().contains(pos):
@@ -298,22 +276,22 @@ def _attach_synchrony_heatmap_interaction(
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
-            # Emit as list[str] to match your highlight logic
+            # Emit tuple; roiSelected is Signal(object), so this is fine
             widget.roiSelected.emit([str(roi_i), str(roi_j)])
 
     scene.sigMouseMoved.connect(_on_mouse_moved)
     scene.sigMouseClicked.connect(_on_mouse_clicked)
 
-    # Remember handlers so we can disconnect next time
-    plot.setProperty("sync_hover_handler", _on_mouse_moved)
-    plot.setProperty("sync_click_handler", _on_mouse_clicked)
+    # Remember handlers so we can disconnect on next call
+    plot.setProperty("spike_maxlag_hover_handler", _on_mouse_moved)
+    plot.setProperty("spike_maxlag_click_handler", _on_mouse_clicked)
 
 
 def _add_colorbar_to_widget(
     widget: _SingleWellGraphWidget,
     vmin: float,
     vmax: float,
-    label: str = "Synchrony",
+    label: str = "Correlation",
 ) -> None:
     """Add a ColorBarItem to the widget layout."""
     # Remove any existing colorbar

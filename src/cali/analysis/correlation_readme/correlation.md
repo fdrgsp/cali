@@ -238,35 +238,3 @@ Precise synchrony between spike trains within a narrow time window (e.g., ±50 m
 4. **Correlation ≠ Causality**: High correlation shows co-fluctuation, not directionality. Use CCG or other causal inference methods for directionality.
 
 5. **Deconvolution helps but has limits**: C(t) and s(t) improve temporal precision but don't fully restore spike timing.
-
----
-
-## Computational Notes
-
-- **Zero-lag Pearson correlation**: Fast, works on any length traces
-  ```python
-  from scipy.stats import pearsonr
-  r, p = pearsonr(trace1, trace2)
-  ```
-
-- **Event cross-correlation**: Compute coincidences at different lags
-  ```python
-  # Pseudo-code
-  for lag in range(-max_lag, max_lag):
-      coincidences[lag] = count_events_within_window(events1, events2, lag, window)
-  ```
-
-- **Jitter synchrony**: Fraction of events in one train that have a partner in the other within ±window
-  ```python
-  # Pseudo-code
-  sync_count = 0
-  for event1 in events1:
-      if any(abs(event1 - event2) <= window for event2 in events2):
-          sync_count += 1
-  synchrony = sync_count / len(events1)
-  ```
-
-- **CCG for spike trains**: Histogram of inter-spike intervals across neurons
-  ```python
-  # Available in many packages, e.g., elephant, NEO
-  ```

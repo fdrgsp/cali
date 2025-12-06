@@ -39,6 +39,10 @@ from ._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
 from ._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
+from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
+    _plot_dec_dff_correlation_data,
+    _plot_dff_correlation_data,
+)
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
     _plot_non_stimulated_calcium_correlation,
     _plot_non_stimulated_calcium_synchrony,
@@ -54,6 +58,9 @@ from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
+)
+from ._single_wells_plots.correlation._plot_spike_max_lag_correlation import (
+    _plot_spike_max_lag_correlation_data,
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
     _plot_calcium_intensity_heatmap_by_stim_status,
@@ -188,8 +195,9 @@ INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF = "Inferred Spikes (Thresholded) with D
 INFERRED_SPIKES_THRESHOLDED_NORMALIZED = "Inferred Spikes (Thresholded) Normalized"
 INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY = "Inferred Spikes (Thresholded) Normalized (Active Only)"  # noqa: E501
 INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normalized with Network Bursts"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes (Thresholded) Global Synchrony"
-INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes (Thresholded) Cross-Correlation"
+INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony (±window)"
+INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
+INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
 INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
 INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
@@ -208,10 +216,12 @@ STIMULATED_SPIKE_INTENSITY_HEATMAP = "Stimulated Inferred Spikes Intensity Heatm
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
 STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
-CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Global Synchrony"
+CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony (±window)"
 CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
 CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
-CROSS_CORRELATION = "Calcium Peaks Cross-Correlation"
+CROSS_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation"
+CALCIUM_DFF_CORRELATION = "Calcium ΔF/F Zero-Lag Pearson Correlation"
+CALCIUM_DEC_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correlation"
 CLUSTERING = "Calcium Peaks Hierarchical Clustering"
 CLUSTERING_DENDROGRAM = "Calcium Peaks Hierarchical Clustering (Dendrogram)"
 CELL_SIZE = "Cell Size"
@@ -226,14 +236,14 @@ STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
 NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
 STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
 NON_STIMULATED_PEAKS_FREQ = "Non-Stimulated Calcium Peaks Frequencies"
-STIMULATED_CALCIUM_SYNCHRONY = "Stimulated Calcium Peaks Synchrony"
-NON_STIMULATED_CALCIUM_SYNCHRONY = "Non-Stimulated Calcium Peaks Synchrony"
-STIMULATED_CALCIUM_CORRELATION = "Stimulated Calcium Peaks Cross-Correlation"
-NON_STIMULATED_CALCIUM_CORRELATION = "Non-Stimulated Calcium Peaks Cross-Correlation"
-STIMULATED_SPIKE_SYNCHRONY = "Stimulated Inferred Spikes Synchrony"
-NON_STIMULATED_SPIKE_SYNCHRONY = "Non-Stimulated Inferred Spikes Synchrony"
-STIMULATED_SPIKE_CORRELATION = "Stimulated Inferred Spikes Cross-Correlation"
-NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Cross-Correlation"
+STIMULATED_CALCIUM_SYNCHRONY = "Stimulated Calcium Peaks Jitter Synchrony"
+NON_STIMULATED_CALCIUM_SYNCHRONY = "Non-Stimulated Calcium Peaks Jitter Synchrony"
+STIMULATED_CALCIUM_CORRELATION = "Stimulated Calcium Peaks Max-Lag Cross-Correlation"
+NON_STIMULATED_CALCIUM_CORRELATION = "Non-Stimulated Calcium Peaks Max-Lag Cross-Correlation"  # noqa: E501
+STIMULATED_SPIKE_SYNCHRONY = "Stimulated Inferred Spikes Jitter Synchrony"
+NON_STIMULATED_SPIKE_SYNCHRONY = "Non-Stimulated Inferred Spikes Jitter Synchrony"
+STIMULATED_SPIKE_CORRELATION = "Stimulated Inferred Spikes Zero-Lag Pearson Correlation"
+NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Zero-Lag Pearson Correlation"  # noqa: E501
 NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
 NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
@@ -471,6 +481,20 @@ AnalysisProduct(
 
 # Correlation Analysis Group
 AnalysisProduct(
+    name=CALCIUM_DFF_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_dff_correlation_data,
+    category="Calcium Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=CALCIUM_DEC_DFF_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_dec_dff_correlation_data,
+    category="Calcium Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name=CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_peak_event_synchrony_data,
@@ -512,6 +536,13 @@ AnalysisProduct(
     name=INFERRED_SPIKE_CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_MAX_LAG_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_max_lag_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
