@@ -31,7 +31,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "oasis-deconv==0.2.0",  # Build from source to avoid broken prebuilt wheels
+    "oasis-deconv==0.2.0", # Build from source to avoid broken prebuilt wheels
     "numba",
     "pymmcore-widgets >=0.8.0",
     "pymmcore-plus >=0.16.0",
