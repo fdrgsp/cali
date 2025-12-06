@@ -418,7 +418,8 @@ def test_load_settings_with_evoked_experiment_data(
     assert loaded_analysis.experiment_type_data.led_pulse_duration == 5.0
     assert loaded_analysis.experiment_type_data.led_pulse_powers == [10.0, 20.0, 30.0]
     assert loaded_analysis.experiment_type_data.led_pulse_on_frames == [10, 20, 30]
+    # Normalize path for cross-platform comparison (Windows uses backslashes)
     assert (
-        loaded_analysis.experiment_type_data.stimulation_area_path
+        loaded_analysis.experiment_type_data.stimulation_area_path.replace("\\", "/")
         == "/path/to/stim/mask.tif"
     )

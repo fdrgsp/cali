@@ -238,8 +238,8 @@ def _attach_spike_corr_interaction(
             plot.setTitle(base_title)
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -253,8 +253,8 @@ def _attach_spike_corr_interaction(
         if not plot.sceneBoundingRect().contains(pos):
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -492,8 +492,8 @@ def _attach_spike_cluster_interaction(
             plot.setTitle(base_title)
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -507,8 +507,8 @@ def _attach_spike_cluster_interaction(
         if not plot.sceneBoundingRect().contains(pos):
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]

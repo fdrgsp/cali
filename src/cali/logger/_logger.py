@@ -9,7 +9,7 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 
 # File handler
 log_file = Path(__file__).parent / "cali_logger.log"
-file_handler = logging.FileHandler(log_file)
+file_handler = logging.FileHandler(log_file, encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 LOGGER.addHandler(file_handler)
@@ -18,6 +18,9 @@ LOGGER.addHandler(file_handler)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)  # Default: show INFO and above in console
 console_handler.setFormatter(formatter)
+# Set encoding to UTF-8 to support emoji characters on Windows
+if hasattr(console_handler.stream, "reconfigure"):
+    console_handler.stream.reconfigure(encoding="utf-8")
 LOGGER.addHandler(console_handler)
 
 
