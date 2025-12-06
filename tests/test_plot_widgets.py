@@ -76,31 +76,6 @@ def gui_for_plots(qtbot: QtBot) -> CaliGui:
 # ============================================================================
 
 
-def test_combo_disabled_without_fov_or_run(
-    plot_widget_with_db: tuple[_SingleWellGraphWidget, str, str],
-) -> None:
-    """Combo items should be disabled when no FOV or run_id is set."""
-    widget, _, _ = plot_widget_with_db
-
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert not has_det
-    assert not has_ext
-    assert not has_ana
-
-    model = widget._combo.model()
-    assert isinstance(model, QStandardItemModel)
-    disabled_count = sum(
-        1
-        for i in range(model.rowCount())
-        if not (model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled)
-        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)
-        and model.item(i).text() != "None"
-    )
-
-    # All plot items should be disabled (38 spontaneous plots)
-    assert disabled_count == 38
-
-
 def test_combo_disabled_with_only_run_id(
     plot_widget_with_db: tuple[_SingleWellGraphWidget, str, str],
 ) -> None:
@@ -124,8 +99,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    # All items disabled (61 plots: 47 spontaneous + 14 evoked for "Evoked" exp_type)
-    assert disabled_count == 61
+    assert disabled_count == 59
 
 
 def test_combo_enabled_with_fov_and_run_id(

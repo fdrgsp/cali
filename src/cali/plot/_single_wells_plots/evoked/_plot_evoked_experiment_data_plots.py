@@ -561,7 +561,12 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> None:
-    """Plot raster of thresholded spikes (green=stim, magenta=non-stim) with pg."""
+    """Plot raster of thresholded spikes (green=stim, magenta=non-stim) with pg.
+
+    Each suprathreshold burst in the inferred spike trace is collapsed to a
+    single event (rising edge), so the raster shows one tick per inferred spike
+    event rather than one tick per frame above threshold.
+    """
     plot = widget.plot_item
     assert plot is not None
 
@@ -583,6 +588,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         plot.setLabel("bottom", "Frames")
         return
 
+    # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -616,7 +622,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     total_frames = 0
 
     for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.inferred_spikes and data_analysis:
+        if trace_obj and trace_obj.inferred_spikes is not None and data_analysis:
             active_roi_labels.append(roi_model.label_value)
             if roi_model.stimulated:
                 stimulated_rois.append((roi_model, trace_obj, data_analysis))
@@ -626,52 +632,66 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             if data_analysis.total_recording_time_sec is not None:
                 rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-            total_frames = max(total_frames, len(trace_obj.inferred_spikes or []))
+            total_frames = max(total_frames, len(trace_obj.inferred_spikes))
 
     if not stimulated_rois and not non_stimulated_rois:
         plot.setTitle("Spike Raster\nNo spike data available.")
         plot.setLabel("bottom", "Frames")
         return
 
-    # Build raster with ScatterPlotItem
+    # ------------------------ Build raster ------------------------ #
     y_row = 0
 
-    # Stim
-    for roi_model, trace_obj, data_analysis in stimulated_rois:
+    def _add_raster_row(
+        roi_model: ROI,
+        trace_obj: Traces,
+        data_analysis: DataAnalysis | None,
+        color: str,
+        row_index: int,
+    ) -> bool:
+        """Threshold + rising-edge detection; return True if anything was plotted."""
         spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
-            the = float(data_analysis.inferred_spikes_threshold)
-            spikes = np.where(spikes > the, spikes, 0.0)
-        spike_indices = np.where(spikes > 0.0)[0]
-        if spike_indices.size > 0:
-            item = pg.ScatterPlotItem(
-                x=spike_indices.astype(float),
-                y=np.full_like(spike_indices, y_row, dtype=float),
-                pen=None,
-                brush=pg.mkBrush(STIMULATED_COLOR),
-                size=3,
-            )
-            item.setProperty("roi_label", str(roi_model.label_value))
-            plot.addItem(item)
+        if spikes.size == 0:
+            return False
+
+        the = (
+            float(data_analysis.inferred_spikes_threshold)
+            if data_analysis and data_analysis.inferred_spikes_threshold is not None
+            else 0.0
+        )
+
+        above = spikes > the
+        if not np.any(above):
+            return False
+
+        # rising edges: 0 -> 1 transitions (collapse runs of 1s to a single event)
+        rising = above & ~np.concatenate(([False], above[:-1]))
+        spike_indices = np.where(rising)[0]
+        if spike_indices.size == 0:
+            return False
+
+        item = pg.ScatterPlotItem(
+            x=spike_indices.astype(float),
+            y=np.full_like(spike_indices, row_index, dtype=float),
+            pen=None,
+            brush=pg.mkBrush(color),
+            size=4,
+            symbol="s",  # small square -> looks like a tick
+        )
+        item.setProperty("roi_label", str(roi_model.label_value))
+        plot.addItem(item)
+        return True
+
+    # Stimulated rows
+    for roi_model, trace_obj, data_analysis in stimulated_rois:
+        _add_raster_row(roi_model, trace_obj, data_analysis, STIMULATED_COLOR, y_row)
         y_row += 1
 
-    # Non-stim
+    # Non-stimulated rows
     for roi_model, trace_obj, data_analysis in non_stimulated_rois:
-        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
-            the = float(data_analysis.inferred_spikes_threshold)
-            spikes = np.where(spikes > the, spikes, 0.0)
-        spike_indices = np.where(spikes > 0.0)[0]
-        if spike_indices.size > 0:
-            item = pg.ScatterPlotItem(
-                x=spike_indices.astype(float),
-                y=np.full_like(spike_indices, y_row, dtype=float),
-                pen=None,
-                brush=pg.mkBrush(NON_STIMULATED_COLOR),
-                size=3,
-            )
-            item.setProperty("roi_label", str(roi_model.label_value))
-            plot.addItem(item)
+        _add_raster_row(
+            roi_model, trace_obj, data_analysis, NON_STIMULATED_COLOR, y_row
+        )
         y_row += 1
 
     plot.setTitle("Stimulated vs Non-Stimulated Spike Raster Plot")
