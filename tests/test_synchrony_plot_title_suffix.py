@@ -40,7 +40,7 @@ def test_db_path() -> Path:
     from pathlib import Path
 
     return (
-        Path(__file__).parent / "test_data" / "test_for_plot" / "result_for_plots.cali"
+        Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
     )
 
 
@@ -101,9 +101,9 @@ def test_peak_synchrony_title_suffix_no_data(
             title_suffix=" - Test",
         )
 
-        # Should show "No data" with suffix
+        # Should show "Need ≥2 ROIs" with suffix
         plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
-        assert "No data" in plot_title
+        assert "Need ≥2 ROIs" in plot_title
         assert " - Test" in plot_title, f"Expected suffix in title, got: {plot_title}"
     finally:
         engine.dispose(close=True)
@@ -166,9 +166,9 @@ def test_spike_synchrony_title_suffix_no_data(
             title_suffix=" - Test",
         )
 
-        # Should show "No data" with suffix
+        # Should show "Need ≥2 ROIs" with suffix
         plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
-        assert "No data" in plot_title
+        assert "Need ≥2 ROIs" in plot_title
         assert " - Test" in plot_title, f"Expected suffix in title, got: {plot_title}"
     finally:
         engine.dispose(close=True)

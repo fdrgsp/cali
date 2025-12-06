@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
 from cali.gui import CaliGui
-from cali.gui._detection_gui import CellposeSettings
+from cali.gui._detection_gui import CellposeSettingsData
 from cali.sqlmodel import Experiment
 
 
@@ -71,7 +71,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
 
     # Test that setValue properly uses findText for "custom"
     custom_model_path = str(tmp_path / "custom_model.pth")
-    custom_settings = CellposeSettings(
+    custom_settings = CellposeSettingsData(
         model_type="custom",
         model_path=custom_model_path,
         diameter=30,
@@ -90,7 +90,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
     assert detection_wdg._cellprob_threshold_spin.value() == -0.5
 
     # Now test with a different model type
-    default_settings = CellposeSettings()
+    default_settings = CellposeSettingsData()
     detection_wdg.setValue(default_settings)
     qtbot.wait(50)
 

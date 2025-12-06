@@ -2,6 +2,7 @@
 
 This module provides bar plot visualizations for spike and burst metrics:
 - Spike synchrony
+- Spike correlation
 - Burst count, duration, interval, and rate
 """
 
@@ -10,9 +11,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
-from cali.sqlmodel import FOV, ROI, DataAnalysis, Traces, Well
+from cali.sqlmodel import FOV, FOVAnalysis, Well
 
 from ._util import (
     _aggregate_fov_data_to_condition_stats,
@@ -32,7 +34,7 @@ def _query_spike_synchrony_by_condition(
 ) -> dict[str, dict[str, float]]:
     """Query spike synchrony per FOV, grouped by condition.
 
-    Calculates synchrony on-the-fly from inferred spikes.
+    Uses pre-computed global_spike_jitter_synchrony from FOVAnalysis.
 
     Parameters
     ----------
@@ -46,79 +48,100 @@ def _query_spike_synchrony_by_condition(
     dict[str, dict[str, float]]
         Nested dict: {condition: {fov_name: synchrony_value}}
     """
-    from cali.plot._util import _get_spike_synchrony, _get_spike_synchrony_matrix
-
-    with Session(engine) as session:
-        # Query all ROIs with traces and analysis grouped by FOV
-        stmt = (
-            select(ROI, FOV, Well, Traces, DataAnalysis)
-            .select_from(ROI)
-            .join(FOV, ROI.fov_id == FOV.id)
-            .join(Well, FOV.well_id == Well.id)
-            .join(Traces, ROI.id == Traces.roi_id)
-            .join(DataAnalysis, ROI.id == DataAnalysis.roi_id)
-        )
-
-        if run_id is not None:
-            stmt = stmt.where(col(Traces.analysis_result_id) == run_id).where(
-                col(DataAnalysis.analysis_result_id) == run_id
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis, FOV, Well)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .join(Well, FOV.well_id == Well.id)
             )
 
-        # Only active ROIs
-        stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-        stmt = stmt.order_by(col(FOV.id), col(ROI.label_value))
+            if run_id is not None:
+                stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
 
-        results = session.exec(stmt).all()
+            # Only include FOVs with valid synchrony data
+            stmt = stmt.where(
+                col(FOVAnalysis.global_spike_jitter_synchrony).is_not(None)
+            )
 
-        # Group by condition and FOV
-        data: dict[str, dict[str, float]] = {}
+            results = session.exec(stmt).all()
 
-        # Organize by FOV first
-        fov_data: dict[tuple[str, str], list[tuple[ROI, Traces, DataAnalysis]]] = {}
-        for roi, fov, well, traces, analysis in results:
-            cond_label = _get_condition_label(well, fov.name)
-            key = (cond_label, fov.name)
-            fov_data.setdefault(key, []).append((roi, traces, analysis))
+            data: dict[str, dict[str, float]] = {}
+            for fov_analysis, fov, well in results:
+                if fov_analysis.global_spike_jitter_synchrony is None:
+                    continue
+                cond_label = _get_condition_label(well)
+                data.setdefault(cond_label, {})[fov.name] = (
+                    fov_analysis.global_spike_jitter_synchrony
+                )
 
-        # Calculate synchrony for each FOV
-        for (cond_label, fov_name), roi_list in fov_data.items():
-            if len(roi_list) < 2:
-                # Need at least 2 ROIs for synchrony
-                continue
+        return data
+    except OperationalError:
+        # Table doesn't exist in older databases
+        return {}
 
-            # Build spike data dict (thresholded spikes)
-            spike_data: dict[str, list[float]] = {}
-            for roi, traces, analysis in roi_list:
-                if (
-                    not traces.inferred_spikes
-                    or analysis.inferred_spikes_threshold is None
-                ):
+
+def _query_spike_correlation_by_condition(
+    engine: Engine,
+    run_id: int | None = None,
+) -> dict[str, dict[str, float]]:
+    """Query mean spike correlation per FOV, grouped by condition.
+
+    Uses pre-computed spike_correlation_matrix from FOVAnalysis.
+    Returns the mean of off-diagonal elements as the global correlation metric.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    run_id : int | None
+        Filter by specific analysis run
+
+    Returns
+    -------
+    dict[str, dict[str, float]]
+        Nested dict: {condition: {fov_name: mean_correlation_value}}
+    """
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis, FOV, Well)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .join(Well, FOV.well_id == Well.id)
+            )
+
+            if run_id is not None:
+                stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
+
+            # Only include FOVs with valid correlation data
+            stmt = stmt.where(col(FOVAnalysis.spike_correlation_matrix).is_not(None))
+
+            results = session.exec(stmt).all()
+
+            data: dict[str, dict[str, float]] = {}
+            for fov_analysis, fov, well in results:
+                if fov_analysis.spike_correlation_matrix is None:
                     continue
 
-                # Threshold the spikes
-                inferred_spikes = np.array(traces.inferred_spikes)
-                threshold = analysis.inferred_spikes_threshold
-                spikes_thresholded = np.where(
-                    inferred_spikes > threshold, inferred_spikes, 0.0
-                ).tolist()
+                # Calculate mean of off-diagonal correlation values
+                corr_matrix = np.asarray(
+                    fov_analysis.spike_correlation_matrix, dtype=float
+                )
+                n = corr_matrix.shape[0]
+                if n < 2:
+                    continue
 
-                roi_key = f"ROI_{roi.label_value}"
-                spike_data[roi_key] = spikes_thresholded
+                # Mask out diagonal
+                mask = ~np.eye(n, dtype=bool)
+                mean_corr = float(np.mean(corr_matrix[mask]))
 
-            if len(spike_data) < 2:
-                continue
+                cond_label = _get_condition_label(well)
+                data.setdefault(cond_label, {})[fov.name] = mean_corr
 
-            # Calculate synchrony matrix
-            sync_matrix = _get_spike_synchrony_matrix(spike_data)
-
-            # Calculate global synchrony (median)
-            if sync_matrix is not None:
-                global_sync = _get_spike_synchrony(sync_matrix)
-
-                if global_sync is not None:
-                    data.setdefault(cond_label, {})[fov_name] = global_sync
-
-    return data
+        return data
+    except OperationalError:
+        # Table doesn't exist in older databases
+        return {}
 
 
 def _query_burst_metrics_by_condition(
@@ -156,7 +179,7 @@ def _query_burst_metrics_by_condition(
     if burst_params is None:
         return {}
 
-    burst_threshold, min_burst_duration, smoothing_sigma = burst_params
+    burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
 
     with Session(engine) as session:
         # Get all FOV names grouped by condition
@@ -180,6 +203,22 @@ def _query_burst_metrics_by_condition(
 
             if spike_trains is None or len(spike_trains) < 2:
                 continue
+
+            # Compute frame rate from time axis
+            num_frames = len(time_axis)
+            if num_frames > 1:
+                total_time_sec = float(time_axis[-1] - time_axis[0])
+                frame_rate = (
+                    (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
+                )
+            else:
+                frame_rate = 10.0
+
+            # Convert parameters to frame units
+            min_burst_duration = max(
+                1, int((min_burst_duration_ms / 1000.0) * frame_rate)
+            )
+            smoothing_sigma = smoothing_sigma_sec * frame_rate
 
             # Calculate population activity
             population_activity = np.mean(spike_trains, axis=0)
@@ -278,6 +317,49 @@ def plot_spike_synchrony_bar_plot(
         parameter=text,
         units="Index",
         title_suffix=" (Median - Thresholded Data)",
+        bar_label="Weighted Mean ± Pooled SEM",
+    )
+
+
+def plot_spike_correlation_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot inferred spikes global correlation across conditions.
+
+    Uses the mean of off-diagonal correlation values from the spike
+    correlation matrix stored in FOVAnalysis.
+    """
+    # Query correlation data (one value per FOV)
+    data_by_condition = _query_spike_correlation_by_condition(engine, run_id)
+
+    if not data_by_condition:
+        widget.clear_plot()
+        return
+
+    # Convert to format expected by aggregation
+    # Since we have single values per FOV, wrap in lists
+    data_as_lists: dict[str, dict[str, list[float]]] = {}
+    for condition, fov_dict in data_by_condition.items():
+        for fov_name, corr_value in fov_dict.items():
+            data_as_lists.setdefault(condition, {})[fov_name] = [corr_value]
+
+    # Aggregate to condition-level statistics
+    plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
+
+    if not plot_data["conditions"]:
+        widget.clear_plot()
+        return
+
+    # Create the plot
+    _create_pyqtgraph_bar_plot(
+        widget=widget,
+        data=plot_data,
+        parameter=text,
+        units="Correlation",
+        title_suffix=" (Mean Off-Diagonal)",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 

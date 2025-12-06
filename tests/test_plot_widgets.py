@@ -18,7 +18,7 @@ from qtpy.QtGui import QStandardItemModel
 from sqlmodel import Session, create_engine, select
 
 from cali.gui import CaliGui
-from cali.gui._detection_gui import CellposeSettings
+from cali.gui._detection_gui import CellposeSettingsData
 from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 from cali.sqlmodel._model import FOV
 
@@ -39,7 +39,7 @@ def plot_widget_with_db(
     qtbot: QtBot,
 ) -> Generator[tuple[_SingleWellGraphWidget, str, str], None, None]:
     """Create a plot widget connected to test database with full pipeline results."""
-    db_path = "tests/test_data/multi_pos/result_2pos.cali"
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
@@ -65,8 +65,8 @@ def gui_for_plots(qtbot: QtBot) -> CaliGui:
     """Create a CaliGui instance with test data for plot testing."""
     gui = CaliGui()
     qtbot.addWidget(gui)
-    gui._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-    gui._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
+    gui._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    gui._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
     gui._initialize_from_database(gui._database_path, gui._data_path)
     return gui
 
@@ -74,31 +74,6 @@ def gui_for_plots(qtbot: QtBot) -> CaliGui:
 # ============================================================================
 # Combo Box Enabling/Disabling Tests
 # ============================================================================
-
-
-def test_combo_disabled_without_fov_or_run(
-    plot_widget_with_db: tuple[_SingleWellGraphWidget, str, str],
-) -> None:
-    """Combo items should be disabled when no FOV or run_id is set."""
-    widget, _, _ = plot_widget_with_db
-
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert not has_det
-    assert not has_ext
-    assert not has_ana
-
-    model = widget._combo.model()
-    assert isinstance(model, QStandardItemModel)
-    disabled_count = sum(
-        1
-        for i in range(model.rowCount())
-        if not (model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled)
-        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)
-        and model.item(i).text() != "None"
-    )
-
-    # All plot items should be disabled (38 spontaneous plots)
-    assert disabled_count == 38
 
 
 def test_combo_disabled_with_only_run_id(
@@ -124,8 +99,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    # All items disabled (61 plots: 47 spontaneous + 14 evoked for "Evoked" exp_type)
-    assert disabled_count == 61
+    assert disabled_count == 59
 
 
 def test_combo_enabled_with_fov_and_run_id(
@@ -439,7 +413,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
 
     # Create custom settings
     custom_model_path = str(tmp_path / "custom_model.pth")
-    custom_settings = CellposeSettings(
+    custom_settings = CellposeSettingsData(
         model_type="custom",
         model_path=custom_model_path,
         diameter=30,
@@ -458,7 +432,7 @@ def test_custom_model_combo_uses_findtext_for_selection(
     assert detection_wdg._cellprob_threshold_spin.value() == -0.5
 
     # Switch to default model
-    default_settings = CellposeSettings()
+    default_settings = CellposeSettingsData()
     detection_wdg.setValue(default_settings)
     qtbot.wait(50)
 
@@ -499,7 +473,7 @@ def test_detection_model_findtext_handles_missing_item(qtbot: QtBot) -> None:
     detection_wdg = gui._detection_wdg._cellpose_wdg
 
     # Try to set a non-existent model type
-    invalid_settings = CellposeSettings(
+    invalid_settings = CellposeSettingsData(
         model_type="nonexistent_model",
         diameter=25,
     )

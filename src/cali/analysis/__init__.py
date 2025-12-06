@@ -6,6 +6,7 @@ This module provides tools for analyzing extracted trace data:
 - Inter-event interval (IEI) calculation
 - Event frequency computation
 - Amplitude extraction
+- FOV-level correlation and synchrony matrices
 """
 
 from ._analysis_runner import AnalysisRunner

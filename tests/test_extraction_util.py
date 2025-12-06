@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import numpy as np
 import pytest
 
@@ -9,17 +7,9 @@ from cali.extraction._util import _calculate_bg, calculate_dff, get_iei
 def test_calculate_dff() -> None:
     """Test calculate_dff."""
     data = np.array([100, 110, 120, 110, 100, 90, 100, 110, 120, 110], dtype=float)
-    dff = calculate_dff(data, window=5, percentile=10)
+    dff = calculate_dff(data, window_ms=500.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
-
-
-def test_calculate_dff_plot() -> None:
-    """Test calculate_dff with plot=True."""
-    data = np.array([100, 110, 120], dtype=float)
-    with patch("matplotlib.pyplot.show") as mock_show:
-        calculate_dff(data, window=3, percentile=10, plot=True)
-        mock_show.assert_called_once()
 
 
 def test_calculate_bg() -> None:
@@ -118,7 +108,7 @@ def test_get_iei_exact_values() -> None:
 def test_calculate_dff_small_window() -> None:
     """Test calculate_dff with very small window."""
     data = np.array([100, 110, 120, 110, 100], dtype=float)
-    dff = calculate_dff(data, window=1, percentile=10)
+    dff = calculate_dff(data, window_ms=100.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
 
@@ -126,7 +116,7 @@ def test_calculate_dff_small_window() -> None:
 def test_calculate_dff_large_window() -> None:
     """Test calculate_dff with window larger than data."""
     data = np.array([100, 110, 120], dtype=float)
-    dff = calculate_dff(data, window=100, percentile=10)
+    dff = calculate_dff(data, window_ms=10000.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
 
@@ -136,15 +126,15 @@ def test_calculate_dff_different_percentiles() -> None:
     data = np.arange(100, dtype=float)
 
     # Test with 10th percentile
-    dff_10 = calculate_dff(data, window=10, percentile=10)
+    dff_10 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=10)
     assert not np.any(np.isnan(dff_10))
 
     # Test with 50th percentile (median)
-    dff_50 = calculate_dff(data, window=10, percentile=50)
+    dff_50 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
     assert not np.any(np.isnan(dff_50))
 
     # Test with 90th percentile
-    dff_90 = calculate_dff(data, window=10, percentile=90)
+    dff_90 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=90)
     assert not np.any(np.isnan(dff_90))
 
     # Higher percentile should generally give different results
@@ -155,7 +145,7 @@ def test_calculate_dff_constant_trace() -> None:
     """Test calculate_dff with constant fluorescence trace."""
     data = np.ones(100) * 150.0
     # With constant data, background should equal data, resulting in dff of 0
-    dff = calculate_dff(data, window=10, percentile=50)
+    dff = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
     # dff = (data - bg) / bg = (150 - 150) / 150 = 0
     np.testing.assert_allclose(dff, 0.0, atol=1e-10)
 
@@ -164,7 +154,7 @@ def test_calculate_dff_edge_effects() -> None:
     """Test calculate_dff edge behavior at start and end of trace."""
     # Create data with a step function
     data = np.concatenate([np.ones(50) * 100, np.ones(50) * 200])
-    dff = calculate_dff(data, window=10, percentile=50)
+    dff = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
 
     # Should handle edges without producing NaN or inf
     assert not np.any(np.isnan(dff))
@@ -215,7 +205,11 @@ def test_calculate_bg_window_edges() -> None:
 def test_calculate_dff_parameter_combinations(window: int, percentile: int) -> None:
     """Test calculate_dff with various parameter combinations."""
     data = np.random.randn(200) * 10 + 100
-    dff = calculate_dff(data, window=window, percentile=percentile)
+    # Convert window frames to milliseconds at 10fps (100ms per frame)
+    window_ms = window * 100.0
+    dff = calculate_dff(
+        data, window_ms=window_ms, frame_rate=10.0, percentile=percentile
+    )
 
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))

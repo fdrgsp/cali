@@ -37,11 +37,11 @@ from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
+    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_DFF_WINDOW,
+    DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
-    DEFAULT_MIN_BURST_DURATION,
-    DEFAULT_PEAKS_DISTANCE,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     MULTIPLIER,
@@ -77,13 +77,6 @@ class CaliResult(SQLModel, table=True):
         Foreign key to extraction settings used (None for detection-only runs)
     analysis_settings_id: int | None
         Foreign key to analysis settings used (None for extraction-only runs)
-    plate_maps : dict[str, dict[str, str]] | None
-        Plate map configuration used for this specific run.
-        Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
-                 "treatment": {"A1": "Vehicle", "A2": "Drug", ...}}
-        Allows different runs to have different plate map configurations.
-    plate_map_hash : str | None
-        SHA256 hash of plate_maps for tracking changes
     positions_detected : list[int] | None
         List of position indices that completed detection
     positions_extracted : list[int] | None
@@ -113,16 +106,6 @@ class CaliResult(SQLModel, table=True):
         default=None, foreign_key="analysis_settings.id"
     )
 
-    # Plate map configuration for this specific run
-    # Stores the plate_maps used at the time of this analysis run,
-    # allowing different runs to have different plate map configurations
-    plate_maps: dict[str, dict[str, str]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-
-    # Plate map versioning - hash of plate_maps dict to track changes
-    plate_map_hash: str | None = Field(default=None)
-
     # Progressive tracking of pipeline stages
     positions_detected: list[int] | None = Field(default=None, sa_column=Column(JSON))
     positions_extracted: list[int] | None = Field(default=None, sa_column=Column(JSON))
@@ -133,6 +116,9 @@ class CaliResult(SQLModel, table=True):
     data_analysis_results: list["DataAnalysis"] = Relationship(
         back_populates="analysis_result"
     )
+    fov_analysis_results: list["FOVAnalysis"] = Relationship(
+        back_populates="analysis_result"
+    )
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes created_at for semantic comparison.
@@ -140,7 +126,7 @@ class CaliResult(SQLModel, table=True):
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
-          positions_analyzed, plate_maps, plate_map_hash
+          positions_analyzed
 
         The created_at field is excluded since it's automatically generated
         and doesn't represent semantic differences in analysis configuration.
@@ -155,16 +141,12 @@ class CaliResult(SQLModel, table=True):
             and self.positions_detected == other.positions_detected
             and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
-            and self.plate_maps == other.plate_maps
-            and self.plate_map_hash == other.plate_map_hash
         )
 
     def __hash__(self) -> int:
         """Custom hash that excludes created_at for consistency with __eq__.
 
         Note: id is excluded since it's None before database insertion.
-        plate_maps is excluded from hash because it's a mutable dict,
-        but plate_map_hash captures its content.
         """
         return hash(
             (
@@ -175,7 +157,6 @@ class CaliResult(SQLModel, table=True):
                 tuple(self.positions_detected) if self.positions_detected else None,
                 tuple(self.positions_extracted) if self.positions_extracted else None,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,
-                self.plate_map_hash,
             )
         )
 
@@ -713,7 +694,7 @@ class DetectionSettings(SQLModel, table=True):
     created_at : datetime
         When these settings were created
     method : str
-        Detection method ("cellpose" or "caiman")
+        Detection method (e.g. "cellpose")
     model_type : str
         Cellpose model type ("cpsam", "cyto3", "custom", etc.)
     custom_model : str | None
@@ -738,7 +719,7 @@ class DetectionSettings(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Detection method
-    method: str = Field(default="cellpose", index=True)  # "cellpose" or "caiman"
+    method: str = Field(default="cellpose", index=True)
 
     # Cellpose settings
     model_type: str = "cpsam"
@@ -806,7 +787,7 @@ class DetectionSettings(SQLModel, table=True):
             ID of specific detection settings to load. If None, loads based on
             method or all settings.
         method : str | None
-            Filter by detection method ("cellpose" or "caiman"). If None and
+            Filter by detection method ("cellpose"). If None and
             id is None, loads all settings.
         session : Session | None
             Optional existing session to use. If None, creates a new one.
@@ -889,9 +870,11 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor : float
         Neuropil correction factor (0-1)
     decay_constant : float
-        Decay constant for deconvolution
+        Decay constant for deconvolution (seconds)
     dff_window : int
-        Window size for ΔF/F baseline calculation
+        Window size for ΔF/F baseline calculation (milliseconds)
+    frame_rate : float
+        Acquisition frame rate (frames per second)
     threads : int
         Number of threads to use for analysis (default: 1)
     """
@@ -906,7 +889,8 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor: float = 0.0
 
     decay_constant: float = 0.0
-    dff_window: int = DEFAULT_DFF_WINDOW
+    dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
+    frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
     threads: int = Field(default=1)
 
@@ -924,6 +908,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
+            and self.frame_rate == other.frame_rate
             # and self.threads == other.threads
         )
 
@@ -936,6 +921,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.neuropil_correction_factor,
                 self.decay_constant,
                 self.dff_window,
+                self.frame_rate,
                 # self.threads,
             )
         )
@@ -1025,11 +1011,13 @@ class AnalysisSettings(SQLModel, table=True):
     peaks_height_mode : str
         Mode for peak height ("multiplier" or "absolute")
     peaks_distance : int
-        Minimum distance between peaks (frames)
+        Minimum distance between peaks (milliseconds)
     peaks_prominence_multiplier : float
         Multiplier for peak prominence threshold
     calcium_sync_jitter_window : int
-        Jitter window for calcium synchrony (frames)
+        Jitter window for calcium synchrony (milliseconds)
+    calcium_peaks_max_lag : int
+        Max lag for calcium peaks cross-correlation (milliseconds)
     calcium_network_threshold : float
         Percentile threshold for network connectivity (0-100)
     spike_threshold_value : float
@@ -1039,11 +1027,13 @@ class AnalysisSettings(SQLModel, table=True):
     burst_threshold : float
         Threshold for burst detection (%)
     burst_min_duration : int
-        Minimum burst duration (seconds)
+        Minimum burst duration (milliseconds)
     burst_gaussian_sigma : float
         Gaussian sigma for burst smoothing (seconds)
     spikes_sync_cross_corr_lag : int
-        Max lag for spike synchrony cross-correlation (frames)
+        Max lag for spike synchrony cross-correlation (milliseconds)
+    frame_rate : float
+        Acquisition frame rate (frames per second)
     led_power_equation : str | None
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
@@ -1075,17 +1065,20 @@ class AnalysisSettings(SQLModel, table=True):
 
     peaks_height_value: float = DEFAULT_HEIGHT
     peaks_height_mode: str = MULTIPLIER
-    peaks_distance: int = DEFAULT_PEAKS_DISTANCE
+    peaks_distance: float = 200.0  # milliseconds (2 frames at 10fps)
     peaks_prominence_multiplier: float = 1.0
-    calcium_sync_jitter_window: int = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+    calcium_sync_jitter_window: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # ms
+    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # ms
     calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
     spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
     spike_threshold_mode: str = MULTIPLIER
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
-    burst_min_duration: int = DEFAULT_MIN_BURST_DURATION
+    burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
-    spikes_sync_cross_corr_lag: int = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+    spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
+
+    frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
     experiment_type: str = Field(default=SPONTANEOUS, index=True)
     stimulation_mask_path: str | None = None
@@ -1123,6 +1116,7 @@ class AnalysisSettings(SQLModel, table=True):
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
             and self.calcium_sync_jitter_window == other.calcium_sync_jitter_window
+            and self.calcium_peaks_max_lag == other.calcium_peaks_max_lag
             and self.calcium_network_threshold == other.calcium_network_threshold
             and self.spike_threshold_value == other.spike_threshold_value
             and self.spike_threshold_mode == other.spike_threshold_mode
@@ -1130,6 +1124,7 @@ class AnalysisSettings(SQLModel, table=True):
             and self.burst_min_duration == other.burst_min_duration
             and self.burst_gaussian_sigma == other.burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
+            and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
             and self.led_pulse_powers == other.led_pulse_powers
@@ -1148,6 +1143,7 @@ class AnalysisSettings(SQLModel, table=True):
                 self.peaks_distance,
                 self.peaks_prominence_multiplier,
                 self.calcium_sync_jitter_window,
+                self.calcium_peaks_max_lag,
                 self.calcium_network_threshold,
                 self.spike_threshold_value,
                 self.spike_threshold_mode,
@@ -1155,6 +1151,7 @@ class AnalysisSettings(SQLModel, table=True):
                 self.burst_min_duration,
                 self.burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
+                self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,
                 tuple(self.led_pulse_powers) if self.led_pulse_powers else None,
@@ -1453,6 +1450,9 @@ class FOV(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     well: "Well" = Relationship(back_populates="fovs")
     rois: list["ROI"] = Relationship(back_populates="fov", cascade_delete=True)
+    fov_analysis_history: list["FOVAnalysis"] = Relationship(
+        back_populates="fov", cascade_delete=True
+    )
 
 
 class ROI(SQLModel, table=True):  # type: ignore[call-arg]
@@ -1671,6 +1671,116 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
     analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
+
+
+class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+    """FOV-level analysis results (correlation and synchrony matrices).
+
+    This class stores FOV-wide analysis metrics that describe relationships
+    between ROIs, such as correlation and synchrony matrices. These are
+    computed once during analysis and stored for efficient retrieval.
+
+    Attributes
+    ----------
+    id : int | None
+        Primary key, auto-generated
+    created_at : datetime
+        Timestamp when this analysis was created
+    fov_id : int | None
+        Foreign key to parent FOV
+    analysis_result_id : int | None
+        Foreign key to the analysis run that created this result
+    active_roi_labels : list[int] | None
+        Ordered list of active ROI label_values used for matrix indexing.
+        Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
+    calcium_dff_correlation_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
+    calcium_peaks_jitter_synchrony_matrix : list[list[float]] | None
+        Jitter synchrony on calcium peak events (NxN for N active ROIs)
+    global_calcium_peaks_jitter_synchrony : float | None
+        Median of off-diagonal jitter synchrony values
+    calcium_peaks_max_lag_correlation_matrix : list[list[float]] | None
+        Max lag correlation on calcium peak events (NxN for N active ROIs)
+    global_calcium_peaks_max_lag_correlation : float | None
+        Median of off-diagonal max lag correlation values
+    spike_correlation_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on binary spike trains (NxN for N active ROIs)
+    spike_max_lag_correlation_matrix : list[list[float]] | None
+        Max lag correlation on spike events (NxN for N active ROIs)
+    global_spike_max_lag_correlation : float | None
+        Median of off-diagonal spike max lag correlation values
+    spike_jitter_synchrony_matrix : list[list[float]] | None
+        Jitter synchrony on spike events (NxN for N active ROIs)
+    global_spike_jitter_synchrony : float | None
+        Median of off-diagonal spike jitter synchrony values
+    burst_count : int | None
+        Number of population bursts detected in the FOV
+    burst_avg_duration : float | None
+        Average duration of population bursts (seconds)
+    burst_avg_interval : float | None
+        Average interval between population bursts (seconds)
+    fov : FOV
+        Parent FOV
+    analysis_result : CaliResult
+        The analysis run that created this result
+    """
+
+    __tablename__ = "fov_analysis"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Foreign keys
+    fov_id: int | None = Field(
+        default=None, foreign_key="fov.id", index=True, ondelete="CASCADE"
+    )
+    analysis_result_id: int | None = Field(
+        default=None, foreign_key="analysis_result.id", index=True, ondelete="CASCADE"
+    )
+
+    # ROI ordering for matrix interpretation
+    active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
+
+    # Calcium peaks metrics (from dec_dff traces and peak events)
+    # 1. Zero-lag correlation on DF/F traces
+    calcium_dff_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 2. Jitter synchrony on calcium peaks
+    calcium_peaks_jitter_synchrony_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_calcium_peaks_jitter_synchrony: float | None = None
+    # 3. Max lag correlation on calcium peaks
+    calcium_peaks_max_lag_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_calcium_peaks_max_lag_correlation: float | None = None
+
+    # Spike metrics (from inferred spikes)
+    # 1. Zero-lag correlation on spike trains
+    spike_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 2. Max lag correlation on spikes
+    spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_max_lag_correlation: float | None = None
+    # 3. Jitter synchrony on spikes
+    spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_jitter_synchrony: float | None = None
+
+    # Population burst metrics
+    burst_count: int | None = None
+    burst_avg_duration: float | None = None
+    burst_avg_interval: float | None = None
+
+    # Relationships
+    fov: "FOV" = Relationship(back_populates="fov_analysis_history")
+    analysis_result: "CaliResult" = Relationship(back_populates="fov_analysis_results")
 
 
 class Mask(SQLModel, table=True):  # type: ignore[call-arg]

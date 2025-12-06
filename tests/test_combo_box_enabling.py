@@ -30,7 +30,7 @@ def widget_with_db(
 ) -> Generator[tuple[_SingleWellGraphWidget, str, str], None, None]:
     """Create a widget connected to the test database with full pipeline results."""
     # Use existing test database
-    db_path = "tests/test_data/multi_pos/result_2pos.cali"
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 
     # Get the FOV name from the database
     engine = create_engine(f"sqlite:///{db_path}")
@@ -85,8 +85,8 @@ def test_combo_disabled_without_fov_or_run(
         and model.item(i).text() != "None"
     )
 
-    # All plots should be disabled (38 plots require pipeline stages)
-    assert disabled_count == 38
+    # All plots should be disabled (36 plots require pipeline stages)
+    assert disabled_count == 36
 
 
 def test_combo_disabled_with_only_run_id(
@@ -115,7 +115,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 61
+    assert disabled_count == 59
 
 
 def test_combo_enabled_with_fov_and_run_id(

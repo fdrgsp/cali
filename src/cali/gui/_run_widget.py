@@ -88,6 +88,13 @@ class _RunCaliWidget(QWidget):
         # buttons
         from cali._constants import GREEN, RED
 
+        self._save_settings_btn = QPushButton("Save Settings")
+        self._save_settings_btn.setSizePolicy(*FIXED)
+        self._save_settings_btn.setIcon(QIcon(icon(MDI6.content_save_cog)))
+        self._load_settings_btn = QPushButton("Load Settings")
+        self._load_settings_btn.setSizePolicy(*FIXED)
+        self._load_settings_btn.setIcon(QIcon(icon(MDI6.file_upload_outline)))
+
         self._run_btn = QPushButton("Run")
         self._run_btn.setSizePolicy(*FIXED)
         self._run_btn.setIcon(icon(MDI6.play, color=GREEN))
@@ -176,6 +183,8 @@ class _RunCaliWidget(QWidget):
         run_control_layout.setSpacing(5)
         run_control_layout.addWidget(self._run_btn)
         run_control_layout.addWidget(self._cancel_btn)
+        run_control_layout.addWidget(self._save_settings_btn)
+        run_control_layout.addWidget(self._load_settings_btn)
         run_control_layout.addWidget(self._progress_bar)
         run_control_layout.addWidget(self._progress_pos_label)
         run_control_layout.addWidget(self._elapsed_time_label)

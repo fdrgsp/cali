@@ -266,3 +266,132 @@ def test_create_stimulation_mask_already_binary_zeros(tmp_path: Path) -> None:
     mask = create_stimulation_mask(str(file_path))
     # Should return the same binary mask
     np.testing.assert_array_equal(mask, img)
+
+
+def test_compute_fov_analysis_with_active_rois() -> None:
+    """Test compute_fov_analysis with active ROIs that have traces and peaks."""
+    from cali.analysis._fov_analysis import compute_fov_analysis
+    from cali.sqlmodel import (
+        FOV,
+        ROI,
+        AnalysisSettings,
+        DataAnalysis,
+        Traces,
+    )
+
+    # Create analysis settings
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0,
+    )
+
+    # Create a FOV with active ROIs
+    fov = FOV(position_index=0, name="test_fov")
+
+    # Create synthetic traces with peaks at known locations
+    num_timepoints = 100
+    for i in range(1, 4):  # 3 ROIs
+        # Create dec_dff with peaks at specific locations for this ROI
+        dec_dff = np.zeros(num_timepoints)
+        # Add peaks at different times for each ROI (shifted slightly)
+        peak_times = [10 + i * 2, 30 + i * 2, 50 + i * 2, 70 + i * 2]
+        for pt in peak_times:
+            if pt < num_timepoints:
+                dec_dff[pt] = 1.0
+
+        # Create spikes at the same locations
+        spikes = np.zeros(num_timepoints)
+        for pt in peak_times:
+            if pt < num_timepoints:
+                spikes[pt] = 1.0
+
+        traces = Traces(
+            raw=np.random.randn(num_timepoints).tolist(),
+            dff=np.random.randn(num_timepoints).tolist(),
+            dec_dff=dec_dff.tolist(),
+            inferred_spikes=spikes.tolist(),
+        )
+
+        data_analysis = DataAnalysis(
+            total_recording_time_sec=10.0,
+            dec_dff_frequency=0.4,
+            peaks_dec_dff=peak_times,
+            peaks_amplitudes_dec_dff=[1.0] * len(peak_times),
+            iei=[0.25] * (len(peak_times) - 1),
+            inferred_spikes_threshold=0.5,  # Required for spike analysis
+        )
+
+        roi = ROI(label_value=i, active=True)
+        roi._new_traces = [traces]
+        roi._new_data_analysis = [data_analysis]
+        fov.rois.append(roi)
+
+    # Compute FOV analysis
+    result = compute_fov_analysis(fov, analysis_settings)
+
+    assert result is not None
+    assert result.fov_id is None  # Not yet persisted
+    assert result.active_roi_labels == [1, 2, 3]
+
+    # Check calcium correlation matrices are computed
+    assert result.calcium_dff_correlation_matrix is not None
+    assert len(result.calcium_dff_correlation_matrix) == 3
+    assert len(result.calcium_dff_correlation_matrix[0]) == 3
+
+    # Check calcium synchrony matrices are computed
+    assert result.calcium_peaks_jitter_synchrony_matrix is not None
+    assert len(result.calcium_peaks_jitter_synchrony_matrix) == 3
+
+    # Check spike matrices
+    assert result.spike_correlation_matrix is not None
+    assert result.spike_jitter_synchrony_matrix is not None
+
+    # Check global synchrony values are reasonable
+    assert result.global_calcium_peaks_jitter_synchrony is not None
+    assert 0 <= result.global_calcium_peaks_jitter_synchrony <= 1
+    assert result.global_spike_jitter_synchrony is not None
+    assert 0 <= result.global_spike_jitter_synchrony <= 1
+
+
+def test_compute_fov_analysis_insufficient_rois() -> None:
+    """Test compute_fov_analysis returns None with fewer than 2 active ROIs."""
+    from cali.analysis._fov_analysis import compute_fov_analysis
+    from cali.sqlmodel import FOV, ROI, AnalysisSettings, Traces
+
+    analysis_settings = AnalysisSettings(peaks_prominence_multiplier=3.0)
+
+    # Create FOV with only 1 active ROI
+    fov = FOV(position_index=0, name="test_fov")
+    roi = ROI(label_value=1, active=True)
+    traces = Traces(
+        raw=np.random.randn(100).tolist(),
+        dff=np.random.randn(100).tolist(),
+        dec_dff=np.random.randn(100).tolist(),
+    )
+    roi._new_traces = [traces]
+    fov.rois.append(roi)
+
+    result = compute_fov_analysis(fov, analysis_settings)
+    assert result is None
+
+
+def test_compute_fov_analysis_no_active_rois() -> None:
+    """Test compute_fov_analysis returns None when no ROIs are active."""
+    from cali.analysis._fov_analysis import compute_fov_analysis
+    from cali.sqlmodel import FOV, ROI, AnalysisSettings, Traces
+
+    analysis_settings = AnalysisSettings(peaks_prominence_multiplier=3.0)
+
+    # Create FOV with inactive ROIs
+    fov = FOV(position_index=0, name="test_fov")
+    for i in range(3):
+        roi = ROI(label_value=i + 1, active=False)
+        traces = Traces(
+            raw=np.random.randn(100).tolist(),
+            dff=np.random.randn(100).tolist(),
+            dec_dff=np.random.randn(100).tolist(),
+        )
+        roi._new_traces = [traces]
+        fov.rois.append(roi)
+
+    result = compute_fov_analysis(fov, analysis_settings)
+    assert result is None

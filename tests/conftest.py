@@ -59,7 +59,7 @@ def temp_db() -> Generator[TempDB, None, None]:
 @pytest.fixture
 def data_path() -> Path:
     """Return path to test data."""
-    path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
+    path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     if not path.exists():
         pytest.skip(f"Test data not found at {path}")
     return path

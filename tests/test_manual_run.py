@@ -1,26 +1,19 @@
 """Tests for manual pipeline execution."""
 
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
-from unittest.mock import patch
 
-import numpy as np
 import pytest
 from sqlmodel import Session, create_engine, func, select
 
 from cali.analysis import AnalysisRunner
-from cali.detection import DetectionRunner
 from cali.extraction import ExtractionRunner
 from cali.sqlmodel import (
     FOV,
     ROI,
     AnalysisSettings,
     DataAnalysis,
-    DetectionSettings,
     Experiment,
     ExtractionSettings,
-    Mask,
     Traces,
     save_experiment_to_database,
 )
@@ -30,49 +23,10 @@ from cali.util._util import load_data_from_path
 THREADS = 1
 
 
-def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
-    """Create a mock FOV with ROIs for testing without running cellpose."""
-    # Use actual test data naming (B5_0000, B6_0000)
-    name = "B5_0000" if position_index == 0 else "B6_0000"
-    fov = FOV(position_index=position_index, name=name)
-
-    rois = []
-    for i in range(1, num_rois + 1):
-        # Create a simple circular mask matching dataset dims (256x256)
-        mask_data = np.zeros((256, 256), dtype=np.uint8)
-        cy, cx = 50 + i * 20, 50 + i * 20
-        y, x = np.ogrid[:256, :256]
-        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
-        mask_data[mask_region] = 1
-
-        # Get coordinates from mask
-        coords = np.where(mask_data)
-        coords_y = coords[0].tolist()
-        coords_x = coords[1].tolist()
-
-        mask = Mask(
-            mask_type="roi",
-            coords_y=coords_y,
-            coords_x=coords_x,
-            height=256,
-            width=256,
-        )
-
-        roi = ROI(
-            label_value=i,
-            roi_mask=mask,
-            fov_id=0,  # Dummy ID, will be handled by relationship
-        )
-        rois.append(roi)
-
-    fov.rois = rois
-    return fov
-
-
 def test_manual_pipeline_execution(tmp_path: Path) -> None:
     """Test manual execution of the pipeline components."""
     # Setup paths
-    dataset_path = Path("tests/test_data/multi_pos/evk.tensorstore.zarr")
+    dataset_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     if not dataset_path.exists():
         pytest.skip(f"Test data not found at {dataset_path}")
 
@@ -98,52 +52,26 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Use both positions
         positions_to_process = [0, 1]
 
-        # 1. Detection
-        detection_runner = DetectionRunner()
-        # Use standard model for testing
-        detection_settings = DetectionSettings(
-            method="cellpose",
-            model_type="cyto3",
-            diameter=30.0,
-        )
+        # 1. Detection - Load pre-detected FOVs from test database
+        # instead of running detection. This gives us realistic ROI masks.
+        test_db_path = Path("tests/test_data/data_and_db_for_tests/test_db.cali")
+        test_engine = create_engine(f"sqlite:///{test_db_path}")
+        try:
+            fovs = load_fovs_from_database(test_engine, positions_to_process)
+        finally:
+            test_engine.dispose()
 
-        # Mock cellpose execution
-        with patch(
-            "cali.detection._detection_runner.DetectionRunner._run_cellpose"
-        ) as mock_run:
+        assert len(fovs) == 2
+        assert all(len(fov.rois) > 0 for fov in fovs)
 
-            def mock_side_effect(
-                dataset: Any,
-                detection_settings: Any,
-                position_indices: list[int],
-                *args: Any,
-                **kwargs: Any,
-            ) -> Iterator[FOV]:
-                for pos_idx in position_indices:
-                    yield create_mock_fov(pos_idx)
-
-            mock_run.side_effect = mock_side_effect
-
-            # Run detection (mocked)
-            fovs = list(
-                detection_runner.run(
-                    dataset=data,
-                    detection_settings=detection_settings,
-                    global_position_indices=positions_to_process,
-                )
-            )
-
-        assert len(fovs) == 2  # Now using 2 positions
-        assert len(fovs[0].rois) == 3
-
-        # Save FOVs to database
+        # Save FOVs to our new database
         update_fovs_in_database(engine, fovs)
 
         # Verify saved
         with Session(engine) as session:
             saved_fovs = session.exec(select(FOV)).all()
-            assert len(saved_fovs) == 2  # Now using 2 positions
-            assert len(saved_fovs[0].rois) == 3
+            assert len(saved_fovs) == 2
+            assert all(len(fov.rois) > 0 for fov in saved_fovs)
 
         # 2. Extraction
         extraction_runner = ExtractionRunner()
@@ -169,6 +97,7 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Load FOVs again to get traces created in step 2
         fovs_for_analysis = load_fovs_from_database(engine, positions_to_process)
         # Verify traces exist
+        assert len(fovs_for_analysis) > 0
         assert len(fovs_for_analysis[0].rois[0].traces_history) > 0
 
         for fov in analysis_runner.run(

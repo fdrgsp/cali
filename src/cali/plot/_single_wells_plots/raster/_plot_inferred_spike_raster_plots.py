@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from matplotlib import colormaps
-from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
@@ -25,8 +23,6 @@ def _generate_spike_raster_plot(
     rois: list[int] | None = None,
     *,
     run_id: int,
-    amplitude_colors: bool = False,
-    colorbar: bool = False,
 ) -> None:
     """Generate a spike raster plot using thresholded spike data (pyqtgraph)."""
     plot = widget.plot_item
@@ -90,8 +86,8 @@ def _generate_spike_raster_plot(
     active_rois: list[int] = []
     sample_trace: list[float] | None = None
 
-    min_amp = float("inf")
-    max_amp = float("-inf")
+    float("inf")
+    float("-inf")
 
     for roi, traces, data_analysis in roi_data:
         if data_analysis is None or not traces.inferred_spikes:
@@ -105,7 +101,11 @@ def _generate_spike_raster_plot(
         if not np.any(above_the):
             continue
 
-        spike_times = np.where(above_the)[0]
+        # rising edges: 0 -> 1 transitions
+        rising = above_the & ~np.concatenate(([False], above_the[:-1]))
+        spike_times = np.where(rising)[0]
+        spike_amplitudes = inferred[spike_times]
+
         spike_amplitudes = inferred[above_the]
 
         if spike_times.size == 0:
@@ -121,10 +121,6 @@ def _generate_spike_raster_plot(
         if sample_trace is None and traces.corrected_trace is not None:
             sample_trace = traces.corrected_trace
 
-        if amplitude_colors and spike_amplitudes.size > 0:
-            min_amp = min(min_amp, float(spike_amplitudes.min()))
-            max_amp = max(max_amp, float(spike_amplitudes.max()))
-
     if not event_data:
         cali_logger.warning(
             "No spike data above threshold for the selected ROIs and run."
@@ -139,23 +135,9 @@ def _generate_spike_raster_plot(
     # ------------------------ Colors per spike ------------------------ #
     per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
-    if amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
-        vmin, vmax = _compute_amp_norm_bounds(min_amp, max_amp)
-        norm_amp_color = Normalize(vmin=vmin, vmax=vmax)
-        cmap = colormaps.get_cmap("viridis")
-
-        for amps in per_roi_spike_amplitudes:
-            row_cols: list[tuple[int, int, int, int]] = []
-            for a in amps:
-                rgba = cmap(norm_amp_color(float(a)))  # floats in [0,1]
-                r, g, b, a_ = [int(255 * c) for c in rgba]
-                row_cols.append((r, g, b, a_))
-            per_roi_colors.append(row_cols)
-    else:
-        amplitude_colors = False
-        for times in event_data:
-            # same length, all white
-            per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+    for times in event_data:
+        # same length, all white
+        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -171,6 +153,7 @@ def _generate_spike_raster_plot(
                     "brush": pg.mkBrush(*color),
                     "pen": None,
                     "size": 3,
+                    "symbol": "s",
                 }
             )
 
@@ -188,10 +171,6 @@ def _generate_spike_raster_plot(
     y_axis.setStyle(showValues=False)
 
     plot.getViewBox().enableAutoRange(x=True, y=True)
-
-    # ------------------------ Colorbar ------------------------ #
-    if colorbar and amplitude_colors and np.isfinite(min_amp) and np.isfinite(max_amp):
-        _add_colorbar_to_widget(widget, vmin, vmax)
 
     # ------------------------ Click → roiSelected ------------------------ #
     _attach_click_handlers_raster(widget, plot, active_rois)
@@ -246,25 +225,6 @@ def _update_time_axis_pg_frames(
     axis = plot.getAxis("bottom")
     axis.setTicks([list(zip(x_ticks.tolist(), x_labels))])
     plot.setLabel("bottom", "Time (s)")
-
-
-def _add_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-) -> None:
-    """Add a ColorBarItem to the widget layout."""
-    # Create ColorBarItem with fixed range (non-interactive)
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
-        width=15,
-        label="Spike Amplitude",
-        interactive=False,
-    )
-
-    # Add to plot layout (row 2, column 3 = right side)
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
 
 
 def _attach_click_handlers_raster(
@@ -455,7 +415,7 @@ def _add_spike_intensity_colorbar_to_widget(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
-        label="Spike Intensity",
+        label="Inferred spikes (a.u.)",
         interactive=False,
     )
 

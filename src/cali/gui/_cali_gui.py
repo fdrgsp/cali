@@ -17,6 +17,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QCloseEvent, QIcon
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -43,6 +44,16 @@ from cali._constants import (
     WRITERS,
     ZARR_TESNSORSTORE,
 )
+from cali.gui._analysis_gui import (
+    AnalysisSettingsData,
+    CalciumPeaksData,
+    ExperimentTypeData,
+    SpikeData,
+)
+from cali.gui._detection_gui import CellposeSettingsData
+from cali.gui._extraction_gui import (
+    ExtractionSettingsData,
+)
 from cali.gui._runs_panel import _RunsPanel
 from cali.runner._cali_runner import CaliRunner
 from cali.sqlmodel import (
@@ -57,12 +68,13 @@ from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data_from_path
 
-from ._analysis_gui import AnalysisSettingsData, _AnalysisGUI
-from ._detection_gui import CaimanSettings, CellposeSettings, _DetectionGUI
-from ._extraction_gui import _ExtractionGUI
+from ._analysis_gui import _AnalysisGUI
+from ._detection_gui import _DetectionGUI
+from ._extraction_gui import TraceExtractionData, _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
+from ._plate_map import _PlateMapWidget
 from ._plate_plan_wizard import PlatePlanWizard
 from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
@@ -153,6 +165,9 @@ class CaliGui(QMainWindow):
         self._plate_view.setDragMode(WellPlateView.DragMode.NoDrag)
         self._plate_view.setSelectionMode(WellPlateView.SelectionMode.SingleSelection)
 
+        # PLATE MAP WIDGET ------------------------------------------------------------
+        self._plate_map_wdg = _PlateMapWidget(self)
+
         # TABLE FOR THE FIELDS OF VIEW ------------------------------------------------
         self._fov_table = _FOVTable(self)
 
@@ -163,12 +178,19 @@ class CaliGui(QMainWindow):
         # LEFT WIDGETS ----------------------------------------------------------------
 
         # SPLITTER FOR THE PLATE MAP AND THE FOV TABLE --------------------------------
+        top_wdg = QWidget()
+        top = QVBoxLayout(top_wdg)
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(5)
+        top.addWidget(self._plate_view)
+        top.addWidget(self._plate_map_wdg)
+
         self.splitter_top_left = QSplitter(
             parent=self, orientation=Qt.Orientation.Vertical
         )
         self.splitter_top_left.setContentsMargins(0, 0, 0, 0)
         self.splitter_top_left.setChildrenCollapsible(False)
-        self.splitter_top_left.addWidget(self._plate_view)
+        self.splitter_top_left.addWidget(top_wdg)
         self.splitter_top_left.addWidget(self._fov_table)
         top_left_group = QGroupBox()
         top_left_layout = QVBoxLayout(top_left_group)
@@ -346,12 +368,17 @@ class CaliGui(QMainWindow):
         self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)  # type: ignore
 
         # connect the shared run/cancel buttons to appropriate handlers
-        self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run_clicked)
-        self._run_cali_wdg._cancel_btn.clicked.connect(self._on_cali_cancel_clicked)
+        self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run)
+        self._run_cali_wdg._cancel_btn.clicked.connect(self._on_cali_cancel)
+        self._run_cali_wdg._save_settings_btn.clicked.connect(self._on_save_settings)
+        self._run_cali_wdg._load_settings_btn.clicked.connect(self._on_load_settings)
 
         self._elapsed_timer.elapsed_time_updated.connect(
             self._run_cali_wdg.set_time_label
         )
+
+        # connect plate map widget to save when OK is clicked
+        self._plate_map_wdg.plateMapSaved.connect(self._save_plate_map_to_database)
 
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
@@ -413,9 +440,13 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-        self._output_path = "tests/test_data/test_for_plot/"
+        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        self._output_path = "tests/test_data/data_and_db_for_tests/"
+
+        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
+        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -440,6 +471,80 @@ class CaliGui(QMainWindow):
         super().closeEvent(a0)
 
     # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_save_settings(self) -> None:
+        """Handle saving current run settings."""
+        from dataclasses import asdict
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Run Settings", "", "JSON Files (*.json);;All Files (*)"
+        )
+        if path:
+            full_settings = {
+                "detection": asdict(self._detection_wdg.value()),
+                "extraction": asdict(self._extraction_wdg.value()),
+                "analysis": asdict(self._analysis_wdg.value()),
+            }
+            import json
+
+            with open(path, "w") as f:
+                json.dump(full_settings, f, indent=4)
+            cali_logger.info(f"💾 Run settings saved to {path}")
+
+    def _on_load_settings(self) -> None:
+        """Handle loading run settings."""
+        json_file, _ = QFileDialog.getOpenFileName(
+            self, "Load Run Settings", "", "JSON Files (*.json);;All Files (*)"
+        )
+        if not json_file:
+            return
+
+        try:
+            import json
+
+            with open(json_file) as f:
+                settings = json.load(f)
+
+            # detection
+            detection = settings.get("detection", {})
+            if detection:
+                self._detection_wdg.setValue(CellposeSettingsData(**detection))
+
+            # extraction
+            extraction = settings.get("extraction", {})
+            ext_settings = extraction.get("trace_extraction_data", {})
+            if ext_settings:
+                self._extraction_wdg.setValue(
+                    ExtractionSettingsData(TraceExtractionData(**ext_settings))
+                )
+
+            # analysis
+            analysis = settings.get("analysis", {})
+            calcium_peaks_data = analysis.get("calcium_peaks_data", {})
+            spikes_data = analysis.get("spikes_data", {})
+            experiment_type_data = analysis.get("experiment_type_data", {})
+            self._analysis_wdg.setValue(
+                AnalysisSettingsData(
+                    calcium_peaks_data=(
+                        CalciumPeaksData(**calcium_peaks_data)
+                        if calcium_peaks_data
+                        else None
+                    ),
+                    spikes_data=(SpikeData(**spikes_data) if spikes_data else None),
+                    experiment_type_data=(
+                        ExperimentTypeData(**experiment_type_data)
+                        if experiment_type_data
+                        else None
+                    ),
+                )
+            )
+
+            cali_logger.info(f"📂 Run settings loaded from {json_file}")
+
+        except Exception as e:
+            msg = f"❌ Failed to load settings from {json_file}:\n{e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
 
     def _load_data_or_configure_tiff(
         self, data_path: str
@@ -719,7 +824,7 @@ class CaliGui(QMainWindow):
         plate = experiment_to_useq_plate(experiment)
         plate_map_data = experiment_to_plate_map_data(experiment)
         if plate_map_data is not None and plate is not None:
-            self._extraction_wdg._plate_map_wdg.setValue(plate, *plate_map_data)
+            self._plate_map_wdg.setValue(plate, *plate_map_data)
 
     def _populate_settings(self, database_path: Path | str) -> None:
         """Populate the settings combobox in the run widget.
@@ -937,7 +1042,7 @@ class CaliGui(QMainWindow):
 
     # RUNNING DETECTION OR ANALYSIS ---------------------------------------------------
 
-    def _on_cali_run_clicked(self) -> None:
+    def _on_cali_run(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
         if (
             self._data is None
@@ -1433,7 +1538,7 @@ class CaliGui(QMainWindow):
         # Also show error dialog to user
         show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
 
-    def _on_cali_cancel_clicked(self) -> None:
+    def _on_cali_cancel(self) -> None:
         """Handle cancellation of the runner."""
         self._runner.cancel()
         self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
@@ -1463,7 +1568,7 @@ class CaliGui(QMainWindow):
         if self._database_path is None:
             return
 
-        plate_map_data = self._extraction_wdg._plate_map_wdg.value()
+        plate_map_data = self._plate_map_wdg.value()
         _, genotype_data, treatment_data = plate_map_data
 
         # Load experiment and update it with plate map data
@@ -1614,6 +1719,7 @@ class CaliGui(QMainWindow):
         # Disable other GUI components
         self._fov_table.setEnabled(state)
         self._plate_view.setEnabled(state)
+        self._plate_map_wdg.setEnabled(state)
         self._image_viewer.setEnabled(state)
         self._runs_panel.setEnabled(state)
 
@@ -1809,7 +1915,7 @@ class CaliGui(QMainWindow):
                 assert isinstance(d_settings, DetectionSettings)
                 if d_settings.method == "cellpose":
                     self._detection_wdg.setValue(
-                        CellposeSettings(
+                        CellposeSettingsData(
                             model_type=d_settings.model_type,
                             model_path=d_settings.custom_model,
                             diameter=d_settings.diameter,
@@ -1820,8 +1926,6 @@ class CaliGui(QMainWindow):
                             batch_size=d_settings.batch_size,
                         )
                     )
-                elif d_settings.method == "caiman":
-                    self._detection_wdg.setValue(CaimanSettings())
                 else:
                     msg = f"❌ Unknown detection method: {d_settings.method}."
                     show_error_dialog(self, msg)
@@ -1846,6 +1950,7 @@ class CaliGui(QMainWindow):
                         trace_extraction_data=TraceExtractionData(
                             dff_window_size=e_settings.dff_window,
                             decay_constant=e_settings.decay_constant,
+                            frame_rate=e_settings.frame_rate,
                             neuropil_inner_radius=e_settings.neuropil_inner_radius,
                             neuropil_min_pixels=e_settings.neuropil_min_pixels,
                             neuropil_correction_factor=(
@@ -1888,6 +1993,7 @@ class CaliGui(QMainWindow):
                             calcium_synchrony_jitter=(
                                 a_settings.calcium_sync_jitter_window
                             ),
+                            calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
                             calcium_network_threshold=(
                                 a_settings.calcium_network_threshold
                             ),

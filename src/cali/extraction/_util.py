@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import numpy as np
+from numba import njit
 
 
 def calculate_dff(
-    data: np.ndarray, window: int = 100, percentile: int = 10, plot: bool = False
+    data: np.ndarray,
+    window_ms: float = 500,
+    frame_rate: float = 10.0,
+    percentile: int = 10,
 ) -> np.ndarray:
     """Calculate the delta F/F using a sliding window and a percentile.
 
@@ -13,31 +16,71 @@ def calculate_dff(
     ----------
     data : np.ndarray
         Array representing the fluorescence trace.
-    window : int
-        Size of the moving window for the background calculation. Default is 100.
+    window_ms : float
+        Size of the moving window for the background calculation in milliseconds.
+        Default is 10000 ms (10 seconds).
+    frame_rate : float
+        Acquisition frame rate in frames per second.
+        Default is 10.0 fps (100ms exposure time).
     percentile : int
         Percentile to use for the background calculation. Default is 10.
-    plot : bool
-        Whether to show a plot of the background and trace. Default is False.
 
     Returns
     -------
     np.ndarray
         Array representing the delta F/F.
     """
+    # Convert window from milliseconds to frames
+    # window_ms / 1000 = window_sec
+    # window_sec * frame_rate = window_frames
+    window_frames = int((window_ms / 1000.0) * frame_rate)
+    # Ensure at least 1 frame
+    window_frames = max(1, window_frames)
+
     dff: np.ndarray = np.array([])
-    bg: np.ndarray = _calculate_bg(data, window, percentile)
-    dff = (data - bg) / bg
-
-    # plot background and trace
-    if plot:
-        plt.figure(figsize=(10, 8))
-        plt.plot(bg, label="background", color="black")
-        plt.plot(data, label="trace", color="green")
-        plt.legend()
-        plt.show()
-
+    bg: np.ndarray = _calculate_bg_numba(data, window_frames, percentile)
+    # make sure we don't divide by zero
+    eps = np.finfo(float).eps
+    bg_safe = np.maximum(bg, eps)
+    dff = (data - bg_safe) / bg_safe
     return dff
+
+
+@njit(cache=True)  # type: ignore
+def _calculate_bg_numba(
+    trace: np.ndarray, window: int, percentile: float
+) -> np.ndarray:
+    """
+    Numba-accelerated rolling percentile to calculate background.
+
+    It uses a centered sliding window to compute the specified percentile
+    for each point in the trace.
+    """
+    T = trace.shape[0]
+    half = window // 2
+    bg = np.empty(T, dtype=np.float64)
+
+    for t in range(T):
+        start = t - half
+        if start < 0:
+            start = 0
+        end = t + half + 1
+        if end > T:
+            end = T
+
+        # slice window and copy into temp array
+        size = end - start
+        temp = np.empty(size, dtype=np.float64)
+        for i in range(size):
+            temp[i] = trace[start + i]
+
+        # sort and pick percentile index
+        temp.sort()
+        # percentile in [0,100]; map to [0, size-1]
+        k = round((percentile / 100.0) * (size - 1))
+        bg[t] = temp[k]
+
+    return bg
 
 
 def _calculate_bg(data: np.ndarray, window: int, percentile: int = 10) -> np.ndarray:

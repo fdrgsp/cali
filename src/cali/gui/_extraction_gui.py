@@ -3,41 +3,32 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
-    QDialog,
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
 
 from cali._constants import (
     DEFAULT_DFF_WINDOW,
+    DEFAULT_FRAME_RATE,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
 )
 from cali.sqlmodel import ExtractionSettings
 
-from ._plate_map import PlateMapData, PlateMapWidget
 from ._util import (
     create_divider_line,
 )
-
-if TYPE_CHECKING:
-    import useq
-
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -46,9 +37,6 @@ FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 class ExtractionSettingsData:
     """Data structure to hold the extraction settings."""
 
-    plate_map_data: (
-        tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]] | None
-    ) = None
     trace_extraction_data: TraceExtractionData | None = None
 
 
@@ -56,20 +44,21 @@ class ExtractionSettingsData:
 class NeuropilData:
     """Data structure to hold the neuropil correction settings."""
 
-    neuropil_inner_radius: int
-    neuropil_min_pixels: int
-    neuropil_correction_factor: float
+    neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
+    neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
+    neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
 
 
 @dataclass(frozen=True)
 class TraceExtractionData:
     """Data structure to hold the trace extraction settings."""
 
-    dff_window_size: int
-    decay_constant: float
-    neuropil_inner_radius: int
-    neuropil_min_pixels: int
-    neuropil_correction_factor: float
+    dff_window_size: float = DEFAULT_DFF_WINDOW  # milliseconds
+    decay_constant: float = 0.0  # seconds
+    frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
+    neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
+    neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
+    neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
 
 
 class _ExtractionGUI(QWidget):
@@ -112,7 +101,6 @@ class _ExtractionGUI(QWidget):
         threads_layout.addWidget(self._threads)
 
         # EXTRACTION WIDGETS ---------------------------------------------------------
-        self._plate_map_wdg = _PlateMapWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
 
@@ -126,8 +114,6 @@ class _ExtractionGUI(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         # add extraction widgets to scroll area
-        group_layout.addWidget(create_divider_line("Plate Map"))
-        group_layout.addWidget(self._plate_map_wdg)
         group_layout.addWidget(create_divider_line("Neuropil Settings"))
         group_layout.addWidget(self._neuropil_wdg)
         group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
@@ -146,7 +132,6 @@ class _ExtractionGUI(QWidget):
         # STYLING ---------------------------------------------------------------------
         fix_width = self._neuropil_wdg._neuropil_inner_radius_lbl.sizeHint().width()
         self._trace_extraction_wdg.set_labels_width(fix_width)
-        self._plate_map_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
@@ -156,15 +141,11 @@ class _ExtractionGUI(QWidget):
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
         return ExtractionSettingsData(
-            self._plate_map_wdg.value(),
             self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
         """Set the values of the widget."""
-        if value.plate_map_data is not None:
-            plate, genotype_map, treatment_map = value.plate_map_data
-            self._plate_map_wdg.setValue(plate, genotype_map, treatment_map)
         if value.trace_extraction_data is not None:
             self._trace_extraction_wdg.setValue(value.trace_extraction_data)
             # Also set the neuropil widget from trace extraction data
@@ -177,7 +158,6 @@ class _ExtractionGUI(QWidget):
 
     def reset(self) -> None:
         """Reset the widget to default values."""
-        self._plate_map_wdg.clear()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
 
@@ -208,100 +188,10 @@ class _ExtractionGUI(QWidget):
             dff_window=(
                 trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
             ),
-            # frame_rate=self._frame_rate_wdg.value(),
+            frame_rate=trace_data.frame_rate if trace_data else DEFAULT_FRAME_RATE,
         )
 
         return settings
-
-
-class _PlateMapWidget(QWidget):
-    """Widget to show and edit the plate maps."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self._plate: useq.WellPlate | None = None
-
-        # label
-        self._plate_map_lbl = QLabel("Set/Edit Plate Map:")
-        self._plate_map_lbl.setSizePolicy(*FIXED)
-
-        # button to show the plate map dialog
-        self._plate_map_btn = QPushButton("Show/Edit Plate Map")
-        self._plate_map_btn.setIcon(icon(MDI6.view_comfy))
-        self._plate_map_btn.clicked.connect(self._show_plate_map_dialog)
-
-        # dialog to show the plate maps
-        self._plate_map_dialog = QDialog(self)
-        plate_map_layout = QHBoxLayout(self._plate_map_dialog)
-        plate_map_layout.setContentsMargins(10, 10, 10, 10)
-        plate_map_layout.setSpacing(5)
-        self._plate_map_genotype = PlateMapWidget(self, title="Genotype Map")
-        self._plate_map_treatment = PlateMapWidget(self, title="Treatment Map")
-        plate_map_layout.addWidget(self._plate_map_genotype)
-        plate_map_layout.addWidget(self._plate_map_treatment)
-
-        # main layout
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._plate_map_lbl)
-        layout.addWidget(self._plate_map_btn)
-        layout.addStretch(1)
-
-    # PUBLIC METHODS ------------------------------------------------------------------
-
-    def value(
-        self,
-    ) -> tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]]:
-        """Get the plate map data."""
-        return (
-            self._plate,
-            self._plate_map_genotype.value(),
-            self._plate_map_treatment.value(),
-        )
-
-    def setValue(
-        self,
-        plate: useq.WellPlate | None,
-        genotype_map: list[PlateMapData],
-        treatment_map: list[PlateMapData],
-    ) -> None:
-        """Set the plate map data."""
-        self.setPlate(plate)
-        self._plate_map_genotype.setValue(genotype_map)
-        self._plate_map_treatment.setValue(treatment_map)
-
-    def set_labels_width(self, width: int) -> None:
-        """Set the width of the labels."""
-        self._plate_map_lbl.setFixedWidth(width)
-
-    def setPlate(self, plate: useq.WellPlate | None) -> None:
-        """Set the plate for the plate maps."""
-        self._plate = plate
-        if plate is None:
-            self.clear()
-            return
-        self._plate_map_genotype.setPlate(plate)
-        self._plate_map_treatment.setPlate(plate)
-
-    def clear(self) -> None:
-        """Clear the plate map data."""
-        self._plate_map_genotype.clear()
-        self._plate_map_treatment.clear()
-
-    # PRIVATE METHODS -----------------------------------------------------------------
-
-    def _show_plate_map_dialog(self) -> None:
-        """Show the plate map dialog."""
-        # ensure the dialog is visible and properly positioned
-        if self._plate_map_dialog.isHidden() or not self._plate_map_dialog.isVisible():
-            self._plate_map_dialog.show()
-        # always try to bring to front and activate
-        self._plate_map_dialog.raise_()
-        self._plate_map_dialog.activateWindow()
-        # force focus on the dialog
-        self._plate_map_dialog.setFocus()
 
 
 class _NeuropilCorrectionWidget(QWidget):
@@ -423,29 +313,56 @@ class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # Frame Rate widget
+        self._frame_rate_wdg = QWidget(self)
+        self._frame_rate_wdg.setToolTip(
+            "Acquisition frame rate in frames per second (fps).\n\n"
+            "This is used to convert time-based parameters (e.g., DFF window in "
+            "milliseconds) to frames for processing.\n\n"
+            "Tip: This is typically the inverse of exposure time:\n"
+            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
+            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+        )
+        self._frame_rate_lbl = QLabel("Frame Rate (fps):")
+        self._frame_rate_lbl.setSizePolicy(*FIXED)
+        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin.setDecimals(2)
+        self._frame_rate_spin.setRange(0.01, 1000.0)
+        self._frame_rate_spin.setSingleStep(1.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
+        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
+        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
+        frame_rate_layout.setSpacing(5)
+        frame_rate_layout.addWidget(self._frame_rate_lbl)
+        frame_rate_layout.addWidget(self._frame_rate_spin)
+
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
         self._dff_wdg.setToolTip(
-            "Controls the sliding window size for calculating ΔF/F₀ baseline "
-            "(expressed in frames).\n\n"
-            "The algorithm uses a sliding window to estimate the background "
-            "fluorescence:\n"
-            "• For each timepoint, calculates the 10th percentile within the window\n"
-            "• Window extends from current timepoint backwards by window_size/2 "
-            "frames\n"
-            "• ΔF/F₀ = (fluorescence - background) / background\n\n"
-            "Window size considerations:\n"
-            "• Larger values (200-500): More stable baseline, good for slow drifts\n"
-            "• Smaller values (50-100): More adaptive, follows local fluorescence "
-            "changes\n"
-            "• Too small (<20): May track signal itself, reducing ΔF/F₀ sensitivity\n"
-            "• Too large (>1000): May not adapt to legitimate baseline shifts."
+            "Sliding Window Size for ΔF/F₀ Baseline (milliseconds)\n\n"
+            "Controls the duration of the sliding window used to estimate the baseline "
+            "fluorescence F₀ for ΔF/F₀ computation in single-photon calcium imaging."
+            "\n\nHow the baseline is computed:\n"
+            "• A centered sliding window is taken around each timepoint\n"
+            "• The 10th percentile of fluorescence values within that window is used as"
+            " the baseline F₀\n"
+            "• ΔF/F₀ is calculated as: (F - F₀) / F₀\n\n"
+            "Choosing the window size:\n"
+            "• Large windows (10000-60000 ms): Very stable baseline; best for "
+            "recordings with slow drift or bleaching\n"
+            "• Medium windows (5000-15000 ms): Good all-purpose choice; follows "
+            "baseline variations without tracking individual transients too closely\n"
+            "• Small windows (<2000 ms): Baseline begins to follow the activity itself,"
+            " which can reduce ΔF/F₀ amplitude and distort transients; not recommended"
+            " in most cases\n\n"
+            "Recommended default: 5000-10000 ms (5-10 seconds), depending on frame rate"
+            " and expected drift. Default: 10000 ms (15 seconds)"
         )
-        self._dff_lbl = QLabel("ΔF/F0 Window Size:")
+        self._dff_lbl = QLabel("ΔF/F0 Window (ms):")
         self._dff_lbl.setSizePolicy(*FIXED)
-        self._dff_window_size_spin = QSpinBox(self)
-        self._dff_window_size_spin.setRange(0, 10000)
-        self._dff_window_size_spin.setSingleStep(1)
+        self._dff_window_size_spin = QDoubleSpinBox(self)
+        self._dff_window_size_spin.setRange(0.1, 1000000)
+        self._dff_window_size_spin.setSingleStep(100)
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         dff_layout = QHBoxLayout(self._dff_wdg)
         dff_layout.setContentsMargins(0, 0, 0, 0)
@@ -478,6 +395,7 @@ class _TraceExtractionWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
+        layout.addWidget(self._frame_rate_wdg)
         layout.addWidget(self._dff_wdg)
         layout.addWidget(self._dec_wdg)
 
@@ -485,6 +403,7 @@ class _TraceExtractionWidget(QWidget):
 
     def set_labels_width(self, width: int) -> None:
         """Set the width of the labels."""
+        self._frame_rate_lbl.setFixedWidth(width)
         self._dff_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
 
@@ -493,6 +412,7 @@ class _TraceExtractionWidget(QWidget):
         return TraceExtractionData(
             self._dff_window_size_spin.value(),
             self._decay_constant_spin.value(),
+            self._frame_rate_spin.value(),
             neuropil_data.neuropil_inner_radius,
             neuropil_data.neuropil_min_pixels,
             neuropil_data.neuropil_correction_factor,
@@ -502,8 +422,10 @@ class _TraceExtractionWidget(QWidget):
         """Set the values of the widget."""
         self._dff_window_size_spin.setValue(value.dff_window_size)
         self._decay_constant_spin.setValue(value.decay_constant)
+        self._frame_rate_spin.setValue(value.frame_rate)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         self._decay_constant_spin.setValue(0.0)
+        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)

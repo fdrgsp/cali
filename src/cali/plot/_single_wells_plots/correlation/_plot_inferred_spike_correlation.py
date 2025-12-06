@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
-from scipy.signal import correlate
 from scipy.spatial.distance import squareform
-from scipy.stats import zscore
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -22,117 +21,92 @@ if TYPE_CHECKING:
 
 
 # -----------------------------------------------------------------------------#
-# Cross-correlation computation
+# Database query for pre-computed spike correlation matrix
 # -----------------------------------------------------------------------------#
-def _calculate_spike_cross_correlation(
+def _get_spike_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
-    rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
-    """Calculate the cross-correlation matrix for spike trains from active ROIs.
+    """Get the pre-computed spike correlation matrix from database.
 
-    Uses thresholded inferred_spikes → binary spike trains, then computes
-    maximum normalized cross-correlation over all lags.
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    fov_name : str
+        Name of the FOV
+    run_id : int | None
+        Filter by specific analysis run
+
+    Returns
+    -------
+    tuple[np.ndarray | None, list[int] | None]
+        (correlation_matrix, roi_labels) or (None, None) if not found
     """
-    spike_trains: list[np.ndarray] = []
-    rois_idxs: list[int] = []
-
-    # Query ROIs from database with optimized joins
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOV, ROI.fov_id == FOV.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .join(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-
-        # IMPORTANT: use label_value for ROI subset, not ROI.id
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        stmt = stmt.order_by(col(ROI.label_value))
-        roi_results: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
-
-    # Extract spike trains for the active ROIs
-    for roi, traces, data_analysis in roi_results:
-        if traces is None or data_analysis is None:
-            continue
-
-        inferred_spikes = traces.inferred_spikes
-        inferred_spikes_threshold = data_analysis.inferred_spikes_threshold
-
-        if inferred_spikes is None or inferred_spikes_threshold is None:
-            continue
-
-        spikes = np.asarray(inferred_spikes, dtype=float)
-        the = float(inferred_spikes_threshold)
-
-        # Threshold and binarize (vectorized)
-        spikes[spikes <= the] = 0.0
-        spike_train = (spikes > 0.0).astype(float)
-
-        if spike_train.sum() <= 0:
-            # Skip ROIs with no spikes
-            continue
-
-        if roi.label_value is None:
-            continue
-
-        rois_idxs.append(int(roi.label_value))
-        spike_trains.append(spike_train)
-
-    if len(rois_idxs) <= 1:
-        cali_logger.warning(
-            "Insufficient spike data for correlation analysis. "
-            "Need at least 2 ROIs with spikes."
-        )
+    if run_id is None:
+        cali_logger.warning("No run ID specified for spike correlation plot.")
         return None, None
 
-    # Convert to array: shape (n_rois, n_frames)
-    spike_trains_array = np.vstack(spike_trains)
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .where(col(FOV.name) == fov_name)
+                .where(col(FOVAnalysis.analysis_result_id) == run_id)
+            )
 
-    # Z-score per ROI (handle varying firing rates)
-    spike_trains_zscore = zscore(spike_trains_array, axis=1, nan_policy="omit")
-    spike_trains_zscore = np.nan_to_num(
-        spike_trains_zscore, nan=0.0, posinf=0.0, neginf=0.0
-    )
+            fov_analysis = session.exec(stmt).first()
 
-    n_rois = len(rois_idxs)
-    correlation_matrix = np.empty((n_rois, n_rois), dtype=float)
+            if fov_analysis is None:
+                cali_logger.debug(
+                    f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
+                )
+                return None, None
 
-    # Precompute norms, avoid repeated work
-    norms = np.linalg.norm(spike_trains_zscore, axis=1)
-    norms[norms == 0] = np.finfo(float).eps  # avoid division by zero
+            if (
+                fov_analysis.spike_correlation_matrix is None
+                or fov_analysis.active_roi_labels is None
+            ):
+                cali_logger.debug(
+                    f"FOVAnalysis for {fov_name} has no spike correlation matrix"
+                )
+                return None, None
 
-    # Diagonal is self-correlation = 1
-    np.fill_diagonal(correlation_matrix, 1.0)
+            corr_matrix = np.asarray(fov_analysis.spike_correlation_matrix, dtype=float)
+            roi_labels = list(fov_analysis.active_roi_labels)
 
-    # Compute only upper triangle, mirror to lower
-    for i in range(n_rois):
-        x = spike_trains_zscore[i]
-        for j in range(i + 1, n_rois):
-            y = spike_trains_zscore[j]
+            return corr_matrix, roi_labels
+    except OperationalError:
+        # Table doesn't exist in older databases
+        cali_logger.debug("FOVAnalysis table not found in database")
+        return None, None
 
-            # FFT-based cross-correlation over all lags
-            corr = correlate(x, y, mode="full", method="fft")
-            corr /= norms[i] * norms[j]
 
-            # Use max absolute correlation
-            max_corr = float(np.max(np.abs(corr)))
-            correlation_matrix[i, j] = max_corr
-            correlation_matrix[j, i] = max_corr
+def _filter_matrix_by_rois(
+    matrix: np.ndarray,
+    roi_labels: list[int],
+    selected_rois: list[int] | None,
+) -> tuple[np.ndarray, list[int]]:
+    """Filter a correlation matrix to only include selected ROIs."""
+    if selected_rois is None:
+        return matrix, roi_labels
 
-    return correlation_matrix, rois_idxs
+    indices = []
+    filtered_labels = []
+    for i, label in enumerate(roi_labels):
+        if label in selected_rois:
+            indices.append(i)
+            filtered_labels.append(label)
+
+    if len(indices) < 2:
+        return matrix, roi_labels
+
+    indices_arr = np.array(indices)
+    filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
+
+    return filtered_matrix, filtered_labels
 
 
 # -----------------------------------------------------------------------------#
@@ -166,21 +140,32 @@ def _plot_spike_cross_correlation_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
-        engine, fov_name, rois, run_id
+    # Query pre-computed correlation matrix from database
+    correlation_matrix, roi_labels = _get_spike_correlation_matrix_from_db(
+        engine, fov_name, run_id
     )
 
-    if correlation_matrix is None or rois_idxs is None:
+    if correlation_matrix is None or roi_labels is None:
         cali_logger.warning(
-            "Insufficient spike data for cross-correlation analysis. "
-            "Ensure at least two ROIs with spikes are selected."
+            "No spike correlation data found for this FOV. "
+            "Ensure analysis has been run."
         )
-        plot.setTitle("Pairwise Cross-Correlation Matrix\n(No data)")
+        plot.setTitle(f"Pairwise Cross-Correlation Matrix\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
 
-    corr = correlation_matrix
+    # Filter to selected ROIs if specified
+    corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
+
+    if len(rois_idxs) < 2:
+        cali_logger.warning("Need at least 2 ROIs for correlation plot.")
+        plot.setTitle(
+            f"Pairwise Cross-Correlation Matrix\n(Need ≥2 ROIs){title_suffix}"
+        )
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
+        return
 
     # ---------------- IMAGE ITEM ---------------- #
     img = pg.ImageItem(corr)
@@ -253,8 +238,8 @@ def _attach_spike_corr_interaction(
             plot.setTitle(base_title)
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -268,8 +253,8 @@ def _attach_spike_corr_interaction(
         if not plot.sceneBoundingRect().contains(pos):
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -334,11 +319,26 @@ def _plot_spike_hierarchical_clustering_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    correlation_matrix, rois_idxs = _calculate_spike_cross_correlation(
-        engine, fov_name, rois, run_id
+    # Get correlation matrix from database
+    full_correlation_matrix, roi_labels = _get_spike_correlation_matrix_from_db(
+        engine, fov_name, run_id
     )
 
-    if correlation_matrix is None or rois_idxs is None:
+    if full_correlation_matrix is None or roi_labels is None:
+        cali_logger.warning(
+            "No spike correlation data found for this FOV. "
+            "Ensure analysis has been run."
+        )
+        plot.setTitle("Pairwise Cross-Correlation - Hierarchical Clustering\n(No data)")
+        plot.setLabel("bottom", "ROI")
+        return
+
+    # Filter to selected ROIs if specified
+    correlation_matrix, rois_idxs = _filter_matrix_by_rois(
+        full_correlation_matrix, roi_labels, rois
+    )
+
+    if len(rois_idxs) < 2:
         cali_logger.warning(
             "Insufficient spike data for hierarchical clustering analysis. "
             "Ensure at least two ROIs with spikes are selected."
@@ -492,8 +492,8 @@ def _attach_spike_cluster_interaction(
             plot.setTitle(base_title)
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -507,8 +507,8 @@ def _attach_spike_cluster_interaction(
         if not plot.sceneBoundingRect().contains(pos):
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]

@@ -31,6 +31,7 @@ from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_NETWORK_THRESHOLD,
+    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
@@ -78,24 +79,25 @@ class ExperimentTypeData:
 class CalciumPeaksData:
     """Data structure to hold the calcium peaks settings."""
 
-    peaks_height: float
-    peaks_height_mode: str
-    peaks_distance: int
-    peaks_prominence_multiplier: float
-    calcium_synchrony_jitter: int
-    calcium_network_threshold: float
+    peaks_height: float = DEFAULT_HEIGHT
+    peaks_height_mode: str = MULTIPLIER
+    peaks_distance: float = DEFAULT_PEAKS_DISTANCE  # milliseconds
+    peaks_prominence_multiplier: float = 2.0
+    calcium_synchrony_jitter: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # milliseconds
+    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # milliseconds
+    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
 
 @dataclass(frozen=True)
 class SpikeData:
     """Data structure to hold the spikes settings."""
 
-    spike_threshold: float
-    spike_threshold_mode: str
-    burst_threshold: float
-    burst_min_duration: int
-    burst_blur_sigma: float
-    synchrony_lag: int
+    spike_threshold: float = DEFAULT_SPIKE_THRESHOLD
+    spike_threshold_mode: str = MULTIPLIER
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
+    burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
+    synchrony_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # milliseconds
 
 
 class _AnalysisGUI(QWidget):
@@ -154,7 +156,7 @@ class _AnalysisGUI(QWidget):
         # add analysis widgets to scroll area
         group_layout.addWidget(create_divider_line("Experiment Type"))
         group_layout.addWidget(self._experiment_type_wdg)
-        group_layout.addWidget(create_divider_line("Calcium Peaks"))
+        group_layout.addWidget(create_divider_line("Calcium Traces and Peaks"))
         group_layout.addWidget(self._calcium_peaks_wdg)
         group_layout.addWidget(create_divider_line("Spikes and Bursts"))
         group_layout.addWidget(self._spike_wdg)
@@ -170,7 +172,7 @@ class _AnalysisGUI(QWidget):
         main_layout.addWidget(analysis_scroll_area)
 
         # STYLING ---------------------------------------------------------------------
-        fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
+        fix_width = self._calcium_peaks_wdg._peaks_distance_lbl.sizeHint().width()
         self._experiment_type_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
@@ -248,6 +250,11 @@ class _AnalysisGUI(QWidget):
                 peaks_data.calcium_synchrony_jitter
                 if peaks_data
                 else DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
+            ),
+            calcium_peaks_max_lag=(
+                peaks_data.calcium_peaks_max_lag
+                if peaks_data
+                else DEFAULT_CALCIUM_PEAKS_MAX_LAG
             ),
             calcium_network_threshold=(
                 peaks_data.calcium_network_threshold
@@ -638,20 +645,21 @@ class _CalciumPeaksWidget(QWidget):
         # peaks minimum distance
         self._peaks_distance_wdg = QWidget(self)
         self._peaks_distance_wdg.setToolTip(
-            "Minimum distance between peaks in frames.\n"
+            "Minimum distance between peaks in milliseconds.\n"
             "This prevents detecting multiple peaks from the same calcium event.\n\n"
-            "Example: If exposure time = 50ms and you want 100ms minimum separation,\n"
-            "set distance = 2 frames (100ms ÷ 50ms = 2 frames).\n\n"
+            "Example: At 10 fps (100ms per frame), setting 200ms ensures peaks are\n"
+            "at least 2 frames apart (200ms ÷ 100ms = 2 frames).\n\n"
             "• Higher values: More conservative, fewer detected peaks\n"
             "• Lower values: More sensitive, may detect noise or incomplete decay\n"
-            "• Minimum value: 1 (adjacent frames allowed)."
+            "• Typical range: 100-1000ms depending on calcium indicator dynamics."
         )
-        self._peaks_distance_lbl = QLabel("Minimum Peaks Distance:")
+        self._peaks_distance_lbl = QLabel("Minimum Peaks Distance (ms):")
         self._peaks_distance_lbl.setSizePolicy(*FIXED)
-        self._peaks_distance_spin = QSpinBox(self)
-        self._peaks_distance_spin.setRange(1, 1000)
-        self._peaks_distance_spin.setSingleStep(1)
-        self._peaks_distance_spin.setValue(2)
+        self._peaks_distance_spin = QDoubleSpinBox(self)
+        self._peaks_distance_spin.setDecimals(2)
+        self._peaks_distance_spin.setRange(1.0, 10000.0)
+        self._peaks_distance_spin.setSingleStep(10.0)
+        self._peaks_distance_spin.setValue(200.0)  # 2 frames at 10fps
         peaks_distance_layout = QHBoxLayout(self._peaks_distance_wdg)
         peaks_distance_layout.setContentsMargins(0, 0, 0, 0)
         peaks_distance_layout.setSpacing(5)
@@ -688,30 +696,61 @@ class _CalciumPeaksWidget(QWidget):
         self._calcium_synchrony_wdg.setToolTip(
             "Calcium Peak Synchrony Analysis Settings\n\n"
             "Temporal Tolerance Parameter:\n"
-            "Controls the maximum time window (in frames) for detecting synchronous "
-            "calcium peaks between ROI pairs.\n\n"
+            "Controls the maximum time window (in milliseconds) for detecting "
+            "synchronous calcium peaks between ROI pairs.\n\n"
             "How it works:\n"
-            "• Value = 2: Peaks within ±2 frames are considered synchronous\n"
+            "• Value = 200: Peaks within ±200 ms are considered synchronous\n"
             "• Compares timing of calcium peaks between all ROI pairs\n"
-            "• Larger values: More permissive, detects more synchrony but may "
+            "• Larger values: more permissive, detects more synchrony but may "
             "include false positives\n"
-            "• Smaller values: More strict, may miss genuine synchrony with "
+            "• Smaller values: more strict, may miss genuine synchrony with "
             "slight timing offsets\n\n"
-            "Example with Jitter = 2:\n"
-            "ROI 1 peaks: [10, 25, 40]  ROI 2 peaks: [12, 24, 41]\n"
-            "Result: All pairs are synchronous (differences ≤ 2 frames)."
+            "Example with Jitter = 200 ms @ 10 fps:\n"
+            "ROI 1 peaks: [1000ms, 2500ms, 4000ms]  ROI 2 peaks: [1200ms, 2400ms, "
+            "4100ms]\n"
+            "Result: All pairs are synchronous (differences ≤ 200 ms)."
         )
-        self._calcium_jitter_window_lbl = QLabel("Synchrony Jitter (frames):")
+        self._calcium_jitter_window_lbl = QLabel("Synchrony Jitter (ms):")
         self._calcium_jitter_window_lbl.setSizePolicy(*FIXED)
-        self._calcium_synchrony_jitter_spin = QSpinBox(self)
-        self._calcium_synchrony_jitter_spin.setRange(0, 100)
-        self._calcium_synchrony_jitter_spin.setSingleStep(1)
+        self._calcium_synchrony_jitter_spin = QDoubleSpinBox(self)
+        self._calcium_synchrony_jitter_spin.setDecimals(2)
+        self._calcium_synchrony_jitter_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
+        self._calcium_synchrony_jitter_spin.setSingleStep(10.0)
         self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
         calcium_synchrony_layout = QHBoxLayout(self._calcium_synchrony_wdg)
         calcium_synchrony_layout.setContentsMargins(0, 0, 0, 0)
         calcium_synchrony_layout.setSpacing(5)
         calcium_synchrony_layout.addWidget(self._calcium_jitter_window_lbl)
         calcium_synchrony_layout.addWidget(self._calcium_synchrony_jitter_spin)
+
+        # max lag for correlation on peaks
+        self._calcium_max_lag_wdg = QWidget(self)
+        self._calcium_max_lag_wdg.setToolTip(
+            "Maximum Lag for Cross-Correlation on Calcium Peaks\n\n"
+            "Controls the maximum time shift (in milliseconds) when computing "
+            "correlation between calcium peak events.\n\n"
+            "How it works:\n"
+            "• Computes correlation at different time lags from -max_lag to +max_lag\n"
+            "• Reports the maximum correlation value found across all lags\n"
+            "• Captures temporal relationships even with phase shifts\n\n"
+            "Example with Max Lag = 500 ms @ 10 fps:\n"
+            "If ROI 1 peaks consistently occur 300 ms before ROI 2,\n"
+            "max lag correlation will detect this relationship.\n\n"
+            "• Larger values: More permissive, detects longer-range temporal patterns\n"
+            "• Smaller values: More strict, focuses on near-simultaneous events"
+        )
+        self._calcium_max_lag_lbl = QLabel("Max Lag for Peaks (ms):")
+        self._calcium_max_lag_lbl.setSizePolicy(*FIXED)
+        self._calcium_max_lag_spin = QDoubleSpinBox(self)
+        self._calcium_max_lag_spin.setDecimals(2)
+        self._calcium_max_lag_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
+        self._calcium_max_lag_spin.setSingleStep(10.0)
+        self._calcium_max_lag_spin.setValue(DEFAULT_CALCIUM_PEAKS_MAX_LAG)
+        calcium_max_lag_layout = QHBoxLayout(self._calcium_max_lag_wdg)
+        calcium_max_lag_layout.setContentsMargins(0, 0, 0, 0)
+        calcium_max_lag_layout.setSpacing(5)
+        calcium_max_lag_layout.addWidget(self._calcium_max_lag_lbl)
+        calcium_max_lag_layout.addWidget(self._calcium_max_lag_spin)
 
         # network connectivity threshold
         self._calcium_network_wdg = QWidget(self)
@@ -751,6 +790,7 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
         layout.addWidget(self._calcium_synchrony_wdg)
+        layout.addWidget(self._calcium_max_lag_wdg)
         layout.addWidget(self._calcium_network_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
@@ -761,6 +801,7 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_distance_lbl.setFixedWidth(width)
         self._peaks_prominence_lbl.setFixedWidth(width)
         self._calcium_jitter_window_lbl.setFixedWidth(width)
+        self._calcium_max_lag_lbl.setFixedWidth(width)
         self._calcium_network_lbl.setFixedWidth(width)
 
     def value(self) -> CalciumPeaksData:
@@ -770,6 +811,7 @@ class _CalciumPeaksWidget(QWidget):
             self._peaks_distance_spin.value(),
             self._peaks_prominence_multiplier_spin.value(),
             self._calcium_synchrony_jitter_spin.value(),
+            self._calcium_max_lag_spin.value(),
             self._calcium_network_threshold_spin.value(),
         )
 
@@ -781,12 +823,13 @@ class _CalciumPeaksWidget(QWidget):
             value.peaks_prominence_multiplier
         )
         self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
+        self._calcium_max_lag_spin.setValue(value.calcium_peaks_max_lag)
         self._calcium_network_threshold_spin.setValue(value.calcium_network_threshold)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._peaks_height.setValue((DEFAULT_HEIGHT, MULTIPLIER))
-        self._peaks_distance_spin.setValue(2)
+        self._peaks_distance_spin.setValue(200.0)  # 2 frames at 10fps = 200ms
         self._peaks_prominence_multiplier_spin.setValue(1)
         self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
         self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
@@ -869,11 +912,12 @@ class _BurstWidget(QWidget):
             "activity.\n"
             "   Higher values (50-80%) detect only strong network-wide events.\n"
             "   Lower values (10-30%) capture weaker coordinated activity.\n\n"
-            "• Burst Min Duration (frames):\n"
-            "   Minimum duration (in frames) for a detected burst to be "
+            "• Burst Min Duration (ms):\n"
+            "   Minimum duration (in milliseconds) for a detected burst to be "
             "considered valid.\n"
             "   Filters out brief spikes that don't represent sustained "
             "network activity.\n"
+            "   Example: At 10 fps, 300ms = 3 frames minimum burst duration.\n"
             "   Higher values ensure only sustained bursts are detected.\n\n"
             "• Burst Gaussian Blur Sigma:\n"
             "   Gaussian smoothing applied to population activity before "
@@ -894,12 +938,13 @@ class _BurstWidget(QWidget):
         self._burst_threshold.setSingleStep(1)
         self._burst_threshold.setValue(DEFAULT_BURST_THRESHOLD)
 
-        self._burst_min_threshold_label = QLabel("Burst Min Duration (frames):")
+        self._burst_min_threshold_label = QLabel("Burst Min Duration (ms):")
         self._burst_min_threshold_label.setSizePolicy(*FIXED)
-        self._burst_min_duration_frames = QSpinBox(self)
-        self._burst_min_duration_frames.setRange(0, 100)
-        self._burst_min_duration_frames.setSingleStep(1)
-        self._burst_min_duration_frames.setValue(DEFAULT_MIN_BURST_DURATION)
+        self._burst_min_duration_ms = QDoubleSpinBox(self)
+        self._burst_min_duration_ms.setDecimals(2)
+        self._burst_min_duration_ms.setRange(0.0, 100000.0)
+        self._burst_min_duration_ms.setSingleStep(100.0)
+        self._burst_min_duration_ms.setValue(3000.0)  # 3 seconds
 
         self._burst_blur_label = QLabel("Burst Gaussian Blur Sigma:")
         self._burst_blur_label.setSizePolicy(*FIXED)
@@ -915,25 +960,25 @@ class _BurstWidget(QWidget):
         burst_layout.addWidget(self._burst_threshold_lbl, 0, 0)
         burst_layout.addWidget(self._burst_threshold, 0, 1)
         burst_layout.addWidget(self._burst_min_threshold_label, 1, 0)
-        burst_layout.addWidget(self._burst_min_duration_frames, 1, 1)
+        burst_layout.addWidget(self._burst_min_duration_ms, 1, 1)
         burst_layout.addWidget(self._burst_blur_label, 2, 0)
         burst_layout.addWidget(self._burst_blur_sigma, 2, 1)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
-    def value(self) -> tuple[float, int, float]:
+    def value(self) -> tuple[float, float, float]:
         """Return the burst detection parameters."""
         return (
             self._burst_threshold.value(),
-            self._burst_min_duration_frames.value(),
+            self._burst_min_duration_ms.value(),
             self._burst_blur_sigma.value(),
         )
 
-    def setValue(self, value: tuple[float, int, float]) -> None:
+    def setValue(self, value: tuple[float, float, float]) -> None:
         """Set the value of the burst widget."""
         threshold, duration, sigma = value
         self._burst_threshold.setValue(threshold)
-        self._burst_min_duration_frames.setValue(duration)
+        self._burst_min_duration_ms.setValue(duration)
         self._burst_blur_sigma.setValue(sigma)
 
 
@@ -954,10 +999,10 @@ class _SpikeWidget(QWidget):
         self._spike_synchrony_wdg.setToolTip(
             "Inferred Spike Synchrony Analysis Settings\n\n"
             "Temporal Tolerance Parameter:\n"
-            "Controls the maximum time window (in frames) for cross-correlation "
+            "Controls the maximum time window (in milliseconds) for cross-correlation "
             "analysis between ROI pairs.\n\n"
             "How it works:\n"
-            "• Value = 5: Checks correlations within ±5 frames window\n"
+            "• Value = 500 ms: Checks correlations within ±500 ms window\n"
             "• Algorithm slides one spike train over another, looking for "
             "best match within this range\n"
             "• Takes the MAXIMUM correlation found within the lag window\n"
@@ -965,20 +1010,22 @@ class _SpikeWidget(QWidget):
             "include false positives\n"
             "• Smaller values: More strict, may miss genuine synchrony with "
             "slight timing offsets\n\n"
-            "Example with Max Lag = 5:\n"
-            "ROI 1 spikes: [10, 25, 40]  ROI 2 spikes: [12, 24, 41]\n"
-            "Algorithm finds high correlation at lag +2 and -1 frames\n"
+            "Example with Max Lag = 500 ms @ 10 fps:\n"
+            "ROI 1 spikes: [1000ms, 2500ms, 4000ms]  ROI 2 spikes: [1200ms, 2400ms, "
+            "4100ms]\n"
+            "Algorithm finds high correlation at lag +200ms and -100ms\n"
             "Result: High synchrony score based on best alignment."
         )
-        self._spikes_sync_cross_corr_lag = QLabel("Synchrony Lag (frames):")
+        self._spikes_sync_cross_corr_lag = QLabel("Synchrony Lag (ms):")
         self._spikes_sync_cross_corr_lag.setSizePolicy(*FIXED)
-        self._spikes_sync_cross_corr_max_lag = QSpinBox(self)
-        self._spikes_sync_cross_corr_max_lag.setRange(0, 100)
-        self._spikes_sync_cross_corr_max_lag.setSingleStep(1)
-        self._spikes_sync_cross_corr_max_lag.setValue(5)
+        self._spikes_sync_cross_corr_max_lag = QDoubleSpinBox(self)
+        self._spikes_sync_cross_corr_max_lag.setDecimals(2)
+        self._spikes_sync_cross_corr_max_lag.setRange(0.0, 10000.0)  # 0 to 10 seconds
+        self._spikes_sync_cross_corr_max_lag.setSingleStep(10.0)
+        self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
         spikes_sync_cross_corr_layout = QHBoxLayout(self._spike_synchrony_wdg)
         spikes_sync_cross_corr_layout.setContentsMargins(0, 0, 0, 0)
-        spikes_sync_cross_corr_layout.setSpacing(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
+        spikes_sync_cross_corr_layout.setSpacing(5)
         spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_lag)
         spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_max_lag)
 
@@ -1029,7 +1076,7 @@ class _SpikeWidget(QWidget):
         self._burst_wdg.setValue(
             (
                 DEFAULT_BURST_THRESHOLD,
-                DEFAULT_MIN_BURST_DURATION,
+                3000.0,  # 3 seconds = 3000ms
                 DEFAULT_BURST_GAUSS_SIGMA,
             )
         )

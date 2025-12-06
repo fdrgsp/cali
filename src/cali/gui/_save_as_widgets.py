@@ -17,11 +17,11 @@ from qtpy.QtWidgets import (
 from ._util import _BrowseWidget, parse_lineedit_text, show_error_dialog
 
 if TYPE_CHECKING:
-    from ._plate_viewer import PlateViewer
+    from ._cali_gui import CaliGui
 
 
 class _SaveAsTiff(QDialog):
-    def __init__(self, parent: PlateViewer | None = None) -> None:
+    def __init__(self, parent: CaliGui | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Save As Tiff")
 
@@ -80,7 +80,7 @@ class _SaveAsTiff(QDialog):
 
 
 class _SaveAsCSV(QDialog):
-    def __init__(self, parent: PlateViewer | None = None) -> None:
+    def __init__(self, parent: CaliGui | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Save Analysis As CSV")
 

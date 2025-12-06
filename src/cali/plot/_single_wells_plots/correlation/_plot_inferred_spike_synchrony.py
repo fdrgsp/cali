@@ -1,24 +1,115 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.plot._util import (
-    _get_spike_synchrony,
-    _get_spike_synchrony_matrix,
-)
-from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+
+# -----------------------------------------------------------------------------#
+# Database query for pre-computed spike synchrony matrix
+# -----------------------------------------------------------------------------#
+def _get_spike_synchrony_matrix_from_db(
+    engine: Engine,
+    fov_name: str,
+    run_id: int | None = None,
+) -> tuple[np.ndarray | None, list[int] | None, float | None]:
+    """Get the pre-computed spike synchrony matrix from database.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    fov_name : str
+        Name of the FOV
+    run_id : int | None
+        Filter by specific analysis run
+
+    Returns
+    -------
+    tuple[np.ndarray | None, list[int] | None, float | None]
+        (synchrony_matrix, roi_labels, global_synchrony) or (None, None, None)
+    """
+    if run_id is None:
+        cali_logger.warning("No run ID specified for spike synchrony plot.")
+        return None, None, None
+
+    try:
+        with Session(engine) as session:
+            stmt = (
+                select(FOVAnalysis)
+                .join(FOV, FOVAnalysis.fov_id == FOV.id)
+                .where(col(FOV.name) == fov_name)
+                .where(col(FOVAnalysis.analysis_result_id) == run_id)
+            )
+
+            fov_analysis = session.exec(stmt).first()
+
+            if fov_analysis is None:
+                cali_logger.debug(
+                    f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
+                )
+                return None, None, None
+
+            if (
+                fov_analysis.spike_jitter_synchrony_matrix is None
+                or fov_analysis.active_roi_labels is None
+            ):
+                cali_logger.debug(
+                    f"FOVAnalysis for {fov_name} has no spike synchrony matrix"
+                )
+                return None, None, None
+
+            sync_matrix = np.asarray(
+                fov_analysis.spike_jitter_synchrony_matrix, dtype=float
+            )
+            roi_labels = list(fov_analysis.active_roi_labels)
+            global_sync = fov_analysis.global_spike_jitter_synchrony
+
+            return sync_matrix, roi_labels, global_sync
+    except OperationalError:
+        # Table doesn't exist in older databases
+        cali_logger.debug("FOVAnalysis table not found in database")
+        return None, None, None
+
+
+def _filter_matrix_by_rois(
+    matrix: np.ndarray,
+    roi_labels: list[int],
+    selected_rois: list[int] | None,
+) -> tuple[np.ndarray, list[int]]:
+    """Filter a synchrony matrix to only include selected ROIs."""
+    if selected_rois is None:
+        return matrix, roi_labels
+
+    indices = []
+    filtered_labels = []
+    for i, label in enumerate(roi_labels):
+        if label in selected_rois:
+            indices.append(i)
+            filtered_labels.append(label)
+
+    # Return the filtered labels even if there are fewer than 2
+    # (the caller should check for insufficient ROIs)
+    if len(indices) < 2:
+        return matrix[:0, :0], filtered_labels  # Empty matrix with filtered labels
+
+    indices_arr = np.array(indices)
+    filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
+
+    return filtered_matrix, filtered_labels
 
 
 # -----------------------------------------------------------------------------#
@@ -52,59 +143,45 @@ def _plot_spike_synchrony_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    # 1) Get spike trains per ROI
-    spike_trains = _get_spike_trains_from_rois(engine, fov_name, rois, run_id)
-    if spike_trains is None or len(spike_trains) < 2:
+    # Query pre-computed synchrony matrix from database
+    sync_matrix, roi_labels, global_synchrony = _get_spike_synchrony_matrix_from_db(
+        engine, fov_name, run_id
+    )
+
+    if sync_matrix is None or roi_labels is None:
         cali_logger.warning(
-            "Insufficient spike data for synchrony analysis. "
-            "Ensure at least two ROIs with spikes are selected."
+            "No spike synchrony data found for this FOV. Ensure analysis has been run."
         )
         plot.setTitle(f"Spike Synchrony\n(No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
 
-    # 2) Get lag from analysis settings
-    lag = _get_lag(engine, fov_name, rois, run_id)
-    if lag is None:
-        cali_logger.warning("No valid lag value found for synchrony analysis.")
-        plot.setTitle(f"Spike Synchrony\n(No lag setting){title_suffix}")
+    # Filter to selected ROIs if specified
+    sync, active_roi_ids = _filter_matrix_by_rois(sync_matrix, roi_labels, rois)
+
+    if len(active_roi_ids) < 2:
+        cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
+        plot.setTitle(f"Spike Synchrony\n(Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
 
-    # 3) Convert spike trains to spike data dict for synchrony computation
-    spike_data_dict = {
-        roi_name: cast("list[float]", spike_train.astype(float).tolist())
-        for roi_name, spike_train in spike_trains.items()
-    }
+    # Recalculate global synchrony if ROI subset is selected
+    if rois is not None and len(rois) < len(roi_labels):
+        n = sync.shape[0]
+        if n > 1:
+            mask = ~np.eye(n, dtype=bool)
+            global_synchrony = float(np.median(sync[mask]))
+        else:
+            global_synchrony = 0.0
+    elif global_synchrony is None:
+        global_synchrony = 0.0
 
-    # 4) Compute synchrony matrix using cross-correlation method
-    synchrony_matrix = _get_spike_synchrony_matrix(
-        spike_data_dict,
-        method="cross_correlation",
-        max_lag=lag,
-    )
-
-    if synchrony_matrix is None:
-        cali_logger.warning(
-            "Failed to compute synchrony matrix. "
-            "Ensure spike data is valid and contains sufficient ROIs."
-        )
-        plot.setTitle(f"Spike Synchrony\n(Computation failed){title_suffix}")
-        plot.setLabel("bottom", "ROI")
-        plot.setLabel("left", "ROI")
-        return
-
-    # 5) Global synchrony metric
-    global_synchrony = _get_spike_synchrony(synchrony_matrix) or 0.0
     title = (
         f"Global Synchrony (Median: {global_synchrony:.4f})\n"
         f"(Thresholded Spike Data - Cross-Correlation Method){title_suffix}\n"
     )
-
-    sync = synchrony_matrix
-    sync.shape[0]
 
     # ---------------- IMAGE ITEM ---------------- #
     img = pg.ImageItem(sync)
@@ -132,9 +209,6 @@ def _plot_spike_synchrony_data(
 
     # Add colorbar
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
-
-    # ROI ordering is the dict key order
-    active_roi_ids = [int(roi_id) for roi_id in spike_trains.keys()]
 
     # ---------------- Hover + Click interaction ---------------- #
     _attach_spike_sync_interaction(widget, plot, vb, active_roi_ids, sync)
@@ -176,8 +250,8 @@ def _attach_spike_sync_interaction(
             plot.setTitle(base_title)
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -191,8 +265,8 @@ def _attach_spike_sync_interaction(
         if not plot.sceneBoundingRect().contains(pos):
             return
         mouse_point = viewbox.mapSceneToView(pos)
-        col = round(mouse_point.x())
-        row = round(mouse_point.y())
+        col = int(mouse_point.x())
+        row = int(mouse_point.y())
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
@@ -230,125 +304,3 @@ def _add_colorbar_to_widget(
 
     # Add to plot layout (row 2, column 3 = right side)
     widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
-
-
-# -----------------------------------------------------------------------------#
-# Lag retrieval
-# -----------------------------------------------------------------------------#
-def _get_lag(
-    engine: Engine,
-    fov_name: str,  # kept for API symmetry; not used directly here
-    rois: list[int] | None = None,  # kept for API symmetry; not used directly here
-    run_id: int | None = None,
-) -> int | None:
-    """Get the lag value for synchrony from AnalysisSettings."""
-    from cali.sqlmodel._model import (
-        AnalysisSettings,
-        CaliResult,
-        Experiment,
-        Plate,
-        Well,
-    )
-
-    with Session(engine) as session:
-        # Get CaliResult and AnalysisSettings for this run
-        # via FOV -> Well -> Plate -> Experiment
-        stmt = (
-            select(CaliResult, AnalysisSettings)
-            .join(Experiment, CaliResult.experiment == Experiment.id)
-            .join(Plate, Experiment.id == Plate.experiment_id)
-            .join(Well, Plate.id == Well.plate_id)
-            .join(FOV, Well.id == FOV.well_id)
-            .outerjoin(
-                AnalysisSettings,
-                CaliResult.analysis_settings_id == AnalysisSettings.id,
-            )
-            .where(col(FOV.name) == fov_name)
-        )
-        if run_id is not None:
-            stmt = stmt.where(col(CaliResult.id) == run_id)
-
-        result_tuple = session.exec(stmt).first()
-
-        if result_tuple is None:
-            cali_logger.warning("No analysis settings found for synchrony analysis.")
-            return None
-
-        _, analysis_settings = result_tuple
-        if analysis_settings is None:
-            cali_logger.warning("No analysis settings found for synchrony analysis.")
-            return None
-
-        lag = analysis_settings.spikes_sync_cross_corr_lag
-        return lag if lag is not None else 5  # Default fallback
-
-
-# -----------------------------------------------------------------------------#
-# Spike train extraction
-# -----------------------------------------------------------------------------#
-def _get_spike_trains_from_rois(
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> dict[str, np.ndarray] | None:
-    """Extract spike trains from ROI data.
-
-    Returns
-    -------
-    dict[str, np.ndarray] | None
-        Dictionary mapping ROI label_value strings to binary spike arrays.
-    """
-    from cali.sqlmodel._model import ROI
-
-    spike_trains: dict[str, np.ndarray] = {}
-
-    # Query ROIs from database with optimized joins
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOV, ROI.fov_id == FOV.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .join(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-
-        # IMPORTANT: subset by label_value (to match other plots)
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        stmt = stmt.order_by(col(ROI.label_value))
-        roi_results: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
-
-    if len(roi_results) < 2:
-        return None
-
-    for roi, traces, data_analysis in roi_results:
-        if traces is None or data_analysis is None:
-            continue
-
-        inferred_spikes = traces.inferred_spikes
-        inferred_spikes_threshold = data_analysis.inferred_spikes_threshold
-
-        if inferred_spikes is None or inferred_spikes_threshold is None:
-            continue
-
-        spikes = np.asarray(inferred_spikes, dtype=float)
-        the = float(inferred_spikes_threshold)
-
-        # Threshold and binarize (vectorized)
-        spikes[spikes <= the] = 0.0
-        spike_train = (spikes > 0.0).astype(bool)
-
-        if spike_train.sum() > 0 and roi.label_value is not None:
-            spike_trains[str(roi.label_value)] = spike_train
-
-    return spike_trains if len(spike_trains) >= 2 else None

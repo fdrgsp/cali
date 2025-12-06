@@ -496,7 +496,7 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
     )
     from cali.sqlmodel._util import load_experiment_from_database
 
-    test_data_path = Path("tests/test_data/evoked/evk.tensorstore.zarr")
+    test_data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     test_output_path = Path("tests/test_data/evoked/evk_analysis")
 
     # Copy data to tmp_path
@@ -1809,8 +1809,8 @@ def test_settings_load_from_database(temp_db: TempDB) -> None:
     engine, db_path = temp_db
 
     with Session(engine) as session:
-        d1 = DetectionSettings(method="cellpose", model_type="cyto3")
-        d2 = DetectionSettings(method="caiman")
+        d1 = DetectionSettings(method="cellpose", model_type="cpsam")
+        d2 = DetectionSettings(method="cellpose", model_type="cyto3")
         session.add(d1)
         session.add(d2)
 
@@ -1832,11 +1832,11 @@ def test_settings_load_from_database(temp_db: TempDB) -> None:
     # DetectionSettings
     res = DetectionSettings.load_from_database(db_path, id=d1_id)
     assert isinstance(res, DetectionSettings)
-    assert res.model_type == "cyto3"
+    assert res.model_type == "cpsam"
 
-    res_list = DetectionSettings.load_from_database(db_path, method="caiman")
-    assert len(res_list) == 1
-    assert res_list[0].method == "caiman"
+    res_list = DetectionSettings.load_from_database(db_path, method="cellpose")
+    assert len(res_list) == 2
+    assert res_list[0].method == "cellpose"
 
     res_all = DetectionSettings.load_from_database(db_path)
     assert len(res_all) == 2

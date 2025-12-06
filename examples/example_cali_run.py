@@ -19,15 +19,16 @@ from cali.sqlmodel import (
 runner = CaliRunner()
 
 database_name = "results.cali"
-database_path = f"tests/test_data/evoked/{database_name}"
+database_path = f"{database_name}"
 dataset = "/Users/fdrgsp/Documents/git/cali/tests/test_data/evoked/evk.tensorstore.zarr"
 positions_to_process = [0]
 
 exp = Experiment.create_from_data("exp", dataset)
 detection_settings = DetectionSettings(
     method="cellpose",
-    model_type="cpsam",
-    # custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",  # noqa: E501
+    # model_type="cpsam",
+    model_type="custom",
+    custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",
 )
 runner.run(
     exp,

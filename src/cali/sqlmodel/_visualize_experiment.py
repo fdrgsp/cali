@@ -118,24 +118,6 @@ def print_cali_results(
             )
             result_tree.add(f"📅 Created: [dim]{result.created_at}[/dim]")
 
-            # Plate maps (if available)
-            if result.plate_maps:
-                plate_maps_node = result_tree.add(
-                    "🗺️ [bold green]Plate Maps (per-run configuration)[/bold green]"
-                )
-                for condition_type, well_mapping in result.plate_maps.items():
-                    condition_node = plate_maps_node.add(
-                        f"📋 {condition_type.capitalize()}"
-                    )
-                    # Show a sample of wells (first 5)
-                    sample_wells = list(well_mapping.items())[:5]
-                    for well_name, value in sample_wells:
-                        condition_node.add(f"{well_name}: {value}")
-                    if len(well_mapping) > 5:
-                        condition_node.add(
-                            f"[dim]... and {len(well_mapping) - 5} more[/dim]"
-                        )
-
             # Positions analyzed first
             if positions:
                 positions_node = result_tree.add(
@@ -310,7 +292,7 @@ def _add_analysis_settings_to_tree(
         peaks_node.add(
             f"Height: {settings.peaks_height_value} ({settings.peaks_height_mode})"
         )
-        peaks_node.add(f"Distance: {settings.peaks_distance} frames")
+        peaks_node.add(f"Distance: {settings.peaks_distance} ms")
         peaks_node.add(f"Prominence multiplier: {settings.peaks_prominence_multiplier}")
 
         # Spike detection
@@ -323,14 +305,19 @@ def _add_analysis_settings_to_tree(
         # Burst analysis
         burst_node = settings_node.add("💥 [green]Burst Analysis[/green]")
         burst_node.add(f"Threshold: {settings.burst_threshold}%")
-        burst_node.add(f"Min duration: {settings.burst_min_duration}s")
+        burst_node.add(f"Min duration: {settings.burst_min_duration}ms")
         burst_node.add(f"Gaussian sigma: {settings.burst_gaussian_sigma}s")
 
         # Synchrony
         sync_node = settings_node.add("🔗 [green]Synchrony Analysis[/green]")
-        sync_node.add(f"Calcium jitter window: {settings.calcium_sync_jitter_window}")
+        sync_node.add(f"Calcium jitter window: {settings.calcium_sync_jitter_window}ms")
+        sync_node.add(f"Calcium peaks max lag: {settings.calcium_peaks_max_lag}ms")
         sync_node.add(f"Network threshold: {settings.calcium_network_threshold}%")
-        sync_node.add(f"Spike cross-corr lag: {settings.spikes_sync_cross_corr_lag}")
+        sync_node.add(f"Spike synchrony lag: {settings.spikes_sync_cross_corr_lag}ms")
+
+        # Peak detection
+        peak_node = settings_node.add("📊 [green]Peak Detection[/green]")
+        peak_node.add(f"Minimum peaks distance: {settings.peaks_distance}ms")
 
         # Stimulation parameters (if evoked)
         if (

@@ -1,6 +1,5 @@
 """Test for plate_map_hash functionality."""
 
-from cali.sqlmodel._model import CaliResult
 from cali.sqlmodel._plate_map_util import compute_plate_map_hash
 
 
@@ -58,73 +57,3 @@ def test_compute_plate_map_hash_different_values() -> None:
     hash2 = compute_plate_map_hash(plate_maps2)
 
     assert hash1 != hash2
-
-
-def test_cali_result_equality_with_plate_map_hash() -> None:
-    """Test CaliResult equality considers plate_map_hash."""
-    result1 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        extraction_settings_id=1,
-        analysis_settings_id=1,
-        plate_map_hash="abc123",
-        positions_analyzed=[0, 1],
-    )
-
-    result2 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        extraction_settings_id=1,
-        analysis_settings_id=1,
-        plate_map_hash="abc123",  # Same hash
-        positions_analyzed=[0, 1],
-    )
-
-    result3 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        extraction_settings_id=1,
-        analysis_settings_id=1,
-        plate_map_hash="xyz789",  # Different hash
-        positions_analyzed=[0, 1],
-    )
-
-    # Same plate_map_hash -> equal
-    assert result1 == result2
-    assert hash(result1) == hash(result2)
-
-    # Different plate_map_hash -> not equal
-    assert result1 != result3
-    assert hash(result1) != hash(result3)
-
-
-def test_cali_result_equality_none_plate_map_hash() -> None:
-    """Test CaliResult equality when plate_map_hash is None."""
-    result1 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        plate_map_hash=None,
-        positions_detected=[0],
-    )
-
-    result2 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        plate_map_hash=None,
-        positions_detected=[0],
-    )
-
-    result3 = CaliResult(
-        experiment=1,
-        detection_settings_id=1,
-        plate_map_hash="abc123",
-        positions_detected=[0],
-    )
-
-    # Both None -> equal
-    assert result1 == result2
-    assert hash(result1) == hash(result2)
-
-    # One None, one not -> not equal
-    assert result1 != result3
-    assert hash(result1) != hash(result3)

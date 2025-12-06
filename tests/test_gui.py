@@ -659,7 +659,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._extraction_settings_combo.setCurrentIndex(1)
     # Detection combo is empty (no detection ID selected)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Detection ID" in error_calls[0]
@@ -672,7 +672,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._extraction_settings_combo.clear()
     gui._run_cali_wdg._extraction_settings_combo.addItem("Select...", None)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Extraction ID" in error_calls[0]
@@ -682,7 +682,7 @@ def test_analysis_only_requires_both_ids(
     gui._run_cali_wdg._detection_settings_combo.clear()
     gui._run_cali_wdg._detection_settings_combo.addItem("Select...", None)
 
-    gui._on_cali_run_clicked()
+    gui._on_cali_run()
 
     assert len(error_calls) == 1
     assert "Detection ID" in error_calls[0] and "Extraction ID" in error_calls[0]
@@ -744,3 +744,129 @@ def test_runs_panel_delete_run(
 
     engine.dispose(close=True)
     panel.close()
+
+
+def test_plate_map_widget_emits_signal_on_accept(qtbot: QtBot) -> None:
+    """Test that _PlateMapWidget emits plateMapSaved signal when dialog is accepted."""
+    from cali.gui._plate_map import _PlateMapWidget
+
+    widget = _PlateMapWidget()
+    qtbot.addWidget(widget)
+
+    # Track signal emission
+    with qtbot.waitSignal(widget.plateMapSaved, timeout=1000):
+        # Simulate dialog accepted
+        widget._on_dialog_accepted()
+
+    # Verify dialog is hidden after accept
+    assert widget._plate_map_dialog.isHidden()
+
+
+def test_plate_map_widget_close_save(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that close dialog with Save emits plateMapSaved and hides dialog."""
+    from unittest.mock import MagicMock
+
+    from qtpy.QtWidgets import QMessageBox
+
+    from cali.gui._plate_map import _PlateMapWidget
+
+    widget = _PlateMapWidget()
+    qtbot.addWidget(widget)
+
+    # Mock QMessageBox.question to return Save
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        MagicMock(return_value=QMessageBox.StandardButton.Save),
+    )
+
+    # Show the dialog first
+    widget._plate_map_dialog.show()
+    assert not widget._plate_map_dialog.isHidden()
+
+    # Track signal emission and call the close handler
+    with qtbot.waitSignal(widget.plateMapSaved, timeout=1000):
+        widget._on_dialog_close_requested()
+
+    # Verify dialog is hidden
+    assert widget._plate_map_dialog.isHidden()
+
+
+def test_plate_map_widget_close_discard(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that close dialog with Discard hides dialog without saving."""
+    from unittest.mock import MagicMock
+
+    from qtpy.QtWidgets import QMessageBox
+
+    from cali.gui._plate_map import _PlateMapWidget
+
+    widget = _PlateMapWidget()
+    qtbot.addWidget(widget)
+
+    # Mock QMessageBox.question to return Discard
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        MagicMock(return_value=QMessageBox.StandardButton.Discard),
+    )
+
+    # Show the dialog first
+    widget._plate_map_dialog.show()
+    assert not widget._plate_map_dialog.isHidden()
+
+    # Call the close handler - should NOT emit plateMapSaved
+    signal_emitted = False
+
+    def on_signal() -> None:
+        nonlocal signal_emitted
+        signal_emitted = True
+
+    widget.plateMapSaved.connect(on_signal)
+    widget._on_dialog_close_requested()
+
+    # Verify dialog is hidden but signal was NOT emitted
+    assert widget._plate_map_dialog.isHidden()
+    assert not signal_emitted
+
+
+def test_plate_map_widget_close_cancel(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that close dialog with Cancel keeps dialog open."""
+    from unittest.mock import MagicMock
+
+    from qtpy.QtWidgets import QMessageBox
+
+    from cali.gui._plate_map import _PlateMapWidget
+
+    widget = _PlateMapWidget()
+    qtbot.addWidget(widget)
+
+    # Mock QMessageBox.question to return Cancel
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        MagicMock(return_value=QMessageBox.StandardButton.Cancel),
+    )
+
+    # Show the dialog first
+    widget._plate_map_dialog.show()
+    assert not widget._plate_map_dialog.isHidden()
+
+    # Call the close handler - should NOT emit plateMapSaved and NOT hide dialog
+    signal_emitted = False
+
+    def on_signal() -> None:
+        nonlocal signal_emitted
+        signal_emitted = True
+
+    widget.plateMapSaved.connect(on_signal)
+    widget._on_dialog_close_requested()
+
+    # Verify dialog is still visible and signal was NOT emitted
+    assert not widget._plate_map_dialog.isHidden()
+    assert not signal_emitted

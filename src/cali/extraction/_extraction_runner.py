@@ -28,6 +28,7 @@ from cali.sqlmodel._model import (
     Traces,
 )
 from cali.util import coordinates_to_mask, mask_to_coordinates
+from cali.util._util import _NUMBA_LOCK
 
 from ._neuropil import create_neuropil_from_dilation
 from ._util import calculate_dff
@@ -46,7 +47,7 @@ class ExtractionRunner:
 
     def cancel(self) -> None:
         """Request cancellation of the extraction process."""
-        cali_logger.info("🗑️ Cancellation requested...")
+        cali_logger.info("🚮 Cancellation requested...")
         self._cancellation_event.set()
 
     def run(
@@ -395,6 +396,17 @@ class ExtractionRunner:
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 
+        # Compute FOV-level analysis (correlation/synchrony) if analysis was run
+        if analysis_settings is not None and not self._check_for_abort_requested():
+            from cali.analysis._fov_analysis import compute_fov_analysis
+
+            fov_analysis = compute_fov_analysis(fov_to_analyze, analysis_settings)
+            if fov_analysis is not None:
+                # Store in temporary attribute for later commit
+                if not hasattr(fov_to_analyze, "_new_fov_analysis"):
+                    fov_to_analyze._new_fov_analysis = []
+                fov_to_analyze._new_fov_analysis.append(fov_analysis)
+
         # Return the FOV with updated ROIs (will be committed by caller)
         return fov_to_analyze
 
@@ -552,9 +564,12 @@ class ExtractionRunner:
 
         # calculate the dff of the roi trace
         # (using corrected trace if neuropil is enabled)
-        dff = calculate_dff(
-            roi_trace, window=extraction_settings.dff_window, plot=False
-        )
+        with _NUMBA_LOCK:
+            dff = calculate_dff(
+                roi_trace,
+                window_ms=extraction_settings.dff_window,
+                frame_rate=extraction_settings.frame_rate,
+            )
 
         # Check for cancellation after DFF calculation
         if self._check_for_abort_requested():
@@ -569,9 +584,13 @@ class ExtractionRunner:
             fs = len(dff) / tot_time_sec  # Sampling frequency (Hz)
             g = np.exp(-1 / (fs * tau))
         # deconvolve the dff trace with adaptive penalty
-        dec_dff, spikes, _, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))
+        dec_dff, spikes, b, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))
         dec_dff = cast("np.ndarray", dec_dff)
         spikes = cast("np.ndarray", spikes)
+        cali_logger.debug(
+            f"📉 Deconvolved ROI {label_value} in {fov_name}:"
+            f" tau_input={tau:.3f}s, tau_fitted={_t}, baseline={b:.4f}."
+        )
 
         # Check for cancellation after deconvolution
         if self._check_for_abort_requested():
@@ -632,8 +651,11 @@ class ExtractionRunner:
             if self._check_for_abort_requested():
                 return None
 
-            # Detect peaks
-            min_distance_frames = analysis_settings.peaks_distance
+            # Detect peaks - convert milliseconds to frames
+            min_distance_ms = analysis_settings.peaks_distance
+            min_distance_frames = max(
+                1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
+            )
             peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
                 dec_dff,
                 peaks_height_dec_dff,

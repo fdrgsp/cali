@@ -13,16 +13,19 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_SELECTED,
     WellPlateView,
 )
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QSize, Qt, Signal
 from qtpy.QtGui import QColor, QIcon
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QVBoxLayout,
@@ -151,16 +154,17 @@ class _ConditionTable(QGroupBox):
 
     def _add_row(self) -> None:
         # check the other colors and make sure the color is unique
-        current_colors = [
+        current_colors = {
             self._table.cellWidget(i, 0).value()[1]
-            for i in range(self._table.rowCount() - 1)
-        ]
-        new_color = QColor.colorNames()[0]
-        while True:
-            idx = np.random.randint(0, len(QColor.colorNames()))
-            new_color = QColor.colorNames()[idx]
-            if new_color not in current_colors:
-                break
+            for i in range(self._table.rowCount())
+        }
+        all_colors = QColor.colorNames()
+        available_colors = [c for c in all_colors if c not in current_colors]
+        # pick a random color from available, fallback to first color if all used
+        if available_colors:
+            new_color = available_colors[np.random.randint(0, len(available_colors))]
+        else:
+            new_color = all_colors[0]
         self._table.insertRow(self._table.rowCount())
         wdg = _ConditionWidget()
         wdg.setValue(("", new_color))
@@ -336,20 +340,20 @@ class PlateMapWidget(QWidget):
 
         try:
             add_to_conditions_list = set()
+            wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
+                self._plate_view._well_items
+            )
             for data in value:
                 # store the data in a list to update the condition table
                 add_to_conditions_list.add(tuple(data.condition))
-                # update the color and data of the wells with the assigned conditions
-                wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
-                    self._plate_view._well_items
-                )
-                for well in wells.values():
-                    if well.data(DATA_INDEX) == tuple(data.row_col):
-                        r, c = well.data(DATA_INDEX)
-                        _, color_name = data.condition
-                        self._plate_view.setWellColor(r, c, color_name)
-                        well.setData(DATA_CONDITION, tuple(data.condition))
-                    # update the condition table
+                # Direct O(1) lookup instead of iterating through all wells
+                row_col: tuple[int, int] = (data.row_col[0], data.row_col[1])
+                if row_col in wells:
+                    well = wells[row_col]
+                    r, c = row_col
+                    _, color_name = data.condition
+                    self._plate_view.setWellColor(r, c, color_name)
+                    well.setData(DATA_CONDITION, tuple(data.condition))
             self.list.setValue(list(add_to_conditions_list))  # type: ignore
         except Exception as e:
             warnings.warn(f"Error loading the plate map: {e}", stacklevel=2)
@@ -416,43 +420,176 @@ class PlateMapWidget(QWidget):
         wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
             self._plate_view._well_items
         )
-        for well_key in wells:
-            if wells[well_key].data(DATA_SELECTED):
-                # remove the well from the selected items
-                self._plate_view._selected_items.difference_update([wells[well_key]])
-                # update the data of the well
-                wells[well_key].setData(DATA_SELECTED, False)
-                wells[well_key].setData(DATA_CONDITION, (condition_name, color_name))
-                # setWellColor will also add the DATA_COLOR to the well item
-                r, c = wells[well_key].data(DATA_INDEX)
-                self._plate_view.setWellColor(r, c, color_name)
+        # Single pass through wells - combine selected and condition update logic
+        for well_key, well in wells.items():
+            is_selected = well.data(DATA_SELECTED)
+            existing_condition = well.data(DATA_CONDITION)
 
-            if wells[well_key].data(DATA_CONDITION) is not None:
-                cond, col = wells[well_key].data(DATA_CONDITION)
-                # if the condition is assigned but the color is different, change color
+            if is_selected:
+                # Remove the well from selected items and assign the new condition
+                self._plate_view._selected_items.difference_update([well])
+                well.setData(DATA_SELECTED, False)
+                well.setData(DATA_CONDITION, (condition_name, color_name))
+                # setWellColor will also add the DATA_COLOR to the well item
+                r, c = well_key
+                self._plate_view.setWellColor(r, c, color_name)
+            elif existing_condition is not None:
+                cond, col = existing_condition
+                # if the condition name matches but color is different, update color
                 if cond == condition_name and col != color_name:
-                    r, c = wells[well_key].data(DATA_INDEX)
+                    r, c = well_key
                     self._plate_view.setWellColor(r, c, color_name)
-                    wells[well_key].setData(
-                        DATA_CONDITION, (condition_name, color_name)
-                    )
-                # if the color is assigned but the condition is different, simply
-                # update the item data
+                    well.setData(DATA_CONDITION, (condition_name, color_name))
+                # if the color matches but condition is different, update condition
                 elif cond != condition_name and col == color_name:
-                    wells[well_key].setData(
-                        DATA_CONDITION, (condition_name, color_name)
-                    )
+                    well.setData(DATA_CONDITION, (condition_name, color_name))
 
     def _remove_condition(self, value: tuple[str, str]) -> None:
         condition_name, color_name = value
         wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
             self._plate_view._well_items
         )
-        for well_key in wells:
-            if wells[well_key].data(DATA_CONDITION) is not None:
-                cond, col = wells[well_key].data(DATA_CONDITION)
+        for well_key, well in wells.items():
+            existing_condition = well.data(DATA_CONDITION)
+            if existing_condition is not None:
+                cond, col = existing_condition
                 if cond == condition_name and col == color_name:
-                    r, c = wells[well_key].data(DATA_INDEX)
+                    r, c = well_key
                     self._plate_view.setWellColor(r, c, None)
-                    wells[well_key].setData(DATA_CONDITION, None)
+                    well.setData(DATA_CONDITION, None)
                     wells[well_key].setData(DATA_SELECTED, False)
+
+
+class _PlateMapDialog(QDialog):
+    """Custom dialog that emits a signal when close is requested."""
+
+    closeRequested = Signal()
+
+    def closeEvent(self, a0: Any) -> None:
+        """Handle the close event by emitting a signal."""
+        a0.ignore()  # Don't close immediately
+        self.closeRequested.emit()
+
+
+class _PlateMapWidget(QWidget):
+    """Widget to show and edit the plate maps."""
+
+    plateMapSaved = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self._plate: useq.WellPlate | None = None
+
+        # button to show the plate map dialog
+        self._plate_map_btn = QPushButton("Show/Edit Plate Map")
+        self._plate_map_btn.setIcon(icon(MDI6.compass_outline, color=GREEN))
+        self._plate_map_btn.setIconSize(QSize(20, 20))
+        self._plate_map_btn.clicked.connect(self._show_plate_map_dialog)
+
+        # dialog to show the plate maps
+        self._plate_map_dialog = _PlateMapDialog(self)
+        self._plate_map_dialog.setWindowTitle("Plate Map Editor")
+        self._plate_map_dialog.closeRequested.connect(self._on_dialog_close_requested)
+        dialog_layout = QVBoxLayout(self._plate_map_dialog)
+        dialog_layout.setContentsMargins(10, 10, 10, 10)
+        dialog_layout.setSpacing(10)
+
+        # plate map widgets container
+        plate_maps_container = QWidget()
+        plate_map_layout = QHBoxLayout(plate_maps_container)
+        plate_map_layout.setContentsMargins(0, 0, 0, 0)
+        plate_map_layout.setSpacing(5)
+        self._plate_map_genotype = PlateMapWidget(self, title="Genotype Map")
+        self._plate_map_treatment = PlateMapWidget(self, title="Treatment Map")
+        plate_map_layout.addWidget(self._plate_map_genotype)
+        plate_map_layout.addWidget(self._plate_map_treatment)
+
+        # OK/Cancel buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self._on_dialog_accepted)
+        button_box.rejected.connect(self._on_dialog_close_requested)
+
+        dialog_layout.addWidget(plate_maps_container)
+        dialog_layout.addWidget(button_box)
+
+        # main layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addWidget(self._plate_map_btn)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    def value(
+        self,
+    ) -> tuple[useq.WellPlate | None, list[PlateMapData], list[PlateMapData]]:
+        """Get the plate map data."""
+        return (
+            self._plate,
+            self._plate_map_genotype.value(),
+            self._plate_map_treatment.value(),
+        )
+
+    def setValue(
+        self,
+        plate: useq.WellPlate | None,
+        genotype_map: list[PlateMapData],
+        treatment_map: list[PlateMapData],
+    ) -> None:
+        """Set the plate map data."""
+        self.setPlate(plate)
+        self._plate_map_genotype.setValue(genotype_map)
+        self._plate_map_treatment.setValue(treatment_map)
+
+    def setPlate(self, plate: useq.WellPlate | None) -> None:
+        """Set the plate for the plate maps."""
+        self._plate = plate
+        if plate is None:
+            self.clear()
+            return
+        self._plate_map_genotype.setPlate(plate)
+        self._plate_map_treatment.setPlate(plate)
+
+    def clear(self) -> None:
+        """Clear the plate map data."""
+        self._plate_map_genotype.clear()
+        self._plate_map_treatment.clear()
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_dialog_accepted(self) -> None:
+        """Handle the dialog accepted event."""
+        self._plate_map_dialog.hide()
+        self.plateMapSaved.emit()
+
+    def _on_dialog_close_requested(self) -> None:
+        """Handle dialog close request with confirmation."""
+        reply = QMessageBox.question(
+            self._plate_map_dialog,
+            "Save Plate Map?",
+            "Do you want to save the plate map before closing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Save:
+            self._plate_map_dialog.hide()
+            self.plateMapSaved.emit()
+        elif reply == QMessageBox.StandardButton.Discard:
+            self._plate_map_dialog.hide()
+        # If Cancel, do nothing - dialog stays open
+
+    def _show_plate_map_dialog(self) -> None:
+        """Show the plate map dialog."""
+        # ensure the dialog is visible and properly positioned
+        if self._plate_map_dialog.isHidden() or not self._plate_map_dialog.isVisible():
+            self._plate_map_dialog.show()
+        # always try to bring to front and activate
+        self._plate_map_dialog.raise_()
+        self._plate_map_dialog.activateWindow()
+        # force focus on the dialog
+        self._plate_map_dialog.setFocus()
