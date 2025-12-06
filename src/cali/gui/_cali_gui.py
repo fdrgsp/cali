@@ -808,8 +808,6 @@ class CaliGui(QMainWindow):
         """Update the GUI settings based on the latest analysis result."""
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
-        # populate detection settings combobox in run widget
-        self._populate_settings(database_path)
         # select first run if available
         if self._runs_panel._runs_list.count() > 0:
             # select first run
@@ -817,6 +815,9 @@ class CaliGui(QMainWindow):
             # emit runSelected signal for the first run
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
                 self._runs_panel._on_item_clicked(first_item)
+        else:
+            # populate detection settings combobox in run widget
+            self._populate_settings(database_path)
         # load plate plan data
         if experiment is None:
             experiment = Experiment.load_from_db(database_path, load_data=False)
@@ -1994,9 +1995,9 @@ class CaliGui(QMainWindow):
                                 a_settings.calcium_sync_jitter_window
                             ),
                             calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
-                            calcium_network_threshold=(
-                                a_settings.calcium_network_threshold
-                            ),
+                            # calcium_network_threshold=(
+                            #     a_settings.calcium_network_threshold
+                            # ),
                         ),
                         spikes_data=SpikeData(
                             spike_threshold=a_settings.spike_threshold_value,

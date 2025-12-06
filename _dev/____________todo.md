@@ -40,3 +40,8 @@ ask to claude:
 
 - add connectivity, etc...
 
+- add from metadata to frame rate (px size?)
+
+- add analisis runner to extraction
+
+- move thread widget near run and use it for both extraction and analysis

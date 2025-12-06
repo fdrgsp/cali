@@ -891,6 +891,7 @@ class ExtractionSettings(SQLModel, table=True):
     decay_constant: float = 0.0
     dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
+    pixel_size: float | None = None  # pixel size in micrometers (µm)
 
     threads: int = Field(default=1)
 
@@ -909,6 +910,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
             and self.frame_rate == other.frame_rate
+            and self.pixel_size == other.pixel_size
             # and self.threads == other.threads
         )
 
@@ -922,6 +924,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.decay_constant,
                 self.dff_window,
                 self.frame_rate,
+                self.pixel_size,
                 # self.threads,
             )
         )
@@ -1695,6 +1698,8 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
     calcium_dff_correlation_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
+    calcium_dec_dff_corr_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
     calcium_peaks_jitter_synchrony_matrix : list[list[float]] | None
         Jitter synchrony on calcium peak events (NxN for N active ROIs)
     global_calcium_peaks_jitter_synchrony : float | None
@@ -1742,8 +1747,12 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     # Calcium peaks metrics (from dec_dff traces and peak events)
-    # 1. Zero-lag correlation on DF/F traces
+    # 0. Zero-lag correlation on DF/F traces
     calcium_dff_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 1. Zero-lag correlation on deconvolved DF/F traces
+    calcium_dec_dff_corr_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     # 2. Jitter synchrony on calcium peaks

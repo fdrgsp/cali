@@ -4,18 +4,21 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
+from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+from superqt.fonticon import icon
 
 from cali._constants import (
     DEFAULT_DFF_WINDOW,
@@ -34,10 +37,19 @@ FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 
 @dataclass(frozen=True)
+class MetadataData:
+    """Data structure to hold metadata settings."""
+
+    pixel_size: float | None = None  # micrometers (µm), None if 0
+    frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
+
+
+@dataclass(frozen=True)
 class ExtractionSettingsData:
     """Data structure to hold the extraction settings."""
 
     trace_extraction_data: TraceExtractionData | None = None
+    metadata_data: MetadataData | None = None
 
 
 @dataclass(frozen=True)
@@ -55,7 +67,6 @@ class TraceExtractionData:
 
     dff_window_size: float = DEFAULT_DFF_WINDOW  # milliseconds
     decay_constant: float = 0.0  # seconds
-    frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
     neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
     neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
     neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
@@ -89,9 +100,9 @@ class _ExtractionGUI(QWidget):
             "operating system and GUI responsiveness.\n"
             "If your system becomes unresponsive, consider reducing this number."
         )
-        threads_lbl = QLabel("Number of Threads:")
-        threads_lbl.setSizePolicy(*FIXED)
-        self._threads = QSpinBox()
+        self._threads_lbl = QLabel("Number of Threads:", threads_wdg)
+        self._threads_lbl.setSizePolicy(*FIXED)
+        self._threads = QSpinBox(threads_wdg)
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
@@ -101,6 +112,7 @@ class _ExtractionGUI(QWidget):
         threads_layout.addWidget(self._threads)
 
         # EXTRACTION WIDGETS ---------------------------------------------------------
+        self._metadata_wdg = _MetadataWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
 
@@ -114,6 +126,8 @@ class _ExtractionGUI(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         # add extraction widgets to scroll area
+        group_layout.addWidget(create_divider_line("Metadata"))
+        group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Neuropil Settings"))
         group_layout.addWidget(self._neuropil_wdg)
         group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
@@ -130,8 +144,8 @@ class _ExtractionGUI(QWidget):
         main_layout.addWidget(analysis_scroll_area)
 
         # STYLING ---------------------------------------------------------------------
-        fix_width = self._neuropil_wdg._neuropil_inner_radius_lbl.sizeHint().width()
-        self._trace_extraction_wdg.set_labels_width(fix_width)
+        fix_width = self._threads_lbl.sizeHint().width()
+        self._metadata_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
         self._trace_extraction_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
@@ -141,7 +155,10 @@ class _ExtractionGUI(QWidget):
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
         return ExtractionSettingsData(
-            self._trace_extraction_wdg.value(self._neuropil_wdg.value()),
+            trace_extraction_data=self._trace_extraction_wdg.value(
+                self._neuropil_wdg.value()
+            ),
+            metadata_data=self._metadata_wdg.value(),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -155,9 +172,12 @@ class _ExtractionGUI(QWidget):
                 value.trace_extraction_data.neuropil_correction_factor,
             )
             self._neuropil_wdg.setValue(neuropil_data)
+        if value.metadata_data is not None:
+            self._metadata_wdg.setValue(value.metadata_data)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
+        self._metadata_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
 
@@ -173,6 +193,7 @@ class _ExtractionGUI(QWidget):
 
         # Extract nested data with defaults
         trace_data = settings.trace_extraction_data
+        metadata_data = settings.metadata_data
 
         settings = ExtractionSettings(
             created_at=datetime.now(),
@@ -188,7 +209,10 @@ class _ExtractionGUI(QWidget):
             dff_window=(
                 trace_data.dff_window_size if trace_data else DEFAULT_DFF_WINDOW
             ),
-            frame_rate=trace_data.frame_rate if trace_data else DEFAULT_FRAME_RATE,
+            frame_rate=(
+                metadata_data.frame_rate if metadata_data else DEFAULT_FRAME_RATE
+            ),
+            pixel_size=metadata_data.pixel_size if metadata_data else None,
         )
 
         return settings

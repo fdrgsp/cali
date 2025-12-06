@@ -128,9 +128,9 @@ class _AnalysisGUI(QWidget):
             "operating system and GUI responsiveness.\n"
             "If your system becomes unresponsive, consider reducing this number."
         )
-        threads_lbl = QLabel("Number of Threads:")
+        threads_lbl = QLabel("Number of Threads:", threads_wdg)
         threads_lbl.setSizePolicy(*FIXED)
-        self._threads = QSpinBox()
+        self._threads = QSpinBox(threads_wdg)
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
@@ -172,7 +172,7 @@ class _AnalysisGUI(QWidget):
         main_layout.addWidget(analysis_scroll_area)
 
         # STYLING ---------------------------------------------------------------------
-        fix_width = self._calcium_peaks_wdg._peaks_distance_lbl.sizeHint().width()
+        fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
         self._experiment_type_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
@@ -326,9 +326,9 @@ class _ExperimentTypeWidget(QWidget):
         super().__init__(parent)
 
         # experiment type combo
-        self._experiment_type_lbl = QLabel("Experiment Type:")
+        self._experiment_type_lbl = QLabel("Experiment Type:", self)
         self._experiment_type_lbl.setSizePolicy(*FIXED)
-        self._experiment_type_combo = QComboBox()
+        self._experiment_type_combo = QComboBox(self)
         self._experiment_type_combo.addItems([SPONTANEOUS, EVOKED])
         self._experiment_type_combo.currentTextChanged.connect(
             self._on_activity_changed
@@ -365,9 +365,9 @@ class _ExperimentTypeWidget(QWidget):
             "• Logarithmic: y = a*log(x) + b (e.g. y = 2*log(x) + 1)\\n"
             "Leave empty to use values from the acquisition metadata (%)."
         )
-        self._led_eq_lbl = QLabel("LED Power Equation:")
+        self._led_eq_lbl = QLabel("LED Power Equation:", self._led_power_eq)
         self._led_eq_lbl.setSizePolicy(*FIXED)
-        self._led_power_equation_le = QLineEdit(self)
+        self._led_power_equation_le = QLineEdit(self._led_power_eq)
         self._led_power_equation_le.setPlaceholderText(
             "e.g. y = 2*x + 3 (Leave empty to use values from acquisition metadata)"
         )
@@ -383,9 +383,12 @@ class _ExperimentTypeWidget(QWidget):
         self._led_pulse_duration_wdg.setToolTip(
             "Duration of each LED pulse in milliseconds."
         )
-        self._led_pulse_duration_lbl = QLabel("LED Pulse Duration (ms):")
+        self._led_pulse_duration_lbl = QLabel(
+            "LED Pulse Duration:", self._led_pulse_duration_wdg
+        )
         self._led_pulse_duration_lbl.setSizePolicy(*FIXED)
-        self._led_pulse_duration_spin = QDoubleSpinBox(self)
+        self._led_pulse_duration_spin = QDoubleSpinBox(self._led_pulse_duration_wdg)
+        self._led_pulse_duration_spin.setSuffix(" ms")
         self._led_pulse_duration_spin.setRange(0.0, 10000.0)
         led_pulse_layout = QHBoxLayout(self._led_pulse_duration_wdg)
         led_pulse_layout.setContentsMargins(0, 0, 0, 0)
@@ -403,9 +406,9 @@ class _ExperimentTypeWidget(QWidget):
             "The length of this list should match the length of the 'Stimulation "
             "Frames' list."
         )
-        self._led_powers_lbl = QLabel("LED Pulse Powers (%):")
+        self._led_powers_lbl = QLabel("LED Pulse Powers (%):", self._led_powers_wdg)
         self._led_powers_lbl.setSizePolicy(*FIXED)
-        self._led_powers_le = QLineEdit(self)
+        self._led_powers_le = QLineEdit(self._led_powers_wdg)
         self._led_powers_le.setPlaceholderText("e.g. 20, 40, 60, 80")
         led_powers_layout = QHBoxLayout(self._led_powers_wdg)
         led_powers_layout.setContentsMargins(0, 0, 0, 0)
@@ -422,9 +425,11 @@ class _ExperimentTypeWidget(QWidget):
             "The length of this list should match the length of the 'LED Pulse Powers' "
             "list."
         )
-        self.led_pulse_on_frames_lbl = QLabel("Stimulation Frames:")
+        self.led_pulse_on_frames_lbl = QLabel(
+            "Stimulation Frames:", self._led_pulse_on_frames_wdg
+        )
         self.led_pulse_on_frames_lbl.setSizePolicy(*FIXED)
-        self._led_pulse_on_frames_le = QLineEdit(self)
+        self._led_pulse_on_frames_le = QLineEdit(self._led_pulse_on_frames_wdg)
         self._led_pulse_on_frames_le.setPlaceholderText("e.g. 1, 5, 10, 15")
         led_pulse_on_frames_layout = QHBoxLayout(self._led_pulse_on_frames_wdg)
         led_pulse_on_frames_layout.setContentsMargins(0, 0, 0, 0)
@@ -653,9 +658,12 @@ class _CalciumPeaksWidget(QWidget):
             "• Lower values: More sensitive, may detect noise or incomplete decay\n"
             "• Typical range: 100-1000ms depending on calcium indicator dynamics."
         )
-        self._peaks_distance_lbl = QLabel("Minimum Peaks Distance (ms):")
+        self._peaks_distance_lbl = QLabel(
+            "Minimum Peaks Distance:", self._peaks_distance_wdg
+        )
         self._peaks_distance_lbl.setSizePolicy(*FIXED)
-        self._peaks_distance_spin = QDoubleSpinBox(self)
+        self._peaks_distance_spin = QDoubleSpinBox(self._peaks_distance_wdg)
+        self._peaks_distance_spin.setSuffix(" ms")
         self._peaks_distance_spin.setDecimals(2)
         self._peaks_distance_spin.setRange(1.0, 10000.0)
         self._peaks_distance_spin.setSingleStep(10.0)
@@ -678,9 +686,13 @@ class _CalciumPeaksWidget(QWidget):
             "• Values <1.0: More lenient, allows peaks closer to noise level\n\n"
             "Increase if detecting too many noise artifacts as peaks."
         )
-        self._peaks_prominence_lbl = QLabel("Peaks Prominence Multiplier:")
+        self._peaks_prominence_lbl = QLabel(
+            "Peaks Prominence Multiplier:", self._peaks_prominence_wdg
+        )
         self._peaks_prominence_lbl.setSizePolicy(*FIXED)
-        self._peaks_prominence_multiplier_spin = QDoubleSpinBox(self)
+        self._peaks_prominence_multiplier_spin = QDoubleSpinBox(
+            self._peaks_prominence_wdg
+        )
         self._peaks_prominence_multiplier_spin.setDecimals(4)
         self._peaks_prominence_multiplier_spin.setRange(0, 100000.0)
         self._peaks_prominence_multiplier_spin.setSingleStep(0.01)
@@ -692,8 +704,8 @@ class _CalciumPeaksWidget(QWidget):
         peaks_prominence_layout.addWidget(self._peaks_prominence_multiplier_spin)
 
         # synchrony jitter window
-        self._calcium_synchrony_wdg = QWidget(self)
-        self._calcium_synchrony_wdg.setToolTip(
+        self._calcium_sync_wdg = QWidget(self)
+        self._calcium_sync_wdg.setToolTip(
             "Calcium Peak Synchrony Analysis Settings\n\n"
             "Temporal Tolerance Parameter:\n"
             "Controls the maximum time window (in milliseconds) for detecting "
@@ -710,14 +722,17 @@ class _CalciumPeaksWidget(QWidget):
             "4100ms]\n"
             "Result: All pairs are synchronous (differences ≤ 200 ms)."
         )
-        self._calcium_jitter_window_lbl = QLabel("Synchrony Jitter (ms):")
+        self._calcium_jitter_window_lbl = QLabel(
+            "Synchrony Jitter:", self._calcium_sync_wdg
+        )
         self._calcium_jitter_window_lbl.setSizePolicy(*FIXED)
-        self._calcium_synchrony_jitter_spin = QDoubleSpinBox(self)
+        self._calcium_synchrony_jitter_spin = QDoubleSpinBox(self._calcium_sync_wdg)
+        self._calcium_synchrony_jitter_spin.setSuffix(" ms")
         self._calcium_synchrony_jitter_spin.setDecimals(2)
         self._calcium_synchrony_jitter_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
         self._calcium_synchrony_jitter_spin.setSingleStep(10.0)
         self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        calcium_synchrony_layout = QHBoxLayout(self._calcium_synchrony_wdg)
+        calcium_synchrony_layout = QHBoxLayout(self._calcium_sync_wdg)
         calcium_synchrony_layout.setContentsMargins(0, 0, 0, 0)
         calcium_synchrony_layout.setSpacing(5)
         calcium_synchrony_layout.addWidget(self._calcium_jitter_window_lbl)
@@ -739,11 +754,14 @@ class _CalciumPeaksWidget(QWidget):
             "• Larger values: More permissive, detects longer-range temporal patterns\n"
             "• Smaller values: More strict, focuses on near-simultaneous events"
         )
-        self._calcium_max_lag_lbl = QLabel("Max Lag for Peaks (ms):")
+        self._calcium_max_lag_lbl = QLabel(
+            "Max Lag for Peaks:", self._calcium_max_lag_wdg
+        )
         self._calcium_max_lag_lbl.setSizePolicy(*FIXED)
-        self._calcium_max_lag_spin = QDoubleSpinBox(self)
+        self._calcium_max_lag_spin = QDoubleSpinBox(self._calcium_max_lag_wdg)
+        self._calcium_max_lag_spin.setSuffix(" ms")
         self._calcium_max_lag_spin.setDecimals(2)
-        self._calcium_max_lag_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
+        self._calcium_max_lag_spin.setRange(0.0, 50000.0)  # 0 to 50 seconds
         self._calcium_max_lag_spin.setSingleStep(10.0)
         self._calcium_max_lag_spin.setValue(DEFAULT_CALCIUM_PEAKS_MAX_LAG)
         calcium_max_lag_layout = QHBoxLayout(self._calcium_max_lag_wdg)
@@ -752,35 +770,35 @@ class _CalciumPeaksWidget(QWidget):
         calcium_max_lag_layout.addWidget(self._calcium_max_lag_lbl)
         calcium_max_lag_layout.addWidget(self._calcium_max_lag_spin)
 
-        # network connectivity threshold
-        self._calcium_network_wdg = QWidget(self)
-        self._calcium_network_wdg.setToolTip(
-            "Network Connectivity Threshold (Percentile)\n\n"
-            "Controls which correlation values become network connections.\n"
-            "Uses PERCENTILE-based thresholding, not absolute correlation values.\n\n"
-            "How it works:\n"
-            "• Calculates percentile of ALL pairwise correlations\n"
-            "• Only correlations above this percentile become connections\n"
-            "• 90th percentile = top 10% of correlations become edges\n"
-            "• 95th percentile = top 5% (more conservative)\n"
-            "• 80th percentile = top 20% (more liberal)\n\n"
-            "Important: A 0.95 correlation may show as 'not connected'\n"
-            "if most correlations in your data are higher (e.g., 0.96-0.99).\n"
-            "This ensures only the STRONGEST connections are shown\n"
-            "relative to your specific dataset."
-        )
-        self._calcium_network_lbl = QLabel("Network Threshold (%):")
-        self._calcium_network_lbl.setSizePolicy(*FIXED)
-        self._calcium_network_threshold_spin = QDoubleSpinBox(self)
-        self._calcium_network_threshold_spin.setRange(1.0, 100.0)
-        self._calcium_network_threshold_spin.setSingleStep(5.0)
-        self._calcium_network_threshold_spin.setDecimals(1)
-        self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
-        calcium_network_layout = QHBoxLayout(self._calcium_network_wdg)
-        calcium_network_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_network_layout.setSpacing(5)
-        calcium_network_layout.addWidget(self._calcium_network_lbl)
-        calcium_network_layout.addWidget(self._calcium_network_threshold_spin)
+        # # network connectivity threshold
+        # self._calcium_network_wdg = QWidget(self)
+        # self._calcium_network_wdg.setToolTip(
+        #     "Network Connectivity Threshold (Percentile)\n\n"
+        #     "Controls which correlation values become network connections.\n"
+        #     "Uses PERCENTILE-based thresholding, not absolute correlation values.\n\n"
+        #     "How it works:\n"
+        #     "• Calculates percentile of ALL pairwise correlations\n"
+        #     "• Only correlations above this percentile become connections\n"
+        #     "• 90th percentile = top 10% of correlations become edges\n"
+        #     "• 95th percentile = top 5% (more conservative)\n"
+        #     "• 80th percentile = top 20% (more liberal)\n\n"
+        #     "Important: A 0.95 correlation may show as 'not connected'\n"
+        #     "if most correlations in your data are higher (e.g., 0.96-0.99).\n"
+        #     "This ensures only the STRONGEST connections are shown\n"
+        #     "relative to your specific dataset."
+        # )
+        # self._calcium_network_lbl = QLabel("Network Threshold (%):")
+        # self._calcium_network_lbl.setSizePolicy(*FIXED)
+        # self._ca_network_threshold_spin = QDoubleSpinBox(self)
+        # self._ca_network_threshold_spin.setRange(1.0, 100.0)
+        # self._ca_network_threshold_spin.setSingleStep(5.0)
+        # self._ca_network_threshold_spin.setDecimals(1)
+        # self._ca_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
+        # calcium_network_layout = QHBoxLayout(self._calcium_network_wdg)
+        # calcium_network_layout.setContentsMargins(0, 0, 0, 0)
+        # calcium_network_layout.setSpacing(5)
+        # calcium_network_layout.addWidget(self._calcium_network_lbl)
+        # calcium_network_layout.addWidget(self._ca_network_threshold_spin)
 
         # main layout
         layout = QVBoxLayout(self)
@@ -789,9 +807,9 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_height)
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
-        layout.addWidget(self._calcium_synchrony_wdg)
+        layout.addWidget(self._calcium_sync_wdg)
         layout.addWidget(self._calcium_max_lag_wdg)
-        layout.addWidget(self._calcium_network_wdg)
+        # layout.addWidget(self._calcium_network_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -802,7 +820,7 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_prominence_lbl.setFixedWidth(width)
         self._calcium_jitter_window_lbl.setFixedWidth(width)
         self._calcium_max_lag_lbl.setFixedWidth(width)
-        self._calcium_network_lbl.setFixedWidth(width)
+        # self._calcium_network_lbl.setFixedWidth(width)
 
     def value(self) -> CalciumPeaksData:
         """Get the current values of the widget."""
@@ -812,7 +830,7 @@ class _CalciumPeaksWidget(QWidget):
             self._peaks_prominence_multiplier_spin.value(),
             self._calcium_synchrony_jitter_spin.value(),
             self._calcium_max_lag_spin.value(),
-            self._calcium_network_threshold_spin.value(),
+            # self._ca_network_threshold_spin.value(),
         )
 
     def setValue(self, value: CalciumPeaksData) -> None:
@@ -824,7 +842,7 @@ class _CalciumPeaksWidget(QWidget):
         )
         self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
         self._calcium_max_lag_spin.setValue(value.calcium_peaks_max_lag)
-        self._calcium_network_threshold_spin.setValue(value.calcium_network_threshold)
+        # self._ca_network_threshold_spin.setValue(value.calcium_network_threshold)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -832,7 +850,7 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_distance_spin.setValue(200.0)  # 2 frames at 10fps = 200ms
         self._peaks_prominence_multiplier_spin.setValue(1)
         self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        self._calcium_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
+        # self._ca_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
 
 
 class _SpikeThresholdWidget(QWidget):
@@ -855,7 +873,7 @@ class _SpikeThresholdWidget(QWidget):
             "  For ROIs with <10 spikes: Threshold = 0.01 * multiplier (fallback)"
         )
 
-        self._spike_threshold_lbl = QLabel("Spike Detection Threshold:")
+        self._spike_threshold_lbl = QLabel("Spike Detection Threshold:", self)
         self._spike_threshold_lbl.setSizePolicy(*FIXED)
 
         self._spike_threshold_spin = QDoubleSpinBox(self)
@@ -930,7 +948,7 @@ class _BurstWidget(QWidget):
             "   Set to 0 to disable smoothing."
         )
 
-        self._burst_threshold_lbl = QLabel("Burst Threshold (%):")
+        self._burst_threshold_lbl = QLabel("Burst Threshold (%):", self)
         self._burst_threshold_lbl.setSizePolicy(*FIXED)
         self._burst_threshold = QDoubleSpinBox(self)
         self._burst_threshold.setDecimals(2)
@@ -938,15 +956,16 @@ class _BurstWidget(QWidget):
         self._burst_threshold.setSingleStep(1)
         self._burst_threshold.setValue(DEFAULT_BURST_THRESHOLD)
 
-        self._burst_min_threshold_label = QLabel("Burst Min Duration (ms):")
+        self._burst_min_threshold_label = QLabel("Burst Min Duration:", self)
         self._burst_min_threshold_label.setSizePolicy(*FIXED)
         self._burst_min_duration_ms = QDoubleSpinBox(self)
+        self._burst_min_duration_ms.setSuffix(" ms")
         self._burst_min_duration_ms.setDecimals(2)
         self._burst_min_duration_ms.setRange(0.0, 100000.0)
         self._burst_min_duration_ms.setSingleStep(100.0)
         self._burst_min_duration_ms.setValue(3000.0)  # 3 seconds
 
-        self._burst_blur_label = QLabel("Burst Gaussian Blur Sigma:")
+        self._burst_blur_label = QLabel("Burst Gaussian Blur Sigma:", self)
         self._burst_blur_label.setSizePolicy(*FIXED)
         self._burst_blur_sigma = QDoubleSpinBox(self)
         self._burst_blur_sigma.setDecimals(2)
@@ -1016,9 +1035,12 @@ class _SpikeWidget(QWidget):
             "Algorithm finds high correlation at lag +200ms and -100ms\n"
             "Result: High synchrony score based on best alignment."
         )
-        self._spikes_sync_cross_corr_lag = QLabel("Synchrony Lag (ms):")
+        self._spikes_sync_cross_corr_lag = QLabel(
+            "Synchrony Lag:", self._spike_synchrony_wdg
+        )
         self._spikes_sync_cross_corr_lag.setSizePolicy(*FIXED)
         self._spikes_sync_cross_corr_max_lag = QDoubleSpinBox(self)
+        self._spikes_sync_cross_corr_max_lag.setSuffix(" ms")
         self._spikes_sync_cross_corr_max_lag.setDecimals(2)
         self._spikes_sync_cross_corr_max_lag.setRange(0.0, 10000.0)  # 0 to 10 seconds
         self._spikes_sync_cross_corr_max_lag.setSingleStep(10.0)
