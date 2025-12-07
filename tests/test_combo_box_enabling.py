@@ -56,6 +56,28 @@ def widget_with_db(
     engine.dispose(close=True)
 
 
+def _count_combo_items(widget: _SingleWellGraphWidget, *, enabled: bool) -> int:
+    """Count enabled or disabled combo box items (excluding sections and 'None')."""
+    model = widget._combo.model()
+    return sum(
+        1
+        for i in range(model.rowCount())
+        if (bool(model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled) == enabled)
+        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)  # Skip sections
+        and model.item(i).text() != "None"
+    )
+
+
+def _assert_pipeline_stages(
+    widget: _SingleWellGraphWidget, *, has_det: bool, has_ext: bool, has_ana: bool
+) -> None:
+    """Assert pipeline stage availability matches expectations."""
+    actual_det, actual_ext, actual_ana = widget._check_pipeline_stage_availability()
+    assert actual_det == has_det
+    assert actual_ext == has_ext
+    assert actual_ana == has_ana
+
+
 # ============================================================================
 # Combo Box Enabling/Disabling Tests
 # ============================================================================
@@ -68,25 +90,10 @@ def test_combo_disabled_without_fov_or_run(
     widget, _, _ = widget_with_db
 
     # Initial state - no FOV or run_id
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert not has_det
-    assert not has_ext
-    assert not has_ana
+    _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
-    # Count disabled items
-    # (38 plots for spontaneous experiment - evoked plots not shown yet)
-    # (Added thresholded spike intensity heatmap)
-    model = widget._combo.model()
-    disabled_count = sum(
-        1
-        for i in range(model.rowCount())
-        if not (model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled)
-        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)  # Skip sections
-        and model.item(i).text() != "None"
-    )
-
-    # All plots should be disabled (36 plots require pipeline stages)
-    assert disabled_count == 40
+    # All plots should be disabled (40 plots for spontaneous experiment)
+    assert _count_combo_items(widget, enabled=False) == 40
 
 
 def test_combo_disabled_with_only_run_id(
@@ -98,24 +105,12 @@ def test_combo_disabled_with_only_run_id(
     # Set run_id but not FOV
     widget.run_id = 1
 
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert not has_det  # No FOV, so no detection
-    assert not has_ext
-    assert not has_ana
+    # No FOV, so no pipeline stages available
+    _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # All items should still be disabled
-    # (61 plots: 47 spontaneous + 14 evoked, because exp_type is "Evoked Activity")
-    # (Added thresholded spike intensity heatmap + 6 new stim/non-stim heatmaps)
-    model = widget._combo.model()
-    disabled_count = sum(
-        1
-        for i in range(model.rowCount())
-        if not (model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled)
-        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)
-        and model.item(i).text() != "None"
-    )
-
-    assert disabled_count == 63
+    # (63 plots: spontaneous + evoked, because exp_type is "Evoked Activity")
+    assert _count_combo_items(widget, enabled=False) == 63
 
 
 def test_combo_enabled_with_fov_and_run_id(
@@ -129,23 +124,10 @@ def test_combo_enabled_with_fov_and_run_id(
     widget.fov = fov_name
 
     # All pipeline stages should be available
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert has_det
-    assert has_ext
-    assert has_ana
+    _assert_pipeline_stages(widget, has_det=True, has_ext=True, has_ana=True)
 
-    # All items should be enabled
-    model = widget._combo.model()
-    enabled_count = sum(
-        1
-        for i in range(model.rowCount())  # type: ignore[union-attr]
-        if (model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled)  # type: ignore[union-attr]
-        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)  # type: ignore[union-attr]
-        and model.item(i).text() != "None"  # type: ignore[union-attr]
-    )
-
-    # Spontaneous plots enabled (not evoked experiment)
-    assert enabled_count > 0  # At least some plots should be enabled
+    # At least some plots should be enabled
+    assert _count_combo_items(widget, enabled=True) > 0
 
 
 def test_combo_updates_on_fov_change(
@@ -157,15 +139,11 @@ def test_combo_updates_on_fov_change(
     # Set run_id first
     widget.run_id = 1
 
-    # Initially disabled
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert not has_det
+    # Initially no pipeline stages (no FOV yet)
+    _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # Now set FOV - this should trigger _update_combo_box()
     widget.fov = fov_name
 
-    # Now should be enabled
-    has_det, has_ext, has_ana = widget._check_pipeline_stage_availability()
-    assert has_det
-    assert has_ext
-    assert has_ana
+    # Now all pipeline stages should be available
+    _assert_pipeline_stages(widget, has_det=True, has_ext=True, has_ana=True)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from qtpy.QtWidgets import QWidget
 
 from cali.gui._pygraph_plot_widgets import _ConditionsDialog
@@ -16,26 +17,27 @@ if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
 
-def test_default_color_evk_stim() -> None:
-    """Test that evk_stim conditions get green by default."""
-    assert _get_default_color("c1_g1_evk_stim") == "green"
-    assert _get_default_color("control_evk_stim") == "green"
-    assert _get_default_color("treatment_A_evk_stim") == "green"
-
-
-def test_default_color_evk_non_stim() -> None:
-    """Test that evk_non_stim conditions get magenta by default."""
-    assert _get_default_color("c1_g1_evk_non_stim") == "magenta"
-    assert _get_default_color("control_evk_non_stim") == "magenta"
-    assert _get_default_color("treatment_A_evk_non_stim") == "magenta"
-
-
-def test_default_color_non_evoked() -> None:
-    """Test that non-evoked conditions get gray by default."""
-    assert _get_default_color("control") == "gray"
-    assert _get_default_color("treatment_A") == "gray"
-    assert _get_default_color("knockout") == "gray"
-    assert _get_default_color("c1_g1") == "gray"
+@pytest.mark.parametrize(
+    ("condition_name", "expected_color"),
+    [
+        # evk_stim conditions should get green
+        ("c1_g1_evk_stim", "green"),
+        ("control_evk_stim", "green"),
+        ("treatment_A_evk_stim", "green"),
+        # evk_non_stim conditions should get magenta
+        ("c1_g1_evk_non_stim", "magenta"),
+        ("control_evk_non_stim", "magenta"),
+        ("treatment_A_evk_non_stim", "magenta"),
+        # non-evoked conditions should get gray
+        ("control", "gray"),
+        ("treatment_A", "gray"),
+        ("knockout", "gray"),
+        ("c1_g1", "gray"),
+    ],
+)
+def test_default_color(condition_name: str, expected_color: str) -> None:
+    """Test default color assignment for various condition names."""
+    assert _get_default_color(condition_name) == expected_color
 
 
 def test_get_default_conditions() -> None:
