@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import tifffile
@@ -10,9 +10,12 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.sqlmodel import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import FOVAnalysis
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
+
+    from cali.sqlmodel._model import FOVAnalysis
 
 
 def create_stimulation_mask(stimulation_file: str) -> np.ndarray:
@@ -743,3 +746,169 @@ def _detect_population_bursts(
         burst_avg_interval = float(np.mean(intervals_sec))
 
     return burst_count, burst_avg_duration, burst_avg_interval
+
+
+ConnectivityMethod = Literal[
+    # DF/F traces
+    "calcium_dff_corr",  # 0. Zero-lag Pearson on DF/F
+    "calcium_dec_dff_corr",  # 1. Zero-lag Pearson on deconvolved DF/F (default)
+    # Calcium peaks
+    "calcium_peaks_maxlag",  # 3. Max-lag correlation on calcium peaks
+    "calcium_peaks_jitter",  # 4. Jitter synchrony on calcium peaks
+    # Inferred spikes
+    "spike_corr",  # 5. Zero-lag Pearson on spike trains
+    "spike_maxlag",  # 6. Max-lag correlation (CCG) on spikes
+    "spike_jitter",  # 7. Jitter synchrony on spikes
+]
+
+
+def _compute_connectivity_metrics(
+    fov_analysis: FOVAnalysis,
+    method: ConnectivityMethod = "calcium_dec_dff_corr",
+    threshold: float = 0.9,
+    use_absolute_for_corr: bool = True,
+) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """
+    Build a connectivity graph (adjacency + weights) from FOVAnalysis metrics.
+
+    Parameters
+    ----------
+    fov_analysis : FOVAnalysis
+        Object containing FOV-wide matrices and ROI labels.
+        Uses:
+        - active_roi_labels
+        - calcium_dff_correlation_matrix
+        - calcium_dec_dff_corr_matrix
+        - calcium_peaks_max_lag_correlation_matrix
+        - calcium_peaks_jitter_synchrony_matrix
+        - spike_correlation_matrix
+        - spike_max_lag_correlation_matrix
+        - spike_jitter_synchrony_matrix
+    method : ConnectivityMethod, default "calcium_dec_dff_corr"
+        Which metric to use:
+
+        DF/F calcium traces
+        -------------------
+        - "calcium_dff_corr":
+              zero-lag Pearson correlation on DF/F traces (metric 0)
+        - "calcium_dec_dff_corr" (default):
+              zero-lag Pearson on deconvolved DF/F traces (metric 1)
+
+        Calcium peaks
+        -------------
+        - "calcium_peaks_maxlag":
+              max-lag correlation on calcium peak events (metric 3)
+        - "calcium_peaks_jitter":
+              jitter synchrony on calcium peak events (metric 4)
+
+        Inferred spikes
+        ---------------
+        - "spike_corr":
+              zero-lag Pearson on spike trains (metric 5)
+        - "spike_maxlag":
+              max-lag CCG-like correlation on spike events (metric 6)
+        - "spike_jitter":
+              jitter synchrony on spike events (metric 7)
+
+    threshold : float, default 0.9
+        Threshold applied to the chosen metric to create edges.
+
+        For correlation-like metrics (Pearson & max-lag):
+            if use_absolute_for_corr is True:
+                edge if |value_ij| >= threshold
+            else:
+                edge if value_ij >= threshold
+
+        For jitter synchrony metrics (in [0, 1]):
+            edge if sync_ij >= threshold
+
+    use_absolute_for_corr : bool, default True
+        If True, strong negative correlations also become edges (|r| >= threshold).
+        If False, only strong positive correlations are kept (r >= threshold).
+
+    Returns
+    -------
+    adjacency : np.ndarray
+        Binary adjacency matrix of shape (N, N), 1 = connection, 0 = no connection.
+        Diagonal is always 0 (no self-connections).
+    weights : np.ndarray
+        Underlying metric values (same shape as adjacency).
+    roi_labels : list[int]
+        ROI labels corresponding to rows/columns of adjacency/weights.
+
+    Raises
+    ------
+    ValueError
+        If the requested metric is not available or shapes are inconsistent.
+    """
+    roi_labels = fov_analysis.active_roi_labels or []
+    if not roi_labels:
+        raise ValueError("FOVAnalysis.active_roi_labels is empty or None.")
+
+    n = len(roi_labels)
+
+    # ------------------------------------------------------------------
+    # Select metric matrix based on method
+    # ------------------------------------------------------------------
+    if method == "calcium_dff_corr":
+        metric = fov_analysis.calcium_dff_correlation_matrix
+        is_correlation = True
+
+    elif method == "calcium_dec_dff_corr":
+        metric = fov_analysis.calcium_dec_dff_corr_matrix
+        is_correlation = True
+
+    elif method == "calcium_peaks_maxlag":
+        metric = fov_analysis.calcium_peaks_max_lag_correlation_matrix
+        is_correlation = True
+
+    elif method == "calcium_peaks_jitter":
+        metric = fov_analysis.calcium_peaks_jitter_synchrony_matrix
+        is_correlation = False
+
+    elif method == "spike_corr":
+        metric = fov_analysis.spike_correlation_matrix
+        is_correlation = True
+
+    elif method == "spike_maxlag":
+        metric = fov_analysis.spike_max_lag_correlation_matrix
+        is_correlation = True
+
+    elif method == "spike_jitter":
+        metric = fov_analysis.spike_jitter_synchrony_matrix
+        is_correlation = False
+
+    else:
+        raise ValueError(f"Unknown connectivity method: {method!r}")
+
+    if metric is None:
+        raise ValueError(
+            f"Requested metric {method!r} is None on FOVAnalysis. "
+            "Make sure FOV-level analysis was computed for this method."
+        )
+
+    weights = np.asarray(metric, dtype=float)
+    if weights.shape != (n, n):
+        raise ValueError(
+            f"Metric matrix shape {weights.shape} does not match number of "
+            f"ROI labels ({n})."
+        )
+
+    # ------------------------------------------------------------------
+    # Threshold → adjacency
+    # ------------------------------------------------------------------
+    if is_correlation:
+        if use_absolute_for_corr:
+            values = np.abs(weights)
+        else:
+            values = weights
+    else:
+        # Jitter synchrony already in [0, 1]
+        values = weights
+
+    adjacency = (values >= threshold).astype(int)
+
+    # Remove self-connections
+    np.fill_diagonal(adjacency, 0)
+
+    return adjacency, weights, list(roi_labels)

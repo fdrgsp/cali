@@ -400,6 +400,7 @@ class ExtractionRunner:
         if analysis_settings is not None and not self._check_for_abort_requested():
             from cali.analysis._fov_analysis import compute_fov_analysis
 
+            cali_logger.info(f"📊 Computing FOV-level analysis for {fov_name}...")
             fov_analysis = compute_fov_analysis(fov_to_analyze, analysis_settings)
             if fov_analysis is not None:
                 # Store in temporary attribute for later commit

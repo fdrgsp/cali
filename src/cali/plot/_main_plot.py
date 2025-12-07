@@ -43,6 +43,9 @@ from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
     _plot_dec_dff_correlation_data,
     _plot_dff_correlation_data,
 )
+from ._single_wells_plots.correlation._plot_connectivity import (
+    _plot_connectivity_network_data,
+)
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
     _plot_non_stimulated_calcium_correlation,
     _plot_non_stimulated_calcium_synchrony,
@@ -217,8 +220,7 @@ NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensi
 STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony (±window)"
-CALCIUM_NETWORK_CONNECTIVITY = "Calcium Network Connectivity"
-CALCIUM_CONNECTIVITY_MATRIX = "Calcium Network Connectivity Matrix"
+CALCIUM_FUNCTIONAL_CONNECTIVITY = "Calcium Functional Connectivity"
 CROSS_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation"
 CALCIUM_DFF_CORRELATION = "Calcium ΔF/F Zero-Lag Pearson Correlation"
 CALCIUM_DEC_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correlation"
@@ -508,20 +510,13 @@ AnalysisProduct(
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-# AnalysisProduct(
-#     name=CALCIUM_NETWORK_CONNECTIVITY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_connectivity_network_data,
-#     category="Calcium Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name=CALCIUM_CONNECTIVITY_MATRIX,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_connectivity_matrix_data,
-#     category="Calcium Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
+AnalysisProduct(
+    name=CALCIUM_FUNCTIONAL_CONNECTIVITY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_connectivity_network_data,
+    category="Calcium Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 
 
 # Inferred Spikes Correlation Analysis Group
@@ -975,8 +970,7 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     INFERRED_SPIKE_RASTER_PLOT,
     INFERRED_SPIKE_RASTER_PLOT_AMP,
     INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
-    CALCIUM_CONNECTIVITY_MATRIX,
-    CALCIUM_NETWORK_CONNECTIVITY,
+    CALCIUM_FUNCTIONAL_CONNECTIVITY,
 }
 
 

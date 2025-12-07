@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -63,6 +64,10 @@ class _SingleWellGraphWidget(QWidget):
         self._fov: str = ""
         self._experiment_type: str | None = None
 
+        # Connectivity settings
+        self._connectivity_threshold: float = 0.3
+        self._connectivity_method: str = "calcium_dec_dff_corr"
+
         # ------------------------------------------------------------------ #
         # Top combo + save button
         # ------------------------------------------------------------------ #
@@ -80,6 +85,10 @@ class _SingleWellGraphWidget(QWidget):
         top.addWidget(self._save_btn, 0)
 
         self._choose_dysplayed_traces = _DisplaySingleWellTraces(self)
+
+        # Connectivity threshold widget (only visible for connectivity plots)
+        self._connectivity_threshold_widget = _ConnectivityThresholdWidget(self)
+        self._connectivity_threshold_widget.setVisible(False)
 
         # ------------------------------------------------------------------ #
         # pyqtgraph canvas replacement
@@ -108,9 +117,10 @@ class _SingleWellGraphWidget(QWidget):
         # Layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         layout.addLayout(top)
         layout.addWidget(self._choose_dysplayed_traces)
-        # no toolbar - pan/zoom etc are built-in with mouse in pyqtgraph
+        layout.addWidget(self._connectivity_threshold_widget)
         layout.addWidget(self.plot_widget)
 
         self._combo.currentTextChanged.connect(self._on_combo_changed)
@@ -429,6 +439,7 @@ class _SingleWellGraphWidget(QWidget):
             ("ccorr_click_handler", "sigMouseClicked"),
             ("sync_hover_handler", "sigMouseMoved"),
             ("sync_click_handler", "sigMouseClicked"),
+            ("connectivity_click_handler", "sigMouseClicked"),
         ]:
             handler = plot.property(prop_name)
             if handler is not None:
@@ -464,14 +475,16 @@ class _SingleWellGraphWidget(QWidget):
         plot.setLabel("bottom", "")
 
         # 6) Hide shared legend if we have one
-        if hasattr(self, "legend") and self.legend is not None:
-            self.legend.clear()
-            self.legend.setVisible(False)
+        self.legend.clear()
+        self.legend.setVisible(False)
 
         # 7) Remove colorbar if present
-        if hasattr(self, "colorbar") and self.colorbar is not None:
+        if self.colorbar is not None:
             self.plot_item.layout.removeItem(self.colorbar)
             self.colorbar = None
+
+        # 8) Hide connectivity threshold widget
+        self._connectivity_threshold_widget.setVisible(False)
 
     # ------------------------------------------------------------------ #
     # Internal slots
@@ -488,6 +501,10 @@ class _SingleWellGraphWidget(QWidget):
             or self._run_id is None
         ):
             return
+
+        # Show/hide connectivity threshold widget based on plot type
+        is_connectivity_plot = "Connectivity" in text
+        self._connectivity_threshold_widget.setVisible(is_connectivity_plot)
 
         plot_single_well_data(
             self, self._engine, self._fov, text, rois=None, run_id=self._run_id
@@ -886,6 +903,122 @@ class _DisplaySingleWellTraces(QGroupBox):
                 with contextlib.suppress(ValueError):
                     numbers.append(int(part))
         return numbers
+
+
+class _ConnectivityThresholdWidget(QGroupBox):
+    """Widget for adjusting connectivity method and threshold."""
+
+    def __init__(self, parent: _SingleWellGraphWidget) -> None:
+        super().__init__(parent)
+        self.setTitle("Connectivity Settings")
+        self.setCheckable(False)
+
+        self.setToolTip(
+            "Select a functional connectivity method and adjust the edge threshold.\n\n"
+            "Functional connectivity here is computed as zero-lag Pearson correlation "
+            "between calcium activity traces.\n\n"
+            "• DF/F: uses raw ΔF/F traces.\n"
+            "• Deconvolved DF/F: uses OASIS-deconvolved ΔF/F traces for a cleaner, "
+            "more stable network."
+        )
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        )
+
+        self._graph: _SingleWellGraphWidget = parent
+
+        # Method combo box
+        self._method_combo = QComboBox(self)
+        self._method_combo.addItems(
+            [
+                "Deconvolved DF/F Correlation",
+                "DF/F Correlation",
+                # "Calcium Peaks Max-Lag",
+                # "Calcium Peaks Jitter Sync",
+                # "Spike Correlation",
+                # "Spike Max-Lag",
+                # "Spike Jitter Sync",
+            ]
+        )
+        self._method_combo.setToolTip("Select connectivity metric method")
+        self._method_combo.currentIndexChanged.connect(self._update_connectivity)
+
+        # Threshold slider
+        self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self._threshold_slider.setMinimum(0)
+        self._threshold_slider.setMaximum(100)
+        self._threshold_slider.setValue(30)  # Default 0.3
+        self._threshold_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._threshold_slider.setTickInterval(10)
+
+        # Threshold value label
+        self._threshold_label = QLabel("0.30")
+        self._threshold_label.setMinimumWidth(40)
+        self._threshold_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        # Update button
+        self._update_btn = QPushButton("Update", self)
+        self._update_btn.clicked.connect(self._update_connectivity)
+
+        # Layout
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.addWidget(QLabel("Method:"))
+        main_layout.addWidget(self._method_combo)
+        main_layout.addWidget(QLabel("Threshold:"))
+        main_layout.addWidget(self._threshold_slider)
+        main_layout.addWidget(self._threshold_label)
+        main_layout.addWidget(self._update_btn)
+
+        # Connect signals
+        self._threshold_slider.valueChanged.connect(self._on_slider_changed)
+        self._method_combo.currentIndexChanged.connect(self._on_method_changed)
+
+    def _get_method_from_combo(self) -> str:
+        """Map combo box selection to ConnectivityMethod string."""
+        method_map = {
+            0: "calcium_dec_dff_corr",
+            1: "calcium_dff_corr",
+            # 2: "calcium_peaks_maxlag",
+            # 3: "calcium_peaks_jitter",
+            # 4: "spike_corr",
+            # 5: "spike_maxlag",
+            # 6: "spike_jitter",
+        }
+        return method_map[self._method_combo.currentIndex()]
+
+    def _on_method_changed(self, index: int) -> None:
+        """Update connectivity method when combo box changes."""
+        method = self._get_method_from_combo()
+        self._graph._connectivity_method = method
+
+    def _on_slider_changed(self, value: int) -> None:
+        """Update threshold label when slider changes."""
+        threshold = value / 100.0
+        self._threshold_label.setText(f"{threshold:.2f}")
+
+    def _update_connectivity(self) -> None:
+        """Update the connectivity graph with new threshold."""
+        threshold = self._threshold_slider.value() / 100.0
+
+        # Store threshold on the parent widget so the plot function can access it
+        self._graph._connectivity_threshold = threshold
+
+        # Re-plot with new threshold
+        text = self._graph._combo.currentText()
+        if "Connectivity" in text and self._graph._engine and self._graph._fov:
+            self._graph.clear_plot()
+            plot_single_well_data(
+                self._graph,
+                self._graph._engine,
+                self._graph._fov,
+                text,
+                rois=None,
+                run_id=self._graph._run_id,
+            )
 
 
 class _ConditionItemWidget(QWidget):

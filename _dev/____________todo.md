@@ -37,3 +37,5 @@ ask to claude:
 - make overall markdown of cali runner pipeline
 
 - ask about best way to have thresholds...global???
+
+- link image viewer with plots
