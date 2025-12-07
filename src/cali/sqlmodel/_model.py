@@ -42,6 +42,7 @@ from cali._constants import (
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
+    DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     MULTIPLIER,
@@ -1034,7 +1035,9 @@ class AnalysisSettings(SQLModel, table=True):
     burst_gaussian_sigma : float
         Gaussian sigma for burst smoothing (seconds)
     spikes_sync_cross_corr_lag : int
-        Max lag for spike synchrony cross-correlation (milliseconds)
+        Max lag for spike cross-correlation (milliseconds)
+    spikes_sync_jitter_window : int
+        Jitter window for spike synchrony (milliseconds)
     frame_rate : float
         Acquisition frame rate (frames per second)
     led_power_equation : str | None
@@ -1080,6 +1083,7 @@ class AnalysisSettings(SQLModel, table=True):
     burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
+    spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
 
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 

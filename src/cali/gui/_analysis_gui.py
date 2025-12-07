@@ -35,6 +35,7 @@ from cali._constants import (
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
     DEFAULT_PEAKS_DISTANCE,
+    DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     EVOKED,
@@ -99,6 +100,7 @@ class SpikeData:
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
     synchrony_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # milliseconds
+    synchrony_jitter: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # milliseconds
 
 
 class _AnalysisGUI(QWidget):
@@ -270,11 +272,11 @@ class _AnalysisGUI(QWidget):
                 if peaks_data
                 else DEFAULT_CALCIUM_PEAKS_MAX_LAG
             ),
-            calcium_network_threshold=(
-                peaks_data.calcium_network_threshold
-                if peaks_data
-                else DEFAULT_CALCIUM_NETWORK_THRESHOLD
-            ),
+            # calcium_network_threshold=(
+            #     peaks_data.calcium_network_threshold
+            #     if peaks_data
+            #     else DEFAULT_CALCIUM_NETWORK_THRESHOLD
+            # ),
             spike_threshold_value=(
                 spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD
             ),
@@ -298,6 +300,11 @@ class _AnalysisGUI(QWidget):
                 spikes_data.synchrony_lag
                 if spikes_data
                 else DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+            ),
+            spikes_sync_jitter_window=(
+                spikes_data.synchrony_jitter
+                if spikes_data
+                else DEFAULT_SPIKE_SYNC_JITTER_WINDOW
             ),
             experiment_type=(
                 experiment_type_data.experiment_type
@@ -761,7 +768,7 @@ class _CalciumPeaksWidget(QWidget):
             "• Smaller values: More strict, focuses on near-simultaneous events"
         )
         self._calcium_max_lag_lbl = QLabel(
-            "Max Lag for Peaks:", self._calcium_max_lag_wdg
+            "Correlation Max Lag:", self._calcium_max_lag_wdg
         )
         self._calcium_max_lag_lbl.setSizePolicy(*FIXED)
         self._calcium_max_lag_spin = QDoubleSpinBox(self._calcium_max_lag_wdg)
@@ -813,8 +820,8 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_height)
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
-        layout.addWidget(self._calcium_sync_wdg)
         layout.addWidget(self._calcium_max_lag_wdg)
+        layout.addWidget(self._calcium_sync_wdg)
         # layout.addWidget(self._calcium_network_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
@@ -1019,10 +1026,10 @@ class _SpikeWidget(QWidget):
         # burst detection settings
         self._burst_wdg = _BurstWidget(self)
 
-        # spike synchrony settings
-        self._spike_synchrony_wdg = QWidget(self)
-        self._spike_synchrony_wdg.setToolTip(
-            "Inferred Spike Synchrony Analysis Settings\n\n"
+        # spike synchrony max lag settings
+        self._spike_max_lag_wdg = QWidget(self)
+        self._spike_max_lag_wdg.setToolTip(
+            "Inferred Spike Max-Lag Cross-Correlation Settings\n\n"
             "Temporal Tolerance Parameter:\n"
             "Controls the maximum time window (in milliseconds) for cross-correlation "
             "analysis between ROI pairs.\n\n"
@@ -1041,21 +1048,54 @@ class _SpikeWidget(QWidget):
             "Algorithm finds high correlation at lag +200ms and -100ms\n"
             "Result: High synchrony score based on best alignment."
         )
-        self._spikes_sync_cross_corr_lag = QLabel(
-            "Synchrony Lag:", self._spike_synchrony_wdg
+        self._spikes_max_lag_lbl = QLabel(
+            "Correlation Max Lag:", self._spike_max_lag_wdg
         )
-        self._spikes_sync_cross_corr_lag.setSizePolicy(*FIXED)
-        self._spikes_sync_cross_corr_max_lag = QDoubleSpinBox(self)
+        self._spikes_max_lag_lbl.setSizePolicy(*FIXED)
+        self._spikes_sync_cross_corr_max_lag = QDoubleSpinBox(self._spike_max_lag_wdg)
         self._spikes_sync_cross_corr_max_lag.setSuffix(" ms")
         self._spikes_sync_cross_corr_max_lag.setDecimals(2)
         self._spikes_sync_cross_corr_max_lag.setRange(0.0, 10000.0)  # 0 to 10 seconds
         self._spikes_sync_cross_corr_max_lag.setSingleStep(10.0)
         self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
-        spikes_sync_cross_corr_layout = QHBoxLayout(self._spike_synchrony_wdg)
-        spikes_sync_cross_corr_layout.setContentsMargins(0, 0, 0, 0)
-        spikes_sync_cross_corr_layout.setSpacing(5)
-        spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_lag)
-        spikes_sync_cross_corr_layout.addWidget(self._spikes_sync_cross_corr_max_lag)
+        spike_max_lag_layout = QHBoxLayout(self._spike_max_lag_wdg)
+        spike_max_lag_layout.setContentsMargins(0, 0, 0, 0)
+        spike_max_lag_layout.setSpacing(5)
+        spike_max_lag_layout.addWidget(self._spikes_max_lag_lbl)
+        spike_max_lag_layout.addWidget(self._spikes_sync_cross_corr_max_lag)
+
+        # spike jitter synchrony settings
+        self._spike_jitter_wdg = QWidget(self)
+        self._spike_jitter_wdg.setToolTip(
+            "Inferred Spike Jitter Synchrony Settings\n\n"
+            "Temporal Tolerance Parameter:\n"
+            "Controls the maximum time window (in milliseconds) for detecting "
+            "synchronous spikes between ROI pairs.\n\n"
+            "How it works:\n"
+            "• Value = 200: Spikes within ±200 ms are considered synchronous\n"
+            "• Compares timing of spikes between all ROI pairs\n"
+            "• Larger values: more permissive, detects more synchrony but may "
+            "include false positives\n"
+            "• Smaller values: more strict, may miss genuine synchrony with "
+            "slight timing offsets\n\n"
+            "Example with Jitter = 200 ms @ 10 fps:\n"
+            "ROI 1 spikes: [1000ms, 2500ms, 4000ms]  ROI 2 spikes: [1200ms, 2400ms, "
+            "4100ms]\n"
+            "Result: All pairs are synchronous (differences ≤ 200 ms)."
+        )
+        self._spike_jitter_lbl = QLabel("Synchrony Jitter:", self._spike_jitter_wdg)
+        self._spike_jitter_lbl.setSizePolicy(*FIXED)
+        self._spike_jitter_spin = QDoubleSpinBox(self._spike_jitter_wdg)
+        self._spike_jitter_spin.setSuffix(" ms")
+        self._spike_jitter_spin.setDecimals(2)
+        self._spike_jitter_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
+        self._spike_jitter_spin.setSingleStep(10.0)
+        self._spike_jitter_spin.setValue(DEFAULT_SPIKE_SYNC_JITTER_WINDOW)
+        spike_jitter_layout = QHBoxLayout(self._spike_jitter_wdg)
+        spike_jitter_layout.setContentsMargins(0, 0, 0, 0)
+        spike_jitter_layout.setSpacing(5)
+        spike_jitter_layout.addWidget(self._spike_jitter_lbl)
+        spike_jitter_layout.addWidget(self._spike_jitter_spin)
 
         # main layout
         layout = QVBoxLayout(self)
@@ -1063,7 +1103,8 @@ class _SpikeWidget(QWidget):
         layout.setSpacing(5)
         layout.addWidget(self._spike_threshold_wdg)
         layout.addWidget(self._burst_wdg)
-        layout.addWidget(self._spike_synchrony_wdg)
+        layout.addWidget(self._spike_max_lag_wdg)
+        layout.addWidget(self._spike_jitter_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1073,13 +1114,15 @@ class _SpikeWidget(QWidget):
         self._burst_wdg._burst_threshold_lbl.setFixedWidth(width)
         self._burst_wdg._burst_min_threshold_label.setFixedWidth(width)
         self._burst_wdg._burst_blur_label.setFixedWidth(width)
-        self._spikes_sync_cross_corr_lag.setFixedWidth(width)
+        self._spikes_max_lag_lbl.setFixedWidth(width)
+        self._spike_jitter_lbl.setFixedWidth(width)
 
     def value(self) -> SpikeData:
         """Get the current values of the widget."""
         spike_threshold, spike_threshold_mode = self._spike_threshold_wdg.value()
         burst_threshold, burst_min_duration, burst_blur_sigma = self._burst_wdg.value()
         synchrony_lag = self._spikes_sync_cross_corr_max_lag.value()
+        synchrony_jitter = self._spike_jitter_spin.value()
 
         return SpikeData(
             spike_threshold=spike_threshold,
@@ -1088,6 +1131,7 @@ class _SpikeWidget(QWidget):
             burst_min_duration=burst_min_duration,
             burst_blur_sigma=burst_blur_sigma,
             synchrony_lag=synchrony_lag,
+            synchrony_jitter=synchrony_jitter,
         )
 
     def setValue(self, value: SpikeData) -> None:
@@ -1097,6 +1141,7 @@ class _SpikeWidget(QWidget):
         bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
         self._burst_wdg.setValue(bst)
         self._spikes_sync_cross_corr_max_lag.setValue(value.synchrony_lag)
+        self._spike_jitter_spin.setValue(value.synchrony_jitter)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -1109,6 +1154,7 @@ class _SpikeWidget(QWidget):
             )
         )
         self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
+        self._spike_jitter_spin.setValue(DEFAULT_SPIKE_SYNC_JITTER_WINDOW)
 
 
 class _MetadataWidget(QWidget):

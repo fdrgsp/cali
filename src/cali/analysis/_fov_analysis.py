@@ -230,7 +230,7 @@ def compute_fov_analysis(
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
         # 6. Jitter synchrony on spikes
-        jitter_window_ms = analysis_settings.calcium_sync_jitter_window
+        jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix = _get_spike_synchrony_matrix(
             spike_data_dict,

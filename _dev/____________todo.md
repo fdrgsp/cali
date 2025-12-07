@@ -45,3 +45,5 @@ ask to claude:
 - add analysis runner to extraction
 
 - move thread widget near run and use it for both extraction and analysis
+
+- ask about best way to have thresholds...global???
