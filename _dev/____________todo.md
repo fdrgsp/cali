@@ -36,14 +36,4 @@ ask to claude:
 
 - make overall markdown of cali runner pipeline
 
-- inferred spike raster is not continuous...even if there are no gap within the timepoint...
-
-- add connectivity, etc...
-
-- add from metadata to frame rate (px size?)
-
-- add analysis runner to extraction
-
-- move thread widget near run and use it for both extraction and analysis
-
 - ask about best way to have thresholds...global???

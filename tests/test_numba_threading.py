@@ -17,7 +17,7 @@ import threading
 import numpy as np
 import pytest
 
-from cali.plot._util import (
+from cali.analysis._util import (
     _get_calcium_peaks_event_synchrony_matrix,
     _get_spike_synchrony_matrix,
 )
