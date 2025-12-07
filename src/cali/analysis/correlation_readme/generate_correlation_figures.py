@@ -282,6 +282,126 @@ def create_calcium_peaks() -> None:
     print(f"✓ Created calcium peaks (sync1-2={sync_12:.3f}, sync1-3={sync_13:.3f})")
 
 
+def create_functional_connectivity_comparison() -> None:
+    """Create functional connectivity comparison between raw DF/F and dec C(t)."""
+    fig = plt.figure(figsize=(14, 10))
+
+    # Generate signals
+    t = np.arange(0, 30, 1 / fs)
+
+    # Create correlated base signals
+    base1 = 0.5 * np.sin(2 * np.pi * 0.12 * t) + 0.3 * np.sin(2 * np.pi * 0.25 * t)
+    base2 = 0.7 * base1 + 0.3 * np.sin(2 * np.pi * 0.18 * t + 0.5)
+    base3 = 0.4 * np.sin(2 * np.pi * 0.22 * t + 2.0)
+
+    # Raw DF/F with noise and baseline drift
+    drift1 = 0.05 * t / 30
+    drift2 = -0.03 * t / 30
+    drift3 = 0.02 * np.sin(2 * np.pi * 0.03 * t)
+
+    dff1 = base1 + drift1 + np.random.normal(0, 0.15, len(t))
+    dff2 = base2 + drift2 + np.random.normal(0, 0.15, len(t))
+    dff3 = base3 + drift3 + np.random.normal(0, 0.12, len(t))
+
+    # Deconvolved C(t) - cleaner, no drift
+    ct1 = base1 + np.random.normal(0, 0.05, len(t))
+    ct2 = base2 + np.random.normal(0, 0.05, len(t))
+    ct3 = base3 + np.random.normal(0, 0.05, len(t))
+
+    # Calculate correlations
+    corr_dff_12 = np.corrcoef(dff1, dff2)[0, 1]
+    corr_dff_13 = np.corrcoef(dff1, dff3)[0, 1]
+    corr_dff_23 = np.corrcoef(dff2, dff3)[0, 1]
+
+    corr_ct_12 = np.corrcoef(ct1, ct2)[0, 1]
+    corr_ct_13 = np.corrcoef(ct1, ct3)[0, 1]
+    corr_ct_23 = np.corrcoef(ct2, ct3)[0, 1]
+
+    # Plot layout: 3 rows (ROIs) x 2 columns (DF/F vs C(t))
+    # Left column: Raw DF/F
+    ax1 = plt.subplot(3, 2, 1)
+    ax1.plot(t, dff1, "b-", linewidth=1.5, label="ROI 1")
+    ax1.set_ylabel("ΔF/F", fontsize=11)
+    ax1.legend(loc="upper right")
+    ax1.grid(True, alpha=0.3)
+    ax1.set_title(
+        "Raw ΔF/F Traces\n(with noise and baseline drift)",
+        fontsize=12,
+        fontweight="bold",
+    )
+
+    ax2 = plt.subplot(3, 2, 3, sharex=ax1)
+    ax2.plot(t, dff2, "r-", linewidth=1.5, label="ROI 2 (correlated)")
+    ax2.set_ylabel("ΔF/F", fontsize=11)
+    ax2.legend(loc="upper right")
+    ax2.grid(True, alpha=0.3)
+
+    ax3 = plt.subplot(3, 2, 5, sharex=ax1)
+    ax3.plot(t, dff3, "g-", linewidth=1.5, label="ROI 3 (independent)")
+    ax3.set_ylabel("ΔF/F", fontsize=11)
+    ax3.set_xlabel("Time (s)", fontsize=11)
+    ax3.legend(loc="upper right")
+    ax3.grid(True, alpha=0.3)
+
+    # Right column: Deconvolved C(t)
+    ax4 = plt.subplot(3, 2, 2, sharey=ax1)
+    ax4.plot(t, ct1, "b-", linewidth=1.5, label="ROI 1")
+    ax4.set_ylabel("C(t)", fontsize=11)
+    ax4.legend(loc="upper right")
+    ax4.grid(True, alpha=0.3)
+    ax4.set_title(
+        "Deconvolved C(t)\n(denoised, baseline removed)", fontsize=12, fontweight="bold"
+    )
+
+    ax5 = plt.subplot(3, 2, 4, sharex=ax4, sharey=ax2)
+    ax5.plot(t, ct2, "r-", linewidth=1.5, label="ROI 2 (correlated)")
+    ax5.set_ylabel("C(t)", fontsize=11)
+    ax5.legend(loc="upper right")
+    ax5.grid(True, alpha=0.3)
+
+    ax6 = plt.subplot(3, 2, 6, sharex=ax4, sharey=ax3)
+    ax6.plot(t, ct3, "g-", linewidth=1.5, label="ROI 3 (independent)")
+    ax6.set_ylabel("C(t)", fontsize=11)
+    ax6.set_xlabel("Time (s)", fontsize=11)
+    ax6.legend(loc="upper right")
+    ax6.grid(True, alpha=0.3)
+
+    # Add correlation matrices as text annotations
+    fig.text(
+        0.25,
+        0.02,
+        f"Raw ΔF/F Correlations:\n"
+        f"ROI 1-2: {corr_dff_12:.3f}  |  ROI 1-3: {corr_dff_13:.3f}  |  "
+        f"ROI 2-3: {corr_dff_23:.3f}",
+        ha="center",
+        fontsize=10,
+        bbox={"boxstyle": "round", "facecolor": "lightblue", "alpha": 0.6},
+    )
+
+    fig.text(
+        0.75,
+        0.02,
+        f"Deconvolved C(t) Correlations:\n"
+        f"ROI 1-2: {corr_ct_12:.3f}  |  ROI 1-3: {corr_ct_13:.3f}  |  "
+        f"ROI 2-3: {corr_ct_23:.3f}",
+        ha="center",
+        fontsize=10,
+        bbox={"boxstyle": "round", "facecolor": "lightgreen", "alpha": 0.6},
+    )
+
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    plt.savefig(
+        output_dir / "functional_connectivity_dff_vs_ct.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+    plt.close()
+    print(
+        f"✓ Created functional connectivity comparison (ΔF/F: r1-2={corr_dff_12:.3f}, "
+        f"C(t): r1-2={corr_ct_12:.3f})"
+    )
+
+
 def create_spike_trains() -> None:
     """Create inferred spike trains with CCG."""
     plt.figure(figsize=(12, 10))
@@ -478,6 +598,7 @@ if __name__ == "__main__":
     create_deconvolved_traces()
     create_calcium_peaks()
     create_spike_trains()
+    create_functional_connectivity_comparison()
 
     print()
     print(f"✅ All figures saved to: {output_dir}")

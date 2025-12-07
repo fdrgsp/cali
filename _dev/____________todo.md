@@ -18,8 +18,6 @@ ask to claude:
 
 - code and widget to load own label images for segmentation
 
-- ⁇ to simplify the code, is it worth to have the runs in a different db???
-
 - ⚡️ export tab to export tables and labels
 
 - add a button to reset settings in each tab to default values
@@ -32,10 +30,10 @@ ask to claude:
 
 - is there something wrong with the multithreading? it seems slower if I multithread...
 
-- ask to carefully evaluate correlation code and make a detailed markdown with description
-
 - make overall markdown of cali runner pipeline
 
 - ask about best way to have thresholds...global???
 
 - link image viewer with plots
+
+- fix y axis burst graph + fix burst graph on traces because is not showing the same things...

@@ -329,11 +329,16 @@ This is what most calcium-imaging functional connectivity papers report.
 
 ### Visual Example: Functional Connectivity From DF/F and C(t)
 
-TODO -> Insert figure
+![Functional Connectivity Comparison](correlation_figures/functional_connectivity_dff_vs_ct.png)
+
+**Left column**: Raw ΔF/F traces show noise, baseline drift, and some correlation inflation.
+
+**Right column**: Deconvolved C(t) traces are cleaner, with baseline removed and sharper transients.
 
 Interpretation
 • ROI 1 and ROI 2 show similar dynamics → high functional connectivity
 • ROI 3 behaves independently → low functional connectivity
+• C(t) correlations are typically more accurate than raw ΔF/F correlations
 
 Functional connectivity graph = nodes = neurons, edges = high-correlation pairs.
 
