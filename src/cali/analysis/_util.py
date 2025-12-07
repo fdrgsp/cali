@@ -664,7 +664,7 @@ def _detect_population_bursts(
         - burst_count: Number of bursts detected
         - burst_avg_duration: Average burst duration in seconds (None if no bursts)
         - burst_avg_interval: Average inter-burst interval in seconds
-          (Noneif < 2 bursts)
+          (None if < 2 bursts)
     """
     if len(spike_trains) < 2:
         return 0, None, None
