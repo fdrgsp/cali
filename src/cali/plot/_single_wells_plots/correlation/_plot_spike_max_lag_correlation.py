@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
 
 # -----------------------------------------------------------------------------#
-# Database query for pre-computed spike correlation matrix
+# Database query for pre-computed spike max-lag correlation matrix
 # -----------------------------------------------------------------------------#
-def _get_spike_correlation_matrix_from_db(
+def _get_spike_max_lag_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
-    """Get the pre-computed spike correlation matrix from database.
+    """Get the pre-computed spike max-lag correlation matrix from database.
 
     Parameters
     ----------
@@ -43,7 +43,7 @@ def _get_spike_correlation_matrix_from_db(
         (correlation_matrix, roi_labels) or (None, None) if not found
     """
     if run_id is None:
-        cali_logger.warning("No run ID specified for spike correlation plot.")
+        cali_logger.warning("No run ID specified for spike max-lag correlation plot.")
         return None, None
 
     try:
@@ -64,15 +64,18 @@ def _get_spike_correlation_matrix_from_db(
                 return None, None
 
             if (
-                fov_analysis.spike_correlation_matrix is None
+                fov_analysis.spike_max_lag_correlation_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
                 cali_logger.debug(
-                    f"FOVAnalysis for {fov_name} has no spike correlation matrix"
+                    f"FOVAnalysis for {fov_name} has no spike max-lag "
+                    "correlation matrix"
                 )
                 return None, None
 
-            corr_matrix = np.asarray(fov_analysis.spike_correlation_matrix, dtype=float)
+            corr_matrix = np.asarray(
+                fov_analysis.spike_max_lag_correlation_matrix, dtype=float
+            )
             roi_labels = list(fov_analysis.active_roi_labels)
 
             return corr_matrix, roi_labels
@@ -87,10 +90,26 @@ def _filter_matrix_by_rois(
     roi_labels: list[int],
     selected_rois: list[int] | None,
 ) -> tuple[np.ndarray, list[int]]:
-    """Filter a correlation matrix to only include selected ROIs."""
+    """Filter a correlation/synchrony matrix to only include selected ROIs.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Full NxN matrix
+    roi_labels : list[int]
+        ROI labels corresponding to matrix indices
+    selected_rois : list[int] | None
+        ROIs to filter to, or None to keep all
+
+    Returns
+    -------
+    tuple[np.ndarray, list[int]]
+        (filtered_matrix, filtered_roi_labels)
+    """
     if selected_rois is None:
         return matrix, roi_labels
 
+    # Find indices of selected ROIs in the full matrix
     indices = []
     filtered_labels = []
     for i, label in enumerate(roi_labels):
@@ -99,8 +118,9 @@ def _filter_matrix_by_rois(
             filtered_labels.append(label)
 
     if len(indices) < 2:
-        return matrix, roi_labels
+        return matrix, roi_labels  # Return full matrix if too few ROIs selected
 
+    # Extract submatrix
     indices_arr = np.array(indices)
     filtered_matrix = matrix[np.ix_(indices_arr, indices_arr)]
 
@@ -108,9 +128,9 @@ def _filter_matrix_by_rois(
 
 
 # -----------------------------------------------------------------------------#
-# Heatmap plot (pyqtgraph)
+# Plotting with pyqtgraph
 # -----------------------------------------------------------------------------#
-def _plot_spike_cross_correlation_data(
+def _plot_spike_max_lag_correlation_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -118,7 +138,7 @@ def _plot_spike_cross_correlation_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
+    """Plot the spike max-lag cross-correlation matrix as a heatmap (pyqtgraph).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
@@ -126,7 +146,7 @@ def _plot_spike_cross_correlation_data(
     plot = widget.plot_item
     assert plot is not None
 
-    # Full reset handled by widget.clear_plot(), but clear again just in case
+    # Clear previous plot
     plot.clear()
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
@@ -139,16 +159,12 @@ def _plot_spike_cross_correlation_data(
         widget.legend.setVisible(False)
 
     # Query pre-computed correlation matrix from database
-    correlation_matrix, roi_labels = _get_spike_correlation_matrix_from_db(
+    correlation_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
         engine, fov_name, run_id
     )
 
     if correlation_matrix is None or roi_labels is None:
-        cali_logger.warning(
-            "No spike correlation data found for this FOV. "
-            "Ensure analysis has been run."
-        )
-        plot.setTitle(f"Pairwise Pearson Correlation (No data){title_suffix}")
+        plot.setTitle(f"Max-Lag Cross-Correlation (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -157,13 +173,12 @@ def _plot_spike_cross_correlation_data(
     corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        cali_logger.warning("Need at least 2 ROIs for correlation plot.")
-        plot.setTitle(f"Pairwise Pearson Correlation (Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(f"Max-Lag Cross-Correlation (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
 
-    # ---------------- IMAGE ITEM ---------------- #
+    # ---------------- IMAGE ITEM (centered, full view) ---------------- #
     img = pg.ImageItem(corr)
 
     # viridis colormap
@@ -175,19 +190,19 @@ def _plot_spike_cross_correlation_data(
 
     # ViewBox & geometry
     vb = plot.getViewBox()
-    vb.invertY(True)  # make (0,0) top-left
-    vb.setAspectLocked(True)  # keep it square
-    vb.enableAutoRange(x=True, y=True)
 
-    title = (
-        f"Pairwise Pearson Correlation (Zero-Lag - Thresholded Inferred Spikes)"
-        f"{title_suffix}"
-    )
+    # Make (0,0) top-left like imshow
+    vb.invertY(True)
+
+    # keep it square
+    vb.setAspectLocked(True)
+
+    title = f"Max-Lag Cross-Correlation (Inferred Spikes){title_suffix}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")
 
-    # Hide axis tick labels (like your MPL version)
+    # Hide axis tick labels (like the MPL version)
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
@@ -195,10 +210,13 @@ def _plot_spike_cross_correlation_data(
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
 
     # ---------------- Hover + Click interaction ---------------- #
-    _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr, title)
+    _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr, title)
 
 
-def _attach_spike_corr_interaction(
+# -----------------------------------------------------------------------------#
+# Hover + click helper
+# -----------------------------------------------------------------------------#
+def _attach_heatmap_interaction(
     widget: _SingleWellGraphWidget,
     plot: pg.PlotItem,
     viewbox: pg.ViewBox,
@@ -207,20 +225,17 @@ def _attach_spike_corr_interaction(
     base_title: str = "",
 ) -> None:
     """
-    Attach interaction to the spike correlation heatmap.
+    Attach interaction to the heatmap.
 
     - Hover: show ROI_i, ROI_j, value in the title
-    - Click: emit widget.roiSelected with [roi_i, roi_j] as strings
-
-    title_suffix : str
-        Optional suffix to add to plot titles (e.g., " - Stimulated")
+    - Click: emit widget.roiSelected with a tuple (roi_i, roi_j)
     """
     n_rows, n_cols = values.shape
     scene = plot.scene()
 
     # If we reconnect many times, avoid stacking multiple handlers
-    old_hover = plot.property("spike_ccorr_hover_handler")
-    old_click = plot.property("spike_ccorr_click_handler")
+    old_hover = plot.property("spike_maxlag_hover_handler")
+    old_click = plot.property("spike_maxlag_click_handler")
     if old_hover is not None:
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseMoved.disconnect(old_hover)
@@ -228,7 +243,7 @@ def _attach_spike_corr_interaction(
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseClicked.disconnect(old_click)
 
-    def _on_mouse_moved(pos: pg.QtCore.QPointF) -> None:
+    def _on_mouse_moved(pos: pg.Point) -> None:
         if not plot.sceneBoundingRect().contains(pos):
             plot.setTitle(base_title)
             return
@@ -253,14 +268,15 @@ def _attach_spike_corr_interaction(
         if 0 <= row < n_rows and 0 <= col < n_cols:
             roi_i = rois[row]
             roi_j = rois[col]
+            # Emit tuple; roiSelected is Signal(object), so this is fine
             widget.roiSelected.emit([str(roi_i), str(roi_j)])
 
     scene.sigMouseMoved.connect(_on_mouse_moved)
     scene.sigMouseClicked.connect(_on_mouse_clicked)
 
     # Remember handlers so we can disconnect on next call
-    plot.setProperty("spike_ccorr_hover_handler", _on_mouse_moved)
-    plot.setProperty("spike_ccorr_click_handler", _on_mouse_clicked)
+    plot.setProperty("spike_maxlag_hover_handler", _on_mouse_moved)
+    plot.setProperty("spike_maxlag_click_handler", _on_mouse_clicked)
 
 
 def _add_colorbar_to_widget(

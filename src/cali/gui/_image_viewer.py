@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import cmap
 import numpy as np
 import tifffile
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QFileDialog,
@@ -20,8 +19,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from skimage.measure import find_contours
-from superqt import QLabeledRangeSlider
-from superqt.fonticon import icon
+from superqt import QIconifyIcon, QLabeledRangeSlider
 from superqt.utils import qthrottled, signals_blocked
 from vispy import scene
 from vispy.color import Colormap
@@ -130,13 +128,13 @@ class _ImageViewer(QGroupBox):
         self._reset_view = QPushButton()
         self._reset_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._reset_view.setToolTip("Reset View")
-        self._reset_view.setIcon(icon(MDI6.fullscreen))
+        self._reset_view.setIcon(QIconifyIcon("mdi:fullscreen"))
         self._reset_view.clicked.connect(self._reset)
         # save image button
         self._save_image_btn = QPushButton()
         self._save_image_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._save_image_btn.setToolTip("Save Image")
-        self._save_image_btn.setIcon(icon(MDI6.content_save_outline))
+        self._save_image_btn.setIcon(QIconifyIcon("mdi:content-save-outline"))
         self._save_image_btn.clicked.connect(self._save_image)
         # bottom widget
         bottom_wdg = QWidget()

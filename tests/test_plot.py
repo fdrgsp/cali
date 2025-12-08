@@ -58,6 +58,18 @@ def db_engine() -> Generator[Engine, None, None]:
                 # Failed to add column, rollback
                 conn.rollback()
 
+        # Check and add pixel_size column if missing
+        try:
+            conn.execute(text("SELECT pixel_size FROM extraction_settings LIMIT 1"))
+        except OperationalError:
+            try:
+                conn.execute(
+                    text("ALTER TABLE extraction_settings ADD COLUMN pixel_size REAL")
+                )
+                conn.commit()
+            except OperationalError:
+                conn.rollback()
+
     yield engine
     engine.dispose()  # Close all connections
 

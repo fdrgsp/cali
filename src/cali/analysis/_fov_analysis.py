@@ -11,15 +11,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
 
-from cali.logger import cali_logger
-from cali.plot._util import (
+from cali.analysis._util import (
+    _compute_cross_correlation_matrix,
+    _detect_population_bursts,
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_event_synchrony_matrix,
     _get_spike_synchrony,
     _get_spike_synchrony_matrix,
 )
+from cali.logger import cali_logger
 from cali.sqlmodel._model import FOVAnalysis
 
 if TYPE_CHECKING:
@@ -34,15 +35,20 @@ def compute_fov_analysis(
 
     This function calculates 6 pairwise metrics for all active ROIs in a FOV:
 
-    Calcium Traces and Peaks Metrics:
-    1. Zero-lag Pearson correlation on DF/F traces
-    2. Jitter synchrony on calcium peak events
-    3. Max lag correlation on calcium peak events
+    DF/F Calcium Traces:
+    0. Zero-lag Pearson correlation on DF/F traces
 
-    Spike Metrics:
-    4. Zero-lag Pearson correlation on spike trains
-    5. Max lag correlation on spike events
-    6. Jitter synchrony on spike events
+    Deconvolved DF/F Calcium Traces:
+    1. Zero-lag Pearson correlation on Deconvolved DF/F traces
+
+    Calcium Peaks:
+    3. Event xCorr (lag) on calcium peak events
+    4. Jitter synchrony on calcium peak events
+
+    Inferred Spikes:
+    5. Zero-lag Pearson correlation on spike trains
+    6. Max-lag CCG (correlation from spike timing)
+    7. Jitter synchrony on spike events
 
     It requires that ROIs have traces and data_analysis attached
     (either via history or _new_* attributes).
@@ -77,6 +83,7 @@ def compute_fov_analysis(
     # Use _new_traces/_new_data_analysis if available (during extraction/analysis)
     # Otherwise fall back to traces_history/data_analysis_history
     roi_labels: list[int] = []
+    dff_traces: list[np.ndarray] = []
     dec_dff_traces: list[np.ndarray] = []
     spike_trains: list[np.ndarray] = []
     peak_events_dict: dict[str, list[float]] = {}
@@ -103,11 +110,16 @@ def compute_fov_analysis(
         elif roi.data_analysis_history:
             data_analysis = roi.data_analysis_history[-1]
 
+        dff = np.asarray(traces.dff, dtype=float)
+        if dff.ndim != 1 or dff.size == 0:
+            continue
+
         dec_dff = np.asarray(traces.dec_dff, dtype=float)
         if dec_dff.ndim != 1 or dec_dff.size == 0:
             continue
 
         roi_labels.append(int(roi.label_value))
+        dff_traces.append(dff)
         dec_dff_traces.append(dec_dff)
 
         # Build peak event binary arrays
@@ -145,8 +157,11 @@ def compute_fov_analysis(
         return None
 
     # Compute calcium peaks metrics (3 measurements):
-    # 1. Zero-lag correlation on DF/F traces
-    calcium_dff_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
+    # 0. Zero-lag correlation on deconvolved DF/F traces
+    calcium_dff_corr_matrix = _compute_cross_correlation_matrix(dff_traces)
+
+    # 1. Zero-lag correlation on deconvolved DF/F traces
+    calcium_dec_dff_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
 
     # Convert milliseconds to frames using frame_rate
     frame_rate = analysis_settings.frame_rate  # frames per second
@@ -191,20 +206,20 @@ def compute_fov_analysis(
             )
 
     # Compute spike metrics (3 measurements):
-    # 1. Zero-lag correlation on spike trains
+    # 4. Zero-lag correlation on spike trains
     spike_corr_matrix = None
-    # 2. Max lag correlation on spikes
+    # 5. Max lag correlation on spikes
     spike_max_lag_corr_matrix = None
     global_spike_max_lag_corr = None
-    # 3. Jitter synchrony on spikes
+    # 6. Jitter synchrony on spikes
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
 
     if len(spike_data_dict) >= 2:
-        # 1. Zero-lag Pearson correlation on spike trains
+        # 4. Zero-lag Pearson correlation on spike trains
         spike_corr_matrix = _compute_cross_correlation_matrix(spike_trains)
 
-        # 2. Max lag correlation on spikes
+        # 5. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         spike_max_lag_corr_matrix = _get_spike_synchrony_matrix(
@@ -215,8 +230,8 @@ def compute_fov_analysis(
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-        # 3. Jitter synchrony on spikes
-        jitter_window_ms = analysis_settings.calcium_sync_jitter_window
+        # 6. Jitter synchrony on spikes
+        jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix = _get_spike_synchrony_matrix(
             spike_data_dict,
@@ -247,6 +262,11 @@ def compute_fov_analysis(
         calcium_dff_correlation_matrix=(
             calcium_dff_corr_matrix.tolist()
             if calcium_dff_corr_matrix is not None
+            else None
+        ),
+        calcium_dec_dff_corr_matrix=(
+            calcium_dec_dff_corr_matrix.tolist()
+            if calcium_dec_dff_corr_matrix is not None
             else None
         ),
         calcium_peaks_jitter_synchrony_matrix=(
@@ -284,196 +304,3 @@ def compute_fov_analysis(
     )
 
     return fov_analysis
-
-
-def _compute_cross_correlation_matrix(
-    traces: list[np.ndarray],
-) -> np.ndarray | None:
-    """Compute pairwise Pearson correlation matrix for traces (zero-lag).
-
-    Uses z-scored traces and computes standard Pearson correlation coefficient
-    at zero lag, following the approach used in CaImAn and standard practice.
-
-    Note: This computes zero-lag correlation (standard Pearson R), not max
-    cross-correlation across lags. For lag-invariant correlation, use synchrony
-    metrics instead.
-
-    Parameters
-    ----------
-    traces : list[np.ndarray]
-        List of 1D trace arrays (must all be same length)
-
-    Returns
-    -------
-    np.ndarray | None
-        NxN correlation matrix with values in [-1, 1], or None if insufficient data
-
-    Raises
-    ------
-    ValueError
-        If traces have different lengths
-    """
-    if len(traces) < 2:
-        return None
-
-    # Verify all traces have same length
-    lengths = [len(t) for t in traces]
-    if len(set(lengths)) > 1:
-        raise ValueError(
-            f"All traces must have same length. Got lengths: {set(lengths)}"
-        )
-
-    # Stack traces
-    traces_array = np.vstack(traces)  # (n_rois, n_frames)
-
-    # Manually z-score to handle constant traces without warnings
-    # Z-score: (x - mean(x)) / std(x)
-    means = traces_array.mean(axis=1, keepdims=True)
-    stds = traces_array.std(axis=1, keepdims=True, ddof=1)
-
-    # Replace zero std (constant traces) with 1 to avoid division by zero
-    # This will make constant traces have zero mean and all zeros after normalization
-    stds[stds == 0] = 1.0
-
-    dff_zero_mean = (traces_array - means) / stds
-
-    n_rois = len(traces)
-    correlation_matrix = np.zeros((n_rois, n_rois), dtype=float)
-
-    # Compute norms for normalization
-    norms = np.linalg.norm(dff_zero_mean, axis=1)
-    # Avoid division by zero (constant trace after z-scoring)
-    norms[norms == 0] = np.finfo(float).eps
-
-    # Diagonal is always 1 (perfect self-correlation)
-    np.fill_diagonal(correlation_matrix, 1.0)
-
-    # Compute zero-lag Pearson correlation for all pairs
-    for i in range(n_rois):
-        x = dff_zero_mean[i]
-        for j in range(i + 1, n_rois):
-            y = dff_zero_mean[j]
-
-            # Pearson correlation at zero lag: r = <x, y> / (||x|| ||y||)
-            # After z-scoring, this is just the normalized dot product
-            r0 = np.dot(x, y) / (norms[i] * norms[j])
-
-            # Clamp to [-1, 1] to handle numerical errors
-            r0 = np.clip(r0, -1.0, 1.0)
-
-            correlation_matrix[i, j] = r0
-            correlation_matrix[j, i] = r0
-
-    return correlation_matrix
-
-
-def _detect_population_bursts(
-    spike_trains: list[np.ndarray],
-    frame_rate: float,
-    burst_threshold_percent: float,
-    min_duration_ms: float,
-    gaussian_sigma_sec: float,
-) -> tuple[int, float | None, float | None]:
-    """Detect bursts in population spike activity.
-
-    Computes mean population activity, smooths it, and detects periods
-    above threshold that exceed minimum duration.
-
-    Parameters
-    ----------
-    spike_trains : list[np.ndarray]
-        List of binary spike trains for active ROIs
-    frame_rate : float
-        Frame rate in Hz (frames per second)
-    burst_threshold_percent : float
-        Threshold as percentage (e.g., 65.0 for 65%)
-    min_duration_ms : float
-        Minimum burst duration in milliseconds
-    gaussian_sigma_sec : float
-        Gaussian smoothing sigma in seconds
-
-    Returns
-    -------
-    tuple[int, float | None, float | None]
-        - burst_count: Number of bursts detected
-        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
-        - burst_avg_interval: Average inter-burst interval in seconds
-          (Noneif < 2 bursts)
-    """
-    if len(spike_trains) < 2:
-        return 0, None, None
-
-    # Stack spike trains and compute population activity (mean across ROIs)
-    spike_array = np.vstack(spike_trains)  # (n_rois, n_frames)
-    population_activity = np.mean(spike_array, axis=0)  # (n_frames,)
-
-    if population_activity.size == 0:
-        return 0, None, None
-
-    # Convert parameters to frame units
-    min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
-    gaussian_sigma_frames = gaussian_sigma_sec * frame_rate
-
-    # Smooth population activity
-    if gaussian_sigma_frames > 0:
-        smoothed_activity = gaussian_filter1d(
-            population_activity, sigma=gaussian_sigma_frames, mode="nearest"
-        )
-    else:
-        smoothed_activity = population_activity
-
-    # Convert threshold from percent to fraction
-    burst_threshold = burst_threshold_percent / 100.0
-
-    # Detect regions above threshold
-    above_threshold = smoothed_activity > burst_threshold
-    if not np.any(above_threshold):
-        return 0, None, None
-
-    # Find burst start and end points
-    above_int = above_threshold.astype(int)
-    changes = np.diff(above_int)
-
-    starts = np.where(changes == 1)[0] + 1
-    ends = np.where(changes == -1)[0] + 1
-
-    # Handle edge cases
-    if above_threshold[0]:
-        starts = np.insert(starts, 0, 0)
-    if above_threshold[-1]:
-        ends = np.append(ends, len(above_threshold))
-
-    # Filter bursts by minimum duration
-    burst_starts_list: list[int] = []
-    burst_ends_list: list[int] = []
-    burst_durations_sec: list[float] = []
-
-    for start_idx, end_idx in zip(starts, ends):
-        duration_frames = end_idx - start_idx
-        if duration_frames >= min_duration_frames:
-            burst_starts_list.append(int(start_idx))
-            burst_ends_list.append(int(end_idx))
-            # Convert duration to seconds
-            duration_sec = duration_frames / frame_rate
-            burst_durations_sec.append(duration_sec)
-
-    burst_count = len(burst_durations_sec)
-
-    if burst_count == 0:
-        return 0, None, None
-
-    # Calculate average duration
-    burst_avg_duration = float(np.mean(burst_durations_sec))
-
-    # Calculate inter-burst intervals (time from end of one burst to start of next)
-    burst_avg_interval: float | None = None
-    if burst_count >= 2:
-        intervals_sec: list[float] = []
-        for i in range(1, burst_count):
-            # Interval = frames between bursts / frame_rate
-            interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
-            interval_sec = interval_frames / frame_rate
-            intervals_sec.append(interval_sec)
-        burst_avg_interval = float(np.mean(intervals_sec))
-
-    return burst_count, burst_avg_duration, burst_avg_interval

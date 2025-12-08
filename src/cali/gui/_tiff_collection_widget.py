@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from fonticon_mdi6 import MDI6
 from pymmcore_widgets.useq_widgets import WellPlateWidget
 from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
@@ -24,7 +23,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from cali.readers import TiffCollectionReader, TiffCollectionSettings
 
@@ -61,7 +60,7 @@ class TiffCollectionWidget(QDialog):
         """
         super().__init__(parent)
         self.setWindowTitle("TIFF Collection Configuration")
-        self.setWindowIcon(icon(MDI6.file_image_outline))
+        self.setWindowIcon(QIconifyIcon("mdi:file-image-outline"))
 
         self._tiff_files: list[Path] = []
         self._file_map: dict[tuple[int, int], list[Path]] = {}
@@ -111,10 +110,10 @@ class TiffCollectionWidget(QDialog):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(5)
-        self._add_btn = QPushButton(icon(MDI6.arrow_down), "Add to Well")
+        self._add_btn = QPushButton(QIconifyIcon("mdi:arrow-down"), "Add to Well")
         self._add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._add_btn.clicked.connect(self._on_add_clicked)
-        self._remove_btn = QPushButton(icon(MDI6.arrow_up), "Remove from Well")
+        self._remove_btn = QPushButton(QIconifyIcon("mdi:arrow-up"), "Remove from Well")
         self._remove_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._remove_btn.clicked.connect(self._on_remove_clicked)
         button_layout.addWidget(self._add_btn)

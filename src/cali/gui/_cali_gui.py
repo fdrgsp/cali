@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import tifffile
 import useq
-from fonticon_mdi6 import MDI6
 from ndv import NDViewer
 from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
     WellPlateView,
 )
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QAction, QCloseEvent, QIcon
+from qtpy.QtGui import QAction, QCloseEvent
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QFileDialog,
@@ -31,7 +30,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
 from superqt.utils import create_worker
 from tqdm import tqdm
 
@@ -70,7 +68,7 @@ from cali.util import load_data_from_path
 
 from ._analysis_gui import _AnalysisGUI
 from ._detection_gui import _DetectionGUI
-from ._extraction_gui import TraceExtractionData, _ExtractionGUI
+from ._extraction_gui import MetadataData, TraceExtractionData, _ExtractionGUI
 from ._fov_table import WellInfo, _FOVTable
 from ._image_viewer import _ImageViewer
 from ._init_dialog import _InputDialog
@@ -114,8 +112,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle("Plate Viewer")
-        self.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
+        self.setWindowTitle("Cali")
 
         # ELAPSED TIMER ---------------------------------------------------------------
         self._elapsed_timer = _ElapsedTimer()
@@ -144,11 +141,11 @@ class CaliGui(QMainWindow):
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
         save_as_tiff_action.triggered.connect(self._show_save_as_tiff_dialog)
-        save_as_csv_action = QAction("Save Analysis Data as CSV...", self)
-        save_as_csv_action.triggered.connect(self._show_save_as_csv_dialog)
+        # save_as_csv_action = QAction("Save Analysis Data as CSV...", self)
+        # save_as_csv_action.triggered.connect(self._show_save_as_csv_dialog)
         self.file_menu.addAction(open_action)
         self.file_menu.addAction(save_as_tiff_action)
-        self.file_menu.addAction(save_as_csv_action)
+        # self.file_menu.addAction(save_as_csv_action)
         self.setMenuBar(self.menu_bar)
 
         # TIFF COLLECTION WIDGET ------------------------------------------------------
@@ -366,6 +363,19 @@ class CaliGui(QMainWindow):
 
         # connect analysis from metadata button
         self._analysis_wdg.from_metadata.connect(self._on_led_info_from_meta_clicked)  # type: ignore
+        # connect extraction from metadata button
+        self._extraction_wdg.from_metadata.connect(self._on_extraction_meta_clicked)  # type: ignore
+        # connect analysis metadata frame rate button
+        self._analysis_wdg.from_metadata_frame_rate.connect(  # type: ignore
+            self._on_analysis_meta_clicked
+        )
+
+        self._extraction_wdg._metadata_wdg._frame_rate_spin.valueChanged.connect(
+            self._on_fps_changed
+        )
+        self._analysis_wdg._metadata_wdg._frame_rate_spin.valueChanged.connect(
+            self._on_fps_changed
+        )
 
         # connect the shared run/cancel buttons to appropriate handlers
         self._run_cali_wdg._run_btn.clicked.connect(self._on_cali_run)
@@ -472,6 +482,11 @@ class CaliGui(QMainWindow):
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
+    def _on_fps_changed(self, fps: float) -> None:
+        """Link frame rate changes between analysis and extraction metadata widgets."""
+        self._analysis_wdg._metadata_wdg.setValue(fps)
+        self._extraction_wdg._metadata_wdg._frame_rate_spin.setValue(fps)
+
     def _on_save_settings(self) -> None:
         """Handle saving current run settings."""
         from dataclasses import asdict
@@ -513,9 +528,23 @@ class CaliGui(QMainWindow):
             # extraction
             extraction = settings.get("extraction", {})
             ext_settings = extraction.get("trace_extraction_data", {})
-            if ext_settings:
+            metadata_settings = extraction.get("metadata_data", {})
+            if ext_settings or metadata_settings:
+                from cali.gui._extraction_gui import MetadataData
+
                 self._extraction_wdg.setValue(
-                    ExtractionSettingsData(TraceExtractionData(**ext_settings))
+                    ExtractionSettingsData(
+                        trace_extraction_data=(
+                            TraceExtractionData(**ext_settings)
+                            if ext_settings
+                            else None
+                        ),
+                        metadata_data=(
+                            MetadataData(**metadata_settings)
+                            if metadata_settings
+                            else None
+                        ),
+                    )
                 )
 
             # analysis
@@ -808,8 +837,6 @@ class CaliGui(QMainWindow):
         """Update the GUI settings based on the latest analysis result."""
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
-        # populate detection settings combobox in run widget
-        self._populate_settings(database_path)
         # select first run if available
         if self._runs_panel._runs_list.count() > 0:
             # select first run
@@ -817,6 +844,9 @@ class CaliGui(QMainWindow):
             # emit runSelected signal for the first run
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
                 self._runs_panel._on_item_clicked(first_item)
+        else:
+            # populate detection settings combobox in run widget
+            self._populate_settings(database_path)
         # load plate plan data
         if experiment is None:
             experiment = Experiment.load_from_db(database_path, load_data=False)
@@ -1936,6 +1966,7 @@ class CaliGui(QMainWindow):
             if result.extraction_settings_id:
                 from cali.gui._extraction_gui import (
                     ExtractionSettingsData,
+                    MetadataData,
                     TraceExtractionData,
                 )
                 from cali.sqlmodel import ExtractionSettings
@@ -1950,12 +1981,15 @@ class CaliGui(QMainWindow):
                         trace_extraction_data=TraceExtractionData(
                             dff_window_size=e_settings.dff_window,
                             decay_constant=e_settings.decay_constant,
-                            frame_rate=e_settings.frame_rate,
                             neuropil_inner_radius=e_settings.neuropil_inner_radius,
                             neuropil_min_pixels=e_settings.neuropil_min_pixels,
                             neuropil_correction_factor=(
                                 e_settings.neuropil_correction_factor
                             ),
+                        ),
+                        metadata_data=MetadataData(
+                            pixel_size=e_settings.pixel_size,
+                            frame_rate=e_settings.frame_rate,
                         ),
                     )
                 )
@@ -1994,9 +2028,9 @@ class CaliGui(QMainWindow):
                                 a_settings.calcium_sync_jitter_window
                             ),
                             calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
-                            calcium_network_threshold=(
-                                a_settings.calcium_network_threshold
-                            ),
+                            # calcium_network_threshold=(
+                            #     a_settings.calcium_network_threshold
+                            # ),
                         ),
                         spikes_data=SpikeData(
                             spike_threshold=a_settings.spike_threshold_value,
@@ -2081,6 +2115,91 @@ class CaliGui(QMainWindow):
                 msg = "❌ No stimulation metadata found in the datastore!"
                 show_error_dialog(self, msg)
                 cali_logger.warning(msg)
+
+        except Exception as e:
+            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            return
+
+    def _on_extraction_meta_clicked(self) -> None:
+        """Load pixel size and frame rate from metadata."""
+        if self._data is None:
+            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
+            return
+
+        try:
+            if not (meta := self._data.metadata):
+                msg = "❌ No metadata found! Cannot retrieve pixel size or frame rate!"
+                show_error_dialog(self, msg)
+                cali_logger.error(msg)
+                return
+            if isinstance(meta, dict):
+                meta = [meta]
+            elif callable(meta):  # ome zarr reader
+                meta = meta()
+            pixel_size = meta[0].get("pixel_size_um", None)
+            exposure_ms = meta[0].get("exposure_ms", None)
+            frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
+            self._extraction_wdg._metadata_wdg.setValue(
+                MetadataData(pixel_size, frame_rate)
+            )
+
+            final_msg = ""
+            if pixel_size is None:
+                final_msg += (
+                    "⚠️ No pixel size found in metadata! Using pixels as units.\n"
+                )
+            else:
+                cali_logger.info(f"🗒️ Loaded pixel size from metadata: {pixel_size} µm")
+
+            if exposure_ms is None:
+                final_msg += (
+                    "⚠️ No exposure time found in metadata! Using default frame rate "
+                    "of 10 fps."
+                )
+            else:
+                cali_logger.info(f"🗒️ Loaded frame rate from metadata: {frame_rate} fps")
+
+            if final_msg:
+                show_error_dialog(self, final_msg, type="warning")
+                cali_logger.warning(final_msg)
+
+        except Exception as e:
+            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            return
+
+    def _on_analysis_meta_clicked(self) -> None:
+        """Load frame rate from metadata for analysis settings."""
+        if self._data is None:
+            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
+            return
+
+        try:
+            if not (meta := self._data.metadata):
+                msg = "❌ No metadata found! Cannot retrieve frame rate!"
+                show_error_dialog(self, msg)
+                cali_logger.error(msg)
+                return
+            if isinstance(meta, dict):
+                meta = [meta]
+            elif callable(meta):  # ome zarr reader
+                meta = meta()
+            exposure_ms = meta[0].get("exposure_ms", None)
+            frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
+            self._analysis_wdg._metadata_wdg.setValue(frame_rate)
+
+            if exposure_ms is None:
+                msg = (
+                    "⚠️ No exposure time found in metadata! Using default frame rate "
+                    "of 10 fps.\n"
+                )
+                cali_logger.warning(msg)
+                show_error_dialog(self, msg, type="warning")
+            else:
+                cali_logger.info(f"🗒️ Loaded frame rate from metadata: {frame_rate} fps")
 
         except Exception as e:
             msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"

@@ -16,6 +16,160 @@ if TYPE_CHECKING:
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
+def _generate_spike_raster_plot_raw(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    *,
+    run_id: int,
+) -> None:
+    """Generate a spike raster plot using raw (unthresholded) spike data (pyqtgraph)."""
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+    # Reset ViewBox settings that might have been set by previous plots
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at BOTTOM visually
+
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    plot.setTitle("Inferred Spike Events (binary) Raster Plot (Raw)")
+
+    # ------------------------ Query DB ------------------------ #
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .outerjoin(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+        )
+
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        stmt = stmt.order_by(col(ROI.label_value))
+        roi_data: list[tuple[ROI, Traces, DataAnalysis | None]] = session.exec(
+            stmt
+        ).all()
+
+    if not roi_data:
+        cali_logger.warning("No ROI data found for raw spike raster plot.")
+        _draw_centered_message_pg(
+            plot,
+            "No ROI data found for this FOV.\nPlease check the selected run and FOV.",
+        )
+        return
+
+    # ------------------------ Collect events ------------------------ #
+    event_data: list[np.ndarray] = []  # per-ROI array of spike indices
+    per_roi_spike_amplitudes: list[np.ndarray] = []
+    rois_rec_time: list[float] = []
+    active_rois: list[int] = []
+    sample_trace: list[float] | None = None
+
+    for roi, traces, data_analysis in roi_data:
+        if traces is None or not traces.inferred_spikes:
+            continue
+
+        inferred = np.asarray(traces.inferred_spikes, dtype=float)
+
+        # Raw spikes: detect any positive values (no thresholding)
+        positive_vals = inferred > 0
+        if not np.any(positive_vals):
+            continue
+
+        # rising edges: 0 -> positive transitions
+        rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
+        spike_times = np.where(rising)[0]
+        spike_amplitudes = inferred[spike_times]
+
+        if spike_times.size == 0:
+            continue
+
+        active_rois.append(roi.label_value)
+        event_data.append(spike_times.astype(float))
+        per_roi_spike_amplitudes.append(spike_amplitudes.astype(float))
+
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            rois_rec_time.append(data_analysis.total_recording_time_sec)
+
+        if sample_trace is None and traces.corrected_trace is not None:
+            sample_trace = traces.corrected_trace
+
+    if not event_data:
+        cali_logger.warning("No raw spike data found for the selected ROIs and run.")
+        _draw_centered_message_pg(
+            plot,
+            "No spike data found.\nPlease check the selected run and FOV.",
+        )
+        return
+
+    # ------------------------ Colors per spike ------------------------ #
+    per_roi_colors: list[list[tuple[int, int, int, int]]] = []
+
+    for times in event_data:
+        # same length, all white
+        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+
+    # ------------------------ Plot raster (one row per ROI) ------------------------ #
+    for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
+        if times.size == 0:
+            continue
+
+        y_vals = np.full_like(times, row_idx, dtype=float)
+        spots = []
+        for x, y, color in zip(times, y_vals, row_colors):
+            spots.append(
+                {
+                    "pos": (float(x), float(y)),
+                    "brush": pg.mkBrush(*color),
+                    "pen": None,
+                    "size": 3,
+                    "symbol": "s",
+                }
+            )
+
+        item = pg.ScatterPlotItem(spots=spots)
+        item.setProperty("roi_label", str(active_rois[row_idx]))
+        plot.addItem(item)
+
+    # ------------------------ Axes ------------------------ #
+    plot.setLabel("left", "ROI")
+    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+
+    # Hide y tick values
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
+
+    plot.getViewBox().enableAutoRange(x=True, y=True)
+
+    # ------------------------ Click → roiSelected ------------------------ #
+    _attach_click_handlers_raster(widget, plot, active_rois)
+
+
 def _generate_spike_raster_plot(
     widget: _SingleWellGraphWidget,
     engine: Engine,
@@ -33,7 +187,7 @@ def _generate_spike_raster_plot(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at BOTTOM visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -46,7 +200,7 @@ def _generate_spike_raster_plot(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Raster Plot (Thresholded)")
+    plot.setTitle("Inferred Spike Events (binary) Raster Plot (Thresholded)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -162,13 +316,14 @@ def _generate_spike_raster_plot(
         plot.addItem(item)
 
     # ------------------------ Axes ------------------------ #
-    plot.setLabel("left", "ROI (rows)")
+    plot.setLabel("left", "ROI")
     _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
 
     # Hide y tick values
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
 
     plot.getViewBox().enableAutoRange(x=True, y=True)
 
@@ -244,7 +399,8 @@ def _attach_click_handlers_raster(
             return
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # With invertY(True), y increases downward; floor gives correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 
@@ -392,6 +548,7 @@ def _generate_spike_intensity_heatmap(
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
 
     # Time axis (using first trace as reference)
     sample_trace = traces_list[0]
@@ -441,7 +598,8 @@ def _attach_click_handlers_spike_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # Since invertY(False), y=0 is at bottom, so use floor for correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 
@@ -602,6 +760,7 @@ def _generate_spike_intensity_heatmap_thresholded(
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
 
     # Time axis (using first trace as reference)
     sample_trace = traces_list[0]

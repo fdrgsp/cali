@@ -9,6 +9,8 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from superqt import QIconifyIcon
+
 # CRITICAL: Import torch before Qt on Windows to avoid DLL conflicts
 # When PyQt6 initializes before PyTorch on Windows, it can cause c10.dll failures
 if sys.platform == "win32":
@@ -18,7 +20,6 @@ if sys.platform == "win32":
         # Cellpose is optional, so torch might not be installed
         pass
 
-from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication
 from useq import register_well_plates
 
@@ -89,9 +90,6 @@ register_well_plates(
 
 def main(args: Sequence[str] | None = None) -> None:
     """Run the cali application."""
-    from fonticon_mdi6 import MDI6
-    from superqt.fonticon import icon
-
     from cali.logger import cali_logger, set_console_level
 
     # Parse command line arguments
@@ -112,7 +110,7 @@ def main(args: Sequence[str] | None = None) -> None:
     cali_logger.info(f"Logger level set to {parsed_args.logger.upper()}")
 
     app = QApplication([])
-    app.setWindowIcon(QIcon(icon(MDI6.view_comfy, color="#00FF00")))
+    app.setWindowIcon(QIconifyIcon("mdi:view-comfy", color="#00FF00"))
     pl = CaliGui()
     pl.show()
     sys.excepthook = _our_excepthook

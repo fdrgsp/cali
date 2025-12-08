@@ -5,7 +5,6 @@ import random
 from typing import TYPE_CHECKING, ClassVar
 
 import pyqtgraph as pg
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QStandardItem, QStandardItemModel
 from qtpy.QtWidgets import (
@@ -22,11 +21,12 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 from sqlmodel import Session, col, select
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from cali.plot._main_plot import (
     ANALYSIS_PRODUCTS,
@@ -64,6 +64,10 @@ class _SingleWellGraphWidget(QWidget):
         self._fov: str = ""
         self._experiment_type: str | None = None
 
+        # Connectivity settings
+        self._connectivity_threshold: float = 0.3
+        self._connectivity_method: str = "calcium_dec_dff_corr"
+
         # ------------------------------------------------------------------ #
         # Top combo + save button
         # ------------------------------------------------------------------ #
@@ -71,7 +75,7 @@ class _SingleWellGraphWidget(QWidget):
         self._rebuild_combo_box()
 
         self._save_btn = QPushButton("Save Image", self)
-        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
+        self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
 
         top = QHBoxLayout()
@@ -81,6 +85,10 @@ class _SingleWellGraphWidget(QWidget):
         top.addWidget(self._save_btn, 0)
 
         self._choose_dysplayed_traces = _DisplaySingleWellTraces(self)
+
+        # Connectivity threshold widget (only visible for connectivity plots)
+        self._connectivity_threshold_widget = _ConnectivityThresholdWidget(self)
+        self._connectivity_threshold_widget.setVisible(False)
 
         # ------------------------------------------------------------------ #
         # pyqtgraph canvas replacement
@@ -109,9 +117,10 @@ class _SingleWellGraphWidget(QWidget):
         # Layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         layout.addLayout(top)
         layout.addWidget(self._choose_dysplayed_traces)
-        # no toolbar - pan/zoom etc are built-in with mouse in pyqtgraph
+        layout.addWidget(self._connectivity_threshold_widget)
         layout.addWidget(self.plot_widget)
 
         self._combo.currentTextChanged.connect(self._on_combo_changed)
@@ -418,18 +427,42 @@ class _SingleWellGraphWidget(QWidget):
     # Public helpers used by plot functions
     # ------------------------------------------------------------------ #
     def clear_plot(self) -> None:
-        """Completely reset the plot before drawing a new one."""
+        """Completely reset the plot to default state before drawing a new one.
+
+        This is the SINGLE SOURCE OF TRUTH for plot reset. All plot functions
+        should call this at the start to ensure consistent baseline state.
+
+        Default state:
+        - Origin at bottom-left (0,0): invertY(False)
+        - No aspect lock: setAspectLocked(False)
+        - No ViewBox limits: all set to None
+        - Axes show numeric values
+        - No custom ticks
+        - Empty title and labels
+        - Legend hidden
+        - No colorbar
+        - All event handlers disconnected
+
+        Individual plots can override these settings (e.g., heatmaps may call
+        invertY(True), rasters may set limits), but they start from this clean state.
+        """
         plot = self.plot_item
         if plot is None:
             return
 
-        # 1) Disconnect any custom heatmap handlers we attached
+        # 1) Disconnect any custom handlers we attached
         scene = plot.scene()
         for prop_name, signal_name in [
             ("ccorr_hover_handler", "sigMouseMoved"),
             ("ccorr_click_handler", "sigMouseClicked"),
             ("sync_hover_handler", "sigMouseMoved"),
             ("sync_click_handler", "sigMouseClicked"),
+            ("connectivity_click_handler", "sigMouseClicked"),
+            ("amp_raster_click_handler", "sigMouseClicked"),
+            ("intensity_heatmap_click_handler", "sigMouseClicked"),
+            ("spike_raster_click_handler", "sigMouseClicked"),
+            ("spike_intensity_heatmap_click_handler", "sigMouseClicked"),
+            ("raster_click_handler", "sigMouseClicked"),
         ]:
             handler = plot.property(prop_name)
             if handler is not None:
@@ -437,42 +470,46 @@ class _SingleWellGraphWidget(QWidget):
                     getattr(scene, signal_name).disconnect(handler)
                 plot.setProperty(prop_name, None)
 
-        # 2) Clear all items (curves, images, lines, etc.)
+        # 2) Clear all items (curves, images, lines, regions, etc.)
         plot.clear()
 
-        # 3) Reset ViewBox transforms and ranges
+        # 3) Reset ViewBox to default state
         vb = plot.getViewBox()
-        # Reset any limits that might have been set by raster/heatmap plots
+        # Remove all limits
         vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-        # back to normal "math" orientation for traces
+        # Default orientation: origin at bottom-left (standard math/cartesian)
         vb.invertY(False)
-        # allow non-square aspect by default
+        # Allow non-square aspect by default
         vb.setAspectLocked(False)
-        # let pyqtgraph decide ranges next time
+        # Enable auto-ranging for next plot
         vb.enableAutoRange(x=True, y=True)
 
         # 4) Reset axes: ticks + value visibility
         for axis_name in ("left", "bottom"):
             axis = plot.getAxis(axis_name)
-            # remove any custom ticks
+            # Remove any custom ticks
             axis.setTicks(None)
-            # show numeric labels again by default
+            # Show numeric labels by default
             axis.setStyle(showValues=True)
+            # Reset to default auto SI prefix behavior
+            axis.enableAutoSIPrefix(True)
 
         # 5) Reset labels & title
         plot.setTitle("")
         plot.setLabel("left", "")
         plot.setLabel("bottom", "")
 
-        # 6) Hide shared legend if we have one
-        if hasattr(self, "legend") and self.legend is not None:
-            self.legend.clear()
-            self.legend.setVisible(False)
+        # 6) Hide shared legend
+        self.legend.clear()
+        self.legend.setVisible(False)
 
         # 7) Remove colorbar if present
-        if hasattr(self, "colorbar") and self.colorbar is not None:
+        if self.colorbar is not None:
             self.plot_item.layout.removeItem(self.colorbar)
             self.colorbar = None
+
+        # 8) Hide connectivity threshold widget
+        self._connectivity_threshold_widget.setVisible(False)
 
     # ------------------------------------------------------------------ #
     # Internal slots
@@ -489,6 +526,10 @@ class _SingleWellGraphWidget(QWidget):
             or self._run_id is None
         ):
             return
+
+        # Show/hide connectivity threshold widget based on plot type
+        is_connectivity_plot = "Connectivity" in text
+        self._connectivity_threshold_widget.setVisible(is_connectivity_plot)
 
         plot_single_well_data(
             self, self._engine, self._fov, text, rois=None, run_id=self._run_id
@@ -543,7 +584,7 @@ class _MultilWellGraphWidget(QWidget):
         )
 
         self._save_btn = QPushButton("Save Image", self)
-        self._save_btn.setIcon(QIcon(icon(MDI6.content_save_outline)))
+        self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
 
         top = QHBoxLayout()
@@ -887,6 +928,122 @@ class _DisplaySingleWellTraces(QGroupBox):
                 with contextlib.suppress(ValueError):
                     numbers.append(int(part))
         return numbers
+
+
+class _ConnectivityThresholdWidget(QGroupBox):
+    """Widget for adjusting connectivity method and threshold."""
+
+    def __init__(self, parent: _SingleWellGraphWidget) -> None:
+        super().__init__(parent)
+        self.setTitle("Connectivity Settings")
+        self.setCheckable(False)
+
+        self.setToolTip(
+            "Select a functional connectivity method and adjust the edge threshold.\n\n"
+            "Functional connectivity here is computed as zero-lag Pearson correlation "
+            "between calcium activity traces.\n\n"
+            "• DF/F: uses raw ΔF/F traces.\n"
+            "• Deconvolved DF/F: uses OASIS-deconvolved ΔF/F traces for a cleaner, "
+            "more stable network."
+        )
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        )
+
+        self._graph: _SingleWellGraphWidget = parent
+
+        # Method combo box
+        self._method_combo = QComboBox(self)
+        self._method_combo.addItems(
+            [
+                "Deconvolved DF/F Correlation",
+                "DF/F Correlation",
+                # "Calcium Peaks Max-Lag",
+                # "Calcium Peaks Jitter Sync",
+                # "Spike Correlation",
+                # "Spike Max-Lag",
+                # "Spike Jitter Sync",
+            ]
+        )
+        self._method_combo.setToolTip("Select connectivity metric method")
+        self._method_combo.currentIndexChanged.connect(self._update_connectivity)
+
+        # Threshold slider
+        self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self._threshold_slider.setMinimum(0)
+        self._threshold_slider.setMaximum(100)
+        self._threshold_slider.setValue(30)  # Default 0.3
+        self._threshold_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._threshold_slider.setTickInterval(10)
+
+        # Threshold value label
+        self._threshold_label = QLabel("0.30")
+        self._threshold_label.setMinimumWidth(40)
+        self._threshold_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        # Update button
+        self._update_btn = QPushButton("Update", self)
+        self._update_btn.clicked.connect(self._update_connectivity)
+
+        # Layout
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.addWidget(QLabel("Method:"))
+        main_layout.addWidget(self._method_combo)
+        main_layout.addWidget(QLabel("Threshold:"))
+        main_layout.addWidget(self._threshold_slider)
+        main_layout.addWidget(self._threshold_label)
+        main_layout.addWidget(self._update_btn)
+
+        # Connect signals
+        self._threshold_slider.valueChanged.connect(self._on_slider_changed)
+        self._method_combo.currentIndexChanged.connect(self._on_method_changed)
+
+    def _get_method_from_combo(self) -> str:
+        """Map combo box selection to ConnectivityMethod string."""
+        method_map = {
+            0: "calcium_dec_dff_corr",
+            1: "calcium_dff_corr",
+            # 2: "calcium_peaks_maxlag",
+            # 3: "calcium_peaks_jitter",
+            # 4: "spike_corr",
+            # 5: "spike_maxlag",
+            # 6: "spike_jitter",
+        }
+        return method_map[self._method_combo.currentIndex()]
+
+    def _on_method_changed(self, index: int) -> None:
+        """Update connectivity method when combo box changes."""
+        method = self._get_method_from_combo()
+        self._graph._connectivity_method = method
+
+    def _on_slider_changed(self, value: int) -> None:
+        """Update threshold label when slider changes."""
+        threshold = value / 100.0
+        self._threshold_label.setText(f"{threshold:.2f}")
+
+    def _update_connectivity(self) -> None:
+        """Update the connectivity graph with new threshold."""
+        threshold = self._threshold_slider.value() / 100.0
+
+        # Store threshold on the parent widget so the plot function can access it
+        self._graph._connectivity_threshold = threshold
+
+        # Re-plot with new threshold
+        text = self._graph._combo.currentText()
+        if "Connectivity" in text and self._graph._engine and self._graph._fov:
+            self._graph.clear_plot()
+            plot_single_well_data(
+                self._graph,
+                self._graph._engine,
+                self._graph._fov,
+                text,
+                rois=None,
+                run_id=self._graph._run_id,
+            )
 
 
 class _ConditionItemWidget(QWidget):

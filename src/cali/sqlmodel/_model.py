@@ -42,6 +42,7 @@ from cali._constants import (
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
+    DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
     MULTIPLIER,
@@ -891,6 +892,7 @@ class ExtractionSettings(SQLModel, table=True):
     decay_constant: float = 0.0
     dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
+    pixel_size: float | None = None  # pixel size in micrometers (µm)
 
     threads: int = Field(default=1)
 
@@ -909,6 +911,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
             and self.frame_rate == other.frame_rate
+            and self.pixel_size == other.pixel_size
             # and self.threads == other.threads
         )
 
@@ -922,6 +925,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.decay_constant,
                 self.dff_window,
                 self.frame_rate,
+                self.pixel_size,
                 # self.threads,
             )
         )
@@ -1031,7 +1035,9 @@ class AnalysisSettings(SQLModel, table=True):
     burst_gaussian_sigma : float
         Gaussian sigma for burst smoothing (seconds)
     spikes_sync_cross_corr_lag : int
-        Max lag for spike synchrony cross-correlation (milliseconds)
+        Max lag for spike cross-correlation (milliseconds)
+    spikes_sync_jitter_window : int
+        Jitter window for spike synchrony (milliseconds)
     frame_rate : float
         Acquisition frame rate (frames per second)
     led_power_equation : str | None
@@ -1077,6 +1083,7 @@ class AnalysisSettings(SQLModel, table=True):
     burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
+    spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
 
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
@@ -1695,6 +1702,8 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
     calcium_dff_correlation_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
+    calcium_dec_dff_corr_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
     calcium_peaks_jitter_synchrony_matrix : list[list[float]] | None
         Jitter synchrony on calcium peak events (NxN for N active ROIs)
     global_calcium_peaks_jitter_synchrony : float | None
@@ -1742,8 +1751,12 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     # Calcium peaks metrics (from dec_dff traces and peak events)
-    # 1. Zero-lag correlation on DF/F traces
+    # 0. Zero-lag correlation on DF/F traces
     calcium_dff_correlation_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 1. Zero-lag correlation on deconvolved DF/F traces
+    calcium_dec_dff_corr_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     # 2. Jitter synchrony on calcium peaks

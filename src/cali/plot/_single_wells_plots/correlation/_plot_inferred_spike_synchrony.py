@@ -9,7 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, FOVAnalysis
+from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -25,7 +25,7 @@ def _get_spike_synchrony_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
-) -> tuple[np.ndarray | None, list[int] | None, float | None]:
+) -> tuple[np.ndarray | None, list[int] | None, float | None, float | None]:
     """Get the pre-computed spike synchrony matrix from database.
 
     Parameters
@@ -39,12 +39,13 @@ def _get_spike_synchrony_matrix_from_db(
 
     Returns
     -------
-    tuple[np.ndarray | None, list[int] | None, float | None]
-        (synchrony_matrix, roi_labels, global_synchrony) or (None, None, None)
+    tuple[np.ndarray | None, list[int] | None, float | None, float | None]
+        (synchrony_matrix, roi_labels, global_synchrony, jitter_window_ms)
+        or (None, None, None, None)
     """
     if run_id is None:
         cali_logger.warning("No run ID specified for spike synchrony plot.")
-        return None, None, None
+        return None, None, None, None
 
     try:
         with Session(engine) as session:
@@ -61,7 +62,7 @@ def _get_spike_synchrony_matrix_from_db(
                 cali_logger.debug(
                     f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
                 )
-                return None, None, None
+                return None, None, None, None
 
             if (
                 fov_analysis.spike_jitter_synchrony_matrix is None
@@ -70,7 +71,21 @@ def _get_spike_synchrony_matrix_from_db(
                 cali_logger.debug(
                     f"FOVAnalysis for {fov_name} has no spike synchrony matrix"
                 )
-                return None, None, None
+                return None, None, None, None
+
+            # Get jitter window from analysis settings
+            cali_result = session.exec(
+                select(CaliResult).where(CaliResult.id == run_id)
+            ).first()
+            jitter_window_ms = None
+            if cali_result and cali_result.analysis_settings_id:
+                analysis_settings = session.exec(
+                    select(AnalysisSettings).where(
+                        AnalysisSettings.id == cali_result.analysis_settings_id
+                    )
+                ).first()
+                if analysis_settings:
+                    jitter_window_ms = analysis_settings.spikes_sync_cross_corr_lag
 
             sync_matrix = np.asarray(
                 fov_analysis.spike_jitter_synchrony_matrix, dtype=float
@@ -78,11 +93,11 @@ def _get_spike_synchrony_matrix_from_db(
             roi_labels = list(fov_analysis.active_roi_labels)
             global_sync = fov_analysis.global_spike_jitter_synchrony
 
-            return sync_matrix, roi_labels, global_sync
+            return sync_matrix, roi_labels, global_sync, jitter_window_ms
     except OperationalError:
         # Table doesn't exist in older databases
         cali_logger.debug("FOVAnalysis table not found in database")
-        return None, None, None
+        return None, None, None, None
 
 
 def _filter_matrix_by_rois(
@@ -144,15 +159,15 @@ def _plot_spike_synchrony_data(
         widget.legend.setVisible(False)
 
     # Query pre-computed synchrony matrix from database
-    sync_matrix, roi_labels, global_synchrony = _get_spike_synchrony_matrix_from_db(
-        engine, fov_name, run_id
+    sync_matrix, roi_labels, global_synchrony, jitter_window_ms = (
+        _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id)
     )
 
     if sync_matrix is None or roi_labels is None:
         cali_logger.warning(
             "No spike synchrony data found for this FOV. Ensure analysis has been run."
         )
-        plot.setTitle(f"Spike Synchrony\n(No data){title_suffix}")
+        plot.setTitle(f"Inferred Spike Synchrony (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -162,7 +177,7 @@ def _plot_spike_synchrony_data(
 
     if len(active_roi_ids) < 2:
         cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
-        plot.setTitle(f"Spike Synchrony\n(Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(f"Inferred Spike Synchrony (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -178,9 +193,16 @@ def _plot_spike_synchrony_data(
     elif global_synchrony is None:
         global_synchrony = 0.0
 
+    # Format jitter window for title
+    if jitter_window_ms is not None:
+        jitter_str = f"±{jitter_window_ms:.1f}ms"
+    else:
+        jitter_str = "±window"
+
     title = (
-        f"Global Synchrony (Median: {global_synchrony:.4f})\n"
-        f"(Thresholded Spike Data - Cross-Correlation Method){title_suffix}\n"
+        "Inferred Spike Synchrony - "
+        f"Jitter ({jitter_str}) - "
+        f"Global Median: {global_synchrony:.4f}{title_suffix}"
     )
 
     # ---------------- IMAGE ITEM ---------------- #
@@ -200,8 +222,8 @@ def _plot_spike_synchrony_data(
     vb.enableAutoRange(x=True, y=True)
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     # Hide axis tick labels (to match MPL style)
     plot.getAxis("bottom").setTicks([])
@@ -256,7 +278,7 @@ def _attach_spike_sync_interaction(
             roi_i = rois[row]
             roi_j = rois[col]
             val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: {val:.3f}")
         else:
             plot.setTitle(base_title)
 

@@ -545,6 +545,31 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
 
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+
+        # Add legend items for stimulated and non-stimulated traces
+        if stim_traces:
+            stim_item = pg.PlotDataItem(pen=pg.mkPen(STIMULATED_COLOR, width=1))
+            legend.addItem(stim_item, "Stimulated ROIs")
+
+        if non_traces:
+            non_stim_item = pg.PlotDataItem(pen=pg.mkPen(NON_STIMULATED_COLOR, width=1))
+            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
+
+        if with_peaks:
+            peak_item = pg.ScatterPlotItem(
+                pen=None,
+                symbol="o",
+                symbolBrush=pg.mkBrush("yellow"),
+                symbolSize=5,
+            )
+            legend.addItem(peak_item, "Peaks")
+
+        legend.setVisible(True)
+
     vb.enableAutoRange(x=True, y=True)
 
     # ---------- CLICK → roiSelected ----------
@@ -573,6 +598,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     plot.clear()
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
+    vb.invertY(True)
 
     # Hide legend
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -695,13 +721,39 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         y_row += 1
 
     plot.setTitle("Stimulated vs Non-Stimulated Spike Raster Plot")
-    plot.setLabel("left", "ROI (rows)")
+    plot.setLabel("left", "ROI")
     _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
 
     # hide y tick values (but keep axis label)
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+
+        # Add legend items for stimulated and non-stimulated spikes
+        if stimulated_rois:
+            stim_item = pg.ScatterPlotItem(
+                pen=None,
+                brush=pg.mkBrush(STIMULATED_COLOR),
+                size=4,
+                symbol="s",
+            )
+            legend.addItem(stim_item, "Stimulated ROIs")
+
+        if non_stimulated_rois:
+            non_stim_item = pg.ScatterPlotItem(
+                pen=None,
+                brush=pg.mkBrush(NON_STIMULATED_COLOR),
+                size=4,
+                symbol="s",
+            )
+            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
+
+        legend.setVisible(True)
 
     vb.enableAutoRange(x=True, y=True)
 
@@ -725,7 +777,8 @@ def _attach_click_handlers_raster(
             return
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # With invertY(True), y increases downward; floor gives correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 
@@ -880,6 +933,24 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+
+        # Add legend items for stimulated and non-stimulated traces
+        if stimulated_data:
+            stim_item = pg.PlotDataItem(pen=pg.mkPen(STIMULATED_COLOR, width=1.5))
+            legend.addItem(stim_item, "Stimulated ROIs")
+
+        if non_stimulated_data:
+            non_stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1.5)
+            )
+            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
+
+        legend.setVisible(True)
 
     _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
 
@@ -1463,7 +1534,8 @@ def _attach_click_handlers_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # Since invertY(False), y=0 is at bottom, use floor for correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 
@@ -1496,7 +1568,8 @@ def _attach_click_handlers_spike_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # Since invertY(False), y=0 is at bottom, use floor for correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 

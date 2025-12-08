@@ -390,6 +390,12 @@ class CaliRunner:
 
                         # Commit in batches
                         should_commit = fov_count % self.commit_batch_size == 0
+                        if should_commit:
+                            cali_logger.info(
+                                f"💾 Committing batch of {self.commit_batch_size} FOVs "
+                                f"(total: {fov_count}/{len(positions_for_detection)})"
+                                "..."
+                            )
                         commit_fov_result(
                             session,
                             experiment,
@@ -411,10 +417,13 @@ class CaliRunner:
 
                     # Final commit for any remaining FOVs
                     if fov_count % self.commit_batch_size != 0:
-                        session.commit()
                         remaining = fov_count % self.commit_batch_size
                         cali_logger.info(
-                            f"💾 Final commit for remaining {remaining} FOVs"
+                            f"💾 Committing final batch of {remaining} FOVs..."
+                        )
+                        session.commit()
+                        cali_logger.info(
+                            f"💾 Committed final batch of {remaining} FOVs."
                         )
                         # No need to expunge settings - they stay attached throughout
 

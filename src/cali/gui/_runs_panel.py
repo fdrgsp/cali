@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fonticon_mdi6 import MDI6
 from qtpy.QtCore import QEvent, QObject, Qt, Signal
 from qtpy.QtWidgets import (
     QGroupBox,
@@ -20,7 +19,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from sqlmodel import select
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 from superqt.utils import signals_blocked
 
 from cali._constants import RED
@@ -73,7 +72,7 @@ class _RunsPanel(QGroupBox):
 
         # Delete selected run button
         self._delete_btn = QPushButton("Delete Selected")
-        self._delete_btn.setIcon(icon(MDI6.delete, color=RED))
+        self._delete_btn.setIcon(QIconifyIcon("mdi:delete", color=RED))
         self._delete_btn.setToolTip("Delete the selected run from the database")
         self._delete_btn.clicked.connect(self._delete_selected_run)
         self._delete_btn.setEnabled(False)  # Disabled by default
@@ -81,7 +80,7 @@ class _RunsPanel(QGroupBox):
 
         # Clear all runs button
         self._clear_all_btn = QPushButton("Delete All")
-        self._clear_all_btn.setIcon(icon(MDI6.delete_forever, color=RED))
+        self._clear_all_btn.setIcon(QIconifyIcon("mdi:delete-forever", color=RED))
         self._clear_all_btn.setToolTip("Delete all runs from the database")
         self._clear_all_btn.clicked.connect(self._clear_all_runs)
         buttons_layout.addWidget(self._clear_all_btn)

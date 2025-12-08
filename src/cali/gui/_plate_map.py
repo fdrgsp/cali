@@ -5,7 +5,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
-from fonticon_mdi6 import MDI6
 from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_COLOR,
     DATA_INDEX,
@@ -31,7 +30,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt.fonticon import icon
+from superqt import QIconifyIcon
 
 from cali._constants import GREEN, RED
 
@@ -59,7 +58,7 @@ class _ConditionWidget(QWidget):
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
         for color_name in QColor.colorNames():
-            color_icon = QIcon(icon(MDI6.square, color=color_name))
+            color_icon = QIcon(QIconifyIcon("mdi:square", color=color_name))
             self._color_combo.addItem(color_icon, color_name)
         self._color_combo.setMaxVisibleItems(10)
 
@@ -105,17 +104,19 @@ class _ConditionTable(QGroupBox):
 
         self._add_btn = QPushButton("Add Condition")
         self._add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._add_btn.setIcon(icon(MDI6.plus_thick, color=GREEN))
+        self._add_btn.setIcon(QIconifyIcon("mdi:plus-thick", color=GREEN))
         self._add_btn.setStyleSheet(ALIGN_LEFT)
         self._add_btn.clicked.connect(self._add_row)
         self._remove_btn = QPushButton("Remove Selected")
         self._remove_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._remove_btn.setIcon(icon(MDI6.close_box_outline, color=RED))
+        self._remove_btn.setIcon(QIconifyIcon("mdi:close-box-outline", color=RED))
         self._remove_btn.setStyleSheet(ALIGN_LEFT)
         self._remove_btn.clicked.connect(self._remove_selected)
         self._remove_all_btn = QPushButton("Remove All")
         self._remove_all_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._remove_all_btn.setIcon(icon(MDI6.close_box_multiple_outline, color=RED))
+        self._remove_all_btn.setIcon(
+            QIconifyIcon("mdi:close-box-multiple-outline", color=RED)
+        )
         self._remove_all_btn.setStyleSheet(ALIGN_LEFT)
         self._remove_all_btn.clicked.connect(self._remove_all)
 
@@ -483,7 +484,7 @@ class _PlateMapWidget(QWidget):
 
         # button to show the plate map dialog
         self._plate_map_btn = QPushButton("Show/Edit Plate Map")
-        self._plate_map_btn.setIcon(icon(MDI6.compass_outline, color=GREEN))
+        self._plate_map_btn.setIcon(QIconifyIcon("mdi:compass-outline", color=GREEN))
         self._plate_map_btn.setIconSize(QSize(20, 20))
         self._plate_map_btn.clicked.connect(self._show_plate_map_dialog)
 
@@ -509,6 +510,7 @@ class _PlateMapWidget(QWidget):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        button_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button_box.accepted.connect(self._on_dialog_accepted)
         button_box.rejected.connect(self._on_dialog_close_requested)
 

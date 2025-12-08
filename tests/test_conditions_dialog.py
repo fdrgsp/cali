@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from qtpy.QtWidgets import QWidget
 
 from cali.gui._pygraph_plot_widgets import _ConditionsDialog
@@ -12,19 +13,32 @@ if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
 
-def test_conditions_dialog_creation(qtbot: QtBot) -> None:
-    """Test that conditions dialog is created with correct initial state."""
+@pytest.fixture
+def parent_widget(qtbot: QtBot) -> QWidget:
+    """Create and register a parent widget for dialogs."""
     parent = QWidget()
     qtbot.addWidget(parent)
+    return parent
 
-    conditions = {
+
+@pytest.fixture
+def sample_conditions() -> dict[str, dict[str, bool | str]]:
+    """Standard condition set for tests."""
+    return {
         "control": {"visible": True, "color": "gray"},
         "treatment_A": {"visible": True, "color": "green"},
         "treatment_B": {"visible": False, "color": "magenta"},
         "knockout": {"visible": True, "color": "gray"},
     }
 
-    dialog = _ConditionsDialog(conditions, parent)
+
+def test_conditions_dialog_creation(
+    qtbot: QtBot,
+    parent_widget: QWidget,
+    sample_conditions: dict[str, dict[str, bool | str]],
+) -> None:
+    """Test that conditions dialog is created with correct initial state."""
+    dialog = _ConditionsDialog(sample_conditions, parent_widget)
     qtbot.addWidget(dialog)
 
     # Check widget properties
@@ -35,63 +49,51 @@ def test_conditions_dialog_creation(qtbot: QtBot) -> None:
     assert dialog._list_widget.count() == 4
 
     # Check items are in correct order (check custom widgets)
-    item0_widget = dialog._list_widget.itemWidget(dialog._list_widget.item(0))
-    assert item0_widget.get_name() == "control"
-
-    item1_widget = dialog._list_widget.itemWidget(dialog._list_widget.item(1))
-    assert item1_widget.get_name() == "treatment_A"
-
-    item2_widget = dialog._list_widget.itemWidget(dialog._list_widget.item(2))
-    assert item2_widget.get_name() == "treatment_B"
-
-    item3_widget = dialog._list_widget.itemWidget(dialog._list_widget.item(3))
-    assert item3_widget.get_name() == "knockout"
+    expected_names = ["control", "treatment_A", "treatment_B", "knockout"]
+    for i, expected_name in enumerate(expected_names):
+        item_widget = dialog._list_widget.itemWidget(dialog._list_widget.item(i))
+        assert item_widget.get_name() == expected_name
 
 
-def test_conditions_dialog_check_states(qtbot: QtBot) -> None:
+@pytest.mark.parametrize(
+    ("conditions", "expected_visible"),
+    [
+        (
+            {
+                "condition_1": {"visible": True, "color": "gray"},
+                "condition_2": {"visible": False, "color": "green"},
+                "condition_3": {"visible": True, "color": "magenta"},
+            },
+            [True, False, True],
+        ),
+    ],
+)
+def test_conditions_dialog_check_states(
+    qtbot: QtBot,
+    parent_widget: QWidget,
+    conditions: dict[str, dict[str, bool | str]],
+    expected_visible: list[bool],
+) -> None:
     """Test that check states are correctly initialized."""
-    parent = QWidget()
-    qtbot.addWidget(parent)
-
-    conditions = {
-        "condition_1": {"visible": True, "color": "gray"},
-        "condition_2": {"visible": False, "color": "green"},
-        "condition_3": {"visible": True, "color": "magenta"},
-    }
-
-    dialog = _ConditionsDialog(conditions, parent)
+    dialog = _ConditionsDialog(conditions, parent_widget)
     qtbot.addWidget(dialog)
 
-    # Check that enabled conditions are checked
-    item0 = dialog._list_widget.item(0)
-    assert item0 is not None
-    widget0 = dialog._list_widget.itemWidget(item0)
-    assert widget0.is_visible()
-
-    # Check that disabled conditions are unchecked
-    item1 = dialog._list_widget.item(1)
-    assert item1 is not None
-    widget1 = dialog._list_widget.itemWidget(item1)
-    assert not widget1.is_visible()
-
-    item2 = dialog._list_widget.item(2)
-    assert item2 is not None
-    widget2 = dialog._list_widget.itemWidget(item2)
-    assert widget2.is_visible()
+    for i, expected in enumerate(expected_visible):
+        item = dialog._list_widget.item(i)
+        assert item is not None
+        widget = dialog._list_widget.itemWidget(item)
+        assert widget.is_visible() == expected
 
 
-def test_conditions_dialog_get_conditions(qtbot: QtBot) -> None:
+def test_conditions_dialog_get_conditions(qtbot: QtBot, parent_widget: QWidget) -> None:
     """Test that get_conditions returns the correct dictionary."""
-    parent = QWidget()
-    qtbot.addWidget(parent)
-
     conditions = {
         "control": {"visible": True, "color": "gray"},
         "treatment": {"visible": False, "color": "green"},
         "knockout": {"visible": True, "color": "magenta"},
     }
 
-    dialog = _ConditionsDialog(conditions, parent)
+    dialog = _ConditionsDialog(conditions, parent_widget)
     qtbot.addWidget(dialog)
 
     # Get conditions should return the same as input
@@ -100,19 +102,13 @@ def test_conditions_dialog_get_conditions(qtbot: QtBot) -> None:
     assert list(result.keys()) == list(conditions.keys())
 
 
-def test_conditions_dialog_reordering(qtbot: QtBot) -> None:
+def test_conditions_dialog_reordering(
+    qtbot: QtBot,
+    parent_widget: QWidget,
+    sample_conditions: dict[str, dict[str, bool | str]],
+) -> None:
     """Test that reordering items changes the returned order."""
-    parent = QWidget()
-    qtbot.addWidget(parent)
-
-    conditions = {
-        "control": {"visible": True, "color": "gray"},
-        "treatment_A": {"visible": True, "color": "green"},
-        "treatment_B": {"visible": False, "color": "magenta"},
-        "knockout": {"visible": True, "color": "gray"},
-    }
-
-    dialog = _ConditionsDialog(conditions, parent)
+    dialog = _ConditionsDialog(sample_conditions, parent_widget)
     qtbot.addWidget(dialog)
 
     # Simulate reordering: move first item to position 2
@@ -141,17 +137,16 @@ def test_conditions_dialog_reordering(qtbot: QtBot) -> None:
     assert result["knockout"]["visible"] is True
 
 
-def test_conditions_dialog_toggle_check_state(qtbot: QtBot) -> None:
+def test_conditions_dialog_toggle_check_state(
+    qtbot: QtBot, parent_widget: QWidget
+) -> None:
     """Test that toggling check states is reflected in get_conditions."""
-    parent = QWidget()
-    qtbot.addWidget(parent)
-
     conditions = {
         "condition_1": {"visible": True, "color": "gray"},
         "condition_2": {"visible": True, "color": "green"},
     }
 
-    dialog = _ConditionsDialog(conditions, parent)
+    dialog = _ConditionsDialog(conditions, parent_widget)
     qtbot.addWidget(dialog)
 
     # Toggle the check state of the first item
@@ -168,14 +163,13 @@ def test_conditions_dialog_toggle_check_state(qtbot: QtBot) -> None:
     assert result["condition_2"]["visible"] is True
 
 
-def test_conditions_dialog_empty_conditions(qtbot: QtBot) -> None:
+def test_conditions_dialog_empty_conditions(
+    qtbot: QtBot, parent_widget: QWidget
+) -> None:
     """Test dialog with empty conditions dictionary."""
-    parent = QWidget()
-    qtbot.addWidget(parent)
-
     conditions = {}
 
-    dialog = _ConditionsDialog(conditions, parent)
+    dialog = _ConditionsDialog(conditions, parent_widget)
     qtbot.addWidget(dialog)
 
     assert dialog._list_widget.count() == 0

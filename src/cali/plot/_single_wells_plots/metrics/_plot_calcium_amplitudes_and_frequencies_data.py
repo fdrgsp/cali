@@ -56,6 +56,11 @@ def _plot_amplitude_and_frequency_data(
 
     plot.clear()
 
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
         if hasattr(widget.legend, "clear"):
@@ -67,7 +72,7 @@ def _plot_amplitude_and_frequency_data(
         plot.setTitle(
             "No analysis run selected.\nPlease select a run from the dropdown."
         )
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Amplitude / Frequency")
         return
 
@@ -92,7 +97,7 @@ def _plot_amplitude_and_frequency_data(
 
     if not roi_data:
         plot.setTitle("No ROI analysis data found for this FOV.")
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Amplitude / Frequency")
         return
 
@@ -129,7 +134,7 @@ def _plot_amplitude_and_frequency_data(
         if not x_vals:
             plot.setTitle("No amplitude/frequency data available.")
             plot.setLabel("bottom", "Frequency (Hz)")
-            plot.setLabel("left", "Amplitude (dec ΔF/F)")
+            plot.setLabel("left", "Amplitude (dec ΔF/F a.u. )")
             return
 
         x_arr = np.asarray(x_vals, dtype=float)
@@ -197,8 +202,8 @@ def _plot_amplitude_and_frequency_data(
 
         if not x_vals:
             plot.setTitle("No amplitude data available.")
-            plot.setLabel("bottom", "ROIs")
-            plot.setLabel("left", "Amplitude (dec ΔF/F)")
+            plot.setLabel("bottom", "ROI")
+            plot.setLabel("left", "Amplitude (dec ΔF/F a.u. )")
             return
 
         x_arr = np.asarray(x_vals, dtype=float)
@@ -248,7 +253,7 @@ def _plot_amplitude_and_frequency_data(
         _set_graph_title_and_labels_pg(plot, amp=amp, freq=freq)
         _attach_click_handlers_amp_freq(widget, scatter)
 
-        # Hide numeric x tick labels (keep axis label "ROIs")
+        # Hide numeric x tick labels (keep axis label "ROI")
         axis = plot.getAxis("bottom")
         axis.setTicks([])
         axis.setStyle(showValues=False)
@@ -264,7 +269,7 @@ def _plot_amplitude_and_frequency_data(
 
         if not x_vals:
             plot.setTitle("No frequency data available.")
-            plot.setLabel("bottom", "ROIs")
+            plot.setLabel("bottom", "ROI")
             plot.setLabel("left", "Frequency (Hz)")
             return
 
@@ -291,14 +296,14 @@ def _plot_amplitude_and_frequency_data(
         _set_graph_title_and_labels_pg(plot, amp=amp, freq=freq)
         _attach_click_handlers_amp_freq(widget, scatter)
 
-        # Hide numeric x tick labels (keep axis label "ROIs")
+        # Hide numeric x tick labels (keep axis label "ROI")
         axis = plot.getAxis("bottom")
         axis.setTicks([])
         axis.setStyle(showValues=False)
     else:
         # Nothing requested
         plot.setTitle("Nothing to plot (amp=False, freq=False).")
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Amplitude / Frequency")
         return
 
@@ -321,14 +326,14 @@ def _set_graph_title_and_labels_pg(
             "ROIs Mean Calcium Peaks Amplitude ± SEM vs Frequency (Deconvolved ΔF/F)"
         )
         x_lbl = "Frequency (Hz)"
-        y_lbl = "Amplitude (dec ΔF/F)"
+        y_lbl = "Amplitude (dec ΔF/F a.u. )"
     elif amp:
         title = "Calcium Peaks Mean Amplitude ± SEM (Deconvolved ΔF/F)"
-        x_lbl = "ROIs"
-        y_lbl = "Amplitude (dec ΔF/F)"
+        x_lbl = "ROI"
+        y_lbl = "Amplitude (dec ΔF/F a.u. )"
     elif freq:
         title = "Calcium Peaks Frequency (Deconvolved ΔF/F)"
-        x_lbl = "ROIs"
+        x_lbl = "ROI"
         y_lbl = "Frequency (Hz)"
 
     plot.setTitle(title)

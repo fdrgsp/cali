@@ -65,6 +65,11 @@ def _plot_iei_data(
 
     plot.clear()
 
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
         if hasattr(widget.legend, "clear"):
@@ -76,7 +81,7 @@ def _plot_iei_data(
         plot.setTitle(
             "No analysis run selected.\nPlease select a run from the dropdown."
         )
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
@@ -101,7 +106,7 @@ def _plot_iei_data(
 
     if not roi_data:
         plot.setTitle("No ROI analysis data found for this FOV.")
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
@@ -143,7 +148,7 @@ def _plot_iei_data(
 
     if not x_vals:
         plot.setTitle("No inter-event interval data available.")
-        plot.setLabel("bottom", "ROIs")
+        plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Inter-Event Interval (s)")
         return
 
@@ -194,7 +199,7 @@ def _plot_iei_data(
     _set_graph_title_and_labels_pg(plot)
     _attach_click_handlers_iei(widget, mean_scatter)
 
-    # Hide numeric x tick labels (keep axis label "ROIs")
+    # Hide numeric x tick labels (keep axis label "ROI")
     axis = plot.getAxis("bottom")
     axis.setTicks([])
     axis.setStyle(showValues=False)
@@ -204,10 +209,10 @@ def _plot_iei_data(
 
 def _set_graph_title_and_labels_pg(plot: pg.PlotItem) -> None:
     """Set axis labels based on the plotted data (pyqtgraph version)."""
-    title = "Calcium Peaks Inter-Event Intervals (s, Mean ± SEM - Deconvolved ΔF/F)"
+    title = "Calcium Peaks Inter-Event Intervals (Mean ± SEM - Deconvolved ΔF/F)"
     plot.setTitle(title)
     plot.setLabel("left", "Inter-Event Interval (s)")
-    plot.setLabel("bottom", "ROIs")
+    plot.setLabel("bottom", "ROI")
 
 
 def _attach_click_handlers_iei(

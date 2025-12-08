@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from scipy.ndimage import gaussian_filter1d
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
@@ -110,7 +109,7 @@ def _plot_inferred_spikes(
             "No analysis run selected.\nPlease select a run from the dropdown."
         )
         plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes")
+        plot.setLabel("left", "Inferred Spikes (a.u.)")
         return
 
     # ------------------------ Query DB ------------------------ #
@@ -142,7 +141,7 @@ def _plot_inferred_spikes(
     if not roi_data:
         plot.setTitle("No ROI spike data found for this FOV.")
         plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes")
+        plot.setLabel("left", "Inferred Spikes (a.u.)")
         return
 
     # ---------------- Global percentiles (for normalization) ---------------- #
@@ -236,7 +235,7 @@ def _plot_inferred_spikes(
         last_trace = list(traces.inferred_spikes)
         count += 1
 
-    _set_graph_title_and_labels_pg(plot, normalize, raw)
+    _set_graph_title_and_labels_pg(plot, normalize, raw, dec_dff)
     total_frames = len(last_trace) if last_trace is not None else 1
     _update_time_axis_pg_for_spikes(plot, rois_rec_time, total_frames)
 
@@ -339,12 +338,23 @@ def _normalize_trace_percentile(trace: np.ndarray, p1: float, p2: float) -> np.n
 
 
 def _set_graph_title_and_labels_pg(
-    plot: pg.PlotItem, normalize: bool, raw: bool
+    plot: pg.PlotItem, normalize: bool, raw: bool, dec_dff: bool
 ) -> None:
-    """Set axis labels based on the plotted data (pyqtgraph version)."""
-    title = "Normalized Inferred Spikes" if normalize else "Inferred Spikes"
-    title += " (Raw)" if raw else " (Thresholded Spike Data)"
-    y_lbl = "ROIs" if normalize else "Inferred Spikes (magnitude)"
+    """Set axis labels based on the plotted data."""
+    if dec_dff:
+        title = "Deconvolved ΔF/F & Inferred Spikes (Thresholded)"
+    else:
+        title = "Normalized Inferred Spikes" if normalize else "Inferred Spikes"
+        title += " (Raw)" if raw else " (Thresholded Spike Data)"
+    y_lbl = (
+        "ROI"
+        if normalize
+        else (
+            "Deconvolved ΔF/F & Inferred Spikes (a.u.)"
+            if dec_dff
+            else "Inferred Spikes (a.u.)"
+        )
+    )
 
     plot.setTitle(title)
     plot.setLabel("left", y_lbl)
@@ -389,112 +399,6 @@ def _attach_click_handlers_spikes(
         curve.sigClicked.connect(_on_curve_clicked)
 
 
-# -----------------------------------------------------------------------------#
-# Normalized spikes + global bursts (pyqtgraph)
-# -----------------------------------------------------------------------------#
-def _plot_inferred_spikes_normalized_with_bursts(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot normalized inferred spikes with superimposed *global* burst periods.
-
-    Network bursts are always computed from ALL active ROIs for the given run
-    (global network activity). The ROI selection only affects which traces are
-    drawn, not how bursts are defined.
-    """
-    plot = widget.plot_item
-    assert plot is not None
-
-    if run_id is None:
-        plot.clear()
-        cali_logger.warning(
-            "No run_id provided for inferred spikes normalized with bursts plot."
-        )
-        plot.setTitle(
-            "No analysis run selected.\nPlease select a run from the dropdown."
-        )
-        plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes")
-        return
-
-    # ------------- Burst detection (GLOBAL, ignore ROI subset) -------------#
-    from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (  # noqa: E501
-        _detect_population_bursts,
-        _get_burst_parameters,
-        _get_population_spike_data,
-    )
-
-    bursts: list[tuple[int, int]] = []
-
-    # Use global ROI set for burst parameters and population data
-    burst_params = _get_burst_parameters(engine, fov_name, rois=None, run_id=run_id)
-    if burst_params is not None:
-        burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
-
-        spike_trains_array, _, time_axis = _get_population_spike_data(
-            engine, fov_name, rois=None, run_id=run_id
-        )
-
-        if spike_trains_array is not None:
-            # Compute frame rate from time axis
-            num_frames = len(time_axis)
-            if num_frames > 1:
-                total_time_sec = float(time_axis[-1] - time_axis[0])
-                frame_rate = (
-                    (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
-                )
-            else:
-                frame_rate = 10.0
-
-            # Convert parameters to frame units
-            min_burst_duration = max(
-                1, int((min_burst_duration_ms / 1000.0) * frame_rate)
-            )
-            smoothing_sigma = smoothing_sigma_sec * frame_rate
-
-            population_activity = np.mean(spike_trains_array, axis=0)
-
-            # Smooth before detection
-            if smoothing_sigma > 0:
-                smoothed_activity = gaussian_filter1d(
-                    population_activity, sigma=smoothing_sigma, mode="nearest"
-                )
-            else:
-                smoothed_activity = population_activity
-
-            # Detect bursts (threshold passed as fraction, not %)
-            bursts = _detect_population_bursts(
-                smoothed_activity, burst_threshold / 100.0, min_burst_duration
-            )
-
-    # -------------------- Plot normalized spikes (subset) -------------------#
-    _plot_inferred_spikes(
-        widget,
-        engine,
-        fov_name,
-        rois,
-        run_id=run_id,
-        raw=False,
-        normalize=True,
-        active_only=False,
-        dec_dff=False,
-        thresholds=False,
-    )
-
-    # ------------------------ Overlay global bursts ------------------------ #
-    if bursts:
-        plot = widget.plot_item
-        assert plot is not None
-
-        for _i, (start, end) in enumerate(bursts):
-            region = pg.LinearRegionItem(
-                values=(start, end),
-                brush=pg.mkBrush(0, 255, 0, 50),  # translucent green
-                pen=pg.mkPen(None),  # Remove border lines
-                movable=False,
-            )
-            region.setZValue(-5)  # behind the traces
-            plot.addItem(region)
+# NOTE: _plot_inferred_spikes_normalized_with_bursts has been moved to
+# cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity
+# to consolidate all burst detection logic in one place.

@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Literal
+
 import numpy as np
 import tifffile
+from scipy.ndimage import gaussian_filter1d
 from skimage import filters, morphology
+from sqlmodel import Session, col, select
+
+from cali.logger import cali_logger
+from cali.sqlmodel import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import FOVAnalysis
+
+if TYPE_CHECKING:
+    from sqlalchemy import Engine
+
+    from cali.sqlmodel._model import FOVAnalysis
 
 
 def create_stimulation_mask(stimulation_file: str) -> np.ndarray:
@@ -69,3 +82,833 @@ def get_overlap_roi_with_stimulated_area(
     overlapping_pixels = np.count_nonzero(roi_mask & stimulation_mask)
 
     return float(overlapping_pixels / cell_pixels)
+
+
+# =============================================================================
+# Correlation and Synchrony Functions
+# =============================================================================
+
+
+def _get_calcium_peaks_events_from_rois(
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> dict[str, np.ndarray] | None:
+    """Extract binary peak event trains from ROI data.
+
+    Args:
+        engine: Database engine
+        fov_name: Name of the FOV
+        rois: List of ROI indices to include, None for all
+        run_id: The run ID to filter by, None for latest
+
+    Returns
+    -------
+        Dictionary mapping ROI names to binary peak event arrays
+    """
+    with Session(engine) as session:
+        roi_data = []  # List of (ROI, Traces, DataAnalysis)
+
+        if run_id is None:
+            cali_logger.warning("No run_id provided for peak event extraction.")
+
+        # Optimized query
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, ROI.fov_id == FOV.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .join(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOV.name) == fov_name)
+            .where(col(ROI.active) == True)  # noqa: E712
+        )
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+
+        results = session.exec(stmt).all()
+        roi_data = results
+
+    if len(roi_data) < 2:
+        return None
+
+    # First pass: determine max_frames from any trace that has data,
+    # or from maximum peak frame number
+    max_frames = 0
+    for _, traces, data_analysis in roi_data:
+        if traces and traces.corrected_trace is not None:
+            max_frames = max(max_frames, len(traces.corrected_trace))
+        if data_analysis and data_analysis.peaks_dec_dff:
+            max_peak = max((int(p) for p in data_analysis.peaks_dec_dff), default=0)
+            max_frames = max(max_frames, max_peak + 1)
+
+    if max_frames == 0:
+        cali_logger.warning(
+            f"Cannot determine number of frames for FOV '{fov_name}'. "
+            "No trace data or peaks found."
+        )
+        return None
+
+    peak_trains: dict[str, np.ndarray] = {}
+
+    for roi, traces, data_analysis in roi_data:
+        if traces is None or data_analysis is None:
+            continue
+
+        peaks_dec_dff = data_analysis.peaks_dec_dff
+
+        if peaks_dec_dff is None or len(peaks_dec_dff) == 0:
+            continue
+
+        # Create binary peak event train
+        peak_train = np.zeros(max_frames, dtype=np.float32)
+        for peak_frame in peaks_dec_dff:
+            if 0 <= int(peak_frame) < max_frames:
+                peak_train[int(peak_frame)] = 1.0
+
+        if np.sum(peak_train) > 0:  # Only include ROIs with at least one peak
+            peak_trains[str(roi.label_value)] = peak_train
+
+    return peak_trains if len(peak_trains) >= 2 else None
+
+
+def _get_calcium_peaks_event_synchrony(
+    peak_event_synchrony_matrix: np.ndarray | None,
+) -> float | None:
+    """Calculate global peak event synchrony score from a peak event synchrony matrix.
+
+    This function reuses the same approach as spike synchrony.
+    """
+    if peak_event_synchrony_matrix is None or peak_event_synchrony_matrix.size == 0:
+        return None
+    # Ensure the matrix is at least 2x2 and square
+    if (
+        peak_event_synchrony_matrix.shape[0] < 2
+        or peak_event_synchrony_matrix.shape[0] != peak_event_synchrony_matrix.shape[1]
+    ):
+        return None
+
+    # Calculate the sum of each row, excluding the diagonal
+    n_rois = peak_event_synchrony_matrix.shape[0]
+    off_diagonal_sum = np.sum(peak_event_synchrony_matrix, axis=1) - np.diag(
+        peak_event_synchrony_matrix
+    )
+
+    # Normalize by the number of off-diagonal elements per row
+    mean_synchrony_per_roi = off_diagonal_sum / (n_rois - 1)
+
+    # Return the median synchrony across all ROIs
+    return float(np.median(mean_synchrony_per_roi))
+
+
+def _get_calcium_peaks_event_synchrony_matrix(
+    peak_event_dict: dict[str, list[float]],
+    method: str = "correlation",
+    jitter_window: int = 2,
+    max_lag: int = 5,
+) -> np.ndarray | None:
+    """Compute pairwise peak event synchrony using robust methods.
+
+    Handles timing jitter better than simple correlation.
+
+    Parameters
+    ----------
+    peak_event_dict : dict
+        Dictionary mapping ROI names to binary peak event arrays
+    method : str
+        Method to use - "jitter_window", "cross_correlation", or "correlation"
+    jitter_window : int
+        Tolerance window for peak coincidence (frames)
+    max_lag : int
+        Maximum lag for cross-correlation method (frames)
+
+    Returns
+    -------
+    np.ndarray or None
+        Synchrony matrix robust to small temporal shifts
+    """
+    from cali.util._util import _NUMBA_LOCK
+
+    active_rois = list(peak_event_dict.keys())
+    if len(active_rois) < 2:
+        return None
+
+    try:
+        # Convert peak event data into a NumPy array of shape (#ROIs, #Timepoints)
+        peak_array = np.array(
+            [peak_event_dict[roi] for roi in active_rois], dtype=np.float32
+        )
+    except ValueError:
+        return None
+
+    if peak_array.shape[0] < 2:
+        return None
+
+    n_rois = peak_array.shape[0]
+
+    # Use numba-optimized version for jitter_window method
+    if method == "jitter_window":
+        with _NUMBA_LOCK:
+            synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
+                peak_array, jitter_window
+            )
+    else:
+        # Standard numpy implementation for other methods
+        synchrony_matrix = np.zeros((n_rois, n_rois))
+
+        for i in range(n_rois):
+            for j in range(n_rois):
+                if i == j:
+                    synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
+                else:
+                    events_i = peak_array[i]
+                    events_j = peak_array[j]
+
+                    # Handle case where one or both ROIs have no peaks
+                    if np.sum(events_i) == 0 or np.sum(events_j) == 0:
+                        synchrony_matrix[i, j] = 0.0
+                    else:
+                        if method == "cross_correlation":
+                            sync_value = _calculate_cross_correlation_synchrony(
+                                events_i, events_j, max_lag
+                            )
+                        else:
+                            # Fallback to original correlation method (default)
+                            correlation = np.corrcoef(events_i, events_j)[0, 1]
+                            sync_value = (
+                                0.0 if np.isnan(correlation) else abs(correlation)
+                            )
+
+                        synchrony_matrix[i, j] = sync_value
+
+    return synchrony_matrix
+
+
+def _get_spike_synchrony_matrix(
+    spike_data_dict: dict[str, list[float]],
+    method: str = "correlation",
+    jitter_window: int = 2,
+    max_lag: int = 5,
+) -> np.ndarray | None:
+    """Compute pairwise spike synchrony from spike amplitude data.
+
+    Parameters
+    ----------
+    spike_data_dict : dict
+        Dictionary mapping ROI names to spike amplitude arrays
+    method : str
+        Method to use - "jitter_window", "cross_correlation", or "correlation"
+    jitter_window : int
+        Tolerance window for spike coincidence (frames)
+    max_lag : int
+        Maximum lag for cross-correlation method (frames)
+
+    Returns
+    -------
+    np.ndarray or None
+        Synchrony matrix robust to small temporal shifts
+    """
+    from cali.util._util import _NUMBA_LOCK
+
+    active_rois = list(spike_data_dict.keys())
+    if len(active_rois) < 2:
+        return None
+
+    try:
+        # Convert spike data into a NumPy array of shape (#ROIs, #Timepoints)
+        spike_array = np.array(
+            [spike_data_dict[roi] for roi in active_rois], dtype=np.float32
+        )
+    except ValueError:
+        return None
+
+    if spike_array.shape[0] < 2:
+        return None
+
+    # Create binary spike matrices (1 where spike > 0, 0 otherwise)
+    binary_spikes = (spike_array > 0).astype(np.float32)
+
+    n_rois = binary_spikes.shape[0]
+
+    # Use numba-optimized version for jitter_window method
+    if method == "jitter_window":
+        with _NUMBA_LOCK:
+            synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
+                binary_spikes, jitter_window
+            )
+    else:
+        # Standard numpy implementation for other methods
+        synchrony_matrix = np.zeros((n_rois, n_rois))
+
+        for i in range(n_rois):
+            for j in range(n_rois):
+                if i == j:
+                    synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
+                else:
+                    # Calculate correlation between binary spike trains
+                    spikes_i = binary_spikes[i]
+                    spikes_j = binary_spikes[j]
+
+                    # Handle case where one or both ROIs have no spikes
+                    if np.sum(spikes_i) == 0 or np.sum(spikes_j) == 0:
+                        synchrony_matrix[i, j] = 0.0
+                    else:
+                        if method == "cross_correlation":
+                            sync_value = _calculate_cross_correlation_synchrony(
+                                spikes_i, spikes_j, max_lag
+                            )
+                        else:
+                            # Fallback to original correlation method (default)
+                            correlation = np.corrcoef(spikes_i, spikes_j)[0, 1]
+                            sync_value = (
+                                0.0 if np.isnan(correlation) else abs(correlation)
+                            )
+
+                        synchrony_matrix[i, j] = sync_value
+
+    return synchrony_matrix
+
+
+def _get_spike_synchrony(spike_synchrony_matrix: np.ndarray | None) -> float | None:
+    """Calculate global spike synchrony score from a spike synchrony matrix."""
+    if spike_synchrony_matrix is None or spike_synchrony_matrix.size == 0:
+        return None
+    # Ensure the matrix is at least 2x2 and square
+    if (
+        spike_synchrony_matrix.shape[0] < 2
+        or spike_synchrony_matrix.shape[0] != spike_synchrony_matrix.shape[1]
+    ):
+        return None
+
+    # Calculate the sum of each row, excluding the diagonal
+    n_rois = spike_synchrony_matrix.shape[0]
+    off_diagonal_sum = np.sum(spike_synchrony_matrix, axis=1) - np.diag(
+        spike_synchrony_matrix
+    )
+
+    # Normalize by the number of off-diagonal elements per row
+    mean_synchrony_per_roi = off_diagonal_sum / (n_rois - 1)
+
+    # Return the median synchrony across all ROIs
+    return float(np.median(mean_synchrony_per_roi))
+
+
+def _calculate_cross_correlation_synchrony(
+    events_i: np.ndarray, events_j: np.ndarray, max_lag: int
+) -> float:
+    """Calculate synchrony using maximum cross-correlation within lag range."""
+    from scipy.signal import correlate
+
+    # Cross-correlation
+    xcorr = correlate(events_i, events_j, mode="full")
+
+    # Get the center (zero-lag) position
+    center = len(events_i) - 1
+
+    # Extract correlations within max_lag range
+    start_idx = max(0, center - max_lag)
+    end_idx = min(len(xcorr), center + max_lag + 1)
+
+    local_xcorr = xcorr[start_idx:end_idx]
+
+    # Normalize by the geometric mean of autocorrelations
+    auto_i = np.sum(events_i * events_i)
+    auto_j = np.sum(events_j * events_j)
+
+    if auto_i > 0 and auto_j > 0:
+        normalization = np.sqrt(auto_i * auto_j)
+        max_correlation = np.max(local_xcorr) / normalization
+        return float(np.clip(max_correlation, 0, 1))
+    else:
+        return 0.0
+
+
+def _calculate_jitter_window_synchrony(
+    events_i: np.ndarray, events_j: np.ndarray, jitter_window: int
+) -> float:
+    """Calculate synchrony allowing for temporal jitter within a window.
+
+    For each peak in ROI i, check if there's a peak in ROI j within ±jitter_window.
+    Uses numba JIT compilation for ~10-100x speedup.
+    """
+    return float(_jitter_window_synchrony_numba(events_i, events_j, jitter_window))
+
+
+def _create_connectivity_matrix(
+    correlation_matrix: np.ndarray,
+    threshold_percentile: float = 90.0,
+) -> np.ndarray:
+    """Create binary connectivity matrix from correlation matrix.
+
+    Parameters
+    ----------
+    correlation_matrix : np.ndarray
+        Pairwise correlation matrix
+    threshold_percentile : float
+        Percentile threshold (0-100). Only correlations above this percentile
+        become connections.
+
+    Returns
+    -------
+    np.ndarray
+        Binary connectivity matrix (1 = connected, 0 = not connected)
+    """
+    # Exclude diagonal (self-correlations = 1.0) for threshold calculation
+    off_diagonal_mask = ~np.eye(correlation_matrix.shape[0], dtype=bool)
+    off_diagonal_values = correlation_matrix[off_diagonal_mask]
+
+    if len(off_diagonal_values) == 0:
+        return np.eye(correlation_matrix.shape[0])
+
+    # Calculate threshold
+    threshold = np.percentile(off_diagonal_values, threshold_percentile)
+
+    # Create binary connectivity matrix
+    return (correlation_matrix >= threshold).astype(int)
+
+
+# =============================================================================
+# Numba-optimized functions
+# =============================================================================
+
+from numba import njit  # noqa: E402
+
+
+@njit(cache=True, parallel=True)  # type: ignore
+def _compute_jitter_synchrony_matrix_numba(
+    peak_array: np.ndarray, jitter_window: int
+) -> np.ndarray:  # pragma: no cover
+    """Numba-optimized computation of full synchrony matrix using jitter window.
+
+    Uses parallel execution for dramatic speedup with many ROIs.
+    Expected speedup: 10-100x for 100+ ROIs.
+    """
+    n_rois = peak_array.shape[0]
+    synchrony_matrix = np.zeros((n_rois, n_rois), dtype=np.float64)
+
+    # Parallel loop over ROI pairs
+    for i in range(n_rois):
+        synchrony_matrix[i, i] = 1.0  # Perfect self-synchrony
+
+        for j in range(i + 1, n_rois):  # Only compute upper triangle
+            events_i = peak_array[i]
+            events_j = peak_array[j]
+
+            sync_value = _jitter_window_synchrony_numba(
+                events_i, events_j, jitter_window
+            )
+
+            # Symmetric matrix
+            synchrony_matrix[i, j] = sync_value
+            synchrony_matrix[j, i] = sync_value
+
+    return synchrony_matrix
+
+
+@njit(cache=True)  # type: ignore
+def _jitter_window_synchrony_numba(
+    events_i: np.ndarray, events_j: np.ndarray, jitter_window: int
+) -> float:  # pragma: no cover
+    """Numba-optimized jitter window synchrony calculation.
+
+    For each peak in ROI i, check if there's a peak in ROI j within ±jitter_window.
+    """
+    # Extract peak indices
+    peaks_i = np.where(events_i > 0)[0]
+    peaks_j = np.where(events_j > 0)[0]
+
+    n_peaks_i = len(peaks_i)
+    n_peaks_j = len(peaks_j)
+
+    if n_peaks_i == 0 or n_peaks_j == 0:
+        return 0.0
+
+    # Count coincident peaks (bidirectional)
+    coincidences_i_to_j = 0
+    for i in range(n_peaks_i):
+        peak_i = peaks_i[i]
+        # Check if any peak in j is within jitter window
+        for j in range(n_peaks_j):
+            if abs(peaks_j[j] - peak_i) <= jitter_window:
+                coincidences_i_to_j += 1
+                break  # Count each peak_i only once
+
+    coincidences_j_to_i = 0
+    for j in range(n_peaks_j):
+        peak_j = peaks_j[j]
+        # Check if any peak in i is within jitter window
+        for i in range(n_peaks_i):
+            if abs(peaks_i[i] - peak_j) <= jitter_window:
+                coincidences_j_to_i += 1
+                break  # Count each peak_j only once
+
+    # Calculate symmetric synchrony measure
+    total_peaks = n_peaks_i + n_peaks_j
+    total_coincidences = coincidences_i_to_j + coincidences_j_to_i
+
+    return total_coincidences / total_peaks if total_peaks > 0 else 0.0
+
+
+def _compute_cross_correlation_matrix(
+    traces: list[np.ndarray],
+) -> np.ndarray | None:
+    """Compute pairwise Pearson correlation matrix for traces (zero-lag).
+
+    Uses z-scored traces and computes standard Pearson correlation coefficient
+    at zero lag, following the approach used in CaImAn and standard practice.
+
+    Note: This computes zero-lag correlation (standard Pearson R), not max
+    cross-correlation across lags. For lag-invariant correlation, use synchrony
+    metrics instead.
+
+    Parameters
+    ----------
+    traces : list[np.ndarray]
+        List of 1D trace arrays (must all be same length)
+
+    Returns
+    -------
+    np.ndarray | None
+        NxN correlation matrix with values in [-1, 1], or None if insufficient data
+
+    Raises
+    ------
+    ValueError
+        If traces have different lengths
+    """
+    if len(traces) < 2:
+        return None
+
+    # Verify all traces have same length
+    lengths = [len(t) for t in traces]
+    if len(set(lengths)) > 1:
+        raise ValueError(
+            f"All traces must have same length. Got lengths: {set(lengths)}"
+        )
+
+    # Stack traces
+    traces_array = np.vstack(traces)  # (n_rois, n_frames)
+
+    # Manually z-score to handle constant traces without warnings
+    # Z-score: (x - mean(x)) / std(x)
+    means = traces_array.mean(axis=1, keepdims=True)
+    stds = traces_array.std(axis=1, keepdims=True, ddof=1)
+
+    # Replace zero std (constant traces) with 1 to avoid division by zero
+    # This will make constant traces have zero mean and all zeros after normalization
+    stds[stds == 0] = 1.0
+
+    dff_zero_mean = (traces_array - means) / stds
+
+    n_rois = len(traces)
+    correlation_matrix = np.zeros((n_rois, n_rois), dtype=float)
+
+    # Compute norms for normalization
+    norms = np.linalg.norm(dff_zero_mean, axis=1)
+    # Avoid division by zero (constant trace after z-scoring)
+    norms[norms == 0] = np.finfo(float).eps
+
+    # Diagonal is always 1 (perfect self-correlation)
+    np.fill_diagonal(correlation_matrix, 1.0)
+
+    # Compute zero-lag Pearson correlation for all pairs
+    for i in range(n_rois):
+        x = dff_zero_mean[i]
+        for j in range(i + 1, n_rois):
+            y = dff_zero_mean[j]
+
+            # Pearson correlation at zero lag: r = <x, y> / (||x|| ||y||)
+            # After z-scoring, this is just the normalized dot product
+            r0 = np.dot(x, y) / (norms[i] * norms[j])
+
+            # Clamp to [-1, 1] to handle numerical errors
+            r0 = np.clip(r0, -1.0, 1.0)
+
+            correlation_matrix[i, j] = r0
+            correlation_matrix[j, i] = r0
+
+    return correlation_matrix
+
+
+def _detect_population_bursts(
+    spike_trains: list[np.ndarray],
+    frame_rate: float,
+    burst_threshold_percent: float,
+    min_duration_ms: float,
+    gaussian_sigma_sec: float,
+) -> tuple[int, float | None, float | None]:
+    """Detect bursts in population spike activity.
+
+    Computes mean population activity, smooths it, and detects periods
+    above threshold that exceed minimum duration.
+
+    Parameters
+    ----------
+    spike_trains : list[np.ndarray]
+        List of binary spike trains for active ROIs
+    frame_rate : float
+        Frame rate in Hz (frames per second)
+    burst_threshold_percent : float
+        Threshold as percentage (e.g., 65.0 for 65%)
+    min_duration_ms : float
+        Minimum burst duration in milliseconds
+    gaussian_sigma_sec : float
+        Gaussian smoothing sigma in seconds
+
+    Returns
+    -------
+    tuple[int, float | None, float | None]
+        - burst_count: Number of bursts detected
+        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
+        - burst_avg_interval: Average inter-burst interval in seconds
+          (None if < 2 bursts)
+    """
+    if len(spike_trains) < 2:
+        return 0, None, None
+
+    # Stack spike trains and compute population activity (mean across ROIs)
+    spike_array = np.vstack(spike_trains)  # (n_rois, n_frames)
+    population_activity = np.mean(spike_array, axis=0)  # (n_frames,)
+
+    if population_activity.size == 0:
+        return 0, None, None
+
+    # Convert parameters to frame units
+    min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
+    gaussian_sigma_frames = gaussian_sigma_sec * frame_rate
+
+    # Smooth population activity
+    if gaussian_sigma_frames > 0:
+        smoothed_activity = gaussian_filter1d(
+            population_activity, sigma=gaussian_sigma_frames, mode="nearest"
+        )
+    else:
+        smoothed_activity = population_activity
+
+    # Convert threshold from percent to fraction
+    burst_threshold = burst_threshold_percent / 100.0
+
+    # Detect regions above threshold
+    above_threshold = smoothed_activity > burst_threshold
+    if not np.any(above_threshold):
+        return 0, None, None
+
+    # Find burst start and end points
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
+
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+
+    # Handle edge cases
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
+
+    # Filter bursts by minimum duration
+    burst_starts_list: list[int] = []
+    burst_ends_list: list[int] = []
+    burst_durations_sec: list[float] = []
+
+    for start_idx, end_idx in zip(starts, ends):
+        duration_frames = end_idx - start_idx
+        if duration_frames >= min_duration_frames:
+            burst_starts_list.append(int(start_idx))
+            burst_ends_list.append(int(end_idx))
+            # Convert duration to seconds
+            duration_sec = duration_frames / frame_rate
+            burst_durations_sec.append(duration_sec)
+
+    burst_count = len(burst_durations_sec)
+
+    if burst_count == 0:
+        return 0, None, None
+
+    # Calculate average duration
+    burst_avg_duration = float(np.mean(burst_durations_sec))
+
+    # Calculate inter-burst intervals (time from end of one burst to start of next)
+    burst_avg_interval: float | None = None
+    if burst_count >= 2:
+        intervals_sec: list[float] = []
+        for i in range(1, burst_count):
+            # Interval = frames between bursts / frame_rate
+            interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
+            interval_sec = interval_frames / frame_rate
+            intervals_sec.append(interval_sec)
+        burst_avg_interval = float(np.mean(intervals_sec))
+
+    return burst_count, burst_avg_duration, burst_avg_interval
+
+
+ConnectivityMethod = Literal[
+    # DF/F traces
+    "calcium_dff_corr",  # 0. Zero-lag Pearson on DF/F
+    "calcium_dec_dff_corr",  # 1. Zero-lag Pearson on deconvolved DF/F (default)
+    # Calcium peaks
+    "calcium_peaks_maxlag",  # 3. Max-lag correlation on calcium peaks
+    "calcium_peaks_jitter",  # 4. Jitter synchrony on calcium peaks
+    # Inferred spikes
+    "spike_corr",  # 5. Zero-lag Pearson on spike trains
+    "spike_maxlag",  # 6. Max-lag correlation (CCG) on spikes
+    "spike_jitter",  # 7. Jitter synchrony on spikes
+]
+
+
+def _compute_connectivity_metrics(
+    fov_analysis: FOVAnalysis,
+    method: ConnectivityMethod = "calcium_dec_dff_corr",
+    threshold: float = 0.9,
+    use_absolute_for_corr: bool = True,
+) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """
+    Build a connectivity graph (adjacency + weights) from FOVAnalysis metrics.
+
+    Parameters
+    ----------
+    fov_analysis : FOVAnalysis
+        Object containing FOV-wide matrices and ROI labels.
+        Uses:
+        - active_roi_labels
+        - calcium_dff_correlation_matrix
+        - calcium_dec_dff_corr_matrix
+        - calcium_peaks_max_lag_correlation_matrix
+        - calcium_peaks_jitter_synchrony_matrix
+        - spike_correlation_matrix
+        - spike_max_lag_correlation_matrix
+        - spike_jitter_synchrony_matrix
+    method : ConnectivityMethod, default "calcium_dec_dff_corr"
+        Which metric to use:
+
+        DF/F calcium traces
+        -------------------
+        - "calcium_dff_corr":
+              zero-lag Pearson correlation on DF/F traces (metric 0)
+        - "calcium_dec_dff_corr" (default):
+              zero-lag Pearson on deconvolved DF/F traces (metric 1)
+
+        Calcium peaks
+        -------------
+        - "calcium_peaks_maxlag":
+              max-lag correlation on calcium peak events (metric 3)
+        - "calcium_peaks_jitter":
+              jitter synchrony on calcium peak events (metric 4)
+
+        Inferred spikes
+        ---------------
+        - "spike_corr":
+              zero-lag Pearson on spike trains (metric 5)
+        - "spike_maxlag":
+              max-lag CCG-like correlation on spike events (metric 6)
+        - "spike_jitter":
+              jitter synchrony on spike events (metric 7)
+
+    threshold : float, default 0.9
+        Threshold applied to the chosen metric to create edges.
+
+        For correlation-like metrics (Pearson & max-lag):
+            if use_absolute_for_corr is True:
+                edge if |value_ij| >= threshold
+            else:
+                edge if value_ij >= threshold
+
+        For jitter synchrony metrics (in [0, 1]):
+            edge if sync_ij >= threshold
+
+    use_absolute_for_corr : bool, default True
+        If True, strong negative correlations also become edges (|r| >= threshold).
+        If False, only strong positive correlations are kept (r >= threshold).
+
+    Returns
+    -------
+    adjacency : np.ndarray
+        Binary adjacency matrix of shape (N, N), 1 = connection, 0 = no connection.
+        Diagonal is always 0 (no self-connections).
+    weights : np.ndarray
+        Underlying metric values (same shape as adjacency).
+    roi_labels : list[int]
+        ROI labels corresponding to rows/columns of adjacency/weights.
+
+    Raises
+    ------
+    ValueError
+        If the requested metric is not available or shapes are inconsistent.
+    """
+    roi_labels = fov_analysis.active_roi_labels or []
+    if not roi_labels:
+        raise ValueError("FOVAnalysis.active_roi_labels is empty or None.")
+
+    n = len(roi_labels)
+
+    # ------------------------------------------------------------------
+    # Select metric matrix based on method
+    # ------------------------------------------------------------------
+    if method == "calcium_dff_corr":
+        metric = fov_analysis.calcium_dff_correlation_matrix
+        is_correlation = True
+
+    elif method == "calcium_dec_dff_corr":
+        metric = fov_analysis.calcium_dec_dff_corr_matrix
+        is_correlation = True
+
+    elif method == "calcium_peaks_maxlag":
+        metric = fov_analysis.calcium_peaks_max_lag_correlation_matrix
+        is_correlation = True
+
+    elif method == "calcium_peaks_jitter":
+        metric = fov_analysis.calcium_peaks_jitter_synchrony_matrix
+        is_correlation = False
+
+    elif method == "spike_corr":
+        metric = fov_analysis.spike_correlation_matrix
+        is_correlation = True
+
+    elif method == "spike_maxlag":
+        metric = fov_analysis.spike_max_lag_correlation_matrix
+        is_correlation = True
+
+    elif method == "spike_jitter":
+        metric = fov_analysis.spike_jitter_synchrony_matrix
+        is_correlation = False
+
+    else:
+        raise ValueError(f"Unknown connectivity method: {method!r}")
+
+    if metric is None:
+        raise ValueError(
+            f"Requested metric {method!r} is None on FOVAnalysis. "
+            "Make sure FOV-level analysis was computed for this method."
+        )
+
+    weights = np.asarray(metric, dtype=float)
+    if weights.shape != (n, n):
+        raise ValueError(
+            f"Metric matrix shape {weights.shape} does not match number of "
+            f"ROI labels ({n})."
+        )
+
+    # ------------------------------------------------------------------
+    # Threshold → adjacency
+    # ------------------------------------------------------------------
+    if is_correlation:
+        if use_absolute_for_corr:
+            values = np.abs(weights)
+        else:
+            values = weights
+    else:
+        # Jitter synchrony already in [0, 1]
+        values = weights
+
+    adjacency = (values >= threshold).astype(int)
+
+    # Remove self-connections
+    np.fill_diagonal(adjacency, 0)
+
+    return adjacency, weights, list(roi_labels)
