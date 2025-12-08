@@ -112,8 +112,8 @@ def _generate_raster_plot(
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         # Use first valid trace as sample for frame count
-        if sample_trace is None and traces.corrected_trace is not None:
-            sample_trace = traces.corrected_trace
+        if sample_trace is None and traces.dff is not None:
+            sample_trace = traces.dff
 
         # Peaks indices per ROI (frames)
         event_data.append(np.asarray(data_analysis.peaks_dec_dff, dtype=float))

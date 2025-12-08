@@ -114,8 +114,8 @@ def _generate_spike_raster_plot_raw(
         if data_analysis and data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        if sample_trace is None and traces.corrected_trace is not None:
-            sample_trace = traces.corrected_trace
+        if sample_trace is None and traces.inferred_spikes is not None:
+            sample_trace = traces.inferred_spikes
 
     if not event_data:
         cali_logger.warning("No raw spike data found for the selected ROIs and run.")
@@ -272,8 +272,8 @@ def _generate_spike_raster_plot(
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        if sample_trace is None and traces.corrected_trace is not None:
-            sample_trace = traces.corrected_trace
+        if sample_trace is None and traces.inferred_spikes is not None:
+            sample_trace = traces.inferred_spikes
 
     if not event_data:
         cali_logger.warning(
