@@ -86,7 +86,7 @@ class _ExtractionGUI(QWidget):
 
         # THREADS WIDGET -------------------------------------------------------------
         cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
-        threads_wdg = QWidget()
+        threads_wdg = QWidget(self)
         threads_wdg.setToolTip(
             "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
             "By default, the value is set to the number of CPUs - 2 "
@@ -100,9 +100,9 @@ class _ExtractionGUI(QWidget):
             "operating system and GUI responsiveness.\n"
             "If your system becomes unresponsive, consider reducing this number."
         )
-        self._threads_lbl = QLabel("Number of Threads:")
+        self._threads_lbl = QLabel("Number of Threads:", threads_wdg)
         self._threads_lbl.setSizePolicy(*FIXED)
-        self._threads = QSpinBox()
+        self._threads = QSpinBox(threads_wdg)
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
@@ -147,7 +147,7 @@ class _ExtractionGUI(QWidget):
         fix_width = self._threads_lbl.sizeHint().width()
         self._trace_extraction_wdg.set_labels_width(fix_width)
         self._neuropil_wdg.set_labels_width(fix_width)
-        self._trace_extraction_wdg.set_labels_width(fix_width)
+        self._metadata_wdg.set_labels_width(fix_width)
         self._threads_lbl.setFixedWidth(fix_width)
 
     # PUBLIC METHODS ------------------------------------------------------------------
@@ -271,7 +271,7 @@ class _NeuropilCorrectionWidget(QWidget):
             "6. Corrected signal = Cell - 0.7 x Neuropil"
         )
 
-        self._neuropil_inner_radius_lbl = QLabel("Inner Radius:")
+        self._neuropil_inner_radius_lbl = QLabel("Inner Radius:", self)
         self._neuropil_inner_radius_spin = QSpinBox(self)
         self._neuropil_inner_radius_spin.setSuffix(" pixels")
         self._neuropil_inner_radius_spin.setRange(0, 100)
@@ -295,7 +295,7 @@ class _NeuropilCorrectionWidget(QWidget):
         np_min_pixels_layout.addWidget(self._neuropil_min_px_lbl)
         np_min_pixels_layout.addWidget(self._neuropil_min_px_spin)
 
-        self._neuropil_factor_lbl = QLabel("Correction Factor:")
+        self._neuropil_factor_lbl = QLabel("Correction Factor:", self)
         self._neuropil_factor_spin = QDoubleSpinBox(self)
         self._neuropil_factor_spin.setRange(0.0, 1.0)
         self._neuropil_factor_spin.setSingleStep(0.1)
@@ -345,30 +345,6 @@ class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Frame Rate widget
-        self._frame_rate_wdg = QWidget(self)
-        self._frame_rate_wdg.setToolTip(
-            "Acquisition frame rate in frames per second (fps).\n\n"
-            "This is used to convert time-based parameters (e.g., DFF window in "
-            "milliseconds) to frames for processing.\n\n"
-            "Tip: This is typically the inverse of exposure time:\n"
-            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
-            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
-        )
-        self._frame_rate_lbl = QLabel("Frame Rate:")
-        self._frame_rate_lbl.setSizePolicy(*FIXED)
-        self._frame_rate_spin = QDoubleSpinBox(self)
-        self._frame_rate_spin.setSuffix(" fps")
-        self._frame_rate_spin.setDecimals(2)
-        self._frame_rate_spin.setRange(0.01, 1000.0)
-        self._frame_rate_spin.setSingleStep(1.0)
-        self._frame_rate_spin.setValue(DEFAULT_FRAME_RATE)
-        frame_rate_layout = QHBoxLayout(self._frame_rate_wdg)
-        frame_rate_layout.setContentsMargins(0, 0, 0, 0)
-        frame_rate_layout.setSpacing(5)
-        frame_rate_layout.addWidget(self._frame_rate_lbl)
-        frame_rate_layout.addWidget(self._frame_rate_spin)
-
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
         self._dff_wdg.setToolTip(
@@ -391,9 +367,9 @@ class _TraceExtractionWidget(QWidget):
             "Recommended default: 5000-10000 ms (5-10 seconds), depending on frame rate"
             " and expected drift. Default: 10000 ms (15 seconds)"
         )
-        self._dff_lbl = QLabel("ΔF/F0 Window:")
+        self._dff_lbl = QLabel("ΔF/F0 Window:", self._dff_wdg)
         self._dff_lbl.setSizePolicy(*FIXED)
-        self._dff_window_size_spin = QDoubleSpinBox(self)
+        self._dff_window_size_spin = QDoubleSpinBox(self._dff_wdg)
         self._dff_window_size_spin.setSuffix(" ms")
         self._dff_window_size_spin.setRange(0.1, 1000000)
         self._dff_window_size_spin.setSingleStep(100)
@@ -412,9 +388,9 @@ class _TraceExtractionWidget(QWidget):
             "The decay constant represents how quickly the calcium indicator\n"
             "returns to baseline after a calcium transient."
         )
-        self._decay_const_lbl = QLabel("Decay Constant:")
+        self._decay_const_lbl = QLabel("Decay Constant:", self._dec_wdg)
         self._decay_const_lbl.setSizePolicy(*FIXED)
-        self._decay_constant_spin = QDoubleSpinBox(self)
+        self._decay_constant_spin = QDoubleSpinBox(self._dec_wdg)
         self._decay_constant_spin.setSuffix(" s")
         self._decay_constant_spin.setDecimals(2)
         self._decay_constant_spin.setRange(0.0, 10.0)
@@ -478,9 +454,9 @@ class _MetadataWidget(QWidget):
             "Set to 0 to use pixels as the unit (no conversion).\n\n"
             "Default: 0 (use pixels)"
         )
-        self._pixel_size_lbl = QLabel("Pixel Size:")
+        self._pixel_size_lbl = QLabel("Pixel Size:", self._pixel_size_wdg)
         self._pixel_size_lbl.setSizePolicy(*FIXED)
-        self._pixel_size_spin = QDoubleSpinBox(self)
+        self._pixel_size_spin = QDoubleSpinBox(self._pixel_size_wdg)
         self._pixel_size_spin.setSuffix(" µm")
         self._pixel_size_spin.setDecimals(4)
         self._pixel_size_spin.setRange(0.0, 100.0)
@@ -503,9 +479,9 @@ class _MetadataWidget(QWidget):
             "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
             "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
         )
-        self._frame_rate_lbl = QLabel("Frame Rate:")
+        self._frame_rate_lbl = QLabel("Frame Rate:", self._frame_rate_wdg)
         self._frame_rate_lbl.setSizePolicy(*FIXED)
-        self._frame_rate_spin = QDoubleSpinBox(self)
+        self._frame_rate_spin = QDoubleSpinBox(self._frame_rate_wdg)
         self._frame_rate_spin.setSuffix(" fps")
         self._frame_rate_spin.setDecimals(2)
         self._frame_rate_spin.setRange(0.01, 1000.0)
