@@ -61,6 +61,11 @@ def _plot_cell_size_data(
 
     plot.clear()
 
+    # Reset ViewBox settings that might have been set by previous plots
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
         if hasattr(widget.legend, "clear"):

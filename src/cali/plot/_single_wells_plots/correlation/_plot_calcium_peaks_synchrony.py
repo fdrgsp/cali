@@ -165,9 +165,9 @@ def _plot_peak_event_synchrony_data(
         cali_logger.warning(
             "No synchrony data found for this FOV. Ensure analysis has been run."
         )
-        plot.setTitle(f"Peak Event Synchrony\n(No data){title_suffix}")
-        plot.setLabel("bottom", "ROI index")
-        plot.setLabel("left", "ROI index")
+        plot.setTitle(f"Calcium Peaks Events Synchrony (No data){title_suffix}")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
         return
 
     # Filter to selected ROIs if specified
@@ -175,9 +175,9 @@ def _plot_peak_event_synchrony_data(
 
     if len(active_roi_ids) < 2:
         cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
-        plot.setTitle(f"Peak Event Synchrony\n(Need ≥2 ROIs){title_suffix}")
-        plot.setLabel("bottom", "ROI index")
-        plot.setLabel("left", "ROI index")
+        plot.setTitle(f"Calcium Peaks Events Synchrony (Need ≥2 ROIs){title_suffix}")
+        plot.setLabel("bottom", "ROI")
+        plot.setLabel("left", "ROI")
         return
 
     # Recalculate global synchrony if ROI subset is selected
@@ -199,7 +199,8 @@ def _plot_peak_event_synchrony_data(
         jitter_str = "±window"
 
     base_title = (
-        f"Jitter Synchrony ({jitter_str})\n"
+        "Calcium Peaks Events Synchrony (Deconvolved ΔF/F)"
+        f"Jitter ({jitter_str}) - "
         f"Global Median: {global_synchrony:.4f}{title_suffix}"
     )
 
@@ -222,8 +223,8 @@ def _plot_peak_event_synchrony_data(
     vb.setAspectLocked(True)
 
     plot.setTitle(base_title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     # Hide axis tick labels (same behaviour as MPL version)
     plot.getAxis("bottom").setTicks([])
@@ -284,7 +285,7 @@ def _attach_synchrony_heatmap_interaction(
             roi_i = rois[row]
             roi_j = rois[col]
             val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: {val:.3f}")
         else:
             plot.setTitle(base_title)
 

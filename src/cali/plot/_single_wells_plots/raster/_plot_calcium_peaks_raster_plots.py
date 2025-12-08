@@ -36,7 +36,7 @@ def _generate_raster_plot(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at BOTTOM visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -82,7 +82,7 @@ def _generate_raster_plot(
     if not roi_data:
         plot.setTitle("Calcium Peaks Raster Plot\nNo ROI data found for this FOV.")
         plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "ROI (rows)")
+        plot.setLabel("left", "ROI")
         return
 
     # ------------------------ Collect events & metadata ------------------------ #
@@ -121,7 +121,7 @@ def _generate_raster_plot(
     if not event_data:
         plot.setTitle("Calcium Peaks Raster Plot\nNo peak data available for this FOV.")
         plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "ROI (rows)")
+        plot.setLabel("left", "ROI")
         return
 
     # ------------------------ Colors per ROI ------------------------ #
@@ -182,13 +182,14 @@ def _generate_raster_plot(
         plot.addItem(item)
 
     # ------------------------ Axes ------------------------ #
-    plot.setLabel("left", "ROI (rows)")
+    plot.setLabel("left", "ROI")
     _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
 
     # Hide numeric Y tick labels (rows are just ordinal)
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
 
     plot.getViewBox().enableAutoRange(x=True, y=True)
 
@@ -262,7 +263,8 @@ def _attach_click_handlers_raster(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # With invertY(True), y increases downward; floor gives correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 
@@ -408,6 +410,7 @@ def _generate_intensity_heatmap(
     y_axis = plot.getAxis("left")
     y_axis.setTicks([])
     y_axis.setStyle(showValues=False)
+    y_axis.enableAutoSIPrefix(False)
 
     # Time axis (first trace as reference)
     sample_trace = traces_list[0]
@@ -457,7 +460,8 @@ def _attach_click_handlers_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        idx = round(y)
+        # With invertY(False), y increases upward; floor gives correct row
+        idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
 

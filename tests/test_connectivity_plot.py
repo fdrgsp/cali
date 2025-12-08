@@ -297,6 +297,7 @@ def test_node_click_emits_roi_signal(qtbot: QtBot) -> None:
     # Simulate clicking on node 1 (ROI label 10)
     mock_point = MagicMock()
     mock_point.index.return_value = 1
+    mock_point.data.return_value = 10  # Return the ROI label, not a MagicMock
     click_handler(None, [mock_point])
 
     mock_widget.roiSelected.emit.assert_called_once_with("10")
@@ -346,6 +347,8 @@ def test_node_click_edge_cases(
     else:
         mock_point = MagicMock()
         mock_point.index.return_value = index_value
+        # For invalid index (999), data() should return None
+        mock_point.data.return_value = None
         points = [mock_point]
 
     click_handler(None, points)
@@ -385,6 +388,7 @@ def test_background_click_clears_highlight(qtbot: QtBot) -> None:
     click_handler = plot_item.property("connectivity_click_handler")
     mock_point = MagicMock()
     mock_point.index.return_value = 1
+    mock_point.data.return_value = 2  # ROI label for index 1
     click_handler(None, [mock_point])
 
     initial_edges = plot_item.property("connectivity_highlight_edges") or []

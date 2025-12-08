@@ -251,9 +251,7 @@ def _plot_dff_correlation_data(
     )
 
     if correlation_matrix is None or roi_labels is None:
-        plot.setTitle(
-            f"Zero-lag Pearson Correlation (ΔF/F Traces)\n(No data){title_suffix}"
-        )
+        plot.setTitle(f"Pairwise Pearson Correlation (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -261,9 +259,7 @@ def _plot_dff_correlation_data(
     corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(
-            f"Zero-lag Pearson Correlation (ΔF/F Traces)\n(Need ≥2 ROIs){title_suffix}"
-        )
+        plot.setTitle(f"Pairwise Pearson Correlation (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -279,10 +275,10 @@ def _plot_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
-    title = f"Zero-lag Pearson Correlation\n(ΔF/F Traces){title_suffix}"
+    title = f"Pairwise Pearson Correlation (Zero-lag - ΔF/F Traces){title_suffix}"
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
@@ -334,10 +330,7 @@ def _plot_dec_dff_correlation_data(
     )
 
     if correlation_matrix is None or roi_labels is None:
-        plot.setTitle(
-            f"Zero-lag Pearson Correlation (Deconvolved ΔF/F Traces)\n"
-            f"(No data){title_suffix}"
-        )
+        plot.setTitle(f"Pairwise Pearson Correlation (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -345,10 +338,7 @@ def _plot_dec_dff_correlation_data(
     corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(
-            f"Zero-lag Pearson Correlation (Deconvolved ΔF/F Traces)\n"
-            f"(Need ≥2 ROIs){title_suffix}"
-        )
+        plot.setTitle(f"Pairwise Pearson Correlation (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -364,10 +354,13 @@ def _plot_dec_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
-    title = f"Zero-lag Pearson Correlation\n(Deconvolved ΔF/F Traces){title_suffix}"
+    title = (
+        "Pairwise Pearson Correlation (Zero-Lag - "
+        f"Deconvolved ΔF/F Traces){title_suffix}"
+    )
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
@@ -429,7 +422,7 @@ def _attach_heatmap_interaction(
             roi_i = roi_labels[row]
             roi_j = roi_labels[col]
             val = float(matrix[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: r = {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: r = {val:.3f}")
         else:
             plot.setTitle(base_title)
 

@@ -26,6 +26,7 @@ from ._multi_wells_plots import (
 )
 from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
+    _plot_inferred_spikes_normalized_with_bursts,
 )
 from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
     _plot_traces_data,
@@ -88,10 +89,10 @@ from ._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
     _generate_spike_intensity_heatmap,
     _generate_spike_intensity_heatmap_thresholded,
     _generate_spike_raster_plot,
+    _generate_spike_raster_plot_raw,
 )
 from ._single_wells_plots.spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
-    _plot_inferred_spikes_normalized_with_bursts,
 )
 
 if TYPE_CHECKING:
@@ -208,6 +209,7 @@ RASTER_PLOT = "Calcium Peaks Raster Plot"
 RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
 RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
 INTENSITY_HEATMAP = "Calcium Intensity Heatmap (Deconvolved ΔF/F)"
+INFERRED_SPIKE_RASTER_PLOT_RAW = "Inferred Spikes Raster Plot"
 INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes (Thresholded) Raster Plot"
 INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes (Thresholded) Raster Plot Colored by Amplitude"  # noqa: E501
 INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes (Thresholded) Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
@@ -409,6 +411,13 @@ AnalysisProduct(
     name=INTENSITY_HEATMAP,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_intensity_heatmap,
+    category="Raster Plots",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_RASTER_PLOT_RAW,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_generate_spike_raster_plot_raw,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )

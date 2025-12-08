@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
-from scipy.spatial.distance import squareform
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
@@ -150,7 +148,7 @@ def _plot_spike_cross_correlation_data(
             "No spike correlation data found for this FOV. "
             "Ensure analysis has been run."
         )
-        plot.setTitle(f"Pairwise Cross-Correlation Matrix\n(No data){title_suffix}")
+        plot.setTitle(f"Pairwise Pearson Correlation (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -160,9 +158,7 @@ def _plot_spike_cross_correlation_data(
 
     if len(rois_idxs) < 2:
         cali_logger.warning("Need at least 2 ROIs for correlation plot.")
-        plot.setTitle(
-            f"Pairwise Cross-Correlation Matrix\n(Need ≥2 ROIs){title_suffix}"
-        )
+        plot.setTitle(f"Pairwise Pearson Correlation (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -183,10 +179,13 @@ def _plot_spike_cross_correlation_data(
     vb.setAspectLocked(True)  # keep it square
     vb.enableAutoRange(x=True, y=True)
 
-    title = f"Zero-Lag Pearson Correlation\n(Inferred Spike Trains){title_suffix}"
+    title = (
+        f"Pairwise Pearson Correlation (Zero-Lag - Thresholded Inferred Spikes)"
+        f"{title_suffix}"
+    )
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     # Hide axis tick labels (like your MPL version)
     plot.getAxis("bottom").setTicks([])
@@ -196,7 +195,7 @@ def _plot_spike_cross_correlation_data(
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
 
     # ---------------- Hover + Click interaction ---------------- #
-    _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr, title_suffix)
+    _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr, title)
 
 
 def _attach_spike_corr_interaction(
@@ -205,7 +204,7 @@ def _attach_spike_corr_interaction(
     viewbox: pg.ViewBox,
     rois: list[int],
     values: np.ndarray,
-    title_suffix: str = "",
+    base_title: str = "",
 ) -> None:
     """
     Attach interaction to the spike correlation heatmap.
@@ -229,10 +228,6 @@ def _attach_spike_corr_interaction(
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseClicked.disconnect(old_click)
 
-    base_title = (
-        f"Pairwise Cross-Correlation Matrix\n(Thresholded Spike Data){title_suffix}"
-    )
-
     def _on_mouse_moved(pos: pg.QtCore.QPointF) -> None:
         if not plot.sceneBoundingRect().contains(pos):
             plot.setTitle(base_title)
@@ -244,7 +239,7 @@ def _attach_spike_corr_interaction(
             roi_i = rois[row]
             roi_j = rois[col]
             val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: {val:.3f}")
         else:
             plot.setTitle(base_title)
 
@@ -291,231 +286,3 @@ def _add_colorbar_to_widget(
 
     # Add to plot layout (row 2, column 3 = right side)
     widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
-
-
-# -----------------------------------------------------------------------------#
-# Hierarchical clustering plots (pyqtgraph)
-# -----------------------------------------------------------------------------#
-def _plot_spike_hierarchical_clustering_data(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-    use_dendrogram: bool = False,
-) -> None:
-    """Plot hierarchical clustering analysis for spike correlation data."""
-    plot = widget.plot_item
-    assert plot is not None
-
-    plot.clear()
-    # Reset ViewBox settings that might have been set by previous plots
-    vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.setAspectLocked(False)
-
-    # Hide shared legend if present
-    if hasattr(widget, "legend") and widget.legend is not None:
-        widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    # Get correlation matrix from database
-    full_correlation_matrix, roi_labels = _get_spike_correlation_matrix_from_db(
-        engine, fov_name, run_id
-    )
-
-    if full_correlation_matrix is None or roi_labels is None:
-        cali_logger.warning(
-            "No spike correlation data found for this FOV. "
-            "Ensure analysis has been run."
-        )
-        plot.setTitle("Pairwise Cross-Correlation - Hierarchical Clustering\n(No data)")
-        plot.setLabel("bottom", "ROI")
-        return
-
-    # Filter to selected ROIs if specified
-    correlation_matrix, rois_idxs = _filter_matrix_by_rois(
-        full_correlation_matrix, roi_labels, rois
-    )
-
-    if len(rois_idxs) < 2:
-        cali_logger.warning(
-            "Insufficient spike data for hierarchical clustering analysis. "
-            "Ensure at least two ROIs with spikes are selected."
-        )
-        plot.setTitle("Pairwise Cross-Correlation - Hierarchical Clustering\n(No data)")
-        plot.setLabel("bottom", "ROI")
-        return
-
-    if use_dendrogram:
-        _plot_spike_hierarchical_clustering_dendrogram(
-            plot, correlation_matrix, rois_idxs
-        )
-    else:
-        _plot_spike_hierarchical_clustering_map(
-            widget, plot, correlation_matrix, rois_idxs
-        )
-
-
-def _plot_spike_hierarchical_clustering_dendrogram(
-    plot: pg.PlotItem,
-    correlation_matrix: np.ndarray,
-    rois_idxs: list[int],
-) -> None:
-    """Plot the hierarchical clustering dendrogram for spike correlation data."""
-    plot.clear()
-    # Reset ViewBox settings that might have been set by previous plots
-    vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.setAspectLocked(False)
-
-    plot.setTitle(
-        "Pairwise Cross-Correlation - Hierarchical Clustering Dendrogram\n"
-        "(Thresholded Spike Data)"
-    )
-    plot.setLabel("left", "Distance")
-    plot.setLabel("bottom", "ROI")
-
-    # Stabilize numerics
-    correlation_matrix = np.round(correlation_matrix, decimals=8)
-
-    # Convert correlation to distance (1 - |corr|)
-    dist_condensed = squareform(1.0 - np.abs(correlation_matrix))
-
-    # Complete-linkage clustering
-    Z = linkage(dist_condensed, method="complete")
-
-    labels = [str(i) for i in rois_idxs]
-
-    # Use scipy to compute dendrogram coordinates, but don't plot into MPL
-    d = dendrogram(Z, labels=labels, no_plot=True)
-
-    # Draw each branch as a polyline
-    for xs, ys in zip(d["icoord"], d["dcoord"]):
-        plot.plot(xs, ys, pen=pg.mkPen("w", width=1))
-
-    # Put ROI labels on the bottom axis (approximate positions: 5, 15, 25, ...)
-    tick_positions = [5 + 10 * i for i in range(len(d["ivl"]))]
-    axis = plot.getAxis("bottom")
-    axis.setTicks([list(zip(tick_positions, d["ivl"]))])
-
-    vb = plot.getViewBox()
-    vb.invertY(False)  # distance increases upward
-    vb.enableAutoRange(x=True, y=True)
-
-
-def _plot_spike_hierarchical_clustering_map(
-    widget: _SingleWellGraphWidget,
-    plot: pg.PlotItem,
-    correlation_matrix: np.ndarray,
-    rois_idxs: list[int],
-) -> None:
-    """Plot the hierarchical clustering heatmap for spike correlation data."""
-    plot.clear()
-    # Reset ViewBox settings that might have been set by previous plots
-    vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.setAspectLocked(False)
-
-    # Stabilize numerics
-    correlation_matrix = np.round(correlation_matrix, decimals=8)
-
-    # Distance → clustering → leaf order
-    dist_condensed = squareform(1.0 - np.abs(correlation_matrix))
-    linkage_mat = linkage(dist_condensed, method="complete")
-    order = leaves_list(linkage_mat)
-
-    # Reorder matrix and ROI IDs
-    reordered_matrix = correlation_matrix[order][:, order]
-    reordered_roi_ids = [rois_idxs[i] for i in order]
-
-    plot.setTitle(
-        "Pairwise Cross-Correlation - Hierarchical Clustering Map\n"
-        "(Thresholded Spike Data)"
-    )
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
-
-    img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))
-
-    plot.addItem(img)
-
-    vb = plot.getViewBox()
-    vb.invertY(True)
-    vb.setAspectLocked(True)
-    vb.enableAutoRange(x=True, y=True)
-
-    # Hide ticks (cluster map is more about pattern than axes)
-    plot.getAxis("bottom").setTicks([])
-    plot.getAxis("left").setTicks([])
-
-    _attach_spike_cluster_interaction(
-        widget, plot, vb, reordered_roi_ids, reordered_matrix
-    )
-
-
-def _attach_spike_cluster_interaction(
-    widget: _SingleWellGraphWidget,
-    plot: pg.PlotItem,
-    viewbox: pg.ViewBox,
-    rois: list[int],
-    values: np.ndarray,
-) -> None:
-    """
-    Attach interaction to the clustering heatmap.
-
-    - Hover: show ROI_i, ROI_j, value in the title
-    - Click: emit widget.roiSelected with [roi_i, roi_j]
-    """
-    n_rows, n_cols = values.shape
-    scene = plot.scene()
-
-    old_hover = plot.property("spike_cluster_hover_handler")
-    old_click = plot.property("spike_cluster_click_handler")
-    if old_hover is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseMoved.disconnect(old_hover)
-    if old_click is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseClicked.disconnect(old_click)
-
-    base_title = (
-        "Pairwise Cross-Correlation - Hierarchical Clustering Map\n"
-        "(Thresholded Spike Data)"
-    )
-
-    def _on_mouse_moved(pos: pg.QtCore.QPointF) -> None:
-        if not plot.sceneBoundingRect().contains(pos):
-            plot.setTitle(base_title)
-            return
-        mouse_point = viewbox.mapSceneToView(pos)
-        col = int(mouse_point.x())
-        row = int(mouse_point.y())
-        if 0 <= row < n_rows and 0 <= col < n_cols:
-            roi_i = rois[row]
-            roi_j = rois[col]
-            val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
-        else:
-            plot.setTitle(base_title)
-
-    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
-        pos = ev.scenePos()
-        if not plot.sceneBoundingRect().contains(pos):
-            return
-        mouse_point = viewbox.mapSceneToView(pos)
-        col = int(mouse_point.x())
-        row = int(mouse_point.y())
-        if 0 <= row < n_rows and 0 <= col < n_cols:
-            roi_i = rois[row]
-            roi_j = rois[col]
-            widget.roiSelected.emit([str(roi_i), str(roi_j)])
-
-    scene.sigMouseMoved.connect(_on_mouse_moved)
-    scene.sigMouseClicked.connect(_on_mouse_clicked)
-
-    plot.setProperty("spike_cluster_hover_handler", _on_mouse_moved)
-    plot.setProperty("spike_cluster_click_handler", _on_mouse_clicked)

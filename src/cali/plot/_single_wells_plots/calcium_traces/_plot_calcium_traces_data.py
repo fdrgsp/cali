@@ -208,6 +208,9 @@ def _get_trace(
         trace = trace_obj.raw_trace
     elif dff:
         trace = trace_obj.dff
+        if trace is not None:
+            # convert to percent ΔF/F
+            trace = np.array(trace) * 100.0
     elif dec:
         trace = trace_obj.dec_dff
     return trace
@@ -412,17 +415,17 @@ def _set_graph_title_and_labels_pg(
         title = (
             "Normalized Calcium Traces (ΔF/F)" if normalize else "Calcium Traces (ΔF/F)"
         )
-        y_lbl = "ROIs" if normalize else "ΔF/F"
+        y_lbl = "ROI" if normalize else "ΔF/F (%)"
     elif dec:
         title = (
             "Normalized Calcium Traces (Deconvolved ΔF/F)"
             if normalize
             else "Calcium Traces (Deconvolved ΔF/F)"
         )
-        y_lbl = "ROIs" if normalize else "Deconvolved ΔF/F"
+        y_lbl = "ROI" if normalize else "Deconvolved ΔF/F (a.u.)"
     else:
         title = "Normalized Calcium Traces" if normalize else "Raw Calcium Traces"
-        y_lbl = "ROIs" if normalize else "Fluorescence (a.u.)"
+        y_lbl = "ROI" if normalize else "Fluorescence (a.u.)"
     if with_peaks:
         title += " with Peaks"
 

@@ -427,12 +427,30 @@ class _SingleWellGraphWidget(QWidget):
     # Public helpers used by plot functions
     # ------------------------------------------------------------------ #
     def clear_plot(self) -> None:
-        """Completely reset the plot before drawing a new one."""
+        """Completely reset the plot to default state before drawing a new one.
+
+        This is the SINGLE SOURCE OF TRUTH for plot reset. All plot functions
+        should call this at the start to ensure consistent baseline state.
+
+        Default state:
+        - Origin at bottom-left (0,0): invertY(False)
+        - No aspect lock: setAspectLocked(False)
+        - No ViewBox limits: all set to None
+        - Axes show numeric values
+        - No custom ticks
+        - Empty title and labels
+        - Legend hidden
+        - No colorbar
+        - All event handlers disconnected
+
+        Individual plots can override these settings (e.g., heatmaps may call
+        invertY(True), rasters may set limits), but they start from this clean state.
+        """
         plot = self.plot_item
         if plot is None:
             return
 
-        # 1) Disconnect any custom heatmap handlers we attached
+        # 1) Disconnect any custom handlers we attached
         scene = plot.scene()
         for prop_name, signal_name in [
             ("ccorr_hover_handler", "sigMouseMoved"),
@@ -440,6 +458,11 @@ class _SingleWellGraphWidget(QWidget):
             ("sync_hover_handler", "sigMouseMoved"),
             ("sync_click_handler", "sigMouseClicked"),
             ("connectivity_click_handler", "sigMouseClicked"),
+            ("amp_raster_click_handler", "sigMouseClicked"),
+            ("intensity_heatmap_click_handler", "sigMouseClicked"),
+            ("spike_raster_click_handler", "sigMouseClicked"),
+            ("spike_intensity_heatmap_click_handler", "sigMouseClicked"),
+            ("raster_click_handler", "sigMouseClicked"),
         ]:
             handler = plot.property(prop_name)
             if handler is not None:
@@ -447,34 +470,36 @@ class _SingleWellGraphWidget(QWidget):
                     getattr(scene, signal_name).disconnect(handler)
                 plot.setProperty(prop_name, None)
 
-        # 2) Clear all items (curves, images, lines, etc.)
+        # 2) Clear all items (curves, images, lines, regions, etc.)
         plot.clear()
 
-        # 3) Reset ViewBox transforms and ranges
+        # 3) Reset ViewBox to default state
         vb = plot.getViewBox()
-        # Reset any limits that might have been set by raster/heatmap plots
+        # Remove all limits
         vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-        # back to normal "math" orientation for traces
+        # Default orientation: origin at bottom-left (standard math/cartesian)
         vb.invertY(False)
-        # allow non-square aspect by default
+        # Allow non-square aspect by default
         vb.setAspectLocked(False)
-        # let pyqtgraph decide ranges next time
+        # Enable auto-ranging for next plot
         vb.enableAutoRange(x=True, y=True)
 
         # 4) Reset axes: ticks + value visibility
         for axis_name in ("left", "bottom"):
             axis = plot.getAxis(axis_name)
-            # remove any custom ticks
+            # Remove any custom ticks
             axis.setTicks(None)
-            # show numeric labels again by default
+            # Show numeric labels by default
             axis.setStyle(showValues=True)
+            # Reset to default auto SI prefix behavior
+            axis.enableAutoSIPrefix(True)
 
         # 5) Reset labels & title
         plot.setTitle("")
         plot.setLabel("left", "")
         plot.setLabel("bottom", "")
 
-        # 6) Hide shared legend if we have one
+        # 6) Hide shared legend
         self.legend.clear()
         self.legend.setVisible(False)
 

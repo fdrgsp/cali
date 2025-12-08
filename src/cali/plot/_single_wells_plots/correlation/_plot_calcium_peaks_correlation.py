@@ -163,7 +163,7 @@ def _plot_cross_correlation_data(
     )
 
     if correlation_matrix is None or roi_labels is None:
-        plot.setTitle(f"Pairwise Cross-Correlation Matrix\n(No data){title_suffix}")
+        plot.setTitle(f"Max-Lag Cross-Correlation (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -172,9 +172,7 @@ def _plot_cross_correlation_data(
     corr, rois_idxs = _filter_matrix_by_rois(correlation_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(
-            f"Pairwise Cross-Correlation Matrix\n(Need ≥2 ROIs){title_suffix}"
-        )
+        plot.setTitle(f"Max-Lag Cross-Correlation (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -198,10 +196,13 @@ def _plot_cross_correlation_data(
     # keep it square
     vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
-    title = f"Max-Lag Cross-Correlation\n(Calcium Peaks Events){title_suffix}"
+    title = (
+        f"Max-Lag Cross-Correlation (Calcium Peaks Events - Deconvolved ΔF/F)"
+        f"{title_suffix}"
+    )
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     # Hide axis tick labels (like the MPL version)
     plot.getAxis("bottom").setTicks([])
@@ -211,7 +212,7 @@ def _plot_cross_correlation_data(
     _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
 
     # ---------------- Hover + Click interaction ---------------- #
-    _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr)
+    _attach_heatmap_interaction(widget, plot, title, vb, rois_idxs, corr)
 
 
 # -----------------------------------------------------------------------------#
@@ -220,6 +221,7 @@ def _plot_cross_correlation_data(
 def _attach_heatmap_interaction(
     widget: _SingleWellGraphWidget,
     plot: pg.PlotItem,
+    base_title: str,
     viewbox: pg.ViewBox,
     rois: list[int],
     values: np.ndarray,
@@ -243,8 +245,6 @@ def _attach_heatmap_interaction(
         with contextlib.suppress(TypeError, RuntimeError):
             scene.sigMouseClicked.disconnect(old_click)
 
-    base_title = "Pairwise Cross-Correlation Matrix\n(Calcium Peaks Events)"
-
     def _on_mouse_moved(pos: pg.Point) -> None:
         if not plot.sceneBoundingRect().contains(pos):
             plot.setTitle(base_title)
@@ -256,7 +256,7 @@ def _attach_heatmap_interaction(
             roi_i = rois[row]
             roi_j = rois[col]
             val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: {val:.3f}")
         else:
             plot.setTitle(base_title)
 

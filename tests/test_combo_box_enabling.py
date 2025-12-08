@@ -93,7 +93,7 @@ def test_combo_disabled_without_fov_or_run(
     _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # All plots should be disabled (40 plots for spontaneous experiment)
-    assert _count_combo_items(widget, enabled=False) == 40
+    assert _count_combo_items(widget, enabled=False) == 41
 
 
 def test_combo_disabled_with_only_run_id(
@@ -110,7 +110,7 @@ def test_combo_disabled_with_only_run_id(
 
     # All items should still be disabled
     # (63 plots: spontaneous + evoked, because exp_type is "Evoked Activity")
-    assert _count_combo_items(widget, enabled=False) == 63
+    assert _count_combo_items(widget, enabled=False) == 64
 
 
 def test_combo_enabled_with_fov_and_run_id(

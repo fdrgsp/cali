@@ -167,7 +167,7 @@ def _plot_spike_synchrony_data(
         cali_logger.warning(
             "No spike synchrony data found for this FOV. Ensure analysis has been run."
         )
-        plot.setTitle(f"Spike Synchrony\n(No data){title_suffix}")
+        plot.setTitle(f"Inferred Spike Synchrony (No data){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -177,7 +177,7 @@ def _plot_spike_synchrony_data(
 
     if len(active_roi_ids) < 2:
         cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
-        plot.setTitle(f"Spike Synchrony\n(Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(f"Inferred Spike Synchrony (Need ≥2 ROIs){title_suffix}")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -200,7 +200,8 @@ def _plot_spike_synchrony_data(
         jitter_str = "±window"
 
     title = (
-        f"Jitter Synchrony ({jitter_str})\n"
+        "Inferred Spike Synchrony - "
+        f"Jitter ({jitter_str}) - "
         f"Global Median: {global_synchrony:.4f}{title_suffix}"
     )
 
@@ -221,8 +222,8 @@ def _plot_spike_synchrony_data(
     vb.enableAutoRange(x=True, y=True)
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI index")
-    plot.setLabel("left", "ROI index")
+    plot.setLabel("bottom", "ROI")
+    plot.setLabel("left", "ROI")
 
     # Hide axis tick labels (to match MPL style)
     plot.getAxis("bottom").setTicks([])
@@ -277,7 +278,7 @@ def _attach_spike_sync_interaction(
             roi_i = rois[row]
             roi_j = rois[col]
             val = float(values[row, col])
-            plot.setTitle(f"{base_title}\nROI {roi_i} vs ROI {roi_j}: {val:.3f}")
+            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: {val:.3f}")
         else:
             plot.setTitle(base_title)
 

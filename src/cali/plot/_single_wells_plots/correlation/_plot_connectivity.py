@@ -29,8 +29,15 @@ def plot_connectivity_graph(
 
     plot.clear()
     vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(True)
     vb.enableAutoRange(x=True, y=True)
+
+    # Hide shared legend if present
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
 
     layout = "spatial" if roi_positions is not None else "circular"
     graph_item = _create_pyqtgraph_connectivity_item(
@@ -41,7 +48,7 @@ def plot_connectivity_graph(
         roi_positions=roi_positions,
     )
     plot.addItem(graph_item)
-    plot.setTitle("Connectivity Graph")
+    plot.setTitle("Functional Connectivity")
     plot.setLabel("bottom", "")
     plot.setLabel("left", "")
 
@@ -66,10 +73,17 @@ def plot_connectivity_graph(
     def on_node_click(scatter_plot: pg.ScatterPlotItem, points: list) -> None:
         if len(points) == 0:
             return
-        idx = points[0].index()
-        if 0 <= idx < len(roi_labels):
-            widget.roiSelected.emit(str(roi_labels[idx]))
-            _highlight_node_and_neighbors(plot, graph_item, idx)
+        roi_label = points[0].data()
+        if roi_label is not None:
+            widget.roiSelected.emit(str(roi_label))
+            # Find the index of this ROI in the graph_item for highlighting
+            stored_labels = graph_item.property("roi_labels")
+            if stored_labels:
+                try:
+                    idx = stored_labels.index(str(roi_label))
+                    _highlight_node_and_neighbors(plot, graph_item, idx)
+                except ValueError:
+                    pass  # ROI not found in stored labels
 
     def on_background_click(event: Any) -> None:
         # Clear only when click is not on a node
@@ -276,6 +290,7 @@ def _create_pyqtgraph_connectivity_item(
         pens=edge_pens,
         texts=labels,
         textSize="10pt",
+        data=roi_labels,  # Set per-point data for click handling
     )
 
     # ---- store metadata for interaction / highlighting ----
@@ -464,7 +479,7 @@ def _plot_connectivity_network_data(
         plot = widget.plot_item
         assert plot is not None
         plot.clear()
-        plot.setTitle("Connectivity Network\n(Need ≥2 ROIs)")
+        plot.setTitle("Functional Connectivity (Need ≥2 ROIs)")
         plot.setLabel("bottom", "")
         plot.setLabel("left", "")
         return
