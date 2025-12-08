@@ -422,7 +422,7 @@ def _attach_heatmap_interaction(
             roi_i = roi_labels[row]
             roi_j = roi_labels[col]
             val = float(matrix[row, col])
-            plot.setTitle(f"{base_title} - ROI {roi_i} vs ROI {roi_j}: r = {val:.3f}")
+            plot.setTitle(f"{base_title} | ROI {roi_i} vs ROI {roi_j}: r = {val:.3f}")
         else:
             plot.setTitle(base_title)
 

@@ -99,7 +99,7 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 64
+    assert disabled_count == 68
 
 
 def test_combo_enabled_with_fov_and_run_id(

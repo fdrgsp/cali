@@ -110,7 +110,7 @@ def test_combo_disabled_with_only_run_id(
 
     # All items should still be disabled
     # (63 plots: spontaneous + evoked, because exp_type is "Evoked Activity")
-    assert _count_combo_items(widget, enabled=False) == 64
+    assert _count_combo_items(widget, enabled=False) == 68
 
 
 def test_combo_enabled_with_fov_and_run_id(
