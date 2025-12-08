@@ -199,7 +199,7 @@ INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF = "Inferred Spikes (Thresholded) with D
 INFERRED_SPIKES_THRESHOLDED_NORMALIZED = "Inferred Spikes (Thresholded) Normalized"
 INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY = "Inferred Spikes (Thresholded) Normalized (Active Only)"  # noqa: E501
 INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normalized with Network Bursts"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony (±window)"
+INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony"
 INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
 INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
@@ -221,7 +221,7 @@ STIMULATED_SPIKE_INTENSITY_HEATMAP = "Stimulated Inferred Spikes Intensity Heatm
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
 STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
-CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony (±window)"
+CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony"
 CALCIUM_FUNCTIONAL_CONNECTIVITY = "Calcium Functional Connectivity"
 CROSS_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation"
 CALCIUM_DFF_CORRELATION = "Calcium ΔF/F Zero-Lag Pearson Correlation"
@@ -530,13 +530,6 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_spike_synchrony_data,
-    category="Inferred Spikes Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name=INFERRED_SPIKE_CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
@@ -547,6 +540,13 @@ AnalysisProduct(
     name=INFERRED_SPIKE_MAX_LAG_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_correlation_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_synchrony_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
