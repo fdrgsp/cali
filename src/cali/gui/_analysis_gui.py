@@ -510,8 +510,10 @@ class _ExperimentTypeWidget(QWidget):
 
     def value(self) -> ExperimentTypeData:
         """Get the current values of the widget."""
+        if (exp_type := self._experiment_type_combo.currentText()) == SPONTANEOUS:
+            return ExperimentTypeData(exp_type)
         return ExperimentTypeData(
-            self._experiment_type_combo.currentText(),
+            exp_type,
             self._led_power_equation_le.text(),
             self._led_pulse_duration_spin.value(),
             self._parse_float_list(self._led_powers_le.text()),

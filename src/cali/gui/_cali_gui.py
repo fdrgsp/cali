@@ -141,11 +141,11 @@ class CaliGui(QMainWindow):
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
         save_as_tiff_action.triggered.connect(self._show_save_as_tiff_dialog)
-        save_as_csv_action = QAction("Save Analysis Data as CSV...", self)
-        save_as_csv_action.triggered.connect(self._show_save_as_csv_dialog)
+        # save_as_csv_action = QAction("Save Analysis Data as CSV...", self)
+        # save_as_csv_action.triggered.connect(self._show_save_as_csv_dialog)
         self.file_menu.addAction(open_action)
         self.file_menu.addAction(save_as_tiff_action)
-        self.file_menu.addAction(save_as_csv_action)
+        # self.file_menu.addAction(save_as_csv_action)
         self.setMenuBar(self.menu_bar)
 
         # TIFF COLLECTION WIDGET ------------------------------------------------------

@@ -510,6 +510,7 @@ class _PlateMapWidget(QWidget):
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        button_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button_box.accepted.connect(self._on_dialog_accepted)
         button_box.rejected.connect(self._on_dialog_close_requested)
 
