@@ -229,6 +229,26 @@ def test_evoked_roi_traces_legend_with_both_types(qtbot: QtBot) -> None:
         (roi2, trace2, data2),
     ]
 
+    # Mock CaliResult and AnalysisSettings for LED bands
+    from cali.sqlmodel._model import AnalysisSettings, CaliResult
+
+    mock_analysis_settings = AnalysisSettings(
+        id=1,
+        led_pulse_on_frames=[10, 50],
+        led_pulse_duration=100.0,
+        frame_rate=30.0,
+    )
+    mock_cali_result = CaliResult(id=1, analysis_settings_id=1)
+
+    # Setup mock session to return appropriate values
+    def mock_session_get(model: type, id: int) -> object:
+        if model == CaliResult:
+            return mock_cali_result
+        elif model == AnalysisSettings:
+            return mock_analysis_settings
+        return None
+
+    mock_session.get = Mock(side_effect=mock_session_get)
     mock_session.exec.return_value.all.return_value = mock_results
     mock_engine.__enter__ = Mock(return_value=mock_session)
     mock_engine.__exit__ = Mock(return_value=False)
@@ -348,6 +368,29 @@ def test_evoked_spike_traces_legend(qtbot: QtBot) -> None:
         (roi2, trace2, data2),
     ]
 
+    # Mock CaliResult and AnalysisSettings for LED bands
+    from cali.sqlmodel._model import AnalysisSettings, CaliResult
+
+    mock_analysis_settings = AnalysisSettings(
+        id=1,
+        led_pulse_on_frames=[10, 50],
+        led_pulse_duration=100.0,
+        frame_rate=30.0,
+    )
+    mock_cali_result = CaliResult(
+        id=1,
+        analysis_settings_id=1,
+    )
+
+    # Setup mock session to return appropriate values
+    def mock_session_get(model: type, id: int) -> object:
+        if model == CaliResult:
+            return mock_cali_result
+        elif model == AnalysisSettings:
+            return mock_analysis_settings
+        return None
+
+    mock_session.get = Mock(side_effect=mock_session_get)
     mock_session.exec.return_value.all.return_value = mock_results
     mock_engine.__enter__ = Mock(return_value=mock_session)
     mock_engine.__exit__ = Mock(return_value=False)
@@ -467,6 +510,29 @@ def test_evoked_spike_raster_legend(qtbot: QtBot) -> None:
         (roi2, trace2, data2),
     ]
 
+    # Mock CaliResult and AnalysisSettings for LED bands
+    from cali.sqlmodel._model import AnalysisSettings, CaliResult
+
+    mock_analysis_settings = AnalysisSettings(
+        id=1,
+        led_pulse_on_frames=[10, 50],
+        led_pulse_duration=100.0,
+        frame_rate=30.0,
+    )
+    mock_cali_result = CaliResult(
+        id=1,
+        analysis_settings_id=1,
+    )
+
+    # Setup mock session to return appropriate values
+    def mock_session_get(model: type, id: int) -> object:
+        if model == CaliResult:
+            return mock_cali_result
+        elif model == AnalysisSettings:
+            return mock_analysis_settings
+        return None
+
+    mock_session.get = Mock(side_effect=mock_session_get)
     mock_session.exec.return_value.all.return_value = mock_results
     mock_engine.__enter__ = Mock(return_value=mock_session)
     mock_engine.__exit__ = Mock(return_value=False)

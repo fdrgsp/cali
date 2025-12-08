@@ -16,6 +16,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QCloseEvent
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
+    QApplication,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -2215,6 +2216,8 @@ class CaliGui(QMainWindow):
         self._loading_bar.showPercentage(show_progress_bar)
         self._loading_bar.show_progress_bar(show_progress_bar)
         self._loading_bar.show()
+        # force update of the loading bar (windows requires this)
+        QApplication.processEvents()
 
     def _update_graphs_with_roi(self, roi: int) -> None:
         """Update the graphs with the given roi.
