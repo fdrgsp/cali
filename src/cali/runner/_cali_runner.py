@@ -725,6 +725,12 @@ class CaliRunner:
                             fov_count += 1
                             yield "PROGRESS:UPDATE"
                             should_commit = fov_count % self.commit_batch_size == 0
+                            if should_commit:
+                                cali_logger.info(
+                                    f"💾 Committing batch of {self.commit_batch_size} "
+                                    f"FOVs (total: {fov_count}/"
+                                    f"{len(positions_for_extraction)})..."
+                                )
                             commit_fov_result(
                                 session, experiment, fov, commit=should_commit
                             )
@@ -738,9 +744,20 @@ class CaliRunner:
                             positions_processed.append(fov.position_index)
 
                         # Commit any remaining in this batch and clear memory
-                        session.commit()
+                        # Only commit if there were uncommitted FOVs
+                        uncommitted_count = fov_count % self.commit_batch_size
+                        if uncommitted_count > 0:
+                            cali_logger.info(
+                                f"💾 Committing final batch of {uncommitted_count} "
+                                f"FOVs..."
+                            )
+                            session.commit()
+                            cali_logger.info(
+                                f"💾 Committed final batch of {uncommitted_count} FOVs."
+                            )
+
+                        # Expunge FOVs to free memory
                         for fov in batch_fovs:
-                            # Expunge to free memory
                             try:
                                 session.expunge(fov)
                             except Exception:
@@ -751,6 +768,9 @@ class CaliRunner:
                         cali_logger.info(f"✅ Extraction committed: {fov_count} FOVs")
 
                     # Update analysis result with actually completed positions
+                    cali_logger.info(
+                        "📝 Updating CaliResult with completed positions..."
+                    )
                     if analysis_result_id is not None:
                         result = session.get(CaliResult, analysis_result_id)
                         if result:
