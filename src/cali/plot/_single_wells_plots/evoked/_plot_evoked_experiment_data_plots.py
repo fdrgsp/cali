@@ -7,7 +7,14 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
-from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._model import (
+    FOV,
+    ROI,
+    AnalysisSettings,
+    CaliResult,
+    DataAnalysis,
+    Traces,
+)
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -562,15 +569,34 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         if with_peaks:
             peak_item = pg.ScatterPlotItem(
                 pen=None,
+                brush=pg.mkBrush("yellow"),
+                size=5,
                 symbol="o",
-                symbolBrush=pg.mkBrush("yellow"),
-                symbolSize=5,
             )
             legend.addItem(peak_item, "Peaks")
+
+        # Add LED stimulation legend item
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 0, 150),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
 
         legend.setVisible(True)
 
     vb.enableAutoRange(x=True, y=True)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = T_orig / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride)
 
     # ---------- CLICK → roiSelected ----------
     _attach_click_handlers_evoked(widget, curves)
@@ -753,7 +779,26 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
+        # Add LED stimulation legend item
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 0, 150),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+
         legend.setVisible(True)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = total_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
     vb.enableAutoRange(x=True, y=True)
 
@@ -950,9 +995,28 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
             )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
+        # Add LED stimulation legend item
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 0, 150),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+
         legend.setVisible(True)
 
     _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = total_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
     _attach_click_handlers_evoked(widget, curves)
 
@@ -960,6 +1024,69 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
 # -----------------------------------------------------------------------------#
 # Shared helpers
 # -----------------------------------------------------------------------------#
+def _add_led_stimulation_bands(
+    plot: pg.PlotItem,
+    engine: Engine,
+    run_id: int,
+    frame_rate: float | None = None,
+    stride: int = 1,
+    color: tuple[int, int, int, int] = (255, 255, 0, 150),
+) -> None:
+    """Add vertical bands for LED stimulation events.
+
+    Parameters
+    ----------
+    plot : pg.PlotItem
+        The plot to add bands to
+    engine : Engine
+        Database engine
+    run_id : int
+        Analysis result ID to get stimulation settings from
+    frame_rate : float | None
+        Frame rate in Hz (frames per second). If None, tries to get from settings.
+    stride : int
+        Downsampling stride used in the plot (default 1)
+    color : tuple[int, int, int, int]
+        RGBA color tuple for the bands (default yellow: 255, 255, 0, 50)
+    """
+    with Session(engine) as session:
+        # Get analysis settings from run_id
+        result = session.get(CaliResult, run_id)
+        if not result or not result.analysis_settings_id:
+            return
+
+        settings = session.get(AnalysisSettings, result.analysis_settings_id)
+        if not settings:
+            return
+
+        # Check if we have LED pulse information
+        if not settings.led_pulse_on_frames or not settings.led_pulse_duration:
+            return
+
+        # Use frame rate from settings if not provided
+        if frame_rate is None:
+            frame_rate = settings.frame_rate
+
+        # Convert LED pulse duration from milliseconds to frames
+        pulse_duration_frames = (settings.led_pulse_duration / 1000.0) * frame_rate
+
+        # Add vertical bands for each LED pulse
+        for pulse_frame in settings.led_pulse_on_frames:
+            # Account for downsampling stride
+            start_frame = (pulse_frame - 1) / stride
+            end_frame = ((pulse_frame - 1) + pulse_duration_frames) / stride
+
+            # Create a vertical LinearRegionItem for the LED pulse
+            region = pg.LinearRegionItem(
+                values=(start_frame, end_frame),
+                orientation="vertical",
+                brush=pg.mkBrush(*color),
+                pen=pg.mkPen(None),  # No border
+                movable=False,
+            )
+            plot.addItem(region)
+
+
 def _normalize_trace_percentile(
     trace: list[float], p1: float, p2: float
 ) -> list[float]:
@@ -1179,6 +1306,31 @@ def _plot_calcium_intensity_heatmap_by_stim_status(
     # Colorbar
     _add_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
 
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = n_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(
+        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
+    )
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 255, 255),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+        legend.setVisible(True)
+
     # Click handlers
     _attach_click_handlers_intensity(widget, plot, active_rois)
 
@@ -1320,6 +1472,31 @@ def _plot_spike_intensity_heatmap_by_stim_status(
 
     # Colorbar
     _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = n_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(
+        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
+    )
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 255, 255),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+        legend.setVisible(True)
 
     # Click handlers
     _attach_click_handlers_spike_intensity(widget, plot, active_rois)
@@ -1478,6 +1655,31 @@ def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
 
     # Colorbar
     _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = n_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(
+        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
+    )
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(255, 255, 255, 255),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+        legend.setVisible(True)
 
     # Click handlers
     _attach_click_handlers_spike_intensity(widget, plot, active_rois)
