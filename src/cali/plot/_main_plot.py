@@ -52,6 +52,10 @@ from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import 
     _plot_non_stimulated_calcium_synchrony,
     _plot_non_stimulated_spike_correlation,
     _plot_non_stimulated_spike_synchrony,
+    _plot_sorted_calcium_correlation,
+    _plot_sorted_calcium_synchrony,
+    _plot_sorted_spike_correlation,
+    _plot_sorted_spike_synchrony,
     _plot_stimulated_calcium_correlation,
     _plot_stimulated_calcium_synchrony,
     _plot_stimulated_spike_correlation,
@@ -199,7 +203,7 @@ INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF = "Inferred Spikes (Thresholded) with D
 INFERRED_SPIKES_THRESHOLDED_NORMALIZED = "Inferred Spikes (Thresholded) Normalized"
 INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY = "Inferred Spikes (Thresholded) Normalized (Active Only)"  # noqa: E501
 INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normalized with Network Bursts"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony (±window)"
+INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony"
 INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
 INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
@@ -221,7 +225,7 @@ STIMULATED_SPIKE_INTENSITY_HEATMAP = "Stimulated Inferred Spikes Intensity Heatm
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
 STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
 NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
-CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony (±window)"
+CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony"
 CALCIUM_FUNCTIONAL_CONNECTIVITY = "Calcium Functional Connectivity"
 CROSS_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation"
 CALCIUM_DFF_CORRELATION = "Calcium ΔF/F Zero-Lag Pearson Correlation"
@@ -229,9 +233,9 @@ CALCIUM_DEC_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correl
 CLUSTERING = "Calcium Peaks Hierarchical Clustering"
 CLUSTERING_DENDROGRAM = "Calcium Peaks Hierarchical Clustering (Dendrogram)"
 CELL_SIZE = "Cell Size"
-STIMULATED_AREA = "Stimulated Area"
+STIMULATED_AREA = "LED Stimulated Area"
 STIMULATED_ROIS = "Stimulated vs Non-Stimulated ROIs"
-STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with Stimulated Area"  # noqa: E501
+STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with LED Stimulated Area"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stimulated vs Non-Stimulated Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
 STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces"
@@ -248,6 +252,10 @@ STIMULATED_SPIKE_SYNCHRONY = "Stimulated Inferred Spikes Jitter Synchrony"
 NON_STIMULATED_SPIKE_SYNCHRONY = "Non-Stimulated Inferred Spikes Jitter Synchrony"
 STIMULATED_SPIKE_CORRELATION = "Stimulated Inferred Spikes Zero-Lag Pearson Correlation"
 NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Zero-Lag Pearson Correlation"  # noqa: E501
+SORTED_CALCIUM_SYNCHRONY = "Calcium Peaks Jitter Synchrony (Sorted: Stim → Non-Stim)"
+SORTED_CALCIUM_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
+SORTED_SPIKE_SYNCHRONY = "Inferred Spikes Jitter Synchrony (Sorted: Stim → Non-Stim)"
+SORTED_SPIKE_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
 NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
 NEUROPIL_TRACES = "Neuropil and Raw Traces"
 
@@ -530,13 +538,6 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_spike_synchrony_data,
-    category="Inferred Spikes Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name=INFERRED_SPIKE_CROSS_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
@@ -547,6 +548,13 @@ AnalysisProduct(
     name=INFERRED_SPIKE_MAX_LAG_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_correlation_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_synchrony_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -576,22 +584,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=STIMULATED_PEAKS_AMP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_PEAKS_AMP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stim_or_not_stim_peaks_amplitude,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+
 AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
     group=AnalysisGroup.SINGLE_WELL,
@@ -625,17 +618,49 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    name=SORTED_CALCIUM_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
+    analyzer=_plot_sorted_calcium_synchrony,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    name=SORTED_CALCIUM_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=False),
+    analyzer=_plot_sorted_calcium_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=SORTED_SPIKE_SYNCHRONY,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=SORTED_SPIKE_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_PEAKS_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
@@ -649,25 +674,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
     name=STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=True),  # noqa: E501
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
@@ -700,6 +709,38 @@ AnalysisProduct(
     name=STIMULATED_SPIKE_CORRELATION,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_spike_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_PEAKS_AMP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stim_or_not_stim_peaks_amplitude,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=False),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

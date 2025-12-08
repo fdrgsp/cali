@@ -340,13 +340,15 @@ class PlateMapWidget(QWidget):
         self.clear()
 
         try:
-            add_to_conditions_list = set()
+            add_to_conditions_list = []
             wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
                 self._plate_view._well_items
             )
             for data in value:
                 # store the data in a list to update the condition table
-                add_to_conditions_list.add(tuple(data.condition))
+                condition_tuple = tuple(data.condition)
+                if condition_tuple not in add_to_conditions_list:
+                    add_to_conditions_list.append(condition_tuple)
                 # Direct O(1) lookup instead of iterating through all wells
                 row_col: tuple[int, int] = (data.row_col[0], data.row_col[1])
                 if row_col in wells:
@@ -355,7 +357,7 @@ class PlateMapWidget(QWidget):
                     _, color_name = data.condition
                     self._plate_view.setWellColor(r, c, color_name)
                     well.setData(DATA_CONDITION, tuple(data.condition))
-            self.list.setValue(list(add_to_conditions_list))  # type: ignore
+            self.list.setValue(add_to_conditions_list)  # type: ignore
         except Exception as e:
             warnings.warn(f"Error loading the plate map: {e}", stacklevel=2)
             return
@@ -380,6 +382,7 @@ class PlateMapWidget(QWidget):
             return
         with open(filename) as pmap:
             data = json.load(pmap)
+            data = [PlateMapData(d[0], tuple(d[1]), tuple(d[2])) for d in data]
         self.setValue(data)
 
     # override the super method to change the color of the selected wells
@@ -481,6 +484,7 @@ class _PlateMapWidget(QWidget):
         super().__init__(parent)
 
         self._plate: useq.WellPlate | None = None
+        self._has_changes = False
 
         # button to show the plate map dialog
         self._plate_map_btn = QPushButton("Show/Edit Plate Map")
@@ -503,6 +507,11 @@ class _PlateMapWidget(QWidget):
         plate_map_layout.setSpacing(5)
         self._plate_map_genotype = PlateMapWidget(self, title="Genotype Map")
         self._plate_map_treatment = PlateMapWidget(self, title="Treatment Map")
+        # Track changes in both plate maps
+        self._plate_map_genotype.list.valueChanged.connect(self._mark_changed)
+        self._plate_map_genotype.list.row_deleted.connect(self._mark_changed)
+        self._plate_map_treatment.list.valueChanged.connect(self._mark_changed)
+        self._plate_map_treatment.list.row_deleted.connect(self._mark_changed)
         plate_map_layout.addWidget(self._plate_map_genotype)
         plate_map_layout.addWidget(self._plate_map_treatment)
 
@@ -565,10 +574,16 @@ class _PlateMapWidget(QWidget):
     def _on_dialog_accepted(self) -> None:
         """Handle the dialog accepted event."""
         self._plate_map_dialog.hide()
+        self._has_changes = False
         self.plateMapSaved.emit()
 
     def _on_dialog_close_requested(self) -> None:
         """Handle dialog close request with confirmation."""
+        if not self._has_changes:
+            # No changes, just close
+            self._plate_map_dialog.hide()
+            return
+
         reply = QMessageBox.question(
             self._plate_map_dialog,
             "Save Plate Map?",
@@ -580,13 +595,21 @@ class _PlateMapWidget(QWidget):
         )
         if reply == QMessageBox.StandardButton.Save:
             self._plate_map_dialog.hide()
+            self._has_changes = False
             self.plateMapSaved.emit()
         elif reply == QMessageBox.StandardButton.Discard:
             self._plate_map_dialog.hide()
+            self._has_changes = False
         # If Cancel, do nothing - dialog stays open
+
+    def _mark_changed(self) -> None:
+        """Mark that changes have been made to the plate map."""
+        self._has_changes = True
 
     def _show_plate_map_dialog(self) -> None:
         """Show the plate map dialog."""
+        # Reset change tracking when opening dialog
+        self._has_changes = False
         # ensure the dialog is visible and properly positioned
         if self._plate_map_dialog.isHidden() or not self._plate_map_dialog.isVisible():
             self._plate_map_dialog.show()

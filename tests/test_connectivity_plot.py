@@ -266,7 +266,7 @@ def test_filter_connectivity_values() -> None:
 
 
 def test_node_click_emits_roi_signal(qtbot: QtBot) -> None:
-    """Test that clicking a node emits the roiSelected signal with correct ROI."""
+    """Test that clicking a node emits the roiSelected signal with ROI + neighbors."""
     from cali.plot._single_wells_plots.correlation._plot_connectivity import (
         plot_connectivity_graph,
     )
@@ -294,13 +294,17 @@ def test_node_click_emits_roi_signal(qtbot: QtBot) -> None:
     click_handler = plot_item.property("connectivity_click_handler")
     assert click_handler is not None
 
-    # Simulate clicking on node 1 (ROI label 10)
+    # Simulate clicking on node 1 (ROI label 10, which connects to ROIs 5 and 15)
     mock_point = MagicMock()
     mock_point.index.return_value = 1
     mock_point.data.return_value = 10  # Return the ROI label, not a MagicMock
     click_handler(None, [mock_point])
 
-    mock_widget.roiSelected.emit.assert_called_once_with("10")
+    # Should emit [selected, *neighbors]
+    mock_widget.roiSelected.emit.assert_called_once()
+    call_args = mock_widget.roiSelected.emit.call_args[0][0]
+    assert call_args[0] == "10"  # First is selected
+    assert set(call_args[1:]) == {"5", "15"}  # Rest are neighbors
 
 
 @pytest.mark.parametrize(
@@ -723,3 +727,279 @@ def test_plot_connectivity_wrapper_signature() -> None:
     assert "widget" in params
     assert "engine" in params
     assert "fov_name" in params
+
+
+# ============================================================================
+# ROI Selection Signal Tests (New: List Format with Connected ROIs)
+# ============================================================================
+
+
+def test_connectivity_node_click_emits_list_with_neighbors(
+    qtbot: QtBot,
+    simple_connectivity_data: tuple[np.ndarray, np.ndarray, list[int]],
+) -> None:
+    """Test that clicking a node emits selected ROI + connected neighbors as a list."""
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        plot_connectivity_graph,
+    )
+
+    adjacency, weights, roi_labels = simple_connectivity_data
+
+    mock_widget = MagicMock()
+    mock_plot_item = MagicMock()
+    mock_widget.plot_item = mock_plot_item
+    mock_widget.roiSelected = MagicMock()
+
+    # Create real PyQt objects for proper signal testing
+    import pyqtgraph as pg
+
+    plot_widget = pg.PlotWidget()
+    qtbot.addWidget(plot_widget)
+    mock_widget.plot_item = plot_widget.plotItem
+
+    plot_connectivity_graph(
+        widget=mock_widget,
+        adjacency=adjacency,
+        weights=weights,
+        roi_labels=roi_labels,
+    )
+
+    # Track emitted signals
+    emitted_signals: list[list[str]] = []
+    mock_widget.roiSelected.emit = lambda x: emitted_signals.append(x)
+
+    # Get the graph item and scatter
+    plot = plot_widget.plotItem
+    graph_item = plot.property("connectivity_graph_item")
+    assert graph_item is not None
+
+    scatter = graph_item.scatter
+
+    # Simulate clicking on ROI 2 (index 1), which is connected to ROIs 1 and 3
+    click_handler = plot.property("connectivity_click_handler")
+    assert click_handler is not None
+
+    # Create mock points for ROI 2 (label=2, index=1)
+    mock_point = MagicMock()
+    mock_point.data.return_value = 2
+
+    click_handler(scatter, [mock_point])
+
+    # Should emit [selected, *neighbors]
+    assert len(emitted_signals) == 1
+    emitted = emitted_signals[0]
+
+    # First element should be the clicked ROI
+    assert emitted[0] == "2"
+
+    # Remaining elements should be neighbors (ROIs 1 and 3)
+    assert set(emitted[1:]) == {"1", "3"}
+
+
+def test_connectivity_node_click_isolated_node(
+    qtbot: QtBot,
+) -> None:
+    """Test that clicking an isolated node (no connections) emits just that ROI."""
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        plot_connectivity_graph,
+    )
+
+    # Create graph with isolated node
+    adjacency = np.array([[0, 1, 0], [1, 0, 0], [0, 0, 0]])
+    weights = np.array([[0.0, 0.8, 0.0], [0.8, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    roi_labels = [1, 2, 3]
+
+    mock_widget = MagicMock()
+    import pyqtgraph as pg
+
+    plot_widget = pg.PlotWidget()
+    qtbot.addWidget(plot_widget)
+    mock_widget.plot_item = plot_widget.plotItem
+
+    plot_connectivity_graph(
+        widget=mock_widget,
+        adjacency=adjacency,
+        weights=weights,
+        roi_labels=roi_labels,
+    )
+
+    emitted_signals: list[list[str]] = []
+    mock_widget.roiSelected.emit = lambda x: emitted_signals.append(x)
+
+    plot = plot_widget.plotItem
+    click_handler = plot.property("connectivity_click_handler")
+
+    # Click on ROI 3 (index 2), which has no connections
+    mock_point = MagicMock()
+    mock_point.data.return_value = 3
+
+    click_handler(
+        plot_widget.plotItem.property("connectivity_graph_item").scatter, [mock_point]
+    )
+
+    assert len(emitted_signals) == 1
+    # Should emit list with only the selected ROI (no neighbors)
+    assert emitted_signals[0] == ["3"]
+
+
+def test_connectivity_node_click_fully_connected_node(
+    qtbot: QtBot,
+) -> None:
+    """Test clicking a node connected to all other nodes."""
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        plot_connectivity_graph,
+    )
+
+    # Fully connected graph (4 nodes)
+    adjacency = np.array(
+        [
+            [0, 1, 1, 1],
+            [1, 0, 1, 1],
+            [1, 1, 0, 1],
+            [1, 1, 1, 0],
+        ]
+    )
+    weights = np.ones_like(adjacency, dtype=float) * 0.9
+    np.fill_diagonal(weights, 0.0)
+    roi_labels = [10, 20, 30, 40]
+
+    mock_widget = MagicMock()
+    import pyqtgraph as pg
+
+    plot_widget = pg.PlotWidget()
+    qtbot.addWidget(plot_widget)
+    mock_widget.plot_item = plot_widget.plotItem
+
+    plot_connectivity_graph(
+        widget=mock_widget,
+        adjacency=adjacency,
+        weights=weights,
+        roi_labels=roi_labels,
+    )
+
+    emitted_signals: list[list[str]] = []
+    mock_widget.roiSelected.emit = lambda x: emitted_signals.append(x)
+
+    plot = plot_widget.plotItem
+    click_handler = plot.property("connectivity_click_handler")
+
+    # Click on ROI 10 (index 0), connected to all others
+    mock_point = MagicMock()
+    mock_point.data.return_value = 10
+
+    click_handler(
+        plot_widget.plotItem.property("connectivity_graph_item").scatter, [mock_point]
+    )
+
+    assert len(emitted_signals) == 1
+    emitted = emitted_signals[0]
+
+    # Should have all 4 ROIs (1 selected + 3 neighbors)
+    assert len(emitted) == 4
+    assert emitted[0] == "10"
+    assert set(emitted[1:]) == {"20", "30", "40"}
+
+
+def test_connectivity_click_handler_fallback_on_error(
+    qtbot: QtBot,
+) -> None:
+    """Test that click handler handles errors gracefully with ValueError."""
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        plot_connectivity_graph,
+    )
+
+    adjacency = np.array([[0, 1], [1, 0]])
+    weights = np.array([[0.0, 0.8], [0.8, 0.0]])
+    roi_labels = [1, 2]
+
+    mock_widget = MagicMock()
+    import pyqtgraph as pg
+
+    plot_widget = pg.PlotWidget()
+    qtbot.addWidget(plot_widget)
+    mock_widget.plot_item = plot_widget.plotItem
+
+    plot_connectivity_graph(
+        widget=mock_widget,
+        adjacency=adjacency,
+        weights=weights,
+        roi_labels=roi_labels,
+    )
+
+    emitted_signals: list[list[str]] = []
+    mock_widget.roiSelected.emit = lambda x: emitted_signals.append(x)
+
+    plot = plot_widget.plotItem
+    graph_item = plot.property("connectivity_graph_item")
+
+    # Corrupt the stored labels to trigger ValueError
+    # Use a label that doesn't exist in stored_labels
+    graph_item.setProperty("roi_labels", ["1", "2"])
+
+    click_handler = plot.property("connectivity_click_handler")
+
+    # Click on ROI 999 which doesn't exist in labels
+    mock_point = MagicMock()
+    mock_point.data.return_value = 999
+
+    click_handler(graph_item.scatter, [mock_point])
+
+    # Should fall back to emitting just the selected ROI
+    assert len(emitted_signals) == 1
+    assert emitted_signals[0] == ["999"]
+
+
+def test_connectivity_highlight_colors(
+    qtbot: QtBot,
+    simple_connectivity_data: tuple[np.ndarray, np.ndarray, list[int]],
+) -> None:
+    """Test that node highlighting uses correct colors.
+
+    ...(green=selected, yellow=neighbors)."""
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        plot_connectivity_graph,
+    )
+
+    adjacency, weights, roi_labels = simple_connectivity_data
+
+    mock_widget = MagicMock()
+    import pyqtgraph as pg
+
+    plot_widget = pg.PlotWidget()
+    qtbot.addWidget(plot_widget)
+    mock_widget.plot_item = plot_widget.plotItem
+
+    plot_connectivity_graph(
+        widget=mock_widget,
+        adjacency=adjacency,
+        weights=weights,
+        roi_labels=roi_labels,
+    )
+
+    plot = plot_widget.plotItem
+    graph_item = plot.property("connectivity_graph_item")
+
+    # Click on node 1 (ROI 2, which connects to ROIs 1 and 3)
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        _highlight_node_and_neighbors,
+    )
+
+    _highlight_node_and_neighbors(plot, graph_item, node_index=1)
+
+    # Check that brushes are updated correctly
+    scatter = graph_item.scatter
+    brushes = scatter.data["brush"]
+
+    # Node 1 should be green (25, 255, 25, 230)
+    assert brushes[1].color().red() == 25
+    assert brushes[1].color().green() == 255
+    assert brushes[1].color().blue() == 25
+
+    # Neighbors (nodes 0 and 2) should be yellow (255, 255, 0, 255)
+    assert brushes[0].color().red() == 255
+    assert brushes[0].color().green() == 255
+    assert brushes[0].color().blue() == 0
+
+    assert brushes[2].color().red() == 255
+    assert brushes[2].color().green() == 255
+    assert brushes[2].color().blue() == 0
