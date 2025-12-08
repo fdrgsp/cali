@@ -75,15 +75,21 @@ def plot_connectivity_graph(
             return
         roi_label = points[0].data()
         if roi_label is not None:
-            widget.roiSelected.emit(str(roi_label))
             # Find the index of this ROI in the graph_item for highlighting
             stored_labels = graph_item.property("roi_labels")
             if stored_labels:
                 try:
                     idx = stored_labels.index(str(roi_label))
+                    # Get all neighbors (correlated ROIs)
+                    neighbors = np.where(adjacency[idx] != 0)[0]
+                    neighbor_labels = [stored_labels[j] for j in neighbors]
+                    # Emit selected ROI + all correlated neighbors as a list
+                    roi_list = [str(roi_label), *neighbor_labels]
+                    widget.roiSelected.emit(roi_list)
                     _highlight_node_and_neighbors(plot, graph_item, idx)
                 except ValueError:
-                    pass  # ROI not found in stored labels
+                    # ROI not found in stored labels, emit just the selected ROI
+                    widget.roiSelected.emit([str(roi_label)])
 
     def on_background_click(event: Any) -> None:
         # Clear only when click is not on a node
@@ -159,9 +165,9 @@ def _highlight_node_and_neighbors(
 
     # Build new brush list from base
     new_brushes = list(base_brushes)
-    new_brushes[node_index] = pg.mkBrush(255, 255, 0, 255)  # clicked
+    new_brushes[node_index] = pg.mkBrush(25, 255, 25, 230)  # clicked
     for j in neighbors:
-        new_brushes[j] = pg.mkBrush(25, 255, 25, 230)  # neighbors
+        new_brushes[j] = pg.mkBrush(255, 255, 0, 255)  # neighbors
 
     # Apply to scatter AND GraphItem internal data (so zoom doesn't reset)
     graph_item.scatter.setBrush(new_brushes)
@@ -186,7 +192,7 @@ def _highlight_node_and_neighbors(
         edge_item = pg.PlotDataItem(
             [float(x0), float(x1)],
             [float(y0), float(y1)],
-            pen=pg.mkPen(25, 255, 25, 100, width=2.5),
+            pen=pg.mkPen(255, 255, 0, 255, width=2.5),
         )
         plot.addItem(edge_item)
         edge_items.append(edge_item)
