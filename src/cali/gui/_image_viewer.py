@@ -256,6 +256,9 @@ class _ImageViewer(QGroupBox):
         if self._viewer.highlight_roi is not None:
             self._viewer.highlight_roi.parent = None
             self._viewer.highlight_roi = None
+        if self._viewer.highlight_connected_roi is not None:
+            self._viewer.highlight_connected_roi.parent = None
+            self._viewer.highlight_connected_roi = None
         self._roi_number_le.setText("")
 
     def _show_labels(self, state: bool) -> None:
@@ -275,8 +278,20 @@ class _ImageViewer(QGroupBox):
         if self._viewer.neuropil_contours_image is not None:
             self._viewer.neuropil_contours_image.visible = state
 
-    def _highlight_rois(self, roi: int | bool | None = None) -> None:
-        """Highlight the label set in the spinbox."""
+    def _highlight_rois(
+        self,
+        roi: int | bool | None = None,
+        connected_rois: list[int] | None = None,
+    ) -> None:
+        """Highlight the label set in the spinbox.
+
+        Parameters
+        ----------
+        roi : int | bool | None
+            Single ROI or trigger to parse from line edit
+        connected_rois : list[int] | None
+            Optional list of connected ROIs to highlight in yellow
+        """
         if self._viewer.labels_image is None:
             show_error_dialog(self, "No labels image to highlight.")
             return
@@ -297,12 +312,15 @@ class _ImageViewer(QGroupBox):
             show_error_dialog(self, "Input ROIs out of range!")
             return None
 
-        # clear the previous highlight image if it exists
+        # clear the previous highlight images if they exist
         if self._viewer.highlight_roi is not None:
             self._viewer.highlight_roi.parent = None
             self._viewer.highlight_roi = None
+        if self._viewer.highlight_connected_roi is not None:
+            self._viewer.highlight_connected_roi.parent = None
+            self._viewer.highlight_connected_roi = None
 
-        # create a mask for the label to highlight it
+        # create a mask for the selected ROIs (green)
         highlight = np.zeros_like(labels_data, dtype=np.uint8)
         for roi in rois:
             mask = labels_data == roi
@@ -317,7 +335,27 @@ class _ImageViewer(QGroupBox):
         )
         self._viewer.highlight_roi.set_gl_state("additive", depth_test=False)
         self._viewer.highlight_roi.interactive = True
-        # self._viewer.view.camera.set_range(margin=0)
+
+        # create a mask for connected ROIs (yellow) if provided
+        if connected_rois:
+            # Filter out invalid ROIs
+            valid_connected = [r for r in connected_rois if 0 < r <= labels_data.max()]
+            if valid_connected:
+                connected_highlight = np.zeros_like(labels_data, dtype=np.uint8)
+                for roi in valid_connected:
+                    mask = labels_data == roi
+                    connected_highlight[mask] = 255
+
+                self._viewer.highlight_connected_roi = scene.visuals.Image(
+                    connected_highlight,
+                    cmap=cmap.Colormap("yellow").to_vispy(),
+                    clim=(0, 255),
+                    parent=self._viewer.view.scene,
+                )
+                self._viewer.highlight_connected_roi.set_gl_state(
+                    "additive", depth_test=False
+                )
+                self._viewer.highlight_connected_roi.interactive = True
 
         self._viewer.labels_image.visible = False
         with signals_blocked(self._labels):
@@ -381,6 +419,7 @@ class _ImageCanvas(QWidget):
         self.neuropil_image: scene.visuals.Image | None = None
         self.neuropil_contours_image: scene.visuals.Image | None = None
         self.highlight_roi: scene.visuals.Image | None = None
+        self.highlight_connected_roi: scene.visuals.Image | None = None
 
         self._contour_cache: dict[str, np.ndarray] = {}
 

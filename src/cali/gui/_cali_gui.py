@@ -2251,11 +2251,25 @@ class CaliGui(QMainWindow):
             self._update_single_wells_graphs_combo()
 
     def _highlight_roi(self, roi: str | list[str]) -> None:
-        """Highlight the selected roi in the image viewer."""
+        """Highlight the selected roi in the image viewer.
+
+        Parameters
+        ----------
+        roi : str | list[str]
+            Single ROI as string, or list where first element is the selected ROI
+            and remaining elements are connected ROIs (e.g., from connectivity plot).
+        """
         if isinstance(roi, list):
-            roi = ",".join(roi)
-        self._image_viewer._roi_number_le.setText(roi)
-        self._image_viewer._highlight_rois()
+            if len(roi) == 0:
+                return
+            # First ROI is the selected one (green), rest are connected (yellow)
+            selected = roi[0]
+            connected = [int(r) for r in roi[1:]] if len(roi) > 1 else None
+            self._image_viewer._roi_number_le.setText(selected)
+            self._image_viewer._highlight_rois(int(selected), connected_rois=connected)
+        else:
+            self._image_viewer._roi_number_le.setText(roi)
+            self._image_viewer._highlight_rois(int(roi))
 
     def _on_scene_well_changed(self) -> None:
         """Update the FOV table when a well is selected."""
