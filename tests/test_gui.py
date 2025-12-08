@@ -786,6 +786,9 @@ def test_plate_map_widget_close_save(
     widget._plate_map_dialog.show()
     assert not widget._plate_map_dialog.isHidden()
 
+    # Simulate that changes have been made
+    widget._has_changes = True
+
     # Track signal emission and call the close handler
     with qtbot.waitSignal(widget.plateMapSaved, timeout=1000):
         widget._on_dialog_close_requested()
@@ -817,6 +820,9 @@ def test_plate_map_widget_close_discard(
     # Show the dialog first
     widget._plate_map_dialog.show()
     assert not widget._plate_map_dialog.isHidden()
+
+    # Simulate that changes have been made
+    widget._has_changes = True
 
     # Call the close handler - should NOT emit plateMapSaved
     signal_emitted = False
@@ -856,6 +862,9 @@ def test_plate_map_widget_close_cancel(
     # Show the dialog first
     widget._plate_map_dialog.show()
     assert not widget._plate_map_dialog.isHidden()
+
+    # Simulate that changes have been made
+    widget._has_changes = True
 
     # Call the close handler - should NOT emit plateMapSaved and NOT hide dialog
     signal_emitted = False
