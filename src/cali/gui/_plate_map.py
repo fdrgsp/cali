@@ -340,13 +340,15 @@ class PlateMapWidget(QWidget):
         self.clear()
 
         try:
-            add_to_conditions_list = set()
+            add_to_conditions_list = []
             wells: dict[tuple[int, int], QAbstractGraphicsShapeItem] = (
                 self._plate_view._well_items
             )
             for data in value:
                 # store the data in a list to update the condition table
-                add_to_conditions_list.add(tuple(data.condition))
+                condition_tuple = tuple(data.condition)
+                if condition_tuple not in add_to_conditions_list:
+                    add_to_conditions_list.append(condition_tuple)
                 # Direct O(1) lookup instead of iterating through all wells
                 row_col: tuple[int, int] = (data.row_col[0], data.row_col[1])
                 if row_col in wells:
@@ -355,7 +357,7 @@ class PlateMapWidget(QWidget):
                     _, color_name = data.condition
                     self._plate_view.setWellColor(r, c, color_name)
                     well.setData(DATA_CONDITION, tuple(data.condition))
-            self.list.setValue(list(add_to_conditions_list))  # type: ignore
+            self.list.setValue(add_to_conditions_list)  # type: ignore
         except Exception as e:
             warnings.warn(f"Error loading the plate map: {e}", stacklevel=2)
             return
@@ -380,6 +382,7 @@ class PlateMapWidget(QWidget):
             return
         with open(filename) as pmap:
             data = json.load(pmap)
+            data = [PlateMapData(d[0], tuple(d[1]), tuple(d[2])) for d in data]
         self.setValue(data)
 
     # override the super method to change the color of the selected wells
