@@ -3,11 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
+import useq
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, create_engine, select
 from tqdm import tqdm
 
-from cali._constants import TS, ZR
+from cali._constants import OZ, TS
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.sqlmodel._model import (
@@ -27,7 +28,7 @@ _NUMBA_LOCK = threading.Lock()
 
 
 def load_data_from_path(
-    data_path: str | Path,
+    data_path: str | Path, plate_plan: useq.WellPlatePlan | None = None
 ) -> TensorstoreZarrReader | OMEZarrReader | None:
     """Load data from the given path using the appropriate reader.
 
@@ -35,6 +36,9 @@ def load_data_from_path(
     ----------
     data_path : str | Path
         Path to the data directory or file
+    plate_plan : useq.WellPlatePlan | None
+        The well plate plan to set for the useq.MDASequence. If None, the plate plan
+        is not set. By default, None.
 
     Returns
     -------
@@ -46,16 +50,13 @@ def load_data_from_path(
 
     # read tensorstore from micromanager-gui package
     if data_path_str.endswith(TS):
-        return TensorstoreZarrReader(data_path)
+        return TensorstoreZarrReader(data_path, plate_plan=plate_plan)
 
     # read ome zarr from micromanager-gui package
-    elif data_path_str.endswith(ZR):
-        return OMEZarrReader(data_path)
+    elif data_path_str.endswith(OZ):
+        return OMEZarrReader(data_path, plate_plan=plate_plan)
 
     return None
-    # msg = f"Unsupported data format for path: {data_path}"
-    # cali_logger.error(msg)
-    # raise ValueError(msg)
 
 
 def mask_to_coordinates(

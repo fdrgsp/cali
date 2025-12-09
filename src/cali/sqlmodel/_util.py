@@ -84,6 +84,8 @@ def save_experiment_to_database(
     # Determine database path
     db_name = database_name if database_name is not None else DEFAULT_CALI_DB_NAME
     assert db_name is not None  # Guaranteed by the check above
+    if not db_name.endswith(".cali"):
+        db_name += ".cali"
     db_path = Path(output_path) / db_name
 
     # Ensure parent directory exists

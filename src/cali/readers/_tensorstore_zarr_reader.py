@@ -26,6 +26,9 @@ class TensorstoreZarrReader:
     ----------
     data : str | Path | ts.Tensorstore
         The path to the tensorstore zarr file or the tensorstore zarr file itself.
+    plate_plan : useq.WellPlatePlan | None
+        An optional useq.WellPlatePlan to set the stage positions in the
+        useq.MDASequence. If None, the stage positions in the metadata are used.
 
     Attributes
     ----------
@@ -49,7 +52,14 @@ class TensorstoreZarrReader:
     data, metadata = reader.isel({"p": 0, "t": 1, "z": 0}, metadata=True)
     """
 
-    def __init__(self, data: str | Path | ts.TensorStore) -> None:
+    def __init__(
+        self,
+        data: str | Path | ts.TensorStore,
+        *,
+        plate_plan: useq.WellPlatePlan | None = None,
+    ) -> None:
+        self._sequence: useq.MDASequence | None = None
+
         if isinstance(data, ts.TensorStore):
             self._path = data.kvstore.path
             _store = data
@@ -78,10 +88,27 @@ class TensorstoreZarrReader:
             else:
                 self._metadata = metadata_dict.get("frame_metadatas", [])
 
+        # getting the sequence from first frame metadata within the "mda_event" key
+        if isinstance(self._metadata, list):
+            if len(self._metadata) == 0:
+                return None
+            seq = self._metadata[0].get(EVENT_KEY, {}).get("sequence")
+            self._sequence = useq.MDASequence(**seq) if seq is not None else None
+
+        # this is for an older version of the metadata ---------------------------------
+        elif isinstance(self._metadata, dict):
+            _seq = self._metadata.get("useq_MDASequence")
+            self._sequence = (
+                useq.MDASequence(**json.loads(_seq)) if _seq is not None else None
+            )
+        # ------------------------------------------------------------------------------
+        if plate_plan is not None:
+            self.set_plate_plan(plate_plan)
+
         # set the axis labels
-        if self.sequence is not None:
+        if self._sequence is not None:
             # not sure if is x, y or y, x
-            axis_order = (*self.sequence.axis_order, "y", "x")
+            axis_order = (*self._sequence.axis_order, "y", "x")
             if len(axis_order) > 2:
                 try:
                     _store = _store[ts.d[:].label[axis_order]]
@@ -111,17 +138,7 @@ class TensorstoreZarrReader:
 
     @property
     def sequence(self) -> useq.MDASequence | None:
-        # getting the sequence from first frame metadata within the "mda_event" key
-        if isinstance(self._metadata, list):
-            if len(self._metadata) == 0:
-                return None
-            seq = self._metadata[0].get(EVENT_KEY, {}).get("sequence")
-            return useq.MDASequence(**seq) if seq is not None else None
-
-        # this is for an older version of the metadata ---------------------------------
-        seq = self._metadata.get("useq_MDASequence")
-        return useq.MDASequence(**json.loads(seq)) if seq is not None else None
-        # ------------------------------------------------------------------------------
+        return self._sequence
 
     # ___________________________Public Methods___________________________
 
@@ -224,6 +241,18 @@ class TensorstoreZarrReader:
                         dest = Path(path) / f"p{i}.json"
                         dest.write_text(json.dumps(metadata))
                         pbar.update(1)
+
+    def set_plate_plan(self, plate_plan: useq.WellPlatePlan) -> None:
+        """Set the plate plan in the useq.MDASequence.
+
+        Parameters
+        ----------
+        plate_plan : useq.WellPlatePlan
+            The plate plan to set in the useq.MDASequence.
+        """
+        if self._sequence is None:
+            raise ValueError("No 'useq.MDASequence' found in the metadata!")
+        self._sequence = self._sequence.replace(stage_positions=plate_plan)
 
     # ___________________________Private Methods___________________________
 

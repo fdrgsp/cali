@@ -18,7 +18,7 @@ WRITERS: dict[str, list[str]] = {
     OME_ZARR: [".ome.zarr"],
 }
 TS = WRITERS[ZARR_TESNSORSTORE][0]
-ZR = WRITERS[OME_ZARR][0]
+OZ = WRITERS[OME_ZARR][0]
 HCS = "hcs"
 
 # ==================== Colors ====================
