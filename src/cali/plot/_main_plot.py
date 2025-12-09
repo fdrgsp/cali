@@ -34,9 +34,6 @@ from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
 from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
     _plot_neuropil_traces,
 )
-from ._single_wells_plots.correlation._plot_calcium_peaks_correlation import (
-    _plot_cross_correlation_data,
-)
 from ._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
@@ -520,13 +517,14 @@ AnalysisProduct(
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-AnalysisProduct(
-    name=CROSS_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_cross_correlation_data,
-    category="Calcium Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# not useful for calcium peaks
+# AnalysisProduct(
+#     name=CROSS_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_cross_correlation_data,
+#     category="Calcium Correlation Analysis",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 AnalysisProduct(
     name=CALCIUM_FUNCTIONAL_CONNECTIVITY,
     group=AnalysisGroup.SINGLE_WELL,
