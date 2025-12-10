@@ -120,20 +120,16 @@ class AnalysisRunner:
                 cali_logger.info("🚮 Cancellation requested before starting analysis")
                 return
 
-            # Convert generator to list to track all futures
-            future_list = [
+            futures = (
                 executor.submit(
                     analyze,
                     analysis_settings,
                     fov,
                 )
                 for fov in fovs
-            ]
+            )
 
-            completed_count = 0
-            total_futures = len(future_list)
-
-            for future in as_completed(future_list):
+            for future in as_completed(futures):
                 # Check for cancellation at the start of each iteration
                 if cancel_event.is_set():
                     cali_logger.info(
@@ -146,11 +142,6 @@ class AnalysisRunner:
                 try:
                     # Commit the results to database if we got any
                     if (fov_result := future.result()) is not None:
-                        completed_count += 1
-                        cali_logger.debug(
-                            f"📊 Analysis progress: {completed_count}/{total_futures} "
-                            f"FOVs completed"
-                        )
                         yield fov_result
                 except Exception:
                     import traceback
