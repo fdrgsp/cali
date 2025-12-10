@@ -41,7 +41,7 @@ save_experiment_to_database(exp, out, overwrite=True)
 # e.g.:
 # if you selected manually 1 position per well in a 96-well plate for wells from
 # G2 to G11 andf have 2 fovs per well:
-import useq
+import useq  # noqa: E402
 
 pp = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("96-well"),
