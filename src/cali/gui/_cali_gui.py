@@ -451,9 +451,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        self._output_path = "tests/test_data/data_and_db_for_tests/"
+        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        # self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
@@ -593,6 +593,7 @@ class CaliGui(QMainWindow):
         """
         tiff_file_map = tiff_plate_type = tiff_metadata = None
         data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+
         data = load_data_from_path(data_path)
 
         # if data is None and the data_path is a tiff folder, try to create
@@ -701,7 +702,8 @@ class CaliGui(QMainWindow):
         if tiff_settings is not None:
             self._data = TiffCollectionReader(tiff_settings)
         else:
-            self._data = load_data_from_path(data_path)
+            pp = experiment_to_useq_plate_plan(experiment)
+            self._data = load_data_from_path(data_path, plate_plan=pp)
 
         if not self._validate_data(self._data):
             return
@@ -768,7 +770,8 @@ class CaliGui(QMainWindow):
                 if tiff_settings is not None:
                     self._data = TiffCollectionReader(tiff_settings)
                 else:
-                    self._data = load_data_from_path(data_path)
+                    pp = experiment_to_useq_plate_plan(experiment)
+                    self._data = load_data_from_path(data_path, plate_plan=pp)
 
                 if not self._validate_data(self._data):
                     return
@@ -779,10 +782,14 @@ class CaliGui(QMainWindow):
 
                 # DATA-----------------------------------------------------------------
                 result = self._load_data_or_configure_tiff(data_path)
-                if result[0] is None:
+                self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+                if self._data is None:
                     self._loading_bar.hide()
                     return
-                self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+                # if used micromanager-gui without HCS but with list of positions
+                pplan = self._get_plate_plan_if_no_hcs()
 
                 # CREATE AND SAVE EXPERIMENT ------------------------------------------
                 experiment = Experiment.create_from_data(
@@ -792,6 +799,7 @@ class CaliGui(QMainWindow):
                     tiff_file_map=tiff_file_map,
                     tiff_plate_type=tiff_plate_type,
                     tiff_metadata=tiff_metadata,
+                    plate_plan=pplan,
                 )
                 save_experiment_to_database(
                     experiment, output_path, database_name=database_name, overwrite=True
@@ -803,10 +811,14 @@ class CaliGui(QMainWindow):
 
             # DATA -----------------------------------------------------------------
             result = self._load_data_or_configure_tiff(data_path)
-            if result[0] is None:
+            self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+            if self._data is None:
                 self._loading_bar.hide()
                 return
-            self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
+
+            # if used micromanager-gui without HCS but with list of positions
+            pplan = self._get_plate_plan_if_no_hcs()
 
             # CREATE AND SAVE EXPERIMENT -------------------------------------------
             experiment = Experiment.create_from_data(
@@ -816,6 +828,7 @@ class CaliGui(QMainWindow):
                 tiff_file_map=tiff_file_map,
                 tiff_plate_type=tiff_plate_type,
                 tiff_metadata=tiff_metadata,
+                plate_plan=pplan,
             )
             save_experiment_to_database(
                 experiment, output_path, database_name=database_name, overwrite=True
@@ -824,13 +837,31 @@ class CaliGui(QMainWindow):
         # RELOAD DATA IF NEEDED --------------------------------------------------------
         # skip loading data if already loaded as TiffCollectionReader
         if not isinstance(self._data, TiffCollectionReader):
-            self._data = load_data_from_path(data_path)
+            pp = experiment_to_useq_plate_plan(experiment)
+            self._data = load_data_from_path(data_path, plate_plan=pp)
 
         if not self._validate_data(self._data):
             return
 
         # FINALIZE---------------------------------------------------------------------
         self._finalize_initialization(experiment)
+
+    def _get_plate_plan_if_no_hcs(self) -> useq.WellPlatePlan | None:
+        """Get plate plan using the plate plan wizard if no HCS is present."""
+        if self._data is None or self._data.sequence is None:
+            return None
+        if isinstance(self._data, TiffCollectionReader):
+            return None
+        pplan = None
+        if not isinstance(self._data.sequence.stage_positions, useq.WellPlatePlan):
+            if self._plate_plan_wizard.exec():
+                pplan = self._plate_plan_wizard.value()
+                self._data.set_plate_plan(pplan)
+
+                from rich import print
+
+                print(self._data.sequence)
+        return pplan
 
     def _update_gui_settings(
         self, database_path: Path | str, experiment: Experiment | None = None
@@ -1878,27 +1909,9 @@ class CaliGui(QMainWindow):
         if isinstance(plate_plan, useq.WellPlatePlan):
             final_plate_plan = plate_plan
         else:
-            # plate_plan is a tuple of positions - need to create a plate plan
-            # try to use the plate plan wizard first
-            final_plate_plan = self._resolve_plate_plan()
-
-            # set the flag if using default plate plan
-            if final_plate_plan == DEFAULT_PLATE_PLAN:
-                self._default_plate_plan = True
-
-        if final_plate_plan is None:
-            return None
+            final_plate_plan = DEFAULT_PLATE_PLAN
 
         self._draw_plate_with_selection(final_plate_plan)
-
-    def _resolve_plate_plan(self) -> useq.WellPlatePlan | None:
-        """Resolve plate plan from various sources in order of preference."""
-        # try using the wizard
-        if self._plate_plan_wizard.exec():
-            return self._plate_plan_wizard.value()
-        # if no HCSWizard was used but single position list was created,
-        # fallback to a default square coverslip plate plan
-        return DEFAULT_PLATE_PLAN
 
     def _draw_plate_with_selection(self, plate_plan: useq.WellPlatePlan) -> None:
         """Draw the plate and disable non-selected wells."""

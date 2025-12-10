@@ -541,6 +541,7 @@ class Experiment(SQLModel, table=True):
         tiff_file_map: Mapping[str, Sequence[str | Path]] | None = None,
         tiff_plate_type: str | None = None,
         tiff_metadata: dict[str, Any] | None = None,
+        plate_plan: useq.WellPlatePlan | None = None,
     ) -> Self:
         """Create a new experiment by loading plate structure from data's useq metadata.
 
@@ -572,6 +573,9 @@ class Experiment(SQLModel, table=True):
             For TIFF collections: plate type (e.g., "96-well", "coverslip-22mm-square")
         tiff_metadata : dict[str, Any] | None, optional
             For TIFF collections: metadata with "exposure_ms" and "pixel_size_um"
+        plate_plan : useq.WellPlatePlan | None, optional
+            Optional WellPlatePlan to override the one in the data metadata.
+            Useful if the Tenbsorstore/OME-Zarr data lacks plate information.
 
         Returns
         -------
@@ -624,7 +628,7 @@ class Experiment(SQLModel, table=True):
             data = TiffCollectionReader(tiff_settings)
         else:
             # Load data normally (zarr/tensorstore or TIFF without settings)
-            data = load_data_from_path(data_path)
+            data = load_data_from_path(data_path, plate_plan=plate_plan)
             if data is None:
                 from cali._constants import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 

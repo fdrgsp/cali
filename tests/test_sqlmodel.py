@@ -68,6 +68,14 @@ TempDB = tuple[Engine, Path]
 
 THREADS = 1
 
+
+def _get_actual_db_path(requested_db_path: Path) -> Path:
+    """Get the actual database path (with .cali extension added if needed)."""
+    if not requested_db_path.name.endswith(".cali"):
+        return requested_db_path.parent / f"{requested_db_path.name}.cali"
+    return requested_db_path
+
+
 # ==================== Fixtures ====================
 
 
@@ -516,6 +524,7 @@ def test_load_analysis_from_json(tmp_path: Path) -> None:
 
     # The database should be created in output_path
     db_path = output_path / f"{data_path.name}.db"
+    # load_analysis_from_json doesn't add .cali extension
     assert db_path.exists()
 
     # Verify data was loaded correctly - reload from database
@@ -590,10 +599,10 @@ def test_save_experiment_to_db(tmp_path: Path) -> None:
     # Verify
     from cali.sqlmodel._util import load_experiment_from_database
 
-    result = load_experiment_from_database(db_path)
+    result = load_experiment_from_database(_get_actual_db_path(db_path))
     assert result is not None
     assert result.name == "test_experiment"
-    assert db_path.exists()
+    assert _get_actual_db_path(db_path).exists()
 
 
 def test_save_experiment_overwrite_protection(
@@ -610,15 +619,16 @@ def test_save_experiment_overwrite_protection(
 
     # Try to save again without overwrite - should work (SQLite appends)
     # but verify the file exists
-    assert db_path.exists()
-    _size = db_path.stat().st_size  # Check file size
+    actual_db = _get_actual_db_path(db_path)
+    assert actual_db.exists()
+    _size = actual_db.stat().st_size  # Check file size
 
     # Save with overwrite=True
     save_experiment_to_database(
         simple_experiment, output_path=tmp_path, database_name="test.db", overwrite=True
     )
     # File should still exist
-    assert db_path.exists()
+    assert _get_actual_db_path(db_path).exists()
 
 
 # ==================== Conversion Tests ====================
@@ -995,7 +1005,8 @@ def test_full_workflow(tmp_path: Path) -> None:
     )
 
     # 3. Read back from database
-    engine = create_engine(f"sqlite:///{db_path}")
+    actual_db = _get_actual_db_path(db_path)
+    engine = create_engine(f"sqlite:///{actual_db}")
     try:
         with Session(engine) as session:
             loaded_exp = session.exec(select(Experiment)).first()
@@ -1123,7 +1134,7 @@ def test_util_load_experiment_from_database(tmp_path: Path) -> None:
 
     # Load back
     db_path = tmp_path / "test_load.db"
-    loaded_exp = load_experiment_from_database(db_path)
+    loaded_exp = load_experiment_from_database(_get_actual_db_path(db_path))
 
     assert loaded_exp is not None
     assert loaded_exp.name == "test_load"
@@ -2350,7 +2361,7 @@ def test_save_experiment_to_database_overwrite(tmp_path: Path) -> None:
     # Save first time
     save_experiment_to_database(exp, tmp_path, database_name="test.db")
     db_path = tmp_path / "test.db"
-    assert db_path.exists()
+    assert _get_actual_db_path(db_path).exists()
 
     # Save again with overwrite=True
     exp2 = Experiment(name="Test2", data_path="/test2")
@@ -2359,6 +2370,6 @@ def test_save_experiment_to_database_overwrite(tmp_path: Path) -> None:
     # Verify it was overwritten
     from cali.sqlmodel._util import load_experiment_from_database
 
-    loaded = load_experiment_from_database(db_path)
+    loaded = load_experiment_from_database(_get_actual_db_path(db_path))
     assert loaded is not None
     assert loaded.name == "Test2"
