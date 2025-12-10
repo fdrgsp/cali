@@ -850,6 +850,8 @@ class CaliGui(QMainWindow):
         """Get plate plan using the plate plan wizard if no HCS is present."""
         if self._data is None or self._data.sequence is None:
             return None
+        if isinstance(self._data, TiffCollectionReader):
+            return None
         pplan = None
         if not isinstance(self._data.sequence.stage_positions, useq.WellPlatePlan):
             if self._plate_plan_wizard.exec():

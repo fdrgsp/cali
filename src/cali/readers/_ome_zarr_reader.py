@@ -71,6 +71,17 @@ class OMEZarrReader:
         # the useq.MDASequence if it exists
         self._sequence: useq.MDASequence | None = None
 
+        # Load sequence from metadata
+        try:
+            seq = cast("dict", self._store["p0"].attrs["useq_MDASequence"])
+            self._sequence = useq.MDASequence(**seq) if seq is not None else None
+        except KeyError:
+            self._sequence = None
+
+        # Set plate plan if provided
+        if plate_plan is not None:
+            self.set_plate_plan(plate_plan)
+
     # ___________________________Public Methods___________________________
 
     @property
@@ -86,11 +97,6 @@ class OMEZarrReader:
     @property
     def sequence(self) -> useq.MDASequence | None:
         """Return the MDASequence if it exists."""
-        try:
-            seq = cast("dict", self._store["p0"].attrs["useq_MDASequence"])
-            self._sequence = useq.MDASequence(**seq) if seq is not None else None
-        except KeyError:
-            self._sequence = None
         return self._sequence
 
     def metadata(self) -> list[dict]:
@@ -210,6 +216,18 @@ class OMEZarrReader:
                         dest = Path(path) / f"p{i}.json"
                         dest.write_text(json.dumps(metadata))
                         pbar.update(1)
+
+    def set_plate_plan(self, plate_plan: useq.WellPlatePlan) -> None:
+        """Set the plate plan in the useq.MDASequence.
+
+        Parameters
+        ----------
+        plate_plan : useq.WellPlatePlan
+            The plate plan to set in the useq.MDASequence.
+        """
+        if self._sequence is None:
+            raise ValueError("No 'useq.MDASequence' found in the metadata!")
+        self._sequence = self._sequence.replace(stage_positions=plate_plan)
 
     # ___________________________Private Methods___________________________
 

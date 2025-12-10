@@ -41,6 +41,24 @@ def create_database_and_tables(engine: Engine) -> None:
     """
     from sqlmodel import SQLModel
 
+    # Import all models to register them with SQLModel metadata
+    from ._model import (  # noqa: F401
+        FOV,
+        ROI,
+        AnalysisSettings,
+        CaliResult,
+        Condition,
+        DataAnalysis,
+        DetectionSettings,
+        ExtractionSettings,
+        FOVAnalysis,
+        Mask,
+        Plate,
+        Traces,
+        Well,
+        WellCondition,
+    )
+
     SQLModel.metadata.create_all(engine)
 
 

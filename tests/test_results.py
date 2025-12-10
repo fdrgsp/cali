@@ -21,6 +21,13 @@ from cali.sqlmodel._model import (
 THREADS = 1
 
 
+def _get_actual_db_path(requested_db_path: Path) -> Path:
+    """Get the actual database path (with .cali extension added if needed)."""
+    if not requested_db_path.name.endswith(".cali"):
+        return requested_db_path.parent / f"{requested_db_path.name}.cali"
+    return requested_db_path
+
+
 @pytest.fixture
 def test_db(tmp_path: Path) -> Path:
     """Create a test database path."""
@@ -190,7 +197,9 @@ def test_cali_result_database_storage(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    # The database name gets .cali appended if not already present
+    actual_db_path = test_db.parent / f"{test_db.name}.cali"
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create detection settings
@@ -232,7 +241,8 @@ def test_detection_settings_database_deduplication(test_db: Path) -> None:
     """Test that identical DetectionSettings are deduplicated in database."""
     from cali.sqlmodel._util import create_database_and_tables
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     create_database_and_tables(engine)
 
     try:
@@ -270,7 +280,8 @@ def test_analysis_settings_database_deduplication(test_db: Path) -> None:
     """Test that identical AnalysisSettings are deduplicated in database."""
     from cali.sqlmodel._util import create_database_and_tables
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     create_database_and_tables(engine)
 
     try:
@@ -352,7 +363,8 @@ def test_cali_result_links_to_settings(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create settings
@@ -407,7 +419,8 @@ def test_detection_only_cali_result(test_db: Path, test_experiment: Experiment) 
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create detection settings only
@@ -446,7 +459,8 @@ def test_cali_result_positions_list(test_db: Path, test_experiment: Experiment) 
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
@@ -485,7 +499,8 @@ def test_multiple_cali_results_same_experiment(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create different detection settings
@@ -559,7 +574,8 @@ def test_cali_result_progressive_upgrade(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create settings
@@ -650,7 +666,8 @@ def test_query_cali_results_by_settings(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create settings
@@ -784,7 +801,8 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
     """Test same settings reused across multiple experiments."""
     from cali.sqlmodel._util import create_database_and_tables
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     create_database_and_tables(engine)
 
     try:
@@ -867,7 +885,8 @@ def test_cali_result_query_by_experiment(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             # Create multiple results for the experiment
@@ -1021,7 +1040,8 @@ def test_database_concurrent_sessions(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         # Create some data
         with Session(engine) as session:
@@ -1046,7 +1066,8 @@ def test_detection_settings_update_timestamp(test_db: Path) -> None:
     """Test that created_at timestamp is set automatically."""
     from cali.sqlmodel._util import create_database_and_tables
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     create_database_and_tables(engine)
 
     try:
@@ -1081,7 +1102,8 @@ def test_cali_result_cascade_behavior(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
@@ -1127,7 +1149,8 @@ def test_cali_result_load_from_database_by_id(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
@@ -1151,7 +1174,9 @@ def test_cali_result_load_from_database_by_id(
             result_id = result.id
 
         # Load using the class method
-        loaded = CaliResult.load_from_database(test_db, id=result_id)
+        loaded = CaliResult.load_from_database(
+            _get_actual_db_path(test_db), id=result_id
+        )
 
         assert isinstance(loaded, CaliResult)
         assert loaded.id == result_id
@@ -1166,13 +1191,14 @@ def test_cali_result_load_by_id_not_found(test_db: Path) -> None:
     """Test loading non-existent CaliResult raises ValueError."""
     from cali.sqlmodel._util import create_database_and_tables
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     create_database_and_tables(engine)
     engine.dispose(close=True)
 
     # Try to load non-existent result
     try:
-        CaliResult.load_from_database(test_db, id=999)
+        CaliResult.load_from_database(_get_actual_db_path(test_db), id=999)
         raise AssertionError("Should have raised ValueError")
     except ValueError as e:
         assert "No CaliResult found with id=999" in str(e)
@@ -1191,7 +1217,8 @@ def test_cali_result_load_from_database_by_experiment(
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             d_settings1 = DetectionSettings(method="cellpose", model_type="cpsam")
@@ -1223,7 +1250,7 @@ def test_cali_result_load_from_database_by_experiment(
 
         # Load all results for the experiment
         loaded = CaliResult.load_from_database(
-            test_db, experiment_id=test_experiment.id
+            _get_actual_db_path(test_db), experiment_id=test_experiment.id
         )
 
         assert isinstance(loaded, list)
@@ -1246,7 +1273,8 @@ def test_cali_result_load_all(test_db: Path, test_experiment: Experiment) -> Non
         overwrite=True,
     )
 
-    engine = create_engine(f"sqlite:///{test_db}")
+    actual_db_path = _get_actual_db_path(test_db)
+    engine = create_engine(f"sqlite:///{actual_db_path}")
     try:
         with Session(engine) as session:
             d_settings = DetectionSettings(method="cellpose", model_type="cpsam")
@@ -1267,7 +1295,7 @@ def test_cali_result_load_all(test_db: Path, test_experiment: Experiment) -> Non
             session.commit()
 
         # Load all results (no filter)
-        loaded = CaliResult.load_from_database(test_db)
+        loaded = CaliResult.load_from_database(_get_actual_db_path(test_db))
 
         assert isinstance(loaded, list)
         assert len(loaded) >= 1  # At least our result
