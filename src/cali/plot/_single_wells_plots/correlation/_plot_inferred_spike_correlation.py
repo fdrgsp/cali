@@ -179,8 +179,13 @@ def _plot_spike_cross_correlation_data(
     vb.setAspectLocked(True)  # keep it square
     vb.enableAutoRange(x=True, y=True)
 
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
     title = (
-        f"Pairwise Pearson Correlation (Zero-Lag - Thresholded Inferred Spikes)"
+        f"Pairwise Pearson Correlation (Zero-Lag - Thresholded Inferred Spikes) "
+        f"(median: {median_corr:.3f})"
         f"{title_suffix}"
     )
     plot.setTitle(title)

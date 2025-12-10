@@ -196,8 +196,13 @@ def _plot_cross_correlation_data(
     # keep it square
     vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
     title = (
-        f"Max-Lag Cross-Correlation (Calcium Peaks Events - Deconvolved ΔF/F)"
+        f"Max-Lag Cross-Correlation (Calcium Peaks Events - Deconvolved ΔF/F) "
+        f"(median: {median_corr:.3f})"
         f"{title_suffix}"
     )
     plot.setTitle(title)

@@ -96,6 +96,7 @@ def main(args: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Cali - Calcium Imaging Analysis")
     parser.add_argument(
         "--logger",
+        "-l",
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],

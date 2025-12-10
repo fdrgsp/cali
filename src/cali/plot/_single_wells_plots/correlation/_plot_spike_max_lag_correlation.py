@@ -197,7 +197,14 @@ def _plot_spike_max_lag_correlation_data(
     # keep it square
     vb.setAspectLocked(True)
 
-    title = f"Max-Lag Cross-Correlation (Inferred Spikes){title_suffix}"
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
+    title = (
+        f"Max-Lag Cross-Correlation (Inferred Spikes) "
+        f"(median: {median_corr:.3f}){title_suffix}"
+    )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")

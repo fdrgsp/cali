@@ -275,7 +275,14 @@ def _plot_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
-    title = f"Pairwise Pearson Correlation (Zero-lag - ΔF/F Traces){title_suffix}"
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
+    title = (
+        f"Pairwise Pearson Correlation (Zero-lag - ΔF/F Traces) "
+        f"(median: {median_corr:.3f}){title_suffix}"
+    )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")
@@ -354,9 +361,13 @@ def _plot_dec_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
     title = (
         "Pairwise Pearson Correlation (Zero-Lag - "
-        f"Deconvolved ΔF/F Traces){title_suffix}"
+        f"Deconvolved ΔF/F Traces) (median: {median_corr:.3f}){title_suffix}"
     )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
