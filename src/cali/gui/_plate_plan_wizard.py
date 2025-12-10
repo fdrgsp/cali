@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import cast
 
+import useq
 from pymmcore_widgets.useq_widgets import WellPlateWidget
-from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget, QWizard, QWizardPage
-
-if TYPE_CHECKING:
-    import useq
+from qtpy.QtWidgets import (
+    QBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+    QWizard,
+    QWizardPage,
+)
 
 
 class PlatePlanWizard(QWizard):
@@ -14,12 +22,6 @@ class PlatePlanWizard(QWizard):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
-        # TODO: I want to have a way to create a plate and plate plan from scratch
-        # if people provide for example a list of (tiff) files, each representing a
-        # fov/position). In this case we slould also find a way to open the data
-        # maybe as zarr so we can easily then handle the data without open all the files
-        # in memory at once.
 
         self.setWindowTitle("Plate Plan Wizard")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
@@ -62,8 +64,18 @@ class PlatePlanWizard(QWizard):
 
     def _on_finish_clicked(self) -> None:
         """Handle the finish button click."""
-        self._plate_plan = self._well_selection_page.value()
+        plate_plan = self._well_selection_page.value()
+        fovs = self._well_selection_page._fovs.value()
+        self._plate_plan = plate_plan.replace(
+            well_points_plan=useq.RandomPoints(num_points=fovs)
+        )
         self.close()
+
+    def dysplay_available_data_positions(self, n_positions: int | None) -> None:
+        """Set the number of available data positions."""
+        self._well_selection_page._pos_lbl.setText(
+            f"(Available Positions: {n_positions})" if n_positions is not None else ""
+        )
 
 
 class _QuestionPage(QWizardPage):
@@ -94,6 +106,27 @@ class _WellSelectionPage(QWizardPage):
         self.setTitle("Well Selection")
 
         self._well_plate_widget = WellPlateWidget()
+
+        fovs_wdg_layout = QHBoxLayout()
+        fovs_wdg_layout.setContentsMargins(0, 0, 0, 0)
+        fovs_lbl = QLabel("FOVs/Well:")
+        fovs_lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._fovs = QSpinBox(self)
+        self._fovs.setMinimum(1)
+        self._fovs.setMaximum(100)
+        self._pos_lbl = QLabel()
+        fovs_wdg_layout.addWidget(fovs_lbl)
+        fovs_wdg_layout.addWidget(self._fovs, 1)
+        fovs_wdg_layout.addWidget(self._pos_lbl)
+
+        # Adjust the width of the plate label to match the FOVs label
+        wpw_layout = cast("QBoxLayout", self._well_plate_widget.layout().itemAt(0))
+        plate_lbl = cast("QLabel", wpw_layout.itemAt(0).widget())
+        plate_lbl.setText("Well Plate:")
+
+        wp_layout = cast("QVBoxLayout", self._well_plate_widget.layout())
+        wp_layout.insertLayout(1, fovs_wdg_layout)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self._well_plate_widget)
 

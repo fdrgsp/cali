@@ -280,7 +280,8 @@ class _SingleWellGraphWidget(QWidget):
             self._check_pipeline_stage_availability()
         )
 
-        # Get available plots filtered by experiment type
+        # Get ALL possible plots for this experiment type
+        # (we'll disable items individually based on data availability)
         combo_options = get_available_plots(
             group=AnalysisGroup.SINGLE_WELL,
             has_detection=True,

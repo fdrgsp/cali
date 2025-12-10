@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, Any, Optional, Self, cast
 
 import numpy as np
 import useq
-from sqlalchemy import UniqueConstraint
+from pydantic import BaseModel
+from sqlalchemy import TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import selectinload
 from sqlmodel import (
     JSON,
@@ -53,6 +54,45 @@ from cali.readers._tiff_collection_reader import TiffCollectionSettings
 if TYPE_CHECKING:
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
+
+# ==================== Custom Column Types ====================
+
+
+class PydanticJSON(TypeDecorator):
+    """Custom SQLAlchemy type for storing Pydantic models as JSON.
+
+    Automatically serializes Pydantic models to JSON when saving to database
+    and deserializes JSON back to Pydantic models when loading.
+    """
+
+    impl = JSON
+    cache_ok = True
+
+    def __init__(
+        self, pydantic_type: type[BaseModel], *args: Any, **kwargs: Any
+    ) -> None:
+        """Initialize with the Pydantic model type to deserialize to."""
+        self.pydantic_type = pydantic_type
+        super().__init__(*args, **kwargs)
+
+    def process_bind_param(
+        self, value: BaseModel | None, dialect: Any
+    ) -> dict[str, Any] | None:
+        """Convert Pydantic model to dict when saving to database."""
+        if value is None:
+            return None
+        # Use model_dump() for Pydantic v2
+        return value.model_dump(mode="json")
+
+    def process_result_value(
+        self, value: dict[str, Any] | None, dialect: Any
+    ) -> BaseModel | None:
+        """Convert dict back to Pydantic model when loading from database."""
+        if value is None:
+            return None
+        # Reconstruct the Pydantic model from the dict
+        return self.pydantic_type.model_validate(value)
+
 
 # ==================== Core Models ====================
 
@@ -319,7 +359,7 @@ class Experiment(SQLModel, table=True):
         return hash(self.id)
 
     @classmethod
-    def load_from_db(
+    def load_from_database(
         cls,
         db_path: str | Path,
         id: int | None = None,
@@ -495,39 +535,13 @@ class Experiment(SQLModel, table=True):
             plate=useq_plate,
             a1_center_xy=(0, 0),  # Placeholder, not used for structure
             selected_wells=(rows_tuple, cols_tuple),
+            well_points_plan=useq.RandomPoints(num_points=fovs_per_well),
         )
 
         # Create plate with wells and conditions
-        # This will create wells but only 1 FOV per well (from default positions)
-        plate = useq_plate_plan_to_db(
-            plate_plan,
-            experiment,
-            plate_maps=plate_maps,
-        )
-
-        # If we need more than 1 FOV per well, create additional FOVs
-        # useq_plate_plan_to_db already created one FOV per well
-        if fovs_per_well > 1:
-            position_index = len(plate.wells)  # Start after existing FOVs
-            for well in sorted(plate.wells, key=lambda w: (w.row, w.column)):
-                # Create additional FOVs (starting from fov_number=1)
-                for fov_num in range(1, fovs_per_well):
-                    from ._model import FOV
-
-                    FOV(
-                        well=well,
-                        name=f"{well.name}_{fov_num:04d}",
-                        position_index=position_index,
-                        fov_number=fov_num,
-                    )
-                    position_index += 1
-
-        # Fix position_index for all FOVs to be sequential across wells
-        position_index = 0
-        for well in sorted(plate.wells, key=lambda w: (w.row, w.column)):
-            for fov in sorted(well.fovs, key=lambda f: f.fov_number):
-                fov.position_index = position_index
-                position_index += 1
+        # useq_plate_plan_to_db will create all FOVs based on the plate_plan's
+        # well_points_plan (which has num_points=fovs_per_well)
+        useq_plate_plan_to_db(plate_plan, experiment, plate_maps=plate_maps)
 
         return experiment
 
@@ -593,6 +607,22 @@ class Experiment(SQLModel, table=True):
         ...     plate_maps={"genotype": {"B5": "WT"}},
         ... )
         >>>
+        >>> # If the Tensorstore/OME-Zarr data lacks plate info, provide plate_plan
+        >>> from useq import WellPlatePlan, WellPlate
+        >>> plate_plan = WellPlatePlan(
+        ...     plate=WellPlate.from_str("96-well"),
+        ...     a1_center_xy=(0, 0),
+        ...     selected_wells=((0, 0), (0, 1)),  # e.g., A1 and A2
+        ...     # if multiple fovs per well:
+        ...     well_points_plan=useq.RandomPoints(num_points=2),
+        ... )
+        >>> exp = Experiment.create_from_data(
+        ...     name="My Experiment with PlatePlan",
+        ...     data_path="path/to/data.zarr",
+        ...     plate_maps={"genotype": {"A1": "WT", "A2": "KO"}},
+        ...     plate_plan=plate_plan,
+        ... )
+        >>>
         >>> # Create from TIFF collection
         >>> exp = Experiment.create_from_data(
         ...     name="TIFF Experiment",
@@ -628,7 +658,7 @@ class Experiment(SQLModel, table=True):
             data = TiffCollectionReader(tiff_settings)
         else:
             # Load data normally (zarr/tensorstore or TIFF without settings)
-            data = load_data_from_path(data_path, plate_plan=plate_plan)
+            data = load_data_from_path(data_path)
             if data is None:
                 from cali._constants import OME_ZARR, WRITERS, ZARR_TESNSORSTORE
 
@@ -640,6 +670,23 @@ class Experiment(SQLModel, table=True):
                     "TiffCollectionReader are supported."
                 )
                 raise ValueError(msg)
+
+            # make sure that if the plate plan is provided, the number of fovs per well
+            # matches the data size
+            if plate_plan is not None:
+                selected_wells = len(plate_plan.selected_well_names)
+                nfov = plate_plan.num_points_per_well
+                # selected_wells * nfov should equal the number of positions in the data
+                assert data.sequence is not None
+                npos = len(data.sequence.stage_positions)
+                if selected_wells * nfov != npos:
+                    raise ValueError(
+                        f"Provided plate_plan has {selected_wells} selected wells "
+                        f"with {nfov} FOVs each, totaling "
+                        f"{selected_wells * nfov} positions, but the data at "
+                        f"{data_path} has {npos} positions. Please ensure the "
+                        "plate_plan matches the data."
+                    )
 
         # Create experiment
         experiment = cls(
@@ -655,12 +702,14 @@ class Experiment(SQLModel, table=True):
             experiment.tiff_metadata_json = json.dumps(metadata)
 
         # Load plate structure from data
-        plate = data_to_plate(data, experiment, plate_maps=plate_maps)
+        plate = data_to_plate(data, experiment, plate_maps, plate_plan)
         if plate is None:
             raise ValueError(
                 f"Failed to load plate structure from data at {data_path}. "
                 "Ensure the data contains valid useq metadata with WellPlatePlan."
             )
+        # Assign plate to experiment
+        experiment.plate = plate
 
         return experiment
 
@@ -1282,6 +1331,8 @@ class Plate(SQLModel, table=True):  # type: ignore[call-arg]
         Number of rows in plate
     columns : int | None
         Number of columns in plate
+    plate_plan : useq.WellPlatePlan | None
+        The useq-schema WellPlatePlan used for this plate
     plate_maps : dict | None
         Plate map configuration mapping well positions to conditions.
         Format: {"genotype": {"A1": "WT", "A2": "KO", ...},
@@ -1299,6 +1350,9 @@ class Plate(SQLModel, table=True):  # type: ignore[call-arg]
     plate_type: str | None = None  # e.g., "96-well", "384-well"
     rows: int | None = None
     columns: int | None = None
+    plate_plan: useq.WellPlatePlan | None = Field(
+        default=None, sa_column=Column(PydanticJSON(useq.WellPlatePlan))
+    )
     plate_maps: dict[str, dict[str, str]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
@@ -1722,6 +1776,9 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Max lag correlation on spike events (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
         Median of off-diagonal spike max lag correlation values
+    spike_max_lag_values_matrix : list[list[int]] | None
+        Lag values (in frames) at max correlation for spike events (NxN).
+        Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
     spike_jitter_synchrony_matrix : list[list[float]] | None
         Jitter synchrony on spike events (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
@@ -1784,6 +1841,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     global_spike_max_lag_correlation: float | None = None
+    # 2b. Lag values at max correlation for spikes
+    spike_max_lag_values_matrix: list[list[int]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
     # 3. Jitter synchrony on spikes
     spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)

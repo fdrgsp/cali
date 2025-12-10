@@ -26,9 +26,6 @@ class TensorstoreZarrReader:
     ----------
     data : str | Path | ts.Tensorstore
         The path to the tensorstore zarr file or the tensorstore zarr file itself.
-    plate_plan : useq.WellPlatePlan | None
-        An optional useq.WellPlatePlan to set the stage positions in the
-        useq.MDASequence. If None, the stage positions in the metadata are used.
 
     Attributes
     ----------
@@ -55,8 +52,6 @@ class TensorstoreZarrReader:
     def __init__(
         self,
         data: str | Path | ts.TensorStore,
-        *,
-        plate_plan: useq.WellPlatePlan | None = None,
     ) -> None:
         self._sequence: useq.MDASequence | None = None
 
@@ -102,8 +97,6 @@ class TensorstoreZarrReader:
                 useq.MDASequence(**json.loads(_seq)) if _seq is not None else None
             )
         # ------------------------------------------------------------------------------
-        if plate_plan is not None:
-            self.set_plate_plan(plate_plan)
 
         # set the axis labels
         if self._sequence is not None:
@@ -241,18 +234,6 @@ class TensorstoreZarrReader:
                         dest = Path(path) / f"p{i}.json"
                         dest.write_text(json.dumps(metadata))
                         pbar.update(1)
-
-    def set_plate_plan(self, plate_plan: useq.WellPlatePlan) -> None:
-        """Set the plate plan in the useq.MDASequence.
-
-        Parameters
-        ----------
-        plate_plan : useq.WellPlatePlan
-            The plate plan to set in the useq.MDASequence.
-        """
-        if self._sequence is None:
-            raise ValueError("No 'useq.MDASequence' found in the metadata!")
-        self._sequence = self._sequence.replace(stage_positions=plate_plan)
 
     # ___________________________Private Methods___________________________
 

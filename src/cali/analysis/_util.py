@@ -207,37 +207,43 @@ def _get_calcium_peaks_event_synchrony(
     return float(np.median(mean_synchrony_per_roi))
 
 
-def _get_calcium_peaks_event_synchrony_matrix(
+def _get_calcium_peaks_event_correlations_matrix(
     peak_event_dict: dict[str, list[float]],
     method: str = "correlation",
     jitter_window: int = 2,
     max_lag: int = 5,
-) -> np.ndarray | None:
-    """Compute pairwise peak event synchrony using robust methods.
-
-    Handles timing jitter better than simple correlation.
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Compute pairwise peak event similarity matrix.
 
     Parameters
     ----------
     peak_event_dict : dict
         Dictionary mapping ROI names to binary peak event arrays
     method : str
-        Method to use - "jitter_window", "cross_correlation", or "correlation"
+        Method to use:
+        - "correlation": Zero-lag Pearson correlation
+        - "jitter_window": Synchrony with temporal tolerance (±jitter_window)
+        - "cross_correlation": Max cross-correlation within ±max_lag
     jitter_window : int
-        Tolerance window for peak coincidence (frames)
+        Tolerance window for peak coincidence (frames),
+        used with "jitter_window" method
     max_lag : int
-        Maximum lag for cross-correlation method (frames)
+        Maximum lag for cross-correlation method (frames),
+        used with "cross_correlation" method
 
     Returns
     -------
-    np.ndarray or None
-        Synchrony matrix robust to small temporal shifts
+    tuple[np.ndarray | None, np.ndarray | None]
+        (synchrony_matrix, lag_matrix) where:
+        - synchrony_matrix: NxN matrix of correlation values
+        - lag_matrix: NxN matrix of lag values (only for cross_correlation method,
+          otherwise None). Positive lag means ROI_j lags behind ROI_i.
     """
     from cali.util._util import _NUMBA_LOCK
 
     active_rois = list(peak_event_dict.keys())
     if len(active_rois) < 2:
-        return None
+        return None, None
 
     try:
         # Convert peak event data into a NumPy array of shape (#ROIs, #Timepoints)
@@ -245,12 +251,13 @@ def _get_calcium_peaks_event_synchrony_matrix(
             [peak_event_dict[roi] for roi in active_rois], dtype=np.float32
         )
     except ValueError:
-        return None
+        return None, None
 
     if peak_array.shape[0] < 2:
-        return None
+        return None, None
 
     n_rois = peak_array.shape[0]
+    lag_matrix = None  # Only computed for cross_correlation method
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
@@ -261,11 +268,15 @@ def _get_calcium_peaks_event_synchrony_matrix(
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
+        if method == "cross_correlation":
+            lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
 
         for i in range(n_rois):
             for j in range(n_rois):
                 if i == j:
                     synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
+                    if lag_matrix is not None:
+                        lag_matrix[i, j] = 0  # Zero lag with self
                 else:
                     events_i = peak_array[i]
                     events_j = peak_array[j]
@@ -273,11 +284,14 @@ def _get_calcium_peaks_event_synchrony_matrix(
                     # Handle case where one or both ROIs have no peaks
                     if np.sum(events_i) == 0 or np.sum(events_j) == 0:
                         synchrony_matrix[i, j] = 0.0
+                        if lag_matrix is not None:
+                            lag_matrix[i, j] = 0
                     else:
                         if method == "cross_correlation":
-                            sync_value = _calculate_cross_correlation_synchrony(
+                            sync_value, lag = _calculate_cross_correlation_with_lag(
                                 events_i, events_j, max_lag
                             )
+                            lag_matrix[i, j] = lag  # type: ignore
                         else:
                             # Fallback to original correlation method (default)
                             correlation = np.corrcoef(events_i, events_j)[0, 1]
@@ -287,38 +301,46 @@ def _get_calcium_peaks_event_synchrony_matrix(
 
                         synchrony_matrix[i, j] = sync_value
 
-    return synchrony_matrix
+    return synchrony_matrix, lag_matrix
 
 
-def _get_spike_synchrony_matrix(
+def _get_spike_correlations_matrix(
     spike_data_dict: dict[str, list[float]],
     method: str = "correlation",
     jitter_window: int = 2,
     max_lag: int = 5,
-) -> np.ndarray | None:
-    """Compute pairwise spike synchrony from spike amplitude data.
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Compute pairwise spike similarity matrix.
 
     Parameters
     ----------
     spike_data_dict : dict
         Dictionary mapping ROI names to spike amplitude arrays
     method : str
-        Method to use - "jitter_window", "cross_correlation", or "correlation"
+        Method to use:
+        - "correlation": Zero-lag Pearson correlation on binary spike trains
+        - "jitter_window": Synchrony with temporal tolerance (±jitter_window)
+        - "cross_correlation": Max cross-correlation within ±max_lag
     jitter_window : int
-        Tolerance window for spike coincidence (frames)
+        Tolerance window for spike coincidence (frames),
+        used with "jitter_window" method
     max_lag : int
-        Maximum lag for cross-correlation method (frames)
+        Maximum lag for cross-correlation method (frames),
+        used with "cross_correlation" method
 
     Returns
     -------
-    np.ndarray or None
-        Synchrony matrix robust to small temporal shifts
+    tuple[np.ndarray | None, np.ndarray | None]
+        (synchrony_matrix, lag_matrix) where:
+        - synchrony_matrix: NxN matrix of correlation values
+        - lag_matrix: NxN matrix of lag values (only for cross_correlation method,
+          otherwise None). Positive lag means ROI_j lags behind ROI_i.
     """
     from cali.util._util import _NUMBA_LOCK
 
     active_rois = list(spike_data_dict.keys())
     if len(active_rois) < 2:
-        return None
+        return None, None
 
     try:
         # Convert spike data into a NumPy array of shape (#ROIs, #Timepoints)
@@ -326,15 +348,16 @@ def _get_spike_synchrony_matrix(
             [spike_data_dict[roi] for roi in active_rois], dtype=np.float32
         )
     except ValueError:
-        return None
+        return None, None
 
     if spike_array.shape[0] < 2:
-        return None
+        return None, None
 
     # Create binary spike matrices (1 where spike > 0, 0 otherwise)
     binary_spikes = (spike_array > 0).astype(np.float32)
 
     n_rois = binary_spikes.shape[0]
+    lag_matrix = None  # Only computed for cross_correlation method
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
@@ -345,11 +368,15 @@ def _get_spike_synchrony_matrix(
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
+        if method == "cross_correlation":
+            lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
 
         for i in range(n_rois):
             for j in range(n_rois):
                 if i == j:
                     synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
+                    if lag_matrix is not None:
+                        lag_matrix[i, j] = 0  # Zero lag with self
                 else:
                     # Calculate correlation between binary spike trains
                     spikes_i = binary_spikes[i]
@@ -358,11 +385,14 @@ def _get_spike_synchrony_matrix(
                     # Handle case where one or both ROIs have no spikes
                     if np.sum(spikes_i) == 0 or np.sum(spikes_j) == 0:
                         synchrony_matrix[i, j] = 0.0
+                        if lag_matrix is not None:
+                            lag_matrix[i, j] = 0
                     else:
                         if method == "cross_correlation":
-                            sync_value = _calculate_cross_correlation_synchrony(
+                            sync_value, lag = _calculate_cross_correlation_with_lag(
                                 spikes_i, spikes_j, max_lag
                             )
+                            lag_matrix[i, j] = lag  # type: ignore
                         else:
                             # Fallback to original correlation method (default)
                             correlation = np.corrcoef(spikes_i, spikes_j)[0, 1]
@@ -372,7 +402,7 @@ def _get_spike_synchrony_matrix(
 
                         synchrony_matrix[i, j] = sync_value
 
-    return synchrony_matrix
+    return synchrony_matrix, lag_matrix
 
 
 def _get_spike_synchrony(spike_synchrony_matrix: np.ndarray | None) -> float | None:
@@ -399,10 +429,23 @@ def _get_spike_synchrony(spike_synchrony_matrix: np.ndarray | None) -> float | N
     return float(np.median(mean_synchrony_per_roi))
 
 
-def _calculate_cross_correlation_synchrony(
+def _calculate_cross_correlation_with_lag(
     events_i: np.ndarray, events_j: np.ndarray, max_lag: int
-) -> float:
-    """Calculate synchrony using maximum cross-correlation within lag range."""
+) -> tuple[float, int]:
+    """Calculate maximum cross-correlation within lag range.
+
+    Computes the cross-correlation function (CCG) and finds the lag with
+    maximum correlation.
+
+    Returns
+    -------
+    tuple[float, int]
+        (max_correlation, lag_at_max) where:
+        - max_correlation: normalized correlation value [0, 1]
+        - lag_at_max: lag in frames where max occurs.
+          Positive means events_j lags behind events_i.
+          Negative means events_j leads events_i.
+    """
     from scipy.signal import correlate
 
     # Cross-correlation
@@ -423,10 +466,14 @@ def _calculate_cross_correlation_synchrony(
 
     if auto_i > 0 and auto_j > 0:
         normalization = np.sqrt(auto_i * auto_j)
-        max_correlation = np.max(local_xcorr) / normalization
-        return float(np.clip(max_correlation, 0, 1))
+        # Find index of max within local window
+        max_idx = np.argmax(local_xcorr)
+        max_correlation = local_xcorr[max_idx] / normalization
+        # Convert to actual lag value (negative = j leads i, positive = j lags i)
+        lag = max_idx - (center - start_idx)
+        return float(np.clip(max_correlation, 0, 1)), int(lag)
     else:
-        return 0.0
+        return 0.0, 0
 
 
 def _calculate_jitter_window_synchrony(

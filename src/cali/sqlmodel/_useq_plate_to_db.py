@@ -83,7 +83,7 @@ def _row_label_to_index(label: str) -> int:
 
 
 def useq_plate_to_db(
-    useq_plate: useq.WellPlate,
+    useq_plate_plan: useq.WellPlatePlan,
     experiment: Experiment,
     plate_maps: dict[str, dict[str, str]] | None = None,
 ) -> Plate:
@@ -95,8 +95,8 @@ def useq_plate_to_db(
 
     Parameters
     ----------
-    useq_plate : useq.WellPlate
-        useq-schema WellPlate containing plate definition
+    useq_plate_plan : useq.WellPlatePlan
+        useq-schema WellPlatePlan containing plate definition
     experiment : Experiment
         Parent experiment object to associate with the plate
     plate_maps : dict[str, dict[str, str]] | None
@@ -129,6 +129,7 @@ def useq_plate_to_db(
     # this is because the 18 and 22 mm coverslips name are different from the name that
     # useq uses to create the plate and in cali we use the plate.plate_type to
     # eventually reconstruct the useq plate.
+    useq_plate = useq_plate_plan.plate
     if useq_plate.name == "18mm coverslip":
         plate_type = "coverslip-18mm-square"
     elif useq_plate.name == "22mm coverslip":
@@ -142,6 +143,7 @@ def useq_plate_to_db(
         rows=useq_plate.rows,
         columns=useq_plate.columns,
         plate_maps=plate_maps,
+        plate_plan=useq_plate_plan,
     )
 
     return plate
@@ -211,10 +213,8 @@ def useq_plate_plan_to_db(
 
     from ._model import FOV, Well
 
-    useq_plate = plate_plan.plate
-
     # Create the Plate object using the helper function with plate_maps
-    plate = useq_plate_to_db(useq_plate, experiment, plate_maps=plate_maps)
+    plate = useq_plate_to_db(plate_plan, experiment, plate_maps=plate_maps)
 
     # Create a condition cache to avoid duplicates
     condition_cache: dict[tuple[str, str], Condition] = {}

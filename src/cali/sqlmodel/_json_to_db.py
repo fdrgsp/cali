@@ -491,7 +491,7 @@ def load_analysis_from_json(
             # Load fresh from database to return
             if saved_exp_id:
                 with Session(engine) as session:
-                    experiment = Experiment.load_from_db(
+                    experiment = Experiment.load_from_database(
                         str(db_path), id=saved_exp_id, session=session
                     )
         finally:

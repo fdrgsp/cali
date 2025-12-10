@@ -4,8 +4,8 @@ import numpy as np
 
 from cali.analysis._util import (
     _compute_jitter_synchrony_matrix_numba,
+    _get_calcium_peaks_event_correlations_matrix,
     _get_calcium_peaks_event_synchrony,
-    _get_calcium_peaks_event_synchrony_matrix,
     _get_calcium_peaks_events_from_rois,
 )
 from cali.plot._util import (
@@ -76,14 +76,17 @@ def test_get_calcium_peaks_event_synchrony() -> None:
 
 def test_get_calcium_peaks_event_synchrony_matrix() -> None:
     # Empty dict
-    assert _get_calcium_peaks_event_synchrony_matrix({}) is None
+    assert _get_calcium_peaks_event_correlations_matrix({}) == (None, None)
 
     # Single ROI
-    assert _get_calcium_peaks_event_synchrony_matrix({"roi1": [1, 0]}) is None
+    assert _get_calcium_peaks_event_correlations_matrix({"roi1": [1, 0]}) == (
+        None,
+        None,
+    )
 
     # Two ROIs, perfect sync
     data = {"roi1": [1.0, 0.0, 1.0, 0.0], "roi2": [1.0, 0.0, 1.0, 0.0]}
-    matrix = _get_calcium_peaks_event_synchrony_matrix(
+    matrix, _ = _get_calcium_peaks_event_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -92,7 +95,7 @@ def test_get_calcium_peaks_event_synchrony_matrix() -> None:
 
     # Two ROIs, no sync
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 0.0, 1.0, 0.0]}
-    matrix = _get_calcium_peaks_event_synchrony_matrix(
+    matrix, _ = _get_calcium_peaks_event_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -101,7 +104,7 @@ def test_get_calcium_peaks_event_synchrony_matrix() -> None:
     # Jitter window sync
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 1.0, 0.0, 0.0]}
     # With jitter=1, these should match
-    matrix = _get_calcium_peaks_event_synchrony_matrix(
+    matrix, _ = _get_calcium_peaks_event_correlations_matrix(
         data, method="jitter_window", jitter_window=1
     )
     # Total peaks = 2. Coincidences: roi1->roi2 (yes), roi2->roi1 (yes) -> 2.
@@ -111,7 +114,7 @@ def test_get_calcium_peaks_event_synchrony_matrix() -> None:
 
     # Correlation method
     data = {"roi1": [1.0, 0.0, 1.0, 0.0], "roi2": [1.0, 0.0, 1.0, 0.0]}
-    matrix = _get_calcium_peaks_event_synchrony_matrix(data, method="correlation")
+    matrix, _ = _get_calcium_peaks_event_correlations_matrix(data, method="correlation")
     assert matrix is not None
     assert matrix[0, 1] == 1.0
 
@@ -184,31 +187,37 @@ def test_compute_jitter_synchrony_matrix_numba() -> None:
 
 
 def test_get_spike_synchrony_matrix() -> None:
-    from cali.analysis._util import _get_spike_synchrony_matrix
+    from cali.analysis._util import _get_spike_correlations_matrix
 
     # Empty dict
-    assert _get_spike_synchrony_matrix({}) is None
+    assert _get_spike_correlations_matrix({}) == (None, None)
 
     # Single ROI
-    assert _get_spike_synchrony_matrix({"roi1": [1, 0]}) is None
+    assert _get_spike_correlations_matrix({"roi1": [1, 0]}) == (None, None)
 
     # Two ROIs, perfect sync
     data = {"roi1": [1.0, 0.0, 1.0, 0.0], "roi2": [1.0, 0.0, 1.0, 0.0]}
-    matrix = _get_spike_synchrony_matrix(data, method="jitter_window", jitter_window=0)
+    matrix, _ = _get_spike_correlations_matrix(
+        data, method="jitter_window", jitter_window=0
+    )
     assert matrix is not None
     assert matrix.shape == (2, 2)
     assert np.allclose(matrix, np.ones((2, 2)))
 
     # Two ROIs, no sync
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 0.0, 1.0, 0.0]}
-    matrix = _get_spike_synchrony_matrix(data, method="jitter_window", jitter_window=0)
+    matrix, _ = _get_spike_correlations_matrix(
+        data, method="jitter_window", jitter_window=0
+    )
     assert matrix is not None
     assert matrix[0, 1] == 0.0
 
     # Cross correlation method
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 1.0, 0.0, 0.0]}
     # Lag 1 should catch it
-    matrix = _get_spike_synchrony_matrix(data, method="cross_correlation", max_lag=1)
+    matrix, _ = _get_spike_correlations_matrix(
+        data, method="cross_correlation", max_lag=1
+    )
     assert matrix is not None
     assert matrix[0, 1] > 0.0
 
@@ -232,29 +241,32 @@ def test_get_spike_synchrony() -> None:
 
 
 def test_calculate_cross_correlation_synchrony() -> None:
-    from cali.analysis._util import _calculate_cross_correlation_synchrony
+    from cali.analysis._util import _calculate_cross_correlation_with_lag
 
     # Perfect sync
     events_i = np.array([1.0, 0.0, 1.0])
     events_j = np.array([1.0, 0.0, 1.0])
-    score = _calculate_cross_correlation_synchrony(events_i, events_j, max_lag=0)
+    score, lag = _calculate_cross_correlation_with_lag(events_i, events_j, max_lag=0)
     assert np.isclose(score, 1.0)
+    assert lag == 0
 
     # Lagged sync
     events_i = np.array([1.0, 0.0, 0.0])
     events_j = np.array([0.0, 1.0, 0.0])
     # Lag 0 -> 0
-    score = _calculate_cross_correlation_synchrony(events_i, events_j, max_lag=0)
+    score, lag = _calculate_cross_correlation_with_lag(events_i, events_j, max_lag=0)
     assert np.isclose(score, 0.0)
+    assert lag == 0
     # Lag 1 -> >0
-    score = _calculate_cross_correlation_synchrony(events_i, events_j, max_lag=1)
+    score, lag = _calculate_cross_correlation_with_lag(events_i, events_j, max_lag=1)
     assert score > 0.0
 
     # No signal
     events_i = np.array([0.0, 0.0, 0.0])
     events_j = np.array([0.0, 0.0, 0.0])
-    score = _calculate_cross_correlation_synchrony(events_i, events_j, max_lag=1)
+    score, lag = _calculate_cross_correlation_with_lag(events_i, events_j, max_lag=1)
     assert np.isclose(score, 0.0)
+    assert lag == 0
 
 
 def test_create_connectivity_matrix() -> None:

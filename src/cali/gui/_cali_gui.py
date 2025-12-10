@@ -58,12 +58,10 @@ from cali.runner._cali_runner import CaliRunner
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
-    experiment_to_useq_plate_plan,
     has_experiment_analysis,
     has_fov_analysis,
     save_experiment_to_database,
 )
-from cali.sqlmodel._db_to_useq_plate import experiment_to_useq_plate
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data_from_path
 
@@ -95,12 +93,6 @@ from cali.readers import (
     OMEZarrReader,
     TensorstoreZarrReader,
     TiffCollectionReader,
-)
-
-DEFAULT_PLATE_PLAN = useq.WellPlatePlan(
-    plate=useq.WellPlate.from_str("coverslip-18mm-square"),
-    a1_center_xy=(0.0, 0.0),
-    selected_wells=((0,), (0,)),
 )
 
 
@@ -451,9 +443,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        # self._output_path = "tests/test_data/data_and_db_for_tests/"
+        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
@@ -656,16 +648,15 @@ class CaliGui(QMainWindow):
 
     def _finalize_initialization(self, experiment: Experiment) -> None:
         """Finalize GUI initialization with experiment data."""
-        # PLATE--------------------------------------------------------------------
-        plate_plan = experiment_to_useq_plate_plan(experiment)
-        if plate_plan is not None:
-            self._draw_plate_with_selection(plate_plan)
-        else:
-            cali_logger.warning("❌ Plate plan not found in experiment.")
-
         # UPDATE GUI-------------------------------------------------------------------
-        if self._data is not None and self._data.sequence is not None:
-            self._update_gui_plate_plan(self._data.sequence.stage_positions)
+        if experiment.plate is not None:
+            plate_plan = experiment.plate.plate_plan
+            if plate_plan is not None:
+                self._draw_plate_with_selection(plate_plan)
+            else:
+                cali_logger.warning("❌ Plate plan not found in experiment.")
+        else:
+            cali_logger.warning("❌ Experiment has no plate.")
 
         # UPDATE GUI SETTINGS ---------------------------------------------------------
         if self._database_path is not None:
@@ -695,15 +686,14 @@ class CaliGui(QMainWindow):
         # OPEN THE DATABASE -----------------------------------------------------------
         cali_logger.info(f"💿 Loading experiment from database at {database_path}")
         # load the first experiment from the database (there should be only one)
-        experiment = Experiment.load_from_db(database_path, load_data=False)
+        experiment = Experiment.load_from_database(database_path, load_data=False)
 
         # DATA-------------------------------------------------------------------------
         tiff_settings = experiment.tiff_collection_settings(data_path)
         if tiff_settings is not None:
             self._data = TiffCollectionReader(tiff_settings)
         else:
-            pp = experiment_to_useq_plate_plan(experiment)
-            self._data = load_data_from_path(data_path, plate_plan=pp)
+            self._data = load_data_from_path(data_path)
 
         if not self._validate_data(self._data):
             return
@@ -761,7 +751,7 @@ class CaliGui(QMainWindow):
                 )
 
                 # OPEN THE DATABASE ---------------------------------------------------
-                experiment = Experiment.load_from_db(
+                experiment = Experiment.load_from_database(
                     self._database_path, load_data=False
                 )
 
@@ -770,8 +760,7 @@ class CaliGui(QMainWindow):
                 if tiff_settings is not None:
                     self._data = TiffCollectionReader(tiff_settings)
                 else:
-                    pp = experiment_to_useq_plate_plan(experiment)
-                    self._data = load_data_from_path(data_path, plate_plan=pp)
+                    self._data = load_data_from_path(data_path)
 
                 if not self._validate_data(self._data):
                     return
@@ -837,8 +826,7 @@ class CaliGui(QMainWindow):
         # RELOAD DATA IF NEEDED --------------------------------------------------------
         # skip loading data if already loaded as TiffCollectionReader
         if not isinstance(self._data, TiffCollectionReader):
-            pp = experiment_to_useq_plate_plan(experiment)
-            self._data = load_data_from_path(data_path, plate_plan=pp)
+            self._data = load_data_from_path(data_path)
 
         if not self._validate_data(self._data):
             return
@@ -854,13 +842,11 @@ class CaliGui(QMainWindow):
             return None
         pplan = None
         if not isinstance(self._data.sequence.stage_positions, useq.WellPlatePlan):
+            self._plate_plan_wizard.dysplay_available_data_positions(
+                len(self._data.sequence.stage_positions)
+            )
             if self._plate_plan_wizard.exec():
                 pplan = self._plate_plan_wizard.value()
-                self._data.set_plate_plan(pplan)
-
-                from rich import print
-
-                print(self._data.sequence)
         return pplan
 
     def _update_gui_settings(
@@ -881,11 +867,23 @@ class CaliGui(QMainWindow):
             self._populate_settings(database_path)
         # load plate plan data
         if experiment is None:
-            experiment = Experiment.load_from_db(database_path, load_data=False)
+            experiment = Experiment.load_from_database(database_path, load_data=False)
 
-        plate = experiment_to_useq_plate(experiment)
+        if experiment.plate is None:
+            msg = "❌ Experiment has no plate."
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            return
+
+        if (plate_plan := experiment.plate.plate_plan) is None:
+            msg = "❌ Plate plan not found in experiment."
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            return
+
+        plate = plate_plan.plate
         plate_map_data = experiment_to_plate_map_data(experiment)
-        if plate_map_data is not None and plate is not None:
+        if plate_map_data is not None:
             self._plate_map_wdg.setValue(plate, *plate_map_data)
 
     def _populate_settings(self, database_path: Path | str) -> None:
@@ -1114,7 +1112,9 @@ class CaliGui(QMainWindow):
             return
 
         try:
-            experiment = Experiment.load_from_db(self._database_path, load_data=False)
+            experiment = Experiment.load_from_database(
+                self._database_path, load_data=False
+            )
 
             value = self._run_cali_wdg.value()
 
@@ -1895,23 +1895,6 @@ class CaliGui(QMainWindow):
             sw_graph.run_id = run_id
         for mw_graph in self.MW_GRAPHS:
             mw_graph.run_id = run_id
-
-    def _update_gui_plate_plan(
-        self, plate_plan: useq.WellPlatePlan | tuple[useq.Position, ...] | None = None
-    ) -> None:
-        """Update the gui based on the specified plate plan."""
-        if self._data is None or plate_plan is None:
-            return None
-
-        final_plate_plan: useq.WellPlatePlan | None = None
-
-        # if already a WellPlatePlan, use it directly
-        if isinstance(plate_plan, useq.WellPlatePlan):
-            final_plate_plan = plate_plan
-        else:
-            final_plate_plan = DEFAULT_PLATE_PLAN
-
-        self._draw_plate_with_selection(final_plate_plan)
 
     def _draw_plate_with_selection(self, plate_plan: useq.WellPlatePlan) -> None:
         """Draw the plate and disable non-selected wells."""

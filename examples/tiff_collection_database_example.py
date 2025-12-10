@@ -85,7 +85,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     print("=" * 70)
 
     # Load experiment from database
-    experiment_loaded = Experiment.load_from_db(db_path, load_data=False)
+    experiment_loaded = Experiment.load_from_database(db_path, load_data=False)
     print(f"  Experiment loaded: {experiment_loaded.name}")
     print(f"  Has TIFF config: {experiment_loaded.tiff_file_map_json is not None}")
 

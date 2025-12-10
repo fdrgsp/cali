@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from useq import register_well_plates
 
 from cali.sqlmodel import Experiment
 from cali.sqlmodel._util import create_database_and_tables
@@ -28,6 +29,20 @@ if sys.platform == "win32":
 
 
 TempDB = tuple[Engine, Path]
+
+
+register_well_plates(
+    {
+        "dish-35mm-round": {
+            "rows": 1,
+            "columns": 1,
+            "well_spacing": 0.0,
+            "well_size": 35.0,
+            "circular_wells": True,
+            "name": "dish-35mm-round",
+        },
+    }
+)
 
 
 @pytest.fixture
