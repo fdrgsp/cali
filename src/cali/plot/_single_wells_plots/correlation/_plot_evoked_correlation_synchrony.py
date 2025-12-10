@@ -289,6 +289,35 @@ def _plot_non_stimulated_spike_max_lag_correlation(
 # =============================================================================
 
 
+def _detach_heatmap_interaction(plot: pg.PlotItem) -> None:
+    """Detach any existing hover and click handlers from a heatmap plot.
+
+    Parameters
+    ----------
+    plot : pg.PlotItem
+        Plot item to clean up
+    """
+    old_hover = plot.property("evoked_hover_handler")
+    old_click = plot.property("evoked_click_handler")
+
+    # Disconnect from scene signals if scene exists
+    scene = plot.scene()
+    if scene is not None:
+        if old_hover is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                scene.sigMouseMoved.disconnect(old_hover)
+
+        if old_click is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                scene.sigMouseClicked.disconnect(old_click)
+
+    # Always clear the property references, even if no scene
+    if old_hover is not None:
+        plot.setProperty("evoked_hover_handler", None)
+    if old_click is not None:
+        plot.setProperty("evoked_click_handler", None)
+
+
 def _attach_heatmap_interaction(
     widget: _SingleWellGraphWidget,
     plot: pg.PlotItem,
@@ -305,15 +334,8 @@ def _attach_heatmap_interaction(
     n_rows, n_cols = values.shape
     scene = plot.scene()
 
-    # Avoid stacking multiple handlers
-    old_hover = plot.property("evoked_hover_handler")
-    old_click = plot.property("evoked_click_handler")
-    if old_hover is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseMoved.disconnect(old_hover)
-    if old_click is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseClicked.disconnect(old_click)
+    # Clean up any existing handlers first
+    _detach_heatmap_interaction(plot)
 
     def _on_mouse_moved(pos: pg.Point) -> None:
         if not plot.sceneBoundingRect().contains(pos):
@@ -467,6 +489,7 @@ def _plot_sorted_calcium_synchrony(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -587,6 +610,7 @@ def _plot_sorted_calcium_correlation(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -708,6 +732,7 @@ def _plot_sorted_spike_synchrony(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -831,6 +856,7 @@ def _plot_sorted_spike_correlation(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -949,6 +975,7 @@ def _plot_sorted_spike_max_lag_correlation(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
