@@ -310,3 +310,71 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     # Max lag correlation should be HIGH (can find the 5-frame shift)
     # This demonstrates they measure different things
     assert jitter_sync[0][1] < max_lag_corr[0][1]
+
+
+def test_spike_max_lag_values_matrix() -> None:
+    """Test that spike max-lag values matrix correctly identifies lag."""
+    fov = FOV(name="test_fov", position_index=1)
+
+    # Create ROI 1 with spikes at [10, 20, 30]
+    roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
+    spike_array1 = np.zeros(50)
+    spike_array1[[10, 20, 30]] = 1.5  # Spike amplitudes
+    traces1 = Traces(
+        dff=spike_array1.tolist(),
+        dec_dff=spike_array1.tolist(),
+        inferred_spikes=spike_array1.tolist(),
+    )
+    roi1._new_traces = [traces1]
+    data_analysis1 = DataAnalysis(inferred_spikes_threshold=1.0)
+    roi1._new_data_analysis = [data_analysis1]
+
+    # Create ROI 2 with spikes at [13, 23, 33] - shifted by +3 frames
+    roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
+    spike_array2 = np.zeros(50)
+    spike_array2[[13, 23, 33]] = 1.5
+    traces2 = Traces(
+        dff=spike_array2.tolist(),
+        dec_dff=spike_array2.tolist(),
+        inferred_spikes=spike_array2.tolist(),
+    )
+    roi2._new_traces = [traces2]
+    data_analysis2 = DataAnalysis(inferred_spikes_threshold=1.0)
+    roi2._new_data_analysis = [data_analysis2]
+
+    fov.rois = [roi1, roi2]
+
+    settings = AnalysisSettings(
+        spikes_sync_cross_corr_lag=500,  # 5 frames at 10fps = 500ms
+    )
+
+    fov_analysis = compute_fov_analysis(fov, settings)
+
+    assert fov_analysis is not None
+    assert fov_analysis.spike_max_lag_values_matrix is not None
+    assert fov_analysis.spike_max_lag_correlation_matrix is not None
+
+    lag_matrix = fov_analysis.spike_max_lag_values_matrix
+
+    # Check matrix shape
+    assert len(lag_matrix) == 2
+    assert len(lag_matrix[0]) == 2
+
+    # Diagonal should be zero (no lag with self)
+    assert lag_matrix[0][0] == 0
+    assert lag_matrix[1][1] == 0
+
+    # roi2 lags behind roi1 by 3 frames, so from roi1's perspective (row 0),
+    # roi2 (column 1) has a negative lag (meaning roi1 is shifted back relative to roi2)
+    # The scipy correlate convention: negative lag means j leads i
+    # Since roi1 spikes at [10,20,30] and roi2 at [13,23,33], roi2 comes after roi1
+    # So roi2 lags, which means from i->j perspective, lag is negative
+    assert lag_matrix[0][1] == -3
+
+    # From roi2's perspective (row 1), roi1 (column 0) has positive lag
+    # (roi1 leads roi2)
+    assert lag_matrix[1][0] == 3
+
+    # Correlation should be high since the spike patterns match well
+    corr_matrix = fov_analysis.spike_max_lag_correlation_matrix
+    assert corr_matrix[0][1] > 0.9  # High correlation after time shift

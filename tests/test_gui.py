@@ -647,10 +647,11 @@ def test_analysis_only_requires_both_ids(
 
     monkeypatch.setattr("cali.gui._cali_gui.show_error_dialog", mock_error_dialog)
 
-    # Mock Experiment.load_from_db
+    # Mock Experiment.load_from_database
     mock_exp = MagicMock()
     monkeypatch.setattr(
-        "cali.gui._cali_gui.Experiment.load_from_db", lambda *args, **kwargs: mock_exp
+        "cali.gui._cali_gui.Experiment.load_from_database",
+        lambda *args, **kwargs: mock_exp,
     )
 
     # Test: Analysis-only with only extraction ID (missing detection ID)

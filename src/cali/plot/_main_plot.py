@@ -45,15 +45,12 @@ from ._single_wells_plots.correlation._plot_connectivity import (
     _plot_connectivity_network_data,
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
-    _plot_non_stimulated_calcium_correlation,
     _plot_non_stimulated_calcium_synchrony,
     _plot_non_stimulated_spike_correlation,
     _plot_non_stimulated_spike_synchrony,
-    _plot_sorted_calcium_correlation,
     _plot_sorted_calcium_synchrony,
     _plot_sorted_spike_correlation,
     _plot_sorted_spike_synchrony,
-    _plot_stimulated_calcium_correlation,
     _plot_stimulated_calcium_synchrony,
     _plot_stimulated_spike_correlation,
     _plot_stimulated_spike_synchrony,
@@ -66,6 +63,9 @@ from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
 )
 from ._single_wells_plots.correlation._plot_spike_max_lag_correlation import (
     _plot_spike_max_lag_correlation_data,
+)
+from ._single_wells_plots.correlation._plot_spike_max_lag_values import (
+    _plot_spike_max_lag_values_data,
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
     _plot_calcium_intensity_heatmap_by_stim_status,
@@ -203,6 +203,7 @@ INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normaliz
 INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony"
 INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
 INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
+INFERRED_SPIKE_MAX_LAG_VALUES = "Inferred Spikes Max-Lag Values (frames)"
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
 INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
 INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
@@ -550,6 +551,13 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
+    name=INFERRED_SPIKE_MAX_LAG_VALUES,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_spike_max_lag_values_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
@@ -623,14 +631,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=SORTED_CALCIUM_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_calcium_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name=SORTED_CALCIUM_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_sorted_calcium_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 AnalysisProduct(
     name=SORTED_SPIKE_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
@@ -687,14 +695,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=STIMULATED_CALCIUM_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_calcium_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name=STIMULATED_CALCIUM_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_stimulated_calcium_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 AnalysisProduct(
     name=STIMULATED_SPIKE_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
@@ -751,14 +759,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=NON_STIMULATED_CALCIUM_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_non_stimulated_calcium_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name=NON_STIMULATED_CALCIUM_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_non_stimulated_calcium_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 AnalysisProduct(
     name=NON_STIMULATED_SPIKE_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,

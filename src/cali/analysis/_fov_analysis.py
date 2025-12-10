@@ -15,10 +15,10 @@ import numpy as np
 from cali.analysis._util import (
     _compute_cross_correlation_matrix,
     _detect_population_bursts,
+    _get_calcium_peaks_event_correlations_matrix,
     _get_calcium_peaks_event_synchrony,
-    _get_calcium_peaks_event_synchrony_matrix,
+    _get_spike_correlations_matrix,
     _get_spike_synchrony,
-    _get_spike_synchrony_matrix,
 )
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOVAnalysis
@@ -179,10 +179,12 @@ def compute_fov_analysis(
     if len(peak_events_dict) >= 2:
         jitter_window_ms = analysis_settings.calcium_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
-        calcium_peaks_jitter_sync_matrix = _get_calcium_peaks_event_synchrony_matrix(
-            peak_events_dict,
-            method="jitter_window",
-            jitter_window=jitter_window_frames,
+        calcium_peaks_jitter_sync_matrix, _ = (
+            _get_calcium_peaks_event_correlations_matrix(
+                peak_events_dict,
+                method="jitter_window",
+                jitter_window=jitter_window_frames,
+            )
         )
         if calcium_peaks_jitter_sync_matrix is not None:
             global_calcium_peaks_jitter_sync = _get_calcium_peaks_event_synchrony(
@@ -195,7 +197,10 @@ def compute_fov_analysis(
     if len(peak_events_dict) >= 2:
         max_lag_ms = analysis_settings.calcium_peaks_max_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
-        calcium_peaks_max_lag_corr_matrix = _get_calcium_peaks_event_synchrony_matrix(
+        (
+            calcium_peaks_max_lag_corr_matrix,
+            _,
+        ) = _get_calcium_peaks_event_correlations_matrix(
             peak_events_dict,
             method="cross_correlation",
             max_lag=max_lag_frames,
@@ -210,6 +215,7 @@ def compute_fov_analysis(
     spike_corr_matrix = None
     # 5. Max lag correlation on spikes
     spike_max_lag_corr_matrix = None
+    spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
     # 6. Jitter synchrony on spikes
     spike_jitter_sync_matrix = None
@@ -222,7 +228,10 @@ def compute_fov_analysis(
         # 5. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
-        spike_max_lag_corr_matrix = _get_spike_synchrony_matrix(
+        (
+            spike_max_lag_corr_matrix,
+            spike_max_lag_values_matrix,
+        ) = _get_spike_correlations_matrix(
             spike_data_dict,
             method="cross_correlation",
             max_lag=max_lag_frames,
@@ -233,7 +242,7 @@ def compute_fov_analysis(
         # 6. Jitter synchrony on spikes
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
-        spike_jitter_sync_matrix = _get_spike_synchrony_matrix(
+        spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
             spike_data_dict,
             method="jitter_window",
             jitter_window=jitter_window_frames,
@@ -291,6 +300,11 @@ def compute_fov_analysis(
             else None
         ),
         global_spike_max_lag_correlation=global_spike_max_lag_corr,
+        spike_max_lag_values_matrix=(
+            spike_max_lag_values_matrix.tolist()
+            if spike_max_lag_values_matrix is not None
+            else None
+        ),
         spike_jitter_synchrony_matrix=(
             spike_jitter_sync_matrix.tolist()
             if spike_jitter_sync_matrix is not None

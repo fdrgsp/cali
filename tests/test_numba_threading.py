@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 
 from cali.analysis._util import (
-    _get_calcium_peaks_event_synchrony_matrix,
-    _get_spike_synchrony_matrix,
+    _get_calcium_peaks_event_correlations_matrix,
+    _get_spike_correlations_matrix,
 )
 
 
@@ -46,14 +46,14 @@ def test_numba_synchrony_with_threading() -> None:
 
     # Function to run in thread - calls numba parallel function
     def compute_calcium_sync() -> None:
-        matrix = _get_calcium_peaks_event_synchrony_matrix(
+        matrix, _ = _get_calcium_peaks_event_correlations_matrix(
             peak_events_dict, method="jitter_window", jitter_window=5
         )
         assert matrix is not None
         assert matrix.shape == (n_rois, n_rois)
 
     def compute_spike_sync() -> None:
-        matrix = _get_spike_synchrony_matrix(
+        matrix, _ = _get_spike_correlations_matrix(
             spike_data_dict, method="jitter_window", jitter_window=5
         )
         assert matrix is not None
@@ -96,7 +96,7 @@ def test_numba_synchrony_results_consistent() -> None:
     # Compute matrix multiple times
     results = []
     for _ in range(5):
-        matrix = _get_calcium_peaks_event_synchrony_matrix(
+        matrix, _ = _get_calcium_peaks_event_correlations_matrix(
             peak_events_dict, method="jitter_window", jitter_window=3
         )
         results.append(matrix)

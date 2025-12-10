@@ -88,8 +88,12 @@ def test_initialize_from_database_success(
     data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     db_path = tmp_path / "test.cali"
 
-    # Create experiment with database
-    exp = Experiment(name="Test", description="Test experiment")
+    # Create experiment with plate structure from data
+    exp = Experiment.create_from_data(
+        name="Test",
+        data_path=data_path,
+        description="Test experiment",
+    )
     runner = CaliRunner()
     runner.run(
         experiment=exp,
@@ -178,7 +182,11 @@ def test_initialize_from_directories_existing_db_no_overwrite(
     data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     db_name = "existing.cali"
 
-    exp = Experiment(name="Existing", description="Existing experiment")
+    exp = Experiment.create_from_data(
+        name="Existing",
+        data_path=data_path,
+        description="Existing experiment",
+    )
     runner = CaliRunner()
     runner.run(
         experiment=exp,
@@ -233,7 +241,7 @@ def test_initialize_from_directories_existing_db_overwrite(
 
     engine = create_engine(f"sqlite:///{old_db_path}")
     with Session(engine) as session:
-        new_exp = Experiment.load_from_db(old_db_path, session=session)
+        new_exp = Experiment.load_from_database(old_db_path, session=session)
         # New experiment should have default name "Cali Experiment"
         assert new_exp.name == "Cali Experiment"
 
@@ -298,7 +306,11 @@ def test_initialize_updates_graph_properties(
     data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
     db_path = tmp_path / "test.cali"
 
-    exp = Experiment(name="Test", description="Test")
+    exp = Experiment.create_from_data(
+        name="Test",
+        data_path=data_path,
+        description="Test",
+    )
     runner = CaliRunner()
     runner.run(
         experiment=exp,

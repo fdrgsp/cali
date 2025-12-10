@@ -852,6 +852,65 @@ def test_useq_plate_plan_roundtrip(temp_db: TempDB) -> None:
         assert plate_plan_new.selected_wells == plate_plan_orig.selected_wells
 
 
+def test_plate_plan_field_persistence(temp_db: TempDB) -> None:
+    """Test that plate_plan field is correctly saved and loaded from database.
+
+    This test verifies that the useq.WellPlatePlan object stored in the Plate.plate_plan
+    field is correctly serialized to JSON when saving and deserialized back to a
+    WellPlatePlan object when loading.
+    """
+    engine, _db_path = temp_db
+
+    # Create a plate plan with various settings
+    plate_plan = useq.WellPlatePlan(
+        plate=useq.WellPlate.from_str("96-well"),
+        a1_center_xy=(10.0, 20.0),
+        selected_wells=((6,), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)),  # Row G, columns 2-11
+        well_points_plan=useq.RandomPoints(num_points=3),
+    )
+
+    # Create experiment with plate_plan
+    exp = Experiment(name="test_plate_plan_persistence")
+    Plate(
+        experiment=exp,
+        name="96-well",
+        plate_type="96-well",
+        rows=8,
+        columns=12,
+        plate_plan=plate_plan,
+    )
+
+    # Save to database
+    with Session(engine) as session:
+        session.add(exp)
+        session.commit()
+        exp_id = exp.id
+
+    # Load from database in a new session
+    with Session(engine) as session:
+        loaded_exp = session.exec(
+            select(Experiment).where(Experiment.id == exp_id)
+        ).first()
+        assert loaded_exp is not None
+
+        # Verify plate_plan was loaded correctly
+        loaded_plate = loaded_exp.plate
+        assert loaded_plate is not None
+        assert loaded_plate.plate_plan is not None
+
+        # Verify it's the correct type
+        assert isinstance(loaded_plate.plate_plan, useq.WellPlatePlan)
+
+        # Verify all fields match
+        assert loaded_plate.plate_plan.plate.name == plate_plan.plate.name
+        assert loaded_plate.plate_plan.plate.rows == plate_plan.plate.rows
+        assert loaded_plate.plate_plan.plate.columns == plate_plan.plate.columns
+        assert loaded_plate.plate_plan.a1_center_xy == plate_plan.a1_center_xy
+        assert loaded_plate.plate_plan.selected_wells == plate_plan.selected_wells
+        assert isinstance(loaded_plate.plate_plan.well_points_plan, useq.RandomPoints)
+        assert loaded_plate.plate_plan.well_points_plan.num_points == 3
+
+
 # ==================== ROI Data Conversion Tests ====================
 
 
@@ -1252,26 +1311,36 @@ def test_useq_coverslip_plate_types(temp_db: TempDB) -> None:
         session.commit()
         session.refresh(exp)
 
-    # Test 18mm coverslip
-    plate_18mm = useq.WellPlate(
+    # Test 18mm coverslip - now must use WellPlatePlan
+    plate_18mm_well_plate = useq.WellPlate(
         name="18mm coverslip",
         rows=1,
         columns=1,
         well_spacing=0,
         well_size=18,
     )
-    plate = useq_plate_to_db(plate_18mm, exp)
+    plate_18mm_plan = useq.WellPlatePlan(
+        plate=plate_18mm_well_plate,
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((0,), (0,)),
+    )
+    plate = useq_plate_to_db(plate_18mm_plan, exp)
     assert plate.plate_type == "coverslip-18mm-square"
 
-    # Test 22mm coverslip
-    plate_22mm = useq.WellPlate(
+    # Test 22mm coverslip - now must use WellPlatePlan
+    plate_22mm_well_plate = useq.WellPlate(
         name="22mm coverslip",
         rows=1,
         columns=1,
         well_spacing=0,
         well_size=22,
     )
-    plate = useq_plate_to_db(plate_22mm, exp)
+    plate_22mm_plan = useq.WellPlatePlan(
+        plate=plate_22mm_well_plate,
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((0,), (0,)),
+    )
+    plate = useq_plate_to_db(plate_22mm_plan, exp)
     assert plate.plate_type == "coverslip-22mm-square"
 
 
@@ -2102,18 +2171,20 @@ def test_experiment_load_from_db(tmp_path: Path) -> None:
     engine.dispose()
 
     # Load
-    loaded_exp = Experiment.load_from_db(db_path, id=exp_id)
+    loaded_exp = Experiment.load_from_database(db_path, id=exp_id)
     assert loaded_exp.name == "Test Exp Load"
 
     # Load with load_data=False
-    loaded_exp_nodata = Experiment.load_from_db(db_path, id=exp_id, load_data=False)
+    loaded_exp_nodata = Experiment.load_from_database(
+        db_path, id=exp_id, load_data=False
+    )
     assert loaded_exp_nodata.name == "Test Exp Load"
 
     # Load with session
     engine2 = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine2) as session:
-            loaded_exp_sess = Experiment.load_from_db(
+            loaded_exp_sess = Experiment.load_from_database(
                 db_path, id=exp_id, session=session
             )
             assert loaded_exp_sess.name == "Test Exp Load"

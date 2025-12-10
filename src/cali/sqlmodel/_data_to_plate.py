@@ -22,6 +22,7 @@ def data_to_plate(
     data: str | Path | TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
     experiment: Experiment,
     plate_maps: dict[str, dict[str, str]] | None = None,
+    plate_plan: useq.WellPlatePlan | None = None,
 ) -> Plate | None:
     if isinstance(data, (str, Path)):
         from cali.util import load_data_from_path
@@ -33,13 +34,20 @@ def data_to_plate(
     else:
         dataset = data  # type: ignore[assignment]
 
-    if dataset.sequence is None:  # type: ignore[union-attr]
+    assert dataset is not None
+
+    if dataset.sequence is None:
         cali_logger.error("❌  Dataset does not contain sequence information.")
         return None
 
-    plate_plan = dataset.sequence.stage_positions  # type: ignore[union-attr]
-    if not isinstance(plate_plan, useq.WellPlatePlan):
-        cali_logger.error("❌  Dataset does not contain a WellPlatePlan.")
-        return None
+    if isinstance(dataset.sequence.stage_positions, useq.WellPlatePlan):
+        plate_plan = dataset.sequence.stage_positions
+    else:
+        if plate_plan is None:
+            cali_logger.error(
+                "❌  Dataset does not contain a WellPlatePlan."
+                " Please provide a plate_plan to use."
+            )
+            return None
 
     return useq_plate_plan_to_db(plate_plan, experiment, plate_maps)

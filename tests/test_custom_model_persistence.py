@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -63,8 +64,9 @@ def test_custom_model_combo_uses_findtext_for_selection(
     model settings would fail because setCurrentText didn't work reliably.
     The fix uses findText + setCurrentIndex instead.
     """
-    # Initialize from database
-    gui._initialize_from_database(str(test_database), str(data_path))
+    # Initialize from database - mock error dialog since experiment has no plate
+    with patch("cali.gui._cali_gui.show_error_dialog"):
+        gui._initialize_from_database(str(test_database), str(data_path))
     qtbot.wait(100)
 
     detection_wdg = gui._detection_wdg._cellpose_wdg

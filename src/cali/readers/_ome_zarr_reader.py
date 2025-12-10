@@ -33,9 +33,6 @@ class OMEZarrReader:
     ----------
     data : str | Path | Group
         The path to the ome-zarr file or the zarr group itself.
-    plate_plan : useq.WellPlatePlan | None
-        The well plate plan to set for the useq.MDASequence. If None, the plate plan
-        is not set. By default, None.
 
     Attributes
     ----------
@@ -62,9 +59,7 @@ class OMEZarrReader:
     data, metadata = reader.isel({"p": 0, "t": 1, "z": 0}, metadata=True)
     """
 
-    def __init__(
-        self, data: str | Path | Group, *, plate_plan: useq.WellPlatePlan | None = None
-    ) -> None:
+    def __init__(self, data: str | Path | Group) -> None:
         self._path = data.path if isinstance(data, Group) else data
         self._store: Group = data if isinstance(data, Group) else zarr.open(self._path)
 
@@ -77,10 +72,6 @@ class OMEZarrReader:
             self._sequence = useq.MDASequence(**seq) if seq is not None else None
         except KeyError:
             self._sequence = None
-
-        # Set plate plan if provided
-        if plate_plan is not None:
-            self.set_plate_plan(plate_plan)
 
     # ___________________________Public Methods___________________________
 
@@ -216,18 +207,6 @@ class OMEZarrReader:
                         dest = Path(path) / f"p{i}.json"
                         dest.write_text(json.dumps(metadata))
                         pbar.update(1)
-
-    def set_plate_plan(self, plate_plan: useq.WellPlatePlan) -> None:
-        """Set the plate plan in the useq.MDASequence.
-
-        Parameters
-        ----------
-        plate_plan : useq.WellPlatePlan
-            The plate plan to set in the useq.MDASequence.
-        """
-        if self._sequence is None:
-            raise ValueError("No 'useq.MDASequence' found in the metadata!")
-        self._sequence = self._sequence.replace(stage_positions=plate_plan)
 
     # ___________________________Private Methods___________________________
 
