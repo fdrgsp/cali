@@ -457,18 +457,42 @@ class CaliGui(QMainWindow):
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
         # Save plate map data before closing
-        self._save_plate_map_to_database()
+        try:
+            self._save_plate_map_to_database()
+        except Exception as e:
+            cali_logger.debug(f"Error saving plate map: {e}")
+
+        # Close data reader to release file handles (important for external drives)
+        if self._data is not None:
+            if hasattr(self._data, "close"):
+                try:
+                    self._data.close()
+                    cali_logger.debug("✅ Data reader closed successfully")
+                except Exception as e:
+                    cali_logger.debug(f"❌ Error closing data reader: {e}")
+            self._data = None
 
         # Dispose of all graph widget engines
         for sw_graph in self.SW_GRAPHS:
             if sw_graph.engine is not None:
-                sw_graph.engine.dispose(close=True)
+                try:
+                    sw_graph.engine.dispose(close=True)
+                except Exception as e:
+                    cali_logger.debug(f"❌ Error disposing graph engine: {e}")
                 sw_graph.engine = None
 
         for mw_graph in self.MW_GRAPHS:
             if mw_graph.engine is not None:
-                mw_graph.engine.dispose(close=True)
+                try:
+                    mw_graph.engine.dispose(close=True)
+                except Exception as e:
+                    cali_logger.debug(f"❌ Error disposing graph engine: {e}")
                 mw_graph.engine = None
+
+        # Force garbage collection to release any remaining file handles
+        import gc
+
+        gc.collect()
 
         # Call parent closeEvent
         super().closeEvent(a0)

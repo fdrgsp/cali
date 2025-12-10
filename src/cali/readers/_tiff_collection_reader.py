@@ -213,6 +213,19 @@ class TiffCollectionReader:
 
     # _________________________PUBLIC METHODS___________________________
 
+    def close(self) -> None:
+        """Close the reader and release any resources.
+
+        For TiffCollectionReader, this mainly clears cached metadata
+        to free memory. Individual TIFF files are opened/closed on demand.
+        """
+        if hasattr(self, "_metadata"):
+            self._metadata = []
+        if hasattr(self, "_sequence"):
+            self._sequence = None
+        if hasattr(self, "_plate_plan"):
+            self._plate_plan = None
+
     def isel(
         self,
         indexers: Mapping[str, int] | None = None,

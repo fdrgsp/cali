@@ -261,10 +261,13 @@ def _get_calcium_peaks_event_correlations_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
+        cali_logger.debug("🔒 Waiting for NUMBA_LOCK (peak synchrony)...")
         with _NUMBA_LOCK:
+            cali_logger.debug("✓ Acquired NUMBA_LOCK (peak synchrony)")
             synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
                 peak_array, jitter_window
             )
+        cali_logger.debug("🔓 Released NUMBA_LOCK (peak synchrony)")
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
@@ -361,10 +364,13 @@ def _get_spike_correlations_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
+        cali_logger.debug("🔒 Waiting for NUMBA_LOCK (spike synchrony)...")
         with _NUMBA_LOCK:
+            cali_logger.debug("✓ Acquired NUMBA_LOCK (spike synchrony)")
             synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
                 binary_spikes, jitter_window
             )
+        cali_logger.debug("🔓 Released NUMBA_LOCK (spike synchrony)")
     else:
         # Standard numpy implementation for other methods
         synchrony_matrix = np.zeros((n_rois, n_rois))
