@@ -261,48 +261,49 @@ def _get_calcium_peaks_event_correlations_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
-        cali_logger.debug("🔒 Waiting for NUMBA_LOCK (peak synchrony)...")
         with _NUMBA_LOCK:
-            cali_logger.debug("✓ Acquired NUMBA_LOCK (peak synchrony)")
             synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
                 peak_array, jitter_window
             )
-        cali_logger.debug("🔓 Released NUMBA_LOCK (peak synchrony)")
     else:
-        # Standard numpy implementation for other methods
-        synchrony_matrix = np.zeros((n_rois, n_rois))
-        if method == "cross_correlation":
-            lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
+        # Protect cross-correlation with NUMBA_LOCK to prevent thread serialization
+        # scipy.signal.correlate can trigger numba/BLAS operations that aren't
+        # thread-safe during initial compilation/execution
+        with _NUMBA_LOCK:
+            # Standard numpy implementation for other methods
+            synchrony_matrix = np.zeros((n_rois, n_rois))
+            if method == "cross_correlation":
+                lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
 
-        for i in range(n_rois):
-            for j in range(n_rois):
-                if i == j:
-                    synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
-                    if lag_matrix is not None:
-                        lag_matrix[i, j] = 0  # Zero lag with self
-                else:
-                    events_i = peak_array[i]
-                    events_j = peak_array[j]
-
-                    # Handle case where one or both ROIs have no peaks
-                    if np.sum(events_i) == 0 or np.sum(events_j) == 0:
-                        synchrony_matrix[i, j] = 0.0
+            for i in range(n_rois):
+                for j in range(n_rois):
+                    if i == j:
+                        synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
                         if lag_matrix is not None:
-                            lag_matrix[i, j] = 0
+                            lag_matrix[i, j] = 0  # Zero lag with self
                     else:
-                        if method == "cross_correlation":
-                            sync_value, lag = _calculate_cross_correlation_with_lag(
-                                events_i, events_j, max_lag
-                            )
-                            lag_matrix[i, j] = lag  # type: ignore
-                        else:
-                            # Fallback to original correlation method (default)
-                            correlation = np.corrcoef(events_i, events_j)[0, 1]
-                            sync_value = (
-                                0.0 if np.isnan(correlation) else abs(correlation)
-                            )
+                        events_i = peak_array[i]
+                        events_j = peak_array[j]
 
-                        synchrony_matrix[i, j] = sync_value
+                        # Handle case where one or both ROIs have no peaks
+                        if np.sum(events_i) == 0 or np.sum(events_j) == 0:
+                            synchrony_matrix[i, j] = 0.0
+                            if lag_matrix is not None:
+                                lag_matrix[i, j] = 0
+                        else:
+                            if method == "cross_correlation":
+                                sync_value, lag = _calculate_cross_correlation_with_lag(
+                                    events_i, events_j, max_lag
+                                )
+                                lag_matrix[i, j] = lag  # type: ignore
+                            else:
+                                # Fallback to original correlation method (default)
+                                correlation = np.corrcoef(events_i, events_j)[0, 1]
+                                sync_value = (
+                                    0.0 if np.isnan(correlation) else abs(correlation)
+                                )
+
+                            synchrony_matrix[i, j] = sync_value
 
     return synchrony_matrix, lag_matrix
 
@@ -364,49 +365,50 @@ def _get_spike_correlations_matrix(
 
     # Use numba-optimized version for jitter_window method
     if method == "jitter_window":
-        cali_logger.debug("🔒 Waiting for NUMBA_LOCK (spike synchrony)...")
         with _NUMBA_LOCK:
-            cali_logger.debug("✓ Acquired NUMBA_LOCK (spike synchrony)")
             synchrony_matrix = _compute_jitter_synchrony_matrix_numba(
                 binary_spikes, jitter_window
             )
-        cali_logger.debug("🔓 Released NUMBA_LOCK (spike synchrony)")
     else:
-        # Standard numpy implementation for other methods
-        synchrony_matrix = np.zeros((n_rois, n_rois))
-        if method == "cross_correlation":
-            lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
+        # Protect cross-correlation with NUMBA_LOCK to prevent thread serialization
+        # scipy.signal.correlate can trigger numba/BLAS operations that aren't
+        # thread-safe during initial compilation/execution
+        with _NUMBA_LOCK:
+            # Standard numpy implementation for other methods
+            synchrony_matrix = np.zeros((n_rois, n_rois))
+            if method == "cross_correlation":
+                lag_matrix = np.zeros((n_rois, n_rois), dtype=int)
 
-        for i in range(n_rois):
-            for j in range(n_rois):
-                if i == j:
-                    synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
-                    if lag_matrix is not None:
-                        lag_matrix[i, j] = 0  # Zero lag with self
-                else:
-                    # Calculate correlation between binary spike trains
-                    spikes_i = binary_spikes[i]
-                    spikes_j = binary_spikes[j]
-
-                    # Handle case where one or both ROIs have no spikes
-                    if np.sum(spikes_i) == 0 or np.sum(spikes_j) == 0:
-                        synchrony_matrix[i, j] = 0.0
+            for i in range(n_rois):
+                for j in range(n_rois):
+                    if i == j:
+                        synchrony_matrix[i, j] = 1.0  # Perfect self-synchrony
                         if lag_matrix is not None:
-                            lag_matrix[i, j] = 0
+                            lag_matrix[i, j] = 0  # Zero lag with self
                     else:
-                        if method == "cross_correlation":
-                            sync_value, lag = _calculate_cross_correlation_with_lag(
-                                spikes_i, spikes_j, max_lag
-                            )
-                            lag_matrix[i, j] = lag  # type: ignore
-                        else:
-                            # Fallback to original correlation method (default)
-                            correlation = np.corrcoef(spikes_i, spikes_j)[0, 1]
-                            sync_value = (
-                                0.0 if np.isnan(correlation) else abs(correlation)
-                            )
+                        # Calculate correlation between binary spike trains
+                        spikes_i = binary_spikes[i]
+                        spikes_j = binary_spikes[j]
 
-                        synchrony_matrix[i, j] = sync_value
+                        # Handle case where one or both ROIs have no spikes
+                        if np.sum(spikes_i) == 0 or np.sum(spikes_j) == 0:
+                            synchrony_matrix[i, j] = 0.0
+                            if lag_matrix is not None:
+                                lag_matrix[i, j] = 0
+                        else:
+                            if method == "cross_correlation":
+                                sync_value, lag = _calculate_cross_correlation_with_lag(
+                                    spikes_i, spikes_j, max_lag
+                                )
+                                lag_matrix[i, j] = lag  # type: ignore
+                            else:
+                                # Fallback to original correlation method (default)
+                                correlation = np.corrcoef(spikes_i, spikes_j)[0, 1]
+                                sync_value = (
+                                    0.0 if np.isnan(correlation) else abs(correlation)
+                                )
+
+                            synchrony_matrix[i, j] = sync_value
 
     return synchrony_matrix, lag_matrix
 
@@ -441,7 +443,7 @@ def _calculate_cross_correlation_with_lag(
     """Calculate maximum cross-correlation within lag range.
 
     Computes the cross-correlation function (CCG) and finds the lag with
-    maximum correlation.
+    maximum correlation. Uses numba-optimized implementation for speed.
 
     Returns
     -------
@@ -452,34 +454,8 @@ def _calculate_cross_correlation_with_lag(
           Positive means events_j lags behind events_i.
           Negative means events_j leads events_i.
     """
-    from scipy.signal import correlate
-
-    # Cross-correlation
-    xcorr = correlate(events_i, events_j, mode="full")
-
-    # Get the center (zero-lag) position
-    center = len(events_i) - 1
-
-    # Extract correlations within max_lag range
-    start_idx = max(0, center - max_lag)
-    end_idx = min(len(xcorr), center + max_lag + 1)
-
-    local_xcorr = xcorr[start_idx:end_idx]
-
-    # Normalize by the geometric mean of autocorrelations
-    auto_i = np.sum(events_i * events_i)
-    auto_j = np.sum(events_j * events_j)
-
-    if auto_i > 0 and auto_j > 0:
-        normalization = np.sqrt(auto_i * auto_j)
-        # Find index of max within local window
-        max_idx = np.argmax(local_xcorr)
-        max_correlation = local_xcorr[max_idx] / normalization
-        # Convert to actual lag value (negative = j leads i, positive = j lags i)
-        lag = max_idx - (center - start_idx)
-        return float(np.clip(max_correlation, 0, 1)), int(lag)
-    else:
-        return 0.0, 0
+    # Use numba-optimized version for significant speedup
+    return _max_cross_correlation_numba(events_i, events_j, max_lag)  # type: ignore
 
 
 def _calculate_jitter_window_synchrony(
@@ -606,6 +582,63 @@ def _jitter_window_synchrony_numba(
     total_coincidences = coincidences_i_to_j + coincidences_j_to_i
 
     return total_coincidences / total_peaks if total_peaks > 0 else 0.0
+
+
+@njit(cache=True)  # type: ignore
+def _max_cross_correlation_numba(
+    events_i: np.ndarray, events_j: np.ndarray, max_lag: int
+) -> tuple[float, int]:  # pragma: no cover
+    """Numba-optimized maximum cross-correlation within lag range.
+
+    Computes normalized cross-correlation at each lag and finds the maximum.
+    Much faster than scipy.signal.correlate for repeated pairwise computations.
+
+    Returns
+    -------
+    tuple[float, int]
+        (max_correlation, lag_at_max) where lag_at_max is relative to center.
+        Positive lag means events_j lags behind events_i.
+    """
+    n = len(events_i)
+
+    # Precompute normalizations
+    auto_i = 0.0
+    auto_j = 0.0
+    for k in range(n):
+        auto_i += events_i[k] * events_i[k]
+        auto_j += events_j[k] * events_j[k]
+
+    if auto_i == 0.0 or auto_j == 0.0:
+        return 0.0, 0
+
+    normalization = np.sqrt(auto_i * auto_j)
+
+    # Compute cross-correlation for each lag
+    max_corr = 0.0
+    best_lag = 0
+
+    for lag in range(-max_lag, max_lag + 1):
+        corr_sum = 0.0
+
+        if lag >= 0:
+            # j lags behind i: align i[0:n-lag] with j[lag:n]
+            for k in range(n - lag):
+                corr_sum += events_i[k] * events_j[k + lag]
+        else:
+            # j leads i: align i[-lag:n] with j[0:n+lag]
+            for k in range(n + lag):
+                corr_sum += events_i[k - lag] * events_j[k]
+
+        corr_normalized = corr_sum / normalization
+
+        if corr_normalized > max_corr:
+            max_corr = corr_normalized
+            best_lag = lag
+
+    # Clip to [0, 1] range
+    max_corr = min(max(max_corr, 0.0), 1.0)
+
+    return max_corr, best_lag
 
 
 def _compute_cross_correlation_matrix(

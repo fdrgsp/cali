@@ -585,19 +585,12 @@ class ExtractionRunner:
             frame_rate = 1000.0 / exposure_ms
 
         # Acquire numba lock for thread-safe numba computation
-        cali_logger.debug(
-            f"🔒 Waiting for NUMBA_LOCK for ROI {label_value} in {fov_name}..."
-        )
         with _NUMBA_LOCK:
-            cali_logger.debug(
-                f"✓ Acquired NUMBA_LOCK for ROI {label_value} in {fov_name}"
-            )
             dff = calculate_dff(
                 roi_trace,
                 window_ms=extraction_settings.dff_window,
                 frame_rate=frame_rate,
             )
-        cali_logger.debug(f"🔓 Released NUMBA_LOCK for ROI {label_value} in {fov_name}")
 
         # Check for cancellation after DFF calculation
         if self._check_for_abort_requested():
