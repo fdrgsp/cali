@@ -14,13 +14,10 @@ ask to claude:
 
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
 
-- general improvement of how the database is handled during cali pipeline
 
 - code and widget to load own label images for segmentation
 
 - ⚡️ export tab to export tables and labels
-
-- add a button to reset settings in each tab to default values
 
 - is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
 
@@ -36,8 +33,6 @@ ask to claude:
 
 - link image viewer with plots
 
-- fix y axis burst graph + fix burst graph on traces because is not showing the same things...
-
 - the run option should be updated depending on the position input in the posiotion to analyze widget
 
 - select black or white background for pyqtgraph
@@ -46,7 +41,7 @@ ask to claude:
 
 - fix rasters by inverting the Y axis (the clicking must be fixed for that)
 
-- add stim vs non-stim calcium peaks rater
+- add stim vs non-stim calcium peaks raster
 - add sotrted stim vs non-stim calcium and spikes heatmap to plots
 
 - add plot similar to plt.stem for spikes

@@ -800,7 +800,10 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
 
     _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
-    vb.enableAutoRange(x=True, y=True)
+    # Set x-range to full frames, enable autorange only for y
+    if total_frames > 0:
+        vb.setXRange(0, total_frames, padding=0)
+    vb.enableAutoRange(x=False, y=True)
 
     _attach_click_handlers_raster(widget, plot, active_roi_labels)
 
@@ -1293,7 +1296,8 @@ def _plot_calcium_intensity_heatmap_by_stim_status(
     vb.invertY(False)
     vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
-    vb.enableAutoRange(x=True, y=True)
+    # Keep x-range fixed to show full frames, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # Axes
     plot.setLabel("left", f"{status_label} ROIs")
@@ -1459,7 +1463,8 @@ def _plot_spike_intensity_heatmap_by_stim_status(
     vb.invertY(False)
     vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
-    vb.enableAutoRange(x=True, y=True)
+    # Keep x-range fixed to show full frames, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # Axes
     plot.setLabel("left", f"{status_label} ROIs")
@@ -1641,7 +1646,8 @@ def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
     vb.invertY(False)
     vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
-    vb.enableAutoRange(x=True, y=True)
+    # Keep x-range fixed to show full frames, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # Axes
     plot.setLabel("left", f"{status_label} ROIs")

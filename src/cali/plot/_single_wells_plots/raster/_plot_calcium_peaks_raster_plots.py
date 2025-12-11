@@ -191,7 +191,11 @@ def _generate_raster_plot(
     y_axis.setStyle(showValues=False)
     y_axis.enableAutoSIPrefix(False)
 
-    plot.getViewBox().enableAutoRange(x=True, y=True)
+    # Set x-range to full frames, enable autorange only for y
+    total_frames = len(sample_trace) if sample_trace is not None else 0
+    if total_frames > 0:
+        plot.getViewBox().setXRange(0, total_frames, padding=0)
+    plot.getViewBox().enableAutoRange(x=False, y=True)
 
     # ------------------------ Colorbar ------------------------ #
     if colorbar and amplitude_colors:
@@ -404,7 +408,8 @@ def _generate_intensity_heatmap(
     vb.invertY(False)
     vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
-    vb.enableAutoRange(x=True, y=True)
+    # Keep x-range fixed to show full frames, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")
