@@ -240,9 +240,6 @@ def _generate_spike_raster_plot(
     active_rois: list[int] = []
     sample_trace: list[float] | None = None
 
-    float("inf")
-    float("-inf")
-
     for roi, traces, data_analysis in roi_data:
         if data_analysis is None or not traces.inferred_spikes:
             continue
@@ -259,8 +256,6 @@ def _generate_spike_raster_plot(
         rising = above_the & ~np.concatenate(([False], above_the[:-1]))
         spike_times = np.where(rising)[0]
         spike_amplitudes = inferred[spike_times]
-
-        spike_amplitudes = inferred[above_the]
 
         if spike_times.size == 0:
             continue

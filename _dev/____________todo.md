@@ -44,4 +44,14 @@ ask to claude:
 
 - fix: titles correlation are too long
 
-- add sotrted stim vs non-stim calcium and spikes hitmap to plots
+- fix rasters by inverting the Y axis (the clicking must be fixed for that)
+
+- add stim vs non-stim calcium peaks rater
+- add sotrted stim vs non-stim calcium and spikes heatmap to plots
+
+- add plot similar to plt.stem for spikes
+- add plot similar to plt.stem for spikes to stim vs non-stim plots
+    is it possible to add in #file:spikes and in #file:_plot_evoked_experiment_data_plots.py another type of inferred spike traces plot similar to matplotlib.stem?
+    the one in n #file:spikes should be one with raw and one thresholded traces and should be added to category="Inferred Spikes Traces".
+
+    In #file:_plot_evoked_experiment_data_plots.py  make it colored as for the other green stim magenta non-stim. do it only on thresholded data. the add it to the category="Evoked Experiment".
