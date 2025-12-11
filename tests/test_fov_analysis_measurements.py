@@ -364,16 +364,14 @@ def test_spike_max_lag_values_matrix() -> None:
     assert lag_matrix[0][0] == 0
     assert lag_matrix[1][1] == 0
 
-    # roi2 lags behind roi1 by 3 frames, so from roi1's perspective (row 0),
-    # roi2 (column 1) has a negative lag (meaning roi1 is shifted back relative to roi2)
-    # The scipy correlate convention: negative lag means j leads i
+    # roi2 lags behind roi1 by 3 frames
+    # New numba implementation: positive lag means j lags behind i
     # Since roi1 spikes at [10,20,30] and roi2 at [13,23,33], roi2 comes after roi1
-    # So roi2 lags, which means from i->j perspective, lag is negative
-    assert lag_matrix[0][1] == -3
+    # So from roi1's perspective (row 0), roi2 (column 1) has positive lag +3
+    assert lag_matrix[0][1] == 3
 
-    # From roi2's perspective (row 1), roi1 (column 0) has positive lag
-    # (roi1 leads roi2)
-    assert lag_matrix[1][0] == 3
+    # From roi2's perspective (row 1), roi1 (column 0) leads, so negative lag
+    assert lag_matrix[1][0] == -3
 
     # Correlation should be high since the spike patterns match well
     corr_matrix = fov_analysis.spike_max_lag_correlation_matrix

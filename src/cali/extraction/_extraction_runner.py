@@ -583,6 +583,8 @@ class ExtractionRunner:
                 cali_logger.error(msg)
                 raise ValueError(msg)
             frame_rate = 1000.0 / exposure_ms
+
+        # Acquire numba lock for thread-safe numba computation
         with _NUMBA_LOCK:
             dff = calculate_dff(
                 roi_trace,

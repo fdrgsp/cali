@@ -57,7 +57,7 @@ def _get_dff_correlation_matrix_from_db(
             fov_analysis = session.exec(stmt).first()
 
             if fov_analysis is None:
-                cali_logger.debug(
+                cali_logger.info(
                     f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
                 )
                 return None, None
@@ -66,7 +66,7 @@ def _get_dff_correlation_matrix_from_db(
                 fov_analysis.calcium_dff_correlation_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
-                cali_logger.debug(
+                cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no DF/F correlation matrix"
                 )
                 return None, None
@@ -78,7 +78,7 @@ def _get_dff_correlation_matrix_from_db(
 
             return corr_matrix, roi_labels
     except OperationalError:
-        cali_logger.debug("FOVAnalysis table not found in database")
+        cali_logger.info("FOVAnalysis table not found in database")
         return None, None
 
 
@@ -121,7 +121,7 @@ def _get_dec_dff_correlation_matrix_from_db(
             fov_analysis = session.exec(stmt).first()
 
             if fov_analysis is None:
-                cali_logger.debug(
+                cali_logger.info(
                     f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
                 )
                 return None, None
@@ -130,7 +130,7 @@ def _get_dec_dff_correlation_matrix_from_db(
                 fov_analysis.calcium_dec_dff_corr_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
-                cali_logger.debug(
+                cali_logger.info(
                     f"FOVAnalysis for {fov_name} "
                     f"has no deconvolved DF/F correlation matrix"
                 )
@@ -143,7 +143,7 @@ def _get_dec_dff_correlation_matrix_from_db(
 
             return corr_matrix, roi_labels
     except OperationalError:
-        cali_logger.debug("FOVAnalysis table not found in database")
+        cali_logger.info("FOVAnalysis table not found in database")
         return None, None
 
 
@@ -275,7 +275,14 @@ def _plot_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
-    title = f"Pairwise Pearson Correlation (Zero-lag - ΔF/F Traces){title_suffix}"
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
+    title = (
+        f"Pairwise Pearson Correlation (Zero-lag - ΔF/F Traces) "
+        f"(median: {median_corr:.3f}){title_suffix}"
+    )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")
@@ -354,9 +361,13 @@ def _plot_dec_dff_correlation_data(
     vb.invertY(True)
     vb.setAspectLocked(True)
 
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
     title = (
         "Pairwise Pearson Correlation (Zero-Lag - "
-        f"Deconvolved ΔF/F Traces){title_suffix}"
+        f"Deconvolved ΔF/F Traces) (median: {median_corr:.3f}){title_suffix}"
     )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")

@@ -222,3 +222,23 @@ def test_spike_jitter_independent_of_calcium_jitter_in_model(temp_db: TempDB) ->
         assert settings.calcium_sync_jitter_window == calcium_jitter
         assert settings.spikes_sync_jitter_window == spike_jitter
         assert settings.calcium_sync_jitter_window != settings.spikes_sync_jitter_window
+
+
+def test_spike_jitter_affects_settings_equality() -> None:
+    """Test that changing spikes_sync_jitter_window makes settings unequal.
+
+    This is a regression test for a bug where spikes_sync_jitter_window was
+    missing from __eq__ and __hash__, causing the runner to incorrectly reuse
+    existing settings when only spike jitter changed.
+    """
+    settings1 = AnalysisSettings(spikes_sync_jitter_window=200.0)
+    settings2 = AnalysisSettings(spikes_sync_jitter_window=400.0)
+    settings3 = AnalysisSettings(spikes_sync_jitter_window=200.0)
+
+    # Different spike jitter should make settings unequal
+    assert settings1 != settings2
+    assert hash(settings1) != hash(settings2)
+
+    # Same spike jitter should make settings equal
+    assert settings1 == settings3
+    assert hash(settings1) == hash(settings3)

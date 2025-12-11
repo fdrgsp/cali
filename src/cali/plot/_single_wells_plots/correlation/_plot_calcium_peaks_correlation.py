@@ -58,7 +58,7 @@ def _get_correlation_matrix_from_db(
             fov_analysis = session.exec(stmt).first()
 
             if fov_analysis is None:
-                cali_logger.debug(
+                cali_logger.info(
                     f"No FOVAnalysis found for FOV {fov_name} and run {run_id}"
                 )
                 return None, None
@@ -67,7 +67,7 @@ def _get_correlation_matrix_from_db(
                 fov_analysis.calcium_peaks_max_lag_correlation_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
-                cali_logger.debug(
+                cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no correlation matrix"
                 )
                 return None, None
@@ -80,7 +80,7 @@ def _get_correlation_matrix_from_db(
             return corr_matrix, roi_labels
     except OperationalError:
         # Table doesn't exist in older databases
-        cali_logger.debug("FOVAnalysis table not found in database")
+        cali_logger.info("FOVAnalysis table not found in database")
         return None, None
 
 
@@ -196,8 +196,13 @@ def _plot_cross_correlation_data(
     # keep it square
     vb.setAspectLocked(True)  # or vb.setAspectLocked(True, ratio=1)
 
+    # Calculate median of off-diagonal elements
+    mask = ~np.eye(corr.shape[0], dtype=bool)
+    median_corr = np.median(corr[mask])
+
     title = (
-        f"Max-Lag Cross-Correlation (Calcium Peaks Events - Deconvolved ΔF/F)"
+        f"Max-Lag Cross-Correlation (Calcium Peaks Events - Deconvolved ΔF/F) "
+        f"(median: {median_corr:.3f})"
         f"{title_suffix}"
     )
     plot.setTitle(title)

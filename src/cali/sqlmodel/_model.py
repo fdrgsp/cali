@@ -1184,6 +1184,7 @@ class AnalysisSettings(SQLModel, table=True):
             and self.burst_min_duration == other.burst_min_duration
             and self.burst_gaussian_sigma == other.burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
+            and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
             and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
@@ -1211,6 +1212,7 @@ class AnalysisSettings(SQLModel, table=True):
                 self.burst_min_duration,
                 self.burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
+                self.spikes_sync_jitter_window,
                 self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,

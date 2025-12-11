@@ -135,6 +135,21 @@ class TensorstoreZarrReader:
 
     # ___________________________Public Methods___________________________
 
+    def close(self) -> None:
+        """Close the tensorstore and release file handles.
+
+        This is important for releasing file handles on external drives
+        to allow proper ejection.
+        """
+        # Delete the store reference to allow tensorstore to close files
+        if hasattr(self, "_store"):
+            del self._store
+        # Clear metadata to release any file handles
+        if hasattr(self, "_metadata"):
+            self._metadata = []
+        if hasattr(self, "_sequence"):
+            self._sequence = None
+
     def isel(
         self,
         indexers: Mapping[str, int] | None = None,

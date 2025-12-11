@@ -35,6 +35,10 @@ from ._plot_inferred_spike_synchrony import (
     _get_spike_synchrony_matrix_from_db,
     _plot_spike_synchrony_data,
 )
+from ._plot_spike_max_lag_correlation import (
+    _get_spike_max_lag_correlation_matrix_from_db,
+    _plot_spike_max_lag_correlation_data,
+)
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
@@ -198,6 +202,20 @@ def _plot_stimulated_spike_correlation(
     )
 
 
+def _plot_stimulated_spike_max_lag_correlation(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot inferred spikes max-lag cross-correlation for stimulated ROIs only."""
+    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
+    _plot_spike_max_lag_correlation_data(
+        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
+    )
+
+
 # =============================================================================
 # Inferred Spikes - Non-Stimulated ROIs
 # =============================================================================
@@ -245,9 +263,59 @@ def _plot_non_stimulated_spike_correlation(
     )
 
 
+def _plot_non_stimulated_spike_max_lag_correlation(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot inferred spikes max-lag cross-correlation for non-stimulated ROIs only."""
+    filtered_rois = _filter_rois_by_stimulation(
+        engine, fov_name, rois, stimulated=False
+    )
+    _plot_spike_max_lag_correlation_data(
+        widget,
+        engine,
+        fov_name,
+        filtered_rois,
+        run_id,
+        title_suffix=" (Non-Stimulated)",
+    )
+
+
 # =============================================================================
 # Helper functions for sorted combined plots
 # =============================================================================
+
+
+def _detach_heatmap_interaction(plot: pg.PlotItem) -> None:
+    """Detach any existing hover and click handlers from a heatmap plot.
+
+    Parameters
+    ----------
+    plot : pg.PlotItem
+        Plot item to clean up
+    """
+    old_hover = plot.property("evoked_hover_handler")
+    old_click = plot.property("evoked_click_handler")
+
+    # Disconnect from scene signals if scene exists
+    scene = plot.scene()
+    if scene is not None:
+        if old_hover is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                scene.sigMouseMoved.disconnect(old_hover)
+
+        if old_click is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                scene.sigMouseClicked.disconnect(old_click)
+
+    # Always clear the property references, even if no scene
+    if old_hover is not None:
+        plot.setProperty("evoked_hover_handler", None)
+    if old_click is not None:
+        plot.setProperty("evoked_click_handler", None)
 
 
 def _attach_heatmap_interaction(
@@ -266,15 +334,8 @@ def _attach_heatmap_interaction(
     n_rows, n_cols = values.shape
     scene = plot.scene()
 
-    # Avoid stacking multiple handlers
-    old_hover = plot.property("evoked_hover_handler")
-    old_click = plot.property("evoked_click_handler")
-    if old_hover is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseMoved.disconnect(old_hover)
-    if old_click is not None:
-        with contextlib.suppress(TypeError, RuntimeError):
-            scene.sigMouseClicked.disconnect(old_click)
+    # Clean up any existing handlers first
+    _detach_heatmap_interaction(plot)
 
     def _on_mouse_moved(pos: pg.Point) -> None:
         if not plot.sceneBoundingRect().contains(pos):
@@ -428,6 +489,7 @@ def _plot_sorted_calcium_synchrony(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -448,7 +510,7 @@ def _plot_sorted_calcium_synchrony(
         return
 
     # Get synchrony matrix from database
-    sync_matrix, roi_labels, global_sync, jitter_ms = _get_synchrony_matrix_from_db(
+    sync_matrix, roi_labels, _, jitter_ms = _get_synchrony_matrix_from_db(
         engine, fov_name, run_id
     )
 
@@ -478,11 +540,37 @@ def _plot_sorted_calcium_synchrony(
     # Build title with counts
     n_stim = len([r for r in final_rois if r in stim_rois])
     n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
     title = f"Calcium Peaks Synchrony (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     if jitter_ms is not None:
         title += f" | Jitter: {jitter_ms}ms"
-    if global_sync is not None:
-        title += f" | Global: {global_sync:.3f}"
+
+    # Add medians (always use filtered matrix values, not database global_sync)
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
@@ -522,6 +610,7 @@ def _plot_sorted_calcium_correlation(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -570,7 +659,35 @@ def _plot_sorted_calcium_correlation(
     # Build title with counts
     n_stim = len([r for r in final_rois if r in stim_rois])
     n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
     title = f"Max-Lag Cross-Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+
+    # Add medians
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
@@ -615,6 +732,7 @@ def _plot_sorted_spike_synchrony(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -638,7 +756,7 @@ def _plot_sorted_spike_synchrony(
     (
         sync_matrix,
         roi_labels,
-        global_sync,
+        _,  # global_sync not used - we calculate from filtered matrix
         jitter_ms,
     ) = _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id)
 
@@ -668,11 +786,37 @@ def _plot_sorted_spike_synchrony(
     # Build title with counts
     n_stim = len([r for r in final_rois if r in stim_rois])
     n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
     title = f"Spike Synchrony (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     if jitter_ms is not None:
         title += f" | Jitter: {jitter_ms}ms"
-    if global_sync is not None:
-        title += f" | Global: {global_sync:.3f}"
+
+    # Add medians (always use filtered matrix values, not database global_sync)
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
@@ -712,6 +856,7 @@ def _plot_sorted_spike_correlation(
     assert plot is not None
 
     # Clear previous plot
+    _detach_heatmap_interaction(plot)
     plot.clear()
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -762,7 +907,154 @@ def _plot_sorted_spike_correlation(
     # Build title with counts
     n_stim = len([r for r in final_rois if r in stim_rois])
     n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
     title = f"Spike Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+
+    # Add medians
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
+
+    plot.setTitle(title)
+    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
+    plot.setLabel("left", "ROI (Stim → Non-Stim)")
+
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+
+    # Add visual marker for stimulated ROI block (green rectangle)
+    if n_stim > 0:
+        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
+        rect.setPen(pg.mkPen(color="w", width=5))
+        rect.setBrush(pg.mkBrush(None))
+        plot.addItem(rect)
+
+    # Add hover + click interaction
+    _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
+
+
+def _plot_sorted_spike_max_lag_correlation(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot spike max-lag correlation with ROIs sorted by stimulation status.
+
+    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
+    This reveals network clustering based on stimulation.
+    """
+    from ._plot_spike_max_lag_correlation import _add_colorbar_to_widget
+
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    _detach_heatmap_interaction(plot)
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Hide shared legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle("Spike Max-Lag Correlation (Sorted - Need ≥2 ROIs)")
+        return
+
+    # Get correlation matrix from database
+    corr_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
+        engine, fov_name, run_id
+    )
+
+    if corr_matrix is None or roi_labels is None:
+        plot.setTitle("Spike Max-Lag Correlation (Sorted - No data)")
+        return
+
+    # Reorder matrix according to sorted ROIs
+    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
+        corr_matrix, roi_labels, all_sorted
+    )
+
+    if reordered_matrix is None or len(final_rois) < 2:
+        plot.setTitle("Spike Max-Lag Correlation (Sorted - Insufficient ROIs)")
+        return
+
+    # Plot the heatmap
+    img = pg.ImageItem(reordered_matrix)
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))
+    plot.addItem(img)
+
+    vb.invertY(True)
+    vb.setAspectLocked(True)
+
+    # Build title with counts
+    n_stim = len([r for r in final_rois if r in stim_rois])
+    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
+    title = f"Spike Max-Lag Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+
+    # Add medians
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (Stim → Non-Stim)")

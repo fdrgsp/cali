@@ -73,7 +73,7 @@ def compute_fov_analysis(
         active_rois.append(roi)
 
     if len(active_rois) < 2:
-        cali_logger.debug(
+        cali_logger.info(
             f"FOV {fov.name}: Not enough active ROIs ({len(active_rois)}) "
             "for correlation/synchrony analysis. Need at least 2."
         )
@@ -150,7 +150,7 @@ def compute_fov_analysis(
                     spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
     if len(roi_labels) < 2:
-        cali_logger.debug(
+        cali_logger.info(
             f"FOV {fov.name}: Not enough ROIs with valid traces "
             f"({len(roi_labels)}) for correlation analysis."
         )

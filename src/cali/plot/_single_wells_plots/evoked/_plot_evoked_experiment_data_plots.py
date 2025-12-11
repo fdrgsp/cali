@@ -470,7 +470,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(STIMULATED_COLOR, width=1),
+                pen=pg.mkPen(STIMULATED_COLOR, width=4),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -491,8 +491,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        symbolBrush=pg.mkBrush("yellow"),
-                        symbolSize=5,
+                        # symbolBrush=pg.mkBrush("yellow"),
+                        symbolBrush=pg.mkBrush("k"),
+                        symbolSize=6,
                     )
 
         first_stim_trace = stimulated_data[0][1].dec_dff
@@ -513,7 +514,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=4),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -534,8 +535,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        symbolBrush=pg.mkBrush("yellow"),
-                        symbolSize=5,
+                        # symbolBrush=pg.mkBrush("yellow"),
+                        symbolBrush=pg.mkBrush("k"),
+                        symbolSize=6,
                     )
 
         if last_raw_trace is None:
@@ -1030,7 +1032,8 @@ def _add_led_stimulation_bands(
     run_id: int,
     frame_rate: float | None = None,
     stride: int = 1,
-    color: tuple[int, int, int, int] = (255, 255, 0, 150),
+    # color: tuple[int, int, int, int] = (255, 255, 0, 150),
+    color: tuple[int, int, int, int] = (0, 0, 255, 200),
 ) -> None:
     """Add vertical bands for LED stimulation events.
 

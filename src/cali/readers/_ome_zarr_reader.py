@@ -90,6 +90,24 @@ class OMEZarrReader:
         """Return the MDASequence if it exists."""
         return self._sequence
 
+    def close(self) -> None:
+        """Close the zarr store and release file handles.
+
+        This is important for releasing file handles on external drives
+        to allow proper ejection.
+        """
+        # Close the zarr store if it has a close method
+        if hasattr(self._store, "close"):
+            try:
+                self._store.close()
+            except Exception:
+                pass  # Zarr v2 vs v3 compatibility
+        # Delete the store reference
+        if hasattr(self, "_store"):
+            del self._store
+        if hasattr(self, "_sequence"):
+            self._sequence = None
+
     def metadata(self) -> list[dict]:
         """Return the unstructured full metadata."""
         # concatenate the metadata for all the positions

@@ -37,3 +37,9 @@ ask to claude:
 - link image viewer with plots
 
 - fix y axis burst graph + fix burst graph on traces because is not showing the same things...
+
+- the run option should be updated depending on the position input in the posiotion to analyze widget
+
+- select black or white background for pyqtgraph
+
+- fix: titles correlation are too long
