@@ -55,6 +55,9 @@ class _SingleWellGraphWidget(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
+        # Global pg config tweaks (optional)
+        pg.setConfigOptions(antialias=False, background="w", foreground="k")
+
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumWidth(200)
 
@@ -109,10 +112,6 @@ class _SingleWellGraphWidget(QWidget):
 
         # Colorbar for raster plots (initially None, created when needed)
         self.colorbar: pg.ColorBarItem | None = None
-
-        # Global pg config tweaks (optional)
-        pg.setConfigOptions(antialias=False)
-        # pg.setConfigOptions(antialias=False, background="w", foreground="k")
 
         # Layout
         layout = QVBoxLayout(self)
@@ -464,6 +463,7 @@ class _SingleWellGraphWidget(QWidget):
             ("spike_raster_click_handler", "sigMouseClicked"),
             ("spike_intensity_heatmap_click_handler", "sigMouseClicked"),
             ("raster_click_handler", "sigMouseClicked"),
+            ("neuropil_click_handler", "sigMouseClicked"),
         ]:
             handler = plot.property(prop_name)
             if handler is not None:
@@ -562,6 +562,9 @@ class _MultilWellGraphWidget(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
+        # Global pg config tweaks (optional)
+        pg.setConfigOptions(antialias=False, background="w", foreground="k")
+
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumWidth(200)
 
@@ -601,9 +604,6 @@ class _MultilWellGraphWidget(QWidget):
         self.plot_widget = pg.PlotWidget(self)
         self.plot_item = self.plot_widget.getPlotItem()
         self.plot_item.showGrid(x=False, y=True, alpha=0.3)
-
-        # Global pg config tweaks (optional)
-        pg.setConfigOptions(antialias=False)
 
         # Layout
         layout = QVBoxLayout(self)

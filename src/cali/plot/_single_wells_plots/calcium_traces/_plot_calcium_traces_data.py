@@ -264,13 +264,13 @@ def _draw_traces(
 
         # ---- Choose color ----
         if n_rois == 1:
-            # Single trace → white
-            color = "w"  # or (255, 255, 255) or pg.mkColor("white")
+            # Single trace → black
+            color = "k"
         else:
             # Multi-trace → distinct colors
             color = pg.intColor(i, hues=max(n_rois, 16))
 
-        pen = pg.mkPen(color, width=1)
+        pen = pg.mkPen(color, width=2)
 
         curve = plot.plot(
             x,
@@ -326,7 +326,7 @@ def _draw_peaks_and_thresholds(
             y_i[peaks_ds],
             pen=None,
             symbol="o",
-            symbolBrush=pg.mkBrush("yellow"),
+            symbolBrush=pg.mkBrush("k"),
             symbolSize=5,
         )
 
@@ -354,7 +354,7 @@ def _draw_peaks_and_thresholds(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "orange",
+                "magenta",
                 style=pg.QtCore.Qt.PenStyle.DashLine,
                 width=3,
             ),
@@ -375,7 +375,7 @@ def _draw_peaks_and_thresholds(
         plot.plot(
             [x[0], x[0]],
             [y0, y1],
-            pen=pg.mkPen("orange", width=3),
+            pen=pg.mkPen("magenta", width=3),
         )
 
 
