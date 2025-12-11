@@ -47,6 +47,7 @@ from ._single_wells_plots.correlation._plot_connectivity import (
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
     _plot_sorted_calcium_synchrony,
+    _plot_sorted_dec_dff_correlation,
     _plot_sorted_spike_correlation,
     _plot_sorted_spike_max_lag_correlation,
     _plot_sorted_spike_synchrony,
@@ -247,7 +248,8 @@ STIMULATED_SPIKE_MAX_LAG_CORRELATION = "Stimulated Inferred Spikes Max-Lag Cross
 NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Zero-Lag Pearson Correlation"  # noqa: E501
 NON_STIMULATED_SPIKE_MAX_LAG_CORRELATION = "Non-Stimulated Inferred Spikes Max-Lag Cross-Correlation"  # noqa: E501
 SORTED_CALCIUM_SYNCHRONY = "Calcium Peaks Jitter Synchrony (Sorted: Stim → Non-Stim)"
-SORTED_CALCIUM_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
+SORTED_CALCIUM_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
+SORTED_CALCIUM_LAG_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
 SORTED_SPIKE_SYNCHRONY = "Inferred Spikes Jitter Synchrony (Sorted: Stim → Non-Stim)"
 SORTED_SPIKE_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
 SORTED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
@@ -623,6 +625,14 @@ AnalysisProduct(
     name=STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name=SORTED_CALCIUM_DFF_CORRELATION,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_dec_dff_correlation,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

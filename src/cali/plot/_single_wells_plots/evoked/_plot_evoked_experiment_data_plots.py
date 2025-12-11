@@ -491,8 +491,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        symbolBrush=pg.mkBrush("yellow"),
-                        symbolSize=6,
+                        symbolBrush=pg.mkBrush("k"),
+                        symbolSize=5,
                     )
 
         first_stim_trace = stimulated_data[0][1].dec_dff
@@ -534,8 +534,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        symbolBrush=pg.mkBrush("yellow"),
-                        symbolSize=6,
+                        symbolBrush=pg.mkBrush("k"),
+                        symbolSize=5,
                     )
 
         if last_raw_trace is None:
@@ -569,7 +569,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         if with_peaks:
             peak_item = pg.ScatterPlotItem(
                 pen=None,
-                brush=pg.mkBrush("yellow"),
+                brush=pg.mkBrush("k"),
                 size=5,
                 symbol="o",
             )
@@ -1050,7 +1050,7 @@ def _add_led_stimulation_bands(
     stride : int
         Downsampling stride used in the plot (default 1)
     color : tuple[int, int, int, int]
-        RGBA color tuple for the bands (default yellow: 255, 255, 0, 50)
+        RGBA color tuple for the bands (default blue: 0, 0, 255, 200)
     """
     with Session(engine) as session:
         # Get analysis settings from run_id

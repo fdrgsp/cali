@@ -85,7 +85,7 @@ def _get_spike_synchrony_matrix_from_db(
                     )
                 ).first()
                 if analysis_settings:
-                    jitter_window_ms = analysis_settings.spikes_sync_cross_corr_lag
+                    jitter_window_ms = analysis_settings.spikes_sync_jitter_window
 
             sync_matrix = np.asarray(
                 fov_analysis.spike_jitter_synchrony_matrix, dtype=float

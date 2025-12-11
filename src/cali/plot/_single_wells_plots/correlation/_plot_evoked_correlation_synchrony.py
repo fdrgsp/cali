@@ -27,6 +27,9 @@ from ._plot_calcium_peaks_synchrony import (
     _get_synchrony_matrix_from_db,
     _plot_peak_event_synchrony_data,
 )
+from ._plot_calcium_traces_correlation import (
+    _get_dec_dff_correlation_matrix_from_db,
+)
 from ._plot_inferred_spike_correlation import (
     _get_spike_correlation_matrix_from_db,
     _plot_spike_cross_correlation_data,
@@ -1048,6 +1051,128 @@ def _plot_sorted_spike_max_lag_correlation(
         non_stim_median = np.nan
 
     title = f"Spike Max-Lag Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+
+    # Add medians
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
+
+    plot.setTitle(title)
+    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
+    plot.setLabel("left", "ROI (Stim → Non-Stim)")
+
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+
+    # Add visual marker for stimulated ROI block (green rectangle)
+    if n_stim > 0:
+        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
+        rect.setPen(pg.mkPen(color="w", width=5))
+        rect.setBrush(pg.mkBrush(None))
+        plot.addItem(rect)
+
+    # Add hover + click interaction
+    _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
+
+
+def _plot_sorted_dec_dff_correlation(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot zero-lag dec DF/F correlation with ROIs sorted by stimulation status.
+
+    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
+    This reveals network clustering based on stimulation.
+    """
+    from ._plot_calcium_traces_correlation import _add_colorbar_to_widget
+
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    _detach_heatmap_interaction(plot)
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Hide shared legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - Need ≥2 ROIs)")
+        return
+
+    # Get correlation matrix from database
+    corr_matrix, roi_labels = _get_dec_dff_correlation_matrix_from_db(
+        engine, fov_name, run_id
+    )
+
+    if corr_matrix is None or roi_labels is None:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - No data)")
+        return
+
+    # Reorder matrix according to sorted ROIs
+    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
+        corr_matrix, roi_labels, all_sorted
+    )
+
+    if reordered_matrix is None or len(final_rois) < 2:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - Insufficient ROIs)")
+        return
+
+    # Plot the heatmap
+    img = pg.ImageItem(reordered_matrix)
+    cmap = pg.colormap.get("viridis")
+    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))
+    plot.addItem(img)
+
+    vb.invertY(True)
+    vb.setAspectLocked(True)
+
+    # Build title with counts
+    n_stim = len([r for r in final_rois if r in stim_rois])
+    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
+    title = (
+        f"Zero-Lag Deconvolved DF/F Correlation "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
 
     # Add medians
     if not np.isnan(stim_median):
