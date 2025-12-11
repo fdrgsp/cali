@@ -132,12 +132,15 @@ def _plot_cell_size_data(
     x_positions = np.arange(len(roi_labels), dtype=float)
     y_values = np.asarray(cell_sizes, dtype=float)
 
-    # Single ScatterPlotItem for all ROIs
+    # Multi-color ScatterPlotItem with one color per ROI
+    n_rois = len(roi_labels)
+    brushes = [pg.mkBrush(pg.intColor(i, hues=max(n_rois, 16))) for i in range(n_rois)]
+
     scatter = pg.ScatterPlotItem(
         x=x_positions,
         y=y_values,
         pen=None,
-        brush=pg.mkBrush(200, 200, 255, 200),
+        brush=brushes,
         size=7,
     )
     plot.addItem(scatter)

@@ -388,15 +388,15 @@ def _draw_population_activity_pg(
     plot.plot(
         time_axis,
         raw_activity,
-        pen=pg.mkPen((200, 200, 200), width=1),
+        pen=pg.mkPen((0, 0, 0), width=2),
         name="Raw Activity",
     )
 
-    # Smoothed activity (yellow)
+    # Smoothed activity (magenta)
     plot.plot(
         time_axis,
         smoothed_activity,
-        pen=pg.mkPen("yellow", width=3),
+        pen=pg.mkPen("magenta", width=3),
         name="Smoothed Activity",
     )
 
@@ -404,7 +404,7 @@ def _draw_population_activity_pg(
     threshold_line = pg.InfiniteLine(
         pos=threshold_value,
         angle=0,
-        pen=pg.mkPen("yellow", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
+        pen=pg.mkPen("magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
     )
     threshold_line.setZValue(5)
     plot.addItem(threshold_line)
@@ -413,12 +413,11 @@ def _draw_population_activity_pg(
     plot.plot(
         [time_axis[0]],
         [threshold_value],
-        pen=pg.mkPen("yellow", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
+        pen=pg.mkPen("magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
         name="Burst Threshold",
     )
 
     # Burst regions (green translucent)
-    burst_added_to_legend = False
     for start_idx, end_idx in bursts:
         start_idx = max(start_idx, 0)
         end_idx = min(end_idx, len(time_axis))
@@ -429,22 +428,12 @@ def _draw_population_activity_pg(
 
         region = pg.LinearRegionItem(
             values=[t0, t1],
-            brush=pg.mkBrush(0, 255, 0, 60),
+            brush=pg.mkBrush(0, 255, 0, 90),
             pen=pg.mkPen(None),
             movable=False,
         )
         region.setZValue(1)
         plot.addItem(region)
-
-        if not burst_added_to_legend:
-            burst_legend_item = pg.PlotCurveItem(
-                pen=pg.mkPen(None),
-                brush=pg.mkBrush(0, 255, 0, 60),
-                fillLevel=0,
-                name="Detected Bursts",
-            )
-            plot.addItem(burst_legend_item)
-            burst_added_to_legend = True
 
     # --- Use shared legend if provided, otherwise create plot-local legend ---
     if legend is not None:
@@ -452,20 +441,20 @@ def _draw_population_activity_pg(
         legend.clear()
 
         # Add legend items manually
-        raw_item = pg.PlotDataItem(pen=pg.mkPen((200, 200, 200), width=1))
+        raw_item = pg.PlotDataItem(pen=pg.mkPen((0, 0, 0), width=3))
         legend.addItem(raw_item, "Raw Activity")
 
-        smoothed_item = pg.PlotDataItem(pen=pg.mkPen("yellow", width=3))
+        smoothed_item = pg.PlotDataItem(pen=pg.mkPen("magenta", width=3))
         legend.addItem(smoothed_item, "Smoothed Activity")
 
         threshold_item = pg.PlotDataItem(
-            pen=pg.mkPen("yellow", width=3, style=pg.QtCore.Qt.PenStyle.DashLine)
+            pen=pg.mkPen("magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine)
         )
         legend.addItem(threshold_item, "Burst Threshold")
 
-        if burst_added_to_legend:
-            burst_item = pg.PlotCurveItem(pen=pg.mkPen(0, 255, 0, 60))
-            legend.addItem(burst_item, "Detected Bursts")
+        # Use solid green line with width 3 for burst legend
+        burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+        legend.addItem(burst_item, "Detected Bursts")
 
         legend.setVisible(True)
 
@@ -646,9 +635,146 @@ def _plot_inferred_spikes_normalized_with_bursts(
 
             region = pg.LinearRegionItem(
                 values=(x_start, x_end),
-                brush=pg.mkBrush(0, 255, 0, 50),
+                brush=pg.mkBrush(0, 255, 0, 90),
                 pen=pg.mkPen(None),
                 movable=False,
             )
             region.setZValue(-5)  # behind traces
             plot.addItem(region)
+
+        # Add legend for detected bursts
+        legend = getattr(widget, "legend", None)
+        if legend is not None:
+            legend.clear()
+            # Use solid green line with width 3 for burst legend
+            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            legend.addItem(burst_item, "Detected Bursts")
+            legend.setVisible(True)
+
+
+def _plot_inferred_spike_raster_with_bursts(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot thresholded spike raster with superimposed *global* burst periods.
+
+    Network bursts are always computed from ALL active ROIs for the given run
+    (global network activity). The ROI selection only affects which raster rows
+    are drawn, not how bursts are defined.
+    """
+    from cali.plot._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
+        _generate_spike_raster_plot,
+    )
+
+    plot = widget.plot_item
+    assert plot is not None
+
+    # ---- remove ROI legend for this plot ----
+    if hasattr(widget, "legend") and widget.legend is not None:
+        if hasattr(widget.legend, "clear"):
+            widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    if run_id is None:
+        plot.clear()
+        cali_logger.warning(
+            "No run_id provided for inferred spike raster with bursts plot."
+        )
+        plot.setTitle(
+            "No analysis run selected.\nPlease select a run from the dropdown."
+        )
+        plot.setLabel("bottom", "Frames")
+        plot.setLabel("left", "ROI")
+        return
+
+    # ------------- Burst detection (GLOBAL, ignore ROI subset) -------------#
+    # Use the SAME functions as _plot_inferred_spike_burst_activity
+    burst_params = _get_burst_parameters(engine, fov_name, rois=None, run_id=run_id)
+    if burst_params is None:
+        # No burst parameters, just plot regular raster without bursts
+        _generate_spike_raster_plot(widget, engine, fov_name, rois=rois, run_id=run_id)
+        return
+
+    burst_threshold, min_burst_duration_ms, smoothing_sigma_sec = burst_params
+
+    spike_trains_array, _, time_axis = _get_population_spike_data(
+        engine, fov_name, rois=None, run_id=run_id
+    )
+
+    bursts: list[tuple[int, int]] = []
+    if spike_trains_array is not None:
+        # Compute frame rate from time axis
+        num_frames = len(time_axis)
+        if num_frames > 1:
+            total_time_sec = float(time_axis[-1] - time_axis[0])
+            frame_rate = (
+                (num_frames - 1) / total_time_sec if total_time_sec > 0 else 10.0
+            )
+        else:
+            frame_rate = 10.0
+
+        # Convert parameters to frame units
+        min_burst_duration = max(1, int((min_burst_duration_ms / 1000.0) * frame_rate))
+        smoothing_sigma = smoothing_sigma_sec * frame_rate
+
+        population_activity = np.mean(spike_trains_array, axis=0)
+
+        # Smooth before detection
+        if smoothing_sigma > 0:
+            from scipy.ndimage import gaussian_filter1d
+
+            smoothed_activity = gaussian_filter1d(
+                population_activity, sigma=smoothing_sigma, mode="nearest"
+            )
+        else:
+            smoothed_activity = population_activity
+
+        # Detect bursts (threshold passed as fraction, not %)
+        bursts = _detect_population_bursts(
+            smoothed_activity, burst_threshold / 100.0, min_burst_duration
+        )
+
+    # -------------------- Plot raster (subset) -------------------#
+    _generate_spike_raster_plot(widget, engine, fov_name, rois=rois, run_id=run_id)
+
+    # ------------------------ Overlay global bursts ------------------------ #
+    if bursts and len(bursts) > 0:
+        plot = widget.plot_item
+        assert plot is not None
+
+        for start_idx, end_idx in bursts:
+            start_idx = max(start_idx, 0)
+            # Use frame indices directly (matching raster x-axis)
+            if end_idx <= start_idx:
+                continue
+
+            # Frame indices for x-axis (matching raster)
+            x_start = float(start_idx)
+            x_end = float(end_idx - 1)
+
+            region = pg.LinearRegionItem(
+                values=(x_start, x_end),
+                brush=pg.mkBrush(0, 255, 0, 90),
+                pen=pg.mkPen(None),
+                movable=False,
+            )
+            region.setZValue(-5)  # behind raster dots
+            plot.addItem(region)
+
+        # Update title to indicate burst overlay
+        plot.setTitle(
+            "Inferred Spike Events (binary) Raster Plot (Thresholded) "
+            "with Network Bursts"
+        )
+
+        # Add legend for detected bursts
+        legend = getattr(widget, "legend", None)
+        if legend is not None:
+            legend.clear()
+            # Use solid green line with width 3 for burst legend
+            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            legend.addItem(burst_item, "Detected Bursts")
+            legend.setVisible(True)

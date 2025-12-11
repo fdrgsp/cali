@@ -82,9 +82,9 @@ GLOBAL_SPIKE_THRESHOLD = "global"
 MULTIPLIER = "multiplier"
 
 # ==================== Default Values ====================
-DEFAULT_BURST_THRESHOLD = 30.0
+DEFAULT_BURST_THRESHOLD = 65.0
 DEFAULT_MIN_BURST_DURATION = 3
-DEFAULT_BURST_GAUSS_SIGMA = 2.0
+DEFAULT_BURST_GAUSS_SIGMA = 0.0
 DEFAULT_FRAME_RATE = 10.0  # frames per second (fps)
 DEFAULT_DFF_WINDOW = 10000  # milliseconds (10 seconds)
 DEFAULT_PEAKS_DISTANCE = 200.0  # milliseconds (2 frames at 10 fps)

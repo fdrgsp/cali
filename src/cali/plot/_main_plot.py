@@ -26,6 +26,7 @@ from ._multi_wells_plots import (
 )
 from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
     _plot_inferred_spike_burst_activity,
+    _plot_inferred_spike_raster_with_bursts,
     _plot_inferred_spikes_normalized_with_bursts,
 )
 from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
@@ -192,6 +193,7 @@ INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF = "Inferred Spikes (Thresholded) with D
 INFERRED_SPIKES_THRESHOLDED_NORMALIZED = "Inferred Spikes (Thresholded) Normalized"
 INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY = "Inferred Spikes (Thresholded) Normalized (Active Only)"  # noqa: E501
 INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normalized with Network Bursts"  # noqa: E501
+INFERRED_SPIKE_RASTER_WITH_BURSTS = "Inferred Spikes (Thresholded) Raster Plot with Network Bursts"  # noqa: E501
 INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony"
 INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
 INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
@@ -487,6 +489,13 @@ AnalysisProduct(
     name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes_normalized_with_bursts,
+    category="Inferred Spike Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=INFERRED_SPIKE_RASTER_WITH_BURSTS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_inferred_spike_raster_with_bursts,
     category="Inferred Spike Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )

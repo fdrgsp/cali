@@ -128,12 +128,18 @@ def _clear_connectivity_highlight(plot: pg.PlotItem) -> None:
     base_brushes = plot.property("connectivity_base_brushes")
 
     if isinstance(graph_item, pg.GraphItem) and base_brushes is not None:
-        # Update both the scatter AND GraphItem's internal data
-        graph_item.scatter.setBrush(base_brushes)
+        # Block signals while updating visual appearance to prevent spurious events
+        scatter = graph_item.scatter
+        scatter.blockSignals(True)
         try:
-            graph_item.data["symbolBrush"] = base_brushes
-        except Exception:
-            pass
+            # Update both the scatter AND GraphItem's internal data
+            scatter.setBrush(base_brushes)
+            try:
+                graph_item.data["symbolBrush"] = base_brushes
+            except Exception:
+                pass
+        finally:
+            scatter.blockSignals(False)
 
     edge_items = plot.property("connectivity_highlight_edges") or []
     for item in edge_items:
@@ -169,12 +175,18 @@ def _highlight_node_and_neighbors(
     for j in neighbors:
         new_brushes[j] = pg.mkBrush(255, 255, 0, 255)  # neighbors
 
-    # Apply to scatter AND GraphItem internal data (so zoom doesn't reset)
-    graph_item.scatter.setBrush(new_brushes)
+    # Block signals while updating visual appearance to prevent spurious events
+    scatter = graph_item.scatter
+    scatter.blockSignals(True)
     try:
-        graph_item.data["symbolBrush"] = new_brushes
-    except Exception:
-        pass
+        # Apply to scatter AND GraphItem internal data (so zoom doesn't reset)
+        scatter.setBrush(new_brushes)
+        try:
+            graph_item.data["symbolBrush"] = new_brushes
+        except Exception:
+            pass
+    finally:
+        scatter.blockSignals(False)
 
     # Remove old edges
     old_edges = plot.property("connectivity_highlight_edges") or []
