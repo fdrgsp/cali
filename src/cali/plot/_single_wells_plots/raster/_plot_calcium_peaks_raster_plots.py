@@ -161,11 +161,11 @@ def _generate_raster_plot(
         else:
             # No amplitude data
             amplitude_colors = False
-            colors = [(255, 255, 255, 255)] * len(event_data)
+            colors = [(0, 0, 0, 255)] * len(event_data)
     else:
-        # Fallback: all white points
+        # Fallback: all black points
         amplitude_colors = False
-        colors = [(255, 255, 255, 255)] * len(event_data)
+        colors = [(0, 0, 0, 255)] * len(event_data)
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (events, color) in enumerate(zip(event_data, colors)):

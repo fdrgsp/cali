@@ -129,8 +129,8 @@ def _generate_spike_raster_plot_raw(
     per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
     for times in event_data:
-        # same length, all white
-        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+        # same length, all black
+        per_roi_colors.append([(0, 0, 0, 255)] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -289,8 +289,8 @@ def _generate_spike_raster_plot(
     per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
     for times in event_data:
-        # same length, all white
-        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+        # same length, all black
+        per_roi_colors.append([(0, 0, 0, 255)] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
