@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from cali.analysis._fov_analysis import (
-    _compute_cross_correlation_matrix,
+    _compute_zero_lag_corr_matrix,
     compute_fov_analysis,
 )
 from cali.sqlmodel import FOV, ROI, AnalysisSettings, DataAnalysis, Traces
@@ -23,7 +23,7 @@ def test_zero_lag_correlation_on_dff_traces() -> None:
     trace2 = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     traces = [trace1, trace2]
 
-    corr_matrix = _compute_cross_correlation_matrix(traces)
+    corr_matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert corr_matrix is not None
     assert corr_matrix.shape == (2, 2)
@@ -42,7 +42,7 @@ def test_zero_lag_correlation_anticorrelated() -> None:
     trace2 = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
     traces = [trace1, trace2]
 
-    corr_matrix = _compute_cross_correlation_matrix(traces)
+    corr_matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert corr_matrix is not None
     # Perfect anticorrelation
@@ -58,7 +58,7 @@ def test_zero_lag_correlation_phase_shifted() -> None:
     trace2 = np.cos(t)  # 90 degree phase shift
     traces = [trace1, trace2]
 
-    corr_matrix = _compute_cross_correlation_matrix(traces)
+    corr_matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert corr_matrix is not None
     # Zero-lag correlation should be near zero for 90-degree phase shift
@@ -72,7 +72,7 @@ def test_zero_lag_correlation_constant_traces() -> None:
     trace2 = np.array([3.0, 3.0, 3.0, 3.0, 3.0])  # Constant
     traces = [trace1, trace2]
 
-    corr_matrix = _compute_cross_correlation_matrix(traces)
+    corr_matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert corr_matrix is not None
     # Correlation with constant trace is 0
@@ -88,7 +88,7 @@ def test_zero_lag_correlation_multiple_traces() -> None:
     trace4 = np.array([2.0, 4.0, 6.0, 8.0, 10.0])  # 2x trace1
     traces = [trace1, trace2, trace3, trace4]
 
-    corr_matrix = _compute_cross_correlation_matrix(traces)
+    corr_matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert corr_matrix is not None
     assert corr_matrix.shape == (4, 4)

@@ -469,39 +469,6 @@ def _calculate_jitter_window_synchrony(
     return float(_jitter_window_synchrony_numba(events_i, events_j, jitter_window))
 
 
-def _create_connectivity_matrix(
-    correlation_matrix: np.ndarray,
-    threshold_percentile: float = 90.0,
-) -> np.ndarray:
-    """Create binary connectivity matrix from correlation matrix.
-
-    Parameters
-    ----------
-    correlation_matrix : np.ndarray
-        Pairwise correlation matrix
-    threshold_percentile : float
-        Percentile threshold (0-100). Only correlations above this percentile
-        become connections.
-
-    Returns
-    -------
-    np.ndarray
-        Binary connectivity matrix (1 = connected, 0 = not connected)
-    """
-    # Exclude diagonal (self-correlations = 1.0) for threshold calculation
-    off_diagonal_mask = ~np.eye(correlation_matrix.shape[0], dtype=bool)
-    off_diagonal_values = correlation_matrix[off_diagonal_mask]
-
-    if len(off_diagonal_values) == 0:
-        return np.eye(correlation_matrix.shape[0])
-
-    # Calculate threshold
-    threshold = np.percentile(off_diagonal_values, threshold_percentile)
-
-    # Create binary connectivity matrix
-    return (correlation_matrix >= threshold).astype(int)
-
-
 # =============================================================================
 # Numba-optimized functions
 # =============================================================================
@@ -641,10 +608,10 @@ def _max_cross_correlation_numba(
     return max_corr, best_lag
 
 
-def _compute_cross_correlation_matrix(
+def _compute_zero_lag_corr_matrix(
     traces: list[np.ndarray],
 ) -> np.ndarray | None:
-    """Compute pairwise Pearson correlation matrix for traces (zero-lag).
+    """Compute pairwise zero-lag Pearson correlation matrix for traces.
 
     Uses z-scored traces and computes standard Pearson correlation coefficient
     at zero lag, following the approach used in CaImAn and standard practice.

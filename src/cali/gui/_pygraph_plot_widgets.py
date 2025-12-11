@@ -112,7 +112,7 @@ class _SingleWellGraphWidget(QWidget):
 
         # Global pg config tweaks (optional)
         pg.setConfigOptions(antialias=False)
-        # pg.setConfigOptions(antialias=True, background="w", foreground="k")
+        # pg.setConfigOptions(antialias=False, background="w", foreground="k")
 
         # Layout
         layout = QVBoxLayout(self)

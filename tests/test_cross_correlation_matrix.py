@@ -10,7 +10,7 @@ Tests verify that:
 import numpy as np
 import pytest
 
-from cali.analysis._fov_analysis import _compute_cross_correlation_matrix
+from cali.analysis._fov_analysis import _compute_zero_lag_corr_matrix
 
 
 def test_perfect_correlation() -> None:
@@ -18,7 +18,7 @@ def test_perfect_correlation() -> None:
     trace = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     traces = [trace, trace.copy()]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     assert matrix.shape == (2, 2)
@@ -34,7 +34,7 @@ def test_perfect_anticorrelation() -> None:
     trace2 = -trace1
     traces = [trace1, trace2]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     assert np.isclose(matrix[0, 1], -1.0, atol=1e-10)
@@ -47,7 +47,7 @@ def test_zero_correlation() -> None:
     trace2 = np.random.randn(1000)
     traces = [trace1, trace2]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     # With enough samples, random traces should be uncorrelated
@@ -60,7 +60,7 @@ def test_constant_trace() -> None:
     trace2 = np.array([3.0, 3.0, 3.0, 3.0, 3.0])  # Constant
     traces = [trace1, trace2]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     # Correlation with constant trace should be 0
@@ -80,7 +80,7 @@ def test_matches_numpy_corrcoef() -> None:
         np.random.randn(100),
     ]
 
-    our_matrix = _compute_cross_correlation_matrix(traces)
+    our_matrix = _compute_zero_lag_corr_matrix(traces)
     numpy_matrix = np.corrcoef(traces)
 
     assert our_matrix is not None
@@ -94,14 +94,14 @@ def test_different_length_traces_raises() -> None:
     traces = [trace1, trace2]
 
     with pytest.raises(ValueError, match="All traces must have same length"):
-        _compute_cross_correlation_matrix(traces)
+        _compute_zero_lag_corr_matrix(traces)
 
 
 def test_insufficient_traces() -> None:
     """Test that <2 traces returns None."""
     traces = [np.array([1.0, 2.0, 3.0])]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is None
 
@@ -112,7 +112,7 @@ def test_symmetric_matrix() -> None:
     n_rois = 5
     traces = [np.random.randn(100) for _ in range(n_rois)]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     # Check symmetry
@@ -124,7 +124,7 @@ def test_correlation_bounds() -> None:
     np.random.seed(42)
     traces = [np.random.randn(100) for _ in range(10)]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     assert np.all(matrix >= -1.0)
@@ -138,7 +138,7 @@ def test_multiple_constant_traces() -> None:
     trace3 = np.array([1.0, 2.0, 3.0, 4.0])
     traces = [trace1, trace2, trace3]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     # Constant traces should have 0 correlation with everything (except self)
@@ -163,7 +163,7 @@ def test_phase_shifted_traces() -> None:
     trace2 = np.sin(t + np.pi / 2)  # 90 degree phase shift
     traces = [trace1, trace2]
 
-    matrix = _compute_cross_correlation_matrix(traces)
+    matrix = _compute_zero_lag_corr_matrix(traces)
 
     assert matrix is not None
     # Orthogonal sinusoids should have ~0 zero-lag correlation

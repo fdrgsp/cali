@@ -112,8 +112,7 @@ def plot_cell_size_bar_plot(
 ) -> None:
     """Plot cell size across conditions.
 
-    Cell size is stored on the ROI table, not DataAnalysis, so we need
-    a custom query.
+    Cell size is stored in DataAnalysis (versioned per run).
     """
     # Query data using ROI attribute query
     data_by_condition = _query_roi_attribute_by_condition(

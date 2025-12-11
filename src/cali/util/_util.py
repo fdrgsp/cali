@@ -222,11 +222,8 @@ def commit_fov_result(
                     # Update ROI properties from analysis
                     matching_roi.active = new_roi.active
                     matching_roi.stimulated = new_roi.stimulated
-                    # Update cell size if provided (set during extraction)
-                    if new_roi.cell_size is not None:
-                        matching_roi.cell_size = new_roi.cell_size
-                    if new_roi.cell_size_units is not None:
-                        matching_roi.cell_size_units = new_roi.cell_size_units
+                    matching_roi.cell_size = new_roi.cell_size
+                    matching_roi.cell_size_units = new_roi.cell_size_units
 
                     # Check if traces/analysis already exist for this analysis_result_id
                     # to avoid duplicates if analysis is run multiple times

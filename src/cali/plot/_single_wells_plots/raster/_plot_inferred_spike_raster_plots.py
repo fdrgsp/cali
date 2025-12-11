@@ -164,7 +164,11 @@ def _generate_spike_raster_plot_raw(
     y_axis.setStyle(showValues=False)
     y_axis.enableAutoSIPrefix(False)
 
-    plot.getViewBox().enableAutoRange(x=True, y=True)
+    # Set x-range to full frames with some padding at the end, enable autorange for y
+    total_frames = len(sample_trace) if sample_trace is not None else 0
+    if total_frames > 0:
+        plot.getViewBox().setXRange(0, total_frames * 1.05, padding=0)
+    plot.getViewBox().enableAutoRange(x=False, y=True)
 
     # ------------------------ Click → roiSelected ------------------------ #
     _attach_click_handlers_raster(widget, plot, active_rois)
@@ -240,9 +244,6 @@ def _generate_spike_raster_plot(
     active_rois: list[int] = []
     sample_trace: list[float] | None = None
 
-    float("inf")
-    float("-inf")
-
     for roi, traces, data_analysis in roi_data:
         if data_analysis is None or not traces.inferred_spikes:
             continue
@@ -259,8 +260,6 @@ def _generate_spike_raster_plot(
         rising = above_the & ~np.concatenate(([False], above_the[:-1]))
         spike_times = np.where(rising)[0]
         spike_amplitudes = inferred[spike_times]
-
-        spike_amplitudes = inferred[above_the]
 
         if spike_times.size == 0:
             continue
@@ -325,7 +324,11 @@ def _generate_spike_raster_plot(
     y_axis.setStyle(showValues=False)
     y_axis.enableAutoSIPrefix(False)
 
-    plot.getViewBox().enableAutoRange(x=True, y=True)
+    # Set x-range to full frames with some padding at the end, enable autorange for y
+    total_frames = len(sample_trace) if sample_trace is not None else 0
+    if total_frames > 0:
+        plot.getViewBox().setXRange(0, total_frames * 1.05, padding=0)
+    plot.getViewBox().enableAutoRange(x=False, y=True)
 
     # ------------------------ Click → roiSelected ------------------------ #
     _attach_click_handlers_raster(widget, plot, active_rois)
@@ -449,7 +452,7 @@ def _generate_spike_intensity_heatmap(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Intensity Heatmap (Raw Signal)")
+    plot.setTitle("Inferred Spikes Heatmap (Raw Signal)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -540,8 +543,10 @@ def _generate_spike_intensity_heatmap(
 
     # Viewbox settings: one flat band per ROI
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
-    vb.enableAutoRange(x=True, y=True)
+    vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
+    # Keep x-range fixed to show full frames with padding, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")
@@ -648,7 +653,7 @@ def _generate_spike_intensity_heatmap_thresholded(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Intensity Heatmap (Thresholded)")
+    plot.setTitle("Inferred Spikes Heatmap (Thresholded)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -752,8 +757,10 @@ def _generate_spike_intensity_heatmap_thresholded(
 
     # Viewbox settings: one flat band per ROI
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
-    vb.enableAutoRange(x=True, y=True)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
+    # Keep x-range fixed to show full frames, only autorange y
+    vb.enableAutoRange(x=False, y=True)
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")

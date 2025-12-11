@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from cali.analysis._util import (
-    _compute_cross_correlation_matrix,
+    _compute_zero_lag_corr_matrix,
     _detect_population_bursts,
     _get_calcium_peaks_event_correlations_matrix,
     _get_calcium_peaks_event_synchrony,
@@ -35,20 +35,21 @@ def compute_fov_analysis(
 
     This function calculates 6 pairwise metrics for all active ROIs in a FOV:
 
-    DF/F Calcium Traces:
-    0. Zero-lag Pearson correlation on DF/F traces
+    DF/F and Deconvolved DF/F Calcium Traces
+    -------------------
+    1. Zero-lag Pearson correlation on ΔF/F traces
+    2. Zero-lag Pearson correlation on deconvolved ΔF/F traces
 
-    Deconvolved DF/F Calcium Traces:
-    1. Zero-lag Pearson correlation on Deconvolved DF/F traces
+    Calcium Peaks
+    -------------
+    3. Jitter synchrony on calcium peak events (± jitter window)
+    4. Max-lag correlation on calcium peak events (within ± max_lag)
 
-    Calcium Peaks:
-    3. Event xCorr (lag) on calcium peak events
-    4. Jitter synchrony on calcium peak events
-
-    Inferred Spikes:
-    5. Zero-lag Pearson correlation on spike trains
-    6. Max-lag CCG (correlation from spike timing)
-    7. Jitter synchrony on spike events
+    Inferred Spikes
+    ---------------
+    5. Zero-lag Pearson correlation on binary spike trains
+    6. Max-lag CCG-like correlation on spike trains (within ± max_lag)
+    7. Jitter synchrony on spike trains (± jitter window)
 
     It requires that ROIs have traces and data_analysis attached
     (either via history or _new_* attributes).
@@ -145,9 +146,10 @@ def compute_fov_analysis(
                 # Threshold and binarize
                 spikes[spikes <= spike_threshold] = 0.0
                 spike_train = (spikes > 0.0).astype(float)
-                if spike_train.sum() > 0:
-                    spike_trains.append(spike_train)
-                    spike_data_dict[str(roi.label_value)] = spike_train.tolist()
+                # Always append spike train, even if sum == 0
+                # This ensures spike matrices have same dimensions as active_roi_labels
+                spike_trains.append(spike_train)
+                spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
     if len(roi_labels) < 2:
         cali_logger.info(
@@ -156,24 +158,34 @@ def compute_fov_analysis(
         )
         return None
 
-    # Compute calcium peaks metrics (3 measurements):
-    # 0. Zero-lag correlation on deconvolved DF/F traces
-    calcium_dff_corr_matrix = _compute_cross_correlation_matrix(dff_traces)
-
+    # Calcium trace metrics: ΔF/F and deconvolved ΔF/F
     # 1. Zero-lag correlation on deconvolved DF/F traces
-    calcium_dec_dff_corr_matrix = _compute_cross_correlation_matrix(dec_dff_traces)
+    calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
+
+    # 2. Zero-lag correlation on deconvolved DF/F traces
+    calcium_dec_dff_corr_matrix = _compute_zero_lag_corr_matrix(dec_dff_traces)
 
     # Convert milliseconds to frames using frame_rate
     frame_rate = analysis_settings.frame_rate  # frames per second
 
     # Helper function to convert ms to frames
     def ms_to_frames(ms: float) -> int:
-        """Convert milliseconds to frames based on frame rate."""
+        """Convert milliseconds to frames based on frame rate.
+
+        Returns integer number of frames, minimum 0.
+
+        Note: If ms is smaller than one frame period, this returns 0, which is
+        intentional and mathematically sound:
+        - For jitter_window=0: Only exact frame coincidence is counted
+        - For max_lag=0: Only zero-lag correlation is computed (standard Pearson)
+
+        This provides a graceful fallback for small time windows at high frame rates.
+        """
         # ms / 1000 = seconds
         # seconds * fps = frames
         return max(0, int((ms / 1000.0) * frame_rate))
 
-    # 2. Jitter synchrony on calcium peaks
+    # 3. Jitter synchrony on calcium peaks
     calcium_peaks_jitter_sync_matrix = None
     global_calcium_peaks_jitter_sync = None
     if len(peak_events_dict) >= 2:
@@ -191,7 +203,7 @@ def compute_fov_analysis(
                 calcium_peaks_jitter_sync_matrix
             )
 
-    # 3. Max lag correlation on calcium peaks
+    # 4. Max lag correlation on calcium peaks
     calcium_peaks_max_lag_corr_matrix = None
     global_calcium_peaks_max_lag_corr = None
     if len(peak_events_dict) >= 2:
@@ -223,7 +235,7 @@ def compute_fov_analysis(
 
     if len(spike_data_dict) >= 2:
         # 4. Zero-lag Pearson correlation on spike trains
-        spike_corr_matrix = _compute_cross_correlation_matrix(spike_trains)
+        spike_corr_matrix = _compute_zero_lag_corr_matrix(spike_trains)
 
         # 5. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
