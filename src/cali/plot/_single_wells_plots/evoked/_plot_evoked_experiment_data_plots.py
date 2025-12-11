@@ -746,7 +746,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         )
         y_row += 1
 
-    plot.setTitle("Stimulated vs Non-Stimulated Spike Raster Plot")
+    plot.setTitle("Stimulated vs Non-Stimulated Spike Raster Plot (Thresholded)")
     plot.setLabel("left", "ROI")
     _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
 

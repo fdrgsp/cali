@@ -146,9 +146,10 @@ def compute_fov_analysis(
                 # Threshold and binarize
                 spikes[spikes <= spike_threshold] = 0.0
                 spike_train = (spikes > 0.0).astype(float)
-                if spike_train.sum() > 0:
-                    spike_trains.append(spike_train)
-                    spike_data_dict[str(roi.label_value)] = spike_train.tolist()
+                # Always append spike train, even if sum == 0
+                # This ensures spike matrices have same dimensions as active_roi_labels
+                spike_trains.append(spike_train)
+                spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
     if len(roi_labels) < 2:
         cali_logger.info(
