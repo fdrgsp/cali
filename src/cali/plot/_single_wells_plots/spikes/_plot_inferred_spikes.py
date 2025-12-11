@@ -229,7 +229,7 @@ def _plot_inferred_spikes(
                     p2=p2,
                     thresholds=False,
                     spikes_threshold=None,
-                    pen=pg.mkPen("y", width=1),
+                    pen=pg.mkPen("magenta", width=2),
                 )
 
         last_trace = list(traces.inferred_spikes)
@@ -277,10 +277,10 @@ def _plot_spike_trace(
     if pen is None:
         # Choose color based on number of ROIs
         if n_rois == 1:
-            pen = pg.mkPen("w", width=1)
+            pen = pg.mkPen("k", width=2)
         else:
             color = pg.intColor(index, hues=max(n_rois, 16))
-            pen = pg.mkPen(color, width=1)
+            pen = pg.mkPen(color, width=2)
 
     if normalize:
         offset = index * 1.1  # vertical offset per ROI
@@ -316,7 +316,7 @@ def _plot_spike_trace(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "yellow",
+                "magenta",
                 style=pg.QtCore.Qt.PenStyle.DashLine,
                 width=2,
             ),
@@ -397,8 +397,3 @@ def _attach_click_handlers_spikes(
                 widget.roiSelected.emit(str(roi_label))
 
         curve.sigClicked.connect(_on_curve_clicked)
-
-
-# NOTE: _plot_inferred_spikes_normalized_with_bursts has been moved to
-# cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity
-# to consolidate all burst detection logic in one place.
