@@ -81,7 +81,11 @@ def _plot_cell_size_data(
         plot.setLabel("left", "Cell Size (a.u.)")
         return
 
-    # ---------------------- DB QUERY ---------------------- #
+    # ---------------------- DB QUERY & PREP DATA ---------------------- #
+    roi_labels: list[int] = []
+    cell_sizes: list[float] = []
+    units = ""
+
     with Session(engine) as session:
         detection_settings_id: int | None = None
 
@@ -97,30 +101,24 @@ def _plot_cell_size_data(
         if detection_settings_id is not None:
             stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
 
-        # Only include ROIs that have cell_size data
-        stmt = stmt.where(col(ROI.cell_size).is_not(None))
-
         stmt = stmt.order_by(col(ROI.label_value))
         roi_models = session.exec(stmt).all()
 
-    if not roi_models:
-        plot.setTitle("Cell Size per ROI\nNo cell size data found for this FOV.")
-        plot.setLabel("bottom", "ROI")
-        plot.setLabel("left", "Cell Size (a.u.)")
-        return
+        if not roi_models:
+            plot.setTitle("Cell Size per ROI\nNo cell size data found for this FOV.")
+            plot.setLabel("bottom", "ROI")
+            plot.setLabel("left", "Cell Size (a.u.)")
+            return
 
-    # ---------------------- PREP DATA ---------------------- #
-    roi_labels: list[int] = []
-    cell_sizes: list[float] = []
-    units = ""
+        # Extract data
+        for roi in roi_models:
+            if roi.cell_size is None:
+                continue
 
-    for roi in roi_models:
-        if roi.cell_size is None:
-            continue
-        roi_labels.append(roi.label_value)
-        cell_sizes.append(float(roi.cell_size))
-        if not units and roi.cell_size_units:
-            units = roi.cell_size_units
+            roi_labels.append(roi.label_value)
+            cell_sizes.append(float(roi.cell_size))
+            if not units and roi.cell_size_units:
+                units = roi.cell_size_units
 
     if not roi_labels:
         plot.setTitle("Cell Size per ROI\nNo cell size data found for this FOV.")

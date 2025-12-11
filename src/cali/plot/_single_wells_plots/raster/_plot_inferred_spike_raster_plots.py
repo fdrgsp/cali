@@ -449,7 +449,7 @@ def _generate_spike_intensity_heatmap(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Intensity Heatmap (Raw Signal)")
+    plot.setTitle("Inferred Spikes Heatmap (Raw Signal)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -540,7 +540,8 @@ def _generate_spike_intensity_heatmap(
 
     # Viewbox settings: one flat band per ROI
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # ------------------------ Axes ------------------------ #
@@ -648,7 +649,7 @@ def _generate_spike_intensity_heatmap_thresholded(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Intensity Heatmap (Thresholded)")
+    plot.setTitle("Inferred Spikes Heatmap (Thresholded)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -752,7 +753,8 @@ def _generate_spike_intensity_heatmap_thresholded(
 
     # Viewbox settings: one flat band per ROI
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # ------------------------ Axes ------------------------ #

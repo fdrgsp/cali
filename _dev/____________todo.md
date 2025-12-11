@@ -43,3 +43,5 @@ ask to claude:
 - select black or white background for pyqtgraph
 
 - fix: titles correlation are too long
+
+- add sotrted stim vs non-stim calcium and spikes hitmap to plots

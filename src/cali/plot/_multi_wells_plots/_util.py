@@ -213,17 +213,14 @@ def _query_roi_attribute_by_condition(
     run_id: int | None = None,
     include_stim_status: bool = False,
 ) -> dict[str, dict[str, list[float]]]:
-    """Query ROI-table attributes grouped by condition and FOV.
-
-    This is for attributes stored on the ROI table itself (e.g., cell_size),
-    not on DataAnalysis.
+    """Query ROI attributes grouped by condition and FOV.
 
     Parameters
     ----------
     engine : Engine
         Database engine
     attribute : str
-        Attribute name from ROI (e.g., 'cell_size')
+        Attribute name from ROI or DataAnalysis (e.g., 'cell_size')
     run_id : int | None
         Filter by specific analysis run (to get ROIs from that run)
     include_stim_status : bool
@@ -250,7 +247,7 @@ def _query_roi_attribute_by_condition(
             )
             experiment_type = session.exec(stmt_exp_type).first()
 
-        # Build query - start from ROI and join to FOV and Well
+        # Build query from ROI table
         stmt = (
             select(ROI, FOV, Well)
             .select_from(ROI)
@@ -270,12 +267,12 @@ def _query_roi_attribute_by_condition(
         # Group by condition and FOV
         data: dict[str, dict[str, list[float]]] = {}
         for roi, fov, well in results:
-            # Get value for this ROI
+            # Get value from ROI
             value = getattr(roi, attribute, None)
             if value is None:
                 continue
 
-            # Get condition label (only include stim status if requested)
+            # Get condition label
             if include_stim_status:
                 cond_label = _get_condition_label(well, roi, experiment_type)
             else:

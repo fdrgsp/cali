@@ -1540,14 +1540,14 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to detection settings that created this ROI
     label_value : int
         ROI label number from segmentation (e.g., 1, 2, 3...)
-    cell_size : float | None
-        ROI area (µm² or pixels), computed once during detection
-    cell_size_units : str | None
-        Units for cell_size ("µm" or "pixel")
     active : bool | None
         Whether ROI shows calcium activity (from latest analysis)
     stimulated : bool | None
         Whether ROI was stimulated (for evoked experiments)
+    cell_size : float | None
+        ROI area (units specified in cell_size_units)
+    cell_size_units : str | None
+        Units for cell_size ("µm²" or "pixels")
     roi_mask_id : int | None
         Foreign key to ROI mask
     fov : FOV
@@ -1565,11 +1565,10 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     id: int | None = Field(default=None, primary_key=True)
     label_value: int = Field(index=True)
 
-    cell_size: float | None = None
-    cell_size_units: str | None = None
-
     active: bool | None = None
     stimulated: bool | None = None
+    cell_size: float | None = None
+    cell_size_units: str | None = None
 
     # Foreign keys
     fov_id: int = Field(foreign_key="fov.id", index=True, ondelete="CASCADE")

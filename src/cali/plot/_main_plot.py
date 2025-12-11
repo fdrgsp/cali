@@ -45,18 +45,10 @@ from ._single_wells_plots.correlation._plot_connectivity import (
     _plot_connectivity_network_data,
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
-    _plot_non_stimulated_calcium_synchrony,
-    _plot_non_stimulated_spike_correlation,
-    _plot_non_stimulated_spike_max_lag_correlation,
-    _plot_non_stimulated_spike_synchrony,
     _plot_sorted_calcium_synchrony,
     _plot_sorted_spike_correlation,
     _plot_sorted_spike_max_lag_correlation,
     _plot_sorted_spike_synchrony,
-    _plot_stimulated_calcium_synchrony,
-    _plot_stimulated_spike_correlation,
-    _plot_stimulated_spike_max_lag_correlation,
-    _plot_stimulated_spike_synchrony,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
     _plot_spike_cross_correlation_data,
@@ -71,9 +63,6 @@ from ._single_wells_plots.correlation._plot_spike_max_lag_values import (
     _plot_spike_max_lag_values_data,
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
-    _plot_calcium_intensity_heatmap_by_stim_status,
-    _plot_spike_intensity_heatmap_by_stim_status,
-    _plot_spike_intensity_heatmap_thresholded_by_stim_status,
     _plot_stim_or_not_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
@@ -637,14 +626,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-# AnalysisProduct(
-#     name=SORTED_CALCIUM_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_sorted_calcium_correlation,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
 AnalysisProduct(
     name=SORTED_SPIKE_SYNCHRONY,
     group=AnalysisGroup.SINGLE_WELL,
@@ -677,70 +658,62 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=STIMULATED_SPIKE_INTENSITY_HEATMAP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=True),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=True),  # noqa: E501
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=STIMULATED_CALCIUM_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_calcium_synchrony,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
 # AnalysisProduct(
-#     name=STIMULATED_CALCIUM_CORRELATION,
+#     name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
 #     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_calcium_correlation,
+#     analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
 #     category="Evoked Experiment",
 #     pipeline_stage=PipelineStage.ANALYSIS,
 #     experiment_type=EVOKED,
 # )
-AnalysisProduct(
-    name=STIMULATED_SPIKE_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_spike_synchrony,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=STIMULATED_SPIKE_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_spike_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=STIMULATED_SPIKE_MAX_LAG_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stimulated_spike_max_lag_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name=STIMULATED_SPIKE_INTENSITY_HEATMAP,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=True),
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=True),  # noqa: E501
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=STIMULATED_CALCIUM_SYNCHRONY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_stimulated_calcium_synchrony,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=STIMULATED_SPIKE_SYNCHRONY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_stimulated_spike_synchrony,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=STIMULATED_SPIKE_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_stimulated_spike_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=STIMULATED_SPIKE_MAX_LAG_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_stimulated_spike_max_lag_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 AnalysisProduct(
     name=NON_STIMULATED_PEAKS_AMP,
     group=AnalysisGroup.SINGLE_WELL,
@@ -749,70 +722,64 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-AnalysisProduct(
-    name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=False),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_CALCIUM_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_non_stimulated_calcium_synchrony,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
 # AnalysisProduct(
-#     name=NON_STIMULATED_CALCIUM_CORRELATION,
+#     name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
 #     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_non_stimulated_calcium_correlation,
+#     analyzer=partial(
+#       _plot_calcium_intensity_heatmap_by_stim_status, stimulated=False
+#     ),
 #     category="Evoked Experiment",
 #     pipeline_stage=PipelineStage.ANALYSIS,
 #     experiment_type=EVOKED,
 # )
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_non_stimulated_spike_synchrony,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_non_stimulated_spike_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=NON_STIMULATED_SPIKE_MAX_LAG_CORRELATION,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_non_stimulated_spike_max_lag_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=NON_STIMULATED_CALCIUM_SYNCHRONY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_non_stimulated_calcium_synchrony,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=NON_STIMULATED_SPIKE_SYNCHRONY,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_non_stimulated_spike_synchrony,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=NON_STIMULATED_SPIKE_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_non_stimulated_spike_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name=NON_STIMULATED_SPIKE_MAX_LAG_CORRELATION,
+#     group=AnalysisGroup.SINGLE_WELL,
+#     analyzer=_plot_non_stimulated_spike_max_lag_correlation,
+#     category="Evoked Experiment",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 
 # Cell Size Group
 AnalysisProduct(

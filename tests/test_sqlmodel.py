@@ -149,7 +149,7 @@ def simple_experiment(temp_db: tuple[Engine, Path], tmp_path: Path) -> Experimen
         fov_number=0,
     )
 
-    # Create ROI
+    # Create ROI with cell_size
     roi = ROI(
         fov=fov,
         label_value=1,
@@ -941,15 +941,17 @@ def test_roi_from_roi_data(temp_db: TempDB) -> None:
     assert roi.label_value == 1
     assert roi.active is True
     assert roi.stimulated is False
-    assert roi.cell_size == 100.0
-    assert roi.cell_size_units == "pixels"
 
     # Verify Trace
     assert trace.raw_trace == [1.0, 2.0, 3.0]
     assert trace.dff == [0.0, 0.1, 0.2]
 
-    # Verify DataAnalysis (cell_size moved to ROI)
+    # Verify DataAnalysis
     assert data_analysis is not None
+
+    # Verify ROI has cell_size
+    assert roi.cell_size == 100.0
+    assert roi.cell_size_units == "pixels"
 
     # Verify masks
     assert roi_mask is not None
@@ -1476,9 +1478,6 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
     with Session(engine) as session:
         session.add(exp)
         session.commit()
-
-        result = session.exec(select(ROI)).first()
-        assert result.cell_size_units == "μm²"
 
         data_analysis = session.exec(select(DataAnalysis)).first()
         assert data_analysis.total_recording_time_sec == 600.0

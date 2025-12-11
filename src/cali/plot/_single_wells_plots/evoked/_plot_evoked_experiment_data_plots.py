@@ -470,7 +470,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(STIMULATED_COLOR, width=4),
+                pen=pg.mkPen(STIMULATED_COLOR, width=1),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -491,8 +491,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        # symbolBrush=pg.mkBrush("yellow"),
-                        symbolBrush=pg.mkBrush("k"),
+                        symbolBrush=pg.mkBrush("yellow"),
                         symbolSize=6,
                     )
 
@@ -514,7 +513,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(NON_STIMULATED_COLOR, width=4),
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -535,8 +534,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         y_i[peaks_ds],
                         pen=None,
                         symbol="o",
-                        # symbolBrush=pg.mkBrush("yellow"),
-                        symbolBrush=pg.mkBrush("k"),
+                        symbolBrush=pg.mkBrush("yellow"),
                         symbolSize=6,
                     )
 
@@ -580,7 +578,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(255, 255, 0, 150),
+            brush=pg.mkBrush(0, 0, 255, 200),
             size=8,
             symbol="s",
         )
@@ -784,7 +782,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(255, 255, 0, 150),
+            brush=pg.mkBrush(0, 0, 255, 200),
             size=8,
             symbol="s",
         )
@@ -941,7 +939,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         curve = plot.plot(
             x,
             y,
-            pen=pg.mkPen(STIMULATED_COLOR, width=1.5),
+            pen=pg.mkPen(STIMULATED_COLOR, width=1),
             name=f"ROI {roi_model.label_value}",
         )
         curve.setProperty("roi_label", str(roi_model.label_value))
@@ -962,7 +960,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         curve = plot.plot(
             x,
             y,
-            pen=pg.mkPen(NON_STIMULATED_COLOR, width=1.5),
+            pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
             name=f"ROI {roi_model.label_value}",
         )
         curve.setProperty("roi_label", str(roi_model.label_value))
@@ -1000,7 +998,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(255, 255, 0, 150),
+            brush=pg.mkBrush(0, 0, 255, 200),
             size=8,
             symbol="s",
         )
@@ -1032,7 +1030,6 @@ def _add_led_stimulation_bands(
     run_id: int,
     frame_rate: float | None = None,
     stride: int = 1,
-    # color: tuple[int, int, int, int] = (255, 255, 0, 150),
     color: tuple[int, int, int, int] = (0, 0, 255, 200),
 ) -> None:
     """Add vertical bands for LED stimulation events.
@@ -1294,7 +1291,8 @@ def _plot_calcium_intensity_heatmap_by_stim_status(
 
     # Viewbox settings
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # Axes
@@ -1317,9 +1315,7 @@ def _plot_calcium_intensity_heatmap_by_stim_status(
             frame_rate = n_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(
-        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
-    )
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
     # ---------- LEGEND ----------
     legend = getattr(widget, "legend", None)
@@ -1327,7 +1323,7 @@ def _plot_calcium_intensity_heatmap_by_stim_status(
         legend.clear()
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(255, 255, 255, 255),
+            brush=pg.mkBrush(0, 0, 255, 200),
             size=8,
             symbol="s",
         )
@@ -1461,7 +1457,8 @@ def _plot_spike_intensity_heatmap_by_stim_status(
 
     # Viewbox settings
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # Axes
@@ -1484,9 +1481,7 @@ def _plot_spike_intensity_heatmap_by_stim_status(
             frame_rate = n_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(
-        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
-    )
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
     # ---------- LEGEND ----------
     legend = getattr(widget, "legend", None)
@@ -1644,7 +1639,8 @@ def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
 
     # Viewbox settings
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # Axes
@@ -1667,9 +1663,7 @@ def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
             frame_rate = n_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(
-        plot, engine, run_id, frame_rate, stride=1, color=(255, 255, 255, 255)
-    )
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
 
     # ---------- LEGEND ----------
     legend = getattr(widget, "legend", None)
@@ -1677,7 +1671,7 @@ def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
         legend.clear()
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(255, 255, 255, 255),
+            brush=pg.mkBrush(0, 0, 255, 200),
             size=8,
             symbol="s",
         )

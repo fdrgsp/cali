@@ -537,15 +537,11 @@ class ExtractionRunner:
 
         # get the size of the roi in µm or px if µm is not available
         roi_size_pixel = masked_data.shape[1]  # area
-        # Try to get pixel size from settings first, then from metadata
-        px_size = (
-            extraction_settings.pixel_size
-            if extraction_settings.pixel_size is not None
-            else meta[0].get("pixel_size_um", None)
-        )
+        # Try to get pixel size from settings
+        px_size = extraction_settings.pixel_size
         # Convert to µm² if pixel size is available, otherwise use pixels
         roi_size = roi_size_pixel * (px_size**2) if px_size else roi_size_pixel
-        roi_size_units = "µm" if px_size is not None else "pixel"
+        roi_size_units = "µm²" if px_size is not None else "pixels"
 
         # Check for cancellation before DFF calculation
         if self._check_for_abort_requested():

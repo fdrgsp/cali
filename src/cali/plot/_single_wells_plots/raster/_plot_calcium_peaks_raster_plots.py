@@ -402,7 +402,8 @@ def _generate_intensity_heatmap(
 
     # Viewbox: keep ROI 0 at top, each ROI as a single "row"
     vb.invertY(False)
-    vb.setLimits(xMin=-0.5, xMax=n_frames - 0.5, yMin=-0.5, yMax=n_rois - 0.5)
+    vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     vb.enableAutoRange(x=True, y=True)
 
     # ------------------------ Axes ------------------------ #

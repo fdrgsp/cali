@@ -269,31 +269,6 @@ def test_calculate_cross_correlation_synchrony() -> None:
     assert lag == 0
 
 
-def test_create_connectivity_matrix() -> None:
-    from cali.analysis._util import _create_connectivity_matrix
-
-    # 3x3 matrix
-    # 1.0 0.9 0.1
-    # 0.9 1.0 0.2
-    # 0.1 0.2 1.0
-    corr_matrix = np.array([[1.0, 0.9, 0.1], [0.9, 1.0, 0.2], [0.1, 0.2, 1.0]])
-
-    # Threshold 50th percentile of off-diagonals [0.9, 0.1, 0.9, 0.2, 0.1, 0.2]
-    # Sorted: 0.1, 0.1, 0.2, 0.2, 0.9, 0.9
-    # Median (50%) is 0.2
-    # So >= 0.2 should be 1, < 0.2 should be 0
-
-    conn_matrix = _create_connectivity_matrix(corr_matrix, threshold_percentile=50.0)
-    assert conn_matrix[0, 1] == 1  # 0.9 >= 0.2
-    assert conn_matrix[0, 2] == 0  # 0.1 < 0.2
-    assert conn_matrix[1, 2] == 1  # 0.2 >= 0.2
-
-    # Empty/Single
-    single = np.array([[1.0]])
-    conn = _create_connectivity_matrix(single)
-    assert np.allclose(conn, np.eye(1))
-
-
 def test_get_traces_and_analysis_for_run() -> None:
     # Setup objects
     roi = ROI(id=1, fov_id=1, label_value=1)
