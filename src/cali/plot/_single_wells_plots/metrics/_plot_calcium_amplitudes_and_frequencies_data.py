@@ -144,7 +144,7 @@ def _plot_amplitude_and_frequency_data(
         # Determine colors based on number of ROIs
         n_rois = len(roi_labels)
         if n_rois == 1:
-            colors = ["w"]
+            colors = ["k"]
         else:
             colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 
@@ -155,7 +155,7 @@ def _plot_amplitude_and_frequency_data(
             top=yerr_arr,
             bottom=yerr_arr,
             beam=0.05 * (x_arr.max() - x_arr.min() if x_arr.size > 1 else 1.0),
-            pen=pg.mkPen("w", width=1),
+            pen=pg.mkPen("k", width=2),
         )
         plot.addItem(err_item)
 
@@ -213,7 +213,7 @@ def _plot_amplitude_and_frequency_data(
         # Determine colors based on number of ROIs
         n_rois = len(roi_labels)
         if n_rois == 1:
-            colors = ["w"]
+            colors = ["k"]
         else:
             colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 
@@ -235,7 +235,7 @@ def _plot_amplitude_and_frequency_data(
             top=yerr_arr,
             bottom=yerr_arr,
             beam=0.2,
-            pen=pg.mkPen("w", width=1),
+            pen=pg.mkPen("k", width=2),
         )
         plot.addItem(err_item)
 
@@ -279,7 +279,7 @@ def _plot_amplitude_and_frequency_data(
         # Determine colors based on number of ROIs
         n_rois = len(roi_labels)
         if n_rois == 1:
-            colors = ["w"]
+            colors = ["k"]
         else:
             colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 

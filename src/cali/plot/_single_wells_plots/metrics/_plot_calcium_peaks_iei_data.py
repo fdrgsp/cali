@@ -159,7 +159,7 @@ def _plot_iei_data(
     # Determine colors based on number of ROIs
     n_rois = len(roi_labels)
     if n_rois == 1:
-        colors = ["w"]
+        colors = ["k"]
     else:
         colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 
@@ -181,7 +181,7 @@ def _plot_iei_data(
         top=sem_arr,
         bottom=sem_arr,
         beam=0.2,
-        pen=pg.mkPen("w", width=1),
+        pen=pg.mkPen("k", width=2),
     )
     plot.addItem(err_item)
 
