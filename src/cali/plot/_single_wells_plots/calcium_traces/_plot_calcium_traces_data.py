@@ -47,6 +47,25 @@ def _plot_traces_data(
     # Reset ViewBox settings that might have been set by raster plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(False)  # Ensure Y is not inverted for trace plots
+    vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
+
+    # Disconnect any hover handlers from previous plots
+    scene = plot.scene()
+    handler_names = [
+        "sync_hover_handler",
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_corr_hover_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
 
     # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -237,7 +256,8 @@ def _normalize_and_offset(
             Y[:] = 0.0
             p1, p2 = 0.0, 1.0
 
-        offsets = np.arange(Y.shape[0], dtype=float) * 1.1
+        # Reverse offsets: ROI 1 (index 0) gets highest offset → appears at top
+        offsets = np.arange(Y.shape[0] - 1, -1, -1, dtype=float) * 1.1
     else:
         offsets = np.zeros(Y.shape[0], dtype=float)
 
@@ -263,14 +283,15 @@ def _draw_traces(
         roi_label = labels[i]
 
         # ---- Choose color ----
-        if n_rois == 1:
-            # Single trace → black
-            color = "k"
-        else:
-            # Multi-trace → distinct colors
-            color = pg.intColor(i, hues=max(n_rois, 16))
+        color = "magenta"
+        # if n_rois == 1:
+        #     # Single trace → black
+        #     color = "k"
+        # else:
+        #     # Multi-trace → distinct colors
+        #     color = pg.intColor(i, hues=max(n_rois, 16))
 
-        pen = pg.mkPen(color, width=2)
+        pen = pg.mkPen(color, width=3)
 
         curve = plot.plot(
             x,

@@ -462,7 +462,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         Y_stim = np.vstack(stim_traces)
         Y_stim = Y_stim[:, ::stride]
         n_stim, T_ds = Y_stim.shape
-        offsets_stim = np.arange(n_stim, dtype=float) * 1.1
+        # Reverse offsets: ROI 1 (index 0) gets highest offset → appears at top
+        offsets_stim = np.arange(n_stim - 1, -1, -1, dtype=float) * 1.1
 
         for i in range(n_stim):
             y_i = Y_stim[i] + offsets_stim[i]
@@ -505,7 +506,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         Y_non = np.vstack(non_traces)
         Y_non = Y_non[:, ::stride]
         n_non, T_ds2 = Y_non.shape
-        offsets_non = (np.arange(n_non, dtype=float) + base_offset) * 1.1
+        # Reverse offsets: continue from base_offset, but reversed within group
+        offsets_non = (np.arange(n_non - 1, -1, -1, dtype=float) + base_offset) * 1.1
 
         for i in range(n_non):
             y_i = Y_non[i] + offsets_non[i]

@@ -270,8 +270,7 @@ class CaliGui(QMainWindow):
         single_well_vis_layout.setSpacing(5)
 
         self._single_well_graph_1 = _SingleWellGraphWidget(self)
-        # self._single_well_graph_2 = _SingleWellGraphWidget(self)
-        self._single_well_graph_3 = _SingleWellGraphWidget(self)
+        self._single_well_graph_2 = _SingleWellGraphWidget(self)
 
         # Create top widget for graphs 1 and 2 side by side
         top_widget = QWidget()
@@ -279,20 +278,18 @@ class CaliGui(QMainWindow):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(5)
         top_layout.addWidget(self._single_well_graph_1)
-        # top_layout.addWidget(self._single_well_graph_2)
 
         # Create vertical splitter between top (graphs 1&2) and graph 3
         vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         vertical_splitter.setContentsMargins(0, 0, 0, 0)
-        vertical_splitter.setChildrenCollapsible(False)
+        vertical_splitter.setChildrenCollapsible(True)
         vertical_splitter.addWidget(top_widget)
-        vertical_splitter.addWidget(self._single_well_graph_3)
+        vertical_splitter.addWidget(self._single_well_graph_2)
 
         single_well_vis_layout.addWidget(vertical_splitter)
         self.SW_GRAPHS = [
             self._single_well_graph_1,
-            # self._single_well_graph_2,
-            self._single_well_graph_3,
+            self._single_well_graph_2,
         ]
 
         # MULTI WELL VISUALIZATION TAB ------------------------------------------------

@@ -93,6 +93,25 @@ def _plot_inferred_spikes(
     # Reset ViewBox settings that might have been set by raster plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(False)  # Ensure Y is not inverted for trace plots
+    vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
+
+    # Disconnect any hover handlers from previous plots
+    scene = plot.scene()
+    handler_names = [
+        "sync_hover_handler",
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_corr_hover_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
 
     # thresholds only if a single ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -276,14 +295,16 @@ def _plot_spike_trace(
 
     if pen is None:
         # Choose color based on number of ROIs
-        if n_rois == 1:
-            pen = pg.mkPen("k", width=2)
-        else:
-            color = pg.intColor(index, hues=max(n_rois, 16))
-            pen = pg.mkPen(color, width=2)
+        pen = pg.mkPen("k", width=3)
+        # if n_rois == 1:
+        #     pen = pg.mkPen("k", width=2)
+        # else:
+        #     color = pg.intColor(index, hues=max(n_rois, 16))
+        #     pen = pg.mkPen(color, width=2)
 
     if normalize:
-        offset = index * 1.1  # vertical offset per ROI
+        # Reverse offset: lower index (ROI 1) gets higher offset → appears at top
+        offset = (n_rois - 1 - index) * 1.1
         tr_norm = _normalize_trace_percentile(trace, p1, p2) + offset
         y = tr_norm
     else:

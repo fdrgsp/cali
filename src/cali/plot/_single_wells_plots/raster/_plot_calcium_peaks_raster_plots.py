@@ -241,7 +241,7 @@ def _add_colorbar_to_widget(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
-        label="Amplitude (dec ΔF/F)",
+        label="Amplitude (dec ΔF/F a.u.)",
         interactive=False,
     )
 
@@ -267,7 +267,7 @@ def _attach_click_handlers_raster(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # With invertY(True), y increases downward; floor gives correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
@@ -304,7 +304,7 @@ def _generate_intensity_heatmap(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at TOP visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -317,6 +317,23 @@ def _generate_intensity_heatmap(
         if hasattr(widget.legend, "clear"):
             widget.legend.clear()
         widget.legend.setVisible(False)
+
+    # Disconnect any hover handlers from previous plots
+    scene = plot.scene()
+    handler_names = [
+        "sync_hover_handler",
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_corr_hover_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
 
     plot.setTitle("Calcium Intensity Heatmap (Deconvolved ΔF/F)")
 
@@ -404,8 +421,7 @@ def _generate_intensity_heatmap(
 
     plot.addItem(img)
 
-    # Viewbox: keep ROI 0 at top, each ROI as a single "row"
-    vb.invertY(False)
+    # Viewbox settings: one flat band per ROI (inverted Y keeps ROI 1 at top)
     vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
     # Keep x-range fixed to show full frames with padding, only autorange y
@@ -466,7 +482,7 @@ def _attach_click_handlers_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # With invertY(False), y increases upward; floor gives correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
