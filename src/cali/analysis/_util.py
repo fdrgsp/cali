@@ -308,6 +308,33 @@ def _get_calcium_peaks_event_correlations_matrix(
     return synchrony_matrix, lag_matrix
 
 
+def _detect_spike_onsets(spike_trace: np.ndarray) -> np.ndarray:
+    """Detect spike onset events from continuous inferred spike traces.
+
+    Converts continuous spike probability/amplitude traces to binary event arrays
+    by detecting rising edges (0 -> positive transitions). This matches the
+    interpretation used in raster plots where each spike event is a discrete onset.
+
+    Parameters
+    ----------
+    spike_trace : np.ndarray
+        Continuous spike trace (e.g., from CASCADE, OASIS, etc.)
+
+    Returns
+    -------
+    np.ndarray
+        Binary array with 1 at spike onsets, 0 elsewhere
+    """
+    # Detect positive values
+    positive_vals = spike_trace > 0
+    # Detect rising edges: 0 -> positive transitions
+    rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
+    # Create binary array: 1 at rising edges, 0 elsewhere
+    binary_events = np.zeros_like(spike_trace, dtype=np.float32)
+    binary_events[rising] = 1.0
+    return binary_events
+
+
 def _get_spike_correlations_matrix(
     spike_data_dict: dict[str, list[float]],
     method: str = "correlation",
@@ -316,13 +343,18 @@ def _get_spike_correlations_matrix(
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Compute pairwise spike similarity matrix.
 
+    Converts continuous inferred spike traces to discrete spike onset events
+    (rising edge detection) before computing synchrony, matching the interpretation
+    used in raster plots and standard neuroscience practice.
+
     Parameters
     ----------
     spike_data_dict : dict
-        Dictionary mapping ROI names to spike amplitude arrays
+        Dictionary mapping ROI names to continuous spike amplitude/probability arrays
+        (e.g., from CASCADE, OASIS, or other spike inference methods)
     method : str
         Method to use:
-        - "correlation": Zero-lag Pearson correlation on binary spike trains
+        - "correlation": Zero-lag Pearson correlation on spike onset events
         - "jitter_window": Synchrony with temporal tolerance (±jitter_window)
         - "cross_correlation": Max cross-correlation within ±max_lag
     jitter_window : int
@@ -336,9 +368,15 @@ def _get_spike_correlations_matrix(
     -------
     tuple[np.ndarray | None, np.ndarray | None]
         (synchrony_matrix, lag_matrix) where:
-        - synchrony_matrix: NxN matrix of correlation values
+        - synchrony_matrix: NxN matrix of correlation values between spike onsets
         - lag_matrix: NxN matrix of lag values (only for cross_correlation method,
           otherwise None). Positive lag means ROI_j lags behind ROI_i.
+
+    Notes
+    -----
+    Spike onsets are detected by identifying rising edges (0 → positive transitions)
+    in the continuous spike traces. This ensures that multi-frame spike events are
+    counted as single discrete events, not multiple overlapping spikes.
     """
     from cali.util._util import _NUMBA_LOCK
 
@@ -357,8 +395,12 @@ def _get_spike_correlations_matrix(
     if spike_array.shape[0] < 2:
         return None, None
 
-    # Create binary spike matrices (1 where spike > 0, 0 otherwise)
-    binary_spikes = (spike_array > 0).astype(np.float32)
+    # Convert continuous spike traces to discrete event arrays
+    # using rising edge detection.
+    # This matches raster plot interpretation: each spike event = one onset
+    binary_spikes = np.zeros_like(spike_array, dtype=np.float32)
+    for i in range(spike_array.shape[0]):
+        binary_spikes[i] = _detect_spike_onsets(spike_array[i])
 
     n_rois = binary_spikes.shape[0]
     lag_matrix = None  # Only computed for cross_correlation method

@@ -1437,7 +1437,7 @@ class CaliGui(QMainWindow):
                     )
                 else:
                     # Re-raise other ValueErrors
-                    raise
+                    raise e
         except Exception as e:
             self._enable(True)
             msg = f"❌ Failed to run cali:\n{e}"
@@ -2057,6 +2057,7 @@ class CaliGui(QMainWindow):
                             burst_min_duration=a_settings.burst_min_duration,
                             burst_blur_sigma=a_settings.burst_gaussian_sigma,
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                            synchrony_jitter=a_settings.spikes_sync_jitter_window,
                         ),
                     )
                 )

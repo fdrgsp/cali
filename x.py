@@ -106,9 +106,9 @@ def query_traces(
 
 
 run_id = 4
-pos = 12
-# rois = None
-rois = [str(x) for x in [1, 60, 34, 67, 7]]  # Convert to strings for ROI labels
+pos = 5
+rois = None
+# rois = [str(x) for x in [1, 60, 34, 67, 7]]  # Convert to strings for ROI labels
 
 # raw, _, _ = query_traces(5, rois, "raw_trace", position_index=18)
 dff, _, _ = query_traces(run_id, rois, "dff", pos)
@@ -116,7 +116,7 @@ dec_dff, _, roi_dict_calcium_peaks = query_traces(run_id, rois, "dec_dff", pos)
 spikes, roi_dict_spikes, _ = query_traces(run_id, rois, "inferred_spikes", pos)
 
 # pc_matrix_raw = _compute_zero_lag_corr_matrix(raw)
-pc_matrix_dff = _compute_zero_lag_corr_matrix(dff)  # **
+# pc_matrix_dff = _compute_zero_lag_corr_matrix(dff)
 pc_matrix_dec_dff = _compute_zero_lag_corr_matrix(dec_dff)  # ***
 pc_matrix_spikes = _compute_zero_lag_corr_matrix(spikes)
 
@@ -125,16 +125,16 @@ assert len_rois == len(roi_dict_spikes.keys()) == len(roi_dict_calcium_peaks.key
 
 print("\n\nPEARSON'S CORRELATION------------------------------------")
 # print("Raw Calcium ----- Median Pearson's correlation:", np.median(pc_matrix_raw))
-print("DFF Calcium ----- Median Pearson's correlation:", np.median(pc_matrix_dff))
+# print("DFF Calcium ----- Median Pearson's correlation:", np.median(pc_matrix_dff))
 print("Dec DFF Calcium - Median Pearson's correlation:", np.median(pc_matrix_dec_dff))
 print("Spikes ---------- Median Pearson's correlation:", np.median(pc_matrix_spikes))
 
-pc_matrix_spikes_1, _ = _get_spike_correlations_matrix(
-    roi_dict_spikes, method="correlation"
-)
-print(
-    f"Spikes Binary --- Median Pearson's correlation: {np.median(pc_matrix_spikes_1)}"
-)
+# pc_matrix_spikes_1, _ = _get_spike_correlations_matrix(
+#     roi_dict_spikes, method="correlation"
+# )
+# print(
+#     f"Spikes Binary --- Median Pearson's correlation: {np.median(pc_matrix_spikes_1)}"
+# )
 
 # Convert peak indices to binary arrays for correlation analysis
 # Get the trace length from one of the traces
@@ -148,28 +148,6 @@ for roi_label, peak_indices in roi_dict_calcium_peaks.items():
     valid_peaks = [int(p) for p in peak_indices if 0 <= int(p) < trace_length]
     binary_peaks[valid_peaks] = 1
     roi_dict_calcium_peaks_binary[roi_label] = binary_peaks.tolist()
-
-# do binary spike events
-# Convert spike traces to binary event arrays using rising edge detection
-# (like raster plot)
-roi_dict_spike_events_binary = {}
-for roi_label, spike_trace in roi_dict_spikes.items():
-    spike_array = np.array(spike_trace)
-    # Detect positive values
-    positive_vals = spike_array > 0
-    # Detect rising edges: 0 -> positive transitions
-    rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
-    # Create binary array: 1 at rising edges, 0 elsewhere
-    binary_events = np.zeros_like(spike_array, dtype=int)
-    binary_events[rising] = 1
-    roi_dict_spike_events_binary[roi_label] = binary_events.tolist()
-
-pc_matrix_spikes_2, _ = _get_spike_correlations_matrix(
-    roi_dict_spike_events_binary, method="correlation"
-)
-print(
-    f"Spikes Events --- Median Pearson's correlation: {np.median(pc_matrix_spikes_2)}"
-)
 
 
 print("\n\nSYNCHRONY ANALYSIS------------------------------------")
@@ -187,23 +165,13 @@ sync_spikes, _ = _get_spike_correlations_matrix(
 )
 if sync_spikes is not None:
     print(
-        f"Spikes Binary --- Median Synchrony (jitter_window=4): "
+        f"Spikes Events --- Median Synchrony (jitter_window=4): "
         f"{np.median(sync_spikes)}"
     )
 
-sync_spike_events, _ = _get_calcium_peaks_event_correlations_matrix(
-    roi_dict_spike_events_binary, method="jitter_window", jitter_window=4
-)
-if sync_spike_events is not None:
-    print(
-        f"Spike Events ---- Median Synchrony (jitter_window=4): "
-        f"{np.median(sync_spike_events)}"
-    )
-
-
 print("\n\nCROSS-CORRELATION ANALYSIS------------------------------------")
 cc_spikes, _ = _get_spike_correlations_matrix(
-    roi_dict_spikes, method="cross_correlation", max_lag=5
+    roi_dict_spikes, method="cross_correlation", max_lag=10
 )
 if cc_spikes is not None:
     print(
@@ -211,38 +179,37 @@ if cc_spikes is not None:
         f"{np.median(cc_spikes)}"
     )
 
-cc_spike_events, _ = _get_calcium_peaks_event_correlations_matrix(
-    roi_dict_spike_events_binary, method="cross_correlation", max_lag=5
-)
-if cc_spike_events is not None:
-    print(
-        f"Spike Events ---- Median Cross-Correlation (cross_correlation=5): "
-        f"{np.median(cc_spike_events)}"
-    )
 
+# p18
+# PEARSON'S CORRELATION------------------------------------
+# Dec DFF Calcium - Median Pearson's correlation: 0.8316392000875181
+# Spikes ---------- Median Pearson's correlation: 0.5202445015519529
+# Spikes Binary --- Median Pearson's correlation: 0.050302881477159785
+# SYNCHRONY ANALYSIS------------------------------------
+# Calcium Peaks --- Median Synchrony (jitter_window=4): 0.4727272727272727
+# Spikes Events --- Median Synchrony (jitter_window=4): 0.5625
+# CROSS-CORRELATION ANALYSIS------------------------------------
+# Spikes Binary --- Median Cross-Correlation (cross_correlation=5): 0.14866702524809083
 
-# Plot calcium peaks - show all peak locations
-plt.figure(figsize=(12, 6))
-all_peaks = []
-all_roi_indices = []
-for roi_idx, (_roi_label, peak_indices) in enumerate(roi_dict_calcium_peaks.items()):
-    all_peaks.extend(peak_indices)
-    all_roi_indices.extend([roi_idx] * len(peak_indices))
-plt.scatter(all_peaks, all_roi_indices, alpha=0.7, s=30)
-plt.tight_layout()
-plt.show()
-# Plot spikes
-plt.figure(figsize=(12, 6))
+# p12
+# PEARSON'S CORRELATION------------------------------------
+# Dec DFF Calcium - Median Pearson's correlation: 0.010107764479549022
+# Spikes ---------- Median Pearson's correlation: 0.0027730646327039747
+# Spikes Binary --- Median Pearson's correlation: 0.01648742715456141
+# SYNCHRONY ANALYSIS------------------------------------
+# Calcium Peaks --- Median Synchrony (jitter_window=4): 0.17142857142857143
+# Spikes Events --- Median Synchrony (jitter_window=4): 0.5887096774193549
+# CROSS-CORRELATION ANALYSIS------------------------------------
+# Spikes Binary --- Median Cross-Correlation (cross_correlation=5): 0.14280855448284688
 
-# plot spikes events (roi_dict_spike_events_binary)
-all_spike_events = []
-all_roi_indices_spikes = []
-for roi_idx, (_roi_label, binary_events) in enumerate(
-    roi_dict_spike_events_binary.items()
-):
-    event_indices = [i for i, val in enumerate(binary_events) if val == 1]
-    all_spike_events.extend(event_indices)
-    all_roi_indices_spikes.extend([roi_idx] * len(event_indices))
-plt.scatter(all_spike_events, all_roi_indices_spikes, alpha=0.7, s=3)
-plt.tight_layout()
-plt.show()
+# p5
+
+# PEARSON'S CORRELATION------------------------------------
+# Dec DFF Calcium - Median Pearson's correlation: 0.025673762168785818
+# Spikes ---------- Median Pearson's correlation: 0.0014042426349259334
+# Spikes Binary --- Median Pearson's correlation: 0.016267940790323163
+# SYNCHRONY ANALYSIS------------------------------------
+# Calcium Peaks --- Median Synchrony (jitter_window=4): 0.1744186046511628
+# Spikes Events --- Median Synchrony (jitter_window=4): 0.5573770491803278
+# CROSS-CORRELATION ANALYSIS------------------------------------
+# Spikes Binary --- Median Cross-Correlation (cross_correlation=5): 0.13625041996196363
