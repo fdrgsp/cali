@@ -9,12 +9,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlmodel import Session, create_engine, select
-
-from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
     _plot_peak_event_synchrony_data,
 )
+from sqlmodel import Session, create_engine, select
+
+from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 from cali.plot._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
 )
