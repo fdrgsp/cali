@@ -1166,9 +1166,6 @@ class AnalysisSettings(SQLModel, table=True):
             and self.peaks_height_mode == other.peaks_height_mode
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
-            and self.calcium_sync_jitter_window == other.calcium_sync_jitter_window
-            and self.calcium_peaks_max_lag == other.calcium_peaks_max_lag
-            and self.calcium_network_threshold == other.calcium_network_threshold
             and self.spike_threshold_value == other.spike_threshold_value
             and self.spike_threshold_mode == other.spike_threshold_mode
             and self.burst_threshold == other.burst_threshold
@@ -1197,9 +1194,6 @@ class AnalysisSettings(SQLModel, table=True):
                 self.peaks_height_mode,
                 self.peaks_distance,
                 self.peaks_prominence_multiplier,
-                self.calcium_sync_jitter_window,
-                self.calcium_peaks_max_lag,
-                self.calcium_network_threshold,
                 self.spike_threshold_value,
                 self.spike_threshold_mode,
                 self.burst_threshold,
