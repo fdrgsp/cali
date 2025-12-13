@@ -115,9 +115,9 @@ def _plot_inferred_spike_burst_activity(
 
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=1)
     vb.setAspectLocked(False)
-    vb.enableAutoRange(x=True, y=True)
+    vb.enableAutoRange(x=True, y=False)
 
     # Disconnect any hover handlers from previous plots
     scene = plot.scene()
@@ -162,7 +162,7 @@ def _plot_inferred_spike_burst_activity(
         population_activity_list = fov_analysis.spike_population_activity
 
         if population_activity_list:
-            # spike_population_activity contains smoothed normalized activity
+            # spike_population_activity contains smoothed fraction active [0,1]
             population_activity = np.array(population_activity_list)
 
             # Get raw activity if available
@@ -192,21 +192,21 @@ def _plot_inferred_spike_burst_activity(
             the_value = (burst_params[0] / 100.0) if burst_params else 0.5
 
             # --- Draw raw + smoothed activity + threshold + burst regions ---
-            # Plot raw population activity (normalized, black)
+            # Plot raw population activity (fraction active, black)
             if population_activity_raw is not None:
                 plot.plot(
                     time_axis,
                     population_activity_raw,
                     pen=pg.mkPen("black", width=2),
-                    name="Raw Activity (Normalized)",
+                    name="Raw Activity (Fraction Active)",
                 )
 
-            # Plot smoothed population activity (normalized, magenta)
+            # Plot smoothed population activity (fraction active, magenta)
             plot.plot(
                 time_axis,
                 population_activity,
                 pen=pg.mkPen("magenta", width=3),
-                name="Smoothed Activity (Normalized)",
+                name="Smoothed Activity (Fraction Active)",
             )
 
             # Threshold line
@@ -243,16 +243,18 @@ def _plot_inferred_spike_burst_activity(
             if hasattr(widget, "legend") and widget.legend is not None:
                 widget.legend.clear()
                 raw_item = pg.PlotDataItem(pen=pg.mkPen("black", width=2))
-                widget.legend.addItem(raw_item, "Raw Activity (Normalized)")
+                widget.legend.addItem(raw_item, "Raw Activity (Fraction Active)")
                 smoothed_item = pg.PlotDataItem(pen=pg.mkPen("magenta", width=3))
-                widget.legend.addItem(smoothed_item, "Smoothed Activity (Normalized)")
+                widget.legend.addItem(
+                    smoothed_item, "Smoothed Activity (Fraction Active)"
+                )
                 threshold_item = pg.PlotDataItem(
                     pen=pg.mkPen(
                         "magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine
                     )
                 )
                 widget.legend.addItem(
-                    threshold_item, f"Burst Threshold ({the_value:.2f})"
+                    threshold_item, f"Burst Threshold ({the_value:.3f})"
                 )
                 burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
                 widget.legend.addItem(burst_item, "Detected Bursts")
@@ -264,10 +266,10 @@ def _plot_inferred_spike_burst_activity(
             plot.setTitle(title)
 
             plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Population Activity (Normalized [0,1])")
+            plot.setLabel("left", "Fraction of Active ROIs [0,1])")
 
             # Auto-range once everything is added
-            vb.enableAutoRange(x=True, y=True)
+            vb.enableAutoRange(x=True, y=False)
         else:
             cali_logger.warning(
                 "Pre-computed spike burst data is incomplete "
@@ -1162,7 +1164,7 @@ def _plot_calcium_burst_activity(
         population_activity_list = fov_analysis.calcium_population_activity
 
         if population_activity_list:
-            # calcium_population_activity contains smoothed+normalized [0,1] trace
+            # calcium_population_activity contains smoothed mean ΔF/F trace
             population_activity = np.array(population_activity_list)
 
             # Get raw activity if available
@@ -1188,27 +1190,34 @@ def _plot_calcium_burst_activity(
             bursts = list(zip(burst_starts, burst_ends))
 
             # Get threshold from AnalysisSettings for display
+            # For calcium: threshold = (percent / 100) * max(smoothed_activity)
             calcium_burst_params = _get_calcium_burst_parameters(engine, run_id)
-            the_value = (
-                (calcium_burst_params[0] / 100.0) if calcium_burst_params else 0.5
+            max_smoothed = (
+                float(np.max(population_activity))
+                if population_activity.size > 0
+                else 1.0
             )
+            if calcium_burst_params:
+                the_value = (calcium_burst_params[0] / 100.0) * max_smoothed
+            else:
+                the_value = 0.5 * max_smoothed
 
-            # --- Draw raw + smoothed+normalized activity + threshold + bursts ---
-            # Plot raw population activity (normalized, black)
+            # --- Draw raw + smoothed activity + threshold + bursts ---
+            # Plot raw population activity (mean ΔF/F, black)
             if population_activity_raw is not None:
                 plot.plot(
                     time_axis,
                     population_activity_raw,
                     pen=pg.mkPen("black", width=2),
-                    name="Raw Activity (Normalized)",
+                    name="Raw Activity",
                 )
 
-            # Plot smoothed population activity (normalized, magenta)
+            # Plot smoothed population activity (mean ΔF/F, magenta)
             plot.plot(
                 time_axis,
                 population_activity,
                 pen=pg.mkPen("magenta", width=3),
-                name="Smoothed Activity (Normalized)",
+                name="Smoothed Activity",
             )
 
             # Threshold line
@@ -1245,16 +1254,16 @@ def _plot_calcium_burst_activity(
             if hasattr(widget, "legend") and widget.legend is not None:
                 widget.legend.clear()
                 raw_item = pg.PlotDataItem(pen=pg.mkPen("black", width=2))
-                widget.legend.addItem(raw_item, "Raw Activity (Normalized)")
+                widget.legend.addItem(raw_item, "Raw Activity")
                 smoothed_item = pg.PlotDataItem(pen=pg.mkPen("magenta", width=3))
-                widget.legend.addItem(smoothed_item, "Smoothed Activity (Normalized)")
+                widget.legend.addItem(smoothed_item, "Smoothed Activity")
                 threshold_item = pg.PlotDataItem(
                     pen=pg.mkPen(
                         "magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine
                     )
                 )
                 widget.legend.addItem(
-                    threshold_item, f"Burst Threshold ({the_value:.2f})"
+                    threshold_item, f"Burst Threshold ({the_value:.3f})"
                 )
                 burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
                 widget.legend.addItem(burst_item, "Detected Bursts")
@@ -1269,7 +1278,7 @@ def _plot_calcium_burst_activity(
             plot.setTitle(title)
 
             plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Population Activity (Normalized [0,1])")
+            plot.setLabel("left", "Mean Population ΔF/F0 (a.u.)")
 
             # Auto-range once everything is added
             vb.enableAutoRange(x=True, y=True)
@@ -1283,7 +1292,7 @@ def _plot_calcium_burst_activity(
                 "(No pre-computed data available - please re-run analysis)"
             )
             plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Population Activity (Normalized)")
+            plot.setLabel("left", "Mean Population ΔF/F0 (a.u.)")
     else:
         cali_logger.warning("No calcium burst analysis data found in database")
         plot.setTitle(
@@ -1291,7 +1300,7 @@ def _plot_calcium_burst_activity(
             "(No data found - please run analysis first)"
         )
         plot.setLabel("bottom", "Time (s)")
-        plot.setLabel("left", "Population Activity (Normalized)")
+        plot.setLabel("left", "Mean Population ΔF/F0 (a.u.)")
 
 
 # -----------------------------------------------------------------------------#

@@ -1804,7 +1804,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     spike_burst_ends : list[int] | None
         Frame indices where spike bursts end (exclusive)
     spike_population_activity : list[float] | None
-        Smoothed spike population activity used for burst detection and plotting
+        Smoothed spike population activity (fraction of active ROIs, [0,1]).
+        This is the smoothed trace used for burst detection and plotting.
+    spike_population_activity_raw : list[float] | None
+        Raw (unsmoothed) spike population activity (fraction of active ROIs, [0,1])
     calcium_burst_count : int | None
         Number of calcium-based population bursts detected
     calcium_burst_avg_duration : float | None
@@ -1816,8 +1819,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_burst_ends : list[int] | None
         Frame indices where calcium bursts end (exclusive)
     calcium_population_activity : list[float] | None
-        Smoothed and normalized [0,1] mean calcium population activity.
-        This is the trace used for burst detection and plotting.
+        Smoothed mean calcium population activity (deconvolved ΔF/F, raw values).
+        This is the smoothed trace used for burst detection and plotting.
+    calcium_population_activity_raw : list[float] | None
+        Raw (unsmoothed) mean calcium population activity (deconvolved ΔF/F, raw values)
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
