@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -14,6 +15,14 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+INFERRED_TRACE_COLOR = "k"
+INFERRED_TRACE_WIDTH = 3
+DFF_OVERLAY_COLOR = "magenta"
+DFF_OVERLAY_WIDTH = 3
+THRESHOLD_COLOR = "magenta"
+THRESHOLD_WIDTH = 3
 
 
 # -----------------------------------------------------------------------------#
@@ -93,6 +102,11 @@ def _plot_inferred_spikes(
     # Reset ViewBox settings that might have been set by raster plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(False)  # Ensure Y is not inverted for trace plots
+    vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # thresholds only if a single ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -229,7 +243,7 @@ def _plot_inferred_spikes(
                     p2=p2,
                     thresholds=False,
                     spikes_threshold=None,
-                    pen=pg.mkPen("y", width=1),
+                    pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
                 )
 
         last_trace = list(traces.inferred_spikes)
@@ -276,14 +290,16 @@ def _plot_spike_trace(
 
     if pen is None:
         # Choose color based on number of ROIs
-        if n_rois == 1:
-            pen = pg.mkPen("w", width=1)
-        else:
-            color = pg.intColor(index, hues=max(n_rois, 16))
-            pen = pg.mkPen(color, width=1)
+        pen = pg.mkPen(INFERRED_TRACE_COLOR, width=INFERRED_TRACE_WIDTH)
+        # if n_rois == 1:
+        #     pen = pg.mkPen("k", width=2)
+        # else:
+        #     color = pg.intColor(index, hues=max(n_rois, 16))
+        #     pen = pg.mkPen(color, width=2)
 
     if normalize:
-        offset = index * 1.1  # vertical offset per ROI
+        # Reverse offset: lower index (ROI 1) gets higher offset → appears at top
+        offset = (n_rois - 1 - index) * 1.1
         tr_norm = _normalize_trace_percentile(trace, p1, p2) + offset
         y = tr_norm
     else:
@@ -316,9 +332,9 @@ def _plot_spike_trace(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "yellow",
+                THRESHOLD_COLOR,
                 style=pg.QtCore.Qt.PenStyle.DashLine,
-                width=2,
+                width=THRESHOLD_WIDTH,
             ),
         )
         line.setZValue(10)
@@ -397,8 +413,3 @@ def _attach_click_handlers_spikes(
                 widget.roiSelected.emit(str(roi_label))
 
         curve.sigClicked.connect(_on_curve_clicked)
-
-
-# NOTE: _plot_inferred_spikes_normalized_with_bursts has been moved to
-# cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity
-# to consolidate all burst detection logic in one place.

@@ -13,7 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 import pytest
 
-from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
+from cali.plot._single_wells_plots.burst._plot_burst_activity import (
     _draw_population_activity_pg,
 )
 from cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
@@ -633,5 +633,80 @@ def test_legend_visible_in_widget_plots(
                 assert len(widget.legend.items) > 0, (
                     f"Legend for '{plot_name}' is visible but has no items"
                 )
+
+    engine.dispose(close=True)
+
+
+def test_sorted_evoked_plots_have_stimulated_rois_legend(qtbot: QtBot) -> None:
+    """Test sorted evoked plots show 'Stimulated ROIs' legend."""
+    from sqlmodel import Session, create_engine, select
+
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.plot._single_wells_plots.correlation import (
+        _plot_evoked_correlation_synchrony,
+    )
+
+    _plot_sorted_spike_correlation = (
+        _plot_evoked_correlation_synchrony._plot_sorted_spike_correlation
+    )
+    _plot_sorted_spike_synchrony = (
+        _plot_evoked_correlation_synchrony._plot_sorted_spike_synchrony
+    )
+    from cali.sqlmodel._model import FOV
+
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+
+    with Session(engine) as session:
+        fov_name = session.exec(select(FOV.name).limit(1)).first()
+
+    assert fov_name is not None
+
+    widget = _SingleWellGraphWidget(None)  # type: ignore[arg-type]
+    qtbot.addWidget(widget)
+    widget.database_path = db_path
+    widget.engine = engine
+
+    # Test sorted synchrony plot
+    _plot_sorted_spike_synchrony(
+        widget=widget,
+        engine=engine,
+        fov_name=fov_name,
+        rois=None,
+        run_id=1,
+    )
+
+    # Check legend for "Stimulated ROIs" if data exists
+    if (
+        hasattr(widget, "legend")
+        and widget.legend is not None
+        and widget.legend.isVisible()
+    ):
+        legend_labels = [item[1].text for item in widget.legend.items]
+        assert "Stimulated ROIs" in legend_labels, (
+            f"Sorted synchrony plot should have 'Stimulated ROIs' legend. "
+            f"Found: {legend_labels}"
+        )
+
+    # Test sorted correlation plot
+    _plot_sorted_spike_correlation(
+        widget=widget,
+        engine=engine,
+        fov_name=fov_name,
+        rois=None,
+        run_id=1,
+    )
+
+    # Check legend for "Stimulated ROIs" if data exists
+    if (
+        hasattr(widget, "legend")
+        and widget.legend is not None
+        and widget.legend.isVisible()
+    ):
+        legend_labels = [item[1].text for item in widget.legend.items]
+        assert "Stimulated ROIs" in legend_labels, (
+            f"Sorted correlation plot should have 'Stimulated ROIs' legend. "
+            f"Found: {legend_labels}"
+        )
 
     engine.dispose(close=True)

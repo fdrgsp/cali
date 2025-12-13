@@ -8,6 +8,7 @@ from matplotlib import colormaps
 from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -15,6 +16,15 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+BLACK = (0, 0, 0, 255)
+SYMBOL = "s"
+SYMBOL_SIZE = 3
+RASTER_CMAP_NAME = "viridis"
+RASTER_CMAP = pg.colormap.get(RASTER_CMAP_NAME)
+HEATMAP_CMAP_NAME = "viridis"
+HEATMAP_CMAP = pg.colormap.get(HEATMAP_CMAP_NAME)
 
 
 def _generate_raster_plot(
@@ -32,6 +42,7 @@ def _generate_raster_plot(
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
@@ -146,7 +157,7 @@ def _generate_raster_plot(
             if vmax <= vmin:
                 vmax = vmin + 0.1
 
-            cmap = colormaps.get("viridis")
+            cmap = colormaps.get(RASTER_CMAP_NAME)
             norm = Normalize(vmin=vmin, vmax=vmax)
 
             for _roi, _traces, da in filtered_roi_data:
@@ -161,11 +172,11 @@ def _generate_raster_plot(
         else:
             # No amplitude data
             amplitude_colors = False
-            colors = [(255, 255, 255, 255)] * len(event_data)
+            colors = [BLACK] * len(event_data)
     else:
-        # Fallback: all white points
+        # Fallback: all black points
         amplitude_colors = False
-        colors = [(255, 255, 255, 255)] * len(event_data)
+        colors = [BLACK] * len(event_data)
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (events, color) in enumerate(zip(event_data, colors)):
@@ -177,7 +188,8 @@ def _generate_raster_plot(
             y=y_vals,
             pen=None,
             brush=pg.mkBrush(*color),
-            size=3,
+            size=SYMBOL_SIZE,
+            symbol=SYMBOL,
         )
         plot.addItem(item)
 
@@ -239,9 +251,9 @@ def _add_colorbar_to_widget(
     # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
+        colorMap=RASTER_CMAP,
         width=15,
-        label="Amplitude (dec ΔF/F)",
+        label="Amplitude (dec ΔF/F a.u.)",
         interactive=False,
     )
 
@@ -267,7 +279,7 @@ def _attach_click_handlers_raster(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # With invertY(True), y increases downward; floor gives correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
@@ -304,7 +316,7 @@ def _generate_intensity_heatmap(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at TOP visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -317,6 +329,9 @@ def _generate_intensity_heatmap(
         if hasattr(widget.legend, "clear"):
             widget.legend.clear()
         widget.legend.setVisible(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     plot.setTitle("Calcium Intensity Heatmap (Deconvolved ΔF/F)")
 
@@ -399,13 +414,11 @@ def _generate_intensity_heatmap(
         smooth=False,  # nearest-neighbor style; no vertical gradients
     )
 
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(HEATMAP_CMAP.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
-    # Viewbox: keep ROI 0 at top, each ROI as a single "row"
-    vb.invertY(False)
+    # Viewbox settings: one flat band per ROI (inverted Y keeps ROI 1 at top)
     vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
     # Keep x-range fixed to show full frames with padding, only autorange y
@@ -438,9 +451,9 @@ def _add_intensity_colorbar_to_widget(
     # Create ColorBarItem
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
+        colorMap=RASTER_CMAP,
         width=15,
-        label="Intensity (dec ΔF/F)",
+        label="Intensity (dec ΔF/F a.u.)",
         interactive=False,
     )
 
@@ -466,7 +479,7 @@ def _attach_click_handlers_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # With invertY(False), y increases upward; floor gives correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))

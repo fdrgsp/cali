@@ -16,7 +16,7 @@ from cali._constants import (
     N_SUFFIX,
     SEM_SUFFIX,
 )
-from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
+from cali.plot._single_wells_plots.burst._plot_burst_activity import (
     _detect_population_bursts,
     _get_burst_parameters,
     _get_population_spike_data,

@@ -4,6 +4,7 @@ import numpy as np
 
 from cali.analysis._util import (
     _compute_jitter_synchrony_matrix_numba,
+    _detect_spike_onsets,
     _get_calcium_peaks_event_correlations_matrix,
     _get_calcium_peaks_event_synchrony,
     _get_calcium_peaks_events_from_rois,
@@ -238,6 +239,84 @@ def test_get_spike_synchrony() -> None:
     score = _get_spike_synchrony(matrix)
     assert score is not None
     assert np.isclose(score, 0.5)
+
+
+def test_detect_spike_onsets() -> None:
+    """Test that spike onset detection correctly identifies rising edges."""
+    # Single spike lasting multiple frames (continuous value)
+    spike_trace = np.array([0, 0, 1.5, 1.2, 0.8, 0, 0])
+    onsets = _detect_spike_onsets(spike_trace)
+    # Should only detect onset at frame 2, not subsequent positive values
+    expected = np.array([0, 0, 1, 0, 0, 0, 0])
+    assert np.array_equal(onsets, expected), f"Expected {expected}, got {onsets}"
+
+    # Multiple separate spikes
+    spike_trace = np.array([0, 2.0, 0, 0, 1.5, 1.0, 0, 3.0, 2.5, 0])
+    onsets = _detect_spike_onsets(spike_trace)
+    # Should detect onsets at frames 1, 4, and 7
+    expected = np.array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0])
+    assert np.array_equal(onsets, expected), f"Expected {expected}, got {onsets}"
+
+    # No spikes (all zeros)
+    spike_trace = np.zeros(10)
+    onsets = _detect_spike_onsets(spike_trace)
+    assert np.all(onsets == 0)
+
+    # Constant positive value (should only detect first frame as onset)
+    spike_trace = np.ones(5)
+    onsets = _detect_spike_onsets(spike_trace)
+    expected = np.array([1, 0, 0, 0, 0])
+    assert np.array_equal(onsets, expected)
+
+    # Complex pattern with rapid fluctuations
+    spike_trace = np.array([0, 1.0, 0, 2.0, 1.5, 0, 0, 0.5, 0, 1.0])
+    onsets = _detect_spike_onsets(spike_trace)
+    # Onsets at frames 1, 3, 7, 9
+    expected = np.array([0, 1, 0, 1, 0, 0, 0, 1, 0, 1])
+    assert np.array_equal(onsets, expected), f"Expected {expected}, got {onsets}"
+
+
+def test_spike_synchrony_with_continuous_vs_events() -> None:
+    """Test synchrony is calculated on spike events (onsets), not continuous values."""
+    from cali.analysis._util import _get_spike_correlations_matrix
+
+    # Create two ROIs with continuous spike traces that last multiple frames
+    # ROI 1: spike at frame 1-3, spike at frame 6-8
+    # ROI 2: spike at frame 2-4, spike at frame 7-9
+    roi1_trace = [0, 2.0, 1.5, 1.0, 0, 0, 1.8, 1.3, 0.9, 0]
+    roi2_trace = [0, 0, 2.5, 2.0, 1.5, 0, 0, 2.0, 1.7, 1.2]
+
+    spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
+
+    # Calculate synchrony using jitter window method
+    sync_matrix, _ = _get_spike_correlations_matrix(
+        spike_data, method="jitter_window", jitter_window=2
+    )
+
+    assert sync_matrix is not None
+    # With onset detection:
+    # ROI1 onsets: frames 1, 6
+    # ROI2 onsets: frames 2, 7
+    # Both onsets are within jitter window of 2 frames
+    # Should have high synchrony (both spikes match)
+    assert sync_matrix[0, 1] > 0.8, (
+        f"Expected high synchrony with onset detection, got {sync_matrix[0, 1]}"
+    )
+
+    # Test with no overlap
+    roi1_trace = [0, 2.0, 1.5, 0, 0, 0, 0, 0]
+    roi2_trace = [0, 0, 0, 0, 0, 2.5, 2.0, 0]
+    spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
+
+    sync_matrix, _ = _get_spike_correlations_matrix(
+        spike_data, method="jitter_window", jitter_window=1
+    )
+
+    assert sync_matrix is not None
+    # ROI1 onset: frame 1, ROI2 onset: frame 5 - no overlap with window=1
+    assert sync_matrix[0, 1] < 0.3, (
+        f"Expected low synchrony with no overlap, got {sync_matrix[0, 1]}"
+    )
 
 
 def test_calculate_cross_correlation_synchrony() -> None:

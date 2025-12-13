@@ -337,17 +337,15 @@ def test_compute_fov_analysis_with_active_rois() -> None:
     assert len(result.calcium_dff_correlation_matrix) == 3
     assert len(result.calcium_dff_correlation_matrix[0]) == 3
 
-    # Check calcium synchrony matrices are computed
-    assert result.calcium_peaks_jitter_synchrony_matrix is not None
-    assert len(result.calcium_peaks_jitter_synchrony_matrix) == 3
+    # Check spike synchrony matrices are computed
+    assert result.spike_jitter_synchrony_matrix is not None
+    assert len(result.spike_jitter_synchrony_matrix) == 3
 
     # Check spike matrices
     assert result.spike_correlation_matrix is not None
     assert result.spike_jitter_synchrony_matrix is not None
 
     # Check global synchrony values are reasonable
-    assert result.global_calcium_peaks_jitter_synchrony is not None
-    assert 0 <= result.global_calcium_peaks_jitter_synchrony <= 1
     assert result.global_spike_jitter_synchrony is not None
     assert 0 <= result.global_spike_jitter_synchrony <= 1
 
@@ -395,3 +393,413 @@ def test_compute_fov_analysis_no_active_rois() -> None:
 
     result = compute_fov_analysis(fov, analysis_settings)
     assert result is None
+
+
+# ==================== Population Burst Detection Tests ====================
+
+
+def test_detect_population_bursts_basic() -> None:
+    """Test basic population burst detection with spike trains."""
+    from cali.analysis._util import _detect_spikes_population_bursts
+
+    # Create spike trains with clear bursts
+    # 3 ROIs, 200 frames, frame_rate=10 Hz
+    frame_rate = 10.0
+    n_frames = 200
+
+    # Create synchronized bursts at frames 20-40, 80-100, 140-160
+    spike_trains = []
+    for _ in range(3):
+        train = np.zeros(n_frames)
+        train[20:40] = 1.0  # First burst
+        train[80:100] = 1.0  # Second burst
+        train[140:160] = 1.0  # Third burst
+        spike_trains.append(train)
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        burst_starts,
+        burst_ends,
+        pop_activity,
+        raw_activity,
+    ) = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,  # 50% threshold
+        min_duration_ms=100.0,  # 0.1 sec = 1 frame at 10 Hz
+        gaussian_sigma_sec=0.1,  # Minimal smoothing
+    )
+
+    assert burst_count == 3
+    assert avg_duration is not None
+    assert avg_duration > 0
+    assert avg_interval is not None
+    assert avg_interval > 0
+    # Check that burst timings and traces are returned
+    assert len(burst_starts) == 3
+    assert len(burst_ends) == 3
+    assert pop_activity is not None
+    assert raw_activity is not None
+
+
+def test_detect_population_bursts_no_bursts() -> None:
+    """Test population burst detection with no bursts."""
+    from cali.analysis._util import _detect_spikes_population_bursts
+
+    # Create sparse spike trains that don't form population bursts
+    spike_trains = []
+    for i in range(3):
+        train = np.zeros(200)
+        train[10 + i * 50] = 1.0  # Individual spikes, not synchronized
+        spike_trains.append(train)
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        burst_starts,
+        burst_ends,
+        pop_activity,
+        raw_activity,
+    ) = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=10.0,
+        burst_threshold_percent=80.0,  # High threshold
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.1,
+    )
+
+    assert burst_count == 0
+    assert avg_duration is None
+    assert avg_interval is None
+    assert burst_starts == []
+    assert burst_ends == []
+    assert pop_activity is not None
+    assert raw_activity is not None
+
+
+def test_detect_population_bursts_insufficient_rois() -> None:
+    """Test population burst detection with < 2 ROIs."""
+    from cali.analysis._util import _detect_spikes_population_bursts
+
+    spike_trains = [np.ones(100)]  # Only 1 ROI
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        burst_starts,
+        burst_ends,
+        pop_activity,
+        smoothed,
+    ) = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=10.0,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.1,
+    )
+
+    assert burst_count == 0
+    assert avg_duration is None
+    assert avg_interval is None
+    assert burst_starts == []
+    assert burst_ends == []
+    assert pop_activity is None
+    assert smoothed is None
+
+
+def test_detect_population_bursts_min_duration_filter() -> None:
+    """Test that short bursts are filtered by minimum duration."""
+    from cali.analysis._util import _detect_spikes_population_bursts
+
+    frame_rate = 10.0
+    n_frames = 200
+
+    # Create short bursts (5 frames = 0.5 sec) and long bursts (20 frames = 2 sec)
+    spike_trains = []
+    for _ in range(3):
+        train = np.zeros(n_frames)
+        train[20:25] = 1.0  # Short burst: 5 frames = 500ms
+        train[80:100] = 1.0  # Long burst: 20 frames = 2000ms
+        spike_trains.append(train)
+
+    # Set min_duration to 1000ms - should only detect the long burst
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        burst_starts,
+        burst_ends,
+        _,
+        _,
+    ) = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,
+        min_duration_ms=1000.0,
+        gaussian_sigma_sec=0.1,
+    )
+
+    assert burst_count == 1
+    assert avg_duration is not None
+    assert avg_duration >= 2.0  # Long burst is 2 seconds
+    assert avg_interval is None  # Only 1 burst, no intervals
+    assert len(burst_starts) == 1
+    assert len(burst_ends) == 1
+
+
+def test_detect_calcium_population_bursts_basic() -> None:
+    """Test basic population burst detection with deconvolved df/f traces."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    # Create deconvolved df/f traces with clear bursts
+    # 3 ROIs, 200 frames, frame_rate=10 Hz
+    frame_rate = 10.0
+    n_frames = 200
+
+    # Create synchronized activity bursts at frames 20-40, 80-100, 140-160
+    dec_dff_traces = []
+    for _ in range(3):
+        trace = np.zeros(n_frames)
+        trace[20:40] = 2.0  # First burst - high activity
+        trace[80:100] = 2.5  # Second burst
+        trace[140:160] = 2.0  # Third burst
+        dec_dff_traces.append(trace)
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=frame_rate,
+        burst_threshold_percent=60.0,  # 60% of normalized max
+        min_duration_ms=100.0,  # 0.1 sec = 1 frame at 10 Hz
+        gaussian_sigma_sec=0.1,  # Minimal smoothing
+    )
+
+    assert burst_count == 3
+    assert avg_duration is not None
+    assert avg_duration > 0
+    assert avg_interval is not None
+    assert avg_interval > 0
+
+
+def test_detect_calcium_population_bursts_no_bursts() -> None:
+    """Test calcium burst detection with no bursts."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    # Create traces with very brief activity that's filtered out by min_duration
+    # The key is to have activity that's above threshold but too short to be a burst
+    np.random.seed(42)
+    dec_dff_traces = []
+    for _i in range(3):
+        # Create baseline with brief spikes that are too short (< min_duration)
+        trace = np.zeros(200)
+        # Add very brief  spikes (2-3 frames each, but min_duration requires 5 frames)
+        trace[50:52] = 1.0  # 2 frames - too short
+        trace[100:102] = 1.0  # 2 frames - too short
+        trace[150:152] = 1.0  # 2 frames - too short
+        dec_dff_traces.append(trace)
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=10.0,
+        burst_threshold_percent=50.0,  # Moderate threshold
+        min_duration_ms=500.0,  # 5 frames minimum (500ms / 100ms per frame)
+        gaussian_sigma_sec=0.1,
+    )
+
+    # All bursts should be filtered out due to insufficient duration
+    assert burst_count == 0
+    assert avg_duration is None
+    assert avg_interval is None
+
+
+def test_detect_calcium_population_bursts_insufficient_rois() -> None:
+    """Test calcium burst detection with < 2 ROIs."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    dec_dff_traces = [np.ones(100)]  # Only 1 ROI
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=10.0,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.1,
+    )
+
+    assert burst_count == 0
+    assert avg_duration is None
+    assert avg_interval is None
+
+
+def test_detect_calcium_population_bursts_constant_activity() -> None:
+    """Test calcium burst detection with brief spikes too short to be bursts."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    # Create traces with brief spikes that are too short after smoothing
+    # At 10fps, 1 second = 10 frames, so min_duration=1000ms requires 10 frames
+    dec_dff_traces = []
+    for _ in range(3):
+        trace = np.zeros(200)
+        # Add 3-frame spike - still too short for min_duration of 1000ms (10 frames)
+        trace[100:103] = 5.0  # 3 frames @ 10fps = 300ms, < 1000ms required
+        dec_dff_traces.append(trace)
+
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=10.0,
+        burst_threshold_percent=50.0,
+        min_duration_ms=1000.0,  # 10 frames at 10fps = 1000ms required
+        gaussian_sigma_sec=0.05,  # Small sigma to minimize spreading
+    )
+
+    # Burst too short, should be filtered out
+    assert burst_count == 0
+    assert avg_duration is None
+    assert avg_interval is None
+
+
+def test_detect_calcium_population_bursts_normalization() -> None:
+    """Test that burst detection properly normalizes traces before thresholding."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    frame_rate = 10.0
+    n_frames = 200
+
+    # Create traces with different scales but same burst pattern
+    dec_dff_traces = []
+    for scale in [1.0, 2.0, 3.0]:
+        trace = np.zeros(n_frames)
+        trace[40:60] = 5.0 * scale  # Burst scaled differently for each ROI
+        dec_dff_traces.append(trace)
+
+    # Should still detect the synchronized burst despite different scales
+    (
+        burst_count,
+        avg_duration,
+        _avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.5,
+    )
+
+    assert burst_count >= 1
+    assert avg_duration is not None
+
+
+def test_detect_calcium_population_bursts_min_duration_filter() -> None:
+    """Test that short calcium bursts are filtered by minimum duration."""
+    from cali.analysis._util import _detect_calcium_population_bursts
+
+    frame_rate = 10.0
+    n_frames = 200
+
+    # Create short bursts (5 frames = 0.5 sec) and long bursts (20 frames = 2 sec)
+    dec_dff_traces = []
+    for _ in range(3):
+        trace = np.zeros(n_frames)
+        trace[20:25] = 2.0  # Short burst: 5 frames = 500ms
+        trace[80:100] = 2.0  # Long burst: 20 frames = 2000ms
+        dec_dff_traces.append(trace)
+
+    # Set min_duration to 1000ms - should only detect the long burst
+    (
+        burst_count,
+        avg_duration,
+        avg_interval,
+        _,  # burst_starts
+        _,  # burst_ends
+        _,  # pop_activity
+        _,  # smoothed
+    ) = _detect_calcium_population_bursts(
+        dec_dff_traces=dec_dff_traces,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,
+        min_duration_ms=1000.0,
+        gaussian_sigma_sec=0.1,
+    )
+
+    assert burst_count == 1
+    assert avg_duration is not None
+    assert avg_duration >= 1.5  # Long burst is 2 seconds
+    assert avg_interval is None  # Only 1 burst, no intervals
+
+
+def test_detect_population_bursts_edge_cases() -> None:
+    """Test population burst detection edge cases."""
+    from cali.analysis._util import _detect_spikes_population_bursts
+
+    frame_rate = 10.0
+
+    # Burst starting at frame 0
+    spike_trains = []
+    for _ in range(3):
+        train = np.zeros(100)
+        train[0:20] = 1.0
+        spike_trains.append(train)
+
+    burst_count, _, _, _, _, _, _ = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.1,
+    )
+    assert burst_count >= 1
+
+    # Burst ending at last frame
+    spike_trains = []
+    for _ in range(3):
+        train = np.zeros(100)
+        train[80:] = 1.0
+        spike_trains.append(train)
+
+    burst_count, _, _, _, _, _, _ = _detect_spikes_population_bursts(
+        spike_trains=spike_trains,
+        frame_rate=frame_rate,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.1,
+    )
+    assert burst_count >= 1

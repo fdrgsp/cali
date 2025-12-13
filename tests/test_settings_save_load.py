@@ -113,7 +113,6 @@ def test_load_settings_restores_gui_state(
                 "peaks_prominence_multiplier": 0.4,
                 "calcium_synchrony_jitter": 250.0,
                 "calcium_peaks_max_lag": 1200.0,
-                "calcium_network_threshold": 0.4,
             },
             "spikes_data": {
                 "spike_threshold": 5.0,
@@ -381,7 +380,6 @@ def test_load_settings_with_evoked_experiment_data(
                 "peaks_prominence_multiplier": 0.33,
                 "calcium_synchrony_jitter": 200.0,
                 "calcium_peaks_max_lag": 1000.0,
-                "calcium_network_threshold": 0.3,
             },
             "spikes_data": {
                 "spike_threshold": 3.0,

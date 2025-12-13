@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+CMAP_NAME = "viridis"
+CMAP = pg.colormap.get(CMAP_NAME)
 
 
 # -----------------------------------------------------------------------------#
@@ -118,7 +123,7 @@ def _plot_spike_cross_correlation_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
+    """Plot the pairwise correlation matrix as a heatmap (pyqtgraph).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
@@ -132,6 +137,9 @@ def _plot_spike_cross_correlation_data(
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -167,8 +175,7 @@ def _plot_spike_cross_correlation_data(
     img = pg.ImageItem(corr)
 
     # viridis colormap
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
     img.setLevels((0.0, 1.0))  # fixed [0, 1]
 
     plot.addItem(img)
@@ -197,7 +204,9 @@ def _plot_spike_cross_correlation_data(
     plot.getAxis("left").setTicks([])
 
     # Add colorbar
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+    )
 
     # ---------------- Hover + Click interaction ---------------- #
     _attach_spike_corr_interaction(widget, plot, vb, rois_idxs, corr, title)
@@ -266,28 +275,3 @@ def _attach_spike_corr_interaction(
     # Remember handlers so we can disconnect on next call
     plot.setProperty("spike_ccorr_hover_handler", _on_mouse_moved)
     plot.setProperty("spike_ccorr_click_handler", _on_mouse_clicked)
-
-
-def _add_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-    label: str = "Correlation",
-) -> None:
-    """Add a ColorBarItem to the widget layout."""
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Create ColorBarItem
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
-        width=15,
-        label=label,
-        interactive=False,
-    )
-
-    # Add to plot layout (row 2, column 3 = right side)
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

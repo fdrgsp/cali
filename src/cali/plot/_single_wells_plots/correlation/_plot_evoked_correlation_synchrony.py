@@ -17,15 +17,11 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI
 
-from ._plot_calcium_peaks_correlation import (
-    _get_correlation_matrix_from_db,
-    _plot_cross_correlation_data,
-)
-from ._plot_calcium_peaks_synchrony import (
-    _get_synchrony_matrix_from_db,
-    _plot_peak_event_synchrony_data,
+from ._plot_calcium_traces_correlation import (
+    _get_dec_dff_correlation_matrix_from_db,
 )
 from ._plot_inferred_spike_correlation import (
     _get_spike_correlation_matrix_from_db,
@@ -45,6 +41,12 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+STIM_RECTANGLE_COLOR = "orange"
+STIM_RECTANGLE_WIDTH = 8
+CMAP_NAME = "viridis"
+CMAP = pg.colormap.get(CMAP_NAME)
 
 
 def _filter_rois_by_stimulation(
@@ -87,86 +89,6 @@ def _filter_rois_by_stimulation(
         filtered_rois = list(session.exec(stmt).all())
 
     return filtered_rois if filtered_rois else None
-
-
-# =============================================================================
-# Calcium Peaks - Stimulated ROIs
-# =============================================================================
-
-
-def _plot_stimulated_calcium_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks synchrony for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_peak_event_synchrony_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-def _plot_stimulated_calcium_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks cross-correlation for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_cross_correlation_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-# =============================================================================
-# Calcium Peaks - Non-Stimulated ROIs
-# =============================================================================
-
-
-def _plot_non_stimulated_calcium_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks synchrony for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_peak_event_synchrony_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
-
-
-def _plot_non_stimulated_calcium_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks cross-correlation for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_cross_correlation_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
 
 
 # =============================================================================
@@ -465,251 +387,6 @@ def _reorder_matrix_by_roi_list(
 
 
 # =============================================================================
-# Calcium Peaks - Sorted Combined Plots (Stimulated → Non-Stimulated)
-# =============================================================================
-
-
-def _plot_sorted_calcium_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks synchrony with ROIs sorted by stimulation status.
-
-    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
-    This reveals network clustering based on stimulation.
-    """
-    import pyqtgraph as pg
-
-    from ._plot_calcium_peaks_synchrony import _add_colorbar_to_widget
-
-    plot = widget.plot_item
-    assert plot is not None
-
-    # Clear previous plot
-    _detach_heatmap_interaction(plot)
-    plot.clear()
-    vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.setAspectLocked(False)
-
-    # Hide shared legend
-    if hasattr(widget, "legend") and widget.legend is not None:
-        widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    # Get sorted ROI lists
-    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
-    )
-
-    if len(all_sorted) < 2:
-        plot.setTitle("Calcium Peaks Synchrony (Sorted - Need ≥2 ROIs)")
-        return
-
-    # Get synchrony matrix from database
-    sync_matrix, roi_labels, _, jitter_ms = _get_synchrony_matrix_from_db(
-        engine, fov_name, run_id
-    )
-
-    if sync_matrix is None or roi_labels is None:
-        plot.setTitle("Calcium Peaks Synchrony (Sorted - No data)")
-        return
-
-    # Reorder matrix according to sorted ROIs
-    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
-        sync_matrix, roi_labels, all_sorted
-    )
-
-    if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Calcium Peaks Synchrony (Sorted - Insufficient ROIs)")
-        return
-
-    # Plot the heatmap
-    img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))
-    plot.addItem(img)
-
-    vb.invertY(True)
-    vb.setAspectLocked(True)
-
-    # Build title with counts
-    n_stim = len([r for r in final_rois if r in stim_rois])
-    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
-
-    # Calculate medians: stimulated block, non-stimulated block, and global
-    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
-    global_median = np.median(reordered_matrix[mask])
-
-    # Stimulated block (top-left n_stim x n_stim)
-    if n_stim > 1:
-        stim_block = reordered_matrix[:n_stim, :n_stim]
-        stim_mask = ~np.eye(n_stim, dtype=bool)
-        stim_median = np.median(stim_block[stim_mask])
-    else:
-        stim_median = np.nan
-
-    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
-    if n_non_stim > 1:
-        non_stim_block = reordered_matrix[n_stim:, n_stim:]
-        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
-        non_stim_median = np.median(non_stim_block[non_stim_mask])
-    else:
-        non_stim_median = np.nan
-
-    title = f"Calcium Peaks Synchrony (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
-    if jitter_ms is not None:
-        title += f" | Jitter: {jitter_ms}ms"
-
-    # Add medians (always use filtered matrix values, not database global_sync)
-    if not np.isnan(stim_median):
-        title += f" | Stim median: {stim_median:.3f}"
-    if not np.isnan(non_stim_median):
-        title += f" | Non-stim median: {non_stim_median:.3f}"
-    title += f" | Global median: {global_median:.3f}"
-
-    plot.setTitle(title)
-    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
-    plot.setLabel("left", "ROI (Stim → Non-Stim)")
-
-    plot.getAxis("bottom").setTicks([])
-    plot.getAxis("left").setTicks([])
-
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
-
-    # Add visual marker for stimulated ROI block (green rectangle)
-    if n_stim > 0:
-        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
-        rect.setPen(pg.mkPen(color="w", width=5))
-        rect.setBrush(pg.mkBrush(None))
-        plot.addItem(rect)
-
-    # Add hover + click interaction
-    _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
-
-
-def _plot_sorted_calcium_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peaks correlation with ROIs sorted by stimulation status.
-
-    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
-    This reveals network clustering based on stimulation.
-    """
-    from ._plot_calcium_peaks_correlation import _add_colorbar_to_widget
-
-    plot = widget.plot_item
-    assert plot is not None
-
-    # Clear previous plot
-    _detach_heatmap_interaction(plot)
-    plot.clear()
-    vb = plot.getViewBox()
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.setAspectLocked(False)
-
-    # Hide shared legend
-    if hasattr(widget, "legend") and widget.legend is not None:
-        widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    # Get sorted ROI lists
-    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
-    )
-
-    if len(all_sorted) < 2:
-        plot.setTitle("Calcium Peaks Correlation (Sorted - Need ≥2 ROIs)")
-        return
-
-    # Get correlation matrix from database
-    corr_matrix, roi_labels = _get_correlation_matrix_from_db(engine, fov_name, run_id)
-
-    if corr_matrix is None or roi_labels is None:
-        plot.setTitle("Calcium Peaks Correlation (Sorted - No data)")
-        return
-
-    # Reorder matrix according to sorted ROIs
-    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
-        corr_matrix, roi_labels, all_sorted
-    )
-
-    if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Calcium Peaks Correlation (Sorted - Insufficient ROIs)")
-        return
-
-    # Plot the heatmap
-    img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))
-    plot.addItem(img)
-
-    vb.invertY(True)
-    vb.setAspectLocked(True)
-
-    # Build title with counts
-    n_stim = len([r for r in final_rois if r in stim_rois])
-    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
-
-    # Calculate medians: stimulated block, non-stimulated block, and global
-    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
-    global_median = np.median(reordered_matrix[mask])
-
-    # Stimulated block (top-left n_stim x n_stim)
-    if n_stim > 1:
-        stim_block = reordered_matrix[:n_stim, :n_stim]
-        stim_mask = ~np.eye(n_stim, dtype=bool)
-        stim_median = np.median(stim_block[stim_mask])
-    else:
-        stim_median = np.nan
-
-    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
-    if n_non_stim > 1:
-        non_stim_block = reordered_matrix[n_stim:, n_stim:]
-        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
-        non_stim_median = np.median(non_stim_block[non_stim_mask])
-    else:
-        non_stim_median = np.nan
-
-    title = f"Max-Lag Cross-Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
-
-    # Add medians
-    if not np.isnan(stim_median):
-        title += f" | Stim median: {stim_median:.3f}"
-    if not np.isnan(non_stim_median):
-        title += f" | Non-stim median: {non_stim_median:.3f}"
-    title += f" | Global median: {global_median:.3f}"
-
-    plot.setTitle(title)
-    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
-    plot.setLabel("left", "ROI (Stim → Non-Stim)")
-
-    plot.getAxis("bottom").setTicks([])
-    plot.getAxis("left").setTicks([])
-
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
-
-    # Add visual marker for stimulated ROI block (green rectangle)
-    if n_stim > 0:
-        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
-        rect.setPen(pg.mkPen(color="w", width=5))
-        rect.setBrush(pg.mkBrush(None))
-        plot.addItem(rect)
-
-    # Add hover + click interaction
-    _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
-
-
-# =============================================================================
 # Inferred Spikes - Sorted Combined Plots (Stimulated → Non-Stimulated)
 # =============================================================================
 
@@ -726,14 +403,13 @@ def _plot_sorted_spike_synchrony(
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
     """
-    from ._plot_inferred_spike_synchrony import _add_colorbar_to_widget
-
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
@@ -775,8 +451,7 @@ def _plot_sorted_spike_synchrony(
 
     # Plot the heatmap
     img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
     img.setLevels((0.0, 1.0))
     plot.addItem(img)
 
@@ -819,20 +494,33 @@ def _plot_sorted_spike_synchrony(
     title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
-    plot.setLabel("left", "ROI (Stim → Non-Stim)")
+    plot.setLabel("bottom", "ROI (Non-Stim ← Stim)")
+    plot.setLabel("left", "ROI (Non-Stim ← Stim)")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Synchrony", colormap=CMAP_NAME
+    )
 
-    # Add visual marker for stimulated ROI block (green rectangle)
+    # Add visual marker for stimulated ROI block (rectangle)
     if n_stim > 0:
         rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
-        rect.setPen(pg.mkPen(color="w", width=5))
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
         rect.setBrush(pg.mkBrush(None))
         plot.addItem(rect)
+
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
 
     # Add hover + click interaction
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
@@ -850,14 +538,13 @@ def _plot_sorted_spike_correlation(
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
     """
-    from ._plot_inferred_spike_correlation import _add_colorbar_to_widget
-
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
@@ -896,8 +583,7 @@ def _plot_sorted_spike_correlation(
 
     # Plot the heatmap
     img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
     img.setLevels((0.0, 1.0))
     plot.addItem(img)
 
@@ -938,21 +624,32 @@ def _plot_sorted_spike_correlation(
     title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
-    plot.setLabel("left", "ROI (Stim → Non-Stim)")
+    plot.setLabel("bottom", "ROI (Non-Stim ← Stim)")
+    plot.setLabel("left", "ROI (Non-Stim ← Stim)")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+    )
 
     # Add visual marker for stimulated ROI block (green rectangle)
     if n_stim > 0:
         rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
-        rect.setPen(pg.mkPen(color="w", width=5))
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
         rect.setBrush(pg.mkBrush(None))
         plot.addItem(rect)
-
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
     # Add hover + click interaction
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
 
@@ -969,14 +666,13 @@ def _plot_sorted_spike_max_lag_correlation(
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
     """
-    from ._plot_spike_max_lag_correlation import _add_colorbar_to_widget
-
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
@@ -1015,8 +711,7 @@ def _plot_sorted_spike_max_lag_correlation(
 
     # Plot the heatmap
     img = pg.ImageItem(reordered_matrix)
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
     img.setLevels((0.0, 1.0))
     plot.addItem(img)
 
@@ -1057,20 +752,166 @@ def _plot_sorted_spike_max_lag_correlation(
     title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI (Stim → Non-Stim)")
-    plot.setLabel("left", "ROI (Stim → Non-Stim)")
+    plot.setLabel("bottom", "ROI (Non-Stim ← Stim)")
+    plot.setLabel("left", "ROI (Non-Stim ← Stim)")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Correlation")
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+    )
 
     # Add visual marker for stimulated ROI block (green rectangle)
     if n_stim > 0:
         rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
-        rect.setPen(pg.mkPen(color="w", width=5))
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
         rect.setBrush(pg.mkBrush(None))
         plot.addItem(rect)
+
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
+
+    # Add hover + click interaction
+    _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
+
+
+def _plot_sorted_dec_dff_correlation(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot zero-lag dec DF/F correlation with ROIs sorted by stimulation status.
+
+    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
+    This reveals network clustering based on stimulation.
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    _detach_heatmap_interaction(plot)
+    plot.clear()
+    disconnect_hover_handlers(plot)
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Hide shared legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - Need ≥2 ROIs)")
+        return
+
+    # Get correlation matrix from database
+    corr_matrix, roi_labels = _get_dec_dff_correlation_matrix_from_db(
+        engine, fov_name, run_id
+    )
+
+    if corr_matrix is None or roi_labels is None:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - No data)")
+        return
+
+    # Reorder matrix according to sorted ROIs
+    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
+        corr_matrix, roi_labels, all_sorted
+    )
+
+    if reordered_matrix is None or len(final_rois) < 2:
+        plot.setTitle("Deconvolved DF/F Correlation (Sorted - Insufficient ROIs)")
+        return
+
+    # Plot the heatmap
+    img = pg.ImageItem(reordered_matrix)
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))
+    plot.addItem(img)
+
+    vb.invertY(True)
+    vb.setAspectLocked(True)
+
+    # Build title with counts
+    n_stim = len([r for r in final_rois if r in stim_rois])
+    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate medians: stimulated block, non-stimulated block, and global
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool)
+    global_median = np.median(reordered_matrix[mask])
+
+    # Stimulated block (top-left n_stim x n_stim)
+    if n_stim > 1:
+        stim_block = reordered_matrix[:n_stim, :n_stim]
+        stim_mask = ~np.eye(n_stim, dtype=bool)
+        stim_median = np.median(stim_block[stim_mask])
+    else:
+        stim_median = np.nan
+
+    # Non-stimulated block (bottom-right n_non_stim x n_non_stim)
+    if n_non_stim > 1:
+        non_stim_block = reordered_matrix[n_stim:, n_stim:]
+        non_stim_mask = ~np.eye(n_non_stim, dtype=bool)
+        non_stim_median = np.median(non_stim_block[non_stim_mask])
+    else:
+        non_stim_median = np.nan
+
+    title = (
+        f"Zero-Lag Deconvolved DF/F Correlation "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
+
+    # Add medians
+    if not np.isnan(stim_median):
+        title += f" | Stim median: {stim_median:.3f}"
+    if not np.isnan(non_stim_median):
+        title += f" | Non-stim median: {non_stim_median:.3f}"
+    title += f" | Global median: {global_median:.3f}"
+
+    plot.setTitle(title)
+    plot.setLabel("bottom", "ROI (Non-Stim ← Stim)")
+    plot.setLabel("left", "ROI (Non-Stim ← Stim)")
+
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+    )
+
+    # Add visual marker for stimulated ROI block (green rectangle)
+    if n_stim > 0:
+        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
+        rect.setBrush(pg.mkBrush(None))
+        plot.addItem(rect)
+
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
 
     # Add hover + click interaction
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)

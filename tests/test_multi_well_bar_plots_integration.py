@@ -19,7 +19,6 @@ from cali.plot._multi_wells_plots._calcium_peaks import (
     plot_calcium_peaks_amplitude_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
-    plot_calcium_peaks_synchrony_bar_plot,
 )
 from cali.plot._multi_wells_plots._cell_properties import (
     plot_cell_size_bar_plot,
@@ -208,10 +207,17 @@ def _has_burst_data(engine: Engine) -> bool:
         with Session(engine) as session:
             from cali.sqlmodel import FOVAnalysis
 
-            # Check if any FOVAnalysis record has burst_count > 0
+            # Check if any FOVAnalysis record has spike or calcium burst data
             analyses = session.exec(select(FOVAnalysis).limit(10)).all()
             return any(
-                getattr(a, "burst_count", None) is not None and a.burst_count > 0  # type: ignore
+                (
+                    getattr(a, "spike_burst_count", None) is not None
+                    and a.spike_burst_count > 0
+                )  # type: ignore
+                or (
+                    getattr(a, "calcium_burst_count", None) is not None
+                    and a.calcium_burst_count > 0
+                )  # type: ignore
                 for a in analyses
             )
     except (OperationalError, AttributeError):
@@ -260,23 +266,6 @@ def _has_fov_analysis_data(engine: Engine) -> bool:
             return False
 
 
-def test_plot_calcium_peaks_synchrony_has_data(
-    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-) -> None:
-    """Test that calcium peaks synchrony plot displays actual data."""
-    widget, run_id = multi_well_widget_with_data
-    assert widget.engine is not None
-
-    if not _has_fov_analysis_data(widget.engine):
-        pytest.skip("No FOVAnalysis data in database")
-
-    plot_calcium_peaks_synchrony_bar_plot(
-        widget, "Calcium Peaks Synchrony", widget.engine, run_id
-    )
-
-    _verify_plot_has_data(widget, "Calcium Peaks Synchrony")
-
-
 def test_plot_spike_synchrony_has_data(
     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
 ) -> None:
@@ -290,20 +279,6 @@ def test_plot_spike_synchrony_has_data(
     plot_spike_synchrony_bar_plot(widget, "Spike Synchrony", widget.engine, run_id)
 
     _verify_plot_has_data(widget, "Spike Synchrony")
-
-
-# NOTE: plot_calcium_network_density_bar_plot function doesn't exist
-# def test_plot_calcium_network_density_has_data(
-#     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-# ) -> None:
-#     """Test that calcium network density plot displays actual data."""
-#     widget, run_id = multi_well_widget_with_data
-#
-#     plot_calcium_network_density_bar_plot(
-#         widget, "Calcium Network Density", widget.engine, run_id
-#     )
-#
-#     _verify_plot_has_data(widget, "Calcium Network Density")
 
 
 def test_plot_burst_count_has_data(

@@ -270,8 +270,7 @@ class CaliGui(QMainWindow):
         single_well_vis_layout.setSpacing(5)
 
         self._single_well_graph_1 = _SingleWellGraphWidget(self)
-        # self._single_well_graph_2 = _SingleWellGraphWidget(self)
-        self._single_well_graph_3 = _SingleWellGraphWidget(self)
+        self._single_well_graph_2 = _SingleWellGraphWidget(self)
 
         # Create top widget for graphs 1 and 2 side by side
         top_widget = QWidget()
@@ -279,20 +278,18 @@ class CaliGui(QMainWindow):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(5)
         top_layout.addWidget(self._single_well_graph_1)
-        # top_layout.addWidget(self._single_well_graph_2)
 
         # Create vertical splitter between top (graphs 1&2) and graph 3
         vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         vertical_splitter.setContentsMargins(0, 0, 0, 0)
-        vertical_splitter.setChildrenCollapsible(False)
+        vertical_splitter.setChildrenCollapsible(True)
         vertical_splitter.addWidget(top_widget)
-        vertical_splitter.addWidget(self._single_well_graph_3)
+        vertical_splitter.addWidget(self._single_well_graph_2)
 
         single_well_vis_layout.addWidget(vertical_splitter)
         self.SW_GRAPHS = [
             self._single_well_graph_1,
-            # self._single_well_graph_2,
-            self._single_well_graph_3,
+            self._single_well_graph_2,
         ]
 
         # MULTI WELL VISUALIZATION TAB ------------------------------------------------
@@ -449,7 +446,16 @@ class CaliGui(QMainWindow):
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/")
+
+        # self._database_path = (
+        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
+        # )
+        # self._data_path = (
+        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
+        #     "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        # )
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1440,7 +1446,7 @@ class CaliGui(QMainWindow):
                     )
                 else:
                     # Re-raise other ValueErrors
-                    raise
+                    raise e
         except Exception as e:
             self._enable(True)
             msg = f"❌ Failed to run cali:\n{e}"
@@ -2045,13 +2051,9 @@ class CaliGui(QMainWindow):
                             peaks_prominence_multiplier=(
                                 a_settings.peaks_prominence_multiplier
                             ),
-                            calcium_synchrony_jitter=(
-                                a_settings.calcium_sync_jitter_window
-                            ),
-                            calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
-                            # calcium_network_threshold=(
-                            #     a_settings.calcium_network_threshold
-                            # ),
+                            burst_threshold=a_settings.calcium_burst_threshold,
+                            burst_min_duration=a_settings.calcium_burst_min_duration,
+                            burst_blur_sigma=a_settings.calcium_burst_gaussian_sigma,
                         ),
                         spikes_data=SpikeData(
                             spike_threshold=a_settings.spike_threshold_value,
@@ -2060,6 +2062,7 @@ class CaliGui(QMainWindow):
                             burst_min_duration=a_settings.burst_min_duration,
                             burst_blur_sigma=a_settings.burst_gaussian_sigma,
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
+                            synchrony_jitter=a_settings.spikes_sync_jitter_window,
                         ),
                     )
                 )

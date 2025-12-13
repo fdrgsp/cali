@@ -308,6 +308,33 @@ def _get_calcium_peaks_event_correlations_matrix(
     return synchrony_matrix, lag_matrix
 
 
+def _detect_spike_onsets(spike_trace: np.ndarray) -> np.ndarray:
+    """Detect spike onset events from continuous inferred spike traces.
+
+    Converts continuous spike probability/amplitude traces to binary event arrays
+    by detecting rising edges (0 -> positive transitions). This matches the
+    interpretation used in raster plots where each spike event is a discrete onset.
+
+    Parameters
+    ----------
+    spike_trace : np.ndarray
+        Continuous spike trace (e.g., from CASCADE, OASIS, etc.)
+
+    Returns
+    -------
+    np.ndarray
+        Binary array with 1 at spike onsets, 0 elsewhere
+    """
+    # Detect positive values
+    positive_vals = spike_trace > 0
+    # Detect rising edges: 0 -> positive transitions
+    rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
+    # Create binary array: 1 at rising edges, 0 elsewhere
+    binary_events = np.zeros_like(spike_trace, dtype=np.float32)
+    binary_events[rising] = 1.0
+    return binary_events
+
+
 def _get_spike_correlations_matrix(
     spike_data_dict: dict[str, list[float]],
     method: str = "correlation",
@@ -316,13 +343,18 @@ def _get_spike_correlations_matrix(
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Compute pairwise spike similarity matrix.
 
+    Converts continuous inferred spike traces to discrete spike onset events
+    (rising edge detection) before computing synchrony, matching the interpretation
+    used in raster plots and standard neuroscience practice.
+
     Parameters
     ----------
     spike_data_dict : dict
-        Dictionary mapping ROI names to spike amplitude arrays
+        Dictionary mapping ROI names to continuous spike amplitude/probability arrays
+        (e.g., from CASCADE, OASIS, or other spike inference methods)
     method : str
         Method to use:
-        - "correlation": Zero-lag Pearson correlation on binary spike trains
+        - "correlation": Zero-lag Pearson correlation on spike onset events
         - "jitter_window": Synchrony with temporal tolerance (±jitter_window)
         - "cross_correlation": Max cross-correlation within ±max_lag
     jitter_window : int
@@ -336,9 +368,15 @@ def _get_spike_correlations_matrix(
     -------
     tuple[np.ndarray | None, np.ndarray | None]
         (synchrony_matrix, lag_matrix) where:
-        - synchrony_matrix: NxN matrix of correlation values
+        - synchrony_matrix: NxN matrix of correlation values between spike onsets
         - lag_matrix: NxN matrix of lag values (only for cross_correlation method,
           otherwise None). Positive lag means ROI_j lags behind ROI_i.
+
+    Notes
+    -----
+    Spike onsets are detected by identifying rising edges (0 → positive transitions)
+    in the continuous spike traces. This ensures that multi-frame spike events are
+    counted as single discrete events, not multiple overlapping spikes.
     """
     from cali.util._util import _NUMBA_LOCK
 
@@ -357,8 +395,12 @@ def _get_spike_correlations_matrix(
     if spike_array.shape[0] < 2:
         return None, None
 
-    # Create binary spike matrices (1 where spike > 0, 0 otherwise)
-    binary_spikes = (spike_array > 0).astype(np.float32)
+    # Convert continuous spike traces to discrete event arrays
+    # using rising edge detection.
+    # This matches raster plot interpretation: each spike event = one onset
+    binary_spikes = np.zeros_like(spike_array, dtype=np.float32)
+    for i in range(spike_array.shape[0]):
+        binary_spikes[i] = _detect_spike_onsets(spike_array[i])
 
     n_rois = binary_spikes.shape[0]
     lag_matrix = None  # Only computed for cross_correlation method
@@ -689,26 +731,36 @@ def _compute_zero_lag_corr_matrix(
     return correlation_matrix
 
 
-def _detect_population_bursts(
+def _detect_spikes_population_bursts(
     spike_trains: list[np.ndarray],
     frame_rate: float,
     burst_threshold_percent: float,
     min_duration_ms: float,
     gaussian_sigma_sec: float,
-) -> tuple[int, float | None, float | None]:
+) -> tuple[
+    int,
+    float | None,
+    float | None,
+    list[int],
+    list[int],
+    np.ndarray | None,
+    np.ndarray | None,
+]:
     """Detect bursts in population spike activity.
 
-    Computes mean population activity, smooths it, and detects periods
-    above threshold that exceed minimum duration.
+    Computes mean population activity (fraction of active ROIs), smooths it,
+    and detects periods above threshold that exceed minimum duration.
 
     Parameters
     ----------
     spike_trains : list[np.ndarray]
-        List of binary spike trains for active ROIs
+        List of binary spike trains for active ROIs (0/1 per frame)
     frame_rate : float
         Frame rate in Hz (frames per second)
     burst_threshold_percent : float
-        Threshold as percentage (e.g., 65.0 for 65%)
+        Threshold as percentage of maximal activity (0-1 scale).
+        For spikes, the population activity is already in [0,1], so a
+        value of 65.0 corresponds to a threshold of 0.65 (65% of ROIs active).
     min_duration_ms : float
         Minimum burst duration in milliseconds
     gaussian_sigma_sec : float
@@ -716,21 +768,26 @@ def _detect_population_bursts(
 
     Returns
     -------
-    tuple[int, float | None, float | None]
-        - burst_count: Number of bursts detected
-        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
-        - burst_avg_interval: Average inter-burst interval in seconds
-          (None if < 2 bursts)
+    tuple
+        Seven-element tuple containing:
+        - burst_count (int): Number of bursts detected
+        - burst_avg_duration (float | None): Average burst duration in seconds
+        - burst_avg_interval (float | None): Average inter-burst interval
+        - burst_starts (list[int]): Frame indices where bursts start
+        - burst_ends (list[int]): Frame indices where bursts end (exclusive)
+        - population_activity (np.ndarray | None): Raw mean population activity
+          (fraction of active ROIs, in [0,1])
+        - smoothed_activity (np.ndarray | None): Smoothed population activity
     """
     if len(spike_trains) < 2:
-        return 0, None, None
+        return 0, None, None, [], [], None, None
 
     # Stack spike trains and compute population activity (mean across ROIs)
-    spike_array = np.vstack(spike_trains)  # (n_rois, n_frames)
-    population_activity = np.mean(spike_array, axis=0)  # (n_frames,)
+    spike_array = np.vstack(spike_trains)  # (n_rois, n_frames), values 0 or 1
+    population_activity = np.mean(spike_array, axis=0)  # (n_frames,), in [0,1]
 
     if population_activity.size == 0:
-        return 0, None, None
+        return 0, None, None, [], [], None, None
 
     # Convert parameters to frame units
     min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
@@ -744,13 +801,27 @@ def _detect_population_bursts(
     else:
         smoothed_activity = population_activity
 
-    # Convert threshold from percent to fraction
-    burst_threshold = burst_threshold_percent / 100.0
+    # If the signal is essentially flat, no bursts
+    max_val = float(np.max(smoothed_activity))
+    if max_val < np.finfo(float).eps:
+        return 0, None, None, [], [], population_activity, smoothed_activity
+
+    # Threshold in the same [0,1] units as smoothed_activity
+    # e.g. burst_threshold_percent = 65 -> threshold_value = 0.65
+    burst_threshold_value = burst_threshold_percent / 100.0
 
     # Detect regions above threshold
-    above_threshold = smoothed_activity > burst_threshold
+    above_threshold = smoothed_activity > burst_threshold_value
     if not np.any(above_threshold):
-        return 0, None, None
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            population_activity,
+            smoothed_activity,
+        )
 
     # Find burst start and end points
     above_int = above_threshold.astype(int)
@@ -759,7 +830,7 @@ def _detect_population_bursts(
     starts = np.where(changes == 1)[0] + 1
     ends = np.where(changes == -1)[0] + 1
 
-    # Handle edge cases
+    # Handle edge cases (burst at beginning or end)
     if above_threshold[0]:
         starts = np.insert(starts, 0, 0)
     if above_threshold[-1]:
@@ -775,30 +846,198 @@ def _detect_population_bursts(
         if duration_frames >= min_duration_frames:
             burst_starts_list.append(int(start_idx))
             burst_ends_list.append(int(end_idx))
-            # Convert duration to seconds
             duration_sec = duration_frames / frame_rate
             burst_durations_sec.append(duration_sec)
 
     burst_count = len(burst_durations_sec)
 
     if burst_count == 0:
-        return 0, None, None
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            population_activity,
+            smoothed_activity,
+        )
 
-    # Calculate average duration
+    # Average duration (seconds)
     burst_avg_duration = float(np.mean(burst_durations_sec))
 
-    # Calculate inter-burst intervals (time from end of one burst to start of next)
+    # Average inter-burst interval (seconds)
     burst_avg_interval: float | None = None
     if burst_count >= 2:
         intervals_sec: list[float] = []
         for i in range(1, burst_count):
-            # Interval = frames between bursts / frame_rate
             interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
             interval_sec = interval_frames / frame_rate
             intervals_sec.append(interval_sec)
         burst_avg_interval = float(np.mean(intervals_sec))
 
-    return burst_count, burst_avg_duration, burst_avg_interval
+    return (
+        burst_count,
+        burst_avg_duration,
+        burst_avg_interval,
+        burst_starts_list,
+        burst_ends_list,
+        population_activity,  # raw fraction of active ROIs
+        smoothed_activity,  # smoothed fraction trace
+    )
+
+
+def _detect_calcium_population_bursts(
+    dec_dff_traces: list[np.ndarray],
+    frame_rate: float,
+    burst_threshold_percent: float,
+    min_duration_ms: float,
+    gaussian_sigma_sec: float,
+) -> tuple[
+    int,
+    float | None,
+    float | None,
+    list[int],
+    list[int],
+    np.ndarray | None,
+    np.ndarray | None,
+]:
+    """Detect bursts in population calcium activity (deconvolved DF/F).
+
+    Burst detection is done directly on the mean deconvolved DF/F trace
+    (optionally smoothed), without explicit normalization. The threshold is
+    interpreted as a percentage of the maximum smoothed population activity.
+
+    Parameters
+    ----------
+    dec_dff_traces : list[np.ndarray]
+        List of deconvolved DF/F traces for active ROIs
+    frame_rate : float
+        Frame rate in Hz (frames per second)
+    burst_threshold_percent : float
+        Threshold as percentage of the maximum smoothed population activity
+        (e.g., 65.0 means 0.65 * max(smoothed_activity)).
+    min_duration_ms : float
+        Minimum burst duration in milliseconds
+    gaussian_sigma_sec : float
+        Gaussian smoothing sigma in seconds
+
+    Returns
+    -------
+    tuple
+        Seven-element tuple containing:
+        - burst_count (int): Number of bursts detected
+        - burst_avg_duration (float | None): Average burst duration in seconds
+        - burst_avg_interval (float | None): Average inter-burst interval
+        - burst_starts (list[int]): Frame indices where bursts start
+        - burst_ends (list[int]): Frame indices where bursts end (exclusive)
+        - population_activity (np.ndarray | None): Raw mean population activity
+        - smoothed_activity (np.ndarray | None): Smoothed population activity
+    """
+    if len(dec_dff_traces) < 2:
+        return 0, None, None, [], [], None, None
+
+    # Stack traces and compute population activity (mean across ROIs)
+    traces_array = np.vstack(dec_dff_traces)  # (n_rois, n_frames)
+    population_activity = np.mean(traces_array, axis=0)  # raw mean (n_frames,)
+
+    if population_activity.size == 0:
+        return 0, None, None, [], [], None, None
+
+    # Convert parameters to frame units
+    min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
+    gaussian_sigma_frames = gaussian_sigma_sec * frame_rate
+
+    # Smooth population activity
+    if gaussian_sigma_frames > 0:
+        smoothed_activity = gaussian_filter1d(
+            population_activity, sigma=gaussian_sigma_frames, mode="nearest"
+        )
+    else:
+        smoothed_activity = population_activity
+
+    # If the signal is essentially flat, no bursts
+    max_val = float(np.max(smoothed_activity))
+    if max_val < np.finfo(float).eps:
+        return 0, None, None, [], [], population_activity, smoothed_activity
+
+    # Threshold in the SAME UNITS as smoothed_activity
+    # e.g. burst_threshold_percent = 65 → 0.65 * max(smoothed_activity)
+    burst_threshold_value = (burst_threshold_percent / 100.0) * max_val
+
+    # Detect regions above threshold
+    above_threshold = smoothed_activity > burst_threshold_value
+    if not np.any(above_threshold):
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            population_activity,
+            smoothed_activity,
+        )
+
+    # Find burst start and end points
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
+
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+
+    # Handle edge cases (burst at beginning or end)
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
+
+    # Filter bursts by minimum duration
+    burst_starts_list: list[int] = []
+    burst_ends_list: list[int] = []
+    burst_durations_sec: list[float] = []
+
+    for start_idx, end_idx in zip(starts, ends):
+        duration_frames = end_idx - start_idx
+        if duration_frames >= min_duration_frames:
+            burst_starts_list.append(int(start_idx))
+            burst_ends_list.append(int(end_idx))
+            duration_sec = duration_frames / frame_rate
+            burst_durations_sec.append(duration_sec)
+
+    burst_count = len(burst_durations_sec)
+
+    if burst_count == 0:
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            population_activity,
+            smoothed_activity,
+        )
+
+    # Average duration (seconds)
+    burst_avg_duration = float(np.mean(burst_durations_sec))
+
+    # Average inter-burst interval (seconds)
+    burst_avg_interval: float | None = None
+    if burst_count >= 2:
+        intervals_sec: list[float] = []
+        for i in range(1, burst_count):
+            interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
+            interval_sec = interval_frames / frame_rate
+            intervals_sec.append(interval_sec)
+        burst_avg_interval = float(np.mean(intervals_sec))
+
+    return (
+        burst_count,
+        burst_avg_duration,
+        burst_avg_interval,
+        burst_starts_list,
+        burst_ends_list,
+        population_activity,  # raw mean ΔF/F
+        smoothed_activity,  # smoothed ΔF/F used for detection
+    )
 
 
 ConnectivityMethod = Literal[
@@ -832,7 +1071,7 @@ def _compute_connectivity_metrics(
         - active_roi_labels
         - calcium_dff_correlation_matrix
         - calcium_dec_dff_corr_matrix
-        - calcium_peaks_max_lag_correlation_matrix
+        - spike_max_lag_correlation_matrix
         - calcium_peaks_jitter_synchrony_matrix
         - spike_correlation_matrix
         - spike_max_lag_correlation_matrix
@@ -912,7 +1151,7 @@ def _compute_connectivity_metrics(
         is_correlation = True
 
     elif method == "calcium_peaks_maxlag":
-        metric = fov_analysis.calcium_peaks_max_lag_correlation_matrix
+        metric = fov_analysis.spike_max_lag_correlation_matrix
         is_correlation = True
 
     elif method == "calcium_peaks_jitter":

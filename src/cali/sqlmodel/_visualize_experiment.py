@@ -310,9 +310,6 @@ def _add_analysis_settings_to_tree(
 
         # Synchrony
         sync_node = settings_node.add("🔗 [green]Synchrony Analysis[/green]")
-        sync_node.add(f"Calcium jitter window: {settings.calcium_sync_jitter_window}ms")
-        sync_node.add(f"Calcium peaks max lag: {settings.calcium_peaks_max_lag}ms")
-        sync_node.add(f"Network threshold: {settings.calcium_network_threshold}%")
         sync_node.add(f"Spike synchrony lag: {settings.spikes_sync_cross_corr_lag}ms")
 
         # Peak detection

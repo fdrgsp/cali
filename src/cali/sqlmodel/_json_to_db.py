@@ -226,9 +226,6 @@ def load_analysis_from_json(
             peaks_prominence_multiplier=settings_data.get(
                 "peaks_prominence_multiplier", 1.0
             ),
-            calcium_network_threshold=settings_data.get(
-                "calcium_network_threshold", 90.0
-            ),
             spike_threshold_value=settings_data.get("spike_threshold_value", 1.0),
             spike_threshold_mode=settings_data.get(
                 "spike_threshold_mode", "multiplier"

@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 from ._trace_analysis import (
     calculate_frequency,
     calculate_inter_event_intervals,
-    compute_peak_detection_thresholds,
+    compute_calcium_peak_detection_thresholds,
+    compute_inferred_spike_threshold,
     detect_peaks_in_trace,
 )
 from ._util import get_overlap_roi_with_stimulated_area
@@ -222,6 +223,7 @@ class AnalysisRunner:
                 if not hasattr(fov, "_new_fov_analysis"):
                     fov._new_fov_analysis = []
                 fov._new_fov_analysis.append(fov_analysis)
+            cali_logger.info(f"✅ FOV-level analysis complete for {fov.name}.")
 
         return fov
 
@@ -264,11 +266,10 @@ class AnalysisRunner:
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
         # Compute thresholds
-        (
-            peaks_height_dec_dff,
-            peaks_prominence_dec_dff,
-            spike_detection_threshold,
-        ) = compute_peak_detection_thresholds(dec_dff, spikes, analysis_settings)
+        # fmt: off
+        spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
+        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, analysis_settings)  # noqa E501
+        # fmt: on
 
         if self._check_for_abort_requested():
             return None

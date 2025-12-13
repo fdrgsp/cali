@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -19,6 +20,15 @@ P1 = 5
 P2 = 100
 # max number of time points we will draw per trace (automatic downsampling)
 MAX_POINTS = 4000
+
+# PLOT STYLE CONSTANTS
+TRACE_COLOR = "k"
+TRACE_WIDTH = 3
+PEAKS_COLOR = "magenta"
+PEAKS_SYMBOL = "x"
+PEAKS_SIZE = 10
+THRESHOLD_COLOR = "magenta"
+THRESHOLD_WIDTH = 3
 
 
 # -----------------------------------------------------------------------------#
@@ -47,6 +57,11 @@ def _plot_traces_data(
     # Reset ViewBox settings that might have been set by raster plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.invertY(False)  # Ensure Y is not inverted for trace plots
+    vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -237,7 +252,8 @@ def _normalize_and_offset(
             Y[:] = 0.0
             p1, p2 = 0.0, 1.0
 
-        offsets = np.arange(Y.shape[0], dtype=float) * 1.1
+        # Reverse offsets: ROI 1 (index 0) gets highest offset → appears at top
+        offsets = np.arange(Y.shape[0] - 1, -1, -1, dtype=float) * 1.1
     else:
         offsets = np.zeros(Y.shape[0], dtype=float)
 
@@ -263,14 +279,15 @@ def _draw_traces(
         roi_label = labels[i]
 
         # ---- Choose color ----
-        if n_rois == 1:
-            # Single trace → white
-            color = "w"  # or (255, 255, 255) or pg.mkColor("white")
-        else:
-            # Multi-trace → distinct colors
-            color = pg.intColor(i, hues=max(n_rois, 16))
+        color = TRACE_COLOR
+        # if n_rois == 1:
+        #     # Single trace → black
+        #     color = "k"
+        # else:
+        #     # Multi-trace → distinct colors
+        #     color = pg.intColor(i, hues=max(n_rois, 16))
 
-        pen = pg.mkPen(color, width=1)
+        pen = pg.mkPen(color, width=TRACE_WIDTH)
 
         curve = plot.plot(
             x,
@@ -325,9 +342,9 @@ def _draw_peaks_and_thresholds(
             x[peaks_ds],
             y_i[peaks_ds],
             pen=None,
-            symbol="o",
-            symbolBrush=pg.mkBrush("yellow"),
-            symbolSize=5,
+            symbol=PEAKS_SYMBOL,
+            symbolBrush=pg.mkBrush(PEAKS_COLOR),
+            symbolSize=PEAKS_SIZE,
         )
 
     # Thresholds only if single ROI case
@@ -354,9 +371,9 @@ def _draw_peaks_and_thresholds(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "orange",
+                THRESHOLD_COLOR,
                 style=pg.QtCore.Qt.PenStyle.DashLine,
-                width=3,
+                width=THRESHOLD_WIDTH,
             ),
         )
         line.setZValue(10)  # keep on top
@@ -375,7 +392,7 @@ def _draw_peaks_and_thresholds(
         plot.plot(
             [x[0], x[0]],
             [y0, y1],
-            pen=pg.mkPen("orange", width=3),
+            pen=pg.mkPen(THRESHOLD_COLOR, width=THRESHOLD_WIDTH),
         )
 
 

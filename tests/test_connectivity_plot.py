@@ -153,7 +153,7 @@ def test_compute_connectivity_specific_threshold_values(
 
 @pytest.mark.parametrize(
     "method",
-    ["calcium_dff_corr", "calcium_dec_dff_corr", "calcium_peaks_maxlag"],
+    ["calcium_dff_corr", "calcium_dec_dff_corr", "spike_maxlag"],
 )
 def test_compute_connectivity_different_methods(method: str) -> None:
     """Test computing connectivity with different correlation methods."""
@@ -163,7 +163,7 @@ def test_compute_connectivity_different_methods(method: str) -> None:
         id=1,
         calcium_dff_correlation_matrix=[[1.0, 0.8], [0.8, 1.0]],
         calcium_dec_dff_corr_matrix=[[1.0, 0.7], [0.7, 1.0]],
-        calcium_peaks_max_lag_correlation_matrix=[[1.0, 0.9], [0.9, 1.0]],
+        spike_max_lag_correlation_matrix=[[1.0, 0.9], [0.9, 1.0]],
         active_roi_labels=[0, 1],
     )
 

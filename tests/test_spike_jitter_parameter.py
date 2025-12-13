@@ -111,31 +111,6 @@ def test_spike_widget_reset_jitter(qtbot: QtBot) -> None:
     assert widget._spike_jitter_spin.value() == DEFAULT_SPIKE_SYNC_JITTER_WINDOW
 
 
-def test_spike_jitter_separate_from_calcium_jitter(qtbot: QtBot) -> None:
-    """Test that spike jitter is independent of calcium jitter."""
-    from cali.gui._analysis_gui import _CalciumPeaksWidget
-
-    calcium_widget = _CalciumPeaksWidget()
-    spike_widget = _SpikeWidget()
-    qtbot.addWidget(calcium_widget)
-    qtbot.addWidget(spike_widget)
-
-    # Set different jitter values
-    calcium_jitter = 150.0
-    spike_jitter = 300.0
-
-    calcium_widget._calcium_synchrony_jitter_spin.setValue(calcium_jitter)
-    spike_widget._spike_jitter_spin.setValue(spike_jitter)
-
-    # Verify they are independent
-    calcium_data = calcium_widget.value()
-    spike_data = spike_widget.value()
-
-    assert calcium_data.calcium_synchrony_jitter == calcium_jitter
-    assert spike_data.synchrony_jitter == spike_jitter
-    assert calcium_data.calcium_synchrony_jitter != spike_data.synchrony_jitter
-
-
 @pytest.mark.parametrize("jitter_value", [50.0, 100.0, 200.0, 500.0, 1000.0])
 def test_spike_jitter_parametrized_values(qtbot: QtBot, jitter_value: float) -> None:
     """Test spike jitter widget with various values."""
@@ -200,28 +175,6 @@ def test_analysis_settings_spike_jitter_persistence(temp_db: TempDB) -> None:
 
         assert retrieved is not None
         assert retrieved.spikes_sync_jitter_window == test_jitter
-
-
-def test_spike_jitter_independent_of_calcium_jitter_in_model(temp_db: TempDB) -> None:
-    """Test that spike and calcium jitter are separate fields in AnalysisSettings."""
-    engine, _db_path = temp_db
-
-    calcium_jitter = 100.0
-    spike_jitter = 400.0
-
-    settings = AnalysisSettings(
-        calcium_sync_jitter_window=calcium_jitter,
-        spikes_sync_jitter_window=spike_jitter,
-    )
-
-    with Session(engine) as session:
-        session.add(settings)
-        session.commit()
-        session.refresh(settings)
-
-        assert settings.calcium_sync_jitter_window == calcium_jitter
-        assert settings.spikes_sync_jitter_window == spike_jitter
-        assert settings.calcium_sync_jitter_window != settings.spikes_sync_jitter_window
 
 
 def test_spike_jitter_affects_settings_equality() -> None:

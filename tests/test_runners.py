@@ -2906,8 +2906,8 @@ def test_fov_analysis_computed_on_full_pipeline(
                 assert fov_analysis.active_roi_labels is not None
                 assert isinstance(fov_analysis.active_roi_labels, list)
                 # Matrices should be present if FOVAnalysis was created
-                assert fov_analysis.calcium_peaks_max_lag_correlation_matrix is not None
-                assert fov_analysis.calcium_peaks_synchrony_matrix is not None
+                assert fov_analysis.spike_max_lag_correlation_matrix is not None
+                assert fov_analysis.spike_jitter_synchrony_matrix is not None
 
             # Verify CaliResult relationship
             result = session.exec(select(CaliResult)).first()

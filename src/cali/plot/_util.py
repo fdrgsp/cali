@@ -1,7 +1,8 @@
 import re
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
+import pyqtgraph as pg
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
@@ -10,6 +11,9 @@ from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 from cali.sqlmodel._util import ROIData
+
+if TYPE_CHECKING:
+    from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
 def equation_from_str(equation: str) -> Callable | None:
@@ -253,3 +257,67 @@ def _get_spikes_over_threshold(
         else:
             spikes_thresholded.append(0.0)
     return spikes_thresholded
+
+
+def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
+    """Disconnect any hover handlers from previous plots to prevent conflicts."""
+    scene = plot.scene()
+    handler_names = [
+        "sync_hover_handler",
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_corr_hover_handler",
+        "spike_ccorr_hover_handler",
+        "spike_maxlag_hover_handler",
+        "spike_maxlag_values_hover_handler",
+        "dff_corr_hover_handler",
+        "evoked_hover_handler",
+        "amp_raster_click_handler",
+        "intensity_heatmap_click_handler",
+        "spike_raster_click_handler",
+        "spike_intensity_heatmap_click_handler",
+        "neuropil_click_handler",
+        "peaks_amp_click_handler",
+        "raster_click_handler",
+        "connectivity_click_handler",
+        "connectivity_bg_click_handler",
+        "spike_maxlag_click_handler",
+        "spike_maxlag_values_click_handler",
+        "dff_corr_click_handler",
+        "evoked_click_handler",
+        "cell_size_click_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
+
+
+def add_colorbar_to_widget(
+    widget: "_SingleWellGraphWidget",
+    vmin: float,
+    vmax: float,
+    label: str = "Synchrony",
+    colormap: str = "viridis",
+) -> None:
+    """Add a ColorBarItem to the widget layout."""
+    # Remove any existing colorbar
+    if widget.colorbar is not None:
+        widget.plot_item.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+
+    # Create ColorBarItem
+    widget.colorbar = pg.ColorBarItem(
+        values=(vmin, vmax),
+        colorMap=pg.colormap.get(colormap),
+        width=15,
+        label=label,
+        interactive=False,
+    )
+
+    # Add to plot layout (row 2, column 3 = right side)
+    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

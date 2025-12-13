@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
+from qtpy.QtCore import Qt
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -20,6 +22,12 @@ if TYPE_CHECKING:
 
 # max number of time points we will draw per trace (automatic downsampling)
 MAX_POINTS = 2000
+
+# PLOT STYLE CONSTANTS
+TRACES_WIDTH = 3
+RAW_TRACES_COLOR = "k"
+NEUROPIL_COLOR = "magenta"
+CORRECTED_TRACES_COLOR = "green"
 
 
 # -----------------------------------------------------------------------------#
@@ -90,6 +98,86 @@ def _get_data_analysis_for_run(
 
 
 # -----------------------------------------------------------------------------#
+# Click handler for ROI selection
+# -----------------------------------------------------------------------------#
+def _setup_neuropil_click_handler(
+    widget: _SingleWellGraphWidget,
+    labels: list[int],
+    Y_data: np.ndarray,
+    x_full: np.ndarray,
+    T_orig: int,
+) -> None:
+    """Set up click handler to select ROIs by clicking on traces.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget containing the plot
+    labels : list[int]
+        List of ROI label values corresponding to each trace
+    Y_data : np.ndarray
+        Trace data array (n_rois, n_timepoints)
+    x_full : np.ndarray
+        Full x-axis data (frame numbers)
+    T_orig : int
+        Original number of timepoints
+    """
+    if not labels or Y_data.size == 0:
+        return
+
+    plot = widget.plot_item
+    if plot is None:
+        return
+
+    # Store data needed by click handler as plot properties
+    plot.setProperty("neuropil_labels", labels)
+    plot.setProperty("neuropil_Y_data", Y_data)
+    plot.setProperty("neuropil_x_full", x_full)
+    plot.setProperty("neuropil_T_orig", T_orig)
+
+    def on_click(event: Any) -> None:
+        """Handle click events to select ROI."""
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        # Retrieve stored data
+        stored_labels = plot.property("neuropil_labels")
+        stored_Y = plot.property("neuropil_Y_data")
+        stored_x = plot.property("neuropil_x_full")
+
+        if stored_labels is None or stored_Y is None or stored_x is None:
+            return
+
+        # Get click position in data coordinates
+        vb = plot.getViewBox()
+        mouse_point = vb.mapSceneToView(event.scenePos())
+        click_x = mouse_point.x()
+        click_y = mouse_point.y()
+
+        # Find closest frame
+        frame_idx = int(np.clip(click_x, 0, len(stored_x) - 1))
+
+        # Find closest trace at this frame
+        if frame_idx >= stored_Y.shape[1]:
+            frame_idx = stored_Y.shape[1] - 1
+
+        y_values = stored_Y[:, frame_idx]
+        distances = np.abs(y_values - click_y)
+        closest_idx = int(np.argmin(distances))
+
+        # Emit signal with selected ROI label
+        selected_label = stored_labels[closest_idx]
+        widget.roiSelected.emit(str(selected_label))
+
+    # Connect handler to scene
+    scene = plot.scene()
+    if scene is not None:
+        scene.sigMouseClicked.connect(on_click)
+        # Store handler reference for cleanup
+        plot.setProperty("neuropil_click_handler", on_click)
+
+
+# -----------------------------------------------------------------------------#
 # Main plotting entry point (pyqtgraph)
 # -----------------------------------------------------------------------------#
 def _plot_neuropil_traces(
@@ -128,6 +216,9 @@ def _plot_neuropil_traces(
     # Reset ViewBox settings that might have been set by raster plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # clear_plot already hid & cleared widget.legend, but just in case:
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -258,9 +349,9 @@ def _plot_neuropil_traces(
         pen_raw = None
         pen_neu = None
     else:
-        # Fixed semantics when showing all: magenta = raw, yellow = neuropil
-        pen_raw = pg.mkPen("magenta", width=1)
-        pen_neu = pg.mkPen("yellow", width=1)
+        # Fixed semantics when showing all: magenta = raw, black = neuropil
+        pen_raw = pg.mkPen(RAW_TRACES_COLOR, width=TRACES_WIDTH)
+        pen_neu = pg.mkPen(NEUROPIL_COLOR, width=TRACES_WIDTH)
 
     # ---------- PLOTTING ----------
     for i in range(n_rois):
@@ -269,17 +360,17 @@ def _plot_neuropil_traces(
         if Y_neu_ds is not None:
             plot.plot(x, Y_neu_ds[i], pen=pen_neu)
 
-        # Corrected trace: multi-color if corrected=True, green otherwise
+        # Corrected trace: green if corrected=True, black otherwise
         if corrected:
             # Multi-trace → distinct colors (same logic as calcium traces)
-            if n_rois == 1:
-                color = "w"  # Single trace → white
-            else:
-                color = pg.intColor(i, hues=max(n_rois, 16))
-            pen_corr = pg.mkPen(color, width=1)
+            # if n_rois == 1:
+            #     color = "k"  # Single trace → black
+            # else:
+            #     color = pg.intColor(i, hues=max(n_rois, 16))
+            pen_corr = pg.mkPen(RAW_TRACES_COLOR, width=TRACES_WIDTH)
         else:
             # All three traces shown → green for corrected
-            pen_corr = pg.mkPen("green", width=1)
+            pen_corr = pg.mkPen(CORRECTED_TRACES_COLOR, width=TRACES_WIDTH)
 
         plot.plot(x, Y_corr_ds[i], pen=pen_corr)
 
@@ -297,6 +388,9 @@ def _plot_neuropil_traces(
     )
 
     plot.getViewBox().enableAutoRange(x=True, y=True)
+
+    # ---------- CLICK HANDLER FOR ROI SELECTION ----------
+    _setup_neuropil_click_handler(widget, labels, Y_corr, x_full, T_orig)
 
     # ---------- LEGEND (single, reused from widget.legend) ----------
     legend = getattr(widget, "legend", None)
@@ -317,7 +411,10 @@ def _plot_neuropil_traces(
             # Show all three in legend with fixed colors
             legend.setVisible(True)
             _populate_neuropil_legend(
-                legend, pen_raw, pen_neu, pg.mkPen("green", width=1)
+                legend,
+                pen_raw,
+                pen_neu,
+                pg.mkPen(CORRECTED_TRACES_COLOR, width=TRACES_WIDTH),
             )
 
 

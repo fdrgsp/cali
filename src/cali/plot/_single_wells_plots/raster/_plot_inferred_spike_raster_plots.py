@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -14,6 +15,13 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+BLACK = (0, 0, 0, 255)
+SYMBOL = "s"
+SYMBOL_SIZE = 3
+HEATMAP_CMAP_NAME = "viridis"
+HEATMAP_CMAP = pg.colormap.get(HEATMAP_CMAP_NAME)
 
 
 def _generate_spike_raster_plot_raw(
@@ -29,6 +37,7 @@ def _generate_spike_raster_plot_raw(
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
@@ -129,8 +138,8 @@ def _generate_spike_raster_plot_raw(
     per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
     for times in event_data:
-        # same length, all white
-        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+        # same length, all black
+        per_roi_colors.append([BLACK] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -145,8 +154,8 @@ def _generate_spike_raster_plot_raw(
                     "pos": (float(x), float(y)),
                     "brush": pg.mkBrush(*color),
                     "pen": None,
-                    "size": 3,
-                    "symbol": "s",
+                    "size": SYMBOL_SIZE,
+                    "symbol": SYMBOL,
                 }
             )
 
@@ -191,7 +200,7 @@ def _generate_spike_raster_plot(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at BOTTOM visually
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at TOP visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -203,6 +212,9 @@ def _generate_spike_raster_plot(
         if hasattr(widget.legend, "clear"):
             widget.legend.clear()
         widget.legend.setVisible(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     plot.setTitle("Inferred Spike Events (binary) Raster Plot (Thresholded)")
 
@@ -289,8 +301,8 @@ def _generate_spike_raster_plot(
     per_roi_colors: list[list[tuple[int, int, int, int]]] = []
 
     for times in event_data:
-        # same length, all white
-        per_roi_colors.append([(255, 255, 255, 255)] * len(times))
+        # same length, all black
+        per_roi_colors.append([BLACK] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -305,8 +317,8 @@ def _generate_spike_raster_plot(
                     "pos": (float(x), float(y)),
                     "brush": pg.mkBrush(*color),
                     "pen": None,
-                    "size": 3,
-                    "symbol": "s",
+                    "size": SYMBOL_SIZE,
+                    "symbol": SYMBOL,
                 }
             )
 
@@ -402,7 +414,7 @@ def _attach_click_handlers_raster(
             return
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # With invertY(True), y increases downward; floor gives correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
@@ -429,12 +441,13 @@ def _generate_spike_intensity_heatmap(
     """Generate intensity heatmap with spike data color-coded.
 
     Each ROI is displayed as a horizontal row, with the full inferred spike
-    signal represented by color intensity (viridis colormap).
+    signal represented by color intensity.
     """
     plot = widget.plot_item
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
@@ -536,13 +549,11 @@ def _generate_spike_intensity_heatmap(
         levels=(vmin_raw, vmax_raw),
     )
 
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(HEATMAP_CMAP.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
-    # Viewbox settings: one flat band per ROI
-    vb.invertY(False)
+    # Viewbox settings: one flat band per ROI (inverted Y keeps ROI 1 at top)
     vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
     # Keep x-range fixed to show full frames with padding, only autorange y
@@ -575,7 +586,7 @@ def _add_spike_intensity_colorbar_to_widget(
     # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
+        colorMap=HEATMAP_CMAP,
         width=15,
         label="Inferred spikes (a.u.)",
         interactive=False,
@@ -603,7 +614,7 @@ def _attach_click_handlers_spike_intensity(
 
         p: Point = vb.mapSceneToView(pos)
         y = float(p.y())
-        # Since invertY(False), y=0 is at bottom, so use floor for correct row
+        # With invertY(True), y=0 is at top (ROI 1), y increases downward
         idx = int(np.floor(y))
         if 0 <= idx < len(active_roi_labels):
             widget.roiSelected.emit(str(active_roi_labels[idx]))
@@ -640,7 +651,7 @@ def _generate_spike_intensity_heatmap_thresholded(
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)  # Reset to default (True = y-axis inverted)
+    vb.invertY(True)  # Invert Y so row 0 (ROI 1) appears at TOP visually
 
     # Remove any existing colorbar
     if widget.colorbar is not None:
@@ -652,6 +663,9 @@ def _generate_spike_intensity_heatmap_thresholded(
         if hasattr(widget.legend, "clear"):
             widget.legend.clear()
         widget.legend.setVisible(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     plot.setTitle("Inferred Spikes Heatmap (Thresholded)")
 
@@ -750,13 +764,11 @@ def _generate_spike_intensity_heatmap_thresholded(
         levels=(vmin_raw, vmax_raw),
     )
 
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(HEATMAP_CMAP.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
-    # Viewbox settings: one flat band per ROI
-    vb.invertY(False)
+    # Viewbox settings: one flat band per ROI (inverted Y keeps ROI 1 at top)
     vb.setLimits(xMin=0, xMax=n_frames, yMin=0, yMax=n_rois)
     vb.setRange(xRange=(0, n_frames), yRange=(0, n_rois))
     # Keep x-range fixed to show full frames, only autorange y

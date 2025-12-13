@@ -81,14 +81,14 @@ class CaliRunner:
     >>> runner = CaliRunner(commit_batch_size=5)
     """
 
-    def __init__(self, commit_batch_size: int = 5) -> None:
+    def __init__(self, commit_batch_size: int = 10) -> None:
         """Initialize the unified runner.
 
         Parameters
         ----------
         commit_batch_size : int
             Number of FOVs to accumulate before committing to database.
-            Default is 5. Set to 1 for immediate commits (safest but slowest).
+            Default is 10. Set to 1 for immediate commits (safest but slowest).
         """
         self._db_path: Path | None = None
         self.commit_batch_size = commit_batch_size

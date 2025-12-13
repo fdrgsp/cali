@@ -15,6 +15,7 @@ from cali._constants import (
     EVENT_KEY,
     RUNNER_TIME_KEY,
 )
+from cali.analysis._trace_analysis import compute_inferred_spike_threshold
 from cali.analysis._util import get_overlap_roi_with_stimulated_area
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
@@ -407,6 +408,7 @@ class ExtractionRunner:
                 if not hasattr(fov_to_analyze, "_new_fov_analysis"):
                     fov_to_analyze._new_fov_analysis = []
                 fov_to_analyze._new_fov_analysis.append(fov_analysis)
+            cali_logger.info(f"✅ FOV-level analysis complete for {fov_name}.")
 
         # Return the FOV with updated ROIs (will be committed by caller)
         return fov_to_analyze
@@ -644,7 +646,7 @@ class ExtractionRunner:
             from cali.analysis._trace_analysis import (
                 calculate_frequency,
                 calculate_inter_event_intervals,
-                compute_peak_detection_thresholds,
+                compute_calcium_peak_detection_thresholds,
                 detect_peaks_in_trace,
             )
 
@@ -659,11 +661,10 @@ class ExtractionRunner:
             stimulated = roi_stimulation_overlap_ratio > 0.1
 
             # Compute thresholds
-            (
-                peaks_height_dec_dff,
-                peaks_prominence_dec_dff,
-                spike_detection_threshold,
-            ) = compute_peak_detection_thresholds(dec_dff, spikes, analysis_settings)
+            # fmt: off
+            spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
+            peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, analysis_settings)  # noqa E501
+            # fmt: on
 
             if self._check_for_abort_requested():
                 return None
