@@ -37,9 +37,6 @@ from sqlmodel import (
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
-    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
-    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
@@ -1071,12 +1068,6 @@ class AnalysisSettings(SQLModel, table=True):
         Minimum distance between peaks (milliseconds)
     peaks_prominence_multiplier : float
         Multiplier for peak prominence threshold
-    calcium_sync_jitter_window : int
-        Jitter window for calcium synchrony (milliseconds)
-    calcium_peaks_max_lag : int
-        Max lag for calcium peaks cross-correlation (milliseconds)
-    calcium_network_threshold : float
-        Percentile threshold for network connectivity (0-100)
     spike_threshold_value : float
         Spike detection threshold value
     spike_threshold_mode : str
@@ -1126,9 +1117,6 @@ class AnalysisSettings(SQLModel, table=True):
     peaks_height_mode: str = MULTIPLIER
     peaks_distance: float = 200.0  # milliseconds (2 frames at 10fps)
     peaks_prominence_multiplier: float = 1.0
-    calcium_sync_jitter_window: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # ms
-    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # ms
-    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
 
     spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
     spike_threshold_mode: str = MULTIPLIER
@@ -1772,14 +1760,6 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
     calcium_dec_dff_corr_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
-    calcium_peaks_jitter_synchrony_matrix : list[list[float]] | None
-        Jitter synchrony on calcium peak events (NxN for N active ROIs)
-    global_calcium_peaks_jitter_synchrony : float | None
-        Median of off-diagonal jitter synchrony values
-    calcium_peaks_max_lag_correlation_matrix : list[list[float]] | None
-        Max lag correlation on calcium peak events (NxN for N active ROIs)
-    global_calcium_peaks_max_lag_correlation : float | None
-        Median of off-diagonal max lag correlation values
     spike_correlation_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on binary spike trains (NxN for N active ROIs)
     spike_max_lag_correlation_matrix : list[list[float]] | None
@@ -1854,17 +1834,6 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_dec_dff_corr_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    # 2. Jitter synchrony on calcium peaks
-    calcium_peaks_jitter_synchrony_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_calcium_peaks_jitter_synchrony: float | None = None
-    # 3. Max lag correlation on calcium peaks
-    calcium_peaks_max_lag_correlation_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_calcium_peaks_max_lag_correlation: float | None = None
-
     # Spike metrics (from inferred spikes)
     # 1. Zero-lag correlation on spike trains
     spike_correlation_matrix: list[list[float]] | None = Field(

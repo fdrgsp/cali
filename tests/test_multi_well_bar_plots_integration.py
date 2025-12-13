@@ -19,7 +19,6 @@ from cali.plot._multi_wells_plots._calcium_peaks import (
     plot_calcium_peaks_amplitude_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
-    plot_calcium_peaks_synchrony_bar_plot,
 )
 from cali.plot._multi_wells_plots._cell_properties import (
     plot_cell_size_bar_plot,
@@ -258,23 +257,6 @@ def _has_fov_analysis_data(engine: Engine) -> bool:
             return result is not None
         except Exception:
             return False
-
-
-def test_plot_calcium_peaks_synchrony_has_data(
-    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-) -> None:
-    """Test that calcium peaks synchrony plot displays actual data."""
-    widget, run_id = multi_well_widget_with_data
-    assert widget.engine is not None
-
-    if not _has_fov_analysis_data(widget.engine):
-        pytest.skip("No FOVAnalysis data in database")
-
-    plot_calcium_peaks_synchrony_bar_plot(
-        widget, "Calcium Peaks Synchrony", widget.engine, run_id
-    )
-
-    _verify_plot_has_data(widget, "Calcium Peaks Synchrony")
 
 
 def test_plot_spike_synchrony_has_data(

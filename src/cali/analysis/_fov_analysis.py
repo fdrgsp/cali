@@ -16,8 +16,6 @@ from cali.analysis._util import (
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
     _detect_spikes_population_bursts,
-    _get_calcium_peaks_event_correlations_matrix,
-    _get_calcium_peaks_event_synchrony,
     _get_spike_correlations_matrix,
     _get_spike_synchrony,
 )
@@ -41,20 +39,15 @@ def compute_fov_analysis(
     1. Zero-lag Pearson correlation on ΔF/F traces
     2. Zero-lag Pearson correlation on deconvolved ΔF/F traces
 
-    Calcium Peaks
-    -------------
-    3. Jitter synchrony on calcium peak events (± jitter window)
-    4. Max-lag correlation on calcium peak events (within ± max_lag)
-
     Inferred Spikes
     ---------------
-    5. Zero-lag Pearson correlation on binary spike trains
-    6. Max-lag CCG-like correlation on spike trains (within ± max_lag)
-    7. Jitter synchrony on spike trains (± jitter window)
+    3. Zero-lag Pearson correlation on binary spike trains
+    4. Max-lag CCG-like correlation on spike trains (within ± max_lag)
+    5. Jitter synchrony on spike trains (± jitter window)
 
     Burst Detection
     ---------------
-    8. Additionally, population-level burst detection is performed on both the
+    6. Additionally, population-level burst detection is performed on both the
     inferred spike trains and deconvolved ΔF/F traces, yielding metrics such as
     burst count, average duration, average interval, and population activity traces.
 
@@ -192,59 +185,22 @@ def compute_fov_analysis(
         # seconds * fps = frames
         return max(0, int((ms / 1000.0) * frame_rate))
 
-    # 3. Jitter synchrony on calcium peaks
-    calcium_peaks_jitter_sync_matrix = None
-    global_calcium_peaks_jitter_sync = None
-    if len(peak_events_dict) >= 2:
-        jitter_window_ms = analysis_settings.calcium_sync_jitter_window
-        jitter_window_frames = ms_to_frames(jitter_window_ms)
-        calcium_peaks_jitter_sync_matrix, _ = (
-            _get_calcium_peaks_event_correlations_matrix(
-                peak_events_dict,
-                method="jitter_window",
-                jitter_window=jitter_window_frames,
-            )
-        )
-        if calcium_peaks_jitter_sync_matrix is not None:
-            global_calcium_peaks_jitter_sync = _get_calcium_peaks_event_synchrony(
-                calcium_peaks_jitter_sync_matrix
-            )
-
-    # 4. Max lag correlation on calcium peaks
-    calcium_peaks_max_lag_corr_matrix = None
-    global_calcium_peaks_max_lag_corr = None
-    if len(peak_events_dict) >= 2:
-        max_lag_ms = analysis_settings.calcium_peaks_max_lag
-        max_lag_frames = ms_to_frames(max_lag_ms)
-        (
-            calcium_peaks_max_lag_corr_matrix,
-            _,
-        ) = _get_calcium_peaks_event_correlations_matrix(
-            peak_events_dict,
-            method="cross_correlation",
-            max_lag=max_lag_frames,
-        )
-        if calcium_peaks_max_lag_corr_matrix is not None:
-            global_calcium_peaks_max_lag_corr = _get_calcium_peaks_event_synchrony(
-                calcium_peaks_max_lag_corr_matrix
-            )
-
     # Compute spike metrics (3 measurements):
-    # 5. Zero-lag correlation on spike trains
+    # 3. Zero-lag correlation on spike trains
     spike_corr_matrix = None
-    # 6. Max lag correlation on spikes
+    # 4. Max lag correlation on spikes
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
-    # 7. Jitter synchrony on spikes
+    # 5. Jitter synchrony on spikes
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
 
     if len(spike_data_dict) >= 2:
-        # 5. Zero-lag Pearson correlation on spike trains
+        # 3. Zero-lag Pearson correlation on spike trains
         spike_corr_matrix = _compute_zero_lag_corr_matrix(spike_trains)
 
-        # 6. Max lag correlation on spikes
+        # 4. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
@@ -258,7 +214,7 @@ def compute_fov_analysis(
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-        # 7. Jitter synchrony on spikes
+        # 5. Jitter synchrony on spikes
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
@@ -269,7 +225,7 @@ def compute_fov_analysis(
         if spike_jitter_sync_matrix is not None:
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
 
-    # 8. Burst detection on population spike activity
+    # 6. Burst detection on population spike activity
     spike_burst_count: int | None = None
     spike_burst_avg_duration: float | None = None
     spike_burst_avg_interval: float | None = None
@@ -335,18 +291,6 @@ def compute_fov_analysis(
             if calcium_dec_dff_corr_matrix is not None
             else None
         ),
-        calcium_peaks_jitter_synchrony_matrix=(
-            calcium_peaks_jitter_sync_matrix.tolist()
-            if calcium_peaks_jitter_sync_matrix is not None
-            else None
-        ),
-        global_calcium_peaks_jitter_synchrony=global_calcium_peaks_jitter_sync,
-        calcium_peaks_max_lag_correlation_matrix=(
-            calcium_peaks_max_lag_corr_matrix.tolist()
-            if calcium_peaks_max_lag_corr_matrix is not None
-            else None
-        ),
-        global_calcium_peaks_max_lag_correlation=global_calcium_peaks_max_lag_corr,
         # Spike metrics
         spike_correlation_matrix=(
             spike_corr_matrix.tolist() if spike_corr_matrix is not None else None

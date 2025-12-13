@@ -728,103 +728,6 @@ class _CalciumPeaksWidget(QWidget):
         # burst widget
         self._burst_wdg = _BurstWidget(self)
 
-        # synchrony jitter window
-        self._calcium_sync_wdg = QWidget(self)
-        self._calcium_sync_wdg.setToolTip(
-            "Calcium Peak Synchrony Analysis Settings\n\n"
-            "Temporal Tolerance Parameter:\n"
-            "Controls the maximum time window (in milliseconds) for detecting "
-            "synchronous calcium peaks between ROI pairs.\n\n"
-            "How it works:\n"
-            "• Value = 200: Peaks within ±200 ms are considered synchronous\n"
-            "• Compares timing of calcium peaks between all ROI pairs\n"
-            "• Larger values: more permissive, detects more synchrony but may "
-            "include false positives\n"
-            "• Smaller values: more strict, may miss genuine synchrony with "
-            "slight timing offsets\n\n"
-            "Example with Jitter = 200 ms @ 10 fps:\n"
-            "ROI 1 peaks: [1000ms, 2500ms, 4000ms]  ROI 2 peaks: [1200ms, 2400ms, "
-            "4100ms]\n"
-            "Result: All pairs are synchronous (differences ≤ 200 ms)."
-        )
-        self._calcium_jitter_window_lbl = QLabel(
-            "Synchrony Jitter:", self._calcium_sync_wdg
-        )
-        self._calcium_jitter_window_lbl.setSizePolicy(*FIXED)
-        self._calcium_synchrony_jitter_spin = QDoubleSpinBox(self._calcium_sync_wdg)
-        self._calcium_synchrony_jitter_spin.setSuffix(" ms")
-        self._calcium_synchrony_jitter_spin.setDecimals(2)
-        self._calcium_synchrony_jitter_spin.setRange(0.0, 10000.0)  # 0 to 10 seconds
-        self._calcium_synchrony_jitter_spin.setSingleStep(10.0)
-        self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        calcium_synchrony_layout = QHBoxLayout(self._calcium_sync_wdg)
-        calcium_synchrony_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_synchrony_layout.setSpacing(5)
-        calcium_synchrony_layout.addWidget(self._calcium_jitter_window_lbl)
-        calcium_synchrony_layout.addWidget(self._calcium_synchrony_jitter_spin)
-
-        # max lag for correlation on peaks
-        self._calcium_max_lag_wdg = QWidget(self)
-        self._calcium_max_lag_wdg.setToolTip(
-            "Maximum Lag for Cross-Correlation on Calcium Peaks\n\n"
-            "Controls the maximum time shift (in milliseconds) when computing "
-            "correlation between calcium peak events.\n\n"
-            "How it works:\n"
-            "• Computes correlation at different time lags from -max_lag to +max_lag\n"
-            "• Reports the maximum correlation value found across all lags\n"
-            "• Captures temporal relationships even with phase shifts\n\n"
-            "Example with Max Lag = 500 ms @ 10 fps:\n"
-            "If ROI 1 peaks consistently occur 300 ms before ROI 2,\n"
-            "max lag correlation will detect this relationship.\n\n"
-            "• Larger values: More permissive, detects longer-range temporal patterns\n"
-            "• Smaller values: More strict, focuses on near-simultaneous events"
-        )
-        self._calcium_max_lag_lbl = QLabel(
-            "Correlation Max Lag:", self._calcium_max_lag_wdg
-        )
-        self._calcium_max_lag_lbl.setSizePolicy(*FIXED)
-        self._calcium_max_lag_spin = QDoubleSpinBox(self._calcium_max_lag_wdg)
-        self._calcium_max_lag_spin.setSuffix(" ms")
-        self._calcium_max_lag_spin.setDecimals(2)
-        self._calcium_max_lag_spin.setRange(0.0, 50000.0)  # 0 to 50 seconds
-        self._calcium_max_lag_spin.setSingleStep(10.0)
-        self._calcium_max_lag_spin.setValue(DEFAULT_CALCIUM_PEAKS_MAX_LAG)
-        calcium_max_lag_layout = QHBoxLayout(self._calcium_max_lag_wdg)
-        calcium_max_lag_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_max_lag_layout.setSpacing(5)
-        calcium_max_lag_layout.addWidget(self._calcium_max_lag_lbl)
-        calcium_max_lag_layout.addWidget(self._calcium_max_lag_spin)
-
-        # # network connectivity threshold
-        # self._calcium_network_wdg = QWidget(self)
-        # self._calcium_network_wdg.setToolTip(
-        #     "Network Connectivity Threshold (Percentile)\n\n"
-        #     "Controls which correlation values become network connections.\n"
-        #     "Uses PERCENTILE-based thresholding, not absolute correlation values.\n\n"
-        #     "How it works:\n"
-        #     "• Calculates percentile of ALL pairwise correlations\n"
-        #     "• Only correlations above this percentile become connections\n"
-        #     "• 90th percentile = top 10% of correlations become edges\n"
-        #     "• 95th percentile = top 5% (more conservative)\n"
-        #     "• 80th percentile = top 20% (more liberal)\n\n"
-        #     "Important: A 0.95 correlation may show as 'not connected'\n"
-        #     "if most correlations in your data are higher (e.g., 0.96-0.99).\n"
-        #     "This ensures only the STRONGEST connections are shown\n"
-        #     "relative to your specific dataset."
-        # )
-        # self._calcium_network_lbl = QLabel("Network Threshold (%):")
-        # self._calcium_network_lbl.setSizePolicy(*FIXED)
-        # self._ca_network_threshold_spin = QDoubleSpinBox(self)
-        # self._ca_network_threshold_spin.setRange(1.0, 100.0)
-        # self._ca_network_threshold_spin.setSingleStep(5.0)
-        # self._ca_network_threshold_spin.setDecimals(1)
-        # self._ca_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
-        # calcium_network_layout = QHBoxLayout(self._calcium_network_wdg)
-        # calcium_network_layout.setContentsMargins(0, 0, 0, 0)
-        # calcium_network_layout.setSpacing(5)
-        # calcium_network_layout.addWidget(self._calcium_network_lbl)
-        # calcium_network_layout.addWidget(self._ca_network_threshold_spin)
-
         # main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -833,9 +736,6 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
         layout.addWidget(self._burst_wdg)
-        layout.addWidget(self._calcium_max_lag_wdg)
-        layout.addWidget(self._calcium_sync_wdg)
-        # layout.addWidget(self._calcium_network_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -844,12 +744,9 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_height._peaks_height_lbl.setFixedWidth(width)
         self._peaks_distance_lbl.setFixedWidth(width)
         self._peaks_prominence_lbl.setFixedWidth(width)
-        self._calcium_jitter_window_lbl.setFixedWidth(width)
-        self._calcium_max_lag_lbl.setFixedWidth(width)
         self._burst_wdg._burst_threshold_lbl.setFixedWidth(width)
         self._burst_wdg._burst_min_threshold_label.setFixedWidth(width)
         self._burst_wdg._burst_blur_label.setFixedWidth(width)
-        # self._calcium_network_lbl.setFixedWidth(width)
 
     def value(self) -> CalciumPeaksData:
         """Get the current values of the widget."""
@@ -859,8 +756,6 @@ class _CalciumPeaksWidget(QWidget):
             peaks_height_mode=self._peaks_height.value()[1],
             peaks_distance=self._peaks_distance_spin.value(),
             peaks_prominence_multiplier=self._peaks_prominence_multiplier_spin.value(),
-            calcium_synchrony_jitter=self._calcium_synchrony_jitter_spin.value(),
-            calcium_peaks_max_lag=self._calcium_max_lag_spin.value(),
             burst_threshold=burst_threshold,
             burst_min_duration=burst_min_duration,
             burst_blur_sigma=burst_blur_sigma,
@@ -873,8 +768,6 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_prominence_multiplier_spin.setValue(
             value.peaks_prominence_multiplier
         )
-        self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
-        self._calcium_max_lag_spin.setValue(value.calcium_peaks_max_lag)
         bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
         self._burst_wdg.setValue(bst)
 
@@ -883,7 +776,6 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_height.setValue((DEFAULT_HEIGHT, MULTIPLIER))
         self._peaks_distance_spin.setValue(200.0)  # 2 frames at 10fps = 200ms
         self._peaks_prominence_multiplier_spin.setValue(1)
-        self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
         self._burst_wdg.setValue(
             (
                 DEFAULT_BURST_THRESHOLD,

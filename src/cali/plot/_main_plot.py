@@ -17,7 +17,6 @@ from ._multi_wells_plots import (
     plot_calcium_peaks_amplitude_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
-    plot_calcium_peaks_synchrony_bar_plot,
     plot_cell_size_bar_plot,
     plot_non_stimulated_peaks_amplitude_bar_plot,
     plot_percentage_active_bar_plot,
@@ -38,9 +37,6 @@ from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
 from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
     _plot_neuropil_traces,
 )
-from ._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
-    _plot_peak_event_synchrony_data,
-)
 from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
     _plot_dec_dff_correlation_data,
     _plot_dff_correlation_data,
@@ -49,7 +45,6 @@ from ._single_wells_plots.correlation._plot_connectivity import (
     _plot_connectivity_network_data,
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
-    _plot_sorted_calcium_synchrony,
     _plot_sorted_dec_dff_correlation,
     _plot_sorted_spike_correlation,
     _plot_sorted_spike_max_lag_correlation,
@@ -173,179 +168,89 @@ class AnalysisProduct:
 ANALYSIS_PRODUCTS: list[AnalysisProduct] = []
 
 
-# TITLES FOR THE PLOTS THAT WILL BE SHOWN IN THE COMBOBOX
-# fmt: off
-RAW_TRACES = "Calcium Raw Traces"
-NORMALIZED_TRACES = "Calcium Raw Normalized Traces"
-CORRECTED_TRACES = "Calcium Neuropil Corrected Traces"
-DFF = "Calcium ΔF/F0 Traces"
-DFF_NORMALIZED = "Calcium ΔF/F0 Normalized  Traces "
-DEC_DFF_NORMALIZED_ACTIVE_ONLY = "Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)"  # noqa: E501
-DEC_DFF = "Calcium Deconvolved ΔF/F0 Traces"
-DEC_DFF_WITH_PEAKS = "Calcium Deconvolved ΔF/F0 Traces with Peaks"
-DEC_DFF_WITH_PEAKS_AND_THRESHOLDS = "Calcium Deconvolved ΔF/F0 Traces with Peaks and Thresholds (If 1 ROI selected)"  # noqa: E501
-DEC_DFF_NORMALIZED = "Calcium Deconvolved ΔF/F0 Normalized Traces "
-DEC_DFF_NORMALIZED_WITH_PEAKS = "Calcium Deconvolved ΔF/F0 Normalized Traces with Peaks"
-DEC_DFF_AMPLITUDE = "Calcium Peaks Amplitudes (Deconvolved ΔF/F0)"
-DEC_DFF_FREQUENCY = "Calcium Peaks Frequencies (Deconvolved ΔF/F0)"
-DEC_DFF_AMPLITUDE_VS_FREQUENCY = "Calcium Peaks Amplitudes vs Frequencies (Deconvolved ΔF/F0)"  # noqa: E501
-DEC_DFF_IEI = "Calcium Peaks Inter-event Interval (Deconvolved ΔF/F0)"
-INFERRED_SPIKES_RAW = "Inferred Spikes Raw"
-INFERRED_SPIKES_THRESHOLDED = "Inferred Spikes (Thresholded)"
-INFERRED_SPIKES_RAW_WITH_THRESHOLD = "Inferred Spikes Raw (with Thresholds - If 1 ROI selected)"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF = "Inferred Spikes (Thresholded) with Deconvolved ΔF/F0 Traces"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_NORMALIZED = "Inferred Spikes (Thresholded) Normalized"
-INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY = "Inferred Spikes (Thresholded) Normalized (Active Only)"  # noqa: E501
-INFERRED_SPIKES_NORMALIZED_WITH_BURSTS = "Inferred Spikes (Thresholded) Normalized with Network Bursts"  # noqa: E501
-INFERRED_SPIKE_RASTER_WITH_BURSTS = "Inferred Spikes (Thresholded) Raster Plot with Network Bursts"  # noqa: E501
-INFERRED_SPIKES_THRESHOLDED_SYNCHRONY = "Inferred Spikes Jitter Synchrony"
-INFERRED_SPIKE_CROSS_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation"
-INFERRED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation"
-INFERRED_SPIKE_MAX_LAG_VALUES = "Inferred Spikes Max-Lag Values (frames)"
-INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
-INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
-INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
-CALCIUM_BURST_ANALYSIS = "Calcium Population Burst Activity Analysis (Deconvolved ΔF/F0)"  # noqa: E501
-RASTER_PLOT = "Calcium Peaks Raster Plot"
-RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
-RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
-INTENSITY_HEATMAP = "Calcium Intensity Heatmap (Deconvolved ΔF/F)"
-INFERRED_SPIKE_RASTER_PLOT_RAW = "Inferred Spikes Raster Plot"
-INFERRED_SPIKE_RASTER_PLOT = "Inferred Spikes (Thresholded) Raster Plot"
-INFERRED_SPIKE_RASTER_PLOT_AMP = "Inferred Spikes (Thresholded) Raster Plot Colored by Amplitude"  # noqa: E501
-INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR = "Inferred Spikes (Thresholded) Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
-SPIKE_INTENSITY_HEATMAP = "Inferred Spikes Intensity Heatmap"
-SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Inferred Spikes Intensity Heatmap (Thresholded)"
-STIMULATED_CALCIUM_INTENSITY_HEATMAP = "Stimulated Calcium Intensity Heatmap"
-NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP = "Non-Stimulated Calcium Intensity Heatmap"
-STIMULATED_SPIKE_INTENSITY_HEATMAP = "Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
-NON_STIMULATED_SPIKE_INTENSITY_HEATMAP = "Non-Stimulated Inferred Spikes Intensity Heatmap (Raw)"  # noqa: E501
-STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
-NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED = "Non-Stimulated Inferred Spikes Intensity Heatmap (Thresholded)"  # noqa: E501
-CALCIUM_PEAKS_GLOBAL_SYNCHRONY = "Calcium Peaks Jitter Synchrony"
-CALCIUM_FUNCTIONAL_CONNECTIVITY = "Calcium Functional Connectivity"
-CROSS_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation"
-CALCIUM_DFF_CORRELATION = "Calcium ΔF/F Zero-Lag Pearson Correlation"
-CALCIUM_DEC_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correlation"
-CLUSTERING = "Calcium Peaks Hierarchical Clustering"
-CLUSTERING_DENDROGRAM = "Calcium Peaks Hierarchical Clustering (Dendrogram)"
-CELL_SIZE = "Cell Size"
-STIMULATED_AREA = "LED Stimulated Area"
-STIMULATED_ROIS = "Stimulated vs Non-Stimulated ROIs"
-STIMULATED_ROIS_WITH_STIMULATED_AREA = "Stimulated vs Non-Stimulated ROIs with LED Stimulated Area"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED = "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS = "Stimulated vs Non-Stimulated Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES = "Stimulated vs Non-Stimulated Spike Traces (Thresholded)"  # noqa: E501
-STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER = "Stimulated vs Non-Stimulated Spike Raster Plot (Thresholded)"  # noqa: E501
-STIMULATED_PEAKS_AMP = "Stimulated Calcium Peaks Amplitudes"
-NON_STIMULATED_PEAKS_AMP = "Non-Stimulated Calcium Peaks Amplitudes"
-STIMULATED_PEAKS_FREQ = "Stimulated Calcium Peaks Frequencies"
-NON_STIMULATED_PEAKS_FREQ = "Non-Stimulated Calcium Peaks Frequencies"
-STIMULATED_CALCIUM_SYNCHRONY = "Stimulated Calcium Peaks Jitter Synchrony"
-NON_STIMULATED_CALCIUM_SYNCHRONY = "Non-Stimulated Calcium Peaks Jitter Synchrony"
-STIMULATED_CALCIUM_CORRELATION = "Stimulated Calcium Peaks Max-Lag Cross-Correlation"
-NON_STIMULATED_CALCIUM_CORRELATION = "Non-Stimulated Calcium Peaks Max-Lag Cross-Correlation"  # noqa: E501
-STIMULATED_SPIKE_SYNCHRONY = "Stimulated Inferred Spikes Jitter Synchrony"
-NON_STIMULATED_SPIKE_SYNCHRONY = "Non-Stimulated Inferred Spikes Jitter Synchrony"
-STIMULATED_SPIKE_CORRELATION = "Stimulated Inferred Spikes Zero-Lag Pearson Correlation"
-STIMULATED_SPIKE_MAX_LAG_CORRELATION = "Stimulated Inferred Spikes Max-Lag Cross-Correlation"  # noqa: E501
-NON_STIMULATED_SPIKE_CORRELATION = "Non-Stimulated Inferred Spikes Zero-Lag Pearson Correlation"  # noqa: E501
-NON_STIMULATED_SPIKE_MAX_LAG_CORRELATION = "Non-Stimulated Inferred Spikes Max-Lag Cross-Correlation"  # noqa: E501
-SORTED_CALCIUM_SYNCHRONY = "Calcium Peaks Jitter Synchrony (Sorted: Stim → Non-Stim)"
-SORTED_CALCIUM_DFF_CORRELATION = "Calcium Deconvolved ΔF/F Zero-Lag Pearson Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
-SORTED_CALCIUM_LAG_CORRELATION = "Calcium Peaks Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
-SORTED_SPIKE_SYNCHRONY = "Inferred Spikes Jitter Synchrony (Sorted: Stim → Non-Stim)"
-SORTED_SPIKE_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
-SORTED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
-NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
-NEUROPIL_TRACES = "Neuropil and Raw Traces"
-CALCIUM_NORMALIZED_WITH_BURSTS="Calcium Deconvolved ΔF/F0 Normalized with Network Bursts"  # noqa: E501
-CALCIUM_BURST_ANALYSIS_WITH_RASTER="Calcium Peaks Raster Plot with Network Bursts"
-
-
 # REGISTER SINGLE WELL ANALYSIS PRODUCTS ==============================================
 # Define all analysis products using the AnalysisProduct dataclass
 
 # Calcium Traces Group
 AnalysisProduct(
-    name=RAW_TRACES,
+    name="Calcium Raw Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, raw=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=NORMALIZED_TRACES,
+    name="Calcium Raw Normalized Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, raw=True, normalize=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=DFF,
+    name="Calcium ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dff=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=DFF_NORMALIZED,
+    name="Calcium ΔF/F0 Normalized  Traces ",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dff=True, normalize=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=DEC_DFF,
+    name="Calcium Deconvolved ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=DEC_DFF_WITH_PEAKS,
+    name="Calcium Deconvolved ΔF/F0 Traces with Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_WITH_PEAKS_AND_THRESHOLDS,
+    name="Calcium Deconvolved ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True, thresholds=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_NORMALIZED,
+    name="Calcium Deconvolved ΔF/F0 Normalized Traces ",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=DEC_DFF_NORMALIZED_ACTIVE_ONLY,
+    name="Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, active_only=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_NORMALIZED_WITH_PEAKS,
+    name="Calcium Deconvolved ΔF/F0 Normalized Traces with Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, with_peaks=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CORRECTED_TRACES,
+    name="Calcium Neuropil Corrected Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_neuropil_traces, corrected=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name=NEUROPIL_TRACES,
+    name="Neuropil and Raw Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_neuropil_traces,
     category="Calcium Traces",
@@ -354,42 +259,42 @@ AnalysisProduct(
 
 # Inferred Spikes Group
 AnalysisProduct(
-    name=INFERRED_SPIKES_RAW,
+    name="Inferred Spikes Raw",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED,
+    name="Inferred Spikes (Thresholded)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes,
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_RAW_WITH_THRESHOLD,
+    name="Inferred Spikes Raw (with Thresholds - 1 ROI)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_NORMALIZED,
+    name="Inferred Spikes (Thresholded) Normalized",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY,
+    name="Inferred Spikes (Thresholded) Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
+    name="Inferred Spikes (Thresholded) with Deconvolved ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
     category="Inferred Spikes Traces",
@@ -398,56 +303,56 @@ AnalysisProduct(
 
 # Raster Plots Group
 AnalysisProduct(
-    name=RASTER_PLOT,
+    name="Calcium Peaks Raster plot Colored by ROI",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_raster_plot,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=RASTER_PLOT_AMP,
+    name="Calcium Peaks Raster plot Colored by Amplitude",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=False),
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=RASTER_PLOT_AMP_WITH_COLORBAR,
+    name="Calcium Peaks Raster plot Colored by Amplitude with Colorbar",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_raster_plot, amplitude_colors=True, colorbar=True),
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INTENSITY_HEATMAP,
+    name="Calcium Intensity Heatmap",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_intensity_heatmap,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_RASTER_PLOT_RAW,
+    name="Inferred Spikes Raster plot Raw",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot_raw,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_RASTER_PLOT,
+    name="Inferred Spikes Raster  (Thresholded)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=SPIKE_INTENSITY_HEATMAP,
+    name="Inferred Spikes Intensity Heatmap",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_intensity_heatmap,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
+    name="Inferred Spikes Intensity Heatmap Thresholded",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_intensity_heatmap_thresholded,
     category="Raster Plots",
@@ -456,28 +361,28 @@ AnalysisProduct(
 
 # Amplitude and Frequency Group
 AnalysisProduct(
-    name=DEC_DFF_AMPLITUDE,
+    name="Calcium Peaks Amplitudes (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_FREQUENCY,
+    name="Calcium Peaks Frequencies (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_AMPLITUDE_VS_FREQUENCY,
+    name="Calcium Peaks Amplitudes vs Frequencies (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=DEC_DFF_IEI,
+    name="Calcium Peaks Inter-event Interval (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_iei_data,
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
@@ -486,21 +391,21 @@ AnalysisProduct(
 
 # Calcium Burst Analysis Group
 AnalysisProduct(
-    name=CALCIUM_BURST_ANALYSIS,
+    name="Calcium Burst Activity Analysis",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_calcium_burst_activity,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CALCIUM_NORMALIZED_WITH_BURSTS,
+    name="Calcium Normalized with Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_calcium_normalized_with_bursts,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CALCIUM_BURST_ANALYSIS_WITH_RASTER,
+    name="Calcium Burst Analysis with Raster",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_calcium_raster_with_bursts,
     category="Calcium Burst Analysis",
@@ -508,21 +413,21 @@ AnalysisProduct(
 )
 # Inferred Spike Burst Analysis Group
 AnalysisProduct(
-    name=INFERRED_SPIKE_BURST_ANALYSIS,
+    name="Inferred Spikes (Thresholded) Burst Activity Analysis",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_burst_activity,
     category="Inferred Spike Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
+    name="Inferred Spikes (Thresholded) Normalized with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes_normalized_with_bursts,
     category="Inferred Spike Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_RASTER_WITH_BURSTS,
+    name="Inferred Spike Raster with Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_raster_with_bursts,
     category="Inferred Spike Burst Analysis",
@@ -532,28 +437,21 @@ AnalysisProduct(
 
 # Correlation Analysis Group
 AnalysisProduct(
-    name=CALCIUM_DFF_CORRELATION,
+    name="Calcium ΔF/F0 Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_dff_correlation_data,
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CALCIUM_DEC_DFF_CORRELATION,
+    name="Calcium Deconvolved ΔF/F0 Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_dec_dff_correlation_data,
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_peak_event_synchrony_data,
-    category="Calcium Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name=CALCIUM_FUNCTIONAL_CONNECTIVITY,
+    name="Calcium Functional Connectivity",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_connectivity_network_data,
     category="Calcium Correlation Analysis",
@@ -563,28 +461,28 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name=INFERRED_SPIKE_CROSS_CORRELATION,
+    name="Inferred Spikes (Thresholded) Cross-Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_MAX_LAG_CORRELATION,
+    name="Inferred Spike Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKE_MAX_LAG_VALUES,
+    name="Inferred Spike Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_values_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name=INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
+    name="Inferred Spikes (Thresholded) Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
     category="Inferred Spikes Correlation Analysis",
@@ -593,7 +491,7 @@ AnalysisProduct(
 
 # Evoked Experiment Group
 AnalysisProduct(
-    name=STIMULATED_AREA,
+    name="Stim Area",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, stimulated_area=True),
     category="Evoked Experiment",
@@ -601,7 +499,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_ROIS,
+    name="Stim vs Non-Stim ROIs",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, with_rois=True),
     category="Evoked Experiment",
@@ -609,7 +507,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_ROIS_WITH_STIMULATED_AREA,
+    name="Stim vs Non-Stim ROIs with Stim Area",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_visualize_stimulated_area, with_rois=True, stimulated_area=True),
     category="Evoked Experiment",
@@ -618,7 +516,7 @@ AnalysisProduct(
 )
 
 AnalysisProduct(
-    name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED,
+    name="Stim vs Non-Stim Normalized Calcium Traces (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_roi_traces,
     category="Evoked Experiment",
@@ -626,7 +524,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_VS_NON_STIMULATED_DEC_DFF_NORMALIZED_WITH_PEAKS,
+    name="Stim vs Non-Stim Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_traces, with_peaks=True),
     category="Evoked Experiment",
@@ -634,7 +532,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_VS_NON_STIMULATED_SPIKE_TRACES,
+    name="Stimulated vs Non-Stimulated Spike Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
     category="Evoked Experiment",
@@ -642,7 +540,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_VS_NON_STIMULATED_SPIKE_RASTER,
+    name="Stimulated vs Non-Stimulated Spike Raster",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
     category="Evoked Experiment",
@@ -650,7 +548,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=SORTED_CALCIUM_DFF_CORRELATION,
+    name="Sorted Calcium Deconvolved ΔF/F0 Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_dec_dff_correlation,
     category="Evoked Experiment",
@@ -658,15 +556,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=SORTED_CALCIUM_SYNCHRONY,
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_calcium_synchrony,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name=SORTED_SPIKE_SYNCHRONY,
+    name="Sorted Spike Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_synchrony,
     category="Evoked Experiment",
@@ -674,7 +564,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=SORTED_SPIKE_CORRELATION,
+    name="Sorted Spike Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_correlation,
     category="Evoked Experiment",
@@ -682,7 +572,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=SORTED_SPIKE_MAX_LAG_CORRELATION,
+    name="Sorted Spike Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_max_lag_correlation,
     category="Evoked Experiment",
@@ -690,139 +580,25 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name=STIMULATED_PEAKS_AMP,
+    name="Stim Calcium Peaks Amplitudes",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-# AnalysisProduct(
-#     name=STIMULATED_CALCIUM_INTENSITY_HEATMAP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_calcium_intensity_heatmap_by_stim_status, stimulated=True),
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_SPIKE_INTENSITY_HEATMAP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=True),
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=True),  # noqa: E501
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_CALCIUM_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_calcium_synchrony,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_SPIKE_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_spike_synchrony,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_SPIKE_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_spike_correlation,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=STIMULATED_SPIKE_MAX_LAG_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_stimulated_spike_max_lag_correlation,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
 AnalysisProduct(
-    name=NON_STIMULATED_PEAKS_AMP,
+    name="Non-Stim Calcium Peaks Amplitudes",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stim_or_not_stim_peaks_amplitude,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
-# AnalysisProduct(
-#     name=NON_STIMULATED_CALCIUM_INTENSITY_HEATMAP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(
-#       _plot_calcium_intensity_heatmap_by_stim_status, stimulated=False
-#     ),
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_intensity_heatmap_by_stim_status, stimulated=False),
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_SPIKE_INTENSITY_HEATMAP_THRESHOLDED,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=partial(_plot_spike_intensity_heatmap_thresholded_by_stim_status, stimulated=False),  # noqa: E501
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_CALCIUM_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_non_stimulated_calcium_synchrony,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_SPIKE_SYNCHRONY,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_non_stimulated_spike_synchrony,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_SPIKE_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_non_stimulated_spike_correlation,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name=NON_STIMULATED_SPIKE_MAX_LAG_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_non_stimulated_spike_max_lag_correlation,
-#     category="Evoked Experiment",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
 
 # Cell Size Group
 AnalysisProduct(
-    name=CELL_SIZE,
+    name="Cell Size",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_cell_size_data,
     category="Cell Size",
@@ -865,14 +641,6 @@ AnalysisProduct(
     name="Calcium Peaks Inter-Event Interval Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_calcium_peaks_iei_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-# All multi-well bar plots with on-the-fly calculations are now implemented
-AnalysisProduct(
-    name="Calcium Peak Events Global Synchrony Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_synchrony_bar_plot,
     category="General",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -1034,36 +802,31 @@ def get_available_plots(
 # Centralized configuration - easier to maintain than scattered logic
 # Used by _graph_widgets.py to filter random ROI selection
 ACTIVE_ONLY_PLOTS: set[str] = {
-    DEC_DFF_WITH_PEAKS,
-    DEC_DFF_WITH_PEAKS_AND_THRESHOLDS,
-    DEC_DFF_NORMALIZED_WITH_PEAKS,
-    DEC_DFF_AMPLITUDE,
-    DEC_DFF_FREQUENCY,
-    DEC_DFF_AMPLITUDE_VS_FREQUENCY,
-    DEC_DFF_IEI,
-    RASTER_PLOT,
-    RASTER_PLOT_AMP,
-    RASTER_PLOT_AMP_WITH_COLORBAR,
-    CALCIUM_PEAKS_GLOBAL_SYNCHRONY,
-    CROSS_CORRELATION,
-    CLUSTERING,
-    CLUSTERING_DENDROGRAM,
-    INFERRED_SPIKES_THRESHOLDED,
-    INFERRED_SPIKES_RAW_WITH_THRESHOLD,
-    INFERRED_SPIKES_THRESHOLDED_WITH_DEC_DFF,
-    INFERRED_SPIKES_THRESHOLDED_NORMALIZED,
-    INFERRED_SPIKES_THRESHOLDED_ACTIVE_ONLY,
-    INFERRED_SPIKES_NORMALIZED_WITH_BURSTS,
-    INFERRED_SPIKES_THRESHOLDED_SYNCHRONY,
-    INFERRED_SPIKE_CROSS_CORRELATION,
-    INFERRED_SPIKE_CLUSTERING,
-    INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
-    INFERRED_SPIKE_BURST_ANALYSIS,
-    CALCIUM_BURST_ANALYSIS,
-    INFERRED_SPIKE_RASTER_PLOT,
-    INFERRED_SPIKE_RASTER_PLOT_AMP,
-    INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,
-    CALCIUM_FUNCTIONAL_CONNECTIVITY,
+    "Calcium Deconvolved ΔF/F0 Traces with Peaks",
+    "Calcium Deconvolved ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
+    "Calcium Deconvolved ΔF/F0 Normalized Traces with Peaks",
+    "Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)"
+    "Calcium Peaks Amplitudes (Deconvolved ΔF/F0)",
+    "Calcium Peaks Frequencies (Deconvolved ΔF/F0)",
+    "Calcium Peaks Amplitudes vs Frequencies (Deconvolved ΔF/F0)",
+    "Calcium Peaks Inter-event Interval (Deconvolved ΔF/F0)",
+    "Calcium Peaks Raster plot Colored by ROI",
+    "Calcium Peaks Raster plot Colored by Amplitude",
+    "Calcium Peaks Raster plot Colored by Amplitude with Colorbar",
+    "Calcium Burst Activity Analysis",
+    "Calcium Functional Connectivity",
+    "Inferred Spikes (Thresholded)",
+    "Inferred Spikes Raw (with Thresholds - 1 ROI)",
+    "Inferred Spikes (Thresholded) with Deconvolved ΔF/F0 Traces",
+    "Inferred Spikes (Thresholded) Normalized",
+    "Inferred Spikes (Thresholded) Normalized (Active Only)",
+    "Inferred Spikes (Thresholded) Normalized with Network Bursts",
+    "Inferred Spikes (Thresholded) Global Synchrony",
+    "Inferred Spikes (Thresholded) Cross-Correlation",
+    "Inferred Spikes (Thresholded) Burst Activity Analysis",
+    "Inferred Spikes Raster plot Colored by ROI",
+    "Inferred Spikes Raster plot Colored by Amplitude",
+    "Inferred Spikes Raster plot Colored by Amplitude with Colorbar",
 }
 
 

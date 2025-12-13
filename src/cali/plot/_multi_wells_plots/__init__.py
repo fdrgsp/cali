@@ -5,7 +5,6 @@ from ._calcium_peaks import (
     plot_calcium_peaks_correlation_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
-    plot_calcium_peaks_synchrony_bar_plot,
 )
 from ._cell_properties import (
     plot_cell_size_bar_plot,
@@ -34,7 +33,6 @@ __all__ = [
     "plot_calcium_peaks_correlation_bar_plot",
     "plot_calcium_peaks_frequency_bar_plot",
     "plot_calcium_peaks_iei_bar_plot",
-    "plot_calcium_peaks_synchrony_bar_plot",
     "plot_cell_size_bar_plot",
     "plot_non_stimulated_peaks_amplitude_bar_plot",
     "plot_parameter_bar_plot",

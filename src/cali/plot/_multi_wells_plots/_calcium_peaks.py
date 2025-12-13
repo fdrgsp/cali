@@ -30,59 +30,6 @@ if TYPE_CHECKING:
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 
 
-def _query_calcium_peaks_synchrony_by_condition(
-    engine: Engine,
-    run_id: int | None = None,
-) -> dict[str, dict[str, float]]:
-    """Query calcium peaks synchrony per FOV, grouped by condition.
-
-    Uses pre-computed global_calcium_peaks_jitter_synchrony from FOVAnalysis.
-
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    run_id : int | None
-        Filter by specific analysis run
-
-    Returns
-    -------
-    dict[str, dict[str, float]]
-        Nested dict: {condition: {fov_name: synchrony_value}}
-    """
-    try:
-        with Session(engine) as session:
-            stmt = (
-                select(FOVAnalysis, FOV, Well)
-                .join(FOV, FOVAnalysis.fov_id == FOV.id)
-                .join(Well, FOV.well_id == Well.id)
-            )
-
-            if run_id is not None:
-                stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
-
-            # Only include FOVs with valid synchrony data
-            stmt = stmt.where(
-                col(FOVAnalysis.global_calcium_peaks_jitter_synchrony).is_not(None)
-            )
-
-            results = session.exec(stmt).all()
-
-            data: dict[str, dict[str, float]] = {}
-            for fov_analysis, fov, well in results:
-                if fov_analysis.global_calcium_peaks_jitter_synchrony is None:
-                    continue
-                cond_label = _get_condition_label(well)
-                data.setdefault(cond_label, {})[fov.name] = (
-                    fov_analysis.global_calcium_peaks_jitter_synchrony
-                )
-
-        return data
-    except OperationalError:
-        # Table doesn't exist in older databases
-        return {}
-
-
 def _query_calcium_peaks_correlation_by_condition(
     engine: Engine,
     run_id: int | None = None,
@@ -187,45 +134,6 @@ def plot_calcium_peaks_iei_bar_plot(
 ) -> None:
     """Plot calcium peaks inter-event interval across conditions."""
     plot_parameter_bar_plot(widget, text, engine, run_id, parameter="iei", units="s")
-
-
-def plot_calcium_peaks_synchrony_bar_plot(
-    widget: _MultilWellGraphWidget,
-    text: str,
-    engine: Engine,
-    run_id: int | None = None,
-) -> None:
-    """Plot calcium peak events global synchrony across conditions."""
-    # Query synchrony data (one value per FOV)
-    data_by_condition = _query_calcium_peaks_synchrony_by_condition(engine, run_id)
-
-    if not data_by_condition:
-        widget.clear_plot()
-        return
-
-    # Convert to format expected by aggregation
-    # Since we have single values per FOV, wrap in lists
-    data_as_lists: dict[str, dict[str, list[float]]] = {}
-    for condition, fov_dict in data_by_condition.items():
-        for fov_name, sync_value in fov_dict.items():
-            data_as_lists.setdefault(condition, {})[fov_name] = [sync_value]
-
-    # Aggregate to condition-level statistics
-    plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
-
-    if not plot_data["conditions"]:
-        widget.clear_plot()
-        return
-
-    # Create the plot
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="Index",
-        title_suffix=" (Median)",
-        bar_label="Weighted Mean ± Pooled SEM",
-    )
 
 
 def plot_calcium_peaks_correlation_bar_plot(
