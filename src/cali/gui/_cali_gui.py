@@ -440,9 +440,9 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        # self._output_path = "tests/test_data/data_and_db_for_tests/"
+        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"

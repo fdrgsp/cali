@@ -68,8 +68,7 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
 
     # Create analysis settings
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=200,
-        calcium_peaks_max_lag=500,
+        spikes_sync_jitter_window=200,
         spikes_sync_cross_corr_lag=500,
     )
 
@@ -174,8 +173,7 @@ def test_all_zero_spike_rois() -> None:
         fov.rois.append(roi)
 
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=200,
-        calcium_peaks_max_lag=500,
+        spikes_sync_jitter_window=200,
         spikes_sync_cross_corr_lag=500,
     )
 
@@ -229,8 +227,7 @@ def test_mixed_spike_methods_consistent_dimensions() -> None:
         fov.rois.append(roi)
 
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=200,
-        calcium_peaks_max_lag=500,
+        spikes_sync_jitter_window=200,
         spikes_sync_cross_corr_lag=500,
     )
 

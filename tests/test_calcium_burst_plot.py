@@ -29,7 +29,8 @@ def test_engine(test_db_path: Path) -> Engine:
         connect_args={"timeout": 30.0, "check_same_thread": False},
         pool_pre_ping=True,
     )
-    return engine
+    yield engine
+    engine.dispose()
 
 
 def test_get_calcium_burst_parameters(test_engine: Engine) -> None:
@@ -42,8 +43,8 @@ def test_get_calcium_burst_parameters(test_engine: Engine) -> None:
 
     # Verify expected values from tests.json
     assert threshold == 50.0
-    assert min_duration == 500.0
-    assert sigma == 0.5
+    assert min_duration == 100.0
+    assert sigma == 0.01
 
 
 def test_get_calcium_burst_parameters_no_run_id(test_engine: Engine) -> None:

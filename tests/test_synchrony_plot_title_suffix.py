@@ -9,9 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from cali.plot._single_wells_plots.correlation._plot_calcium_peaks_synchrony import (
-    _plot_peak_event_synchrony_data,
-)
 from sqlmodel import Session, create_engine, select
 
 from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
@@ -42,71 +39,6 @@ def test_db_path() -> Path:
     return (
         Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
     )
-
-
-def test_peak_synchrony_title_suffix_with_data(
-    widget: _SingleWellGraphWidget,
-    test_db_path: Path,
-    qtbot: QtBot,
-) -> None:
-    """Test that title_suffix is appended to peak synchrony plot titles."""
-    engine = create_engine(f"sqlite:///{test_db_path}")
-
-    try:
-        with Session(engine) as session:
-            fov = session.exec(select(FOV).limit(1)).first()
-            assert fov is not None
-            fov_name = fov.name
-
-        # Plot with title_suffix
-        _plot_peak_event_synchrony_data(
-            widget=widget,
-            engine=engine,
-            fov_name=fov_name,
-            rois=None,
-            run_id=1,
-            title_suffix=" - Stimulated",
-        )
-
-        # Verify suffix appears in title
-        plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
-        assert " - Stimulated" in plot_title, (
-            f"Expected suffix in title, got: {plot_title}"
-        )
-    finally:
-        engine.dispose(close=True)
-
-
-def test_peak_synchrony_title_suffix_no_data(
-    widget: _SingleWellGraphWidget,
-    test_db_path: Path,
-    qtbot: QtBot,
-) -> None:
-    """Test title_suffix appears even when there's no data."""
-    engine = create_engine(f"sqlite:///{test_db_path}")
-
-    try:
-        with Session(engine) as session:
-            fov = session.exec(select(FOV).limit(1)).first()
-            assert fov is not None
-            fov_name = fov.name
-
-        # Plot with insufficient ROIs and title_suffix
-        _plot_peak_event_synchrony_data(
-            widget=widget,
-            engine=engine,
-            fov_name=fov_name,
-            rois=[1],  # Single ROI - insufficient for synchrony
-            run_id=1,
-            title_suffix=" - Test",
-        )
-
-        # Should show "Need ≥2 ROIs" with suffix
-        plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
-        assert "Need ≥2 ROIs" in plot_title
-        assert " - Test" in plot_title, f"Expected suffix in title, got: {plot_title}"
-    finally:
-        engine.dispose(close=True)
 
 
 def test_spike_synchrony_title_suffix_with_data(
@@ -170,42 +102,6 @@ def test_spike_synchrony_title_suffix_no_data(
         plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
         assert "Need ≥2 ROIs" in plot_title
         assert " - Test" in plot_title, f"Expected suffix in title, got: {plot_title}"
-    finally:
-        engine.dispose(close=True)
-
-
-@pytest.mark.parametrize("suffix", ["", " - Stim", " (Test)", " [Condition]"])
-def test_peak_synchrony_various_suffixes(
-    widget: _SingleWellGraphWidget,
-    test_db_path: Path,
-    qtbot: QtBot,
-    suffix: str,
-) -> None:
-    """Test peak synchrony with various suffix formats."""
-    engine = create_engine(f"sqlite:///{test_db_path}")
-
-    try:
-        with Session(engine) as session:
-            fov = session.exec(select(FOV).limit(1)).first()
-            assert fov is not None
-            fov_name = fov.name
-
-        _plot_peak_event_synchrony_data(
-            widget=widget,
-            engine=engine,
-            fov_name=fov_name,
-            rois=None,
-            run_id=1,
-            title_suffix=suffix,
-        )
-
-        plot_title = widget.plot_item.titleLabel.text  # type: ignore[union-attr]
-        if suffix:
-            msg = f"Expected '{suffix}' in title, got: {plot_title}"
-            assert suffix in plot_title, msg
-        else:
-            # Empty suffix should work fine
-            assert plot_title, "Title should not be empty"
     finally:
         engine.dispose(close=True)
 

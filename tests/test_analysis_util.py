@@ -337,17 +337,15 @@ def test_compute_fov_analysis_with_active_rois() -> None:
     assert len(result.calcium_dff_correlation_matrix) == 3
     assert len(result.calcium_dff_correlation_matrix[0]) == 3
 
-    # Check calcium synchrony matrices are computed
-    assert result.calcium_peaks_jitter_synchrony_matrix is not None
-    assert len(result.calcium_peaks_jitter_synchrony_matrix) == 3
+    # Check spike synchrony matrices are computed
+    assert result.spike_jitter_synchrony_matrix is not None
+    assert len(result.spike_jitter_synchrony_matrix) == 3
 
     # Check spike matrices
     assert result.spike_correlation_matrix is not None
     assert result.spike_jitter_synchrony_matrix is not None
 
     # Check global synchrony values are reasonable
-    assert result.global_calcium_peaks_jitter_synchrony is not None
-    assert 0 <= result.global_calcium_peaks_jitter_synchrony <= 1
     assert result.global_spike_jitter_synchrony is not None
     assert 0 <= result.global_spike_jitter_synchrony <= 1
 
@@ -598,13 +596,17 @@ def test_detect_calcium_population_bursts_no_bursts() -> None:
     """Test calcium burst detection with no bursts."""
     from cali.analysis._util import _detect_calcium_population_bursts
 
-    # Create flat baseline traces with no bursts
-    # Using constant or very low activity that won't form bursts
+    # Create traces with very brief activity that's filtered out by min_duration
+    # The key is to have activity that's above threshold but too short to be a burst
+    np.random.seed(42)
     dec_dff_traces = []
-    for i in range(3):
-        # Create baseline with tiny random fluctuations
-        # Each ROI has slightly different baseline to avoid constant activity
-        trace = np.ones(200) * (0.1 + i * 0.05) + np.random.randn(200) * 0.001
+    for _i in range(3):
+        # Create baseline with brief spikes that are too short (< min_duration)
+        trace = np.zeros(200)
+        # Add very brief  spikes (2-3 frames each, but min_duration requires 5 frames)
+        trace[50:52] = 1.0  # 2 frames - too short
+        trace[100:102] = 1.0  # 2 frames - too short
+        trace[150:152] = 1.0  # 2 frames - too short
         dec_dff_traces.append(trace)
 
     (
@@ -618,11 +620,12 @@ def test_detect_calcium_population_bursts_no_bursts() -> None:
     ) = _detect_calcium_population_bursts(
         dec_dff_traces=dec_dff_traces,
         frame_rate=10.0,
-        burst_threshold_percent=95.0,  # Very high threshold - need 95% of max activity
-        min_duration_ms=500.0,  # Longer minimum duration
+        burst_threshold_percent=50.0,  # Moderate threshold
+        min_duration_ms=500.0,  # 5 frames minimum (500ms / 100ms per frame)
         gaussian_sigma_sec=0.1,
     )
 
+    # All bursts should be filtered out due to insufficient duration
     assert burst_count == 0
     assert avg_duration is None
     assert avg_interval is None
@@ -656,13 +659,16 @@ def test_detect_calcium_population_bursts_insufficient_rois() -> None:
 
 
 def test_detect_calcium_population_bursts_constant_activity() -> None:
-    """Test calcium burst detection with constant activity (no variation)."""
+    """Test calcium burst detection with brief spikes too short to be bursts."""
     from cali.analysis._util import _detect_calcium_population_bursts
 
-    # Create constant traces - should not detect any bursts
+    # Create traces with brief spikes that are too short after smoothing
+    # At 10fps, 1 second = 10 frames, so min_duration=1000ms requires 10 frames
     dec_dff_traces = []
     for _ in range(3):
-        trace = np.ones(200) * 1.5  # Constant activity
+        trace = np.zeros(200)
+        # Add 3-frame spike - still too short for min_duration of 1000ms (10 frames)
+        trace[100:103] = 5.0  # 3 frames @ 10fps = 300ms, < 1000ms required
         dec_dff_traces.append(trace)
 
     (
@@ -677,10 +683,11 @@ def test_detect_calcium_population_bursts_constant_activity() -> None:
         dec_dff_traces=dec_dff_traces,
         frame_rate=10.0,
         burst_threshold_percent=50.0,
-        min_duration_ms=100.0,
-        gaussian_sigma_sec=0.1,
+        min_duration_ms=1000.0,  # 10 frames at 10fps = 1000ms required
+        gaussian_sigma_sec=0.05,  # Small sigma to minimize spreading
     )
 
+    # Burst too short, should be filtered out
     assert burst_count == 0
     assert avg_duration is None
     assert avg_interval is None

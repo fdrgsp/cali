@@ -1071,7 +1071,7 @@ def _compute_connectivity_metrics(
         - active_roi_labels
         - calcium_dff_correlation_matrix
         - calcium_dec_dff_corr_matrix
-        - calcium_peaks_max_lag_correlation_matrix
+        - spike_max_lag_correlation_matrix
         - calcium_peaks_jitter_synchrony_matrix
         - spike_correlation_matrix
         - spike_max_lag_correlation_matrix
@@ -1151,7 +1151,7 @@ def _compute_connectivity_metrics(
         is_correlation = True
 
     elif method == "calcium_peaks_maxlag":
-        metric = fov_analysis.calcium_peaks_max_lag_correlation_matrix
+        metric = fov_analysis.spike_max_lag_correlation_matrix
         is_correlation = True
 
     elif method == "calcium_peaks_jitter":

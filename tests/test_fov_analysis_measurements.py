@@ -105,30 +105,42 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
     # Create a minimal FOV with 2 ROIs
     fov = FOV(name="test_fov", position_index=1)
 
-    # Create ROI 1
+    # Create ROI 1 with spike data
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
+    # Create spike pattern: spikes at frames 5, 15, 25, 35, 45
+    spike_pattern1 = np.zeros(50)
+    spike_pattern1[[5, 15, 25, 35, 45]] = 2.0
     traces1 = Traces(
-        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10, dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10
+        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        inferred_spikes=spike_pattern1.tolist(),
     )
     roi1._new_traces = [traces1]
-    data_analysis1 = DataAnalysis(peaks_dec_dff=[5, 15, 25, 35, 45])
+    data_analysis1 = DataAnalysis(
+        peaks_dec_dff=[5, 15, 25, 35, 45], inferred_spikes_threshold=1.0
+    )
     roi1._new_data_analysis = [data_analysis1]
 
-    # Create ROI 2
+    # Create ROI 2 with spike data (shifted by 1 frame)
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
+    spike_pattern2 = np.zeros(50)
+    spike_pattern2[[6, 16, 26, 36, 46]] = 2.0
     traces2 = Traces(
-        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10, dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10
+        dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        inferred_spikes=spike_pattern2.tolist(),
     )
     roi2._new_traces = [traces2]
-    data_analysis2 = DataAnalysis(peaks_dec_dff=[6, 16, 26, 36, 46])  # Shifted by 1
+    data_analysis2 = DataAnalysis(
+        peaks_dec_dff=[6, 16, 26, 36, 46], inferred_spikes_threshold=1.0
+    )
     roi2._new_data_analysis = [data_analysis2]
 
     fov.rois = [roi1, roi2]
 
     # Create analysis settings (values in milliseconds)
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
-        calcium_peaks_max_lag=500,  # 5 frames at 10fps = 500ms
+        spikes_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
         spikes_sync_cross_corr_lag=500,  # 5 frames at 10fps = 500ms
     )
 
@@ -137,14 +149,14 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
 
     assert fov_analysis is not None
 
-    # Check that all 3 calcium measurements are computed
+    # Check that all calcium and spike measurements are computed
     assert fov_analysis.calcium_dff_correlation_matrix is not None
-    assert fov_analysis.calcium_peaks_jitter_synchrony_matrix is not None
-    assert fov_analysis.calcium_peaks_max_lag_correlation_matrix is not None
+    assert fov_analysis.spike_jitter_synchrony_matrix is not None
+    assert fov_analysis.spike_max_lag_correlation_matrix is not None
 
     # Check global metrics
-    assert fov_analysis.global_calcium_peaks_jitter_synchrony is not None
-    assert fov_analysis.global_calcium_peaks_max_lag_correlation is not None
+    assert fov_analysis.global_spike_jitter_synchrony is not None
+    assert fov_analysis.global_spike_max_lag_correlation is not None
 
     # Check matrix shapes (2x2 for 2 ROIs)
     assert len(fov_analysis.calcium_dff_correlation_matrix) == 2
@@ -195,8 +207,7 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
 
     # Create analysis settings (values in milliseconds)
     settings = AnalysisSettings(
-        calcium_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
-        calcium_peaks_max_lag=500,  # 5 frames at 10fps = 500ms
+        spikes_sync_jitter_window=200,  # 2 frames at 10fps = 200ms
         spikes_sync_cross_corr_lag=500,  # 5 frames at 10fps = 500ms
     )
 
@@ -273,35 +284,51 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
     peak_array1 = np.zeros(50)
     peak_array1[[10, 20, 30]] = 1.0
-    traces1 = Traces(dff=peak_array1.tolist(), dec_dff=peak_array1.tolist())
+    spike_pattern1 = np.zeros(50)
+    spike_pattern1[[10, 20, 30]] = 2.0
+    traces1 = Traces(
+        dff=peak_array1.tolist(),
+        dec_dff=peak_array1.tolist(),
+        inferred_spikes=spike_pattern1.tolist(),
+    )
     roi1._new_traces = [traces1]
-    data_analysis1 = DataAnalysis(peaks_dec_dff=[10, 20, 30])
+    data_analysis1 = DataAnalysis(
+        peaks_dec_dff=[10, 20, 30], inferred_spikes_threshold=1.0
+    )
     roi1._new_data_analysis = [data_analysis1]
 
     # Create ROI 2 with peaks at [15, 25, 35] - shifted by 5 frames
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
     peak_array2 = np.zeros(50)
     peak_array2[[15, 25, 35]] = 1.0
-    traces2 = Traces(dff=peak_array2.tolist(), dec_dff=peak_array2.tolist())
+    spike_pattern2 = np.zeros(50)
+    spike_pattern2[[15, 25, 35]] = 2.0
+    traces2 = Traces(
+        dff=peak_array2.tolist(),
+        dec_dff=peak_array2.tolist(),
+        inferred_spikes=spike_pattern2.tolist(),
+    )
     roi2._new_traces = [traces2]
-    data_analysis2 = DataAnalysis(peaks_dec_dff=[15, 25, 35])
+    data_analysis2 = DataAnalysis(
+        peaks_dec_dff=[15, 25, 35], inferred_spikes_threshold=1.0
+    )
     roi2._new_data_analysis = [data_analysis2]
 
     fov.rois = [roi1, roi2]
 
     settings = AnalysisSettings(
         # Too small to capture 5-frame shift (2 frames at 10fps)
-        calcium_sync_jitter_window=200,
+        spikes_sync_jitter_window=200,
         # Large enough to capture shift (10 frames at 10fps)
-        calcium_peaks_max_lag=1000,
+        spikes_sync_cross_corr_lag=1000,
     )
 
     fov_analysis = compute_fov_analysis(fov, settings)
 
     assert fov_analysis is not None
 
-    jitter_sync = fov_analysis.calcium_peaks_jitter_synchrony_matrix
-    max_lag_corr = fov_analysis.calcium_peaks_max_lag_correlation_matrix
+    jitter_sync = fov_analysis.spike_jitter_synchrony_matrix
+    max_lag_corr = fov_analysis.spike_max_lag_correlation_matrix
 
     assert jitter_sync is not None
     assert max_lag_corr is not None
