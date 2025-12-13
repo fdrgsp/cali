@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -14,6 +15,13 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+BLACK = (0, 0, 0, 255)
+SYMBOL = "s"
+SYMBOL_SIZE = 3
+HEATMAP_CMAP_NAME = "viridis"
+HEATMAP_CMAP = pg.colormap.get(HEATMAP_CMAP_NAME)
 
 
 def _generate_spike_raster_plot_raw(
@@ -29,6 +37,7 @@ def _generate_spike_raster_plot_raw(
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
@@ -130,7 +139,7 @@ def _generate_spike_raster_plot_raw(
 
     for times in event_data:
         # same length, all black
-        per_roi_colors.append([(0, 0, 0, 255)] * len(times))
+        per_roi_colors.append([BLACK] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -145,8 +154,8 @@ def _generate_spike_raster_plot_raw(
                     "pos": (float(x), float(y)),
                     "brush": pg.mkBrush(*color),
                     "pen": None,
-                    "size": 3,
-                    "symbol": "s",
+                    "size": SYMBOL_SIZE,
+                    "symbol": SYMBOL,
                 }
             )
 
@@ -205,21 +214,7 @@ def _generate_spike_raster_plot(
         widget.legend.setVisible(False)
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_corr_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     plot.setTitle("Inferred Spike Events (binary) Raster Plot (Thresholded)")
 
@@ -307,7 +302,7 @@ def _generate_spike_raster_plot(
 
     for times in event_data:
         # same length, all black
-        per_roi_colors.append([(0, 0, 0, 255)] * len(times))
+        per_roi_colors.append([BLACK] * len(times))
 
     # ------------------------ Plot raster (one row per ROI) ------------------------ #
     for row_idx, (times, row_colors) in enumerate(zip(event_data, per_roi_colors)):
@@ -322,8 +317,8 @@ def _generate_spike_raster_plot(
                     "pos": (float(x), float(y)),
                     "brush": pg.mkBrush(*color),
                     "pen": None,
-                    "size": 3,
-                    "symbol": "s",
+                    "size": SYMBOL_SIZE,
+                    "symbol": SYMBOL,
                 }
             )
 
@@ -446,12 +441,13 @@ def _generate_spike_intensity_heatmap(
     """Generate intensity heatmap with spike data color-coded.
 
     Each ROI is displayed as a horizontal row, with the full inferred spike
-    signal represented by color intensity (viridis colormap).
+    signal represented by color intensity.
     """
     plot = widget.plot_item
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     # Reset ViewBox settings that might have been set by previous plots
@@ -553,8 +549,7 @@ def _generate_spike_intensity_heatmap(
         levels=(vmin_raw, vmax_raw),
     )
 
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(HEATMAP_CMAP.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 
@@ -591,7 +586,7 @@ def _add_spike_intensity_colorbar_to_widget(
     # Create ColorBarItem with fixed range (non-interactive)
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
+        colorMap=HEATMAP_CMAP,
         width=15,
         label="Inferred spikes (a.u.)",
         interactive=False,
@@ -670,21 +665,7 @@ def _generate_spike_intensity_heatmap_thresholded(
         widget.legend.setVisible(False)
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_corr_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     plot.setTitle("Inferred Spikes Heatmap (Thresholded)")
 
@@ -783,8 +764,7 @@ def _generate_spike_intensity_heatmap_thresholded(
         levels=(vmin_raw, vmax_raw),
     )
 
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(HEATMAP_CMAP.getLookupTable(0.0, 1.0, 256))
 
     plot.addItem(img)
 

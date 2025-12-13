@@ -8,6 +8,7 @@ import pyqtgraph as pg
 from skimage.measure import find_contours
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, AnalysisSettings, CaliResult, Mask
 from cali.util._util import coordinates_to_mask
 
@@ -42,6 +43,7 @@ def _visualize_stimulated_area(
 
     # Clear previous content
     plot.clear()
+    disconnect_hover_handlers(plot)
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -244,6 +246,7 @@ def _display_roi_statistics_pg(
 ) -> None:
     """Display ROI counts as centered text (pyqtgraph)."""
     plot.clear()
+    disconnect_hover_handlers(plot)
     total = len(stimulated_rois) + len(non_stimulated_rois)
     text_lines = [
         "Stimulated Area / ROI Statistics",

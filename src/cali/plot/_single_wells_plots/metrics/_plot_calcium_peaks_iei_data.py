@@ -7,12 +7,18 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+ERROR_BAR_COLOR = "k"
+ERROR_BAR_WIDTH = 2
+ERROR_BAR_X_WIDTH_MULTIPLIER = 0.02
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -69,6 +75,9 @@ def _plot_iei_data(
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -175,13 +184,16 @@ def _plot_iei_data(
         plot.addItem(gray_scatter)
 
     # --- Error bars for mean ± SEM ---
+    beam = ERROR_BAR_X_WIDTH_MULTIPLIER * (
+        x_arr.max() - x_arr.min() if x_arr.size > 1 else 1.0
+    )
     err_item = pg.ErrorBarItem(
         x=x_arr,
         y=y_arr,
         top=sem_arr,
         bottom=sem_arr,
-        beam=0.2,
-        pen=pg.mkPen("k", width=2),
+        beam=beam,
+        pen=pg.mkPen(ERROR_BAR_COLOR, width=ERROR_BAR_WIDTH),
     )
     plot.addItem(err_item)
 

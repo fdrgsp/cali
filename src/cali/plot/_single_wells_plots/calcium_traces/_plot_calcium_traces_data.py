@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -19,6 +20,15 @@ P1 = 5
 P2 = 100
 # max number of time points we will draw per trace (automatic downsampling)
 MAX_POINTS = 4000
+
+# PLOT STYLE CONSTANTS
+TRACE_COLOR = "k"
+TRACE_WIDTH = 3
+PEAKS_COLOR = "magenta"
+PEAKS_SYMBOL = "x"
+PEAKS_SIZE = 10
+THRESHOLD_COLOR = "magenta"
+THRESHOLD_WIDTH = 3
 
 
 # -----------------------------------------------------------------------------#
@@ -51,21 +61,7 @@ def _plot_traces_data(
     vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_corr_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # thresholds only if exactly 1 ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -283,7 +279,7 @@ def _draw_traces(
         roi_label = labels[i]
 
         # ---- Choose color ----
-        color = "magenta"
+        color = TRACE_COLOR
         # if n_rois == 1:
         #     # Single trace → black
         #     color = "k"
@@ -291,7 +287,7 @@ def _draw_traces(
         #     # Multi-trace → distinct colors
         #     color = pg.intColor(i, hues=max(n_rois, 16))
 
-        pen = pg.mkPen(color, width=3)
+        pen = pg.mkPen(color, width=TRACE_WIDTH)
 
         curve = plot.plot(
             x,
@@ -346,9 +342,9 @@ def _draw_peaks_and_thresholds(
             x[peaks_ds],
             y_i[peaks_ds],
             pen=None,
-            symbol="o",
-            symbolBrush=pg.mkBrush("k"),
-            symbolSize=5,
+            symbol=PEAKS_SYMBOL,
+            symbolBrush=pg.mkBrush(PEAKS_COLOR),
+            symbolSize=PEAKS_SIZE,
         )
 
     # Thresholds only if single ROI case
@@ -375,9 +371,9 @@ def _draw_peaks_and_thresholds(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "magenta",
+                THRESHOLD_COLOR,
                 style=pg.QtCore.Qt.PenStyle.DashLine,
-                width=3,
+                width=THRESHOLD_WIDTH,
             ),
         )
         line.setZValue(10)  # keep on top
@@ -396,7 +392,7 @@ def _draw_peaks_and_thresholds(
         plot.plot(
             [x[0], x[0]],
             [y0, y1],
-            pen=pg.mkPen("magenta", width=3),
+            pen=pg.mkPen(THRESHOLD_COLOR, width=THRESHOLD_WIDTH),
         )
 
 

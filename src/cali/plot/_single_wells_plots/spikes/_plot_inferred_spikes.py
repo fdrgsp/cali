@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -14,6 +15,14 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+INFERRED_TRACE_COLOR = "k"
+INFERRED_TRACE_WIDTH = 3
+DFF_OVERLAY_COLOR = "magenta"
+DFF_OVERLAY_WIDTH = 3
+THRESHOLD_COLOR = "magenta"
+THRESHOLD_WIDTH = 3
 
 
 # -----------------------------------------------------------------------------#
@@ -97,21 +106,7 @@ def _plot_inferred_spikes(
     vb.setAspectLocked(False)  # Ensure aspect ratio is not locked
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_corr_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # thresholds only if a single ROI is selected
     thresholds = thresholds if rois and len(rois) == 1 else False
@@ -248,7 +243,7 @@ def _plot_inferred_spikes(
                     p2=p2,
                     thresholds=False,
                     spikes_threshold=None,
-                    pen=pg.mkPen("magenta", width=2),
+                    pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
                 )
 
         last_trace = list(traces.inferred_spikes)
@@ -295,7 +290,7 @@ def _plot_spike_trace(
 
     if pen is None:
         # Choose color based on number of ROIs
-        pen = pg.mkPen("k", width=3)
+        pen = pg.mkPen(INFERRED_TRACE_COLOR, width=INFERRED_TRACE_WIDTH)
         # if n_rois == 1:
         #     pen = pg.mkPen("k", width=2)
         # else:
@@ -337,9 +332,9 @@ def _plot_spike_trace(
             pos=y_the,
             angle=0,
             pen=pg.mkPen(
-                "magenta",
+                THRESHOLD_COLOR,
                 style=pg.QtCore.Qt.PenStyle.DashLine,
-                width=2,
+                width=THRESHOLD_WIDTH,
             ),
         )
         line.setZValue(10)

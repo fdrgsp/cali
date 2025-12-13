@@ -7,6 +7,7 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -23,12 +24,29 @@ if TYPE_CHECKING:
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
 
-DEFAULT_COLOR = "gray"
-STIMULATED_COLOR = "green"
-NON_STIMULATED_COLOR = "magenta"
 P1 = 5
 P2 = 100
 MAX_POINTS = 4000  # downsampling cap like other PG plots
+
+# PLOT STYLE CONSTANTS
+DEFAULT_COLOR = "gray"
+STIMULATED_COLOR = "green"
+NON_STIMULATED_COLOR = "magenta"
+TRACES_WIDTH = 3
+AMPLITUDE_ALL_COLOR = (150, 150, 150, 160)  # light gray
+AMPLITUDE_ALL_SIZE = 5
+PEAKS_SYMBOL = "x"
+PEAKS_SYMBOL_SIZE = 10
+PEAKS_SYMBOL_COLOR = "k"
+LED_COLOR = (0, 0, 255, 200)
+LED_SYMBOL = "s"
+LED_SYMBOL_SIZE = 8
+RASTER_SYMBOL_SIZE = 3
+RASTER_SYMBOL_SIZE_LEGEND = 8
+RASTER_SYMBOL = "s"
+ERROR_BAR_X_WIDTH_MULTIPLIER = 0.02  # fraction of x-range
+ERROR_BAR_WIDTH = 2
+SCATTER_SIZE = 7
 
 
 # -----------------------------------------------------------------------------#
@@ -92,27 +110,27 @@ def _plot_evoked_experiment_data(
 # -----------------------------------------------------------------------------#
 # Peak amplitudes per ROI (stim vs non-stim)  - pyqtgraph version
 # -----------------------------------------------------------------------------#
-def _plot_stim_or_not_stim_peaks_amplitude(
+
+
+def _plot_stim_and_non_stim_peaks_amplitude(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
-    stimulated: bool = False,
 ) -> None:
-    """
-    Visualize stimulated / non-stimulated peak amplitudes per ROI (mean ± SEM).
+    """Plot both stimulated and non-stimulated peak amplitudes side by side.
 
-    Uses:
-        - ErrorBarItem for mean ± SEM
-        - Scatter markers for individual peak amplitudes
+    Stimulated ROIs on the left (green), non-stimulated on the right (magenta).
+    Each group shows mean ± SEM with individual amplitude points.
     """
     plot = widget.plot_item
     assert plot is not None
 
     plot.clear()
+    disconnect_hover_handlers(plot)
 
-    # Hide shared legend if present here
+    # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
         widget.legend.clear()
         widget.legend.setVisible(False)
@@ -121,11 +139,11 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         plot.setTitle("Peak Amplitudes\nNo analysis run selected. Please select a run.")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Peak Amplitude (dec ΔF/F)")
-        # ensure y-axis values are visible for this plot
         y_axis = plot.getAxis("left")
         y_axis.setStyle(showValues=True)
         return
 
+    # Query both stimulated and non-stimulated ROIs
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -140,7 +158,6 @@ def _plot_stim_or_not_stim_peaks_amplitude(
                 & (DataAnalysis.analysis_result_id == run_id),
             )
             .where(col(FOV.name) == fov_name)
-            .where(col(ROI.stimulated) == stimulated)
         )
 
         if rois is not None:
@@ -150,34 +167,26 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         results = session.exec(stmt).all()
 
     if not results:
-        kind = "stimulated" if stimulated else "non-stimulated"
-        plot.setTitle(f"Peak Amplitudes\nNo {kind} ROI data found.")
+        plot.setTitle("Peak Amplitudes\nNo ROI data found.")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Peak Amplitude (dec ΔF/F)")
         y_axis = plot.getAxis("left")
         y_axis.setStyle(showValues=True)
         return
 
-    roi_labels: list[int] = []
-    x_positions: list[float] = []
-    means: list[float] = []
-    sems: list[float] = []
-    all_points_x: list[float] = []
-    all_points_y: list[float] = []
+    # Separate data by stimulation status
+    stim_data: list[
+        tuple[int, float, float, list[float]]
+    ] = []  # (label, mean, sem, amps)
+    non_stim_data: list[tuple[int, float, float, list[float]]] = []
 
-    color = STIMULATED_COLOR if stimulated else NON_STIMULATED_COLOR
-
-    for idx, (roi_model, _traces, data_analysis) in enumerate(results):
+    for roi_model, _traces, data_analysis in results:
         if not (data_analysis and data_analysis.peaks_amplitudes_dec_dff):
             continue
 
         amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
         if amps.size == 0:
             continue
-
-        roi_labels.append(roi_model.label_value)
-        x = float(idx)
-        x_positions.append(x)
 
         mean_amp = float(np.mean(amps))
         if amps.size > 1:
@@ -186,14 +195,14 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         else:
             sem_amp = 0.0
 
-        means.append(mean_amp)
-        sems.append(sem_amp)
+        data_tuple = (roi_model.label_value, mean_amp, sem_amp, amps.tolist())
 
-        # individual amplitudes
-        all_points_x.extend([x] * amps.size)
-        all_points_y.extend(amps.tolist())
+        if roi_model.stimulated:
+            stim_data.append(data_tuple)
+        else:
+            non_stim_data.append(data_tuple)
 
-    if not roi_labels:
+    if not stim_data and not non_stim_data:
         plot.setTitle("Peak Amplitudes\nNo peak amplitude data available.")
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "Peak Amplitude (dec ΔF/F)")
@@ -201,63 +210,133 @@ def _plot_stim_or_not_stim_peaks_amplitude(
         y_axis.setStyle(showValues=True)
         return
 
-    x_arr = np.asarray(x_positions, dtype=float)
-    means_arr = np.asarray(means, dtype=float)
-    sem_arr = np.asarray(sems, dtype=float)
+    # Plot stimulated group (left side)
+    all_roi_labels: list[int] = []
+    x_offset = 0.0
 
-    # Scatter for individual amplitudes (light gray)
-    if all_points_x:
-        scatter = pg.ScatterPlotItem(
-            x=np.asarray(all_points_x, dtype=float),
-            y=np.asarray(all_points_y, dtype=float),
-            pen=None,
-            brush=pg.mkBrush(150, 150, 150, 160),
-            size=5,
-        )
-        plot.addItem(scatter)
+    if stim_data:
+        for idx, (roi_label, mean_amp, sem_amp, amps) in enumerate(stim_data):
+            all_roi_labels.append(roi_label)
+            x = x_offset + idx
 
-    # Error bars for mean ± SEM
-    if sem_arr.size > 0:
-        err = pg.ErrorBarItem(
-            x=x_arr,
-            y=means_arr,
-            top=sem_arr,
-            bottom=sem_arr,
-            beam=0.2,
-            pen=pg.mkPen(color, width=2),
-        )
-        plot.addItem(err)
+            # Individual amplitudes (light gray)
+            scatter = pg.ScatterPlotItem(
+                x=[x] * len(amps),
+                y=amps,
+                pen=None,
+                brush=pg.mkBrush(AMPLITUDE_ALL_COLOR),
+                size=AMPLITUDE_ALL_SIZE,
+            )
+            plot.addItem(scatter)
 
-    # Scatter for means (on top, solid color)
-    mean_scatter = pg.ScatterPlotItem(
-        x=x_arr,
-        y=means_arr,
-        pen=pg.mkPen(color, width=1),
-        brush=pg.mkBrush(color),
-        size=7,
-    )
-    plot.addItem(mean_scatter)
+            # Error bar
+            if sem_amp > 0:
+                err = pg.ErrorBarItem(
+                    x=np.array([x]),
+                    y=np.array([mean_amp]),
+                    top=np.array([sem_amp]),
+                    bottom=np.array([sem_amp]),
+                    beam=0.2,
+                    pen=pg.mkPen(STIMULATED_COLOR, width=ERROR_BAR_WIDTH),
+                )
+                plot.addItem(err)
 
-    # Axis labels
+            # Mean point
+            mean_scatter = pg.ScatterPlotItem(
+                x=[x],
+                y=[mean_amp],
+                pen=pg.mkPen(STIMULATED_COLOR, width=1),
+                brush=pg.mkBrush(STIMULATED_COLOR),
+                size=SCATTER_SIZE,
+            )
+            plot.addItem(mean_scatter)
+
+        x_offset += len(stim_data) + 1  # Gap between groups
+
+    # Plot non-stimulated group (right side)
+    if non_stim_data:
+        for idx, (roi_label, mean_amp, sem_amp, amps) in enumerate(non_stim_data):
+            all_roi_labels.append(roi_label)
+            x = x_offset + idx
+
+            # Individual amplitudes (light gray)
+            scatter = pg.ScatterPlotItem(
+                x=[x] * len(amps),
+                y=amps,
+                pen=None,
+                brush=pg.mkBrush(AMPLITUDE_ALL_COLOR),
+                size=AMPLITUDE_ALL_SIZE,
+            )
+            plot.addItem(scatter)
+
+            # Error bar
+            if sem_amp > 0:
+                err = pg.ErrorBarItem(
+                    x=np.array([x]),
+                    y=np.array([mean_amp]),
+                    top=np.array([sem_amp]),
+                    bottom=np.array([sem_amp]),
+                    beam=0.2,
+                    pen=pg.mkPen(NON_STIMULATED_COLOR, width=ERROR_BAR_WIDTH),
+                )
+                plot.addItem(err)
+
+            # Mean point
+            mean_scatter = pg.ScatterPlotItem(
+                x=[x],
+                y=[mean_amp],
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
+                brush=pg.mkBrush(NON_STIMULATED_COLOR),
+                size=SCATTER_SIZE,
+            )
+            plot.addItem(mean_scatter)
+
+    # Axis labels and styling
     plot.setLabel("left", "Peak Amplitude (dec ΔF/F)")
-    plot.setLabel("bottom", "ROI")
+    plot.setLabel("bottom", "Stimulated → Non-Stimulated ROIs")
 
-    # Y-axis: always show tick values (re-enable if a previous plot hid them)
+    # Y-axis: show tick values
     y_axis = plot.getAxis("left")
     y_axis.setStyle(showValues=True)
 
-    # X-axis: no numeric tick labels, only the axis label "ROI"
+    # X-axis: no numeric tick labels
     x_axis = plot.getAxis("bottom")
-    x_axis.setTicks([])  # clear ticks
+    x_axis.setTicks([])
     x_axis.setStyle(showValues=False)
 
-    title = "Stimulated" if stimulated else "Non-Stimulated"
-    plot.setTitle(f"{title} ROI Mean Peak Amplitudes ± SEM")
+    # Enable autorange for proper scaling
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.enableAutoRange(x=True, y=True)
 
-    # store ROI labels for click mapping
-    plot.setProperty("peaks_amp_roi_labels", roi_labels)
+    # Title with counts
+    plot.setTitle(
+        f"Peak Amplitudes (Stimulated: {len(stim_data)} ROIs, "
+        f"Non-Stimulated: {len(non_stim_data)} ROIs)"
+    )
 
-    # click → nearest ROI on x-axis
+    # Legend
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        if stim_data:
+            stim_item = pg.ScatterPlotItem(
+                pen=pg.mkPen(STIMULATED_COLOR, width=1),
+                brush=pg.mkBrush(STIMULATED_COLOR),
+                size=SCATTER_SIZE,
+            )
+            legend.addItem(stim_item, "Stimulated ROIs")
+        if non_stim_data:
+            non_stim_item = pg.ScatterPlotItem(
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
+                brush=pg.mkBrush(NON_STIMULATED_COLOR),
+                size=SCATTER_SIZE,
+            )
+            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
+        legend.setVisible(True)
+
+    # Store ROI labels for click mapping
+    plot.setProperty("peaks_amp_roi_labels", all_roi_labels)
     _attach_click_handlers_peaks_amp(widget, plot)
 
 
@@ -327,6 +406,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
 
     # Clear previous content
     plot.clear()
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -471,7 +553,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(STIMULATED_COLOR, width=1),
+                pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -491,9 +573,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         x[peaks_ds],
                         y_i[peaks_ds],
                         pen=None,
-                        symbol="o",
-                        symbolBrush=pg.mkBrush("k"),
-                        symbolSize=5,
+                        symbol=PEAKS_SYMBOL,
+                        symbolBrush=pg.mkBrush(PEAKS_SYMBOL_COLOR),
+                        symbolSize=PEAKS_SYMBOL_SIZE,
                     )
 
         first_stim_trace = stimulated_data[0][1].dec_dff
@@ -515,7 +597,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             curve = plot.plot(
                 x,
                 y_i,
-                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH),
                 name=f"ROI {roi_label}",
             )
             curve.setProperty("roi_label", str(roi_label))
@@ -535,9 +617,9 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         x[peaks_ds],
                         y_i[peaks_ds],
                         pen=None,
-                        symbol="o",
-                        symbolBrush=pg.mkBrush("k"),
-                        symbolSize=5,
+                        symbol=PEAKS_SYMBOL,
+                        symbolBrush=pg.mkBrush(PEAKS_SYMBOL_COLOR),
+                        symbolSize=PEAKS_SYMBOL_SIZE,
                     )
 
         if last_raw_trace is None:
@@ -561,28 +643,32 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
 
         # Add legend items for stimulated and non-stimulated traces
         if stim_traces:
-            stim_item = pg.PlotDataItem(pen=pg.mkPen(STIMULATED_COLOR, width=1))
+            stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH)
+            )
             legend.addItem(stim_item, "Stimulated ROIs")
 
         if non_traces:
-            non_stim_item = pg.PlotDataItem(pen=pg.mkPen(NON_STIMULATED_COLOR, width=1))
+            non_stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH)
+            )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
         if with_peaks:
             peak_item = pg.ScatterPlotItem(
                 pen=None,
-                brush=pg.mkBrush("k"),
-                size=5,
-                symbol="o",
+                brush=pg.mkBrush(PEAKS_SYMBOL_COLOR),
+                size=PEAKS_SYMBOL_SIZE,
+                symbol=PEAKS_SYMBOL,
             )
             legend.addItem(peak_item, "Peaks")
 
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
+            brush=pg.mkBrush(LED_COLOR),
+            size=LED_SYMBOL_SIZE,
+            symbol=LED_SYMBOL,
         )
         legend.addItem(led_item, "LED Stimulation")
 
@@ -624,6 +710,10 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     assert plot is not None
 
     plot.clear()
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
+
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     vb.invertY(True)
@@ -729,8 +819,8 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             y=np.full_like(spike_indices, row_index, dtype=float),
             pen=None,
             brush=pg.mkBrush(color),
-            size=4,
-            symbol="s",  # small square -> looks like a tick
+            size=RASTER_SYMBOL_SIZE,
+            symbol=RASTER_SYMBOL,
         )
         item.setProperty("roi_label", str(roi_model.label_value))
         plot.addItem(item)
@@ -767,8 +857,8 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             stim_item = pg.ScatterPlotItem(
                 pen=None,
                 brush=pg.mkBrush(STIMULATED_COLOR),
-                size=4,
-                symbol="s",
+                size=RASTER_SYMBOL_SIZE_LEGEND,
+                symbol=RASTER_SYMBOL,
             )
             legend.addItem(stim_item, "Stimulated ROIs")
 
@@ -776,17 +866,17 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             non_stim_item = pg.ScatterPlotItem(
                 pen=None,
                 brush=pg.mkBrush(NON_STIMULATED_COLOR),
-                size=4,
-                symbol="s",
+                size=RASTER_SYMBOL_SIZE_LEGEND,
+                symbol=RASTER_SYMBOL,
             )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
+            brush=pg.mkBrush(LED_COLOR),
+            size=LED_SYMBOL_SIZE,
+            symbol=LED_SYMBOL,
         )
         legend.addItem(led_item, "LED Stimulation")
 
@@ -861,6 +951,10 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
     assert plot is not None
 
     plot.clear()
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
+
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
     vb.invertY(True)
@@ -953,8 +1047,8 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
             y=np.full_like(peak_indices, row_index, dtype=float),
             pen=None,
             brush=pg.mkBrush(color),
-            size=4,
-            symbol="s",  # small square -> looks like a tick
+            size=RASTER_SYMBOL_SIZE,
+            symbol=RASTER_SYMBOL,
         )
         item.setProperty("roi_label", str(roi_model.label_value))
         plot.addItem(item)
@@ -993,8 +1087,8 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
             stim_item = pg.ScatterPlotItem(
                 pen=None,
                 brush=pg.mkBrush(STIMULATED_COLOR),
-                size=4,
-                symbol="s",
+                size=RASTER_SYMBOL_SIZE_LEGEND,
+                symbol=RASTER_SYMBOL,
             )
             legend.addItem(stim_item, "Stimulated ROIs")
 
@@ -1002,17 +1096,17 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
             non_stim_item = pg.ScatterPlotItem(
                 pen=None,
                 brush=pg.mkBrush(NON_STIMULATED_COLOR),
-                size=4,
-                symbol="s",
+                size=RASTER_SYMBOL_SIZE_LEGEND,
+                symbol=RASTER_SYMBOL,
             )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
+            brush=pg.mkBrush(LED_COLOR),
+            size=LED_SYMBOL_SIZE,
+            symbol=LED_SYMBOL,
         )
         legend.addItem(led_item, "LED Stimulation")
 
@@ -1051,6 +1145,10 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     assert plot is not None
 
     plot.clear()
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
+
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
 
@@ -1137,7 +1235,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         curve = plot.plot(
             x,
             y,
-            pen=pg.mkPen(STIMULATED_COLOR, width=1),
+            pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH),
             name=f"ROI {roi_model.label_value}",
         )
         curve.setProperty("roi_label", str(roi_model.label_value))
@@ -1158,7 +1256,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         curve = plot.plot(
             x,
             y,
-            pen=pg.mkPen(NON_STIMULATED_COLOR, width=1),
+            pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH),
             name=f"ROI {roi_model.label_value}",
         )
         curve.setProperty("roi_label", str(roi_model.label_value))
@@ -1184,21 +1282,23 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
 
         # Add legend items for stimulated and non-stimulated traces
         if stimulated_data:
-            stim_item = pg.PlotDataItem(pen=pg.mkPen(STIMULATED_COLOR, width=1.5))
+            stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH)
+            )
             legend.addItem(stim_item, "Stimulated ROIs")
 
         if non_stimulated_data:
             non_stim_item = pg.PlotDataItem(
-                pen=pg.mkPen(NON_STIMULATED_COLOR, width=1.5)
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH)
             )
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
         # Add LED stimulation legend item
         led_item = pg.ScatterPlotItem(
             pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
+            brush=pg.mkBrush(LED_COLOR),
+            size=LED_SYMBOL_SIZE,
+            symbol=LED_SYMBOL,
         )
         legend.addItem(led_item, "LED Stimulation")
 
@@ -1228,7 +1328,7 @@ def _add_led_stimulation_bands(
     run_id: int,
     frame_rate: float | None = None,
     stride: int = 1,
-    color: tuple[int, int, int, int] = (0, 0, 255, 200),
+    color: tuple[int, int, int, int] = LED_COLOR,
 ) -> None:
     """Add vertical bands for LED stimulation events.
 
@@ -1361,624 +1461,3 @@ def _attach_click_handlers_evoked(
                 widget.roiSelected.emit(roi_label)
 
         curve.sigClicked.connect(_on_curve_clicked)
-
-
-# -----------------------------------------------------------------------------#
-# Heatmap plots for evoked experiments
-# -----------------------------------------------------------------------------#
-def _plot_calcium_intensity_heatmap_by_stim_status(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-    stimulated: bool = True,
-) -> None:
-    """Generate calcium intensity heatmap (dec dF/F) for stim or non-stim ROIs."""
-    plot = widget.plot_item
-    assert plot is not None
-
-    plot.clear()
-    vb = plot.getViewBox()
-    vb.setAspectLocked(False)
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)
-
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Hide shared legend if present
-    if hasattr(widget, "legend") and widget.legend is not None:
-        if hasattr(widget.legend, "clear"):
-            widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    status_label = "Stimulated" if stimulated else "Non-Stimulated"
-    plot.setTitle(f"{status_label} Calcium Intensity Heatmap")
-
-    from cali.sqlmodel._model import FOV as FOVModel
-
-    if run_id is None:
-        plot.setTitle("Calcium Intensity Heatmap\nNo run selected.")
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # ------------------------ Query DB ------------------------ #
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOVModel, ROI.fov_id == FOVModel.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .outerjoin(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-        stmt = stmt.order_by(col(ROI.label_value))
-        results = session.exec(stmt).all()
-
-    if not results:
-        plot.setTitle(
-            f"{status_label} Calcium Intensity Heatmap\nNo active ROI data found."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Filter by stimulation status
-    traces_list: list[np.ndarray] = []
-    active_rois: list[int] = []
-    rois_rec_time: list[float] = []
-
-    for roi_model, trace_obj, data_analysis in results:
-        # Skip ROIs that don't match the requested stimulation status
-        if roi_model.stimulated != stimulated:
-            continue
-
-        if trace_obj is None or trace_obj.dec_dff is None:
-            continue
-
-        trace = np.asarray(trace_obj.dec_dff, dtype=float)
-        if trace.size == 0:
-            continue
-
-        active_rois.append(roi_model.label_value)
-        traces_list.append(trace)
-
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-    if not traces_list:
-        plot.setTitle(
-            f"{status_label} Calcium Intensity Heatmap\nNo trace data available."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Stack traces into 2D array
-    traces_array = np.vstack(traces_list)
-    n_rois, n_frames = traces_array.shape
-
-    # Percentile-based bounds
-    vmin_raw = float(np.percentile(traces_array, 5))
-    vmax_raw = float(np.percentile(traces_array, 95))
-    if vmax_raw <= vmin_raw:
-        vmax_raw = vmin_raw + 0.1
-
-    # Create heatmap
-    img = pg.ImageItem(traces_array)
-    img.setOpts(
-        axisOrder="row-major",
-        autoDownsample=False,
-        levels=(vmin_raw, vmax_raw),
-        smooth=False,
-    )
-
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    plot.addItem(img)
-
-    # Viewbox settings
-    vb.invertY(False)
-    vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
-    vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
-    # Keep x-range fixed to show full frames with padding, only autorange y
-    vb.enableAutoRange(x=False, y=True)
-
-    # Axes
-    plot.setLabel("left", f"{status_label} ROIs")
-    y_axis = plot.getAxis("left")
-    y_axis.setTicks([])
-    y_axis.setStyle(showValues=False)
-
-    # Time axis
-    _update_time_axis_pg_frames(plot, rois_rec_time, n_frames)
-
-    # Colorbar
-    _add_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
-
-    # ---------- LED STIMULATION BANDS ----------
-    # Get frame rate from data analysis
-    frame_rate = None
-    for _, _, data_analysis in results:
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            frame_rate = n_frames / data_analysis.total_recording_time_sec
-            break
-
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
-
-    # ---------- LEGEND ----------
-    legend = getattr(widget, "legend", None)
-    if legend is not None:
-        legend.clear()
-        led_item = pg.ScatterPlotItem(
-            pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
-        )
-        legend.addItem(led_item, "LED Stimulation")
-        legend.setVisible(True)
-
-    # Click handlers
-    _attach_click_handlers_intensity(widget, plot, active_rois)
-
-
-def _plot_spike_intensity_heatmap_by_stim_status(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-    stimulated: bool = True,
-) -> None:
-    """Generate spike intensity heatmap (raw) for stim or non-stim ROIs."""
-    plot = widget.plot_item
-    assert plot is not None
-
-    plot.clear()
-    vb = plot.getViewBox()
-    vb.setAspectLocked(False)
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)
-
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Hide shared legend if present
-    if hasattr(widget, "legend") and widget.legend is not None:
-        if hasattr(widget.legend, "clear"):
-            widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    status_label = "Stimulated" if stimulated else "Non-Stimulated"
-    plot.setTitle(f"{status_label} Inferred Spikes Intensity Heatmap (Raw)")
-
-    from cali.sqlmodel._model import FOV as FOVModel
-
-    if run_id is None:
-        plot.setTitle("Spike Intensity Heatmap\nNo run selected.")
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # ------------------------ Query DB ------------------------ #
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOVModel, ROI.fov_id == FOVModel.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .outerjoin(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-        stmt = stmt.order_by(col(ROI.label_value))
-        results = session.exec(stmt).all()
-
-    if not results:
-        plot.setTitle(
-            f"{status_label} Spike Intensity Heatmap\nNo active ROI data found."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Filter by stimulation status
-    traces_list: list[np.ndarray] = []
-    active_rois: list[int] = []
-    rois_rec_time: list[float] = []
-
-    for roi_model, trace_obj, data_analysis in results:
-        # Skip ROIs that don't match the requested stimulation status
-        if roi_model.stimulated != stimulated:
-            continue
-
-        if trace_obj is None or trace_obj.inferred_spikes is None:
-            continue
-
-        trace = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        if trace.size == 0:
-            continue
-
-        active_rois.append(roi_model.label_value)
-        traces_list.append(trace)
-
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-    if not traces_list:
-        plot.setTitle(
-            f"{status_label} Spike Intensity Heatmap\nNo spike trace data available."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Stack traces into 2D array (n_rois x n_frames)
-    traces_array = np.vstack(traces_list)
-    n_rois, n_frames = traces_array.shape
-
-    # Percentile-based bounds
-    vmin_raw = float(np.percentile(traces_array, 5))
-    vmax_raw = float(np.percentile(traces_array, 95))
-    if vmax_raw <= vmin_raw:
-        vmax_raw = vmin_raw + 0.1
-
-    # Create heatmap
-    img = pg.ImageItem(traces_array)
-    img.setOpts(
-        axisOrder="row-major",
-        autoDownsample=False,
-        levels=(vmin_raw, vmax_raw),
-        smooth=False,
-    )
-
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    plot.addItem(img)
-
-    # Viewbox settings
-    vb.invertY(False)
-    vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
-    vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
-    # Keep x-range fixed to show full frames with padding, only autorange y
-    vb.enableAutoRange(x=False, y=True)
-
-    # Axes
-    plot.setLabel("left", f"{status_label} ROIs")
-    y_axis = plot.getAxis("left")
-    y_axis.setTicks([])
-    y_axis.setStyle(showValues=False)
-
-    # Time axis
-    _update_time_axis_pg_frames(plot, rois_rec_time, n_frames)
-
-    # Colorbar
-    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
-
-    # ---------- LED STIMULATION BANDS ----------
-    # Get frame rate from data analysis
-    frame_rate = None
-    for _, _, data_analysis in results:
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            frame_rate = n_frames / data_analysis.total_recording_time_sec
-            break
-
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
-
-    # ---------- LEGEND ----------
-    legend = getattr(widget, "legend", None)
-    if legend is not None:
-        legend.clear()
-        led_item = pg.ScatterPlotItem(
-            pen=None,
-            brush=pg.mkBrush(255, 255, 255, 255),
-            size=8,
-            symbol="s",
-        )
-        legend.addItem(led_item, "LED Stimulation")
-        legend.setVisible(True)
-
-    # Click handlers
-    _attach_click_handlers_spike_intensity(widget, plot, active_rois)
-
-
-def _plot_spike_intensity_heatmap_thresholded_by_stim_status(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-    stimulated: bool = True,
-) -> None:
-    """Generate spike intensity heatmap (threshold) for stim or non-stim ROIs."""
-    plot = widget.plot_item
-    assert plot is not None
-
-    plot.clear()
-    vb = plot.getViewBox()
-    vb.setAspectLocked(False)
-    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-    vb.invertY(True)
-
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Hide shared legend if present
-    if hasattr(widget, "legend") and widget.legend is not None:
-        if hasattr(widget.legend, "clear"):
-            widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    status_label = "Stimulated" if stimulated else "Non-Stimulated"
-    plot.setTitle(f"{status_label} Inferred Spikes Intensity Heatmap (Thresholded)")
-
-    from cali.sqlmodel._model import FOV as FOVModel
-
-    if run_id is None:
-        plot.setTitle("Spike Intensity Heatmap\nNo run selected.")
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # ------------------------ Query DB ------------------------ #
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOVModel, ROI.fov_id == FOVModel.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .join(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-        stmt = stmt.order_by(col(ROI.label_value))
-        results = session.exec(stmt).all()
-
-    if not results:
-        plot.setTitle(
-            f"{status_label} Spike Intensity Heatmap\nNo active ROI data found."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Filter by stimulation status with thresholding
-    traces_list: list[np.ndarray] = []
-    active_rois: list[int] = []
-    rois_rec_time: list[float] = []
-
-    for roi_model, trace_obj, data_analysis in results:
-        # Skip ROIs that don't match the requested stimulation status
-        if roi_model.stimulated != stimulated:
-            continue
-
-        if (
-            trace_obj is None
-            or trace_obj.inferred_spikes is None
-            or data_analysis is None
-        ):
-            continue
-
-        threshold = data_analysis.inferred_spikes_threshold or 0.0
-        spike_signal = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        thresholded_signal = np.where(spike_signal > threshold, spike_signal, 0.0)
-
-        if thresholded_signal.size == 0 or np.all(thresholded_signal == 0):
-            continue
-
-        active_rois.append(roi_model.label_value)
-        traces_list.append(thresholded_signal)
-
-        if data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-    if not traces_list:
-        plot.setTitle(
-            f"{status_label} Spike Intensity Heatmap\n"
-            "No spike data above threshold available."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # Stack traces into 2D array (n_rois x n_frames)
-    traces_array = np.vstack(traces_list)
-    n_rois, n_frames = traces_array.shape
-
-    # Get non-zero values for robust scaling
-    non_zero_vals = traces_array[traces_array > 0]
-    if non_zero_vals.size > 0:
-        vmin_raw = 0.0
-        vmax_raw = float(np.percentile(non_zero_vals, 95))
-        if vmax_raw <= vmin_raw:
-            vmax_raw = float(non_zero_vals.max())
-        if vmax_raw <= vmin_raw:
-            vmax_raw = 1.0
-    else:
-        vmin_raw = 0.0
-        vmax_raw = 1.0
-
-    # Create heatmap
-    img = pg.ImageItem(traces_array)
-    img.setOpts(
-        axisOrder="row-major",
-        autoDownsample=False,
-        interpolate=False,
-        levels=(vmin_raw, vmax_raw),
-        smooth=False,
-    )
-
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
-    plot.addItem(img)
-
-    # Viewbox settings
-    vb.invertY(False)
-    vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
-    vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
-    # Keep x-range fixed to show full frames with padding, only autorange y
-    vb.enableAutoRange(x=False, y=True)
-
-    # Axes
-    plot.setLabel("left", f"{status_label} ROIs")
-    y_axis = plot.getAxis("left")
-    y_axis.setTicks([])
-    y_axis.setStyle(showValues=False)
-
-    # Time axis
-    _update_time_axis_pg_frames(plot, rois_rec_time, n_frames)
-
-    # Colorbar
-    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
-
-    # ---------- LED STIMULATION BANDS ----------
-    # Get frame rate from data analysis
-    frame_rate = None
-    for _, _, data_analysis in results:
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            frame_rate = n_frames / data_analysis.total_recording_time_sec
-            break
-
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
-
-    # ---------- LEGEND ----------
-    legend = getattr(widget, "legend", None)
-    if legend is not None:
-        legend.clear()
-        led_item = pg.ScatterPlotItem(
-            pen=None,
-            brush=pg.mkBrush(0, 0, 255, 200),
-            size=8,
-            symbol="s",
-        )
-        legend.addItem(led_item, "LED Stimulation")
-        legend.setVisible(True)
-
-    # Click handlers
-    _attach_click_handlers_spike_intensity(widget, plot, active_rois)
-
-
-# Helper functions for heatmaps (imported from raster modules)
-def _add_intensity_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-) -> None:
-    """Add a ColorBarItem for calcium intensity heatmap."""
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
-        width=15,
-        label="Intensity (dec ΔF/F)",
-        interactive=False,
-    )
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
-
-
-def _add_spike_intensity_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-) -> None:
-    """Add a ColorBarItem for spike intensity heatmap."""
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
-        width=15,
-        label="Spike Intensity",
-        interactive=False,
-    )
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)
-
-
-def _attach_click_handlers_intensity(
-    widget: _SingleWellGraphWidget,
-    plot: pg.PlotItem,
-    active_roi_labels: list[int],
-) -> None:
-    """Map clicked Y row → ROI label for heatmap plots."""
-    from pyqtgraph import Point
-
-    scene = plot.scene()
-    vb = plot.getViewBox()
-
-    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
-        pos = ev.scenePos()
-        if not plot.sceneBoundingRect().contains(pos):
-            return
-
-        p: Point = vb.mapSceneToView(pos)
-        y = float(p.y())
-        # Since invertY(False), y=0 is at bottom, use floor for correct row
-        idx = int(np.floor(y))
-        if 0 <= idx < len(active_roi_labels):
-            widget.roiSelected.emit(str(active_roi_labels[idx]))
-
-    old_click = plot.property("intensity_heatmap_click_handler")
-    if old_click is not None:
-        try:
-            scene.sigMouseClicked.disconnect(old_click)
-        except (TypeError, RuntimeError):
-            pass
-
-    scene.sigMouseClicked.connect(_on_mouse_clicked)
-    plot.setProperty("intensity_heatmap_click_handler", _on_mouse_clicked)
-
-
-def _attach_click_handlers_spike_intensity(
-    widget: _SingleWellGraphWidget,
-    plot: pg.PlotItem,
-    active_roi_labels: list[int],
-) -> None:
-    """Map clicked Y row → ROI label for spike heatmap plots."""
-    from pyqtgraph import Point
-
-    scene = plot.scene()
-    vb = plot.getViewBox()
-
-    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
-        pos = ev.scenePos()
-        if not plot.sceneBoundingRect().contains(pos):
-            return
-
-        p: Point = vb.mapSceneToView(pos)
-        y = float(p.y())
-        # Since invertY(False), y=0 is at bottom, use floor for correct row
-        idx = int(np.floor(y))
-        if 0 <= idx < len(active_roi_labels):
-            widget.roiSelected.emit(str(active_roi_labels[idx]))
-
-    old_click = plot.property("spike_intensity_heatmap_click_handler")
-    if old_click is not None:
-        try:
-            scene.sigMouseClicked.disconnect(old_click)
-        except (TypeError, RuntimeError):
-            pass
-
-    scene.sigMouseClicked.connect(_on_mouse_clicked)
-    plot.setProperty("spike_intensity_heatmap_click_handler", _on_mouse_clicked)

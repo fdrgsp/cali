@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import (
     ROI,
     CaliResult,
@@ -18,6 +19,17 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+MEAN_RAW_ACTIVITY_COLOR = "k"
+MEAN_RAW_ACTIVITY_WIDTH = 2
+MEAN_SMOOTHED_ACTIVITY_COLOR = "magenta"
+MEAN_SMOOTHED_ACTIVITY_WIDTH = 3
+THRESHOLD_COLOR = "magenta"
+THRESHOLD_WIDTH = 3
+BURST_REGION_COLOR = (0, 255, 0, 90)  # green with alpha
+BURST_REGION_COLOR_LEGEND = (0, 255, 0)  # solid green for legend
+BURST_REGION_LEGEND_WIDTH = 3
 
 
 # -----------------------------------------------------------------------------#
@@ -120,25 +132,7 @@ def _plot_inferred_spike_burst_activity(
     vb.enableAutoRange(x=True, y=False)
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if you use one elsewhere
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -197,7 +191,9 @@ def _plot_inferred_spike_burst_activity(
                 plot.plot(
                     time_axis,
                     population_activity_raw,
-                    pen=pg.mkPen("black", width=2),
+                    pen=pg.mkPen(
+                        MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH
+                    ),
                     name="Raw Activity (Fraction Active)",
                 )
 
@@ -205,7 +201,9 @@ def _plot_inferred_spike_burst_activity(
             plot.plot(
                 time_axis,
                 population_activity,
-                pen=pg.mkPen("magenta", width=3),
+                pen=pg.mkPen(
+                    MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
+                ),
                 name="Smoothed Activity (Fraction Active)",
             )
 
@@ -213,7 +211,11 @@ def _plot_inferred_spike_burst_activity(
             threshold_line = pg.InfiniteLine(
                 pos=the_value,
                 angle=0,
-                pen=pg.mkPen("magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
+                pen=pg.mkPen(
+                    THRESHOLD_COLOR,
+                    width=THRESHOLD_WIDTH,
+                    style=pg.QtCore.Qt.PenStyle.DashLine,
+                ),
             )
             threshold_line.setZValue(5)
             plot.addItem(threshold_line)
@@ -232,7 +234,7 @@ def _plot_inferred_spike_burst_activity(
 
                 region = pg.LinearRegionItem(
                     values=[t0, t1],
-                    brush=pg.mkBrush(0, 255, 0, 90),
+                    brush=pg.mkBrush(BURST_REGION_COLOR),
                     pen=pg.mkPen(None),
                     movable=False,
                 )
@@ -242,21 +244,33 @@ def _plot_inferred_spike_burst_activity(
             # Add legend
             if hasattr(widget, "legend") and widget.legend is not None:
                 widget.legend.clear()
-                raw_item = pg.PlotDataItem(pen=pg.mkPen("black", width=2))
+                raw_item = pg.PlotDataItem(
+                    pen=pg.mkPen(MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH)
+                )
                 widget.legend.addItem(raw_item, "Raw Activity (Fraction Active)")
-                smoothed_item = pg.PlotDataItem(pen=pg.mkPen("magenta", width=3))
+                smoothed_item = pg.PlotDataItem(
+                    pen=pg.mkPen(
+                        MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
+                    )
+                )
                 widget.legend.addItem(
                     smoothed_item, "Smoothed Activity (Fraction Active)"
                 )
                 threshold_item = pg.PlotDataItem(
                     pen=pg.mkPen(
-                        "magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine
+                        THRESHOLD_COLOR,
+                        width=THRESHOLD_WIDTH,
+                        style=pg.QtCore.Qt.PenStyle.DashLine,
                     )
                 )
                 widget.legend.addItem(
                     threshold_item, f"Burst Threshold ({the_value:.3f})"
                 )
-                burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+                burst_item = pg.PlotDataItem(
+                    pen=pg.mkPen(
+                        BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH
+                    )
+                )
                 widget.legend.addItem(burst_item, "Detected Bursts")
                 widget.legend.setVisible(True)
 
@@ -654,25 +668,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
     assert plot is not None
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # ---- remove ROI legend for this plot ----
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -734,7 +730,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
             # Use frame indices directly (matching the underlying plot)
             region = pg.LinearRegionItem(
                 values=(float(start_idx), float(end_idx - 1)),
-                brush=pg.mkBrush(0, 255, 0, 90),
+                brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
             )
@@ -746,7 +742,9 @@ def _plot_inferred_spikes_normalized_with_bursts(
         if legend is not None:
             legend.clear()
             # Use solid green line with width 3 for burst legend
-            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            burst_item = pg.PlotDataItem(
+                pen=pg.mkPen(BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH)
+            )
             legend.addItem(burst_item, "Detected Bursts")
             legend.setVisible(True)
 
@@ -772,25 +770,7 @@ def _plot_inferred_spike_raster_with_bursts(
     assert plot is not None
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # ---- remove ROI legend for this plot ----
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -837,7 +817,7 @@ def _plot_inferred_spike_raster_with_bursts(
             # Use frame indices directly (matching the underlying plot)
             region = pg.LinearRegionItem(
                 values=(float(start_idx), float(end_idx - 1)),
-                brush=pg.mkBrush(0, 255, 0, 90),
+                brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
             )
@@ -855,7 +835,9 @@ def _plot_inferred_spike_raster_with_bursts(
         if legend is not None:
             legend.clear()
             # Use solid green line with width 3 for burst legend
-            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            burst_item = pg.PlotDataItem(
+                pen=pg.mkPen(BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH)
+            )
             legend.addItem(burst_item, "Detected Bursts")
             legend.setVisible(True)
 
@@ -884,25 +866,7 @@ def _plot_calcium_normalized_with_bursts(
     assert plot is not None
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # ---- remove ROI legend for this plot ----
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -962,7 +926,7 @@ def _plot_calcium_normalized_with_bursts(
             # Use frame indices directly (matching the underlying plot)
             region = pg.LinearRegionItem(
                 values=(float(start_idx), float(end_idx - 1)),
-                brush=pg.mkBrush(0, 255, 0, 90),
+                brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
             )
@@ -974,7 +938,9 @@ def _plot_calcium_normalized_with_bursts(
         if legend is not None:
             legend.clear()
             # Use solid green line with width 3 for burst legend
-            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            burst_item = pg.PlotDataItem(
+                pen=pg.mkPen(BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH)
+            )
             legend.addItem(burst_item, "Detected Bursts")
             legend.setVisible(True)
 
@@ -1000,25 +966,7 @@ def _plot_calcium_raster_with_bursts(
     assert plot is not None
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # ---- remove ROI legend for this plot ----
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -1076,7 +1024,7 @@ def _plot_calcium_raster_with_bursts(
 
             region = pg.LinearRegionItem(
                 values=(x_start, x_end),
-                brush=pg.mkBrush(0, 255, 0, 90),
+                brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
             )
@@ -1091,7 +1039,9 @@ def _plot_calcium_raster_with_bursts(
         if legend is not None:
             legend.clear()
             # Use solid green line with width 3 for burst legend
-            burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+            burst_item = pg.PlotDataItem(
+                pen=pg.mkPen(BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH)
+            )
             legend.addItem(burst_item, "Detected Bursts")
             legend.setVisible(True)
 
@@ -1124,25 +1074,7 @@ def _plot_calcium_burst_activity(
     vb.enableAutoRange(x=True, y=True)
 
     # Disconnect any hover handlers from previous plots
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if you use one elsewhere
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -1208,7 +1140,9 @@ def _plot_calcium_burst_activity(
                 plot.plot(
                     time_axis,
                     population_activity_raw,
-                    pen=pg.mkPen("black", width=2),
+                    pen=pg.mkPen(
+                        MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH
+                    ),
                     name="Raw Activity",
                 )
 
@@ -1216,7 +1150,9 @@ def _plot_calcium_burst_activity(
             plot.plot(
                 time_axis,
                 population_activity,
-                pen=pg.mkPen("magenta", width=3),
+                pen=pg.mkPen(
+                    MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
+                ),
                 name="Smoothed Activity",
             )
 
@@ -1224,7 +1160,11 @@ def _plot_calcium_burst_activity(
             threshold_line = pg.InfiniteLine(
                 pos=the_value,
                 angle=0,
-                pen=pg.mkPen("magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine),
+                pen=pg.mkPen(
+                    THRESHOLD_COLOR,
+                    width=THRESHOLD_WIDTH,
+                    style=pg.QtCore.Qt.PenStyle.DashLine,
+                ),
             )
             threshold_line.setZValue(5)
             plot.addItem(threshold_line)
@@ -1253,19 +1193,31 @@ def _plot_calcium_burst_activity(
             # Add legend
             if hasattr(widget, "legend") and widget.legend is not None:
                 widget.legend.clear()
-                raw_item = pg.PlotDataItem(pen=pg.mkPen("black", width=2))
+                raw_item = pg.PlotDataItem(
+                    pen=pg.mkPen(MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH)
+                )
                 widget.legend.addItem(raw_item, "Raw Activity")
-                smoothed_item = pg.PlotDataItem(pen=pg.mkPen("magenta", width=3))
+                smoothed_item = pg.PlotDataItem(
+                    pen=pg.mkPen(
+                        MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
+                    )
+                )
                 widget.legend.addItem(smoothed_item, "Smoothed Activity")
                 threshold_item = pg.PlotDataItem(
                     pen=pg.mkPen(
-                        "magenta", width=3, style=pg.QtCore.Qt.PenStyle.DashLine
+                        THRESHOLD_COLOR,
+                        width=THRESHOLD_WIDTH,
+                        style=pg.QtCore.Qt.PenStyle.DashLine,
                     )
                 )
                 widget.legend.addItem(
                     threshold_item, f"Burst Threshold ({the_value:.3f})"
                 )
-                burst_item = pg.PlotDataItem(pen=pg.mkPen((0, 255, 0), width=3))
+                burst_item = pg.PlotDataItem(
+                    pen=pg.mkPen(
+                        BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH
+                    )
+                )
                 widget.legend.addItem(burst_item, "Detected Bursts")
                 widget.legend.setVisible(True)
 

@@ -63,7 +63,7 @@ from ._single_wells_plots.correlation._plot_spike_max_lag_values import (
     _plot_spike_max_lag_values_data,
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
-    _plot_stim_or_not_stim_peaks_amplitude,
+    _plot_stim_and_non_stim_peaks_amplitude,
     _plot_stimulated_vs_non_stimulated_calcium_peaks_raster,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
@@ -188,6 +188,20 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
+    name="Calcium Neuropil Corrected Traces",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_neuropil_traces, corrected=True),
+    category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
+)
+AnalysisProduct(
+    name="Neuropil and Raw Traces",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_neuropil_traces,
+    category="Calcium Traces",
+    pipeline_stage=PipelineStage.EXTRACTION,
+)
+AnalysisProduct(
     name="Calcium ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dff=True),
@@ -242,20 +256,6 @@ AnalysisProduct(
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, with_peaks=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Neuropil Corrected Traces",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_neuropil_traces, corrected=True),
-    category="Calcium Traces",
-    pipeline_stage=PipelineStage.EXTRACTION,
-)
-AnalysisProduct(
-    name="Neuropil and Raw Traces",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_neuropil_traces,
-    category="Calcium Traces",
-    pipeline_stage=PipelineStage.EXTRACTION,
 )
 
 # Inferred Spikes Group
@@ -462,7 +462,7 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name="Inferred Spikes Thresholded Cross-Correlation",
+    name="Inferred Spikes Thresholded Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
     category="Inferred Spikes Correlation Analysis",
@@ -589,17 +589,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stim Calcium Peaks Amplitudes",
+    name="Stim vs Non-Stim Calcium Peaks Amplitudes",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_stim_or_not_stim_peaks_amplitude, stimulated=True),
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Non-Stim Calcium Peaks Amplitudes",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_stim_or_not_stim_peaks_amplitude,
+    analyzer=_plot_stim_and_non_stim_peaks_amplitude,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

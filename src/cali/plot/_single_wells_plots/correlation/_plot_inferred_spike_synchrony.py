@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
 
 if TYPE_CHECKING:
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+CMAP_NAME = "viridis"
+CMAP = pg.colormap.get(CMAP_NAME)
 
 
 # -----------------------------------------------------------------------------#
@@ -154,25 +159,7 @@ def _plot_spike_synchrony_data(
     vb.setAspectLocked(False)
 
     # Disconnect any hover handlers from previous plots
-    # (except our own spike_sync_hover_handler)
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "spike_maxlag_values_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -230,8 +217,7 @@ def _plot_spike_synchrony_data(
     img = pg.ImageItem(sync)
 
     # viridis colormap
-    cmap = pg.colormap.get("viridis")
-    img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
     img.setLevels((0.0, 1.0))  # fixed [0, 1]
 
     plot.addItem(img)
@@ -251,7 +237,9 @@ def _plot_spike_synchrony_data(
     plot.getAxis("left").setTicks([])
 
     # Add colorbar
-    _add_colorbar_to_widget(widget, vmin=0.0, vmax=1.0, label="Synchrony")
+    add_colorbar_to_widget(
+        widget, vmin=0.0, vmax=1.0, label="Synchrony", colormap=CMAP_NAME
+    )
 
     # ---------------- Hover + Click interaction ---------------- #
     _attach_spike_sync_interaction(widget, plot, vb, active_roi_ids, sync)
@@ -322,28 +310,3 @@ def _attach_spike_sync_interaction(
     # Remember handlers so we can disconnect next time
     plot.setProperty("spike_sync_hover_handler", _on_mouse_moved)
     plot.setProperty("spike_sync_click_handler", _on_mouse_clicked)
-
-
-def _add_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-    label: str = "Synchrony",
-) -> None:
-    """Add a ColorBarItem to the widget layout."""
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Create ColorBarItem
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("viridis"),
-        width=15,
-        label=label,
-        interactive=False,
-    )
-
-    # Add to plot layout (row 2, column 3 = right side)
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

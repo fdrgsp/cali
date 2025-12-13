@@ -8,6 +8,8 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.plot._util import disconnect_hover_handlers
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -32,6 +34,9 @@ def plot_connectivity_graph(
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(True)
     vb.enableAutoRange(x=True, y=True)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:

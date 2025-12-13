@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
 
 if TYPE_CHECKING:
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+
+# PLOT STYLE CONSTANTS
+CMAP_NAME = "CET-D1A"
+CMAP = pg.colormap.get(CMAP_NAME)
 
 
 # -----------------------------------------------------------------------------#
@@ -185,25 +190,7 @@ def _plot_spike_max_lag_values_data(
     vb.setAspectLocked(False)
 
     # Disconnect any hover handlers from previous plots
-    # (except our own spike_maxlag_values_hover_handler)
-    scene = plot.scene()
-    handler_names = [
-        "sync_hover_handler",
-        "ccorr_hover_handler",
-        "spike_sync_hover_handler",
-        "spike_ccorr_hover_handler",
-        "spike_maxlag_hover_handler",
-        "dff_corr_hover_handler",
-        "evoked_hover_handler",
-    ]
-    for handler_name in handler_names:
-        old_handler = plot.property(handler_name)
-        if old_handler is not None:
-            try:
-                scene.sigMouseMoved.disconnect(old_handler)
-            except (TypeError, RuntimeError):
-                pass
-            plot.setProperty(handler_name, None)
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
@@ -235,9 +222,6 @@ def _plot_spike_max_lag_values_data(
     # ---------------- IMAGE ITEM (centered, full view) ---------------- #
     img = pg.ImageItem(lags.astype(float))
 
-    # Use diverging colormap (CET-D1A: diverging blue-white-red)
-    cmap = pg.colormap.get("CET-D1A")
-
     # Determine color scale limits
     if max_lag_frames is not None:
         vmin, vmax = -max_lag_frames, max_lag_frames
@@ -245,7 +229,7 @@ def _plot_spike_max_lag_values_data(
         abs_max = max(abs(lags.min()), abs(lags.max()))
         vmin, vmax = -abs_max, abs_max
 
-    img.setLookupTable(cmap.getLookupTable(vmin, vmax, 256))
+    img.setLookupTable(CMAP.getLookupTable(vmin, vmax, 256))
     img.setLevels((vmin, vmax))
 
     plot.addItem(img)
@@ -269,8 +253,12 @@ def _plot_spike_max_lag_values_data(
     plot.getAxis("left").setTicks([])
 
     # Add colorbar
-    _add_colorbar_to_widget(
-        widget, vmin=vmin, vmax=vmax, label="Lag (frames)\n←j leads | i leads→"
+    add_colorbar_to_widget(
+        widget,
+        vmin=vmin,
+        vmax=vmax,
+        label="Lag (frames)\n←j leads | i leads→",
+        colormap=CMAP_NAME,
     )
 
     # ---------------- Hover + Click interaction ---------------- #
@@ -351,28 +339,3 @@ def _attach_heatmap_interaction(
     # Remember handlers so we can disconnect on next call
     plot.setProperty("spike_maxlag_values_hover_handler", _on_mouse_moved)
     plot.setProperty("spike_maxlag_values_click_handler", _on_mouse_clicked)
-
-
-def _add_colorbar_to_widget(
-    widget: _SingleWellGraphWidget,
-    vmin: float,
-    vmax: float,
-    label: str = "Lag (frames)",
-) -> None:
-    """Add a ColorBarItem to the widget layout."""
-    # Remove any existing colorbar
-    if widget.colorbar is not None:
-        widget.plot_item.layout.removeItem(widget.colorbar)
-        widget.colorbar = None
-
-    # Create ColorBarItem
-    widget.colorbar = pg.ColorBarItem(
-        values=(vmin, vmax),
-        colorMap=pg.colormap.get("CET-D1A"),
-        width=15,
-        label=label,
-        interactive=False,
-    )
-
-    # Add to plot layout (row 2, column 3 = right side)
-    widget.plot_item.layout.addItem(widget.colorbar, 2, 3)

@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -21,6 +22,12 @@ if TYPE_CHECKING:
 
 # max number of time points we will draw per trace (automatic downsampling)
 MAX_POINTS = 2000
+
+# PLOT STYLE CONSTANTS
+TRACES_WIDTH = 3
+RAW_TRACES_COLOR = "k"
+NEUROPIL_COLOR = "magenta"
+CORRECTED_TRACES_COLOR = "green"
 
 
 # -----------------------------------------------------------------------------#
@@ -210,6 +217,9 @@ def _plot_neuropil_traces(
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
 
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
+
     # clear_plot already hid & cleared widget.legend, but just in case:
     if hasattr(widget, "legend") and widget.legend is not None:
         if hasattr(widget.legend, "clear"):
@@ -340,8 +350,8 @@ def _plot_neuropil_traces(
         pen_neu = None
     else:
         # Fixed semantics when showing all: magenta = raw, black = neuropil
-        pen_raw = pg.mkPen("magenta", width=2)
-        pen_neu = pg.mkPen("k", width=2)
+        pen_raw = pg.mkPen(RAW_TRACES_COLOR, width=TRACES_WIDTH)
+        pen_neu = pg.mkPen(NEUROPIL_COLOR, width=TRACES_WIDTH)
 
     # ---------- PLOTTING ----------
     for i in range(n_rois):
@@ -350,17 +360,17 @@ def _plot_neuropil_traces(
         if Y_neu_ds is not None:
             plot.plot(x, Y_neu_ds[i], pen=pen_neu)
 
-        # Corrected trace: multi-color if corrected=True, green otherwise
+        # Corrected trace: green if corrected=True, black otherwise
         if corrected:
             # Multi-trace → distinct colors (same logic as calcium traces)
-            if n_rois == 1:
-                color = "k"  # Single trace → black
-            else:
-                color = pg.intColor(i, hues=max(n_rois, 16))
-            pen_corr = pg.mkPen(color, width=2)
+            # if n_rois == 1:
+            #     color = "k"  # Single trace → black
+            # else:
+            #     color = pg.intColor(i, hues=max(n_rois, 16))
+            pen_corr = pg.mkPen(RAW_TRACES_COLOR, width=TRACES_WIDTH)
         else:
             # All three traces shown → green for corrected
-            pen_corr = pg.mkPen("green", width=2)
+            pen_corr = pg.mkPen(CORRECTED_TRACES_COLOR, width=TRACES_WIDTH)
 
         plot.plot(x, Y_corr_ds[i], pen=pen_corr)
 
@@ -401,7 +411,10 @@ def _plot_neuropil_traces(
             # Show all three in legend with fixed colors
             legend.setVisible(True)
             _populate_neuropil_legend(
-                legend, pen_raw, pen_neu, pg.mkPen("green", width=2)
+                legend,
+                pen_raw,
+                pen_neu,
+                pg.mkPen(CORRECTED_TRACES_COLOR, width=TRACES_WIDTH),
             )
 
 

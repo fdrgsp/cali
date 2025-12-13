@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -65,6 +66,9 @@ def _plot_cell_size_data(
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
+
+    # Disconnect any hover handlers from previous plots
+    disconnect_hover_handlers(plot)
 
     # Hide shared legend if present
     if hasattr(widget, "legend") and widget.legend is not None:
