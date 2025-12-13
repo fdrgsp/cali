@@ -242,7 +242,8 @@ def _plot_dff_correlation_data(
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
 
-    # Disconnect any hover handlers from previous plots (except our own dff_corr_hover_handler)
+    # Disconnect any hover handlers from previous plots
+    # (except our own dff_corr_hover_handler)
     scene = plot.scene()
     handler_names = [
         "sync_hover_handler",

@@ -898,8 +898,9 @@ def _detect_calcium_population_bursts(
 ]:
     """Detect bursts in population calcium activity (deconvolved DF/F).
 
-    Computes mean population activity from deconvolved DF/F traces, smooths it,
-    normalizes to [0,1], and detects periods above threshold that exceed minimum duration.
+    Computes mean population activity from deconvolved DF/F traces,
+    smooths it, normalizes to [0,1], and detects periods above
+    threshold that exceed minimum duration.
 
     Uses deconvolved DF/F traces because they are cleaner than raw DF/F:
     deconvolution removes slow drift and baseline fluctuations, making it
@@ -1043,15 +1044,15 @@ def _detect_calcium_population_bursts(
             intervals_sec.append(interval_sec)
         burst_avg_interval = float(np.mean(intervals_sec))
 
-    # Return smoothed & normalized trace (what was used for detection and should be plotted)
+    # Return smoothed & normalized trace (for detection and plotting)
     return (
         burst_count,
         burst_avg_duration,
         burst_avg_interval,
         burst_starts_list,
         burst_ends_list,
-        normalized_activity,  # Smoothed & normalized [0,1] for detection and plotting
-        raw_normalized_activity,  # Raw (non-smoothed) & normalized [0,1] for plotting
+        normalized_activity,  # Smoothed & normalized [0,1]
+        raw_normalized_activity,  # Raw & normalized [0,1]
     )
 
 

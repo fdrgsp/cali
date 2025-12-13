@@ -6,7 +6,13 @@ import numpy as np
 import pyqtgraph as pg
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import ROI, CaliResult, DataAnalysis, FOVAnalysis, Traces
+from cali.sqlmodel._model import (
+    ROI,
+    CaliResult,
+    DataAnalysis,
+    FOVAnalysis,
+    Traces,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -45,11 +51,16 @@ def _get_fov_analysis_for_run(
         if run_id is not None:
             for fov_analysis in fov.fov_analysis_history:
                 if fov_analysis.analysis_result_id == run_id:
-                    return fov_analysis
+                    # Return explicitly typed result
+                    matched: FOVAnalysis = fov_analysis
+                    return matched
+            return None
 
         # Otherwise return the most recent one
-        result = fov.fov_analysis_history[-1] if fov.fov_analysis_history else None
-        return result
+        if fov.fov_analysis_history:
+            most_recent: FOVAnalysis = fov.fov_analysis_history[-1]
+            return most_recent
+        return None
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -259,10 +270,12 @@ def _plot_inferred_spike_burst_activity(
             vb.enableAutoRange(x=True, y=True)
         else:
             cali_logger.warning(
-                "Pre-computed spike burst data is incomplete (missing population activity)"
+                "Pre-computed spike burst data is incomplete "
+                "(missing population activity)"
             )
             plot.setTitle(
-                "Population Burst Activity\n(No pre-computed data available - please re-run analysis)"
+                "Population Burst Activity\n"
+                "(No pre-computed data available - please re-run analysis)"
             )
             plot.setLabel("bottom", "Time (s)")
             plot.setLabel("left", "Population Activity")
@@ -1180,7 +1193,7 @@ def _plot_calcium_burst_activity(
                 (calcium_burst_params[0] / 100.0) if calcium_burst_params else 0.5
             )
 
-            # --- Draw raw + smoothed+normalized activity + threshold + burst regions ---
+            # --- Draw raw + smoothed+normalized activity + threshold + bursts ---
             # Plot raw population activity (normalized, black)
             if population_activity_raw is not None:
                 plot.plot(
@@ -1262,17 +1275,20 @@ def _plot_calcium_burst_activity(
             vb.enableAutoRange(x=True, y=True)
         else:
             cali_logger.warning(
-                "Pre-computed calcium burst data is incomplete (missing population activity)"
+                "Pre-computed calcium burst data is incomplete "
+                "(missing population activity)"
             )
             plot.setTitle(
-                "Calcium Population Burst Activity\n(No pre-computed data available - please re-run analysis)"
+                "Calcium Population Burst Activity\n"
+                "(No pre-computed data available - please re-run analysis)"
             )
             plot.setLabel("bottom", "Time (s)")
             plot.setLabel("left", "Population Activity (Normalized)")
     else:
         cali_logger.warning("No calcium burst analysis data found in database")
         plot.setTitle(
-            "Calcium Population Burst Activity\n(No data found - please run analysis first)"
+            "Calcium Population Burst Activity\n"
+            "(No data found - please run analysis first)"
         )
         plot.setLabel("bottom", "Time (s)")
         plot.setLabel("left", "Population Activity (Normalized)")
@@ -1302,7 +1318,7 @@ def _get_calcium_burst_parameters(
         All returned in original units from database (threshold in %, duration in ms,
         sigma in seconds).
     """
-    from sqlmodel import Session, select
+    from sqlmodel import Session, desc, select
 
     from cali.sqlmodel._model import AnalysisSettings
 
@@ -1326,7 +1342,7 @@ def _get_calcium_burst_parameters(
                     )
 
         # Otherwise get most recent settings
-        stmt = select(AnalysisSettings).order_by(AnalysisSettings.created_at.desc())
+        stmt = select(AnalysisSettings).order_by(desc(AnalysisSettings.created_at))
         settings_obj = session.exec(stmt).first()
         if settings_obj:
             return (

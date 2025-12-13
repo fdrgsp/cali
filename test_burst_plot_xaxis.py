@@ -53,7 +53,8 @@ with Session(engine) as session:
         pop_activity = np.array(fov_analysis.calcium_population_activity)
         print(f"\nCalcium population activity length: {len(pop_activity)}")
         print(
-            f"Calcium population activity range: [{pop_activity.min():.4f}, {pop_activity.max():.4f}]"
+            f"Calcium population activity range: "
+            f"[{pop_activity.min():.4f}, {pop_activity.max():.4f}]"
         )
 
         if fov_analysis.calcium_burst_starts:
@@ -98,7 +99,8 @@ with Session(engine) as session:
                 data_analysis = roi.data_analysis_history[-1]
                 if data_analysis.total_recording_time_sec:
                     print(
-                        f"  Recording time from data_analysis: {data_analysis.total_recording_time_sec:.2f} s"
+                        f"  Recording time from data_analysis: "
+                        f"{data_analysis.total_recording_time_sec:.2f} s"
                     )
 
         # Calculate what _get_population_calcium_data would return
@@ -126,7 +128,8 @@ with Session(engine) as session:
             max_length = max(lengths)
 
             print(
-                f"\nTrace lengths: min={min(lengths)}, max={max_length}, avg={np.mean(lengths):.1f}"
+                f"\nTrace lengths: min={min(lengths)}, max={max_length}, "
+                f"avg={np.mean(lengths):.1f}"
             )
 
             if rois_rec_time:
@@ -136,7 +139,8 @@ with Session(engine) as session:
 
                 print(f"\nRecording times found: {len(rois_rec_time)}")
                 print(
-                    f"Recording time range: [{min(rois_rec_time):.2f}, {max_rec_time:.2f}] s"
+                    f"Recording time range: "
+                    f"[{min(rois_rec_time):.2f}, {max_rec_time:.2f}] s"
                 )
                 print(f"Average recording time: {avg_rec_time:.2f} s")
                 print("\nTime axis created:")

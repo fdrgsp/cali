@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from sqlalchemy.engine import create_engine
+from sqlalchemy.engine import Engine, create_engine
 
 from cali.plot._single_wells_plots.burst._plot_burst_activity import (
     _get_calcium_burst_parameters,
@@ -13,13 +13,13 @@ from cali.plot._single_wells_plots.burst._plot_burst_activity import (
 
 
 @pytest.fixture
-def test_db_path():
+def test_db_path() -> Path:
     """Path to test database."""
     return Path(__file__).parent / "test_data/data_and_db_for_tests/test_db.cali"
 
 
 @pytest.fixture
-def test_engine(test_db_path):
+def test_engine(test_db_path: Path) -> Engine:
     """Create test database engine."""
     if not test_db_path.exists():
         pytest.skip(f"Test database not found at {test_db_path}")
@@ -32,7 +32,7 @@ def test_engine(test_db_path):
     return engine
 
 
-def test_get_calcium_burst_parameters(test_engine) -> None:
+def test_get_calcium_burst_parameters(test_engine: Engine) -> None:
     """Test retrieving calcium burst parameters from database."""
     # Test with run_id=1 (should have analysis settings)
     result = _get_calcium_burst_parameters(test_engine, run_id=1)
@@ -46,7 +46,7 @@ def test_get_calcium_burst_parameters(test_engine) -> None:
     assert sigma == 0.5
 
 
-def test_get_calcium_burst_parameters_no_run_id(test_engine) -> None:
+def test_get_calcium_burst_parameters_no_run_id(test_engine: Engine) -> None:
     """Test retrieving calcium burst parameters without run_id."""
     # Test without run_id (should get most recent settings)
     result = _get_calcium_burst_parameters(test_engine, run_id=None)
@@ -60,7 +60,7 @@ def test_get_calcium_burst_parameters_no_run_id(test_engine) -> None:
     assert isinstance(sigma, float)
 
 
-def test_get_population_calcium_data(test_engine) -> None:
+def test_get_population_calcium_data(test_engine: Engine) -> None:
     """Test extracting population calcium data from database."""
     # Test with first FOV
     fov_name = "B5_0000"
@@ -89,7 +89,7 @@ def test_get_population_calcium_data(test_engine) -> None:
     assert isinstance(time_axis, np.ndarray)
 
 
-def test_get_population_calcium_data_with_roi_filter(test_engine) -> None:
+def test_get_population_calcium_data_with_roi_filter(test_engine: Engine) -> None:
     """Test extracting population calcium data with ROI filtering."""
     fov_name = "B5_0000"
 
@@ -111,7 +111,7 @@ def test_get_population_calcium_data_with_roi_filter(test_engine) -> None:
         assert filtered_traces.shape[0] == 2
 
 
-def test_get_population_calcium_data_invalid_fov(test_engine) -> None:
+def test_get_population_calcium_data_invalid_fov(test_engine: Engine) -> None:
     """Test with non-existent FOV."""
     calcium_traces, roi_names, time_axis = _get_population_calcium_data(
         test_engine, "INVALID_FOV", rois=None, run_id=1
@@ -122,7 +122,7 @@ def test_get_population_calcium_data_invalid_fov(test_engine) -> None:
     assert len(time_axis) == 0
 
 
-def test_get_population_calcium_data_too_few_rois(test_engine) -> None:
+def test_get_population_calcium_data_too_few_rois(test_engine: Engine) -> None:
     """Test with FOV that has less than 2 active ROIs."""
     # This should return None if less than 2 traces are found
     # (burst detection requires at least 2 ROIs for population analysis)
