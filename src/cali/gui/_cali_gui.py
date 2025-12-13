@@ -448,14 +448,14 @@ class CaliGui(QMainWindow):
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/")
 
-        self._database_path = (
-            "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
-        )
-        self._data_path = (
-            "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-            "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        )
-        self._initialize_from_database(self._database_path, self._data_path)
+        # self._database_path = (
+        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
+        # )
+        # self._data_path = (
+        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
+        #     "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        # )
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
