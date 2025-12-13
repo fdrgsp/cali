@@ -704,7 +704,7 @@ def test_detect_calcium_population_bursts_normalization() -> None:
     (
         burst_count,
         avg_duration,
-        avg_interval,
+        _avg_interval,
         _,  # burst_starts
         _,  # burst_ends
         _,  # pop_activity

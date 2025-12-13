@@ -301,9 +301,7 @@ class _AnalysisGUI(QWidget):
                 else DEFAULT_MIN_BURST_DURATION
             ),
             calcium_burst_gaussian_sigma=(
-                peaks_data.burst_blur_sigma
-                if peaks_data
-                else DEFAULT_BURST_GAUSS_SIGMA
+                peaks_data.burst_blur_sigma if peaks_data else DEFAULT_BURST_GAUSS_SIGMA
             ),
             spikes_sync_cross_corr_lag=(
                 spikes_data.synchrony_lag

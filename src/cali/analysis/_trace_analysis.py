@@ -11,7 +11,6 @@ This module contains pure functions for analyzing extracted traces:
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 
 from cali._constants import GLOBAL_HEIGHT, GLOBAL_SPIKE_THRESHOLD

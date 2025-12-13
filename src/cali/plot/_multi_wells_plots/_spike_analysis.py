@@ -168,7 +168,7 @@ def _query_burst_metrics_by_condition(
     """
     from scipy.ndimage import gaussian_filter1d
 
-    from cali.plot._single_wells_plots.burst._plot_burst_activity import (  # noqa: E501
+    from cali.plot._single_wells_plots.burst._plot_burst_activity import (
         _detect_population_bursts,
         _get_burst_parameters,
         _get_population_spike_data,

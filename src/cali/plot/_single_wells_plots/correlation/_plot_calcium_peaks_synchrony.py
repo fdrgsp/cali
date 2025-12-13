@@ -136,7 +136,7 @@ def _plot_peak_event_synchrony_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot peak event-based synchrony analysis (pyqtgraph heatmap).
+    r"""Plot peak event-based synchrony analysis (pyqtgraph heatmap).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., \" - Stimulated\")

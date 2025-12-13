@@ -137,7 +137,7 @@ def _plot_cross_correlation_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
+    r"""Plot the pairwise cross-correlation matrix as a heatmap (pyqtgraph).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., \" - Stimulated\")

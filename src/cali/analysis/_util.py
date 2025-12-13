@@ -775,7 +775,7 @@ def _detect_spikes_population_bursts(
         - burst_ends (list[int]): Frame indices where bursts end (exclusive)
         - population_activity (np.ndarray | None): Smoothed & normalized [0,1]
             population activity used for both detection and plotting
-        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but 
+        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but
             normalized [0,1] population activity for plotting
     """
     if len(spike_trains) < 2:
@@ -929,7 +929,7 @@ def _detect_calcium_population_bursts(
         - burst_ends (list[int]): Frame indices where bursts end (exclusive)
         - population_activity (np.ndarray | None): Smoothed & normalized [0,1] trace
             used for both detection and plotting
-        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but 
+        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but
             normalized [0,1] population activity for plotting
     """
     if len(dec_dff_traces) < 2:
