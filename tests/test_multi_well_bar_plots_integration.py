@@ -207,10 +207,17 @@ def _has_burst_data(engine: Engine) -> bool:
         with Session(engine) as session:
             from cali.sqlmodel import FOVAnalysis
 
-            # Check if any FOVAnalysis record has burst_count > 0
+            # Check if any FOVAnalysis record has spike or calcium burst data
             analyses = session.exec(select(FOVAnalysis).limit(10)).all()
             return any(
-                getattr(a, "burst_count", None) is not None and a.burst_count > 0  # type: ignore
+                (
+                    getattr(a, "spike_burst_count", None) is not None
+                    and a.spike_burst_count > 0
+                )  # type: ignore
+                or (
+                    getattr(a, "calcium_burst_count", None) is not None
+                    and a.calcium_burst_count > 0
+                )  # type: ignore
                 for a in analyses
             )
     except (OperationalError, AttributeError):
@@ -272,20 +279,6 @@ def test_plot_spike_synchrony_has_data(
     plot_spike_synchrony_bar_plot(widget, "Spike Synchrony", widget.engine, run_id)
 
     _verify_plot_has_data(widget, "Spike Synchrony")
-
-
-# NOTE: plot_calcium_network_density_bar_plot function doesn't exist
-# def test_plot_calcium_network_density_has_data(
-#     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-# ) -> None:
-#     """Test that calcium network density plot displays actual data."""
-#     widget, run_id = multi_well_widget_with_data
-#
-#     plot_calcium_network_density_bar_plot(
-#         widget, "Calcium Network Density", widget.engine, run_id
-#     )
-#
-#     _verify_plot_has_data(widget, "Calcium Network Density")
 
 
 def test_plot_burst_count_has_data(
