@@ -36,7 +36,7 @@ from ..src.cali.plot._single_wells_plots._plot_calcium_traces_data import (
 from ..src.cali.plot._single_wells_plots.metrics._plot_cell_size import (
     _plot_cell_size_data,
 )
-from ..src.cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
+from ..src.cali.plot._single_wells_plots.burst._plot_burst_activity import (
     _plot_inferred_spike_burst_activity,
 )
 from ..src.cali.plot._single_wells_plots.correlation._plot_inferred_spike_correlation import (

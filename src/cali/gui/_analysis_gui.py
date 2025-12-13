@@ -28,7 +28,6 @@ from superqt.utils import signals_blocked
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_NETWORK_THRESHOLD,
     DEFAULT_CALCIUM_PEAKS_MAX_LAG,
     DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_FRAME_RATE,
@@ -87,7 +86,9 @@ class CalciumPeaksData:
     peaks_prominence_multiplier: float = 2.0
     calcium_synchrony_jitter: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # milliseconds
     calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # milliseconds
-    calcium_network_threshold: float = DEFAULT_CALCIUM_NETWORK_THRESHOLD
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
+    burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
 
 
 @dataclass(frozen=True)
@@ -272,11 +273,6 @@ class _AnalysisGUI(QWidget):
                 if peaks_data
                 else DEFAULT_CALCIUM_PEAKS_MAX_LAG
             ),
-            # calcium_network_threshold=(
-            #     peaks_data.calcium_network_threshold
-            #     if peaks_data
-            #     else DEFAULT_CALCIUM_NETWORK_THRESHOLD
-            # ),
             spike_threshold_value=(
                 spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD
             ),
@@ -294,6 +290,19 @@ class _AnalysisGUI(QWidget):
             burst_gaussian_sigma=(
                 spikes_data.burst_blur_sigma
                 if spikes_data
+                else DEFAULT_BURST_GAUSS_SIGMA
+            ),
+            calcium_burst_threshold=(
+                peaks_data.burst_threshold if peaks_data else DEFAULT_BURST_THRESHOLD
+            ),
+            calcium_burst_min_duration=(
+                peaks_data.burst_min_duration
+                if peaks_data
+                else DEFAULT_MIN_BURST_DURATION
+            ),
+            calcium_burst_gaussian_sigma=(
+                peaks_data.burst_blur_sigma
+                if peaks_data
                 else DEFAULT_BURST_GAUSS_SIGMA
             ),
             spikes_sync_cross_corr_lag=(
@@ -718,6 +727,9 @@ class _CalciumPeaksWidget(QWidget):
         peaks_prominence_layout.addWidget(self._peaks_prominence_lbl)
         peaks_prominence_layout.addWidget(self._peaks_prominence_multiplier_spin)
 
+        # burst widget
+        self._burst_wdg = _BurstWidget(self)
+
         # synchrony jitter window
         self._calcium_sync_wdg = QWidget(self)
         self._calcium_sync_wdg.setToolTip(
@@ -822,6 +834,7 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_height)
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
+        layout.addWidget(self._burst_wdg)
         layout.addWidget(self._calcium_max_lag_wdg)
         layout.addWidget(self._calcium_sync_wdg)
         # layout.addWidget(self._calcium_network_wdg)
@@ -835,17 +848,24 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_prominence_lbl.setFixedWidth(width)
         self._calcium_jitter_window_lbl.setFixedWidth(width)
         self._calcium_max_lag_lbl.setFixedWidth(width)
+        self._burst_wdg._burst_threshold_lbl.setFixedWidth(width)
+        self._burst_wdg._burst_min_threshold_label.setFixedWidth(width)
+        self._burst_wdg._burst_blur_label.setFixedWidth(width)
         # self._calcium_network_lbl.setFixedWidth(width)
 
     def value(self) -> CalciumPeaksData:
         """Get the current values of the widget."""
+        burst_threshold, burst_min_duration, burst_blur_sigma = self._burst_wdg.value()
         return CalciumPeaksData(
-            *self._peaks_height.value(),
-            self._peaks_distance_spin.value(),
-            self._peaks_prominence_multiplier_spin.value(),
-            self._calcium_synchrony_jitter_spin.value(),
-            self._calcium_max_lag_spin.value(),
-            # self._ca_network_threshold_spin.value(),
+            peaks_height=self._peaks_height.value()[0],
+            peaks_height_mode=self._peaks_height.value()[1],
+            peaks_distance=self._peaks_distance_spin.value(),
+            peaks_prominence_multiplier=self._peaks_prominence_multiplier_spin.value(),
+            calcium_synchrony_jitter=self._calcium_synchrony_jitter_spin.value(),
+            calcium_peaks_max_lag=self._calcium_max_lag_spin.value(),
+            burst_threshold=burst_threshold,
+            burst_min_duration=burst_min_duration,
+            burst_blur_sigma=burst_blur_sigma,
         )
 
     def setValue(self, value: CalciumPeaksData) -> None:
@@ -857,7 +877,8 @@ class _CalciumPeaksWidget(QWidget):
         )
         self._calcium_synchrony_jitter_spin.setValue(value.calcium_synchrony_jitter)
         self._calcium_max_lag_spin.setValue(value.calcium_peaks_max_lag)
-        # self._ca_network_threshold_spin.setValue(value.calcium_network_threshold)
+        bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
+        self._burst_wdg.setValue(bst)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -865,7 +886,13 @@ class _CalciumPeaksWidget(QWidget):
         self._peaks_distance_spin.setValue(200.0)  # 2 frames at 10fps = 200ms
         self._peaks_prominence_multiplier_spin.setValue(1)
         self._calcium_synchrony_jitter_spin.setValue(DEFAULT_CALCIUM_SYNC_JITTER_WINDOW)
-        # self._ca_network_threshold_spin.setValue(DEFAULT_CALCIUM_NETWORK_THRESHOLD)
+        self._burst_wdg.setValue(
+            (
+                DEFAULT_BURST_THRESHOLD,
+                3000.0,  # 3 seconds = 3000ms
+                DEFAULT_BURST_GAUSS_SIGMA,
+            )
+        )
 
 
 class _SpikeThresholdWidget(QWidget):
@@ -948,8 +975,6 @@ class _BurstWidget(QWidget):
             "• Burst Min Duration (ms):\n"
             "   Minimum duration (in milliseconds) for a detected burst to be "
             "considered valid.\n"
-            "   Filters out brief spikes that don't represent sustained "
-            "network activity.\n"
             "   Example: At 10 fps, 300ms = 3 frames minimum burst duration.\n"
             "   Higher values ensure only sustained bursts are detected.\n\n"
             "• Burst Gaussian Blur Sigma:\n"

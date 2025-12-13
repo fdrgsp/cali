@@ -139,7 +139,7 @@ def _plot_peak_event_synchrony_data(
     """Plot peak event-based synchrony analysis (pyqtgraph heatmap).
 
     title_suffix : str
-        Optional suffix to add to plot titles (e.g., " - Stimulated")
+        Optional suffix to add to plot titles (e.g., \" - Stimulated\")
     """
     plot = widget.plot_item
     assert plot is not None
@@ -150,6 +150,26 @@ def _plot_peak_event_synchrony_data(
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
+
+    # Disconnect any hover handlers from previous plots (except our own sync_hover_handler)
+    scene = plot.scene()
+    handler_names = [
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_ccorr_hover_handler",
+        "spike_maxlag_hover_handler",
+        "spike_maxlag_values_hover_handler",
+        "dff_corr_hover_handler",
+        "evoked_hover_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
 
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:

@@ -14,7 +14,8 @@ import numpy as np
 
 from cali.analysis._util import (
     _compute_zero_lag_corr_matrix,
-    _detect_population_bursts,
+    _detect_calcium_population_bursts,
+    _detect_spikes_population_bursts,
     _get_calcium_peaks_event_correlations_matrix,
     _get_calcium_peaks_event_synchrony,
     _get_spike_correlations_matrix,
@@ -50,6 +51,12 @@ def compute_fov_analysis(
     5. Zero-lag Pearson correlation on binary spike trains
     6. Max-lag CCG-like correlation on spike trains (within ± max_lag)
     7. Jitter synchrony on spike trains (± jitter window)
+
+    Burst Detection
+    ---------------
+    8. Additionally, population-level burst detection is performed on both the
+    inferred spike trains and deconvolved ΔF/F traces, yielding metrics such as
+    burst count, average duration, average interval, and population activity traces.
 
     It requires that ROIs have traces and data_analysis attached
     (either via history or _new_* attributes).
@@ -223,21 +230,21 @@ def compute_fov_analysis(
             )
 
     # Compute spike metrics (3 measurements):
-    # 4. Zero-lag correlation on spike trains
+    # 5. Zero-lag correlation on spike trains
     spike_corr_matrix = None
-    # 5. Max lag correlation on spikes
+    # 6. Max lag correlation on spikes
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
-    # 6. Jitter synchrony on spikes
+    # 7. Jitter synchrony on spikes
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
 
     if len(spike_data_dict) >= 2:
-        # 4. Zero-lag Pearson correlation on spike trains
+        # 5. Zero-lag Pearson correlation on spike trains
         spike_corr_matrix = _compute_zero_lag_corr_matrix(spike_trains)
 
-        # 5. Max lag correlation on spikes
+        # 6. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
@@ -251,7 +258,7 @@ def compute_fov_analysis(
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-        # 6. Jitter synchrony on spikes
+        # 7. Jitter synchrony on spikes
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
@@ -262,18 +269,56 @@ def compute_fov_analysis(
         if spike_jitter_sync_matrix is not None:
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
 
-    # --- Burst detection on population spike activity ---
-    burst_count: int | None = None
-    burst_avg_duration: float | None = None
-    burst_avg_interval: float | None = None
+    # 8. Burst detection on population spike activity
+    spike_burst_count: int | None = None
+    spike_burst_avg_duration: float | None = None
+    spike_burst_avg_interval: float | None = None
+    spike_burst_starts: list[int] = []
+    spike_burst_ends: list[int] = []
+    spike_population_activity: np.ndarray | None = None
+    spike_population_activity_raw: np.ndarray | None = None
 
     if len(spike_trains) >= 2:
-        burst_count, burst_avg_duration, burst_avg_interval = _detect_population_bursts(
+        (
+            spike_burst_count,
+            spike_burst_avg_duration,
+            spike_burst_avg_interval,
+            spike_burst_starts,
+            spike_burst_ends,
+            spike_population_activity,
+            spike_population_activity_raw,
+        ) = _detect_spikes_population_bursts(
             spike_trains=spike_trains,
             frame_rate=analysis_settings.frame_rate,
             burst_threshold_percent=analysis_settings.burst_threshold,
             min_duration_ms=analysis_settings.burst_min_duration,
             gaussian_sigma_sec=analysis_settings.burst_gaussian_sigma,
+        )
+
+    # Burst detection on population calcium activity
+    calcium_burst_count: int | None = None
+    calcium_burst_avg_duration: float | None = None
+    calcium_burst_avg_interval: float | None = None
+    calcium_burst_starts: list[int] = []
+    calcium_burst_ends: list[int] = []
+    calcium_population_activity: np.ndarray | None = None
+    calcium_population_activity_raw: np.ndarray | None = None
+
+    if len(dec_dff_traces) >= 2:
+        (
+            calcium_burst_count,
+            calcium_burst_avg_duration,
+            calcium_burst_avg_interval,
+            calcium_burst_starts,
+            calcium_burst_ends,
+            calcium_population_activity,
+            calcium_population_activity_raw,
+        ) = _detect_calcium_population_bursts(
+            dec_dff_traces=dec_dff_traces,
+            frame_rate=analysis_settings.frame_rate,
+            burst_threshold_percent=analysis_settings.calcium_burst_threshold,
+            min_duration_ms=analysis_settings.calcium_burst_min_duration,
+            gaussian_sigma_sec=analysis_settings.calcium_burst_gaussian_sigma,
         )
 
     # Create FOVAnalysis object with all measurements
@@ -323,10 +368,38 @@ def compute_fov_analysis(
             else None
         ),
         global_spike_jitter_synchrony=global_spike_jitter_sync,
-        # Population burst metrics
-        burst_count=burst_count,
-        burst_avg_duration=burst_avg_duration,
-        burst_avg_interval=burst_avg_interval,
+        # Population burst metrics (spike-based)
+        spike_burst_count=spike_burst_count,
+        spike_burst_avg_duration=spike_burst_avg_duration,
+        spike_burst_avg_interval=spike_burst_avg_interval,
+        spike_burst_starts=spike_burst_starts if spike_burst_starts else None,
+        spike_burst_ends=spike_burst_ends if spike_burst_ends else None,
+        spike_population_activity=(
+            spike_population_activity.tolist()
+            if spike_population_activity is not None
+            else None
+        ),
+        spike_population_activity_raw=(
+            spike_population_activity_raw.tolist()
+            if spike_population_activity_raw is not None
+            else None
+        ),
+        # Population burst metrics (calcium-based)
+        calcium_burst_count=calcium_burst_count,
+        calcium_burst_avg_duration=calcium_burst_avg_duration,
+        calcium_burst_avg_interval=calcium_burst_avg_interval,
+        calcium_burst_starts=calcium_burst_starts if calcium_burst_starts else None,
+        calcium_burst_ends=calcium_burst_ends if calcium_burst_ends else None,
+        calcium_population_activity=(
+            calcium_population_activity.tolist()
+            if calcium_population_activity is not None
+            else None
+        ),
+        calcium_population_activity_raw=(
+            calcium_population_activity_raw.tolist()
+            if calcium_population_activity_raw is not None
+            else None
+        ),
     )
 
     return fov_analysis

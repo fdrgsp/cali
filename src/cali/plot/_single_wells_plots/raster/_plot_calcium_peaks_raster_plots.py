@@ -456,7 +456,7 @@ def _add_intensity_colorbar_to_widget(
         values=(vmin, vmax),
         colorMap=pg.colormap.get("viridis"),
         width=15,
-        label="Intensity (dec ΔF/F)",
+        label="Intensity (dec ΔF/F a.u.)",
         interactive=False,
     )
 

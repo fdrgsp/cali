@@ -731,13 +731,21 @@ def _compute_zero_lag_corr_matrix(
     return correlation_matrix
 
 
-def _detect_population_bursts(
+def _detect_spikes_population_bursts(
     spike_trains: list[np.ndarray],
     frame_rate: float,
     burst_threshold_percent: float,
     min_duration_ms: float,
     gaussian_sigma_sec: float,
-) -> tuple[int, float | None, float | None]:
+) -> tuple[
+    int,
+    float | None,
+    float | None,
+    list[int],
+    list[int],
+    np.ndarray | None,
+    np.ndarray | None,
+]:
     """Detect bursts in population spike activity.
 
     Computes mean population activity, smooths it, and detects periods
@@ -758,21 +766,27 @@ def _detect_population_bursts(
 
     Returns
     -------
-    tuple[int, float | None, float | None]
-        - burst_count: Number of bursts detected
-        - burst_avg_duration: Average burst duration in seconds (None if no bursts)
-        - burst_avg_interval: Average inter-burst interval in seconds
-          (None if < 2 bursts)
+    tuple
+        Seven-element tuple containing:
+        - burst_count (int): Number of bursts detected
+        - burst_avg_duration (float | None): Average burst duration in seconds
+        - burst_avg_interval (float | None): Average inter-burst interval
+        - burst_starts (list[int]): Frame indices where bursts start
+        - burst_ends (list[int]): Frame indices where bursts end (exclusive)
+        - population_activity (np.ndarray | None): Smoothed & normalized [0,1]
+            population activity used for both detection and plotting
+        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but 
+            normalized [0,1] population activity for plotting
     """
     if len(spike_trains) < 2:
-        return 0, None, None
+        return 0, None, None, [], [], None, None
 
     # Stack spike trains and compute population activity (mean across ROIs)
     spike_array = np.vstack(spike_trains)  # (n_rois, n_frames)
     population_activity = np.mean(spike_array, axis=0)  # (n_frames,)
 
     if population_activity.size == 0:
-        return 0, None, None
+        return 0, None, None, [], [], None, None
 
     # Convert parameters to frame units
     min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
@@ -786,13 +800,29 @@ def _detect_population_bursts(
     else:
         smoothed_activity = population_activity
 
+    # Normalize to [0, 1] range for consistent threshold application and display
+    # Use percentile-based normalization to handle outliers (based on smoothed data)
+    max_val = np.percentile(smoothed_activity, 95)
+    min_val = np.percentile(smoothed_activity, 5)
+    if max_val - min_val < np.finfo(float).eps:
+        # Constant activity - no bursts
+        return 0, None, None, [], [], smoothed_activity, population_activity
+
+    normalized_activity = (smoothed_activity - min_val) / (max_val - min_val)
+    # Clip to ensure [0,1] range (handles values outside 5-95 percentile)
+    normalized_activity = np.clip(normalized_activity, 0.0, 1.0)
+
+    # Also normalize raw activity using the same min/max for consistency
+    raw_normalized_activity = (population_activity - min_val) / (max_val - min_val)
+    raw_normalized_activity = np.clip(raw_normalized_activity, 0.0, 1.0)
+
     # Convert threshold from percent to fraction
     burst_threshold = burst_threshold_percent / 100.0
 
     # Detect regions above threshold
-    above_threshold = smoothed_activity > burst_threshold
+    above_threshold = normalized_activity > burst_threshold
     if not np.any(above_threshold):
-        return 0, None, None
+        return 0, None, None, [], [], normalized_activity, raw_normalized_activity
 
     # Find burst start and end points
     above_int = above_threshold.astype(int)
@@ -824,7 +854,7 @@ def _detect_population_bursts(
     burst_count = len(burst_durations_sec)
 
     if burst_count == 0:
-        return 0, None, None
+        return 0, None, None, [], [], normalized_activity, raw_normalized_activity
 
     # Calculate average duration
     burst_avg_duration = float(np.mean(burst_durations_sec))
@@ -840,7 +870,189 @@ def _detect_population_bursts(
             intervals_sec.append(interval_sec)
         burst_avg_interval = float(np.mean(intervals_sec))
 
-    return burst_count, burst_avg_duration, burst_avg_interval
+    return (
+        burst_count,
+        burst_avg_duration,
+        burst_avg_interval,
+        burst_starts_list,
+        burst_ends_list,
+        normalized_activity,  # Smoothed & normalized [0,1] for detection and plotting
+        raw_normalized_activity,  # Raw (non-smoothed) normalized [0,1] for comparison
+    )
+
+
+def _detect_calcium_population_bursts(
+    dec_dff_traces: list[np.ndarray],
+    frame_rate: float,
+    burst_threshold_percent: float,
+    min_duration_ms: float,
+    gaussian_sigma_sec: float,
+) -> tuple[
+    int,
+    float | None,
+    float | None,
+    list[int],
+    list[int],
+    np.ndarray | None,
+    np.ndarray | None,
+]:
+    """Detect bursts in population calcium activity (deconvolved DF/F).
+
+    Computes mean population activity from deconvolved DF/F traces, smooths it,
+    normalizes to [0,1], and detects periods above threshold that exceed minimum duration.
+
+    Uses deconvolved DF/F traces because they are cleaner than raw DF/F:
+    deconvolution removes slow drift and baseline fluctuations, making it
+    more suitable for detecting synchronized population events.
+
+    Parameters
+    ----------
+    dec_dff_traces : list[np.ndarray]
+        List of deconvolved DF/F traces for active ROIs
+    frame_rate : float
+        Frame rate in Hz (frames per second)
+    burst_threshold_percent : float
+        Threshold as percentage (e.g., 65.0 for 65% of normalized [0,1] range)
+    min_duration_ms : float
+        Minimum burst duration in milliseconds
+    gaussian_sigma_sec : float
+        Gaussian smoothing sigma in seconds
+
+    Returns
+    -------
+    tuple
+        Seven-element tuple containing:
+        - burst_count (int): Number of bursts detected
+        - burst_avg_duration (float | None): Average burst duration in seconds
+        - burst_avg_interval (float | None): Average inter-burst interval
+        - burst_starts (list[int]): Frame indices where bursts start
+        - burst_ends (list[int]): Frame indices where bursts end (exclusive)
+        - population_activity (np.ndarray | None): Smoothed & normalized [0,1] trace
+            used for both detection and plotting
+        - population_activity_raw (np.ndarray | None): Raw (non-smoothed) but 
+            normalized [0,1] population activity for plotting
+    """
+    if len(dec_dff_traces) < 2:
+        return 0, None, None, [], [], None, None
+
+    # Stack traces and compute population activity (mean across ROIs)
+    traces_array = np.vstack(dec_dff_traces)  # (n_rois, n_frames)
+    population_activity = np.mean(traces_array, axis=0)  # (n_frames,)
+
+    if population_activity.size == 0:
+        return 0, None, None, [], [], None, None
+
+    # Convert parameters to frame units
+    min_duration_frames = max(1, int((min_duration_ms / 1000.0) * frame_rate))
+    gaussian_sigma_frames = gaussian_sigma_sec * frame_rate
+
+    # Smooth population activity
+    if gaussian_sigma_frames > 0:
+        smoothed_activity = gaussian_filter1d(
+            population_activity, sigma=gaussian_sigma_frames, mode="nearest"
+        )
+    else:
+        smoothed_activity = population_activity
+
+    # Normalize to [0, 1] range for threshold application
+    # Use percentile-based normalization from smoothed data
+    max_val = np.percentile(smoothed_activity, 95)
+    min_val = np.percentile(smoothed_activity, 5)
+    if max_val - min_val < np.finfo(float).eps:
+        # Constant activity - no bursts
+        # Return smoothed data (no normalization needed for constant signal)
+        return 0, None, None, [], [], smoothed_activity, population_activity
+
+    normalized_activity = (smoothed_activity - min_val) / (max_val - min_val)
+    # Clip to ensure [0,1] range (handles values outside 5-95 percentile)
+    normalized_activity = np.clip(normalized_activity, 0.0, 1.0)
+
+    # Also normalize raw activity using the same min/max for consistency
+    raw_normalized_activity = (population_activity - min_val) / (max_val - min_val)
+    raw_normalized_activity = np.clip(raw_normalized_activity, 0.0, 1.0)
+
+    # Convert threshold from percent to fraction
+    burst_threshold = burst_threshold_percent / 100.0
+
+    # Detect regions above threshold
+    above_threshold = normalized_activity > burst_threshold
+    if not np.any(above_threshold):
+        # Return smoothed & normalized trace (what was used for detection)
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            normalized_activity,
+            raw_normalized_activity,
+        )
+
+    # Find burst start and end points
+    above_int = above_threshold.astype(int)
+    changes = np.diff(above_int)
+
+    starts = np.where(changes == 1)[0] + 1
+    ends = np.where(changes == -1)[0] + 1
+
+    # Handle edge cases
+    if above_threshold[0]:
+        starts = np.insert(starts, 0, 0)
+    if above_threshold[-1]:
+        ends = np.append(ends, len(above_threshold))
+
+    # Filter bursts by minimum duration
+    burst_starts_list: list[int] = []
+    burst_ends_list: list[int] = []
+    burst_durations_sec: list[float] = []
+
+    for start_idx, end_idx in zip(starts, ends):
+        duration_frames = end_idx - start_idx
+        if duration_frames >= min_duration_frames:
+            burst_starts_list.append(int(start_idx))
+            burst_ends_list.append(int(end_idx))
+            # Convert duration to seconds
+            duration_sec = duration_frames / frame_rate
+            burst_durations_sec.append(duration_sec)
+
+    burst_count = len(burst_durations_sec)
+
+    if burst_count == 0:
+        # Return smoothed & normalized trace (what was used for detection)
+        return (
+            0,
+            None,
+            None,
+            [],
+            [],
+            normalized_activity,
+            raw_normalized_activity,
+        )
+
+    # Calculate average duration
+    burst_avg_duration = float(np.mean(burst_durations_sec))
+
+    # Calculate inter-burst intervals (time from end of one burst to start of next)
+    burst_avg_interval: float | None = None
+    if burst_count >= 2:
+        intervals_sec: list[float] = []
+        for i in range(1, burst_count):
+            # Interval = frames between bursts / frame_rate
+            interval_frames = burst_starts_list[i] - burst_ends_list[i - 1]
+            interval_sec = interval_frames / frame_rate
+            intervals_sec.append(interval_sec)
+        burst_avg_interval = float(np.mean(intervals_sec))
+
+    # Return smoothed & normalized trace (what was used for detection and should be plotted)
+    return (
+        burst_count,
+        burst_avg_duration,
+        burst_avg_interval,
+        burst_starts_list,
+        burst_ends_list,
+        normalized_activity,  # Smoothed & normalized [0,1] for detection and plotting
+        raw_normalized_activity,  # Raw (non-smoothed) & normalized [0,1] for plotting
+    )
 
 
 ConnectivityMethod = Literal[

@@ -1135,6 +1135,9 @@ class AnalysisSettings(SQLModel, table=True):
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
+    calcium_burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    calcium_burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
+    calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
     spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
 
@@ -1183,6 +1186,9 @@ class AnalysisSettings(SQLModel, table=True):
             and self.burst_threshold == other.burst_threshold
             and self.burst_min_duration == other.burst_min_duration
             and self.burst_gaussian_sigma == other.burst_gaussian_sigma
+            and self.calcium_burst_threshold == other.calcium_burst_threshold
+            and self.calcium_burst_min_duration == other.calcium_burst_min_duration
+            and self.calcium_burst_gaussian_sigma == other.calcium_burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
             and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
             and self.frame_rate == other.frame_rate
@@ -1211,6 +1217,9 @@ class AnalysisSettings(SQLModel, table=True):
                 self.burst_threshold,
                 self.burst_min_duration,
                 self.burst_gaussian_sigma,
+                self.calcium_burst_threshold,
+                self.calcium_burst_min_duration,
+                self.calcium_burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
                 self.spikes_sync_jitter_window,
                 self.frame_rate,
@@ -1784,12 +1793,31 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Jitter synchrony on spike events (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
         Median of off-diagonal spike jitter synchrony values
-    burst_count : int | None
-        Number of population bursts detected in the FOV
-    burst_avg_duration : float | None
-        Average duration of population bursts (seconds)
-    burst_avg_interval : float | None
-        Average interval between population bursts (seconds)
+    spike_burst_count : int | None
+        Number of spike-based population bursts detected
+    spike_burst_avg_duration : float | None
+        Average duration of spike bursts (seconds)
+    spike_burst_avg_interval : float | None
+        Average interval between spike bursts (seconds)
+    spike_burst_starts : list[int] | None
+        Frame indices where spike bursts start
+    spike_burst_ends : list[int] | None
+        Frame indices where spike bursts end (exclusive)
+    spike_population_activity : list[float] | None
+        Smoothed spike population activity used for burst detection and plotting
+    calcium_burst_count : int | None
+        Number of calcium-based population bursts detected
+    calcium_burst_avg_duration : float | None
+        Average duration of calcium bursts (seconds)
+    calcium_burst_avg_interval : float | None
+        Average interval between calcium bursts (seconds)
+    calcium_burst_starts : list[int] | None
+        Frame indices where calcium bursts start
+    calcium_burst_ends : list[int] | None
+        Frame indices where calcium bursts end (exclusive)
+    calcium_population_activity : list[float] | None
+        Smoothed and normalized [0,1] mean calcium population activity.
+        This is the trace used for burst detection and plotting.
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
@@ -1852,10 +1880,31 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
     global_spike_jitter_synchrony: float | None = None
 
-    # Population burst metrics
-    burst_count: int | None = None
-    burst_avg_duration: float | None = None
-    burst_avg_interval: float | None = None
+    # Population burst metrics (spike-based)
+    spike_burst_count: int | None = None
+    spike_burst_avg_duration: float | None = None
+    spike_burst_avg_interval: float | None = None
+    spike_burst_starts: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    spike_burst_ends: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    spike_population_activity: list[float] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    spike_population_activity_raw: list[float] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+
+    # Population burst metrics (calcium-based)
+    calcium_burst_count: int | None = None
+    calcium_burst_avg_duration: float | None = None
+    calcium_burst_avg_interval: float | None = None
+    calcium_burst_starts: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    calcium_burst_ends: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    calcium_population_activity: list[float] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    calcium_population_activity_raw: list[float] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="fov_analysis_history")

@@ -13,7 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 import pytest
 
-from cali.plot._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
+from cali.plot._single_wells_plots.burst._plot_burst_activity import (
     _draw_population_activity_pg,
 )
 from cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (

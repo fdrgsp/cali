@@ -24,7 +24,10 @@ from ._multi_wells_plots import (
     plot_spike_synchrony_bar_plot,
     plot_stimulated_peaks_amplitude_bar_plot,
 )
-from ._single_wells_plots.burst._plot_inferred_spike_burst_activity import (
+from ._single_wells_plots.burst import (
+    _plot_calcium_burst_activity,
+    _plot_calcium_normalized_with_bursts,
+    _plot_calcium_raster_with_bursts,
     _plot_inferred_spike_burst_activity,
     _plot_inferred_spike_raster_with_bursts,
     _plot_inferred_spikes_normalized_with_bursts,
@@ -202,6 +205,7 @@ INFERRED_SPIKE_MAX_LAG_VALUES = "Inferred Spikes Max-Lag Values (frames)"
 INFERRED_SPIKE_CLUSTERING = "Inferred Spikes (Thresholded) Hierarchical Clustering"
 INFERRED_SPIKE_CLUSTERING_DENDROGRAM = "Inferred Spikes (Thresholded) Hierarchical Clustering (Dendrogram)"  # noqa: E501
 INFERRED_SPIKE_BURST_ANALYSIS = "Inferred Spikes (Thresholded) Burst Activity Analysis"
+CALCIUM_BURST_ANALYSIS = "Calcium Population Burst Activity Analysis (Deconvolved ΔF/F0)"  # noqa: E501
 RASTER_PLOT = "Calcium Peaks Raster Plot"
 RASTER_PLOT_AMP = "Calcium Peaks Raster Plot Colored by Amplitude"
 RASTER_PLOT_AMP_WITH_COLORBAR = "Calcium Peaks Raster Plot Colored by Amplitude with Colorbar"  # noqa: E501
@@ -255,6 +259,8 @@ SORTED_SPIKE_CORRELATION = "Inferred Spikes Zero-Lag Pearson Correlation (Sorted
 SORTED_SPIKE_MAX_LAG_CORRELATION = "Inferred Spikes Max-Lag Cross-Correlation (Sorted: Stim → Non-Stim)"  # noqa: E501
 NEUROPIL_ROI_MASKS = "Neuropil and ROI Masks Visualization"
 NEUROPIL_TRACES = "Neuropil and Raw Traces"
+CALCIUM_NORMALIZED_WITH_BURSTS="Calcium Deconvolved ΔF/F0 Normalized with Network Bursts"  # noqa: E501
+CALCIUM_BURST_ANALYSIS_WITH_RASTER="Calcium Peaks Raster Plot with Network Bursts"
 
 
 # REGISTER SINGLE WELL ANALYSIS PRODUCTS ==============================================
@@ -478,7 +484,28 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-
+# Calcium Burst Analysis Group
+AnalysisProduct(
+    name=CALCIUM_BURST_ANALYSIS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_calcium_burst_activity,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=CALCIUM_NORMALIZED_WITH_BURSTS,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_calcium_normalized_with_bursts,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name=CALCIUM_BURST_ANALYSIS_WITH_RASTER,
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_calcium_raster_with_bursts,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 # Inferred Spike Burst Analysis Group
 AnalysisProduct(
     name=INFERRED_SPIKE_BURST_ANALYSIS,
@@ -502,6 +529,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
+
 # Correlation Analysis Group
 AnalysisProduct(
     name=CALCIUM_DFF_CORRELATION,
@@ -524,14 +552,6 @@ AnalysisProduct(
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-# not useful for calcium peaks
-# AnalysisProduct(
-#     name=CROSS_CORRELATION,
-#     group=AnalysisGroup.SINGLE_WELL,
-#     analyzer=_plot_cross_correlation_data,
-#     category="Calcium Correlation Analysis",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
 AnalysisProduct(
     name=CALCIUM_FUNCTIONAL_CONNECTIVITY,
     group=AnalysisGroup.SINGLE_WELL,
@@ -1039,6 +1059,7 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     INFERRED_SPIKE_CLUSTERING,
     INFERRED_SPIKE_CLUSTERING_DENDROGRAM,
     INFERRED_SPIKE_BURST_ANALYSIS,
+    CALCIUM_BURST_ANALYSIS,
     INFERRED_SPIKE_RASTER_PLOT,
     INFERRED_SPIKE_RASTER_PLOT_AMP,
     INFERRED_SPIKE_RASTER_PLOT_AMP_WITH_COLORBAR,

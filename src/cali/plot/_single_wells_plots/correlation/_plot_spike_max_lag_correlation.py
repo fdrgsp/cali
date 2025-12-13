@@ -153,6 +153,26 @@ def _plot_spike_max_lag_correlation_data(
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
 
+    # Disconnect any hover handlers from previous plots (except our own spike_maxlag_hover_handler)
+    scene = plot.scene()
+    handler_names = [
+        "sync_hover_handler",
+        "ccorr_hover_handler",
+        "spike_sync_hover_handler",
+        "spike_ccorr_hover_handler",
+        "spike_maxlag_values_hover_handler",
+        "dff_corr_hover_handler",
+        "evoked_hover_handler",
+    ]
+    for handler_name in handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
+
     # Hide shared legend if present (we don't want it here)
     if hasattr(widget, "legend") and widget.legend is not None:
         widget.legend.clear()

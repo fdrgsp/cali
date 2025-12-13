@@ -440,13 +440,17 @@ class CaliGui(QMainWindow):
         # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
         # self._output_path = "tests/test_data/multi_pos/"
 
-        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        self._output_path = "tests/test_data/data_and_db_for_tests/"
+        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        # self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
         # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
         # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
+
+        self._database_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
+        self._data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
+        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
@@ -2046,9 +2050,9 @@ class CaliGui(QMainWindow):
                                 a_settings.calcium_sync_jitter_window
                             ),
                             calcium_peaks_max_lag=a_settings.calcium_peaks_max_lag,
-                            # calcium_network_threshold=(
-                            #     a_settings.calcium_network_threshold
-                            # ),
+                            burst_threshold=a_settings.calcium_burst_threshold,
+                            burst_min_duration=a_settings.calcium_burst_min_duration,
+                            burst_blur_sigma=a_settings.calcium_burst_gaussian_sigma,
                         ),
                         spikes_data=SpikeData(
                             spike_threshold=a_settings.spike_threshold_value,
