@@ -844,6 +844,199 @@ def _attach_click_handlers_raster(
 
 
 # -----------------------------------------------------------------------------#
+# Calcium peaks raster: stimulated vs non-stimulated (pyqtgraph)
+# -----------------------------------------------------------------------------#
+def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Plot raster of calcium peaks (green=stim, magenta=non-stim) with pg.
+
+    Each detected calcium peak (from peaks_dec_dff) is shown as a tick mark.
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    vb = plot.getViewBox()
+    vb.setAspectLocked(False)
+    vb.invertY(True)
+
+    # Hide legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    from cali.sqlmodel._model import FOV as FOVModel  # avoid name clash
+
+    if run_id is None:
+        plot.setTitle(
+            "Stimulated vs Non-Stimulated Calcium Peaks Raster Plot\nNo run selected."
+        )
+        plot.setLabel("bottom", "Frames")
+        return
+
+    # ------------------------ Query DB ------------------------ #
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOVModel, ROI.fov_id == FOVModel.id)
+            .join(
+                Traces,
+                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
+            )
+            .outerjoin(
+                DataAnalysis,
+                (DataAnalysis.roi_id == ROI.id)
+                & (DataAnalysis.analysis_result_id == run_id),
+            )
+            .where(col(FOVModel.name) == fov_name)
+            .where(col(ROI.active) == True)  # noqa: E712
+        )
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+        stmt = stmt.order_by(col(ROI.label_value))
+        results = session.exec(stmt).all()
+
+    if not results:
+        plot.setTitle("Calcium Peaks Raster\nNo active ROI data found for this FOV.")
+        plot.setLabel("bottom", "Frames")
+        return
+
+    stimulated_rois: list[tuple[ROI, Traces, DataAnalysis | None]] = []
+    non_stimulated_rois: list[tuple[ROI, Traces, DataAnalysis | None]] = []
+    active_roi_labels: list[int] = []
+    rois_rec_time: list[float] = []
+    total_frames = 0
+
+    for roi_model, trace_obj, data_analysis in results:
+        if trace_obj and trace_obj.dec_dff is not None and data_analysis:
+            active_roi_labels.append(roi_model.label_value)
+            if roi_model.stimulated:
+                stimulated_rois.append((roi_model, trace_obj, data_analysis))
+            else:
+                non_stimulated_rois.append((roi_model, trace_obj, data_analysis))
+
+            if data_analysis.total_recording_time_sec is not None:
+                rois_rec_time.append(data_analysis.total_recording_time_sec)
+
+            total_frames = max(total_frames, len(trace_obj.dec_dff))
+
+    if not stimulated_rois and not non_stimulated_rois:
+        plot.setTitle("Calcium Peaks Raster\nNo calcium trace data available.")
+        plot.setLabel("bottom", "Frames")
+        return
+
+    # ------------------------ Build raster ------------------------ #
+    y_row = 0
+
+    def _add_calcium_raster_row(
+        roi_model: ROI,
+        trace_obj: Traces,
+        data_analysis: DataAnalysis | None,
+        color: str,
+        row_index: int,
+    ) -> bool:
+        """Plot calcium peaks; return True if anything was plotted."""
+        if not data_analysis or not data_analysis.peaks_dec_dff:
+            return False
+
+        peak_indices = np.asarray(data_analysis.peaks_dec_dff, dtype=float)
+        if peak_indices.size == 0:
+            return False
+
+        item = pg.ScatterPlotItem(
+            x=peak_indices,
+            y=np.full_like(peak_indices, row_index, dtype=float),
+            pen=None,
+            brush=pg.mkBrush(color),
+            size=4,
+            symbol="s",  # small square -> looks like a tick
+        )
+        item.setProperty("roi_label", str(roi_model.label_value))
+        plot.addItem(item)
+        return True
+
+    # Stimulated rows
+    for roi_model, trace_obj, data_analysis in stimulated_rois:
+        _add_calcium_raster_row(
+            roi_model, trace_obj, data_analysis, STIMULATED_COLOR, y_row
+        )
+        y_row += 1
+
+    # Non-stimulated rows
+    for roi_model, trace_obj, data_analysis in non_stimulated_rois:
+        _add_calcium_raster_row(
+            roi_model, trace_obj, data_analysis, NON_STIMULATED_COLOR, y_row
+        )
+        y_row += 1
+
+    plot.setTitle("Stimulated vs Non-Stimulated Calcium Peaks Raster Plot")
+    plot.setLabel("left", "ROI")
+    _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
+
+    # hide y tick values (but keep axis label)
+    y_axis = plot.getAxis("left")
+    y_axis.setTicks([])
+    y_axis.setStyle(showValues=False)
+
+    # ---------- LEGEND ----------
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+
+        # Add legend items for stimulated and non-stimulated peaks
+        if stimulated_rois:
+            stim_item = pg.ScatterPlotItem(
+                pen=None,
+                brush=pg.mkBrush(STIMULATED_COLOR),
+                size=4,
+                symbol="s",
+            )
+            legend.addItem(stim_item, "Stimulated ROIs")
+
+        if non_stimulated_rois:
+            non_stim_item = pg.ScatterPlotItem(
+                pen=None,
+                brush=pg.mkBrush(NON_STIMULATED_COLOR),
+                size=4,
+                symbol="s",
+            )
+            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
+
+        # Add LED stimulation legend item
+        led_item = pg.ScatterPlotItem(
+            pen=None,
+            brush=pg.mkBrush(0, 0, 255, 200),
+            size=8,
+            symbol="s",
+        )
+        legend.addItem(led_item, "LED Stimulation")
+
+        legend.setVisible(True)
+
+    # ---------- LED STIMULATION BANDS ----------
+    # Get frame rate from data analysis
+    frame_rate = None
+    for _, _, data_analysis in results:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
+            frame_rate = total_frames / data_analysis.total_recording_time_sec
+            break
+
+    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
+
+    # Set x-range to full frames with some padding at the end, enable autorange for y
+    if total_frames > 0:
+        vb.setXRange(0, total_frames * 1.05, padding=0)
+    vb.enableAutoRange(x=False, y=True)
+
+    _attach_click_handlers_raster(widget, plot, active_roi_labels)
+
+
+# -----------------------------------------------------------------------------#
 # Spike traces: stimulated vs non-stimulated (pyqtgraph)
 # -----------------------------------------------------------------------------#
 def _plot_stimulated_vs_non_stimulated_spike_traces(

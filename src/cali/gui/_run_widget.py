@@ -87,10 +87,10 @@ class _RunCaliWidget(QWidget):
         # buttons
         from cali._constants import GREEN, RED
 
-        self._save_settings_btn = QPushButton("Save Settings")
+        self._save_settings_btn = QPushButton()
         self._save_settings_btn.setSizePolicy(*FIXED)
         self._save_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-cog")))
-        self._load_settings_btn = QPushButton("Load Settings")
+        self._load_settings_btn = QPushButton()
         self._load_settings_btn.setSizePolicy(*FIXED)
         self._load_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:file-upload-outline")))
 

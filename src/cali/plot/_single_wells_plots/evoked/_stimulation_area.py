@@ -220,6 +220,7 @@ def _visualize_stimulated_area(
         vb.setRange(rect, padding=0.0)
 
         plot.setTitle("Stimulation Area (Mask)")
+        plot.showGrid(False)
 
         # Legend: only stimulation area
         if legend is not None:

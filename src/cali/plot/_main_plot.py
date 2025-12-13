@@ -64,6 +64,7 @@ from ._single_wells_plots.correlation._plot_spike_max_lag_values import (
 )
 from ._single_wells_plots.evoked._plot_evoked_experiment_data_plots import (
     _plot_stim_or_not_stim_peaks_amplitude,
+    _plot_stimulated_vs_non_stimulated_calcium_peaks_raster,
     _plot_stimulated_vs_non_stimulated_roi_traces,
     _plot_stimulated_vs_non_stimulated_spike_raster,
     _plot_stimulated_vs_non_stimulated_spike_traces,
@@ -266,35 +267,35 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded)",
+    name="Inferred Spikes Thresholded",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes,
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raw (with Thresholds - 1 ROI)",
+    name="Inferred Spikes Raw (with Thresholds if 1 ROI)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Normalized",
+    name="Inferred Spikes Thresholded Normalized",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Normalized (Active Only)",
+    name="Inferred Spikes Thresholded Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) with Deconvolved ΔF/F0 Traces",
+    name="Inferred Spikes Thresholded with Deconvolved ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
     category="Inferred Spikes Traces",
@@ -303,7 +304,7 @@ AnalysisProduct(
 
 # Raster Plots Group
 AnalysisProduct(
-    name="Calcium Peaks Raster plot Colored by ROI",
+    name="Calcium Peaks Raster",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_raster_plot,
     category="Raster Plots",
@@ -331,14 +332,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raster plot Raw",
+    name="Inferred Spikes Raster",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot_raw,
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raster  (Thresholded)",
+    name="Inferred Spikes Raster Thresholded",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
     category="Raster Plots",
@@ -398,14 +399,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Normalized with Bursts",
+    name="Calcium Traces Normalized with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_calcium_normalized_with_bursts,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Burst Analysis with Raster",
+    name="Calcium Raster with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_calcium_raster_with_bursts,
     category="Calcium Burst Analysis",
@@ -413,21 +414,21 @@ AnalysisProduct(
 )
 # Inferred Spike Burst Analysis Group
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Burst Activity Analysis",
+    name="Inferred Spikes Thresholded Burst Activity Analysis",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_burst_activity,
     category="Inferred Spike Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Normalized with Network Bursts",
+    name="Inferred Spikes Thresholded Normalized with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes_normalized_with_bursts,
     category="Inferred Spike Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spike Raster with Bursts",
+    name="Inferred Spike Raster with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_raster_with_bursts,
     category="Inferred Spike Burst Analysis",
@@ -461,28 +462,28 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Cross-Correlation",
+    name="Inferred Spikes Thresholded Cross-Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_cross_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spike Max Lag Correlation",
+    name="Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spike Max Lag Values",
+    name="Inferred Spikes Thresholded Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_values_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes (Thresholded) Global Synchrony",
+    name="Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
     category="Inferred Spikes Correlation Analysis",
@@ -540,7 +541,15 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stimulated vs Non-Stimulated Spike Raster",
+    name="Stimulated vs Non-Stimulated Calcium Peaks Raster",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_stimulated_vs_non_stimulated_calcium_peaks_raster,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Stimulated vs Non-Stimulated Inferred Spikes Thresholded Raster",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
     category="Evoked Experiment",
@@ -556,7 +565,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Spike Synchrony",
+    name="Sorted Inferred Spikes Thresholded Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_synchrony,
     category="Evoked Experiment",
@@ -564,7 +573,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Spike Correlation",
+    name="Sorted Inferred Spikes Thresholded Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_correlation,
     category="Evoked Experiment",
@@ -572,7 +581,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Spike Max Lag Correlation",
+    name="Sorted Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_max_lag_correlation,
     category="Evoked Experiment",

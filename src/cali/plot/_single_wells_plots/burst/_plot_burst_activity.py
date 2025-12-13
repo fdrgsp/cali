@@ -268,8 +268,8 @@ def _plot_inferred_spike_burst_activity(
             plot.setLabel("bottom", "Time (s)")
             plot.setLabel("left", "Fraction of Active ROIs [0,1])")
 
-            # Auto-range once everything is added
-            vb.enableAutoRange(x=True, y=False)
+            # Set range once everything is added
+            vb.setRange(yRange=(0.0, 1.0))
         else:
             cali_logger.warning(
                 "Pre-computed spike burst data is incomplete "
