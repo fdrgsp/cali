@@ -27,7 +27,7 @@ def compute_inferred_spike_threshold(
     Parameters
     ----------
     spikes : np.ndarray
-        Inferred spikes from OASIS deconvolution
+        Inferred spikes from OASIS deconvolution (non-negative)
     settings : AnalysisSettings
         Analysis settings containing threshold parameters
 
@@ -39,19 +39,36 @@ def compute_inferred_spike_threshold(
     spike_threshold_value = settings.spike_threshold_value
     spike_threshold_mode = settings.spike_threshold_mode
 
+    # User-provided global threshold (absolute units)
     if spike_threshold_mode == GLOBAL_SPIKE_THRESHOLD:
-        spike_detection_threshold = spike_threshold_value
-    else:  # MULTIPLIER
-        # for spike amp use percentile-based approach to determine noise level
-        non_zero_spikes = spikes[spikes > 0]
-        # need sufficient data for reliable percentile
-        if len(non_zero_spikes) > 5:
-            spike_noise_reference = float(np.percentile(non_zero_spikes, 10))
-        else:
-            spike_noise_reference = 0.01  # fallback value if not enough data
-        spike_detection_threshold = spike_noise_reference * spike_threshold_value
+        return float(spike_threshold_value)
 
-    return spike_detection_threshold
+    # MULTIPLIER mode → estimate noise level from small positive spikes
+    non_zero_spikes = spikes[spikes > 0]
+
+    if non_zero_spikes.size < 5:
+        # Very few spikes: be conservative, basically no detection
+        return np.inf  # type: ignore
+
+    # Use lower half of distribution as "noise-ish" region
+    med_all = np.median(non_zero_spikes)
+    lower = non_zero_spikes[non_zero_spikes <= med_all]
+    if lower.size < 5:
+        lower = non_zero_spikes
+
+    # Robust noise estimate: MAD-based std
+    med = np.median(lower)
+    mad = np.median(np.abs(lower - med)) / 0.6745 if lower.size > 1 else 0.0
+
+    if mad == 0.0:
+        # All small spikes almost identical → threshold slightly above them
+        return float(med * spike_threshold_value)
+
+    # Interpret spike_threshold_value as "k" in med + k*noise
+    k = float(spike_threshold_value)
+    the = med + k * mad
+
+    return float(the)
 
 
 def compute_calcium_peak_detection_thresholds(
