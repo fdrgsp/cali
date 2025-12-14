@@ -163,7 +163,7 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._experiment_type_wdg)
         group_layout.addWidget(create_divider_line("Calcium Traces and Peaks"))
         group_layout.addWidget(self._calcium_peaks_wdg)
-        group_layout.addWidget(create_divider_line("Spikes and Bursts"))
+        group_layout.addWidget(create_divider_line("Inferred Spikes"))
         group_layout.addWidget(self._spike_wdg)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)

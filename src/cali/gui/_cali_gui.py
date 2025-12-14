@@ -105,7 +105,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle("Cali")
+        self.setWindowTitle("cali")
 
         # ELAPSED TIMER ---------------------------------------------------------------
         self._elapsed_timer = _ElapsedTimer()

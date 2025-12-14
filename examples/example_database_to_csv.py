@@ -30,13 +30,16 @@ output_dir.mkdir(exist_ok=True)
 # Export all trace types
 # Note: run_id defaults to first run if not specified
 # fov_name defaults to all FOVs if not specified
+run_id = 1  # Specify run ID if needed
 
 print("Exporting raw traces...")
-export_raw_traces_to_csv(engine, output_dir / "raw_traces.csv", run_id=1)
+export_raw_traces_to_csv(engine, output_dir / "raw_traces.csv", run_id=run_id)
 
 print("Exporting neuropil traces...")
 try:
-    export_neuropil_traces_to_csv(engine, output_dir / "neuropil_traces.csv", run_id=1)
+    export_neuropil_traces_to_csv(
+        engine, output_dir / "neuropil_traces.csv", run_id=run_id
+    )
 except ValueError as e:
     print(f"Skipping neuropil traces: {e}")
 
@@ -49,7 +52,7 @@ except ValueError as e:
     print(f"Skipping corrected traces: {e}")
 
 print("Exporting ΔF/F traces...")
-export_dff_traces_to_csv(engine, output_dir / "dff_traces.csv", run_id=1)
+export_dff_traces_to_csv(engine, output_dir / "dff_traces.csv", run_id=run_id)
 
 print("Exporting deconvolved ΔF/F traces...")
 export_deconvolved_dff_traces_to_csv(
@@ -57,7 +60,7 @@ export_deconvolved_dff_traces_to_csv(
 )
 
 print("Exporting raw inferred spikes...")
-export_inferred_spikes_raw_to_csv(engine, output_dir / "spikes_raw.csv", run_id=1)
+export_inferred_spikes_raw_to_csv(engine, output_dir / "spikes_raw.csv", run_id=run_id)
 
 print("Exporting thresholded inferred spikes...")
 export_inferred_spikes_thresholded_to_csv(
@@ -66,7 +69,7 @@ export_inferred_spikes_thresholded_to_csv(
 
 print("Exporting correlation matrices...")
 matrices_dir = output_dir / "correlation_matrices"
-export_correlation_matrices_to_csv(engine, matrices_dir, run_id=1)
+export_correlation_matrices_to_csv(engine, matrices_dir, run_id=run_id)
 
 # Export data for a specific FOV
 print("Exporting data for specific FOV...")
