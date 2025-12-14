@@ -267,11 +267,10 @@ class AnalysisRunner:
         # Calculate total recording time
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
-        # Compute thresholds
+        # fmt: off
         # Estimate only noise from ORIGINAL dff trace
         sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
-
-        # fmt: off
+        # Compute thresholds
         spike_detection_threshold = compute_inferred_spike_threshold(spikes_array, analysis_settings)  # noqa E501
         peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff_array, sn, analysis_settings)  # noqa E501
         # fmt: on
