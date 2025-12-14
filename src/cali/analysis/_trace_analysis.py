@@ -90,7 +90,7 @@ def compute_calcium_peak_detection_thresholds(
 
     Returns
     -------
-    tuple[float, float, float]
+    tuple[float, float]
         - peaks_height_dec_dff: Height threshold for peak detection
         - peaks_prominence_dec_dff: Prominence threshold
     """

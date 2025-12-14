@@ -709,10 +709,10 @@ def _plot_sorted_spike_max_lag_correlation(
         plot.setTitle("Spike Max-Lag Correlation (Sorted - Insufficient ROIs)")
         return
 
-    # Plot the heatmap
+    # Plot the heatmap (max-lag cross-correlation ranges from -1 to 1)
     img = pg.ImageItem(reordered_matrix)
-    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))
+    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLevels((-1.0, 1.0))
     plot.addItem(img)
 
     vb.invertY(True)
@@ -759,7 +759,7 @@ def _plot_sorted_spike_max_lag_correlation(
     plot.getAxis("left").setTicks([])
 
     add_colorbar_to_widget(
-        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+        widget, vmin=-1.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
     )
 
     # Add visual marker for stimulated ROI block (green rectangle)
