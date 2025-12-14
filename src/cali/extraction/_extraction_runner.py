@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Callable, cast
 
 import numpy as np
-from oasis.functions import deconvolve, estimate_parameters
+from oasis.functions import GetSn, deconvolve, estimate_parameters
 from tqdm import tqdm
 
 from cali._constants import (
@@ -600,23 +600,15 @@ class ExtractionRunner:
         if tau > 0.0:
             # User-provided decay constant τ → AR(1) coefficient g
             g1 = float(np.exp(-1.0 / (frame_rate * tau)))  # AR(1) coefficient
-            g = (g1,)  # OASIS expects a tuple
+            g: tuple[float] | tuple[float, float] = (g1,)  # OASIS expects a tuple
             optimize_g = 0  # do NOT re-optimize g, user fixed it
 
-            # Estimate only noise from ORIGINAL dff trace
-            _, sn = estimate_parameters(
-                dff,
-                p=2,  # AR(2); set to 1 if you want AR(1)
-                range_ff=[0.25, 0.5],
-                method="median",  # mean or logmexp (exponentiated mean of logvalues)
-                lags=10,
-                fudge_factor=0.98,
-            )
+            sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
         else:
             # Estimate AR parameters + noise from ORIGINAL dff trace
             g, sn = estimate_parameters(
                 dff,
-                p=2,  # AR(2); set to 1 if you want AR(1)
+                p=1,  # AR(1); set to 2 if you want AR(2)
                 range_ff=[0.25, 0.5],
                 method="median",  # mean or logmexp (exponentiated mean of logvalues)
                 lags=10,
@@ -625,16 +617,37 @@ class ExtractionRunner:
             # g is already a tuple of length p (e.g. (g1, g2))
             optimize_g = 0  # set >0 only if you really want refine
 
-        # Deconvolve
-        dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
-            dff,
-            g=g,
-            sn=sn,
-            penalty=1,  # L1 sparsity (standard OASIS)
-            optimize_g=optimize_g,
-        )
-        dec_dff = dec_dff.astype(float)
-        spikes = spikes.astype(float)
+        # Deconvolve with error handling for invalid AR coefficients
+        try:
+            dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
+                dff,
+                g=g,
+                sn=sn,
+                penalty=1,  # L1 sparsity (standard OASIS)
+                optimize_g=optimize_g,
+            )
+            dec_dff = dec_dff.astype(float)
+            spikes = spikes.astype(float)
+        except (ValueError, RuntimeError) as e:
+            # If OASIS fails due to invalid AR coefficients, fall back to stable default
+            cali_logger.warning(
+                f"OASIS deconvolution failed for ROI {label_value} in {fov_name}: {e}. "
+                f"Retrying with stable default AR coefficients."
+            )
+            g_fallback: tuple[float] | tuple[float, float] = (
+                0.95,
+                0.0,
+            )  # Stable default
+            optimize_g = 0
+            dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
+                dff,
+                g=g_fallback,
+                sn=sn,
+                penalty=1,  # L1 sparsity (standard OASIS)
+                optimize_g=optimize_g,
+            )
+            dec_dff = dec_dff.astype(float)
+            spikes = spikes.astype(float)
 
         # # Optional: recover an effective fitted tau (only meaningful for AR(1))
         # tau_fit = None

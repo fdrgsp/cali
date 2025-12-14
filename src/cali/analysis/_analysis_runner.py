@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
-from oasis.functions import estimate_parameters
+from oasis.functions import GetSn
 from tqdm import tqdm
 
 from cali.logger import cali_logger
@@ -254,9 +254,10 @@ class AnalysisRunner:
             return None
 
         # Convert traces to numpy arrays
-        dec_dff = np.array(traces.dec_dff)
-        spikes = np.array(traces.inferred_spikes)
         elapsed_time_list = traces.x_axis
+        dff = np.array(traces.dff)
+        dec_dff_array = np.array(traces.dec_dff)
+        spikes_array = np.array(traces.inferred_spikes)
 
         # Skip if no time axis data
         if elapsed_time_list is None or len(elapsed_time_list) < 2:
@@ -267,19 +268,12 @@ class AnalysisRunner:
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
         # Compute thresholds
-
         # Estimate only noise from ORIGINAL dff trace
-        _, sn = estimate_parameters(
-            traces.dff,
-            p=2,  # AR(2); set to 1 if you want AR(1)
-            range_ff=[0.25, 0.5],
-            method="median",  # mean or logmexp (exponentiated mean of logvalues)
-            lags=10,
-            fudge_factor=0.98,
-        )
+        sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
+
         # fmt: off
-        spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, sn, analysis_settings)  # noqa E501
+        spike_detection_threshold = compute_inferred_spike_threshold(spikes_array, analysis_settings)  # noqa E501
+        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff_array, sn, analysis_settings)  # noqa E501
         # fmt: on
 
         if self._check_for_abort_requested():
@@ -291,7 +285,7 @@ class AnalysisRunner:
             1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
         )
         peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
-            dec_dff,
+            dec_dff_array,
             peaks_height_dec_dff,
             peaks_prominence_dec_dff,
             min_distance_frames,
