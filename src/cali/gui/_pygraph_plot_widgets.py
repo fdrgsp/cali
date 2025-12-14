@@ -949,15 +949,9 @@ class _ConnectivityThresholdWidget(QGroupBox):
             [
                 "Deconvolved DF/F Correlation",
                 "DF/F Correlation",
-                # "Calcium Peaks Max-Lag",
-                # "Calcium Peaks Jitter Sync",
-                # "Spike Correlation",
-                # "Spike Max-Lag",
-                # "Spike Jitter Sync",
             ]
         )
         self._method_combo.setToolTip("Select connectivity metric method")
-        self._method_combo.currentIndexChanged.connect(self._update_connectivity)
 
         # Threshold slider
         self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
@@ -997,11 +991,6 @@ class _ConnectivityThresholdWidget(QGroupBox):
         method_map = {
             0: "calcium_dec_dff_corr",
             1: "calcium_dff_corr",
-            # 2: "calcium_peaks_maxlag",
-            # 3: "calcium_peaks_jitter",
-            # 4: "spike_corr",
-            # 5: "spike_maxlag",
-            # 6: "spike_jitter",
         }
         return method_map[self._method_combo.currentIndex()]
 
@@ -1009,6 +998,8 @@ class _ConnectivityThresholdWidget(QGroupBox):
         """Update connectivity method when combo box changes."""
         method = self._get_method_from_combo()
         self._graph._connectivity_method = method
+        # Update the plot with the new method
+        self._update_connectivity()
 
     def _on_slider_changed(self, value: int) -> None:
         """Update threshold label when slider changes."""

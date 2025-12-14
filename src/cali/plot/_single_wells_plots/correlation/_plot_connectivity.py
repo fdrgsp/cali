@@ -19,6 +19,15 @@ if TYPE_CHECKING:
     from cali.sqlmodel._model import FOVAnalysis
 
 
+SELECTED_COLOR = (25, 255, 25, 230)  # green
+CORRELATED_COLOR = (255, 255, 0, 255)  # yellow
+CORRELATED_WIDTH = 2.5  # width of edges to correlated neighbors
+NODES_COLOR = (200, 200, 200, 255)  # light gray
+NODES_COLOR_OUTLINE = (50, 50, 50, 255)  # dark gray
+EDGE_COLOR = (100, 100, 100, 220)  # gray
+EDGE_WIDTH = 5
+
+
 def plot_connectivity_graph(
     widget: _SingleWellGraphWidget,
     adjacency: np.ndarray,
@@ -68,7 +77,7 @@ def plot_connectivity_graph(
     base_brushes = graph_item.property("base_brushes")
     if base_brushes is None:
         n = adjacency.shape[0]
-        base_brushes = [pg.mkBrush(200, 200, 200, 255)] * n
+        base_brushes = [pg.mkBrush(*NODES_COLOR)] * n
 
     # Store references for highlight / clear
     plot.setProperty("connectivity_graph_item", graph_item)
@@ -176,9 +185,9 @@ def _highlight_node_and_neighbors(
 
     # Build new brush list from base
     new_brushes = list(base_brushes)
-    new_brushes[node_index] = pg.mkBrush(25, 255, 25, 230)  # clicked
+    new_brushes[node_index] = pg.mkBrush(*SELECTED_COLOR)  # clicked
     for j in neighbors:
-        new_brushes[j] = pg.mkBrush(255, 255, 0, 255)  # neighbors
+        new_brushes[j] = pg.mkBrush(*CORRELATED_COLOR)  # neighbors
 
     # Block signals while updating visual appearance to prevent spurious events
     scatter = graph_item.scatter
@@ -209,7 +218,7 @@ def _highlight_node_and_neighbors(
         edge_item = pg.PlotDataItem(
             [float(x0), float(x1)],
             [float(y0), float(y1)],
-            pen=pg.mkPen(255, 255, 0, 255, width=2.5),
+            pen=pg.mkPen(CORRELATED_COLOR, width=CORRELATED_WIDTH),
         )
         plot.addItem(edge_item)
         edge_items.append(edge_item)
@@ -287,16 +296,18 @@ def _create_pyqtgraph_connectivity_item(
         edge_weights = np.array([], dtype=float)
 
     # 4) Edge widths
-    edge_widths = _normalize_edge_widths(edge_weights, min_width=1.0, max_width=5.0)
+    edge_widths = _normalize_edge_widths(
+        edge_weights, min_width=1.0, max_width=EDGE_WIDTH
+    )
 
     # 5) Node symbols/labels
     # symbolBrush: fill color
-    brushes = [pg.mkBrush(200, 200, 200, 255)] * n
+    brushes = [pg.mkBrush(*NODES_COLOR)] * n
     # symbolPen: outline
-    pens = [pg.mkPen(50, 50, 50, 255, width=1.0)] * n
+    pens = [pg.mkPen(*NODES_COLOR_OUTLINE, width=1.0)] * n
 
     # Edge pens (one per edge)
-    edge_pens = [pg.mkPen(100, 100, 100, 220, width=w) for w in edge_widths]
+    edge_pens = [pg.mkPen(*EDGE_COLOR, width=w) for w in edge_widths]
 
     # 6) Node text labels (ROI labels as strings)
     labels = [str(lbl) for lbl in roi_labels]
@@ -471,20 +482,22 @@ def _plot_connectivity_network_data(
     if fov_analysis is None:
         return
 
-    # Get threshold from widget (stored as float attribute)
+    # Get threshold and method from widget (stored as attributes)
     threshold = widget._connectivity_threshold
+    method = widget._connectivity_method
 
     # Show the threshold control widget
     widget._connectivity_threshold_widget.setVisible(True)
 
-    # Compute connectivity metrics with current threshold
-    # Default to calcium_dec_dff_corr method
-    from cali.analysis._util import _compute_connectivity_metrics
+    # Compute connectivity metrics with current threshold and method
+    from typing import cast
+
+    from cali.analysis._util import ConnectivityMethod, _compute_connectivity_metrics
 
     try:
         adjacency, weights, roi_labels = _compute_connectivity_metrics(
             fov_analysis,
-            method="calcium_dec_dff_corr",
+            method=cast("ConnectivityMethod", method),
             threshold=threshold,
             use_absolute_for_corr=True,
         )
