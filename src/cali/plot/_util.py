@@ -260,9 +260,11 @@ def _get_spikes_over_threshold(
 
 
 def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
-    """Disconnect any hover handlers from previous plots to prevent conflicts."""
+    """Disconnect hover and click handlers from previous plots to prevent conflicts."""
     scene = plot.scene()
-    handler_names = [
+
+    # Hover handlers (connected to sigMouseMoved)
+    hover_handler_names = [
         "sync_hover_handler",
         "ccorr_hover_handler",
         "spike_sync_hover_handler",
@@ -272,6 +274,18 @@ def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
         "spike_maxlag_values_hover_handler",
         "dff_corr_hover_handler",
         "evoked_hover_handler",
+    ]
+    for handler_name in hover_handler_names:
+        old_handler = plot.property(handler_name)
+        if old_handler is not None:
+            try:
+                scene.sigMouseMoved.disconnect(old_handler)
+            except (TypeError, RuntimeError):
+                pass
+            plot.setProperty(handler_name, None)
+
+    # Click handlers (connected to sigMouseClicked)
+    click_handler_names = [
         "amp_raster_click_handler",
         "intensity_heatmap_click_handler",
         "spike_raster_click_handler",
@@ -283,15 +297,17 @@ def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
         "connectivity_bg_click_handler",
         "spike_maxlag_click_handler",
         "spike_maxlag_values_click_handler",
+        "spike_sync_click_handler",
+        "spike_ccorr_click_handler",
         "dff_corr_click_handler",
         "evoked_click_handler",
         "cell_size_click_handler",
     ]
-    for handler_name in handler_names:
+    for handler_name in click_handler_names:
         old_handler = plot.property(handler_name)
         if old_handler is not None:
             try:
-                scene.sigMouseMoved.disconnect(old_handler)
+                scene.sigMouseClicked.disconnect(old_handler)
             except (TypeError, RuntimeError):
                 pass
             plot.setProperty(handler_name, None)

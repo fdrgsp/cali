@@ -615,10 +615,13 @@ class _PeaksHeightWidget(QWidget):
             "ALL FOVs. Peaks below this value are rejected everywhere.\n\n"
             "• Noise Multiplier: Adaptive threshold computed individually for EACH "
             "ROI in EACH FOV.\n"
-            "  Threshold = noise_level * multiplier, where noise_level "
-            "is calculated per ROI using Median Absolute Deviation (MAD).\n\n"
-            "For example, a multiplier of 3.0 can be use to detect events 3 standard "
-            "deviations above noise."
+            "  Threshold = noise_level * multiplier, where noise_level is estimated "
+            "  during OASIS deconvolution: the noise standard deviation (sn) is "
+            "estimated independently for each ROI based on the high-frequency "
+            "components of the raw fluorescence trace using an autoregressive (AR) "
+            "noise model.\n\n"
+            "For example, a multiplier of 3.0 detects events that exceed three times "
+            "the estimated noise level."
         )
 
         self._peaks_height_lbl = QLabel("Minimum Peaks Height:")

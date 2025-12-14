@@ -451,25 +451,9 @@ class _SingleWellGraphWidget(QWidget):
             return
 
         # 1) Disconnect any custom handlers we attached
-        scene = plot.scene()
-        for prop_name, signal_name in [
-            ("ccorr_hover_handler", "sigMouseMoved"),
-            ("ccorr_click_handler", "sigMouseClicked"),
-            ("sync_hover_handler", "sigMouseMoved"),
-            ("sync_click_handler", "sigMouseClicked"),
-            ("connectivity_click_handler", "sigMouseClicked"),
-            ("amp_raster_click_handler", "sigMouseClicked"),
-            ("intensity_heatmap_click_handler", "sigMouseClicked"),
-            ("spike_raster_click_handler", "sigMouseClicked"),
-            ("spike_intensity_heatmap_click_handler", "sigMouseClicked"),
-            ("raster_click_handler", "sigMouseClicked"),
-            ("neuropil_click_handler", "sigMouseClicked"),
-        ]:
-            handler = plot.property(prop_name)
-            if handler is not None:
-                with contextlib.suppress(TypeError, RuntimeError):
-                    getattr(scene, signal_name).disconnect(handler)
-                plot.setProperty(prop_name, None)
+        from cali.plot._util import disconnect_hover_handlers
+
+        disconnect_hover_handlers(plot)
 
         # 2) Clear all items (curves, images, lines, regions, etc.)
         plot.clear()
@@ -734,6 +718,11 @@ class _MultilWellGraphWidget(QWidget):
         if plot is None:
             return
 
+        # Disconnect any custom handlers we attached
+        from cali.plot._util import disconnect_hover_handlers
+
+        disconnect_hover_handlers(plot)
+
         # Clear all items
         plot.clear()
 
@@ -960,15 +949,9 @@ class _ConnectivityThresholdWidget(QGroupBox):
             [
                 "Deconvolved DF/F Correlation",
                 "DF/F Correlation",
-                # "Calcium Peaks Max-Lag",
-                # "Calcium Peaks Jitter Sync",
-                # "Spike Correlation",
-                # "Spike Max-Lag",
-                # "Spike Jitter Sync",
             ]
         )
         self._method_combo.setToolTip("Select connectivity metric method")
-        self._method_combo.currentIndexChanged.connect(self._update_connectivity)
 
         # Threshold slider
         self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
@@ -1008,11 +991,6 @@ class _ConnectivityThresholdWidget(QGroupBox):
         method_map = {
             0: "calcium_dec_dff_corr",
             1: "calcium_dff_corr",
-            # 2: "calcium_peaks_maxlag",
-            # 3: "calcium_peaks_jitter",
-            # 4: "spike_corr",
-            # 5: "spike_maxlag",
-            # 6: "spike_jitter",
         }
         return method_map[self._method_combo.currentIndex()]
 
@@ -1020,6 +998,8 @@ class _ConnectivityThresholdWidget(QGroupBox):
         """Update connectivity method when combo box changes."""
         method = self._get_method_from_combo()
         self._graph._connectivity_method = method
+        # Update the plot with the new method
+        self._update_connectivity()
 
     def _on_slider_changed(self, value: int) -> None:
         """Update threshold label when slider changes."""

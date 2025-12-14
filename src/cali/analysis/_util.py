@@ -658,10 +658,6 @@ def _compute_zero_lag_corr_matrix(
     Uses z-scored traces and computes standard Pearson correlation coefficient
     at zero lag, following the approach used in CaImAn and standard practice.
 
-    Note: This computes zero-lag correlation (standard Pearson R), not max
-    cross-correlation across lags. For lag-invariant correlation, use synchrony
-    metrics instead.
-
     Parameters
     ----------
     traces : list[np.ndarray]

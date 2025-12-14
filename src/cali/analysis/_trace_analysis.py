@@ -27,7 +27,7 @@ def compute_inferred_spike_threshold(
     Parameters
     ----------
     spikes : np.ndarray
-        Inferred spikes from OASIS deconvolution
+        Inferred spikes from OASIS deconvolution (non-negative)
     settings : AnalysisSettings
         Analysis settings containing threshold parameters
 
@@ -39,23 +39,41 @@ def compute_inferred_spike_threshold(
     spike_threshold_value = settings.spike_threshold_value
     spike_threshold_mode = settings.spike_threshold_mode
 
+    # User-provided global threshold (absolute units)
     if spike_threshold_mode == GLOBAL_SPIKE_THRESHOLD:
-        spike_detection_threshold = spike_threshold_value
-    else:  # MULTIPLIER
-        # for spike amp use percentile-based approach to determine noise level
-        non_zero_spikes = spikes[spikes > 0]
-        # need sufficient data for reliable percentile
-        if len(non_zero_spikes) > 5:
-            spike_noise_reference = float(np.percentile(non_zero_spikes, 10))
-        else:
-            spike_noise_reference = 0.01  # fallback value if not enough data
-        spike_detection_threshold = spike_noise_reference * spike_threshold_value
+        return float(spike_threshold_value)
 
-    return spike_detection_threshold
+    # MULTIPLIER mode → estimate noise level from small positive spikes
+    non_zero_spikes = spikes[spikes > 0]
+
+    if non_zero_spikes.size < 5:
+        # Very few spikes: be conservative, basically no detection
+        return np.inf  # type: ignore
+
+    # Use lower half of distribution as "noise-ish" region
+    med_all = np.median(non_zero_spikes)
+    lower = non_zero_spikes[non_zero_spikes <= med_all]
+    if lower.size < 5:
+        lower = non_zero_spikes
+
+    # Robust noise estimate: MAD-based std
+    med = np.median(lower)
+    mad = np.median(np.abs(lower - med)) / 0.6745 if lower.size > 1 else 0.0
+
+    if mad == 0.0:
+        # All small spikes almost identical → threshold slightly above them
+        return float(med * spike_threshold_value)
+
+    # Interpret spike_threshold_value as "k" in med + k*noise
+    k = float(spike_threshold_value)
+    the = med + k * mad
+
+    return float(the)
 
 
 def compute_calcium_peak_detection_thresholds(
     dec_dff: np.ndarray,
+    noise: float | None,
     settings: "AnalysisSettings",
 ) -> tuple[float, float]:
     """Compute thresholds for peak detection.
@@ -64,6 +82,9 @@ def compute_calcium_peak_detection_thresholds(
     ----------
     dec_dff : np.ndarray
         Deconvolved dF/F trace
+    noise : float | None
+        Estimated noise level; if None, it will be computed from dec_dff
+        as Median Absolute Deviation (MAD)
     settings : AnalysisSettings
         Analysis settings containing threshold parameters
 
@@ -73,15 +94,14 @@ def compute_calcium_peak_detection_thresholds(
         - peaks_height_dec_dff: Height threshold for peak detection
         - peaks_prominence_dec_dff: Prominence threshold
     """
-    # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
-    noise_level_dec_dff = float(
-        np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745
-    )
+    if noise is None:
+        # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
+        noise = float(np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745)
 
     # Set prominence threshold (how much peaks must stand out from surroundings)
     # Use a fraction of noise level to be less restrictive than height threshold
     prom_multiplier = settings.peaks_prominence_multiplier
-    peaks_prominence_dec_dff: float = noise_level_dec_dff * prom_multiplier
+    peaks_prominence_dec_dff: float = noise * prom_multiplier
 
     # use the peaks height widget to get the height threshold
     # if the mode is GLOBAL_HEIGHT, use the value directly, otherwise
@@ -91,7 +111,7 @@ def compute_calcium_peak_detection_thresholds(
     if peaks_height_mode == GLOBAL_HEIGHT:
         peaks_height_dec_dff = peaks_height_value
     else:  # MULTIPLIER
-        peaks_height_dec_dff = noise_level_dec_dff * peaks_height_value
+        peaks_height_dec_dff = noise * peaks_height_value
 
     return peaks_height_dec_dff, peaks_prominence_dec_dff
 

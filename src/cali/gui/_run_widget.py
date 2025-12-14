@@ -92,7 +92,7 @@ class _RunCaliWidget(QWidget):
         self._save_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-cog")))
         self._load_settings_btn = QPushButton()
         self._load_settings_btn.setSizePolicy(*FIXED)
-        self._load_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:file-upload-outline")))
+        self._load_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:cog-clockwise")))
 
         self._run_btn = QPushButton("Run")
         self._run_btn.setSizePolicy(*FIXED)
