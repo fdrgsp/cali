@@ -608,7 +608,7 @@ class ExtractionRunner:
                 dff,
                 p=2,  # AR(2); set to 1 if you want AR(1)
                 range_ff=[0.25, 0.5],
-                method="mean",  # median or logmexp (exponentiated mean of logvalues)
+                method="median",  # mean or logmexp (exponentiated mean of logvalues)
                 lags=10,
                 fudge_factor=0.98,
             )
@@ -618,7 +618,7 @@ class ExtractionRunner:
                 dff,
                 p=2,  # AR(2); set to 1 if you want AR(1)
                 range_ff=[0.25, 0.5],
-                method="mean",  # median or logmexp (exponentiated mean of logvalues)
+                method="median",  # mean or logmexp (exponentiated mean of logvalues)
                 lags=10,
                 fudge_factor=0.98,
             )
