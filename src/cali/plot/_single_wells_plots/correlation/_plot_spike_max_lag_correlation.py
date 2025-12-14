@@ -189,9 +189,9 @@ def _plot_spike_max_lag_correlation_data(
     # ---------------- IMAGE ITEM (centered, full view) ---------------- #
     img = pg.ImageItem(corr)
 
-    # viridis colormap (cross-correlation ranges from -1 to 1)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
-    img.setLevels((-1.0, 1.0))  # cross-correlation range
+    # viridis colormap (cross-correlation ranges from 0 to 1)
+    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
+    img.setLevels((0.0, 1.0))  # cross-correlation range
 
     plot.addItem(img)
 
@@ -222,7 +222,7 @@ def _plot_spike_max_lag_correlation_data(
 
     # Add colorbar
     add_colorbar_to_widget(
-        widget, vmin=-1.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
     )
 
     # ---------------- Hover + Click interaction ---------------- #

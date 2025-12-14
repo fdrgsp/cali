@@ -7,7 +7,7 @@ A Gui for Calcium Imaging Data Visualization, Segmentation and Analysis
 
 [🚧 WIP 🚧]
 
-`cali` is package that provides a gui to load calcium imaging timelapse data, segment cells using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
+`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
 ## To Run
 
@@ -125,9 +125,11 @@ The segmentation results and neuropil masks (if any) will be displayed in the im
 
 ### Visualization Tab
 
-The visualization tab allows the user to explore the results of the analysis for the selected *Run*. 
+The visualization tab allows the user to explore the results of the analysis for the selected *Run*.
 
 Two tabs are available, the `Single Well` tab to visualize the results for a single well/fov and the `Multi well` tab to visualize summary metrics across all wells/fovs.
+
+The plots are interactive and can be zoomed/panned and by clicking on a trace or data point, the corresponding ROI will be highlighted in the image viewer (and vice versa).
 
 #### Single Well Tab
 
@@ -155,19 +157,191 @@ The multi well tab allows the user to visualize summary metrics across all wells
 
 #### DF/F Calculation
 
+**Purpose**: ΔF/F (Delta F over F) is a standard fluorescence normalization method in calcium imaging that represents relative changes in fluorescence intensity. This normalization accounts for baseline differences in fluorescence between cells and provides a measure of relative activity.
+
+**Calculation**:
+
+$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$
+
+where:
+
+- $F(t)$ is the raw fluorescence at time $t$
+- $F_0(t)$ is the baseline fluorescence estimated from a sliding window
+
+The baseline $F_0(t)$ is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
+
+**GUI Parameters**:
+
+- **Window Size** (ms): Size of the sliding window for baseline calculation
+
 #### OASIS Deconvolution
+
+**Purpose**: This implementation uses the [OASIS algorithm](https://github.com/j-friedrich/OASIS) (Friedrich et al., 2017) to deconvolve the calcium signal (ΔF/F) to infer the underlying spike activity.
+
+`OASIS` is used on each ROI to estimate the ΔF/F calcium traces noise level (later used for calcium peaks detection) and to both obtain a deconvolved (denoised) calcium trace and an inferred spike train trace.
+
+**GUI Parameters**:
+Currently, only the following parameters are exposed in the GUI:
+
+- **Decay Constant** ($\tau$, seconds): Time constant for calcium decay. If set to 0 (auto), `OASIS` will estimate it from the data.
+
+The other `OASIS` parameters are for now set to default values:
+
+- for noise estimation:
+
+  - **AR Model**: 1 (first-order autoregressive model)
+  - **Method**: median
+  - **Lags**: 10
+  - **Fudge Factor**: 0.98
+
+- for deconvolution:
+
+   - **Penalty**: 1 (L1 penalty for spike inference)
 
 ### Analysis
 
 #### Calcium Peak Detection
 
+**Purpose**: Identify significant calcium transients (peaks) in the deconvolved ΔF/F trace.
+
+**Calculation**: Peaks are detected using [scipy.signal.find_peaks](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html).
+
+We use height, prominence and minimum distance thresholds to identify peaks.
+
+There are two modes to determine the height thresholds:
+
+- **MULTIPLIER**: height threshold is computed dynamically for each ROI as a multiple of the noise level estimated during OASIS deconvolution (recommended).
+
+- **GLOBAL**: fixed absolute height value specified by the user. The exact same value is used for all ROIs in all wells/fovs. This can be useful mainly for testing purposes as it does not adapt to different noise levels across ROIs.
+
+The prominence threshold is always computed as a multiple of the noise level estimated during OASIS deconvolution.
+
+Minimum distance between peaks is specified in milliseconds and determines how close in time two peaks can be to be considered separate events.
+
+After detection, the following metrics are computed for each ROI:
+
+- Peak amplitudes (Deconvolved ΔF/F values at peak locations (a.u.))
+- Calcium Peaks Event frequency: number of peaks per second
+- Inter-event intervals (IEI): time between consecutive peaks
+
+After detection, the following metrics are computed for each ROI:
+
+- Peak amplitudes (Deconvolved ΔF/F values at peak locations (a.u.))
+- Calcium Peaks Event frequency: number of peaks per second
+- Inter-event intervals (IEI): time between consecutive peaks
+
+**GUI Parameters**:
+
+- **Height Mode**:  MULTIPLIER (× noise level) or GLOBAL (absolute value)
+- **Height Value**: Threshold for peak amplitude (value * noise if MULTIPLIER mode, absolute value if GLOBAL)
+- **Prominence Multiplier**: Minimum prominence relative to noise
+- **Min Distance** (ms): Minimum time between consecutive peaks
+
 #### Calcium Burst Detection
+
+**Purpose**: Detect periods of sustained elevated population activity in calcium signals. Bursts represent synchronized network events where many cells are co-active.
+
+**Calculation**: Burst detection operates on population-level activity:
+
+1. **Population Activity**: Compute mean deconvolved ΔF/F across all active ROIs
+2. **Smoothing**: Apply Gaussian filter to reduce noise (optional))
+3. **Threshold**: Detect periods where smoothed activity exceeds a fraction of maximum
+4. **Duration Filter**: Keep only bursts lasting at least minimum duration
+
+**GUI Parameters**:
+
+- **Burst Threshold** (%): Percentage of maximum smoothed activity
+- **Min Duration** (ms): Minimum burst duration to retain
+- **Gaussian Sigma** (s): Smoothing parameter for population activity
+
+**Computed Metrics**:
+
+- Burst count
+- Average burst duration
+- Average inter-burst interval
+- Burst onset/offset times
 
 #### Inferred Spikes Thresholding
 
+**Purpose**: Convert continuous spike probability traces from OASIS into binary spike trains by applying an adaptive threshold.
+
+**Calculation**: Threshold is computed adaptively based on the distribution of positive (non-zero) spike values:
+
+There are two modes to determine the spike threshold:
+
+- **MULTIPLIER**: threshold is computed dynamically for each ROI as a multiple of the noise level estimated as Median Absolute Deviation (MAD) of the positive spike values (recommended).
+
+- **GLOBAL**: fixed absolute threshold value specified by the user. The exact same value is used for all ROIs in all wells/fovs. This can be useful mainly for testing purposes as it does not adapt to different noise levels across ROIs.
+
+**GUI Parameters**:
+
+- **Threshold Mode**: MULTIPLIER (× MAD estimated noise level) or GLOBAL (absolute value)
+- **Spike Threshold Value**: Threshold for spike detection (value * noise if MULTIPLIER mode, absolute value if GLOBAL)
+
 #### Inferred Spikes Burst Detection
+
+**Purpose**: Detect periods of sustained elevated population spiking activity. Spike bursts represent synchronized network firing events.
+
+**Calculation**: Similar to calcium burst detection, but operates on binary spike trains:
+
+1. **Population Spike Rate**: Compute fraction of active ROIs per frame
+2. **Smoothing**: Apply Gaussian filter with standard deviation $\sigma$ (optional)
+3. **Threshold**: Detect periods where smoothed rate exceeds percentage threshold
+4. **Duration Filter**: Keep bursts lasting at least minimum duration
+
+**GUI Parameters**:
+
+- **Burst Threshold** (%): Percentage of ROIs that must be active
+- **Min Duration** (ms): Minimum burst duration
+- **Gaussian Sigma** (s): Smoothing parameter
+
+**Computed Metrics**:
+
+- Number of network bursts
+- Average burst duration
+- Average inter-burst interval
+- Population firing rate during bursts
 
 #### Inferred Spikes Max-Lag Cross-Correlation
 
+**Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs).
+
+**Calculation**:
+
+1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike)
+2. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
+3. **Find maximum**: Return the correlation value and lag that gives the highest correlation
+
+**Output**: Two heatmaps are generated:
+
+- **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
+- **Lag Matrix**: Lag values in frames (± frame shifts where maximum correlation occurs)
+   - Positive lag: ROI j spikes lag behind ROI i
+   - Negative lag: ROI j spikes lead ROI i
+   - Lag = 0: Synchronous activity
+
+**GUI Parameters**:
+
+- **Max Lag** (ms): Maximum time offset to search
+
+**Summary Metric**: Global synchrony = median of row means (excluding diagonal)
+
 #### Inferred Spikes Jitter Synchrony
 
+**Purpose**: Measure synchrony between spike trains within a temporal tolerance window.
+
+**Calculation**: For each pair of ROIs, compute bidirectional jitter synchrony:
+
+1. Input: Two binary spike trains (arrays of 0s and 1s representing spike times).
+2. For each spike in neuron i, check whether neuron j fires within a small time tolerance window (e.g., ±2 frames). If yes, count this as a coincident spike.
+3. Repeat in the opposite direction: For each spike in neuron j, check whether neuron i fires within the same tolerance window.
+4. Combine coincidences: add the coincidences from both directions.
+5. Normalize: divide the total coincidences by the total number of spikes across both neurons. This yields a synchrony score between 0 and 1, where:
+   - 0 → no spikes occur near each other
+   - 1 → every spike from both neurons has a partner within the jitter window
+
+**GUI Parameters**:
+
+- **Jitter Window** (ms): Temporal tolerance for spike coincidence
+
+**Summary Metric**: Global synchrony = median of row means (excluding diagonal)

@@ -482,16 +482,18 @@ def _get_spike_synchrony(spike_synchrony_matrix: np.ndarray | None) -> float | N
 def _calculate_cross_correlation_with_lag(
     events_i: np.ndarray, events_j: np.ndarray, max_lag: int
 ) -> tuple[float, int]:
-    """Calculate maximum Pearson cross-correlation within lag range.
+    """Calculate maximum cross-correlation within lag range.
 
-    Computes the Pearson correlation coefficient (CCG) at each lag and finds the
-    lag with maximum correlation. Uses numba-optimized implementation for speed.
+    Computes normalized dot product (cross-correlogram style) at each lag and
+    finds the lag with maximum correlation. For binary spike trains, this approach
+    is preferred over Pearson correlation because zeros represent meaningful
+    information (absence of spikes). Uses numba-optimized implementation for speed.
 
     Returns
     -------
     tuple[float, int]
         (max_correlation, lag_at_max) where:
-        - max_correlation: Pearson correlation value in [-1, 1]
+        - max_correlation: normalized correlation value in [0, 1]
         - lag_at_max: lag in frames where max occurs.
           Positive means events_j lags behind events_i.
           Negative means events_j leads events_i.
@@ -597,53 +599,38 @@ def _jitter_window_synchrony_numba(
 def _max_cross_correlation_numba(
     events_i: np.ndarray, events_j: np.ndarray, max_lag: int
 ) -> tuple[float, int]:  # pragma: no cover
-    """Numba-optimized maximum Pearson cross-correlation within lag range.
+    """Numba-optimized maximum cross-correlation within lag range.
 
-    Computes proper Pearson correlation coefficient (with mean centering) at each
-    lag and finds the maximum. Much faster than scipy.signal.correlate for repeated
-    pairwise computations.
+    Computes normalized dot product (NOT Pearson correlation) at each lag,
+    following standard spike train analysis methodology. For binary spike trains,
+    zeros represent meaningful information (absence of spikes), so mean-centering
+    is inappropriate. This matches cross-correlogram (CCG) analysis used in
+    electrophysiology.
 
     Returns
     -------
     tuple[float, int]
         (max_correlation, lag_at_max) where:
-        - max_correlation: Pearson r value in [-1, 1]
+        - max_correlation: normalized correlation value in [0, 1]
         - lag_at_max: lag relative to center where maximum occurs
         Positive lag means events_j lags behind events_i.
     """
     n = len(events_i)
 
-    # Compute means
-    mean_i = 0.0
-    mean_j = 0.0
-    for k in range(n):
-        mean_i += events_i[k]
-        mean_j += events_j[k]
-    mean_i /= n
-    mean_j /= n
-
-    # Center the signals (subtract means)
-    centered_i = np.empty(n, dtype=np.float64)
-    centered_j = np.empty(n, dtype=np.float64)
-    for k in range(n):
-        centered_i[k] = events_i[k] - mean_i
-        centered_j[k] = events_j[k] - mean_j
-
-    # Precompute normalizations on centered signals
+    # Precompute normalizations (without mean centering)
     auto_i = 0.0
     auto_j = 0.0
     for k in range(n):
-        auto_i += centered_i[k] * centered_i[k]
-        auto_j += centered_j[k] * centered_j[k]
+        auto_i += events_i[k] * events_i[k]
+        auto_j += events_j[k] * events_j[k]
 
     if auto_i == 0.0 or auto_j == 0.0:
         return 0.0, 0
 
     normalization = np.sqrt(auto_i * auto_j)
 
-    # Compute Pearson cross-correlation for each lag
-    # Initialize to -1.0 to allow negative maxima
-    max_corr = -1.0
+    # Compute cross-correlation for each lag
+    max_corr = 0.0
     best_lag = 0
 
     for lag in range(-max_lag, max_lag + 1):
@@ -652,11 +639,11 @@ def _max_cross_correlation_numba(
         if lag >= 0:
             # j lags behind i: align i[0:n-lag] with j[lag:n]
             for k in range(n - lag):
-                corr_sum += centered_i[k] * centered_j[k + lag]
+                corr_sum += events_i[k] * events_j[k + lag]
         else:
             # j leads i: align i[-lag:n] with j[0:n+lag]
             for k in range(n + lag):
-                corr_sum += centered_i[k - lag] * centered_j[k]
+                corr_sum += events_i[k - lag] * events_j[k]
 
         corr_normalized = corr_sum / normalization
 
@@ -664,8 +651,8 @@ def _max_cross_correlation_numba(
             max_corr = corr_normalized
             best_lag = lag
 
-    # Clip to [-1, 1] range to handle numerical errors
-    max_corr = min(max(max_corr, -1.0), 1.0)
+    # Clip to [0, 1] range to handle numerical errors
+    max_corr = min(max(max_corr, 0.0), 1.0)
 
     return max_corr, best_lag
 
