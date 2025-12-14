@@ -962,7 +962,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.dff_window == other.dff_window
             and self.frame_rate == other.frame_rate
             and self.pixel_size == other.pixel_size
-            # and self.threads == other.threads
+            and self.threads == other.threads
         )
 
     def __hash__(self) -> int:
@@ -976,7 +976,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.dff_window,
                 self.frame_rate,
                 self.pixel_size,
-                # self.threads,
+                self.threads,
             )
         )
 

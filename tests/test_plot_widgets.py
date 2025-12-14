@@ -99,7 +99,9 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    assert disabled_count == 57
+    assert (
+        disabled_count == 61
+    )  # Updated: added 2 stim windowed + 2 non-stim windowed correlation plots
 
 
 def test_combo_enabled_with_fov_and_run_id(

@@ -451,25 +451,9 @@ class _SingleWellGraphWidget(QWidget):
             return
 
         # 1) Disconnect any custom handlers we attached
-        scene = plot.scene()
-        for prop_name, signal_name in [
-            ("ccorr_hover_handler", "sigMouseMoved"),
-            ("ccorr_click_handler", "sigMouseClicked"),
-            ("sync_hover_handler", "sigMouseMoved"),
-            ("sync_click_handler", "sigMouseClicked"),
-            ("connectivity_click_handler", "sigMouseClicked"),
-            ("amp_raster_click_handler", "sigMouseClicked"),
-            ("intensity_heatmap_click_handler", "sigMouseClicked"),
-            ("spike_raster_click_handler", "sigMouseClicked"),
-            ("spike_intensity_heatmap_click_handler", "sigMouseClicked"),
-            ("raster_click_handler", "sigMouseClicked"),
-            ("neuropil_click_handler", "sigMouseClicked"),
-        ]:
-            handler = plot.property(prop_name)
-            if handler is not None:
-                with contextlib.suppress(TypeError, RuntimeError):
-                    getattr(scene, signal_name).disconnect(handler)
-                plot.setProperty(prop_name, None)
+        from cali.plot._util import disconnect_hover_handlers
+
+        disconnect_hover_handlers(plot)
 
         # 2) Clear all items (curves, images, lines, regions, etc.)
         plot.clear()
@@ -733,6 +717,11 @@ class _MultilWellGraphWidget(QWidget):
         plot = self.plot_item
         if plot is None:
             return
+
+        # Disconnect any custom handlers we attached
+        from cali.plot._util import disconnect_hover_handlers
+
+        disconnect_hover_handlers(plot)
 
         # Clear all items
         plot.clear()

@@ -46,12 +46,16 @@ from ._single_wells_plots.correlation._plot_connectivity import (
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
     _plot_sorted_dec_dff_correlation,
+    _plot_sorted_dec_dff_correlation_windowed_by_stim,
+    _plot_sorted_dec_dff_correlation_windowed_non_stim,
     _plot_sorted_spike_correlation,
+    _plot_sorted_spike_correlation_windowed_by_stim,
+    _plot_sorted_spike_correlation_windowed_non_stim,
     _plot_sorted_spike_max_lag_correlation,
     _plot_sorted_spike_synchrony,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
-    _plot_spike_cross_correlation_data,
+    _plot_spike_correlation_data,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
@@ -464,7 +468,7 @@ AnalysisProduct(
 AnalysisProduct(
     name="Inferred Spikes Thresholded Correlation",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_spike_cross_correlation_data,
+    analyzer=_plot_spike_correlation_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -565,9 +569,17 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Inferred Spikes Thresholded Synchrony",
+    name="Sorted Calcium Deconvolved ΔF/F0 Correlation (Stim Windows ±250ms)",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_spike_synchrony,
+    analyzer=_plot_sorted_dec_dff_correlation_windowed_by_stim,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Calcium Deconvolved ΔF/F0 Correlation (Non-Stim Periods)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_dec_dff_correlation_windowed_non_stim,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
@@ -576,6 +588,30 @@ AnalysisProduct(
     name="Sorted Inferred Spikes Thresholded Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Correlation (Stim Windows ±250ms)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_correlation_windowed_by_stim,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Correlation (Non-Stim Periods)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_correlation_windowed_non_stim,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded Synchrony",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_synchrony,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

@@ -638,11 +638,11 @@ class CaliRunner:
                         )
 
                     # Process in batches
-                    # Use a batch size that is at least the number of threads to
-                    # ensure utilization but not too large to consume too much memory.
-                    # Default to commit_batch_size, but ensure min of threads
+                    # Use a batch size that matches the number of threads to
+                    # ensure good utilization without consuming too much memory.
+                    # Loading too many FOVs at once can cause OOM errors.
                     assert extraction_threads is not None
-                    batch_size = max(self.commit_batch_size, extraction_threads)
+                    batch_size = extraction_threads
 
                     positions_processed = []
                     fov_count = 0
