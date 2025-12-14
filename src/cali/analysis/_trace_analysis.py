@@ -56,6 +56,7 @@ def compute_inferred_spike_threshold(
 
 def compute_calcium_peak_detection_thresholds(
     dec_dff: np.ndarray,
+    noise: float | None,
     settings: "AnalysisSettings",
 ) -> tuple[float, float]:
     """Compute thresholds for peak detection.
@@ -64,6 +65,9 @@ def compute_calcium_peak_detection_thresholds(
     ----------
     dec_dff : np.ndarray
         Deconvolved dF/F trace
+    noise : float | None
+        Estimated noise level; if None, it will be computed from dec_dff
+        as Median Absolute Deviation (MAD)
     settings : AnalysisSettings
         Analysis settings containing threshold parameters
 
@@ -73,15 +77,14 @@ def compute_calcium_peak_detection_thresholds(
         - peaks_height_dec_dff: Height threshold for peak detection
         - peaks_prominence_dec_dff: Prominence threshold
     """
-    # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
-    noise_level_dec_dff = float(
-        np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745
-    )
+    if noise is None:
+        # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
+        noise = float(np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745)
 
     # Set prominence threshold (how much peaks must stand out from surroundings)
     # Use a fraction of noise level to be less restrictive than height threshold
     prom_multiplier = settings.peaks_prominence_multiplier
-    peaks_prominence_dec_dff: float = noise_level_dec_dff * prom_multiplier
+    peaks_prominence_dec_dff: float = noise * prom_multiplier
 
     # use the peaks height widget to get the height threshold
     # if the mode is GLOBAL_HEIGHT, use the value directly, otherwise
@@ -91,7 +94,7 @@ def compute_calcium_peak_detection_thresholds(
     if peaks_height_mode == GLOBAL_HEIGHT:
         peaks_height_dec_dff = peaks_height_value
     else:  # MULTIPLIER
-        peaks_height_dec_dff = noise_level_dec_dff * peaks_height_value
+        peaks_height_dec_dff = noise * peaks_height_value
 
     return peaks_height_dec_dff, peaks_prominence_dec_dff
 

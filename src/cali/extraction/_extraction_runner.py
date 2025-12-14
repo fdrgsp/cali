@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Callable, cast
 
 import numpy as np
-from oasis.functions import deconvolve
+from oasis.functions import deconvolve, estimate_parameters
 from tqdm import tqdm
 
 from cali._constants import (
@@ -595,21 +595,58 @@ class ExtractionRunner:
             return None
 
         # run OASIS deconvolution on the dff trace
-        # compute the decay constant
-        tau = extraction_settings.decay_constant
-        penalty = 1  # TODO: expose penalty in gui
-        g: float | None = None
+        tau = extraction_settings.decay_constant or 0.0  # seconds
+        frame_rate = len(dff) / tot_time_sec  # Hz
         if tau > 0.0:
-            fs = len(dff) / tot_time_sec  # Sampling frequency (Hz)
-            g = np.exp(-1 / (fs * tau))
-        # deconvolve the dff trace with adaptive penalty
-        dec_dff, spikes, b, _t, _ = deconvolve(dff, penalty=penalty, g=(g,))
-        dec_dff = cast("np.ndarray", dec_dff)
-        spikes = cast("np.ndarray", spikes)
-        cali_logger.debug(
-            f"📉 Deconvolved ROI {label_value} in {fov_name}:"
-            f" tau_input={tau:.3f}s, tau_fitted={_t}, baseline={b:.4f}."
+            # User-provided decay constant τ → AR(1) coefficient g
+            g1 = float(np.exp(-1.0 / (frame_rate * tau)))  # AR(1) coefficient
+            g = (g1,)  # OASIS expects a tuple
+            optimize_g = 0  # do NOT re-optimize g, user fixed it
+
+            # Estimate only noise from ORIGINAL dff trace
+            _, sn = estimate_parameters(
+                dff,
+                p=2,  # AR(2); set to 1 if you want AR(1)
+                range_ff=[0.25, 0.5],
+                method="mean",  # median or logmexp (exponentiated mean of logvalues)
+                lags=10,
+                fudge_factor=0.98,
+            )
+        else:
+            # Estimate AR parameters + noise from ORIGINAL dff trace
+            g, sn = estimate_parameters(
+                dff,
+                p=2,  # AR(2); set to 1 if you want AR(1)
+                range_ff=[0.25, 0.5],
+                method="mean",  # median or logmexp (exponentiated mean of logvalues)
+                lags=10,
+                fudge_factor=0.98,
+            )
+            # g is already a tuple of length p (e.g. (g1, g2))
+            optimize_g = 0  # set >0 only if you really want refine
+
+        # Deconvolve
+        dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
+            dff,
+            g=g,
+            sn=sn,
+            penalty=1,  # L1 sparsity (standard OASIS)
+            optimize_g=optimize_g,
         )
+        dec_dff = dec_dff.astype(float)
+        spikes = spikes.astype(float)
+
+        # # Optional: recover an effective fitted tau (only meaningful for AR(1))
+        # tau_fit = None
+        # if isinstance(g_fit, (tuple, list, np.ndarray)) and len(g_fit) == 1:
+        #     g1_fit = float(g_fit[0])
+        #     if 0 < g1_fit < 1:
+        #         tau_fit = -1.0 / (frame_rate * np.log(g1_fit))
+
+        # cali_logger.debug(
+        #     f"📉 Deconvolved ROI {label_value} in {fov_name}: "
+        #     f"tau_input={tau:.3f}s, tau_fitted={tau_fit}, baseline={b:.4f}."
+        # )
 
         # Check for cancellation after deconvolution
         if self._check_for_abort_requested():
@@ -663,7 +700,7 @@ class ExtractionRunner:
             # Compute thresholds
             # fmt: off
             spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-            peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, analysis_settings)  # noqa E501
+            peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, sn, analysis_settings)  # noqa E501
             # fmt: on
 
             if self._check_for_abort_requested():

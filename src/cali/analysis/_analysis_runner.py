@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
+from oasis.functions import estimate_parameters
 from tqdm import tqdm
 
 from cali.logger import cali_logger
@@ -266,9 +267,19 @@ class AnalysisRunner:
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
         # Compute thresholds
+
+        # Estimate only noise from ORIGINAL dff trace
+        _, sn = estimate_parameters(
+            traces.dff,
+            p=2,  # AR(2); set to 1 if you want AR(1)
+            range_ff=[0.25, 0.5],
+            method="mean",  # median or logmexp (exponentiated mean of logvalues)
+            lags=10,
+            fudge_factor=0.98,
+        )
         # fmt: off
         spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, analysis_settings)  # noqa E501
+        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, sn, analysis_settings)  # noqa E501
         # fmt: on
 
         if self._check_for_abort_requested():
