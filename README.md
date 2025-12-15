@@ -1,11 +1,9 @@
 # cali
 
-A Gui for Calcium Imaging Data Visualization, Segmentation and Analysis
+A Gui for Calcium Imaging Data Visualization, Segmentation and Analysis (🚧 WIP 🚧)
 
 [![CI](https://github.com/fdrgsp/cali/actions/workflows/ci.yml/badge.svg)](https://github.com/fdrgsp/cali/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/fdrgsp/cali/branch/main/graph/badge.svg)](https://codecov.io/gh/fdrgsp/cali)
-
-[🚧 WIP 🚧]
 
 `cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
@@ -69,7 +67,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
   - the output path for the `cali` project database file, and
   - the name of the project (if you omit `.cali`, it will be added automatically).
 
-[screenshot of the file open dialog]
+<img width="721" height="234" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
 
 **NOTE**: If you are loading a folder of TIFF files, a plate assignment widget will open where you can:
 
@@ -78,7 +76,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
 
 After confirming the plate assignment, the main `cali` window will open. Next time, the project can be loaded directly from the database file.
 
-[screenshot of the plate assignment dialog]
+<img width="1013" height="645" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
 
 ### Main Window
 
@@ -129,7 +127,10 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 
 After setting parameters in each tab, the user can run the pipeline using the run panel at the bottom center of the main window.
 
-[screenshot of the run pipeline panel]
+<br>
+<img width="851" height="160" alt="Screenshot 2025-12-14 at 7 01 27 PM" src="https://github.com/user-attachments/assets/95d08357-b284-486a-9160-b430d4a9247c" />
+<br>
+<br>
 
 The user can select which steps to run (Detection, Extraction, Analysis) using the **Run Options** dropdown and then click **Run**. This runs the selected pipeline steps on all wells/FOVs in the plate and creates a new *Run* in the run panel on the right.
 
