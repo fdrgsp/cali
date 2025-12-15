@@ -45,6 +45,8 @@ export LDFLAGS="-L${SDKROOT}/usr/lib"
 
 Then run your installation command.
 
+---
+
 ## Overview
 
 ### File Formats
@@ -138,6 +140,8 @@ If the user wants to first explore and optimize parameters, a subset of wells/FO
 
 Segmentation results and neuropil masks (if enabled) are displayed in the image viewer by clicking on “Labels”. The rest of the results can be visualized in the **Visualization** tab.
 
+The full pipeline settings can be saved and loaded through the `save` and `load` button next to the `Run` and `Cancel` buttons.
+
 ### Visualization Tab
 
 The Visualization tab allows the user to explore analysis results for the selected *Run*.
@@ -159,7 +163,7 @@ Available visualizations include:
 - **Calcium Metrics**: amplitude, frequency, and other per-ROI metrics.
 - **Calcium and Inferred Spikes Bursts**: burst metrics based on calcium peaks and inferred spikes.
 - **Correlation Metrics**:
-  - pairwise Pearson correlation on calcium traces and inferred spike traces,
+  - pairwise Pearson correlation on calcium traces and inferred spike traces
   - jitter synchrony and max-lag cross-correlation on inferred spikes.
 - **Stimulated vs Non-Stimulated Analysis** (for `Evoked Activity`): visualize and compare metrics between stimulated and non-stimulated ROIs.
 
@@ -185,9 +189,7 @@ If the plate was treated with different conditions (e.g. drug vs control), click
 
 **Calculation**:
 
-\[
-\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}
-\]
+$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$
 
 where:
 
@@ -204,18 +206,18 @@ The baseline \(F_0(t)\) is computed by taking the 10th percentile of the fluores
 
 **Purpose**: `cali` uses the [OASIS algorithm](https://github.com/j-friedrich/OASIS) (Friedrich et al., 2017) to deconvolve the ΔF/F signal and infer the underlying spike activity.
 
-For each ROI, OASIS is used to:
+For each ROI, `OASIS` is used to:
 
-- estimate the noise level of the ΔF/F trace (later used for calcium peak detection), and  
+- estimate the noise level of the ΔF/F trace (later used for calcium peak detection)
 - obtain both a deconvolved (denoised) ΔF/F trace and an inferred spike train.
 
 **GUI Parameters**  
 Currently, only the following parameter is exposed in the GUI:
 
-- **Decay Constant** (\(\tau\), seconds): calcium decay time constant.  
-  - If set to **0 (auto)**, OASIS estimates it from the data.
+- **Decay Constant** (\(\tau\), seconds): calcium decay time constant (depends on the calcium indicator and cell type).
+  - If set to **0 (auto)**, `OASIS` estimates it from the data.
 
-All other OASIS parameters are currently kept at default values:
+All other `OASIS` parameters are currently kept at default values:
 
 - **Noise estimation**:
   - **AR Model**: 1 (first-order autoregressive model)
@@ -225,8 +227,6 @@ All other OASIS parameters are currently kept at default values:
 
 - **Deconvolution**:
   - **Penalty**: 1 (L1 penalty for spike inference)
-
----
 
 ### Analysis
 
@@ -241,12 +241,12 @@ We use **height**, **prominence**, and **minimum distance** thresholds to identi
 There are two modes to determine the peak *height* threshold:
 
 - **MULTIPLIER** (recommended):  
-  The height threshold is computed separately for each ROI as a multiple of the noise level estimated during OASIS-based noise estimation.
+  The height threshold is computed separately for each ROI as a multiple of the noise level estimated during `OASIS`-based noise estimation.
 
 - **GLOBAL**:  
   A fixed absolute height value specified by the user. The same value is used for all ROIs in all wells/FOVs. This is mainly useful for testing, as it does *not* adapt to different noise levels across ROIs.
 
-The **prominence** threshold is always computed as a multiple of the noise level estimated during OASIS.
+The **prominence** threshold is always computed as a multiple of the noise level estimated during `OASIS`.
 
 The **minimum distance** between peaks is specified in milliseconds and determines how close in time two peaks can be while still being considered distinct events.
 
@@ -338,28 +338,29 @@ Two modes are available:
 
 #### Inferred Spikes Max-Lag Cross-Correlation
 
-**Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs) and extracting the maximum Pearson correlation within a limited lag window.
+**Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs).
 
 **Calculation**:
 
-1. **Input**: Two binary spike trains (arrays of 0s and 1s, where 1 = spike, 0 = no spike).
-2. **For each lag** (± `max_lag` frames):  
-   - Shift one spike train relative to the other.  
-   - Compute the **Pearson correlation coefficient** between the two aligned spike trains (mean-centered, normalized by their standard deviations).
-3. **Find maximum**:  
-   - Record the maximum correlation value across all lags and the lag where it occurs.
+1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike)
+2. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
+3. **Find maximum**: Return the correlation value and lag that gives the highest correlation
 
-**Output**: Two matrices are generated:
+**Important Note on Methodology**:
 
-- **Correlation Matrix**: maximum Pearson correlation values (range: \([-1, 1]\)):
-  - \(1\): strong positive relationship at some lag  
-  - \(0\): no linear relationship  
-  - \(-1\): strong anti-correlation (opposite patterns)
+Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation:
+   -    in spike trains, 0 means "no spike" (real information), not missing data
+   -    mean-centering would convert 0→negative values, which doesn't make biological sense for spike absence
+   -    results are in [0, 1] where 1 = perfect synchrony, 0 = no relationship
 
-- **Lag Matrix**: lag values (in frames) at which the maximum correlation occurs:
-  - Positive lag: ROI \(j\) spikes **lag behind** ROI \(i\)
-  - Negative lag: ROI \(j\) spikes **lead** ROI \(i\)
-  - Lag = 0: synchronous activity
+**Output**: Two heatmaps are generated:
+
+- **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
+- **Lag Matrix**: Lag values in frames (± frame shifts where maximum correlation occurs)
+
+   -  Positive lag: ROI j spikes lag behind ROI i
+   -  Negative lag: ROI j spikes lead ROI i
+   -  Lag = 0: Synchronous activity
 
 **GUI Parameters**:
 
@@ -381,9 +382,7 @@ Global synchrony = median of the mean correlation per ROI (row means), excluding
    - \(C_{i \to j}\): coincidences found starting from spikes in \(i\)
    - \(C_{j \to i}\): coincidences found starting from spikes in \(j\)
 5. Combine and normalize:
-   \[
-   S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}
-   \]
+   $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
    where \(N_i\) and \(N_j\) are the total number of spikes in neurons \(i\) and \(j\), respectively.
 
 This yields a synchrony score between 0 and 1:
