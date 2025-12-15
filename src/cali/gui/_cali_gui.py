@@ -2320,9 +2320,39 @@ class CaliGui(QMainWindow):
             return
         well_name = next(iter(well_dict)).data(DATA_POSITION).name
 
-        # add the fov per position to the table
+        # Get FOVs from database for this well to handle wizard-created mappings
+        # where original position names don't match the well name
+        well_fov_positions: set[int] = set()
+        if self._database_path:
+            from sqlmodel import Session, create_engine, select
+
+            from cali.sqlmodel._model import FOV, Well
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+            )
+            try:
+                with Session(engine) as session:
+                    # Get FOVs for this well from database
+                    stmt = (
+                        select(FOV.position_index)
+                        .join(Well)
+                        .where(Well.name == well_name)
+                    )
+                    results = session.exec(stmt).all()
+                    well_fov_positions = set(results)
+            finally:
+                engine.dispose(close=True)
+
+        # Add the FOV per position to the table
         for idx, pos in enumerate(self._data.sequence.stage_positions):
-            if self._default_plate_plan or (pos.name and well_name in pos.name):
+            # Match by position name OR by position index from database
+            if (
+                self._default_plate_plan
+                or (pos.name and well_name in pos.name)
+                or (idx in well_fov_positions)
+            ):
                 self._fov_table.add_position(WellInfo(idx, pos))
 
         if self._fov_table.rowCount() > 0:

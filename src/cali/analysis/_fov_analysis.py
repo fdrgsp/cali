@@ -32,7 +32,7 @@ def compute_fov_analysis(
 ) -> FOVAnalysis | None:
     """Compute FOV-level correlation and synchrony analysis.
 
-    This function calculates 6 pairwise metrics for all active ROIs in a FOV:
+    This function calculates 5 pairwise metrics for all active ROIs in a FOV:
 
     DF/F and Deconvolved DF/F Calcium Traces
     -------------------
@@ -41,13 +41,12 @@ def compute_fov_analysis(
 
     Inferred Spikes
     ---------------
-    3. Zero-lag Pearson correlation on binary spike trains
-    4. Max-lag CCG-like correlation on spike trains (within ± max_lag)
-    5. Jitter synchrony on spike trains (± jitter window)
+    3. Max-lag CCG-like correlation on binary spike trains (within ± max_lag)
+    4. Jitter synchrony on binary spike trains (± jitter window)
 
     Burst Detection
     ---------------
-    6. Additionally, population-level burst detection is performed on both the
+    5. Additionally, population-level burst detection is performed on both the
     inferred spike trains and deconvolved ΔF/F traces, yielding metrics such as
     burst count, average duration, average interval, and population activity traces.
 
@@ -86,7 +85,7 @@ def compute_fov_analysis(
     roi_labels: list[int] = []
     dff_traces: list[np.ndarray] = []
     dec_dff_traces: list[np.ndarray] = []
-    spike_trains: list[np.ndarray] = []
+    spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
     peak_events_dict: dict[str, list[float]] = {}
     spike_data_dict: dict[str, list[float]] = {}
 
@@ -133,9 +132,11 @@ def compute_fov_analysis(
                     peak_array[idx] = 1.0
             peak_events_dict[str(roi.label_value)] = peak_array.tolist()
 
-        # Build spike trains for inferred spikes
+        # Build spike data for inferred spikes
         if traces.inferred_spikes is not None:
             spikes = np.asarray(traces.inferred_spikes, dtype=float)
+
+            # Create binary spike trains for CCG, jitter synchrony, and bursts
             spike_threshold = (
                 data_analysis.inferred_spikes_threshold
                 if data_analysis is not None
@@ -144,8 +145,9 @@ def compute_fov_analysis(
 
             if spike_threshold is not None:
                 # Threshold and binarize
-                spikes[spikes <= spike_threshold] = 0.0
-                spike_train = (spikes > 0.0).astype(float)
+                spikes_binary = spikes.copy()
+                spikes_binary[spikes_binary <= spike_threshold] = 0.0
+                spike_train = (spikes_binary > 0.0).astype(float)
                 # Always append spike train, even if sum == 0
                 # This ensures spike matrices have same dimensions as active_roi_labels
                 spike_trains.append(spike_train)
@@ -159,10 +161,10 @@ def compute_fov_analysis(
         return None
 
     # Calcium trace metrics: ΔF/F and deconvolved ΔF/F
-    # 1. Zero-lag correlation on deconvolved DF/F traces
+    # 1. Zero-lag correlation on ΔF/F traces
     calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
 
-    # 2. Zero-lag correlation on deconvolved DF/F traces
+    # 2. Zero-lag correlation on deconvolved ΔF/F traces
     calcium_dec_dff_corr_matrix = _compute_zero_lag_corr_matrix(dec_dff_traces)
 
     # Convert milliseconds to frames using frame_rate
@@ -185,22 +187,15 @@ def compute_fov_analysis(
         # seconds * fps = frames
         return max(0, int((ms / 1000.0) * frame_rate))
 
-    # Compute spike metrics (3 measurements):
-    # 3. Zero-lag correlation on spike trains
-    spike_corr_matrix = None
-    # 4. Max lag correlation on spikes
+    # 3. Max lag correlation on spikes
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
-    # 5. Jitter synchrony on spikes
+    # 4. Jitter synchrony on spikes
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
-
     if len(spike_data_dict) >= 2:
-        # 3. Zero-lag Pearson correlation on spike trains
-        spike_corr_matrix = _compute_zero_lag_corr_matrix(spike_trains)
-
-        # 4. Max lag correlation on spikes
+        # 3. Max lag correlation on spikes
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
@@ -214,7 +209,7 @@ def compute_fov_analysis(
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-        # 5. Jitter synchrony on spikes
+        # 4. Jitter synchrony on spikes
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
@@ -225,7 +220,7 @@ def compute_fov_analysis(
         if spike_jitter_sync_matrix is not None:
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
 
-    # 6. Burst detection on population spike activity
+    # 5. Burst detection on population spike activity
     spike_burst_count: int | None = None
     spike_burst_avg_duration: float | None = None
     spike_burst_avg_interval: float | None = None
@@ -292,9 +287,6 @@ def compute_fov_analysis(
             else None
         ),
         # Spike metrics
-        spike_correlation_matrix=(
-            spike_corr_matrix.tolist() if spike_corr_matrix is not None else None
-        ),
         spike_max_lag_correlation_matrix=(
             spike_max_lag_corr_matrix.tolist()
             if spike_max_lag_corr_matrix is not None

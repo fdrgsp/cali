@@ -161,9 +161,9 @@ Available visualizations include:
 - **Inferred Spikes**: raw and thresholded inferred spike trains from OASIS.
 - **Raster Plots**: raster plots of calcium peaks and inferred spikes across all ROIs.
 - **Calcium Metrics**: amplitude, frequency, and other per-ROI metrics.
-- **Calcium and Inferred Spikes Bursts**: burst metrics based on calcium peaks and inferred spikes.
+- **Calcium and Inferred Spikes Bursts**: burst metrics based on calcium peaks and inferred spikes (for inferred spikes raster, events are defined as rising edges in the thresholded binary spike train).
 - **Correlation Metrics**:
-  - pairwise Pearson correlation on calcium traces and inferred spike traces
+  - pairwise Pearson correlation on calcium traces
   - jitter synchrony and max-lag cross-correlation on inferred spikes.
 - **Stimulated vs Non-Stimulated Analysis** (for `Evoked Activity`): visualize and compare metrics between stimulated and non-stimulated ROIs.
 
@@ -336,15 +336,37 @@ Two modes are available:
 - Average inter-burst interval  
 - Population firing rate during bursts
 
-#### Inferred Spikes Max-Lag Cross-Correlation
+### Correlation Analysis
+
+#### Pairwise Pearson Correlation on Calcium Traces
+
+**Purpose**: Measure linear relationships between calcium activity patterns across ROIs using ΔF/F or deconvolved ΔF/F traces.
+
+**Calculation**:
+
+1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
+2. **Z-score normalization**: Each trace is mean-centered and divided by its standard deviation
+3. **Compute correlation**: Standard Pearson correlation coefficient is calculated between all pairs of z-scored traces at zero lag
+4. **Output**: NxN correlation matrix where each element represents the correlation between ROI pairs
+
+**Output**:
+- **Correlation Matrix**: Values range from -1 to 1
+  - 1: perfect positive correlation (synchronized calcium activity)
+  - 0: no linear relationship
+  - -1: perfect negative correlation (anti-correlated activity)
+
+**Summary Metric**: Global synchrony = median of row means (excluding diagonal)
+
+#### Max-Lag Cross-Correlation on Inferred Spikes
 
 **Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs).
 
 **Calculation**:
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike)
-2. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
-3. **Find maximum**: Return the correlation value and lag that gives the highest correlation
+2. Spike events are defined as the rising edges in the binary spike trains.
+3. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
+4. **Find maximum**: Return the correlation value and lag that gives the highest correlation
 
 **Important Note on Methodology**:
 
@@ -369,19 +391,20 @@ Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses
 **Summary Metric**:  
 Global synchrony = median of the mean correlation per ROI (row means), excluding the diagonal.
 
-#### Inferred Spikes Jitter Synchrony
+#### Jitter Synchrony on Inferred Spikes
 
 **Purpose**: Measure spike-time synchrony between spike trains within a small temporal tolerance window, independent of exact frame alignment.
 
 **Calculation** (bidirectional jitter-based synchrony):
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s representing spike times).
-2. For each spike in neuron \(i\), check whether neuron \(j\) fires within a temporal tolerance window of \(\pm w\) frames. If yes, count this as a coincident spike.
-3. Repeat in the opposite direction: for each spike in neuron \(j\), check for a spike in neuron \(i\) within \(\pm w\) frames.
-4. Count coincidences in both directions:
+2. Spike events are defined as the rising edges in the binary spike trains.
+3. For each spike in neuron \(i\), check whether neuron \(j\) fires within a temporal tolerance window of \(\pm w\) frames. If yes, count this as a coincident spike.
+4. Repeat in the opposite direction: for each spike in neuron \(j\), check for a spike in neuron \(i\) within \(\pm w\) frames.
+5. Count coincidences in both directions:
    - \(C_{i \to j}\): coincidences found starting from spikes in \(i\)
    - \(C_{j \to i}\): coincidences found starting from spikes in \(j\)
-5. Combine and normalize:
+6. Combine and normalize:
    $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
    where \(N_i\) and \(N_j\) are the total number of spikes in neurons \(i\) and \(j\), respectively.
 

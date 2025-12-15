@@ -62,6 +62,7 @@ class AnalysisSettingsData:
     spikes_data: SpikeData | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
+    threads: int = max((os.cpu_count() or 1) - 2, 1)
 
 
 @dataclass(frozen=True)
@@ -205,6 +206,7 @@ class _AnalysisGUI(QWidget):
             self._spike_wdg.value(),
             self._experiment_type_wdg.value(),
             self._metadata_wdg.value(),
+            self._threads.value(),
         )
 
     def setValue(self, value: AnalysisSettingsData) -> None:
@@ -216,12 +218,7 @@ class _AnalysisGUI(QWidget):
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
-
-    def enable(self, enable: bool) -> None:
-        """Enable or disable the widget."""
-        self._experiment_type_wdg.setEnabled(enable)
-        self._calcium_peaks_wdg.setEnabled(enable)
-        self._spike_wdg.setEnabled(enable)
+        self._threads.setValue(value.threads)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -229,6 +226,7 @@ class _AnalysisGUI(QWidget):
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
         self._metadata_wdg.reset()
+        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.

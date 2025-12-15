@@ -262,12 +262,11 @@ def export_correlation_matrices_to_csv(
     Creates separate CSV files for each correlation type:
     - calcium_dff_correlation.csv
     - calcium_dec_dff_correlation.csv
-    - spike_correlation.csv
     - spike_max_lag_correlation.csv
     - spike_max_lag_values.csv
     - spike_jitter_synchrony.csv
 
-    For evoked experiments, ROIs are ordered with stimulated first, then non-stimulated.
+    ROIs are ordered with stimulated first (if evoked experiment), then non-stimulated.
 
     Parameters
     ----------
@@ -341,12 +340,6 @@ def export_correlation_matrices_to_csv(
                 fov_analysis.calcium_dec_dff_corr_matrix,
                 sorted_roi_names,
                 output_dir / f"{fov_prefix}calcium_dec_dff_correlation.csv",
-            )
-
-            _export_matrix_to_csv(
-                fov_analysis.spike_correlation_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}spike_correlation.csv",
             )
 
             _export_matrix_to_csv(

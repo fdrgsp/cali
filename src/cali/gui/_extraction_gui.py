@@ -49,6 +49,7 @@ class ExtractionSettingsData:
 
     trace_extraction_data: TraceExtractionData | None = None
     metadata_data: MetadataData | None = None
+    threads: int = max((os.cpu_count() or 1) - 2, 1)
 
 
 @dataclass(frozen=True)
@@ -165,6 +166,7 @@ class _ExtractionGUI(QWidget):
                 self._neuropil_wdg.value(), metadata_data.frame_rate
             ),
             metadata_data=metadata_data,
+            threads=self._threads.value(),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -180,12 +182,14 @@ class _ExtractionGUI(QWidget):
             self._neuropil_wdg.setValue(neuropil_data)
         if value.metadata_data is not None:
             self._metadata_wdg.setValue(value.metadata_data)
+        self._threads.setValue(value.threads)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._metadata_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
+        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
     def to_model_settings(self) -> ExtractionSettings:
         """Convert current GUI settings to ExtractionSettings model.

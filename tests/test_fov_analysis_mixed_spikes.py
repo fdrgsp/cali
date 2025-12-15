@@ -82,10 +82,6 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
     assert fov_analysis.active_roi_labels == [1, 2, 3]
 
     # All spike matrices should be 3x3, not 2x2
-    assert fov_analysis.spike_correlation_matrix is not None
-    assert len(fov_analysis.spike_correlation_matrix) == 3
-    assert len(fov_analysis.spike_correlation_matrix[0]) == 3
-
     assert fov_analysis.spike_max_lag_correlation_matrix is not None
     assert len(fov_analysis.spike_max_lag_correlation_matrix) == 3
     assert len(fov_analysis.spike_max_lag_correlation_matrix[0]) == 3
@@ -94,18 +90,12 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
     assert len(fov_analysis.spike_jitter_synchrony_matrix) == 3
     assert len(fov_analysis.spike_jitter_synchrony_matrix[0]) == 3
 
-    # ROI 2 (index 1) should have zero correlation/synchrony with others
-    # since it has no spikes
-    spike_corr = np.array(fov_analysis.spike_correlation_matrix)
-    assert spike_corr[1, 0] == 0.0  # ROI2 vs ROI1
-    assert spike_corr[1, 2] == 0.0  # ROI2 vs ROI3
-    assert spike_corr[0, 1] == 0.0  # ROI1 vs ROI2
-    assert spike_corr[2, 1] == 0.0  # ROI3 vs ROI2
-
-    # ROI 1 and ROI 3 should have non-zero correlation with each other
-    # (could be positive or negative depending on spike timing)
-    assert spike_corr[0, 2] != 0.0
-    assert spike_corr[2, 0] != 0.0
+    # ROI 2 (index 1) should have zero synchrony with others since it has no spikes
+    spike_jitter = np.array(fov_analysis.spike_jitter_synchrony_matrix)
+    assert spike_jitter[1, 0] == 0.0  # ROI2 vs ROI1
+    assert spike_jitter[1, 2] == 0.0  # ROI2 vs ROI3
+    assert spike_jitter[0, 1] == 0.0  # ROI1 vs ROI2
+    assert spike_jitter[2, 1] == 0.0  # ROI3 vs ROI2
 
 
 def test_connectivity_metrics_with_zero_spike_rois() -> None:
@@ -121,16 +111,17 @@ def test_connectivity_metrics_with_zero_spike_rois() -> None:
         [0.8, 0.0, 1.0],  # ROI 3: corr with ROI1, no corr with ROI2, self=1
     ]
 
+    # Test with spike_maxlag method instead (spike_corr was removed)
     fov_analysis = FOVAnalysis(
         id=1,
         active_roi_labels=[1, 2, 3],
-        spike_correlation_matrix=spike_corr_matrix,
+        spike_max_lag_correlation_matrix=spike_corr_matrix,
     )
 
     # This should not raise ValueError about shape mismatch
     adjacency, weights, roi_labels = _compute_connectivity_metrics(
         fov_analysis,
-        method="spike_corr",
+        method="spike_maxlag",
         threshold=0.5,
     )
 
@@ -182,18 +173,18 @@ def test_all_zero_spike_rois() -> None:
     assert fov_analysis is not None
 
     # Spike matrices should still be computed with correct dimensions
-    assert fov_analysis.spike_correlation_matrix is not None
-    assert len(fov_analysis.spike_correlation_matrix) == 2
-    assert len(fov_analysis.spike_correlation_matrix[0]) == 2
+    assert fov_analysis.spike_max_lag_correlation_matrix is not None
+    assert len(fov_analysis.spike_max_lag_correlation_matrix) == 2
+    assert len(fov_analysis.spike_max_lag_correlation_matrix[0]) == 2
 
     # All off-diagonal correlations should be zero
-    spike_corr = np.array(fov_analysis.spike_correlation_matrix)
-    assert spike_corr[0, 1] == 0.0
-    assert spike_corr[1, 0] == 0.0
+    spike_maxlag = np.array(fov_analysis.spike_max_lag_correlation_matrix)
+    assert spike_maxlag[0, 1] == 0.0
+    assert spike_maxlag[1, 0] == 0.0
 
     # Diagonal should still be 1.0 (self-correlation)
-    assert spike_corr[0, 0] == 1.0
-    assert spike_corr[1, 1] == 1.0
+    assert spike_maxlag[0, 0] == 1.0
+    assert spike_maxlag[1, 1] == 1.0
 
 
 def test_mixed_spike_methods_consistent_dimensions() -> None:
@@ -236,20 +227,17 @@ def test_mixed_spike_methods_consistent_dimensions() -> None:
     assert fov_analysis is not None
 
     # All spike methods should produce 3x3 matrices
-    assert fov_analysis.spike_correlation_matrix is not None
     assert fov_analysis.spike_max_lag_correlation_matrix is not None
     assert fov_analysis.spike_jitter_synchrony_matrix is not None
 
-    spike_corr = np.array(fov_analysis.spike_correlation_matrix)
     spike_maxlag = np.array(fov_analysis.spike_max_lag_correlation_matrix)
     spike_jitter = np.array(fov_analysis.spike_jitter_synchrony_matrix)
 
-    assert spike_corr.shape == (3, 3)
     assert spike_maxlag.shape == (3, 3)
     assert spike_jitter.shape == (3, 3)
 
     # All methods should have zero values for non-spiking ROI (index 1)
-    for matrix in [spike_corr, spike_maxlag, spike_jitter]:
+    for matrix in [spike_maxlag, spike_jitter]:
         assert matrix[1, 0] == 0.0
         assert matrix[1, 2] == 0.0
         assert matrix[0, 1] == 0.0

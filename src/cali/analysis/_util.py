@@ -412,9 +412,6 @@ def _get_spike_correlations_matrix(
                 binary_spikes, jitter_window
             )
     else:
-        # Protect cross-correlation with NUMBA_LOCK to prevent thread serialization
-        # scipy.signal.correlate can trigger numba/BLAS operations that aren't
-        # thread-safe during initial compilation/execution
         with _NUMBA_LOCK:
             # Standard numpy implementation for other methods
             synchrony_matrix = np.zeros((n_rois, n_rois))
@@ -1160,10 +1157,6 @@ def _compute_connectivity_metrics(
     elif method == "calcium_peaks_jitter":
         metric = fov_analysis.calcium_peaks_jitter_synchrony_matrix
         is_correlation = False
-
-    elif method == "spike_corr":
-        metric = fov_analysis.spike_correlation_matrix
-        is_correlation = True
 
     elif method == "spike_maxlag":
         metric = fov_analysis.spike_max_lag_correlation_matrix
