@@ -2018,6 +2018,7 @@ class CaliGui(QMainWindow):
                             pixel_size=e_settings.pixel_size,
                             frame_rate=e_settings.frame_rate,
                         ),
+                        threads=e_settings.threads,
                     )
                 )
 
@@ -2064,6 +2065,7 @@ class CaliGui(QMainWindow):
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
                             synchrony_jitter=a_settings.spikes_sync_jitter_window,
                         ),
+                        threads=a_settings.threads,
                     )
                 )
 
