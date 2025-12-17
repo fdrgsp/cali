@@ -7,6 +7,8 @@ A Gui for Calcium Imaging Data Visualization, Segmentation and Analysis (🚧 WI
 
 `cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
+<img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
+
 ## To Run
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` directly without installing it using:
@@ -15,7 +17,7 @@ If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` direc
 
 **Note:** Cellpose is an optional dependency. To use segmentation features, install with:
 
-- `uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp4]"` for Cellpose 4.x (cellpose-sam) (use python 3.11 or greater)
+- `uvx "git+https://github.com/fdrgsp/cali[cp4]"` for Cellpose 4.x (cellpose-sam) (use python 3.11 or greater)
 
 - `uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp3]"` for Cellpose 3.x (use python 3.11 or greater)
 
@@ -69,7 +71,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
   - the output path for the `cali` project database file, and
   - the name of the project (if you omit `.cali`, it will be added automatically).
 
-<img width="721" height="234" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
+<img width="600" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
 
 **NOTE**: If you are loading a folder of TIFF files, a plate assignment widget will open where you can:
 
@@ -78,7 +80,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
 
 After confirming the plate assignment, the main `cali` window will open. Next time, the project can be loaded directly from the database file.
 
-<img width="1013" height="645" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
+<img width="800" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
 
 ### Main Window
 
@@ -88,7 +90,7 @@ The main window contains the following sections:
 - **Center panel**: contains tabs for ROI detection, trace extraction, analysis, and a visualization tab for displaying results.
 - **Right panel**: contains the list of *Runs* the user has performed. `cali` is structured so that each time the user changes pipeline settings and runs the analysis, a new *Run* is created. This allows comparing different settings and results. Selecting a run updates the center panel tabs to show the settings and results for that run.
 
-[screenshot of the main window]
+<img width="1739" height="1095" alt="Screenshot 2025-12-17 at 9 56 06 AM" src="https://github.com/user-attachments/assets/5192b1a5-783e-4636-95ba-a8408d5b6a44" />
 
 ### Pipeline Tabs
 
@@ -98,7 +100,7 @@ Hovering over each parameter in the Detection, Extraction, and Analysis tabs sho
 
 The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Currently, only **Cellpose** is supported as the segmentation method. The user can set Cellpose parameters and run the segmentation.
 
-[screenshot of the detection tab]
+<img width="800" alt="Screenshot 2025-12-17 at 9 58 19 AM" src="https://github.com/user-attachments/assets/d4a9a17f-6688-4d90-a0ce-d71f86033750" />
 
 #### Extraction Tab
 
@@ -111,7 +113,7 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
 
-[screenshot of the extraction tab]
+<img width="800" alt="Screenshot 2025-12-17 at 9 58 26 AM" src="https://github.com/user-attachments/assets/a93c48e6-f688-41f9-ab79-75d008e366b6" />
 
 #### Analysis Tab
 
@@ -123,14 +125,14 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 
-[screenshot of the analysis tab]
+<img width="800" alt="Screenshot 2025-12-17 at 9 58 30 AM" src="https://github.com/user-attachments/assets/4c8c5080-dae1-450c-95f3-c9d90b81ba2f" />
 
 ### Run the Pipeline
 
 After setting parameters in each tab, the user can run the pipeline using the run panel at the bottom center of the main window.
 
 <br>
-<img width="851" height="160" alt="Screenshot 2025-12-14 at 7 01 27 PM" src="https://github.com/user-attachments/assets/95d08357-b284-486a-9160-b430d4a9247c" />
+<img width="800" alt="Screenshot 2025-12-14 at 7 01 27 PM" src="https://github.com/user-attachments/assets/95d08357-b284-486a-9160-b430d4a9247c" />
 <br>
 <br>
 
@@ -167,7 +169,7 @@ Available visualizations include:
   - jitter synchrony and max-lag cross-correlation on inferred spikes.
 - **Stimulated vs Non-Stimulated Analysis** (for `Evoked Activity`): visualize and compare metrics between stimulated and non-stimulated ROIs.
 
-[screenshot of the single well visualization tab]
+<img width="927" height="1041" alt="Screenshot 2025-12-17 at 10 20 23 AM" src="https://github.com/user-attachments/assets/2620b629-c718-46d3-9c3a-eb83ca9ed3f4" />
 
 #### Multi Well Tab
 
