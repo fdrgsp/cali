@@ -35,10 +35,7 @@ def test_wizard_plate_plan_with_data_positions() -> None:
     )
 
     # Simulate data with positions (like from MM-GUI without HCS)
-    data_path = (
-        "/Volumes/T7 Shield/LAM77_NC240503_384_CBD_20240927/"
-        "NC240503_240927_Treated_CBDanalogs.tensorstore.zarr"
-    )
+    data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/no_hcs/no_hcs.tensorstore.zarr"  # noqa: E501
 
     # Create experiment
     experiment = Experiment(name="Test", description="Test")
@@ -50,21 +47,21 @@ def test_wizard_plate_plan_with_data_positions() -> None:
     assert plate is not None, "Plate should be created"
     assert len(plate.wells) == 1, f"Expected 1 well, got {len(plate.wells)}"
     assert plate.wells[0].name == "A1", f"Expected well A1, got {plate.wells[0].name}"
-    assert len(plate.wells[0].fovs) == 6, (
+    assert len(plate.wells[0].fovs) == 2, (
         f"Expected 6 FOVs, got {len(plate.wells[0].fovs)}"
     )
 
     # Verify FOV names are correct
     fov_names = [fov.name for fov in plate.wells[0].fovs]
-    expected_names = [f"A1_{i:04d}" for i in range(6)]
+    expected_names = [f"A1_{i:04d}" for i in range(2)]
     assert fov_names == expected_names, (
         f"FOV names mismatch: {fov_names} != {expected_names}"
     )
 
     # Verify position indices are sequential
     position_indices = [fov.position_index for fov in plate.wells[0].fovs]
-    assert position_indices == list(range(6)), (
-        f"Position indices should be 0-5, got {position_indices}"
+    assert position_indices == list(range(2)), (
+        f"Position indices should be 0-1, got {position_indices}"
     )
 
 

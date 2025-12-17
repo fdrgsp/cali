@@ -387,75 +387,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
-
-        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-        # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # self._initialize_from_database(db_path, data_path)
-
-        # self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._database_path = "tests/test_data/spontaneous/results.cali"
-        # self._output_path = "tests/test_data/spontaneous/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        # self._initialize_from_database(self._database_path, self._data_path)
-
-        # USED IN TESTS -------------------------------------------------
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
-
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/exp.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._initialize_from_database(self._database_path, self._data_path)
-
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._output_path = "tests/test_data/multi_pos/"
-
-        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
-        # self._output_path = "tests/test_data/test_for_plot/"
-
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
-        # self._data_path = "/Volumes/T7 Shield/Phenix/out"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-        # self._initialize_from_directories(
-        #     self._data_path, self._output_path, "phenix.cali"
-        # )
-
-        # ===========================
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/multi_pos/"
-
         self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
         self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
         self._output_path = "tests/test_data/data_and_db_for_tests/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/")
-
-        # self._database_path = (
-        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
-        # )
-        # self._data_path = (
-        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-        #     "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # )
-        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
