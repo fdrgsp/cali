@@ -352,6 +352,10 @@ Two modes are available:
 4. **Output**: NxN correlation matrix where each element represents the correlation between ROI pairs
 
 **Output**:
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
 - **Correlation Matrix**: Values range from -1 to 1
   - 1: perfect positive correlation (synchronized calcium activity)
   - 0: no linear relationship
@@ -373,18 +377,19 @@ Two modes are available:
 **Important Note on Methodology**:
 
 Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation:
-   -    in spike trains, 0 means "no spike" (real information), not missing data
-   -    mean-centering would convert 0→negative values, which doesn't make biological sense for spike absence
-   -    results are in [0, 1] where 1 = perfect synchrony, 0 = no relationship
+
+- in spike trains, 0 means "no spike" (real information), not missing data
+- mean-centering would convert 0→negative values, which doesn't make biological sense for spike absence
+- results are in [0, 1] where 1 = perfect synchrony, 0 = no relationship
 
 **Output**: Two heatmaps are generated:
 
 - **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
 - **Lag Matrix**: Lag values in frames (± frame shifts where maximum correlation occurs)
 
-   -  Positive lag: ROI j spikes lag behind ROI i
-   -  Negative lag: ROI j spikes lead ROI i
-   -  Lag = 0: Synchronous activity
+  - Positive lag: ROI j spikes lag behind ROI i
+  - Negative lag: ROI j spikes lead ROI i
+  - Lag = 0: Synchronous activity
 
 **GUI Parameters**:
 
