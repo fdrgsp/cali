@@ -17,7 +17,7 @@ If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` direc
 
 **Note:** Cellpose is an optional dependency. To use segmentation features, install with:
 
-- `uvx "git+https://github.com/fdrgsp/cali[cp4]"` for Cellpose 4.x (cellpose-sam) (use python 3.11 or greater)
+`uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp4]"` for Cellpose 4.x (cellpose-sam) (use python 3.11 or greater)
 
 - `uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp3]"` for Cellpose 3.x (use python 3.11 or greater)
 
