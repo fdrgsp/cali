@@ -1,6 +1,7 @@
 """Test CSV export functionality."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pandas as pd
 from sqlmodel import Session, create_engine
@@ -24,6 +25,7 @@ from cali.sqlmodel import (
 def test_csv_export_full_pipeline(
     data_path: Path,
     tmp_path: Path,
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that CSV export works correctly in a full pipeline run."""
     # Use tmp_path for database location
@@ -109,6 +111,7 @@ def test_csv_export_full_pipeline(
 def test_csv_export_selective(
     data_path: Path,
     tmp_path: Path,
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that only selected traces are exported."""
     test_db_path = tmp_path / "test_selective.cali"
@@ -163,6 +166,7 @@ def test_csv_export_selective(
 def test_csv_export_no_export(
     data_path: Path,
     tmp_path: Path,
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that no exports happen when export_traces is None."""
     test_db_path = tmp_path / "test_no_export.cali"
@@ -191,6 +195,7 @@ def test_csv_export_no_export(
 def test_csv_export_content_validation(
     data_path: Path,
     tmp_path: Path,
+    mock_detection_runner: MagicMock,
 ) -> None:
     """Test that exported CSV content is valid and matches database."""
     test_db_path = tmp_path / "test_content.cali"
