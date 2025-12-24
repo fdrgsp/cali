@@ -9,12 +9,12 @@ from pathlib import Path
 from sqlmodel import create_engine
 
 from cali.util import (
-    export_corrected_traces_to_csv,
     export_correlation_matrices_to_csv,
     export_deconvolved_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_raw_to_csv,
     export_inferred_spikes_thresholded_to_csv,
+    export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
 )
@@ -45,7 +45,7 @@ except ValueError as e:
 
 print("Exporting corrected traces...")
 try:
-    export_corrected_traces_to_csv(
+    export_neuropil_corrected_traces_to_csv(
         engine, output_dir / "corrected_traces.csv", run_id=1
     )
 except ValueError as e:

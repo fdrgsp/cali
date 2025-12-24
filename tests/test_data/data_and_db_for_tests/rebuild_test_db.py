@@ -18,6 +18,13 @@ from pathlib import Path
 # Add src to path so we can import cali modules
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from cali._constants import (
+    DEC_DFF_TRACES,
+    DFF_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_TRACES,
+    RAW_CALCIUM_TRACES,
+)
 from cali.runner import CaliRunner
 from cali.sqlmodel import (
     AnalysisSettings,
@@ -129,6 +136,15 @@ def rebuild_test_database() -> None:
                 threads=as_config["threads"],
             )
 
+        # Configure CSV exports for testing
+        export_traces = {
+            RAW_CALCIUM_TRACES: True,
+            DFF_TRACES: True,
+            DEC_DFF_TRACES: True,
+            INFERRED_SPIKES_TRACES: True,
+            INFERRED_SPIKES_THRESHOLDED_TRACES: True,
+        }
+
         # Run the pipeline
         positions = run_config["positions_to_analyze"]
         print(f"   🚀 Running pipeline for positions: {positions}")
@@ -141,6 +157,7 @@ def rebuild_test_database() -> None:
             global_position_indices=run_config["positions_to_analyze"],
             output_path=db_path.parent,
             database_name=db_path.name,
+            export_traces=export_traces,
         )
 
     print(f"\n✅ Database rebuild complete: {db_path}")

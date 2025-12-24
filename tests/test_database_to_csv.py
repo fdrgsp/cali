@@ -8,12 +8,12 @@ import pytest
 from sqlmodel import Session, create_engine
 
 from cali.util import (
-    export_corrected_traces_to_csv,
     export_correlation_matrices_to_csv,
     export_deconvolved_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_raw_to_csv,
     export_inferred_spikes_thresholded_to_csv,
+    export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
 )
@@ -129,7 +129,7 @@ def test_export_corrected_traces(test_engine: Engine, tmp_path: Path) -> None:
     """Test exporting corrected traces to CSV."""
     output_file = tmp_path / "corrected_traces.csv"
     try:
-        export_corrected_traces_to_csv(test_engine, output_file, run_id=1)
+        export_neuropil_corrected_traces_to_csv(test_engine, output_file, run_id=1)
         # If corrected data exists, check the file
         if output_file.exists():
             assert output_file.stat().st_size > 0

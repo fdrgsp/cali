@@ -46,7 +46,7 @@ class _RunsPanel(QGroupBox):
     settingsDeleted = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("cali Runs", parent=parent)
+        super().__init__("cali runs", parent=parent)
 
         # Database path
         self._database_path: Path | None = None

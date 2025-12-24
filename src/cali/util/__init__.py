@@ -1,12 +1,12 @@
 """Initialization code for the cali.util package."""
 
 from ._database_to_csv import (
-    export_corrected_traces_to_csv,
     export_correlation_matrices_to_csv,
     export_deconvolved_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_raw_to_csv,
     export_inferred_spikes_thresholded_to_csv,
+    export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
 )
@@ -24,12 +24,12 @@ from ._util import (
 __all__ = [
     "commit_fov_result",
     "coordinates_to_mask",
-    "export_corrected_traces_to_csv",
     "export_correlation_matrices_to_csv",
     "export_deconvolved_dff_traces_to_csv",
     "export_dff_traces_to_csv",
     "export_inferred_spikes_raw_to_csv",
     "export_inferred_spikes_thresholded_to_csv",
+    "export_neuropil_corrected_traces_to_csv",
     "export_neuropil_traces_to_csv",
     "export_raw_traces_to_csv",
     "load_data_from_path",

@@ -801,7 +801,9 @@ def _plot_inferred_spike_raster_with_bursts(
         bursts = list(zip(burst_starts, burst_ends))
 
     # -------------------- Plot raster (subset) -------------------#
-    _generate_spike_raster_plot(widget, engine, fov_name, rois=rois, run_id=run_id)
+    _generate_spike_raster_plot(
+        widget, engine, fov_name, rois=rois, run_id=run_id, edges=True
+    )
 
     # ------------------------ Overlay global bursts ------------------------ #
     if bursts and len(bursts) > 0:
@@ -826,7 +828,7 @@ def _plot_inferred_spike_raster_with_bursts(
 
         # Update title to indicate burst overlay
         plot.setTitle(
-            "Inferred Spike Events (binary) Raster Plot (Thresholded) "
+            "Inferred Spike Events Raster Plot (Thresholded - Rising Edges) "
             "with Network Bursts"
         )
 

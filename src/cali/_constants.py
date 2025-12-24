@@ -1,5 +1,9 @@
 """Constants used throughout the cali package."""
 
+from __future__ import annotations
+
+from typing import Literal
+
 # ==================== Metadata Keys ====================
 EVENT_KEY = "mda_event"
 PYMMCW_METADATA_KEY = "pymmcore_widgets"
@@ -98,3 +102,24 @@ DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
 
 # ==================== Database ====================
 DEFAULT_CALI_DB_NAME = "results.cali"
+
+# ==================== Extraction ====================
+# Type for trace data export - must be defined before constants for type checking
+TraceDataType = Literal[
+    "Raw Calcium",  # RAW_CALCIUM_TRACES
+    "Neuropil",  # NEUROPIL_TRACES
+    "Neuropil Corrected",  # NEUROPIL_CORRECTED_TRACES
+    "ΔF/F",  # DFF_TRACES
+    "OASIS Deconvolved ΔF/F",  # DEC_DFF_TRACES
+    "OASIS Inferred Spikes",  # INFERRED_SPIKES_TRACES
+    "OASIS Thresholded Inferred Spikes",  # INFERRED_SPIKES_THRESHOLDED_TRACES
+]
+
+RAW_CALCIUM_TRACES: TraceDataType = "Raw Calcium"
+NEUROPIL_TRACES: TraceDataType = "Neuropil"
+NEUROPIL_CORRECTED_TRACES: TraceDataType = "Neuropil Corrected"
+DFF_TRACES: TraceDataType = "ΔF/F"
+DEC_DFF_TRACES: TraceDataType = "OASIS Deconvolved ΔF/F"
+INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes"
+INFERRED_SPIKES_THRESHOLDED_TRACES: TraceDataType = "OASIS Thresholded Inferred Spikes"
+CALCIUM_PEAKS = "Calcium Peaks"

@@ -20,15 +20,24 @@ from qtpy.QtWidgets import (
 from superqt import QIconifyIcon
 
 from cali._constants import (
+    DEC_DFF_TRACES,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
+    DFF_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_TRACES,
+    NEUROPIL_CORRECTED_TRACES,
+    NEUROPIL_TRACES,
+    RAW_CALCIUM_TRACES,
+    TraceDataType,
 )
 from cali.sqlmodel import ExtractionSettings
 
 from ._util import (
+    _ExportGroup,
     create_divider_line,
 )
 
@@ -117,6 +126,16 @@ class _ExtractionGUI(QWidget):
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
 
+        self._export_group = _ExportGroup()
+        self._export_group.add_option(RAW_CALCIUM_TRACES, 0, 0)
+        self._export_group.add_option(NEUROPIL_TRACES, 0, 1, checked=False)
+        self._export_group.add_option(NEUROPIL_CORRECTED_TRACES, 0, 2, checked=False)
+        self._export_group.add_option(DFF_TRACES, 0, 3)
+        self._export_group.add_option(DEC_DFF_TRACES, 1, 0)
+        self._export_group.add_option(INFERRED_SPIKES_TRACES, 1, 1)
+        self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_TRACES, 1, 2)
+        self._export_group.add_stretch("horizontal")
+
         # SCROLL AREA WIDGET ---------------------------------------------------------
         analysis_scroll_area = QScrollArea()
         analysis_scroll_area.setWidgetResizable(True)
@@ -135,6 +154,8 @@ class _ExtractionGUI(QWidget):
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
+        group_layout.addWidget(create_divider_line("Export"))
+        group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
 
@@ -190,6 +211,29 @@ class _ExtractionGUI(QWidget):
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+
+    def get_export_options(self) -> dict[TraceDataType, bool]:
+        """Get the export options selected by the user.
+
+        Returns
+        -------
+        dict[TraceDataType, bool]
+            Dictionary mapping valid trace type names to their export status.
+            Only includes trace types that are checked.
+            Keys are guaranteed to be valid TraceDataType literals.
+        """
+        from typing import cast
+
+        export_data = self._export_group.value()
+        # Cast is safe because we only add TraceDataType constants to _ExportGroup
+        return cast(
+            "dict[TraceDataType, bool]",
+            {
+                trace_type: checked
+                for trace_type, (checked, _, _) in export_data.items()
+                if checked
+            },
+        )
 
     def to_model_settings(self) -> ExtractionSettings:
         """Convert current GUI settings to ExtractionSettings model.

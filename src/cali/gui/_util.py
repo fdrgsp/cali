@@ -5,10 +5,13 @@ from typing import TYPE_CHECKING, Literal
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -333,3 +336,90 @@ def _create_line() -> QFrame:
     result.setFrameShape(QFrame.Shape.HLine)
     result.setFrameShadow(QFrame.Shadow.Plain)
     return result
+
+
+class _ExportGroup(QGroupBox):
+    """Widget with export options."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self._checkboxes: dict[str, tuple[QCheckBox, int, int]] = {}
+
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(5, 5, 5, 5)
+        self._layout.setSpacing(10)
+
+    def add_option(
+        self,
+        text: str,
+        row: int,
+        col: int,
+        *,
+        checked: bool = True,
+    ) -> None:
+        """Add an option checkbox.
+
+        Parameters
+        ----------
+        text : str
+            The label text for the checkbox option.
+        row : int
+            Grid row position.
+        col : int
+            Grid column position.
+        checked : bool, optional
+            Initial checked state, by default False.
+        """
+        if text in self._checkboxes:
+            return
+
+        checkbox = QCheckBox(text)
+        checkbox.setChecked(checked)
+        self._checkboxes[text] = (checkbox, row, col)
+        self._layout.addWidget(checkbox, row, col)
+
+    def add_stretch(self, direction: Literal["vertical", "horizontal"]) -> None:
+        """Add stretch to prevent widgets from spreading when resizing.
+
+        Parameters
+        ----------
+        direction : Literal["vertical", "horizontal"]
+            Direction to add stretch. "vertical" adds stretch to the last row,
+            "horizontal" adds stretch to the last column.
+        """
+        if direction == "vertical":
+            self._layout.setRowStretch(self._layout.rowCount(), 1)
+        elif direction == "horizontal":
+            self._layout.setColumnStretch(self._layout.columnCount(), 1)
+
+    def value(self) -> dict[str, tuple[bool, int, int]]:
+        """Return the current widget state.
+
+        Returns
+        -------
+        dict[str, tuple[bool, int, int]]
+            Dictionary mapping option text to (checked_state, row, col).
+        """
+        return {
+            text: (checkbox.isChecked(), row, col)
+            for text, (checkbox, row, col) in self._checkboxes.items()
+        }
+
+    def setValue(self, values: dict[str, tuple[bool, int, int]]) -> None:
+        """Set the widget state.
+
+        Parameters
+        ----------
+        values : dict[str, tuple[bool, int, int]]
+            Dictionary mapping option text to (checked_state, row, col).
+        """
+        # Clear existing layout
+        for _, (checkbox, _, _) in list(self._checkboxes.items()):
+            self._layout.removeWidget(checkbox)
+            checkbox.deleteLater()
+        self._checkboxes.clear()
+
+        # Add options with stored positions
+        for text, (checked, row, col) in values.items():
+            self.add_option(text, row, col, checked=checked)

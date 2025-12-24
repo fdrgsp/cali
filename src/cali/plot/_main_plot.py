@@ -78,10 +78,7 @@ from ._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
     _generate_raster_plot,
 )
 from ._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
-    _generate_spike_intensity_heatmap,
-    _generate_spike_intensity_heatmap_thresholded,
     _generate_spike_raster_plot,
-    _generate_spike_raster_plot_raw,
 )
 from ._single_wells_plots.spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
@@ -258,37 +255,30 @@ AnalysisProduct(
 
 # Inferred Spikes Group
 AnalysisProduct(
-    name="Inferred Spikes Raw",
+    name="Inferred Spikes",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Thresholded",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_inferred_spikes,
-    category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Raw (with Thresholds if 1 ROI)",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
-    category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Thresholded Normalized",
+    name="Inferred Spikes Normalized",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Thresholded Normalized (Active Only)",
+    name="Inferred Spikes Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
+    category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes (with Thresholds if 1 ROI)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -330,13 +320,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raster",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_raster_plot_raw,
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name="Inferred Spikes Raster Thresholded",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
@@ -344,16 +327,9 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Intensity Heatmap",
+    name="Inferred Spikes Raster Thresholded - Rising Edges",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_intensity_heatmap,
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Intensity Heatmap Thresholded",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_intensity_heatmap_thresholded,
+    analyzer=partial(_generate_spike_raster_plot, edges=True),
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -532,7 +508,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stimulated vs Non-Stimulated Calcium Peaks Raster",
+    name="Stimulated vs Non-Stimulated Raster Calcium Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_calcium_peaks_raster,
     category="Evoked Experiment",
@@ -540,7 +516,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stimulated vs Non-Stimulated Inferred Spikes Thresholded Raster",
+    name=(
+        "Stimulated vs Non-Stimulated Raster Inferred Spikes Thresholded - Rising Edges"
+    ),
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
     category="Evoked Experiment",
@@ -824,9 +802,6 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     "Inferred Spikes (Thresholded) Global Synchrony",
     "Inferred Spikes (Thresholded) Cross-Correlation",
     "Inferred Spikes (Thresholded) Burst Activity Analysis",
-    "Inferred Spikes Raster plot Colored by ROI",
-    "Inferred Spikes Raster plot Colored by Amplitude",
-    "Inferred Spikes Raster plot Colored by Amplitude with Colorbar",
 }
 
 

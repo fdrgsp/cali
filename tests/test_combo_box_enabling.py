@@ -93,7 +93,7 @@ def test_combo_disabled_without_fov_or_run(
     _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # All plots should be disabled (removed spike correlation plot)
-    assert _count_combo_items(widget, enabled=False) == 43
+    assert _count_combo_items(widget, enabled=False) == 40
 
 
 def test_combo_disabled_with_only_run_id(
@@ -109,8 +109,8 @@ def test_combo_disabled_with_only_run_id(
     _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # All items should still be disabled
-    # (57 plots: spontaneous + evoked, after removing spike correlation plots)
-    assert _count_combo_items(widget, enabled=False) == 57
+    # (54 plots: spontaneous + evoked, after removing 3 spike plots)
+    assert _count_combo_items(widget, enabled=False) == 54
 
 
 def test_combo_enabled_with_fov_and_run_id(

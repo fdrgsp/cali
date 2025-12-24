@@ -101,10 +101,9 @@ def test_wizard_plate_plan_database_creation() -> None:
         )
 
         # Create experiment and populate with data
-        data_path = (
-            "/Volumes/T7 Shield/LAM77_NC240503_384_CBD_20240927/"
-            "NC240503_240927_Treated_CBDanalogs.tensorstore.zarr"
-        )
+        # Use no_hcs data which doesn't have embedded plate metadata,
+        # so the wizard's plate plan will actually be applied
+        data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/no_hcs/no_hcs.tensorstore.zarr"  # noqa: E501
         experiment = Experiment(name="Test Wizard", description="Test")
         data_to_plate(data_path, experiment, plate_plan=wizard_plate_plan)
 
@@ -117,13 +116,16 @@ def test_wizard_plate_plan_database_creation() -> None:
         # Verify database structure
         assert loaded_exp is not None, "Failed to load experiment from database"
         assert loaded_exp.plate is not None, "Experiment should have a plate"
+
+        # Since no_hcs data has no plate metadata, the wizard's dish-35mm-round
+        # plate plan should be used, creating 1 well (A1) with 2 FOVs
         assert len(loaded_exp.plate.wells) == 1, (
-            f"Expected 1 well, got {len(loaded_exp.plate.wells)}"
+            f"Expected 1 well (from wizard plan), got {len(loaded_exp.plate.wells)}"
         )
 
         well = loaded_exp.plate.wells[0]
         assert well.name == "A1", f"Expected well A1, got {well.name}"
-        assert len(well.fovs) == 6, f"Expected 6 FOVs, got {len(well.fovs)}"
+        assert len(well.fovs) == 2, f"Expected 2 FOVs, got {len(well.fovs)}"
 
         # Verify FOV structure matches wizard mapping
         for i, fov in enumerate(well.fovs):

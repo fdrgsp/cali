@@ -165,14 +165,7 @@ def _plot_inferred_spikes(
         for _roi, traces, data_analysis in roi_data:
             if data_analysis and traces.inferred_spikes:
                 spike_data = traces.inferred_spikes
-                if raw:
-                    # Raw: all > 0
-                    spike_values = [float(s) for s in spike_data if s > 0]
-                else:
-                    # Thresholded: > threshold
-                    the = data_analysis.inferred_spikes_threshold or 0.0
-                    spike_values = [float(s) for s in spike_data if s > the]
-                all_values.extend(spike_values)
+                all_values.extend([float(s) for s in spike_data])
 
         if all_values:
             p1, p2 = map(float, np.percentile(all_values, [5, 100]))
@@ -193,18 +186,8 @@ def _plot_inferred_spikes(
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        # Raw vs thresholded spikes
-        if raw:
-            spike_data = np.array(
-                [float(s) if s > 0 else 0.0 for s in traces.inferred_spikes],
-                dtype=float,
-            )
-        else:
-            the = data_analysis.inferred_spikes_threshold or 0.0
-            spike_data = np.array(
-                [float(s) if s > the else 0.0 for s in traces.inferred_spikes],
-                dtype=float,
-            )
+        # Get spike data as continuous values
+        spike_data = np.asarray(traces.inferred_spikes, dtype=float)
 
         # x-axis = frames
         x = np.arange(spike_data.size, dtype=float)

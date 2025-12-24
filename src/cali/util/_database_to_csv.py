@@ -13,6 +13,16 @@ import numpy as np
 import pandas as pd
 from sqlmodel import Session, col, select
 
+from cali._constants import (
+    DEC_DFF_TRACES,
+    DFF_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_TRACES,
+    NEUROPIL_CORRECTED_TRACES,
+    NEUROPIL_TRACES,
+    RAW_CALCIUM_TRACES,
+    TraceDataType,
+)
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -51,7 +61,7 @@ def export_raw_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="raw_trace",
+        trace_type=RAW_CALCIUM_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -83,13 +93,13 @@ def export_neuropil_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="neuropil_trace",
+        trace_type=NEUROPIL_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
 
 
-def export_corrected_traces_to_csv(
+def export_neuropil_corrected_traces_to_csv(
     engine: Engine,
     output_path: str | Path,
     *,
@@ -115,7 +125,7 @@ def export_corrected_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="corrected_trace",
+        trace_type=NEUROPIL_CORRECTED_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -147,7 +157,7 @@ def export_dff_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="dff",
+        trace_type=DFF_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -179,7 +189,7 @@ def export_deconvolved_dff_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="dec_dff",
+        trace_type=DEC_DFF_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -211,7 +221,7 @@ def export_inferred_spikes_raw_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="inferred_spikes",
+        trace_type=INFERRED_SPIKES_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -244,7 +254,7 @@ def export_inferred_spikes_thresholded_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type="inferred_spikes_thresholded",
+        trace_type=INFERRED_SPIKES_THRESHOLDED_TRACES,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -323,9 +333,11 @@ def export_correlation_matrices_to_csv(
             roi_dict = {roi.label_value: roi for roi in rois}
             sorted_labels = sorted(
                 roi_labels,
-                key=lambda lbl: (not roi_dict[lbl].stimulated, lbl)
-                if roi_dict[lbl].stimulated is not None
-                else (False, lbl),
+                key=lambda lbl: (
+                    (not roi_dict[lbl].stimulated, lbl)
+                    if roi_dict[lbl].stimulated is not None
+                    else (False, lbl)
+                ),
             )
             sorted_roi_names = [f"ROI_{lbl}" for lbl in sorted_labels]
 
@@ -378,15 +390,7 @@ def _get_default_run_id(engine: Engine) -> int:
 def _export_trace_data(
     engine: Engine,
     output_path: str | Path,
-    trace_type: Literal[
-        "raw_trace",
-        "neuropil_trace",
-        "corrected_trace",
-        "dff",
-        "dec_dff",
-        "inferred_spikes",
-        "inferred_spikes_thresholded",
-    ],
+    trace_type: TraceDataType,
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
@@ -429,9 +433,20 @@ def _export_trace_data(
         fov_data: dict[str, dict[Literal["stim", "non_stim"], list]] = {}
 
         for roi, traces, data_analysis in results:
+            # Map display names to Traces model attribute names
+            trace_attr_map = {
+                RAW_CALCIUM_TRACES: "raw_trace",
+                NEUROPIL_TRACES: "neuropil_trace",
+                NEUROPIL_CORRECTED_TRACES: "corrected_trace",
+                DFF_TRACES: "dff",
+                DEC_DFF_TRACES: "dec_dff",
+                INFERRED_SPIKES_TRACES: "inferred_spikes",
+                INFERRED_SPIKES_THRESHOLDED_TRACES: "inferred_spikes",
+            }
+
             # Get trace data
-            if trace_type == "inferred_spikes_thresholded":
-                # Apply threshold to inferred spikes
+            if trace_type == INFERRED_SPIKES_THRESHOLDED_TRACES:
+                # Binarize inferred spikes based on threshold
                 trace_data = traces.inferred_spikes
                 if trace_data is not None and data_analysis.inferred_spikes_threshold:
                     trace_data = [
@@ -439,7 +454,8 @@ def _export_trace_data(
                         for val in trace_data
                     ]
             else:
-                trace_data = getattr(traces, trace_type, None)
+                attr_name = trace_attr_map.get(trace_type)
+                trace_data = getattr(traces, attr_name, None) if attr_name else None
 
             if trace_data is None:
                 continue

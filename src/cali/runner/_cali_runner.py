@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
-from cali._constants import DEFAULT_CALI_DB_NAME
+from cali._constants import DEFAULT_CALI_DB_NAME, TraceDataType
 from cali.detection import DetectionRunner
 from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
@@ -19,6 +19,8 @@ from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
+
+    from sqlalchemy.engine import Engine
 
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
@@ -122,6 +124,7 @@ class CaliRunner:
         force: bool = False,
         echo: bool = False,
         as_generator: bool = False,
+        export_traces: dict[TraceDataType, bool] | None = None,
     ) -> Generator[str, None, None] | None:
         """Run detection and/or analysis on the experiment.
 
@@ -176,6 +179,11 @@ class CaliRunner:
             If True, returns a Generator that yields progress strings.
             If False (default), executes directly and silently consumes
             the generator.
+        export_traces : dict[TraceDataType, bool] | None
+            Optional dictionary mapping trace type names to export flags.
+            Keys must be valid TraceDataType literals (e.g., "Raw Calcium", "ΔF/F").
+            If provided, exports selected traces to CSV after extraction completes.
+            Example: {"Raw Calcium": True, "ΔF/F": True, "Neuropil": False}
 
         Returns
         -------
@@ -199,6 +207,7 @@ class CaliRunner:
             overwrite=overwrite,
             force=force,
             echo=echo,
+            export_traces=export_traces,
         )
 
         # Return generator directly if requested
@@ -224,6 +233,7 @@ class CaliRunner:
         overwrite: bool = False,
         force: bool = False,
         echo: bool = False,
+        export_traces: dict[TraceDataType, bool] | None = None,
     ) -> Generator[str, None, None]:
         """Internal generator for run progress.
 
@@ -804,9 +814,95 @@ class CaliRunner:
                                 f"with completed {stage} positions: "
                                 f"{result.positions_extracted}"
                             )
+
+                    # Export traces to CSV if requested
+                    if export_traces and analysis_result_id is not None:
+                        self._export_traces_to_csv(
+                            engine, export_traces, analysis_result_id, self._db_path
+                        )
+                        yield "🗂️ Exported traces to CSV"
         finally:
             cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)
+
+    def _export_traces_to_csv(
+        self,
+        engine: Engine,
+        export_traces: dict[TraceDataType, bool],
+        run_id: int,
+        db_path: Path,
+    ) -> None:
+        """Export selected traces to CSV files.
+
+        Parameters
+        ----------
+        engine : Engine
+            Database engine
+        export_traces : dict[TraceDataType, bool]
+            Dictionary mapping trace type names to export status.
+            Only TraceDataType literals are valid keys.
+        run_id : int
+            Analysis result ID to export
+        db_path : Path
+            Database path (used to determine output directory)
+        """
+        from cali._constants import (
+            DEC_DFF_TRACES,
+            DFF_TRACES,
+            INFERRED_SPIKES_THRESHOLDED_TRACES,
+            INFERRED_SPIKES_TRACES,
+            NEUROPIL_CORRECTED_TRACES,
+            NEUROPIL_TRACES,
+            RAW_CALCIUM_TRACES,
+        )
+        from cali.util._database_to_csv import (
+            export_deconvolved_dff_traces_to_csv,
+            export_dff_traces_to_csv,
+            export_inferred_spikes_raw_to_csv,
+            export_inferred_spikes_thresholded_to_csv,
+            export_neuropil_corrected_traces_to_csv,
+            export_neuropil_traces_to_csv,
+            export_raw_traces_to_csv,
+        )
+
+        # Map trace type names to export functions
+        export_map = {
+            RAW_CALCIUM_TRACES: (export_raw_traces_to_csv, "raw_traces.csv"),
+            NEUROPIL_TRACES: (export_neuropil_traces_to_csv, "neuropil_traces.csv"),
+            NEUROPIL_CORRECTED_TRACES: (
+                export_neuropil_corrected_traces_to_csv,
+                "neuropil_corrected_traces.csv",
+            ),
+            DFF_TRACES: (export_dff_traces_to_csv, "dff_traces.csv"),
+            DEC_DFF_TRACES: (
+                export_deconvolved_dff_traces_to_csv,
+                "deconvolved_dff_traces.csv",
+            ),
+            INFERRED_SPIKES_TRACES: (
+                export_inferred_spikes_raw_to_csv,
+                "inferred_spikes_raw.csv",
+            ),
+            INFERRED_SPIKES_THRESHOLDED_TRACES: (
+                export_inferred_spikes_thresholded_to_csv,
+                "inferred_spikes_thresholded.csv",
+            ),
+        }
+
+        # Create export directory next to database
+        export_dir = db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        # Export each selected trace type
+        for trace_type, should_export in export_traces.items():
+            if should_export and trace_type in export_map:
+                export_func, filename = export_map[trace_type]
+                output_path = export_dir / filename
+                try:
+                    cali_logger.info(f"📊 Exporting {trace_type} to {output_path}...")
+                    export_func(engine, output_path, run_id=run_id)
+                    cali_logger.info(f"✅ Exported {trace_type} successfully")
+                except Exception as e:
+                    cali_logger.error(f"❌ Failed to export {trace_type}: {e}")
 
     # ==================== PRIVATE HELPER METHODS ====================
 

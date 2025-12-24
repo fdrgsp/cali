@@ -45,7 +45,7 @@ from cali._constants import (
 )
 
 from ._extraction_gui import FromMetaButton
-from ._util import _BrowseWidget, create_divider_line
+from ._util import _BrowseWidget, _ExportGroup, create_divider_line
 
 if TYPE_CHECKING:
     from cali.sqlmodel import AnalysisSettings
@@ -150,6 +150,16 @@ class _AnalysisGUI(QWidget):
         self._spike_wdg = _SpikeWidget(self)
         self._metadata_wdg = _MetadataWidget(self)
 
+        self._export_group = _ExportGroup()
+        # self._export_group.add_option(CALCIUM_PEAKS, 0, 0)
+        # self._export_group.add_option(NEUROPIL_TRACES, 0, 1, checked=False)
+        # self._export_group.add_option(NEUROPIL_CORRECTED_TRACES, 0, 2, checked=False)
+        # self._export_group.add_option(DFF_TRACES, 0, 3)
+        # self._export_group.add_option(DEC_DFF_TRACES, 1, 0)
+        # self._export_group.add_option(INFERRED_SPIKES_TRACES, 1, 1)
+        # self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_TRACES, 1, 2)
+        self._export_group.add_stretch("horizontal")
+
         # SCROLL AREA WIDGET ---------------------------------------------------------
         analysis_scroll_area = QScrollArea()
         analysis_scroll_area.setWidgetResizable(True)
@@ -170,6 +180,8 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
+        group_layout.addWidget(create_divider_line("Export"))
+        group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
 

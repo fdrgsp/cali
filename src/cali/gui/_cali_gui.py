@@ -1335,6 +1335,12 @@ class CaliGui(QMainWindow):
                     assert self._data is not None
                     assert self._database_path is not None
                     assert detection_settings is not None  # Ensured by pre-flight check
+
+                    # Get export options if extraction is being run
+                    export_traces = None
+                    if extraction_settings is not None:
+                        export_traces = self._extraction_wdg.get_export_options()
+
                     result = self._runner.run(
                         experiment,
                         self._data.path,
@@ -1347,6 +1353,7 @@ class CaliGui(QMainWindow):
                             Path(self._output_path) if self._output_path else None
                         ),
                         as_generator=True,
+                        export_traces=export_traces,
                     )
                     assert result is not None
                     yield from result
@@ -1500,6 +1507,12 @@ class CaliGui(QMainWindow):
             assert self._data is not None
             assert self._database_path is not None
             assert selected_run.detection_settings_id is not None
+
+            # Get export options if extraction settings exist
+            export_traces = None
+            if selected_run.extraction_settings_id is not None:
+                export_traces = self._extraction_wdg.get_export_options()
+
             result = self._runner.run(
                 experiment,
                 self._data.path,
@@ -1510,6 +1523,7 @@ class CaliGui(QMainWindow):
                 database_name=Path(self._database_path).name,
                 output_path=Path(self._output_path) if self._output_path else None,
                 as_generator=True,
+                export_traces=export_traces,
             )
             assert result is not None
             yield from result
