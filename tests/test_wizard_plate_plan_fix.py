@@ -6,6 +6,9 @@ from pathlib import Path
 import useq
 from useq import register_well_plates
 
+# Get the test data directory relative to this file
+TEST_DATA_DIR = Path(__file__).parent / "test_data"
+
 
 def test_wizard_plate_plan_with_data_positions() -> None:
     """Test that wizard-created plate plans map to actual data positions."""
@@ -35,7 +38,7 @@ def test_wizard_plate_plan_with_data_positions() -> None:
     )
 
     # Simulate data with positions (like from MM-GUI without HCS)
-    data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/no_hcs/no_hcs.tensorstore.zarr"  # noqa: E501
+    data_path = str(TEST_DATA_DIR / "no_hcs" / "no_hcs.tensorstore.zarr")
 
     # Create experiment
     experiment = Experiment(name="Test", description="Test")
@@ -103,7 +106,7 @@ def test_wizard_plate_plan_database_creation() -> None:
         # Create experiment and populate with data
         # Use no_hcs data which doesn't have embedded plate metadata,
         # so the wizard's plate plan will actually be applied
-        data_path = "/Users/fdrgsp/Documents/git/cali/tests/test_data/no_hcs/no_hcs.tensorstore.zarr"  # noqa: E501
+        data_path = str(TEST_DATA_DIR / "no_hcs" / "no_hcs.tensorstore.zarr")
         experiment = Experiment(name="Test Wizard", description="Test")
         data_to_plate(data_path, experiment, plate_plan=wizard_plate_plan)
 
