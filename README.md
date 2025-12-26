@@ -321,7 +321,7 @@ Two modes are available:
 **Calculation** (population-level, based on binary spike trains):
 
 1. **Population Spike Rate**: compute the fraction of active ROIs per frame.
-2. **Smoothing**: apply a Gaussian filter with standard deviation \(\sigma\) (optional).
+2. **Smoothing**: apply a Gaussian filter with standard deviation \(σ\) (optional).
 3. **Threshold**: detect periods where the smoothed population rate exceeds a percentage threshold.
 4. **Duration Filter**: retain bursts that last at least a minimum duration.
 
@@ -373,11 +373,75 @@ Two modes are available:
 
 **Important Note on Methodology**:
 
-Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation:
+Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation.
 
-- in spike trains, 0 means "no spike" (real information), not missing data
-- mean-centering would convert 0→negative values, which doesn't make biological sense for spike absence
-- results are in [0, 1] where 1 = perfect synchrony, 0 = no relationship
+**Why not Pearson correlation for spike trains?**
+
+In Pearson correlation, data are mean-centered before computing the correlation coefficient. This is appropriate for continuous signals where values fluctuate around a mean. However, for binary spike trains:
+
+- **0 means "no spike"** — this is real information about the absence of activity, not a missing or neutral value
+- **Mean-centering would convert 0 → negative values**, which has no biological interpretation (a neuron cannot have "negative spike absence")
+- **Pearson correlation on spike trains would penalize non-coincident spikes**, treating silent periods as anti-correlated rather than simply unrelated
+
+**What we use instead: Normalized Dot Product**
+
+The normalized dot product counts coincident spikes (where both neurons fire at the same time) and normalizes by the geometric mean of spike counts:
+
+$\text{Correlation}(i, j) = \frac{\sum_{t} s_i(t) \cdot s_j(t)}{\sqrt{\sum_{t} s_i(t)^2 \cdot \sum_{t} s_j(t)^2}}$
+
+where $s_i(t)$ and $s_j(t)$ are binary spike trains (0 or 1 at each time point).
+
+This formula:
+- Counts only when **both neurons spike together** (1 × 1 = 1)
+- Ignores when **either or both are silent** (0 × 0 = 0, 0 × 1 = 0)
+- Normalizes by spike counts to make the measure independent of firing rate
+- Results are in **[0, 1]** where 1 = perfect synchrony, 0 = no temporal relationship
+
+**Example with Lag**:
+
+Consider two neurons over 10 time bins:
+
+```
+Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]  (4 spikes)
+Neuron B: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1]  (4 spikes)
+```
+
+**At lag = 0** (no shift):
+- **Coincident spikes** (both = 1): time bins 2, 7, 10 → **3 coincidences**
+- **Correlation**: $\frac{3}{\sqrt{4 \cdot 4}} = \frac{3}{4} = 0.75$
+
+**At lag = +1** (shift B forward by 1 frame):
+```
+Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
+Neuron B: [_, 0, 1, 0, 0, 1, 0, 1, 0, 0]  (shifted, last value wraps/drops)
+```
+- **Coincidences**: time bins 3, 6, 8 → **0 coincidences** (in this example)
+- **Correlation**: $\frac{0}{\sqrt{4 \cdot 4}} = 0$
+
+**At lag = -1** (shift B backward by 1 frame):
+```
+Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
+Neuron B: [1, 0, 0, 1, 0, 1, 0, 0, 1, _]  (shifted)
+```
+- **Coincidences**: time bins 4, 6, 9 → **1 coincidence** 
+- **Correlation**: $\frac{1}{\sqrt{4 \cdot 4}} = 0.25$
+
+**The algorithm tests all lags from -max_lag to +max_lag** and returns:
+- **Maximum correlation value**: 0.75 (found at lag = 0)
+- **Optimal lag**: 0 frames (indicating synchronous firing)
+
+If the maximum had been at lag = +2, it would indicate Neuron B consistently fires ~2 frames after Neuron A.
+
+**Why this matters**: Neurons with delayed coupling (e.g., A → B) might have low correlation at zero lag but high correlation at positive lags, revealing directional relationships that zero-lag analysis would miss.
+
+**Comparison to Pearson correlation**:
+
+**Pearson correlation** would give a different answer because it would:
+1. Mean-center both trains (converting many 0s to negative values)
+2. Penalize non-overlapping spikes as negative correlation
+3. Produce values in [-1, 1] range, which is harder to interpret for spike coincidence
+
+The normalized dot product approach is standard in spike train analysis (e.g., in cross-correlogram computation) and more appropriate for discrete event data.
 
 **Output**: Two heatmaps are generated:
 
@@ -403,11 +467,11 @@ Global synchrony = median of the mean correlation per ROI (row means), excluding
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s representing spike times).
 2. Spike events are defined as the rising edges in the binary spike trains.
-3. For each spike in neuron \(i\), check whether neuron \(j\) fires within a temporal tolerance window of \(\pm w\) frames. If yes, count this as a coincident spike.
-4. Repeat in the opposite direction: for each spike in neuron \(j\), check for a spike in neuron \(i\) within \(\pm w\) frames.
+3. For each spike in neuron \(i\), check whether neuron \(j\) fires within a temporal tolerance window of \(±w\) frames. If yes, count this as a coincident spike.
+4. Repeat in the opposite direction: for each spike in neuron \(j\), check for a spike in neuron \(i\) within \(±w\) frames.
 5. Count coincidences in both directions:
-   - \(C_{i \to j}\): coincidences found starting from spikes in \(i\)
-   - \(C_{j \to i}\): coincidences found starting from spikes in \(j\)
+   - \({C_{i \to j}}\): coincidences found starting from spikes in \(i\)
+   - \({C_{j \to i}}\): coincidences found starting from spikes in \(j\)
 6. Combine and normalize:
    $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
    where \(N_i\) and \(N_j\) are the total number of spikes in neurons \(i\) and \(j\), respectively.
