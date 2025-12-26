@@ -10,13 +10,7 @@ from typing_extensions import TypeAlias
 from cali._constants import EVOKED
 
 from ._multi_wells_plots import (
-    plot_calcium_peaks_amplitude_bar_plot,
-    plot_calcium_peaks_frequency_bar_plot,
-    plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
-    plot_non_stimulated_peaks_amplitude_bar_plot,
-    plot_percentage_active_bar_plot,
-    plot_stimulated_peaks_amplitude_bar_plot,
 )
 from ._single_wells_plots.burst import (
     _plot_calcium_burst_activity,
@@ -589,34 +583,34 @@ AnalysisProduct(
     category="General",
     pipeline_stage=PipelineStage.DETECTION,
 )
-AnalysisProduct(
-    name="Percentage of Active Cells Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_percentage_active_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_amplitude_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Frequency Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_frequency_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Inter-Event Interval Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_iei_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# AnalysisProduct(
+#     name="Percentage of Active Cells Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_percentage_active_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_amplitude_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Frequency Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_frequency_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Inter-Event Interval Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_iei_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 # AnalysisProduct(
 #     name="Inferred Spikes Global Synchrony Bar Plot",
 #     group=AnalysisGroup.MULTI_WELL,
@@ -654,22 +648,22 @@ AnalysisProduct(
 # )
 
 # Evoked Multi-Well Products
-AnalysisProduct(
-    name="Stimulated Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_stimulated_peaks_amplitude_bar_plot,
-    category="Evoked",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Non-Stimulated Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
-    category="Evoked",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name="Stimulated Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_stimulated_peaks_amplitude_bar_plot,
+#     category="Evoked",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name="Non-Stimulated Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
+#     category="Evoked",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 
 # DATABASE HELPERS ====================================================================
 # Helper functions to extract plotting data from database models
