@@ -582,7 +582,7 @@ def _create_pyqtgraph_bar_plot(
         y=filtered_means,
         height=np.array(filtered_sems),
         beam=0.2,
-        pen={"color": "w", "width": 2},
+        pen={"color": "k", "width": 2},
     )
     plot_item.addItem(error_bars)
 
@@ -594,8 +594,8 @@ def _create_pyqtgraph_bar_plot(
             x=x_positions,
             y=fov_vals,
             size=6,
-            pen=pg.mkPen("w", width=1),
-            brush=pg.mkBrush("w"),
+            pen=pg.mkPen("k", width=1),
+            brush=pg.mkBrush("k"),
         )
         plot_item.addItem(scatter)
 
