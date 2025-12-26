@@ -465,14 +465,14 @@ Global synchrony = median of the mean correlation per ROI (row means), excluding
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s representing spike times).
 2. Spike events are defined as the rising edges in the binary spike trains.
-3. For each spike in neuron \(i\), check whether neuron \(j\) fires within a temporal tolerance window of \(±w\) frames. If yes, count this as a coincident spike.
-4. Repeat in the opposite direction: for each spike in neuron \(j\), check for a spike in neuron \(i\) within \(±w\) frames.
+3. For each spike in neuron $i$, check whether neuron $j$ fires within a temporal tolerance window of $±w$ frames. If yes, count this as a coincident spike.
+4. Repeat in the opposite direction: for each spike in neuron $j$, check for a spike in neuron $i$ within $±w$ frames.
 5. Count coincidences in both directions:
-   - \({C_{i \to j}}\): coincidences found starting from spikes in \(i\)
-   - \({C_{j \to i}}\): coincidences found starting from spikes in \(j\)
+   - $C_{i \to j}$: coincidences found starting from spikes in $i$
+   - $C_{j \to i}$: coincidences found starting from spikes in $j$
 6. Combine and normalize:
    $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
-   where \(N_i\) and \(N_j\) are the total number of spikes in neurons \(i\) and \(j\), respectively.
+   where $N_i$ and $N_j$ are the total number of spikes in neurons $i$ and $j$, respectively.
 
 This yields a synchrony score between 0 and 1:
 
