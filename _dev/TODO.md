@@ -28,8 +28,6 @@ ask to claude:
 
 - link image viewer with plots
 
-- the run option should be updated depending on the position input in the position to analyze widget
-
 - fix: titles correlation are too long
 
 - add stim vs non-stim calcium peaks raster

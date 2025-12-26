@@ -174,3 +174,21 @@ def test_analysis_gui_no_unchecked_in_export_dict(qtbot: QtBot) -> None:
     # Unchecked items should not be present at all (not even with False value)
     for key, value in export_options.items():
         assert value is True, f"{key} should be True, not False"
+
+
+def test_analysis_gui_reset(qtbot: QtBot) -> None:
+    """Test that AnalysisGUI.reset() resets all widgets to defaults."""
+    widget = _AnalysisGUI()
+    qtbot.addWidget(widget)
+
+    # Change some values
+    widget._threads.setValue(10)
+
+    # Reset
+    widget.reset()
+
+    # Check that thread count was reset to default (cpu_count - 2, min 1)
+    import os
+
+    expected_threads = max((os.cpu_count() or 1) - 2, 1)
+    assert widget._threads.value() == expected_threads
