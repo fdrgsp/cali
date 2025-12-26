@@ -19,10 +19,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from cali._constants import (
+    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DFF_CORRELATION,
     DEC_DFF_TRACES,
     DFF_TRACES,
-    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_CROSS_CORRELATION,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_SYNCHRONY,
+    INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
+    NEUROPIL_CORRECTED_TRACES,
+    NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
 )
 from cali.runner import CaliRunner
@@ -139,10 +146,20 @@ def rebuild_test_database() -> None:
         # Configure CSV exports for testing
         export_traces = {
             RAW_CALCIUM_TRACES: True,
+            NEUROPIL_TRACES: True,
+            NEUROPIL_CORRECTED_TRACES: True,
             DFF_TRACES: True,
             DEC_DFF_TRACES: True,
             INFERRED_SPIKES_TRACES: True,
-            INFERRED_SPIKES_THRESHOLDED_TRACES: True,
+            INFERRED_SPIKES_THRESHOLDED_BINARY: True,
+        }
+
+        export_correlations = {
+            CALCIUM_DFF_CORRELATION: True,
+            CALCIUM_DEC_DFF_CORRELATION: True,
+            INFERRED_SPIKES_SYNCHRONY: True,
+            INFERRED_SPIKES_CROSS_CORRELATION: True,
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS: True,
         }
 
         # Run the pipeline
@@ -158,6 +175,7 @@ def rebuild_test_database() -> None:
             output_path=db_path.parent,
             database_name=db_path.name,
             export_traces=export_traces,
+            export_correlations=export_correlations,
         )
 
     print(f"\n✅ Database rebuild complete: {db_path}")

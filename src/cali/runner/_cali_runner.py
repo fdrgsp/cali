@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
-from cali._constants import DEFAULT_CALI_DB_NAME, TraceDataType
+from cali._constants import DEFAULT_CALI_DB_NAME, CorrelationDataType, TraceDataType
 from cali.detection import DetectionRunner
 from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
@@ -125,6 +125,7 @@ class CaliRunner:
         echo: bool = False,
         as_generator: bool = False,
         export_traces: dict[TraceDataType, bool] | None = None,
+        export_correlations: dict[CorrelationDataType, bool] | None = None,
     ) -> Generator[str, None, None] | None:
         """Run detection and/or analysis on the experiment.
 
@@ -181,9 +182,14 @@ class CaliRunner:
             the generator.
         export_traces : dict[TraceDataType, bool] | None
             Optional dictionary mapping trace type names to export flags.
-            Keys must be valid TraceDataType literals (e.g., "Raw Calcium", "ΔF/F").
+            Keys must be valid TraceDataType literals (e.g., "Raw Calcium Traces).
             If provided, exports selected traces to CSV after extraction completes.
-            Example: {"Raw Calcium": True, "ΔF/F": True, "Neuropil": False}
+            Example: {"Raw Calcium Traces": True, "ΔF/F Traces": True}
+        export_correlations : dict[CorrelationDataType, bool] | None
+            Optional dictionary mapping correlation data type names to export flags.
+            Keys must be valid CorrelationDataType literals (e.g.
+            "ΔF/F Correlation Matrix"). If provided, exports selected correlation data
+            to CSV after analysis completes. Example: {"ΔF/F Correlation Matrix": True}
 
         Returns
         -------
@@ -208,6 +214,7 @@ class CaliRunner:
             force=force,
             echo=echo,
             export_traces=export_traces,
+            export_correlations=export_correlations,
         )
 
         # Return generator directly if requested
@@ -234,6 +241,7 @@ class CaliRunner:
         force: bool = False,
         echo: bool = False,
         export_traces: dict[TraceDataType, bool] | None = None,
+        export_correlations: dict[CorrelationDataType, bool] | None = None,
     ) -> Generator[str, None, None]:
         """Internal generator for run progress.
 
@@ -821,6 +829,16 @@ class CaliRunner:
                             engine, export_traces, analysis_result_id, self._db_path
                         )
                         yield "🗂️ Exported traces to CSV"
+                    # Export correlations to CSV if requested
+                    if export_correlations and analysis_result_id is not None:
+                        self._export_correlations_to_csv(
+                            engine,
+                            export_correlations,
+                            analysis_result_id,
+                            self._db_path,
+                        )
+                        yield "🗂️ Exported correlations to CSV"
+
         finally:
             cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)
@@ -849,7 +867,7 @@ class CaliRunner:
         from cali._constants import (
             DEC_DFF_TRACES,
             DFF_TRACES,
-            INFERRED_SPIKES_THRESHOLDED_TRACES,
+            INFERRED_SPIKES_THRESHOLDED_BINARY,
             INFERRED_SPIKES_TRACES,
             NEUROPIL_CORRECTED_TRACES,
             NEUROPIL_TRACES,
@@ -882,7 +900,7 @@ class CaliRunner:
                 export_inferred_spikes_raw_to_csv,
                 "inferred_spikes_raw.csv",
             ),
-            INFERRED_SPIKES_THRESHOLDED_TRACES: (
+            INFERRED_SPIKES_THRESHOLDED_BINARY: (
                 export_inferred_spikes_thresholded_to_csv,
                 "inferred_spikes_thresholded.csv",
             ),
@@ -903,6 +921,84 @@ class CaliRunner:
                     cali_logger.info(f"✅ Exported {trace_type} successfully")
                 except Exception as e:
                     cali_logger.error(f"❌ Failed to export {trace_type}: {e}")
+
+    def _export_correlations_to_csv(
+        self,
+        engine: Engine,
+        export_correlations: dict[CorrelationDataType, bool],
+        run_id: int,
+        db_path: Path,
+    ) -> None:
+        """Export selected correlation data to CSV files.
+
+        Parameters
+        ----------
+        engine : Engine
+            Database engine
+        export_correlations : dict[CorrelationDataType, bool]
+            Dictionary mapping correlation data type names to export status.
+            Only CorrelationDataType literals are valid keys.
+        run_id : int
+            Analysis result ID to export
+        db_path : Path
+            Database path (used to determine output directory)
+        """
+        from cali._constants import (
+            CALCIUM_DEC_DFF_CORRELATION,
+            CALCIUM_DFF_CORRELATION,
+            INFERRED_SPIKES_CROSS_CORRELATION,
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+            INFERRED_SPIKES_SYNCHRONY,
+        )
+        from cali.util._database_to_csv import (
+            export_calcium_dec_dff_correlation_to_csv,
+            export_calcium_dff_correlation_to_csv,
+            export_inferred_spikes_cross_correlation_lags_to_csv,
+            export_inferred_spikes_cross_correlation_to_csv,
+            export_inferred_spikes_synchrony_to_csv,
+        )
+
+        # Map correlation type names to export functions
+        export_map = {
+            CALCIUM_DFF_CORRELATION: (
+                export_calcium_dff_correlation_to_csv,
+                "calcium_dff_correlation_matrix.csv",
+            ),
+            CALCIUM_DEC_DFF_CORRELATION: (
+                export_calcium_dec_dff_correlation_to_csv,
+                "calcium_dec_dff_correlation_matrix.csv",
+            ),
+            INFERRED_SPIKES_SYNCHRONY: (
+                export_inferred_spikes_synchrony_to_csv,
+                "inferred_spikes_synchrony_matrix.csv",
+            ),
+            INFERRED_SPIKES_CROSS_CORRELATION: (
+                export_inferred_spikes_cross_correlation_to_csv,
+                "inferred_spikes_cross_correlation_matrix.csv",
+            ),
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS: (
+                export_inferred_spikes_cross_correlation_lags_to_csv,
+                "inferred_spikes_cross_correlation_lags_matrix.csv",
+            ),
+        }
+
+        # Create export directory next to database
+        export_dir = db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        # Export each selected correlation type
+        for correlation_type, should_export in export_correlations.items():
+            if should_export and correlation_type in export_map:
+                export_func, filename = export_map[correlation_type]
+                output_path = export_dir / filename
+                try:
+                    cali_logger.info(
+                        f"📊 Exporting {correlation_type} to {output_path}..."
+                    )
+                    export_func(engine, output_path, run_id=run_id)
+                    cali_logger.info(f"✅ Exported {correlation_type} successfully")
+                except Exception as e:
+                    cali_logger.error(f"❌ Failed to export {correlation_type}: {e}")
 
     # ==================== PRIVATE HELPER METHODS ====================
 

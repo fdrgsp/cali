@@ -16,7 +16,7 @@ from sqlmodel import Session, col, select
 from cali._constants import (
     DEC_DFF_TRACES,
     DFF_TRACES,
-    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
@@ -254,7 +254,7 @@ def export_inferred_spikes_thresholded_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type=INFERRED_SPIKES_THRESHOLDED_TRACES,
+        trace_type=INFERRED_SPIKES_THRESHOLDED_BINARY,
         fov_name=fov_name,
         run_id=run_id,
     )
@@ -373,7 +373,236 @@ def export_correlation_matrices_to_csv(
             )
 
 
+def export_calcium_dff_correlation_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export ΔF/F correlation matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "calcium_dff_correlation_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+    )
+
+
+def export_calcium_dec_dff_correlation_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export deconvolved ΔF/F correlation matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "calcium_dec_dff_corr_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+    )
+
+
+def export_inferred_spikes_synchrony_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export inferred spikes synchrony matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_jitter_synchrony_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+    )
+
+
+def export_inferred_spikes_cross_correlation_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export inferred spikes cross-correlation matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_max_lag_correlation_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+    )
+
+
+def export_inferred_spikes_cross_correlation_lags_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export inferred spikes cross-correlation lags matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_max_lag_values_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+    )
+
+
 # ==================== Helper Functions ====================
+
+
+def _export_single_correlation_matrix(
+    engine: Engine,
+    output_path: str | Path,
+    matrix_attr: str,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+) -> None:
+    """Export a single correlation matrix type to CSV (internal helper).
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    matrix_attr : str
+        FOVAnalysis attribute name for the matrix to export
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Get run_id if not provided
+    if run_id is None:
+        run_id = _get_default_run_id(engine)
+
+    # Query FOV analysis data
+    with Session(engine) as session:
+        stmt = (
+            select(FOVAnalysis, FOV)
+            .join(FOV, FOVAnalysis.fov_id == FOV.id)
+            .where(FOVAnalysis.analysis_result_id == run_id)
+        )
+
+        if fov_name is not None:
+            stmt = stmt.where(col(FOV.name) == fov_name)
+
+        results = session.exec(stmt).all()
+
+        if not results:
+            msg = "No FOV analysis data found"
+            raise ValueError(msg)
+
+        for fov_analysis, fov in results:
+            # Get matrix data
+            matrix = getattr(fov_analysis, matrix_attr)
+            roi_labels = fov_analysis.active_roi_labels
+            if not roi_labels or matrix is None:
+                continue
+
+            # Query ROIs to get stimulation status
+            roi_stmt = (
+                select(ROI)
+                .where(ROI.fov_id == fov.id)
+                .where(col(ROI.label_value).in_(roi_labels))
+            )
+            rois = session.exec(roi_stmt).all()
+
+            # Sort ROIs: stimulated first, then non-stimulated
+            roi_dict = {roi.label_value: roi for roi in rois}
+            sorted_labels = sorted(
+                roi_labels,
+                key=lambda lbl: (
+                    (not roi_dict[lbl].stimulated, lbl)
+                    if roi_dict[lbl].stimulated is not None
+                    else (False, lbl)
+                ),
+            )
+            sorted_roi_names = [f"ROI_{lbl}" for lbl in sorted_labels]
+
+            # Determine output path (add FOV prefix if multiple FOVs)
+            if len(results) > 1:
+                fov_output_path = output_path.parent / f"{fov.name}_{output_path.name}"
+            else:
+                fov_output_path = output_path
+
+            # Export matrix
+            _export_matrix_to_csv(matrix, sorted_roi_names, fov_output_path)
 
 
 def _get_default_run_id(engine: Engine) -> int:
@@ -441,11 +670,11 @@ def _export_trace_data(
                 DFF_TRACES: "dff",
                 DEC_DFF_TRACES: "dec_dff",
                 INFERRED_SPIKES_TRACES: "inferred_spikes",
-                INFERRED_SPIKES_THRESHOLDED_TRACES: "inferred_spikes",
+                INFERRED_SPIKES_THRESHOLDED_BINARY: "inferred_spikes",
             }
 
             # Get trace data
-            if trace_type == INFERRED_SPIKES_THRESHOLDED_TRACES:
+            if trace_type == INFERRED_SPIKES_THRESHOLDED_BINARY:
                 # Binarize inferred spikes based on threshold
                 trace_data = traces.inferred_spikes
                 if trace_data is not None and data_analysis.inferred_spikes_threshold:

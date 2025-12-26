@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
@@ -26,10 +26,10 @@ from qtpy.QtWidgets import (
 from superqt.utils import signals_blocked
 
 from cali._constants import (
+    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DFF_CORRELATION,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
-    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
@@ -40,8 +40,12 @@ from cali._constants import (
     EVOKED,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
+    INFERRED_SPIKES_CROSS_CORRELATION,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_SYNCHRONY,
     MULTIPLIER,
     SPONTANEOUS,
+    CorrelationDataType,
 )
 
 from ._extraction_gui import FromMetaButton
@@ -85,8 +89,6 @@ class CalciumPeaksData:
     peaks_height_mode: str = MULTIPLIER
     peaks_distance: float = DEFAULT_PEAKS_DISTANCE  # milliseconds
     peaks_prominence_multiplier: float = 2.0
-    calcium_synchrony_jitter: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # milliseconds
-    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # milliseconds
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
@@ -139,7 +141,7 @@ class _AnalysisGUI(QWidget):
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
-        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.setContentsMargins(0, 0, 0, 10)
         threads_layout.setSpacing(5)
         threads_layout.addWidget(threads_lbl)
         threads_layout.addWidget(self._threads)
@@ -151,13 +153,11 @@ class _AnalysisGUI(QWidget):
         self._metadata_wdg = _MetadataWidget(self)
 
         self._export_group = _ExportGroup()
-        # self._export_group.add_option(CALCIUM_PEAKS, 0, 0)
-        # self._export_group.add_option(NEUROPIL_TRACES, 0, 1, checked=False)
-        # self._export_group.add_option(NEUROPIL_CORRECTED_TRACES, 0, 2, checked=False)
-        # self._export_group.add_option(DFF_TRACES, 0, 3)
-        # self._export_group.add_option(DEC_DFF_TRACES, 1, 0)
-        # self._export_group.add_option(INFERRED_SPIKES_TRACES, 1, 1)
-        # self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_TRACES, 1, 2)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 3, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 4, 0)
         self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
@@ -180,7 +180,7 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
-        group_layout.addWidget(create_divider_line("Export"))
+        group_layout.addWidget(create_divider_line("Export Options"))
         group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
@@ -240,6 +240,12 @@ class _AnalysisGUI(QWidget):
         self._metadata_wdg.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
+    def get_export_options(self) -> dict[CorrelationDataType, bool] | None:
+        """Return export options selected as dict[CorrelationDataType, bool]."""
+        if not self._export_group.isChecked():
+            return None
+        return cast("dict[CorrelationDataType, bool]", self._export_group.value())
+
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
 
@@ -272,16 +278,6 @@ class _AnalysisGUI(QWidget):
             ),
             peaks_prominence_multiplier=(
                 peaks_data.peaks_prominence_multiplier if peaks_data else 1.0
-            ),
-            calcium_sync_jitter_window=(
-                peaks_data.calcium_synchrony_jitter
-                if peaks_data
-                else DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
-            ),
-            calcium_peaks_max_lag=(
-                peaks_data.calcium_peaks_max_lag
-                if peaks_data
-                else DEFAULT_CALCIUM_PEAKS_MAX_LAG
             ),
             spike_threshold_value=(
                 spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD

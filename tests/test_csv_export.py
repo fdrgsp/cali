@@ -9,7 +9,7 @@ from sqlmodel import Session, create_engine
 from cali._constants import (
     DEC_DFF_TRACES,
     DFF_TRACES,
-    INFERRED_SPIKES_THRESHOLDED_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
     RAW_CALCIUM_TRACES,
 )
@@ -48,7 +48,7 @@ def test_csv_export_full_pipeline(
         DFF_TRACES: True,
         DEC_DFF_TRACES: True,
         INFERRED_SPIKES_TRACES: True,
-        INFERRED_SPIKES_THRESHOLDED_TRACES: True,
+        INFERRED_SPIKES_THRESHOLDED_BINARY: True,
     }
 
     # Run pipeline with exports
@@ -92,7 +92,7 @@ def test_csv_export_full_pipeline(
         DFF_TRACES: "dff_traces.csv",
         DEC_DFF_TRACES: "deconvolved_dff_traces.csv",
         INFERRED_SPIKES_TRACES: "inferred_spikes_raw.csv",
-        INFERRED_SPIKES_THRESHOLDED_TRACES: "inferred_spikes_thresholded.csv",
+        INFERRED_SPIKES_THRESHOLDED_BINARY: "inferred_spikes_thresholded.csv",
     }
 
     for _trace_type, filename in expected_files.items():

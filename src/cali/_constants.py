@@ -94,8 +94,6 @@ DEFAULT_HEIGHT = 3
 DEFAULT_SPIKE_THRESHOLD = 1
 DEFAULT_SPIKE_SYNCHRONY_MAX_LAG = 500.0  # milliseconds
 DEFAULT_SPIKE_SYNC_JITTER_WINDOW = 200.0  # milliseconds
-DEFAULT_CALCIUM_SYNC_JITTER_WINDOW = 200.0  # milliseconds
-DEFAULT_CALCIUM_PEAKS_MAX_LAG = 500.0  # milliseconds
 DEFAULT_NEUROPIL_INNER_RADIUS = 0
 DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
@@ -106,20 +104,36 @@ DEFAULT_CALI_DB_NAME = "results.cali"
 # ==================== Extraction ====================
 # Type for trace data export - must be defined before constants for type checking
 TraceDataType = Literal[
-    "Raw Calcium",  # RAW_CALCIUM_TRACES
-    "Neuropil",  # NEUROPIL_TRACES
-    "Neuropil Corrected",  # NEUROPIL_CORRECTED_TRACES
-    "ΔF/F",  # DFF_TRACES
-    "OASIS Deconvolved ΔF/F",  # DEC_DFF_TRACES
-    "OASIS Inferred Spikes",  # INFERRED_SPIKES_TRACES
-    "OASIS Thresholded Inferred Spikes",  # INFERRED_SPIKES_THRESHOLDED_TRACES
+    "Raw Calcium Traces",  # RAW_CALCIUM_TRACES
+    "Neuropil Traces",  # NEUROPIL_TRACES
+    "Neuropil Corrected Traces",  # NEUROPIL_CORRECTED_TRACES
+    "ΔF/F Traces",  # DFF_TRACES
+    "OASIS Deconvolved ΔF/F Traces",  # DEC_DFF_TRACES
+    "OASIS Inferred Spikes Traces",  # INFERRED_SPIKES_TRACES
+    "OASIS Thresholded Inferred Spikes (Binary)",  # INFERRED_SPIKES_THRESHOLDED_BINARY
 ]
 
-RAW_CALCIUM_TRACES: TraceDataType = "Raw Calcium"
-NEUROPIL_TRACES: TraceDataType = "Neuropil"
-NEUROPIL_CORRECTED_TRACES: TraceDataType = "Neuropil Corrected"
-DFF_TRACES: TraceDataType = "ΔF/F"
-DEC_DFF_TRACES: TraceDataType = "OASIS Deconvolved ΔF/F"
-INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes"
-INFERRED_SPIKES_THRESHOLDED_TRACES: TraceDataType = "OASIS Thresholded Inferred Spikes"
-CALCIUM_PEAKS = "Calcium Peaks"
+CorrelationDataType = Literal[
+    "ΔF/F Correlation Matrix",  # CALCIUM_DFF_CORRELATION
+    "Deconvolved ΔF/F Correlation Matrix",  # CALCIUM_DEC_DFF_CORRELATION
+    "Inferred Spikes Synchrony Matrix",  # INFERRED_SPIKES_SYNCHRONY
+    "Inferred Spikes Cross-Correlation Matrix",  # INFERRED_SPIKES_CROSS_CORRELATION
+    "Inferred Spikes Cross-Correlation Lags Matrix",  # INFERRED_SPIKES_CROSS_CORRELATION_LAGS  # noqa: E501
+]
+
+# fmt: off
+RAW_CALCIUM_TRACES: TraceDataType = "Raw Calcium Traces"
+NEUROPIL_TRACES: TraceDataType = "Neuropil Traces"
+NEUROPIL_CORRECTED_TRACES: TraceDataType = "Neuropil Corrected Traces"
+DFF_TRACES: TraceDataType = "ΔF/F Traces"
+DEC_DFF_TRACES: TraceDataType = "OASIS Deconvolved ΔF/F Traces"
+INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes Traces"
+INFERRED_SPIKES_THRESHOLDED_BINARY: TraceDataType = "OASIS Thresholded Inferred Spikes (Binary)"  # noqa: E501
+# CALCIUM_PEAKS = "Calcium Peaks"
+
+CALCIUM_DFF_CORRELATION: CorrelationDataType = "ΔF/F Correlation Matrix"
+CALCIUM_DEC_DFF_CORRELATION: CorrelationDataType = "Deconvolved ΔF/F Correlation Matrix"
+INFERRED_SPIKES_SYNCHRONY: CorrelationDataType = "Inferred Spikes Synchrony Matrix"
+INFERRED_SPIKES_CROSS_CORRELATION: CorrelationDataType = "Inferred Spikes Cross-Correlation Matrix"  # noqa: E501
+INFERRED_SPIKES_CROSS_CORRELATION_LAGS: CorrelationDataType = "Inferred Spikes Cross-Correlation Lags Matrix"  # noqa: E501
+# fmt: on

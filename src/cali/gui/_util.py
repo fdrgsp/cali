@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
 from qtpy.QtWidgets import (
@@ -25,6 +25,8 @@ from qtpy.QtWidgets import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from cali._constants import CorrelationDataType, TraceDataType
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
@@ -344,10 +346,15 @@ class _ExportGroup(QGroupBox):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.setStyleSheet("QGroupBox::title { font-size: 14px; }")
+        self.setTitle("Enable/Disable Export Options (as .csv)")
+
         self._checkboxes: dict[str, tuple[QCheckBox, int, int]] = {}
 
         self._layout = QGridLayout(self)
-        self._layout.setContentsMargins(5, 5, 5, 5)
+        self._layout.setContentsMargins(20, 5, 5, 5)
         self._layout.setSpacing(10)
 
     def add_option(
@@ -423,3 +430,22 @@ class _ExportGroup(QGroupBox):
         # Add options with stored positions
         for text, (checked, row, col) in values.items():
             self.add_option(text, row, col, checked=checked)
+
+    def get_export_options(self) -> dict[TraceDataType | CorrelationDataType, bool]:
+        """Return a dictionary with the export options selected by the user.
+
+        Returns.
+        -------
+        dict[TraceDataType | CorrelationDataType, bool]
+            Dictionary mapping option to a boolean indicating whether the user
+            selected to export that data type.
+        """
+        export_data = self.value()
+        return cast(
+            "dict[TraceDataType | CorrelationDataType, bool]",
+            {
+                correlation_type: checked
+                for correlation_type, (checked, _, _) in export_data.items()
+                if checked
+            },
+        )

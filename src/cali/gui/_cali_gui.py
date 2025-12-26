@@ -1340,6 +1340,10 @@ class CaliGui(QMainWindow):
                     export_traces = None
                     if extraction_settings is not None:
                         export_traces = self._extraction_wdg.get_export_options()
+                    # Get export options if analysis is being run
+                    export_correlations = None
+                    if analysis_settings is not None:
+                        export_correlations = self._analysis_wdg.get_export_options()
 
                     result = self._runner.run(
                         experiment,
@@ -1354,6 +1358,7 @@ class CaliGui(QMainWindow):
                         ),
                         as_generator=True,
                         export_traces=export_traces,
+                        export_correlations=export_correlations,
                     )
                     assert result is not None
                     yield from result
@@ -1512,6 +1517,10 @@ class CaliGui(QMainWindow):
             export_traces = None
             if selected_run.extraction_settings_id is not None:
                 export_traces = self._extraction_wdg.get_export_options()
+            # Get export options if analysis settings exist
+            export_correlations = None
+            if selected_run.analysis_settings_id is not None:
+                export_correlations = self._analysis_wdg.get_export_options()
 
             result = self._runner.run(
                 experiment,
@@ -1524,6 +1533,7 @@ class CaliGui(QMainWindow):
                 output_path=Path(self._output_path) if self._output_path else None,
                 as_generator=True,
                 export_traces=export_traces,
+                export_correlations=export_correlations,
             )
             assert result is not None
             yield from result

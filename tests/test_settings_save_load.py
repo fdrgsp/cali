@@ -111,8 +111,9 @@ def test_load_settings_restores_gui_state(
                 "peaks_height_mode": "global",
                 "peaks_distance": 300.0,
                 "peaks_prominence_multiplier": 0.4,
-                "calcium_synchrony_jitter": 250.0,
-                "calcium_peaks_max_lag": 1200.0,
+                "burst_threshold": 65.0,
+                "burst_min_duration": 600.0,
+                "burst_blur_sigma": 0.06,
             },
             "spikes_data": {
                 "spike_threshold": 5.0,
@@ -120,7 +121,8 @@ def test_load_settings_restores_gui_state(
                 "burst_threshold": 75.0,
                 "burst_min_duration": 600.0,
                 "burst_blur_sigma": 0.06,
-                "synchrony_lag": 60.0,
+                "synchrony_lag": 600.0,
+                "synchrony_jitter": 250.0,
             },
             "experiment_type_data": {
                 "experiment_type": "Spontaneous Activity",
@@ -165,9 +167,12 @@ def test_load_settings_restores_gui_state(
     assert analysis_value.calcium_peaks_data is not None
     assert analysis_value.calcium_peaks_data.peaks_height == 4.0
     assert analysis_value.calcium_peaks_data.peaks_distance == 300.0
+    assert analysis_value.calcium_peaks_data.burst_threshold == 65.0
     assert analysis_value.spikes_data is not None
     assert analysis_value.spikes_data.spike_threshold == 5.0
     assert analysis_value.spikes_data.burst_threshold == 75.0
+    assert analysis_value.spikes_data.synchrony_lag == 600.0
+    assert analysis_value.spikes_data.synchrony_jitter == 250.0
 
 
 def test_save_and_load_roundtrip(
@@ -378,8 +383,9 @@ def test_load_settings_with_evoked_experiment_data(
                 "peaks_height_mode": "multiplier",
                 "peaks_distance": 200.0,
                 "peaks_prominence_multiplier": 0.33,
-                "calcium_synchrony_jitter": 200.0,
-                "calcium_peaks_max_lag": 1000.0,
+                "burst_threshold": 65.0,
+                "burst_min_duration": 500.0,
+                "burst_blur_sigma": 0.05,
             },
             "spikes_data": {
                 "spike_threshold": 3.0,
@@ -387,7 +393,8 @@ def test_load_settings_with_evoked_experiment_data(
                 "burst_threshold": 65.0,
                 "burst_min_duration": 500.0,
                 "burst_blur_sigma": 0.05,
-                "synchrony_lag": 50.0,
+                "synchrony_lag": 500.0,
+                "synchrony_jitter": 200.0,
             },
             "experiment_type_data": {
                 "experiment_type": "Evoked Activity",
