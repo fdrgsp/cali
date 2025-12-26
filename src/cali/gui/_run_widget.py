@@ -65,12 +65,33 @@ class _ChoosePositionsWidget(QWidget):
 
 @dataclass(frozen=True)
 class CaliRunSettings:
+    """Settings for a Cali run.
+
+    Attributes
+    ----------
+    positions : list[int]
+        List of position indices to process
+    run_detection : bool
+        Whether to run detection
+    run_extraction : bool
+        Whether to run extraction
+    run_analysis : bool
+        Whether to run analysis
+    detection_settings_id : int | None
+        Detection settings ID to use (for extraction/analysis only modes)
+    extraction_settings_id : int | None
+        Extraction settings ID to use (for analysis only mode)
+    run_id : int | None
+        Run ID to export from (for export only mode)
+    """
+
     positions: list[int]
     run_detection: bool
     run_extraction: bool
     run_analysis: bool
     detection_settings_id: int | None
     extraction_settings_id: int | None
+    run_id: int | None = None
 
 
 class _RunCaliWidget(QWidget):
@@ -116,6 +137,7 @@ class _RunCaliWidget(QWidget):
             "Detection Only",
             "Extraction Only (require detection)",
             "Analysis Only (require detection and extraction)",
+            "Export Only (require existing run)",
         ]
         self._run_options_combo.addItems(items)
         self._run_options_combo.setToolTip(
@@ -129,7 +151,9 @@ class _RunCaliWidget(QWidget):
             "• Extraction Only: Run extraction using existing detection results\n"
             "  (requires selecting a Detection ID)\n"
             "• Analysis Only: Run analysis using existing extraction results\n"
-            "  (requires selecting a Detection ID and Extraction ID)\n\n"
+            "  (requires selecting a Detection ID and Extraction ID)\n"
+            "• Export Only: Export traces and correlations to CSV from an\n"
+            "  existing run (requires selecting a Run ID)\n\n"
             "Smart Skipping:\n"
             "The system automatically detects which positions have already been \n"
             "processed with the exact same settings. If you request any stage \n"
@@ -159,6 +183,16 @@ class _RunCaliWidget(QWidget):
         )
         self._extraction_settings_combo.setVisible(False)
 
+        # Run IDs selector (for Export-only mode)
+        self._run_ids_combo = QComboBox()
+        self._run_ids_combo.setToolTip(
+            "Select which run to export data from.\n\n"
+            "Run ID corresponds to a complete analysis run. The export will\n"
+            "include traces and correlations based on the checkboxes selected\n"
+            "in the Extraction and Analysis export options."
+        )
+        self._run_ids_combo.setVisible(False)
+
         run_options_layout = QHBoxLayout(run_options_wdg)
         run_options_layout.setContentsMargins(0, 0, 0, 0)
         run_options_layout.setSpacing(5)
@@ -166,6 +200,7 @@ class _RunCaliWidget(QWidget):
         run_options_layout.addWidget(self._run_options_combo)
         run_options_layout.addWidget(self._detection_settings_combo)
         run_options_layout.addWidget(self._extraction_settings_combo)
+        run_options_layout.addWidget(self._run_ids_combo)
 
         # main layout
         main_layout = QVBoxLayout(self)
@@ -201,6 +236,7 @@ class _RunCaliWidget(QWidget):
         self._run_options_combo.setEnabled(state)
         self._detection_settings_combo.setEnabled(state)
         self._extraction_settings_combo.setEnabled(state)
+        self._run_ids_combo.setEnabled(state)
         self._run_btn.setEnabled(state)
         self._save_settings_btn.setEnabled(state)
         self._load_settings_btn.setEnabled(state)
@@ -268,6 +304,11 @@ class _RunCaliWidget(QWidget):
         # Determine which settings IDs to use
         detection_settings_id = None
         extraction_settings_id = None
+        run_id = None
+
+        # For Export Only mode, get the run ID
+        if "Export Only" in option:
+            run_id = self._run_ids_combo.currentData()
 
         # For "Only" modes that require existing settings
         extraction_and_analysis = "Extraction and Analysis (require detection)"
@@ -287,13 +328,22 @@ class _RunCaliWidget(QWidget):
         extraction_only = "Extraction Only (require detection)"
         analysis_only = "Analysis Only (require detection and extraction)"
 
-        run_detection = "Detection" in option and option not in [
-            extraction_only,
-            analysis_only,
-            extraction_and_analysis,
-        ]
-        run_extraction = "Extraction" in option and option != analysis_only
-        run_analysis = "Analysis" in option
+        run_detection = (
+            "Detection" in option
+            and option
+            not in [
+                extraction_only,
+                analysis_only,
+                extraction_and_analysis,
+            ]
+            and "Export Only" not in option
+        )
+        run_extraction = (
+            "Extraction" in option
+            and option != analysis_only
+            and "Export Only" not in option
+        )
+        run_analysis = "Analysis" in option and "Export Only" not in option
 
         return CaliRunSettings(
             positions=parse_lineedit_text(self._positions_wdg.value()),
@@ -302,6 +352,7 @@ class _RunCaliWidget(QWidget):
             run_analysis=run_analysis,
             detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
+            run_id=run_id,
         )
 
     def get_detection_settings_id(self) -> int | None:
@@ -358,8 +409,31 @@ class _RunCaliWidget(QWidget):
             has_detections=has_detections, has_extractions=len(settings_list) > 0
         )
 
+    def populate_run_ids(self, run_ids_list: list[int]) -> None:
+        """Populate the run IDs combobox.
+
+        Parameters
+        ----------
+        run_ids_list : list[int]
+            List of available run IDs
+        """
+        self._run_ids_combo.clear()
+        self._run_ids_combo.addItem("Select Run ID...", None)
+        for run_id in run_ids_list:
+            self._run_ids_combo.addItem(f"Run ID {run_id}", run_id)
+
+        # Update options availability
+        has_detections = self._detection_settings_combo.count() > 1
+        has_extractions = self._extraction_settings_combo.count() > 1
+        has_runs = len(run_ids_list) > 0
+        self._update_options_availability(
+            has_detections=has_detections,
+            has_extractions=has_extractions,
+            has_runs=has_runs,
+        )
+
     def _update_options_availability(
-        self, has_detections: bool, has_extractions: bool
+        self, has_detections: bool, has_extractions: bool, has_runs: bool = False
     ) -> None:
         """Enable or disable run options based on available settings.
 
@@ -369,6 +443,8 @@ class _RunCaliWidget(QWidget):
             Whether any detection settings exist in the database
         has_extractions : bool
             Whether any extraction settings exist in the database
+        has_runs : bool
+            Whether any completed runs exist in the database
         """
         model = cast("QStandardItemModel", self._run_options_combo.model())
 
@@ -379,6 +455,7 @@ class _RunCaliWidget(QWidget):
         # 3: "Detection Only"
         # 4: "Extraction Only (require detection)"
         # 5: "Analysis Only (require detection and extraction)"
+        # 6: "Export Only (require existing run)"
 
         current_index = self._run_options_combo.currentIndex()
 
@@ -417,6 +494,18 @@ class _RunCaliWidget(QWidget):
                 if current_index == 5:
                     self._run_options_combo.setCurrentIndex(0)
 
+        # "Export Only" requires completed runs
+        export_only_item = model.item(6)
+        if export_only_item:
+            if has_runs:
+                export_only_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                )
+            else:
+                export_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                if current_index == 6:
+                    self._run_options_combo.setCurrentIndex(0)
+
     def _on_run_option_changed(self, text: str) -> None:
         """Handle run option change to show/hide settings selectors.
 
@@ -432,6 +521,7 @@ class _RunCaliWidget(QWidget):
         is_extraction_and_analysis = (
             text == "Extraction and Analysis (require detection)"
         )
+        is_export_only = text == "Export Only (require existing run)"
 
         show_detection = (
             is_extraction_only or is_analysis_only or is_extraction_and_analysis
@@ -441,8 +531,13 @@ class _RunCaliWidget(QWidget):
         # Show extraction settings only for "Analysis Only"
         self._extraction_settings_combo.setVisible(is_analysis_only)
 
+        # Show run IDs only for "Export Only"
+        self._run_ids_combo.setVisible(is_export_only)
+
         # Auto-select if only one option available
         if show_detection and self._detection_settings_combo.count() == 2:
             self._detection_settings_combo.setCurrentIndex(1)
         if is_analysis_only and self._extraction_settings_combo.count() == 2:
             self._extraction_settings_combo.setCurrentIndex(1)
+        if is_export_only and self._run_ids_combo.count() == 2:
+            self._run_ids_combo.setCurrentIndex(1)

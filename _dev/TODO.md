@@ -14,10 +14,11 @@ ask to claude:
 
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
 
-
 - code and widget to load own label images for segmentation
 
-- ⚡️ export tab to export tables and labels
+- export csv tables
+
+- export labels
 
 - is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
 
@@ -25,21 +26,11 @@ ask to claude:
 
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.
 
-- is there something wrong with the multithreading? it seems slower if I multithread...
-
-- make overall markdown of cali runner pipeline
-
-- ask about best way to have thresholds...global???
-
 - link image viewer with plots
 
-- the run option should be updated depending on the position input in the posiotion to analyze widget
-
-- select black or white background for pyqtgraph
+- the run option should be updated depending on the position input in the position to analyze widget
 
 - fix: titles correlation are too long
-
-- fix rasters by inverting the Y axis (the clicking must be fixed for that)
 
 - add stim vs non-stim calcium peaks raster
 - add sotrted stim vs non-stim calcium and spikes heatmap to plots

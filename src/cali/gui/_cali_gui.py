@@ -819,6 +819,10 @@ class CaliGui(QMainWindow):
         """Update the GUI settings based on the latest analysis result."""
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
+
+        # Always populate settings to enable/disable run options based on database state
+        self._populate_settings(database_path)
+
         # select first run if available
         if self._runs_panel._runs_list.count() > 0:
             # select first run
@@ -826,9 +830,6 @@ class CaliGui(QMainWindow):
             # emit runSelected signal for the first run
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
                 self._runs_panel._on_item_clicked(first_item)
-        else:
-            # populate detection settings combobox in run widget
-            self._populate_settings(database_path)
         # load plate plan data
         if experiment is None:
             experiment = Experiment.load_from_database(database_path, load_data=False)
@@ -929,11 +930,18 @@ class CaliGui(QMainWindow):
                         combo.setCurrentIndex(i)
                         break
 
+            # Populate run IDs
+            run_ids = self._runs_panel.get_run_ids()
+            self._run_cali_wdg.populate_run_ids(run_ids)
+
         except Exception as e:
             cali_logger.error(f"Failed to populate detection settings: {e}")
 
     def _get_run_option(self, value: CaliRunSettings) -> int:
         """Get the current run option from the run widget."""
+        # Check for Export Only mode first
+        if value.run_id is not None:
+            return 6  # Export Only (require existing run)
         if value.run_detection and value.run_extraction and value.run_analysis:
             return 0  # Detection, Extraction and Analysis
         if value.run_detection and value.run_extraction and not value.run_analysis:
@@ -1081,6 +1089,25 @@ class CaliGui(QMainWindow):
             )
 
             value = self._run_cali_wdg.value()
+
+            # if "Export Only" mode is selected but no run ID is provided, show error
+            if (
+                not value.run_detection
+                and not value.run_extraction
+                and not value.run_analysis
+                and value.run_id is None
+            ):
+                show_error_dialog(
+                    self,
+                    "❌ Please select a run ID to export traces and correlations "
+                    "from an existing run.",
+                )
+                return
+
+            # Handle Export Only mode - export traces and correlations from existing run
+            if value.run_id is not None:
+                self._handle_export_only(value.run_id)
+                return
 
             # Get positions list early since we need it for validation
             pos = value.positions or list(
@@ -1564,6 +1591,95 @@ class CaliGui(QMainWindow):
             self._run_cali_wdg.update_progress_bar_plus_one()
         else:
             self._run_cali_wdg.set_progress_bar_text(progress)
+
+    def _handle_export_only(self, run_id: int) -> None:
+        """Handle Export Only mode - export traces and correlations from existing run.
+
+        Parameters
+        ----------
+        run_id : int
+            Run ID to export data from
+        """
+        if self._database_path is None:
+            show_error_dialog(self, "❌ No database loaded")
+            return
+
+        # Get export options from extraction and analysis widgets
+        extraction_export_opts = self._extraction_wdg.get_export_options()
+        analysis_export_opts = self._analysis_wdg.get_export_options()
+
+        # Check if any exports are selected
+        has_trace_exports = (
+            any(extraction_export_opts.values()) if extraction_export_opts else False
+        )
+        has_correlation_exports = (
+            any(analysis_export_opts.values()) if analysis_export_opts else False
+        )
+
+        if not has_trace_exports and not has_correlation_exports:
+            show_error_dialog(
+                self,
+                "❌ No export options selected.\n\n"
+                "Please select trace export options in the Extraction tab "
+                "and/or correlation export options in the Analysis tab.",
+            )
+            return
+
+        # Show progress dialog
+        self._init_loading_bar(f"📊 Exporting data from Run {run_id}...", False)
+
+        try:
+            from sqlmodel import create_engine
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                echo=False,
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+
+            try:
+                # Convert database path to Path object for type safety
+                db_path = Path(self._database_path)
+
+                # Export traces
+                if has_trace_exports and extraction_export_opts:
+                    from cali.util._database_to_csv import export_traces_to_csv
+
+                    export_traces_to_csv(
+                        engine,
+                        extraction_export_opts,
+                        run_id,
+                        db_path,
+                    )
+
+                # Export correlations
+                if has_correlation_exports and analysis_export_opts:
+                    from cali.util._database_to_csv import export_correlations_to_csv
+
+                    export_correlations_to_csv(
+                        engine,
+                        analysis_export_opts,
+                        run_id,
+                        db_path,
+                    )
+
+                # Show success message
+                export_dir = (
+                    db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
+                )
+                cali_logger.info(
+                    f"✅ Successfully exported data from Run {run_id} to {export_dir}"
+                )
+
+            finally:
+                engine.dispose(close=True)
+
+        except Exception as e:
+            cali_logger.error(f"❌ Failed to export data: {e}")
+            show_error_dialog(self, f"❌ Export failed:\n\n{e}")
+        finally:
+            self._loading_bar.hide()
 
     def _on_worker_errored(self, error: Any) -> None:
         """Handle errors from the runner."""

@@ -358,6 +358,36 @@ class _RunsPanel(QGroupBox):
             cali_logger.error(f"Failed to get analysis settings IDs: {e}")
             return []
 
+    def get_run_ids(self) -> list[int]:
+        """Get all run IDs from database.
+
+        Returns
+        -------
+        list[int]
+            Sorted list of all run IDs
+        """
+        if self._database_path is None:
+            return []
+
+        try:
+            from sqlmodel import Session, create_engine, select
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+            with Session(engine) as session:
+                # Get all run IDs
+                stmt = select(CaliResult.id)
+                results = session.exec(stmt).all()
+                ids = [r for r in results if r is not None]
+            engine.dispose(close=True)
+            return sorted(ids)
+        except Exception as e:
+            cali_logger.error(f"Failed to get run IDs: {e}")
+            return []
+
     def highlight_run_by_settings(
         self,
         detection_id: int | None,
