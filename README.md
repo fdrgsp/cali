@@ -441,8 +441,6 @@ If the maximum had been at lag = +2, it would indicate Neuron B consistently fir
 2. Penalize non-overlapping spikes as negative correlation
 3. Produce values in [-1, 1] range, which is harder to interpret for spike coincidence
 
-The normalized dot product approach is standard in spike train analysis (e.g., in cross-correlogram computation) and more appropriate for discrete event data.
-
 **Output**: Two heatmaps are generated:
 
 - **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
