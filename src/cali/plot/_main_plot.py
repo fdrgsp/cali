@@ -10,17 +10,12 @@ from typing_extensions import TypeAlias
 from cali._constants import EVOKED
 
 from ._multi_wells_plots import (
-    plot_burst_avg_duration_bar_plot,
-    plot_burst_avg_interval_bar_plot,
-    plot_burst_count_bar_plot,
-    plot_burst_rate_bar_plot,
     plot_calcium_peaks_amplitude_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
     plot_non_stimulated_peaks_amplitude_bar_plot,
     plot_percentage_active_bar_plot,
-    plot_spike_synchrony_bar_plot,
     plot_stimulated_peaks_amplitude_bar_plot,
 )
 from ._single_wells_plots.burst import (
@@ -622,41 +617,41 @@ AnalysisProduct(
     category="General",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
-AnalysisProduct(
-    name="Inferred Spikes Global Synchrony Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_spike_synchrony_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Count Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_count_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Average Duration Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_avg_duration_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Average Interval Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_avg_interval_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Rate Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_rate_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# AnalysisProduct(
+#     name="Inferred Spikes Global Synchrony Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_spike_synchrony_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Count Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_count_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Average Duration Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_avg_duration_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Average Interval Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_avg_interval_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Rate Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_rate_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 
 # Evoked Multi-Well Products
 AnalysisProduct(

@@ -217,7 +217,9 @@ class _ExtractionGUI(QWidget):
         """Return export options selected as dict[TraceDataType, bool]."""
         if not self._export_group.isChecked():
             return None
-        return cast("dict[TraceDataType, bool]", self._export_group.value())
+        return cast(
+            "dict[TraceDataType, bool]", self._export_group.get_export_options()
+        )
 
     def to_model_settings(self) -> ExtractionSettings:
         """Convert current GUI settings to ExtractionSettings model.

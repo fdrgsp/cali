@@ -315,7 +315,7 @@ def plot_spike_synchrony_bar_plot(
         widget=widget,
         data=plot_data,
         parameter=text,
-        units="Index",
+        units="Median",
         title_suffix=" (Median - Thresholded Data)",
         bar_label="Weighted Mean ± Pooled SEM",
     )

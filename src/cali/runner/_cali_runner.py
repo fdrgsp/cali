@@ -671,6 +671,8 @@ class CaliRunner:
                             cali_logger.info("🛑 Run cancelled during extraction!")
                             return
 
+                        # Track FOVs committed in this batch for final commit logging
+                        batch_fov_count = 0
                         batch_positions = positions_for_extraction[i : i + batch_size]
 
                         # Prepare FOVs for this batch
@@ -740,6 +742,7 @@ class CaliRunner:
                                     delattr(fov, "_new_fov_analysis")
 
                             fov_count += 1
+                            batch_fov_count += 1
                             yield "PROGRESS:UPDATE"
                             should_commit = fov_count % self.commit_batch_size == 0
                             if should_commit:
@@ -761,8 +764,8 @@ class CaliRunner:
                             positions_processed.append(fov.position_index)
 
                         # Commit any remaining in this batch and clear memory
-                        # Only commit if there were uncommitted FOVs
-                        uncommitted_count = fov_count % self.commit_batch_size
+                        # Only commit if there were uncommitted FOVs in this batch
+                        uncommitted_count = batch_fov_count % self.commit_batch_size
                         if uncommitted_count > 0:
                             cali_logger.info(
                                 f"💾 Committing final batch of {uncommitted_count} "

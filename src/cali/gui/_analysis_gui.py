@@ -244,7 +244,9 @@ class _AnalysisGUI(QWidget):
         """Return export options selected as dict[CorrelationDataType, bool]."""
         if not self._export_group.isChecked():
             return None
-        return cast("dict[CorrelationDataType, bool]", self._export_group.value())
+        return cast(
+            "dict[CorrelationDataType, bool]", self._export_group.get_export_options()
+        )
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
