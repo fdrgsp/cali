@@ -66,7 +66,7 @@ def test_incomplete_extraction_shows_asterisk(
     runs_panel.set_database_path(db_path)
 
     # Wait for UI to update
-    qtbot.wait(50)
+    qtbot.wait(100)
 
     # Check that the item text contains asterisk for extraction
     assert runs_panel._runs_list.count() == 1
@@ -78,6 +78,11 @@ def test_incomplete_extraction_shows_asterisk(
     assert f"Extraction ID: {extraction_id} ⚠️" in item_text
     # Should NOT have asterisk next to Analysis (it's None)
     assert "Analysis ID: None ⚠️" not in item_text
+
+    # Explicitly clear to help with cleanup
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
 
 
 def test_incomplete_analysis_shows_asterisk(
