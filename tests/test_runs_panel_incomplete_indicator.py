@@ -1,5 +1,6 @@
 """Tests for incomplete run indicators in the runs panel."""
 
+import gc
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,7 @@ def test_incomplete_extraction_shows_asterisk(
     runs_panel.clear()
     runs_panel._database_path = None
     qtbot.wait(50)
+    gc.collect()  # Force garbage collection
 
 
 def test_incomplete_analysis_shows_asterisk(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,6 +56,12 @@ def test_get_run_ids_with_database(
     assert all(isinstance(_id, int) for _id in result)
     assert result == sorted(result)  # Should be sorted
 
+    # Explicitly clean up
+    panel._database_path = None
+    panel.clear()
+    qtbot.wait(50)
+    gc.collect()  # Force garbage collection to clean up connections
+
 
 def test_get_run_ids_handles_exception(qtbot: QtBot, tmp_path: Path) -> None:
     """Test get_run_ids handles database errors gracefully."""
@@ -86,3 +93,9 @@ def test_get_run_ids_filters_none_values(
     assert None not in result
     # All values should be integers
     assert all(isinstance(_id, int) for _id in result)
+
+    # Explicitly clean up
+    panel._database_path = None
+    panel.clear()
+    qtbot.wait(50)
+    gc.collect()  # Force garbage collection to clean up connections
