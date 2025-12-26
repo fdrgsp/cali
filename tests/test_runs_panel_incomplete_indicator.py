@@ -18,7 +18,7 @@ def runs_panel(qtbot: QtBot) -> _RunsPanel:
 
 
 def test_incomplete_extraction_shows_asterisk(
-    tmp_path: Path, runs_panel: _RunsPanel
+    tmp_path: Path, runs_panel: _RunsPanel, qtbot: QtBot
 ) -> None:
     """Test that incomplete extraction shows asterisk in runs panel."""
     from sqlmodel import Session, create_engine
@@ -64,6 +64,9 @@ def test_incomplete_extraction_shows_asterisk(
 
     # Load runs panel
     runs_panel.set_database_path(db_path)
+
+    # Wait for UI to update
+    qtbot.wait(50)
 
     # Check that the item text contains asterisk for extraction
     assert runs_panel._runs_list.count() == 1
