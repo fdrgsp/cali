@@ -2374,6 +2374,7 @@ class CaliGui(QMainWindow):
         """Update the FOV table when a well is selected."""
         self._fov_table.clear()
         self._image_viewer._clear_highlight()
+        self._image_viewer.setData(None, None, None)
 
         # Clear plots and reset FOV to ensure reload when selecting same well again
         for sw_graph in self.SW_GRAPHS:
@@ -2441,7 +2442,7 @@ class CaliGui(QMainWindow):
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
 
             if value is None:
-                self._image_viewer.setData(None, None)
+                self._image_viewer.setData(None, None, None)
                 self._update_single_wells_graphs_combo(clear=True)
                 return
 

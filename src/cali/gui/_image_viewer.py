@@ -172,6 +172,8 @@ class _ImageViewer(QGroupBox):
         """
         self._clear()
         if data is None:
+            self._update_button_state("labels", False)
+            self._update_button_state("neuropil", False)
             return
 
         if len(data.shape) > 2:
@@ -184,36 +186,54 @@ class _ImageViewer(QGroupBox):
 
         # Enable/disable labels button based on whether labels data is available
         if labels is None:
-            self._labels.setChecked(False)
-            self._labels.setEnabled(False)
-            self._labels.setToolTip(
-                "No labels data available for the selected run. "
-                "Labels are only shown for runs with ROI detection."
-            )
+            self._update_button_state("labels", False)
         elif (
             self._viewer.labels_image is not None
             and self._viewer.contours_image is not None
         ):
-            self._labels.setEnabled(True)
-            self._labels.setToolTip("Toggle ROI labels visibility")
-            self._viewer.contours_image.visible = self._labels.isChecked()
+            self._update_button_state("labels", True)
 
         # Enable/disable neuropil button based on whether neuropil data is available
         if neuropil is None:
-            self._neuropil.setChecked(False)
-            self._neuropil.setEnabled(False)
-            self._neuropil.setToolTip(
-                "No neuropil data available for the selected run. "
-                "Neuropil is only shown for runs with neuropil correction enabled."
-            )
+            self._update_button_state("neuropil", False)
         elif self._viewer.neuropil_contours_image is not None:
-            self._neuropil.setEnabled(True)
-            self._neuropil.setToolTip("Toggle neuropil mask visibility")
-            self._viewer.neuropil_contours_image.visible = self._neuropil.isChecked()
+            self._update_button_state("neuropil", True)
 
     def data(self) -> np.ndarray | None:
         """Return the image data."""
         return self._viewer.image._data if self._viewer.image is not None else None
+
+    def _update_button_state(
+        self, type: Literal["labels", "neuropil"], enable: bool
+    ) -> None:
+        if enable:
+            if type == "labels":
+                self._labels.setEnabled(True)
+                self._labels.setToolTip("Toggle ROI labels visibility")
+                assert self._viewer.contours_image is not None
+                self._viewer.contours_image.visible = self._labels.isChecked()
+            elif type == "neuropil":
+                self._neuropil.setEnabled(True)
+                self._neuropil.setToolTip("Toggle neuropil mask visibility")
+                assert self._viewer.neuropil_contours_image is not None
+                self._viewer.neuropil_contours_image.visible = (
+                    self._neuropil.isChecked()
+                )
+        else:
+            if type == "labels":
+                self._labels.setChecked(False)
+                self._labels.setEnabled(False)
+                self._labels.setToolTip(
+                    "No labels data available for the selected run. "
+                    "Labels are only shown for runs with ROI detection."
+                )
+            elif type == "neuropil":
+                self._neuropil.setChecked(False)
+                self._neuropil.setEnabled(False)
+                self._neuropil.setToolTip(
+                    "No neuropil data available for the selected run. "
+                    "Neuropil is only shown for runs with neuropil correction enabled."
+                )
 
     def _on_clims_changed(self, range: tuple[float, float]) -> None:
         """Update the LUT range."""
