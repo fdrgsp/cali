@@ -8,12 +8,17 @@ import pytest
 from sqlmodel import Session, create_engine
 
 from cali.util import (
-    export_corrected_traces_to_csv,
+    export_calcium_dec_dff_correlation_to_csv,
+    export_calcium_dff_correlation_to_csv,
     export_correlation_matrices_to_csv,
     export_deconvolved_dff_traces_to_csv,
     export_dff_traces_to_csv,
+    export_inferred_spikes_cross_correlation_lags_to_csv,
+    export_inferred_spikes_cross_correlation_to_csv,
     export_inferred_spikes_raw_to_csv,
+    export_inferred_spikes_synchrony_to_csv,
     export_inferred_spikes_thresholded_to_csv,
+    export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
 )
@@ -129,10 +134,74 @@ def test_export_corrected_traces(test_engine: Engine, tmp_path: Path) -> None:
     """Test exporting corrected traces to CSV."""
     output_file = tmp_path / "corrected_traces.csv"
     try:
-        export_corrected_traces_to_csv(test_engine, output_file, run_id=1)
+        export_neuropil_corrected_traces_to_csv(test_engine, output_file, run_id=1)
         # If corrected data exists, check the file
         if output_file.exists():
             assert output_file.stat().st_size > 0
     except ValueError:
         # It's okay if no corrected data exists in test database
         pytest.skip("No corrected traces found in test database")
+
+
+def test_export_calcium_dff_correlation(test_engine: Engine, tmp_path: Path) -> None:
+    """Test exporting ΔF/F correlation matrix to CSV."""
+    output_file = tmp_path / "calcium_dff_correlation.csv"
+    export_calcium_dff_correlation_to_csv(test_engine, output_file, run_id=1)
+
+    # Check that at least one file was created (may have FOV prefix if multiple FOVs)
+    csv_files = list(tmp_path.glob("*calcium_dff_correlation.csv"))
+    assert len(csv_files) > 0
+    # Check first file has content
+    assert csv_files[0].stat().st_size > 0
+
+
+def test_export_calcium_dec_dff_correlation(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """Test exporting deconvolved ΔF/F correlation matrix to CSV."""
+    output_file = tmp_path / "calcium_dec_dff_correlation.csv"
+    export_calcium_dec_dff_correlation_to_csv(test_engine, output_file, run_id=1)
+
+    # Check that at least one file was created (may have FOV prefix if multiple FOVs)
+    csv_files = list(tmp_path.glob("*calcium_dec_dff_correlation.csv"))
+    assert len(csv_files) > 0
+    assert csv_files[0].stat().st_size > 0
+
+
+def test_export_inferred_spikes_synchrony(test_engine: Engine, tmp_path: Path) -> None:
+    """Test exporting inferred spikes synchrony matrix to CSV."""
+    output_file = tmp_path / "inferred_spikes_synchrony.csv"
+    export_inferred_spikes_synchrony_to_csv(test_engine, output_file, run_id=1)
+
+    # Check that at least one file was created (may have FOV prefix if multiple FOVs)
+    csv_files = list(tmp_path.glob("*inferred_spikes_synchrony.csv"))
+    assert len(csv_files) > 0
+    assert csv_files[0].stat().st_size > 0
+
+
+def test_export_inferred_spikes_cross_correlation(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """Test exporting inferred spikes cross-correlation matrix to CSV."""
+    output_file = tmp_path / "inferred_spikes_cross_correlation.csv"
+    export_inferred_spikes_cross_correlation_to_csv(test_engine, output_file, run_id=1)
+
+    # Check that at least one file was created (may have FOV prefix if multiple FOVs)
+    csv_files = list(tmp_path.glob("*inferred_spikes_cross_correlation.csv"))
+    assert len(csv_files) > 0
+    assert csv_files[0].stat().st_size > 0
+
+
+def test_export_inferred_spikes_cross_correlation_lags(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """Test exporting inferred spikes cross-correlation lags matrix to CSV."""
+    output_file = tmp_path / "inferred_spikes_cross_correlation_lags.csv"
+    export_inferred_spikes_cross_correlation_lags_to_csv(
+        test_engine, output_file, run_id=1
+    )
+
+    # Check that at least one file was created (may have FOV prefix if multiple FOVs)
+    csv_files = list(tmp_path.glob("*inferred_spikes_cross_correlation_lags.csv"))
+    assert len(csv_files) > 0
+    assert csv_files[0].stat().st_size > 0

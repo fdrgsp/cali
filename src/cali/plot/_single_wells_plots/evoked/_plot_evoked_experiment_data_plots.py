@@ -793,23 +793,28 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         color: str,
         row_index: int,
     ) -> bool:
-        """Threshold + rising-edge detection; return True if anything was plotted."""
+        """Detect binary spike events (rising edges); return True if anything plotted.
+
+        Uses rising edge detection to show discrete spike events, matching
+        standard spike raster convention (one tick per event onset).
+        """
         spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
         if spikes.size == 0:
             return False
 
-        the = (
+        threshold = (
             float(data_analysis.inferred_spikes_threshold)
             if data_analysis and data_analysis.inferred_spikes_threshold is not None
             else 0.0
         )
 
-        above = spikes > the
-        if not np.any(above):
+        above_threshold = spikes > threshold
+        if not np.any(above_threshold):
             return False
 
-        # rising edges: 0 -> 1 transitions (collapse runs of 1s to a single event)
-        rising = above & ~np.concatenate(([False], above[:-1]))
+        # Rising edges: detect 0 -> 1 transitions (discrete spike events)
+        # This collapses continuous suprathreshold periods into single events
+        rising = above_threshold & ~np.concatenate(([False], above_threshold[:-1]))
         spike_indices = np.where(rising)[0]
         if spike_indices.size == 0:
             return False
@@ -838,7 +843,9 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         )
         y_row += 1
 
-    plot.setTitle("Stimulated vs Non-Stimulated Spike Raster Plot (Thresholded)")
+    plot.setTitle(
+        "Stimulated vs Non-Stimulated Spike Raster Plot\n(Thresholded - Rising Edges)"
+    )
     plot.setLabel("left", "ROI")
     _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
 
@@ -1223,12 +1230,9 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     count = 0
     total_frames = 0
 
-    # Stim traces
-    for roi_model, trace_obj, data_analysis in stimulated_data:
+    # Stim traces - show continuous spike amplitudes
+    for roi_model, trace_obj, _data_analysis in stimulated_data:
         spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
-            the = float(data_analysis.inferred_spikes_threshold)
-            spikes = np.where(spikes > the, spikes, 0.0)
         offset = count * 1.1
         y = spikes + offset
         x = np.arange(y.size, dtype=float)
@@ -1244,12 +1248,9 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         count += 1
         total_frames = max(total_frames, y.size)
 
-    # Non-stim traces
-    for roi_model, trace_obj, data_analysis in non_stimulated_data:
+    # Non-stim traces - show continuous spike amplitudes
+    for roi_model, trace_obj, _data_analysis in non_stimulated_data:
         spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
-        if data_analysis and data_analysis.inferred_spikes_threshold is not None:
-            the = float(data_analysis.inferred_spikes_threshold)
-            spikes = np.where(spikes > the, spikes, 0.0)
         offset = count * 1.1
         y = spikes + offset
         x = np.arange(y.size, dtype=float)
@@ -1265,10 +1266,8 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         count += 1
         total_frames = max(total_frames, y.size)
 
-    plot.setLabel("left", "Inferred Spikes (Thresholded)")
-    plot.setTitle(
-        "Stimulated vs Non-Stimulated Spike Traces\n(Thresholded Inferred Spikes)"
-    )
+    plot.setLabel("left", "Inferred Spikes (a.u.)")
+    plot.setTitle("Stimulated vs Non-Stimulated Inferred Spike Traces")
 
     # hide y tick values, but keep the axis label text
     y_axis = plot.getAxis("left")

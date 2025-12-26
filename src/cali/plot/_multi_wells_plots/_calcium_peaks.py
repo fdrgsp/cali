@@ -12,9 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._util import (
-    plot_parameter_bar_plot,
-)
+from ._util import plot_parameter_bar_plot
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine

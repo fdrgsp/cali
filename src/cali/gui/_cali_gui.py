@@ -105,7 +105,7 @@ class CaliGui(QMainWindow):
     ) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle("Cali")
+        self.setWindowTitle("cali")
 
         # ELAPSED TIMER ---------------------------------------------------------------
         self._elapsed_timer = _ElapsedTimer()
@@ -387,75 +387,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        # data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # db_path = "tests/test_data/evoked/results.cali"
-        # self._initialize_from_database(db_path, data_path)
-
-        # data_path = "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-        # "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # self._initialize_from_database(db_path, data_path)
-
-        # self._data_path = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-        # self._database_path = "tests/test_data/spontaneous/results.cali"
-        # self._output_path = "tests/test_data/spontaneous/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        # self._initialize_from_database(self._database_path, self._data_path)
-
-        # USED IN TESTS -------------------------------------------------
-        # self._data_path = "tests/test_data/evoked/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/evoked/results.cali"
-        # self._output_path = "tests/test_data/evoked/"
-
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/exp.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/from_tiffs.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._initialize_from_database(self._database_path, self._data_path)
-
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._output_path = "tests/test_data/multi_pos/"
-
-        # self._database_path = "tests/test_data/test_for_plot/result_for_plots.cali"
-        # self._data_path = "tests/test_data/test_for_plot/evk.tensorstore.zarr"
-        # self._output_path = "tests/test_data/test_for_plot/"
-
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/phenix.cali"
-        # self._data_path = "/Volumes/T7 Shield/Phenix/out"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/"
-        # self._initialize_from_directories(
-        #     self._data_path, self._output_path, "phenix.cali"
-        # )
-
-        # ===========================
-        # self._data_path = "tests/test_data/multi_pos/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/multi_pos/result_2pos.cali"
-        # self._output_path = "tests/test_data/multi_pos/"
-
         self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
         self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
         self._output_path = "tests/test_data/data_and_db_for_tests/"
-
-        # self._data_path = "/Users/fdrgsp/Desktop/cali_test/tiffs"
-        # self._database_path = "/Users/fdrgsp/Desktop/cali_test/new.cali"
-        # self._output_path = "/Users/fdrgsp/Desktop/cali_test/")
-
-        # self._database_path = (
-        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/results_new.cali"
-        # )
-        # self._data_path = (
-        #     "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-        #     "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-        # )
-        # self._initialize_from_database(self._database_path, self._data_path)
 
         # fmt: on
         # _____________________________________________________________________________
@@ -885,6 +819,10 @@ class CaliGui(QMainWindow):
         """Update the GUI settings based on the latest analysis result."""
         # set the database path in the runs panel
         self._runs_panel.set_database_path(database_path)
+
+        # Always populate settings to enable/disable run options based on database state
+        self._populate_settings(database_path)
+
         # select first run if available
         if self._runs_panel._runs_list.count() > 0:
             # select first run
@@ -892,9 +830,6 @@ class CaliGui(QMainWindow):
             # emit runSelected signal for the first run
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
                 self._runs_panel._on_item_clicked(first_item)
-        else:
-            # populate detection settings combobox in run widget
-            self._populate_settings(database_path)
         # load plate plan data
         if experiment is None:
             experiment = Experiment.load_from_database(database_path, load_data=False)
@@ -995,11 +930,18 @@ class CaliGui(QMainWindow):
                         combo.setCurrentIndex(i)
                         break
 
+            # Populate run IDs
+            run_ids = self._runs_panel.get_run_ids()
+            self._run_cali_wdg.populate_run_ids(run_ids)
+
         except Exception as e:
             cali_logger.error(f"Failed to populate detection settings: {e}")
 
     def _get_run_option(self, value: CaliRunSettings) -> int:
         """Get the current run option from the run widget."""
+        # Check for Export Only mode first
+        if value.run_id is not None:
+            return 6  # Export Only (require existing run)
         if value.run_detection and value.run_extraction and value.run_analysis:
             return 0  # Detection, Extraction and Analysis
         if value.run_detection and value.run_extraction and not value.run_analysis:
@@ -1147,6 +1089,25 @@ class CaliGui(QMainWindow):
             )
 
             value = self._run_cali_wdg.value()
+
+            # if "Export Only" mode is selected but no run ID is provided, show error
+            if (
+                not value.run_detection
+                and not value.run_extraction
+                and not value.run_analysis
+                and value.run_id is None
+            ):
+                show_error_dialog(
+                    self,
+                    "❌ Please select a run ID to export traces and correlations "
+                    "from an existing run.",
+                )
+                return
+
+            # Handle Export Only mode - export traces and correlations from existing run
+            if value.run_id is not None:
+                self._handle_export_only(value.run_id)
+                return
 
             # Get positions list early since we need it for validation
             pos = value.positions or list(
@@ -1401,6 +1362,16 @@ class CaliGui(QMainWindow):
                     assert self._data is not None
                     assert self._database_path is not None
                     assert detection_settings is not None  # Ensured by pre-flight check
+
+                    # Get export options if extraction is being run
+                    export_traces = None
+                    if extraction_settings is not None:
+                        export_traces = self._extraction_wdg.get_export_options()
+                    # Get export options if analysis is being run
+                    export_correlations = None
+                    if analysis_settings is not None:
+                        export_correlations = self._analysis_wdg.get_export_options()
+
                     result = self._runner.run(
                         experiment,
                         self._data.path,
@@ -1413,6 +1384,8 @@ class CaliGui(QMainWindow):
                             Path(self._output_path) if self._output_path else None
                         ),
                         as_generator=True,
+                        export_traces=export_traces,
+                        export_correlations=export_correlations,
                     )
                     assert result is not None
                     yield from result
@@ -1566,6 +1539,16 @@ class CaliGui(QMainWindow):
             assert self._data is not None
             assert self._database_path is not None
             assert selected_run.detection_settings_id is not None
+
+            # Get export options if extraction settings exist
+            export_traces = None
+            if selected_run.extraction_settings_id is not None:
+                export_traces = self._extraction_wdg.get_export_options()
+            # Get export options if analysis settings exist
+            export_correlations = None
+            if selected_run.analysis_settings_id is not None:
+                export_correlations = self._analysis_wdg.get_export_options()
+
             result = self._runner.run(
                 experiment,
                 self._data.path,
@@ -1576,6 +1559,8 @@ class CaliGui(QMainWindow):
                 database_name=Path(self._database_path).name,
                 output_path=Path(self._output_path) if self._output_path else None,
                 as_generator=True,
+                export_traces=export_traces,
+                export_correlations=export_correlations,
             )
             assert result is not None
             yield from result
@@ -1606,6 +1591,95 @@ class CaliGui(QMainWindow):
             self._run_cali_wdg.update_progress_bar_plus_one()
         else:
             self._run_cali_wdg.set_progress_bar_text(progress)
+
+    def _handle_export_only(self, run_id: int) -> None:
+        """Handle Export Only mode - export traces and correlations from existing run.
+
+        Parameters
+        ----------
+        run_id : int
+            Run ID to export data from
+        """
+        if self._database_path is None:
+            show_error_dialog(self, "❌ No database loaded")
+            return
+
+        # Get export options from extraction and analysis widgets
+        extraction_export_opts = self._extraction_wdg.get_export_options()
+        analysis_export_opts = self._analysis_wdg.get_export_options()
+
+        # Check if any exports are selected
+        has_trace_exports = (
+            any(extraction_export_opts.values()) if extraction_export_opts else False
+        )
+        has_correlation_exports = (
+            any(analysis_export_opts.values()) if analysis_export_opts else False
+        )
+
+        if not has_trace_exports and not has_correlation_exports:
+            show_error_dialog(
+                self,
+                "❌ No export options selected.\n\n"
+                "Please select trace export options in the Extraction tab "
+                "and/or correlation export options in the Analysis tab.",
+            )
+            return
+
+        # Show progress dialog
+        self._init_loading_bar(f"📊 Exporting data from Run {run_id}...", False)
+
+        try:
+            from sqlmodel import create_engine
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                echo=False,
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+                pool_pre_ping=True,
+            )
+
+            try:
+                # Convert database path to Path object for type safety
+                db_path = Path(self._database_path)
+
+                # Export traces
+                if has_trace_exports and extraction_export_opts:
+                    from cali.util._database_to_csv import export_traces_to_csv
+
+                    export_traces_to_csv(
+                        engine,
+                        extraction_export_opts,
+                        run_id,
+                        db_path,
+                    )
+
+                # Export correlations
+                if has_correlation_exports and analysis_export_opts:
+                    from cali.util._database_to_csv import export_correlations_to_csv
+
+                    export_correlations_to_csv(
+                        engine,
+                        analysis_export_opts,
+                        run_id,
+                        db_path,
+                    )
+
+                # Show success message
+                export_dir = (
+                    db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
+                )
+                cali_logger.info(
+                    f"✅ Successfully exported data from Run {run_id} to {export_dir}"
+                )
+
+            finally:
+                engine.dispose(close=True)
+
+        except Exception as e:
+            cali_logger.error(f"❌ Failed to export data: {e}")
+            show_error_dialog(self, f"❌ Export failed:\n\n{e}")
+        finally:
+            self._loading_bar.hide()
 
     def _on_worker_errored(self, error: Any) -> None:
         """Handle errors from the runner."""
@@ -2018,6 +2092,7 @@ class CaliGui(QMainWindow):
                             pixel_size=e_settings.pixel_size,
                             frame_rate=e_settings.frame_rate,
                         ),
+                        threads=e_settings.threads,
                     )
                 )
 
@@ -2064,6 +2139,7 @@ class CaliGui(QMainWindow):
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
                             synchrony_jitter=a_settings.spikes_sync_jitter_window,
                         ),
+                        threads=a_settings.threads,
                     )
                 )
 
@@ -2298,6 +2374,7 @@ class CaliGui(QMainWindow):
         """Update the FOV table when a well is selected."""
         self._fov_table.clear()
         self._image_viewer._clear_highlight()
+        self._image_viewer.setData(None, None, None)
 
         # Clear plots and reset FOV to ensure reload when selecting same well again
         for sw_graph in self.SW_GRAPHS:
@@ -2320,9 +2397,39 @@ class CaliGui(QMainWindow):
             return
         well_name = next(iter(well_dict)).data(DATA_POSITION).name
 
-        # add the fov per position to the table
+        # Get FOVs from database for this well to handle wizard-created mappings
+        # where original position names don't match the well name
+        well_fov_positions: set[int] = set()
+        if self._database_path:
+            from sqlmodel import Session, create_engine, select
+
+            from cali.sqlmodel._model import FOV, Well
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+            )
+            try:
+                with Session(engine) as session:
+                    # Get FOVs for this well from database
+                    stmt = (
+                        select(FOV.position_index)
+                        .join(Well)
+                        .where(Well.name == well_name)
+                    )
+                    results = session.exec(stmt).all()
+                    well_fov_positions = set(results)
+            finally:
+                engine.dispose(close=True)
+
+        # Add the FOV per position to the table
         for idx, pos in enumerate(self._data.sequence.stage_positions):
-            if self._default_plate_plan or (pos.name and well_name in pos.name):
+            # Match by position name OR by position index from database
+            if (
+                self._default_plate_plan
+                or (pos.name and well_name in pos.name)
+                or (idx in well_fov_positions)
+            ):
                 self._fov_table.add_position(WellInfo(idx, pos))
 
         if self._fov_table.rowCount() > 0:
@@ -2335,7 +2442,7 @@ class CaliGui(QMainWindow):
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
 
             if value is None:
-                self._image_viewer.setData(None, None)
+                self._image_viewer.setData(None, None, None)
                 self._update_single_wells_graphs_combo(clear=True)
                 return
 

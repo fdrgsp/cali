@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
@@ -26,10 +26,10 @@ from qtpy.QtWidgets import (
 from superqt.utils import signals_blocked
 
 from cali._constants import (
+    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DFF_CORRELATION,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
-    DEFAULT_CALCIUM_PEAKS_MAX_LAG,
-    DEFAULT_CALCIUM_SYNC_JITTER_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
@@ -40,12 +40,16 @@ from cali._constants import (
     EVOKED,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
+    INFERRED_SPIKES_CROSS_CORRELATION,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_SYNCHRONY,
     MULTIPLIER,
     SPONTANEOUS,
+    CorrelationDataType,
 )
 
 from ._extraction_gui import FromMetaButton
-from ._util import _BrowseWidget, create_divider_line
+from ._util import _BrowseWidget, _ExportGroup, create_divider_line
 
 if TYPE_CHECKING:
     from cali.sqlmodel import AnalysisSettings
@@ -62,6 +66,7 @@ class AnalysisSettingsData:
     spikes_data: SpikeData | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
+    threads: int = max((os.cpu_count() or 1) - 2, 1)
 
 
 @dataclass(frozen=True)
@@ -84,8 +89,6 @@ class CalciumPeaksData:
     peaks_height_mode: str = MULTIPLIER
     peaks_distance: float = DEFAULT_PEAKS_DISTANCE  # milliseconds
     peaks_prominence_multiplier: float = 2.0
-    calcium_synchrony_jitter: float = DEFAULT_CALCIUM_SYNC_JITTER_WINDOW  # milliseconds
-    calcium_peaks_max_lag: float = DEFAULT_CALCIUM_PEAKS_MAX_LAG  # milliseconds
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
@@ -138,7 +141,7 @@ class _AnalysisGUI(QWidget):
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
-        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.setContentsMargins(0, 0, 0, 10)
         threads_layout.setSpacing(5)
         threads_layout.addWidget(threads_lbl)
         threads_layout.addWidget(self._threads)
@@ -148,6 +151,14 @@ class _AnalysisGUI(QWidget):
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
         self._metadata_wdg = _MetadataWidget(self)
+
+        self._export_group = _ExportGroup()
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 3, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 4, 0)
+        self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
         analysis_scroll_area = QScrollArea()
@@ -163,12 +174,14 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._experiment_type_wdg)
         group_layout.addWidget(create_divider_line("Calcium Traces and Peaks"))
         group_layout.addWidget(self._calcium_peaks_wdg)
-        group_layout.addWidget(create_divider_line("Spikes and Bursts"))
+        group_layout.addWidget(create_divider_line("Inferred Spikes"))
         group_layout.addWidget(self._spike_wdg)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
+        group_layout.addWidget(create_divider_line("Export Options"))
+        group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
 
@@ -205,6 +218,7 @@ class _AnalysisGUI(QWidget):
             self._spike_wdg.value(),
             self._experiment_type_wdg.value(),
             self._metadata_wdg.value(),
+            self._threads.value(),
         )
 
     def setValue(self, value: AnalysisSettingsData) -> None:
@@ -216,12 +230,7 @@ class _AnalysisGUI(QWidget):
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
-
-    def enable(self, enable: bool) -> None:
-        """Enable or disable the widget."""
-        self._experiment_type_wdg.setEnabled(enable)
-        self._calcium_peaks_wdg.setEnabled(enable)
-        self._spike_wdg.setEnabled(enable)
+        self._threads.setValue(value.threads)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -229,6 +238,15 @@ class _AnalysisGUI(QWidget):
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
         self._metadata_wdg.reset()
+        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+
+    def get_export_options(self) -> dict[CorrelationDataType, bool] | None:
+        """Return export options selected as dict[CorrelationDataType, bool]."""
+        if not self._export_group.isChecked():
+            return None
+        return cast(
+            "dict[CorrelationDataType, bool]", self._export_group.get_export_options()
+        )
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
@@ -262,16 +280,6 @@ class _AnalysisGUI(QWidget):
             ),
             peaks_prominence_multiplier=(
                 peaks_data.peaks_prominence_multiplier if peaks_data else 1.0
-            ),
-            calcium_sync_jitter_window=(
-                peaks_data.calcium_synchrony_jitter
-                if peaks_data
-                else DEFAULT_CALCIUM_SYNC_JITTER_WINDOW
-            ),
-            calcium_peaks_max_lag=(
-                peaks_data.calcium_peaks_max_lag
-                if peaks_data
-                else DEFAULT_CALCIUM_PEAKS_MAX_LAG
             ),
             spike_threshold_value=(
                 spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD

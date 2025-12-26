@@ -216,8 +216,7 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
 
     assert fov_analysis is not None
 
-    # Check that all 3 spike measurements are computed
-    assert fov_analysis.spike_correlation_matrix is not None
+    # Check that spike measurements are computed
     assert fov_analysis.spike_max_lag_correlation_matrix is not None
     assert fov_analysis.spike_jitter_synchrony_matrix is not None
 
@@ -226,8 +225,8 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
     assert fov_analysis.global_spike_jitter_synchrony is not None
 
     # Check matrix shapes (2x2 for 2 ROIs)
-    assert len(fov_analysis.spike_correlation_matrix) == 2
-    assert len(fov_analysis.spike_correlation_matrix[0]) == 2
+    assert len(fov_analysis.spike_max_lag_correlation_matrix) == 2
+    assert len(fov_analysis.spike_max_lag_correlation_matrix[0]) == 2
 
 
 def test_compute_fov_analysis_insufficient_rois() -> None:

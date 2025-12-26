@@ -133,36 +133,53 @@ def commit_fov_result(
         cali_logger.error("Experiment plate not initialized")
         return
 
-    # For each FOV, link it to the appropriate well
-    well_name = fov_result.name.split("_")[0]  # A1_0000 p -> A1
-
-    # Query for existing well
-    well_statement = select(Well).where(
-        Well.plate_id == plate_id_result, Well.name == well_name
-    )
-    well = session.exec(well_statement).first()
-
-    if well is None:
-        # Create new well if needed
-        row = ord(well_name[0]) - ord("A")
-        col = int(well_name[1:]) - 1
-        well = Well(
-            plate_id=plate_id_result,
-            name=well_name,
-            row=row,
-            column=col,
-            fovs=[],
+    # First try to find existing FOV by position_index (handles wizard case)
+    # FOVs should already exist from data_to_plate
+    existing_fov_by_index_stmt = (
+        select(FOV)
+        .join(Well)
+        .where(
+            Well.plate_id == plate_id_result,
+            FOV.position_index == fov_result.position_index,
         )
-        session.add(well)
-        # Get the well ID
-        session.flush()
-
-    # Check if FOV already exists for this well (re-analysis case)
-    # Now that FOV names are not unique, we need to check by name AND well
-    existing_fov_stmt = select(FOV).where(
-        FOV.name == fov_result.name, FOV.well_id == well.id
     )
-    existing_fov = session.exec(existing_fov_stmt).first()
+    existing_fov = session.exec(existing_fov_by_index_stmt).first()
+
+    if existing_fov:
+        # FOV already exists - use its well
+        well = existing_fov.well
+    else:
+        # FOV doesn't exist yet - need to create well and FOV
+        # Extract well name from FOV name (assumes format like A1_0000)
+        well_name = fov_result.name.split("_")[0]  # A1_0000 -> A1
+
+        # Query for existing well
+        well_statement = select(Well).where(
+            Well.plate_id == plate_id_result, Well.name == well_name
+        )
+        well = session.exec(well_statement).first()
+
+        if well is None:
+            # Create new well if needed
+            # Parse well name to get row/col (e.g., "A1" -> row=0, col=0)
+            row = ord(well_name[0]) - ord("A")
+            col = int(well_name[1:]) - 1
+            well = Well(
+                plate_id=plate_id_result,
+                name=well_name,
+                row=row,
+                column=col,
+                fovs=[],
+            )
+            session.add(well)
+            # Get the well ID
+            session.flush()
+
+        # Check if FOV already exists for this well (by name)
+        existing_fov_stmt = select(FOV).where(
+            FOV.name == fov_result.name, FOV.well_id == well.id
+        )
+        existing_fov = session.exec(existing_fov_stmt).first()
 
     if existing_fov:
         # Update FOV metadata

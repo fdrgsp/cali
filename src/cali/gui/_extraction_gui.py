@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
@@ -20,15 +21,24 @@ from qtpy.QtWidgets import (
 from superqt import QIconifyIcon
 
 from cali._constants import (
+    DEC_DFF_TRACES,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
+    DFF_TRACES,
+    INFERRED_SPIKES_THRESHOLDED_BINARY,
+    INFERRED_SPIKES_TRACES,
+    NEUROPIL_CORRECTED_TRACES,
+    NEUROPIL_TRACES,
+    RAW_CALCIUM_TRACES,
+    TraceDataType,
 )
 from cali.sqlmodel import ExtractionSettings
 
 from ._util import (
+    _ExportGroup,
     create_divider_line,
 )
 
@@ -49,6 +59,7 @@ class ExtractionSettingsData:
 
     trace_extraction_data: TraceExtractionData | None = None
     metadata_data: MetadataData | None = None
+    threads: int = max((os.cpu_count() or 1) - 2, 1)
 
 
 @dataclass(frozen=True)
@@ -106,7 +117,7 @@ class _ExtractionGUI(QWidget):
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
-        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.setContentsMargins(0, 0, 0, 10)
         threads_layout.setSpacing(5)
         threads_layout.addWidget(self._threads_lbl)
         threads_layout.addWidget(self._threads)
@@ -115,6 +126,16 @@ class _ExtractionGUI(QWidget):
         self._metadata_wdg = _MetadataWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
+
+        self._export_group = _ExportGroup()
+        self._export_group.add_option(RAW_CALCIUM_TRACES, 0, 0)
+        self._export_group.add_option(NEUROPIL_TRACES, 1, 0, checked=False)
+        self._export_group.add_option(NEUROPIL_CORRECTED_TRACES, 2, 0, checked=False)
+        self._export_group.add_option(DFF_TRACES, 3, 0)
+        self._export_group.add_option(DEC_DFF_TRACES, 4, 0)
+        self._export_group.add_option(INFERRED_SPIKES_TRACES, 5, 0)
+        self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_BINARY, 6, 0)
+        self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
         analysis_scroll_area = QScrollArea()
@@ -134,6 +155,8 @@ class _ExtractionGUI(QWidget):
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Threads"))
         group_layout.addWidget(threads_wdg)
+        group_layout.addWidget(create_divider_line("Export Options"))
+        group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
 
@@ -165,6 +188,7 @@ class _ExtractionGUI(QWidget):
                 self._neuropil_wdg.value(), metadata_data.frame_rate
             ),
             metadata_data=metadata_data,
+            threads=self._threads.value(),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -180,12 +204,22 @@ class _ExtractionGUI(QWidget):
             self._neuropil_wdg.setValue(neuropil_data)
         if value.metadata_data is not None:
             self._metadata_wdg.setValue(value.metadata_data)
+        self._threads.setValue(value.threads)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._metadata_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
+        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+
+    def get_export_options(self) -> dict[TraceDataType, bool] | None:
+        """Return export options selected as dict[TraceDataType, bool]."""
+        if not self._export_group.isChecked():
+            return None
+        return cast(
+            "dict[TraceDataType, bool]", self._export_group.get_export_options()
+        )
 
     def to_model_settings(self) -> ExtractionSettings:
         """Convert current GUI settings to ExtractionSettings model.

@@ -412,9 +412,6 @@ def _get_spike_correlations_matrix(
                 binary_spikes, jitter_window
             )
     else:
-        # Protect cross-correlation with NUMBA_LOCK to prevent thread serialization
-        # scipy.signal.correlate can trigger numba/BLAS operations that aren't
-        # thread-safe during initial compilation/execution
         with _NUMBA_LOCK:
             # Standard numpy implementation for other methods
             synchrony_matrix = np.zeros((n_rois, n_rois))
@@ -484,14 +481,16 @@ def _calculate_cross_correlation_with_lag(
 ) -> tuple[float, int]:
     """Calculate maximum cross-correlation within lag range.
 
-    Computes the cross-correlation function (CCG) and finds the lag with
-    maximum correlation. Uses numba-optimized implementation for speed.
+    Computes normalized dot product (cross-correlogram style) at each lag and
+    finds the lag with maximum correlation. For binary spike trains, this approach
+    is preferred over Pearson correlation because zeros represent meaningful
+    information (absence of spikes). Uses numba-optimized implementation for speed.
 
     Returns
     -------
     tuple[float, int]
         (max_correlation, lag_at_max) where:
-        - max_correlation: normalized correlation value [0, 1]
+        - max_correlation: normalized correlation value in [0, 1]
         - lag_at_max: lag in frames where max occurs.
           Positive means events_j lags behind events_i.
           Negative means events_j leads events_i.
@@ -599,18 +598,23 @@ def _max_cross_correlation_numba(
 ) -> tuple[float, int]:  # pragma: no cover
     """Numba-optimized maximum cross-correlation within lag range.
 
-    Computes normalized cross-correlation at each lag and finds the maximum.
-    Much faster than scipy.signal.correlate for repeated pairwise computations.
+    Computes normalized dot product (NOT Pearson correlation) at each lag,
+    following standard spike train analysis methodology. For binary spike trains,
+    zeros represent meaningful information (absence of spikes), so mean-centering
+    is inappropriate. This matches cross-correlogram (CCG) analysis used in
+    electrophysiology.
 
     Returns
     -------
     tuple[float, int]
-        (max_correlation, lag_at_max) where lag_at_max is relative to center.
+        (max_correlation, lag_at_max) where:
+        - max_correlation: normalized correlation value in [0, 1]
+        - lag_at_max: lag relative to center where maximum occurs
         Positive lag means events_j lags behind events_i.
     """
     n = len(events_i)
 
-    # Precompute normalizations
+    # Precompute normalizations (without mean centering)
     auto_i = 0.0
     auto_j = 0.0
     for k in range(n):
@@ -644,7 +648,7 @@ def _max_cross_correlation_numba(
             max_corr = corr_normalized
             best_lag = lag
 
-    # Clip to [0, 1] range
+    # Clip to [0, 1] range to handle numerical errors
     max_corr = min(max(max_corr, 0.0), 1.0)
 
     return max_corr, best_lag
@@ -1153,10 +1157,6 @@ def _compute_connectivity_metrics(
     elif method == "calcium_peaks_jitter":
         metric = fov_analysis.calcium_peaks_jitter_synchrony_matrix
         is_correlation = False
-
-    elif method == "spike_corr":
-        metric = fov_analysis.spike_correlation_matrix
-        is_correlation = True
 
     elif method == "spike_maxlag":
         metric = fov_analysis.spike_max_lag_correlation_matrix

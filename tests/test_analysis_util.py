@@ -342,7 +342,7 @@ def test_compute_fov_analysis_with_active_rois() -> None:
     assert len(result.spike_jitter_synchrony_matrix) == 3
 
     # Check spike matrices
-    assert result.spike_correlation_matrix is not None
+    assert result.spike_max_lag_correlation_matrix is not None
     assert result.spike_jitter_synchrony_matrix is not None
 
     # Check global synchrony values are reasonable

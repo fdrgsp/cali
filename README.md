@@ -352,7 +352,10 @@ Two modes are available:
 4. **Output**: NxN correlation matrix where each element represents the correlation between ROI pairs
 
 **Output**:
+<<<<<<< HEAD
+=======
 
+>>>>>>> origin/main
 - **Correlation Matrix**: Values range from -1 to 1
   - 1: perfect positive correlation (synchronized calcium activity)
   - 0: no linear relationship

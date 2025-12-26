@@ -189,9 +189,9 @@ def _plot_spike_max_lag_correlation_data(
     # ---------------- IMAGE ITEM (centered, full view) ---------------- #
     img = pg.ImageItem(corr)
 
-    # viridis colormap
+    # viridis colormap (cross-correlation ranges from 0 to 1)
     img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))  # fixed [0, 1]
+    img.setLevels((0.0, 1.0))  # cross-correlation range
 
     plot.addItem(img)
 

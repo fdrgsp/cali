@@ -1754,8 +1754,6 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
     calcium_dec_dff_corr_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
-    spike_correlation_matrix : list[list[float]] | None
-        Zero-lag Pearson correlation on binary spike trains (NxN for N active ROIs)
     spike_max_lag_correlation_matrix : list[list[float]] | None
         Max lag correlation on spike events (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
@@ -1829,11 +1827,7 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     # Spike metrics (from inferred spikes)
-    # 1. Zero-lag correlation on spike trains
-    spike_correlation_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    # 2. Max lag correlation on spikes
+    # 1. Max lag correlation on spikes
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )

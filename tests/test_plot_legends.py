@@ -646,9 +646,7 @@ def test_sorted_evoked_plots_have_stimulated_rois_legend(qtbot: QtBot) -> None:
         _plot_evoked_correlation_synchrony,
     )
 
-    _plot_sorted_spike_correlation = (
-        _plot_evoked_correlation_synchrony._plot_sorted_spike_correlation
-    )
+    # _plot_sorted_spike_correlation was removed
     _plot_sorted_spike_synchrony = (
         _plot_evoked_correlation_synchrony._plot_sorted_spike_synchrony
     )
@@ -688,25 +686,7 @@ def test_sorted_evoked_plots_have_stimulated_rois_legend(qtbot: QtBot) -> None:
             f"Found: {legend_labels}"
         )
 
-    # Test sorted correlation plot
-    _plot_sorted_spike_correlation(
-        widget=widget,
-        engine=engine,
-        fov_name=fov_name,
-        rois=None,
-        run_id=1,
-    )
-
-    # Check legend for "Stimulated ROIs" if data exists
-    if (
-        hasattr(widget, "legend")
-        and widget.legend is not None
-        and widget.legend.isVisible()
-    ):
-        legend_labels = [item[1].text for item in widget.legend.items]
-        assert "Stimulated ROIs" in legend_labels, (
-            f"Sorted correlation plot should have 'Stimulated ROIs' legend. "
-            f"Found: {legend_labels}"
-        )
+    # Note: _plot_sorted_spike_correlation was removed during refactoring
+    # Test passes as long as synchrony plot has the correct legend
 
     engine.dispose(close=True)

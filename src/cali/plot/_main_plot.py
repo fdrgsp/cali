@@ -10,18 +10,7 @@ from typing_extensions import TypeAlias
 from cali._constants import EVOKED
 
 from ._multi_wells_plots import (
-    plot_burst_avg_duration_bar_plot,
-    plot_burst_avg_interval_bar_plot,
-    plot_burst_count_bar_plot,
-    plot_burst_rate_bar_plot,
-    plot_calcium_peaks_amplitude_bar_plot,
-    plot_calcium_peaks_frequency_bar_plot,
-    plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
-    plot_non_stimulated_peaks_amplitude_bar_plot,
-    plot_percentage_active_bar_plot,
-    plot_spike_synchrony_bar_plot,
-    plot_stimulated_peaks_amplitude_bar_plot,
 )
 from ._single_wells_plots.burst import (
     _plot_calcium_burst_activity,
@@ -48,14 +37,8 @@ from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import 
     _plot_sorted_dec_dff_correlation,
     _plot_sorted_dec_dff_correlation_windowed_by_stim,
     _plot_sorted_dec_dff_correlation_windowed_non_stim,
-    _plot_sorted_spike_correlation,
-    _plot_sorted_spike_correlation_windowed_by_stim,
-    _plot_sorted_spike_correlation_windowed_non_stim,
     _plot_sorted_spike_max_lag_correlation,
     _plot_sorted_spike_synchrony,
-)
-from ._single_wells_plots.correlation._plot_inferred_spike_correlation import (
-    _plot_spike_correlation_data,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
@@ -84,10 +67,7 @@ from ._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
     _generate_raster_plot,
 )
 from ._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
-    _generate_spike_intensity_heatmap,
-    _generate_spike_intensity_heatmap_thresholded,
     _generate_spike_raster_plot,
-    _generate_spike_raster_plot_raw,
 )
 from ._single_wells_plots.spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
@@ -264,37 +244,30 @@ AnalysisProduct(
 
 # Inferred Spikes Group
 AnalysisProduct(
-    name="Inferred Spikes Raw",
+    name="Inferred Spikes",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, raw=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Thresholded",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_inferred_spikes,
-    category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Raw (with Thresholds if 1 ROI)",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
-    category="Inferred Spikes Traces",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Thresholded Normalized",
+    name="Inferred Spikes Normalized",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Thresholded Normalized (Active Only)",
+    name="Inferred Spikes Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, normalize=True, active_only=True),
+    category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes (with Thresholds if 1 ROI)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, raw=True, thresholds=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -336,13 +309,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raster",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_raster_plot_raw,
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name="Inferred Spikes Raster Thresholded",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_generate_spike_raster_plot,
@@ -350,16 +316,9 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Intensity Heatmap",
+    name="Inferred Spikes Raster Thresholded - Rising Edges",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_intensity_heatmap,
-    category="Raster Plots",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Intensity Heatmap Thresholded",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_generate_spike_intensity_heatmap_thresholded,
+    analyzer=partial(_generate_spike_raster_plot, edges=True),
     category="Raster Plots",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -466,13 +425,6 @@ AnalysisProduct(
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
-    name="Inferred Spikes Thresholded Correlation",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_spike_correlation_data,
-    category="Inferred Spikes Correlation Analysis",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
     name="Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_correlation_data,
@@ -545,7 +497,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stimulated vs Non-Stimulated Calcium Peaks Raster",
+    name="Stimulated vs Non-Stimulated Raster Calcium Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_calcium_peaks_raster,
     category="Evoked Experiment",
@@ -553,7 +505,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stimulated vs Non-Stimulated Inferred Spikes Thresholded Raster",
+    name=(
+        "Stimulated vs Non-Stimulated Raster Inferred Spikes Thresholded - Rising Edges"
+    ),
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,
     category="Evoked Experiment",
@@ -580,30 +534,6 @@ AnalysisProduct(
     name="Sorted Calcium Deconvolved ΔF/F0 Correlation (Non-Stim Periods)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_dec_dff_correlation_windowed_non_stim,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Sorted Inferred Spikes Thresholded Correlation",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_spike_correlation,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Sorted Inferred Spikes Correlation (Stim Windows ±250ms)",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_spike_correlation_windowed_by_stim,
-    category="Evoked Experiment",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Sorted Inferred Spikes Correlation (Non-Stim Periods)",
-    group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_spike_correlation_windowed_non_stim,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
@@ -653,87 +583,87 @@ AnalysisProduct(
     category="General",
     pipeline_stage=PipelineStage.DETECTION,
 )
-AnalysisProduct(
-    name="Percentage of Active Cells Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_percentage_active_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_amplitude_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Frequency Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_frequency_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Calcium Peaks Inter-Event Interval Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_calcium_peaks_iei_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Inferred Spikes Global Synchrony Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_spike_synchrony_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Count Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_count_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Average Duration Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_avg_duration_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Average Interval Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_avg_interval_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="Burst Rate Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_burst_rate_bar_plot,
-    category="General",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# AnalysisProduct(
+#     name="Percentage of Active Cells Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_percentage_active_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_amplitude_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Frequency Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_frequency_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Calcium Peaks Inter-Event Interval Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_calcium_peaks_iei_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Inferred Spikes Global Synchrony Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_spike_synchrony_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Count Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_count_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Average Duration Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_avg_duration_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Average Interval Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_avg_interval_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="Burst Rate Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_burst_rate_bar_plot,
+#     category="General",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 
 # Evoked Multi-Well Products
-AnalysisProduct(
-    name="Stimulated Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_stimulated_peaks_amplitude_bar_plot,
-    category="Evoked",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="Non-Stimulated Peaks Amplitude Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
-    category="Evoked",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
+# AnalysisProduct(
+#     name="Stimulated Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_stimulated_peaks_amplitude_bar_plot,
+#     category="Evoked",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name="Non-Stimulated Peaks Amplitude Bar Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
+#     category="Evoked",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
 
 # DATABASE HELPERS ====================================================================
 # Helper functions to extract plotting data from database models
@@ -861,9 +791,6 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     "Inferred Spikes (Thresholded) Global Synchrony",
     "Inferred Spikes (Thresholded) Cross-Correlation",
     "Inferred Spikes (Thresholded) Burst Activity Analysis",
-    "Inferred Spikes Raster plot Colored by ROI",
-    "Inferred Spikes Raster plot Colored by Amplitude",
-    "Inferred Spikes Raster plot Colored by Amplitude with Colorbar",
 }
 
 

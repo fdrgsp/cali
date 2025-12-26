@@ -136,7 +136,7 @@ def plot_cell_size_bar_plot(
         data=plot_data,
         parameter=text,
         units="μm²",
-        title_suffix="",
+        title_suffix=" (Weighted Mean ± Pooled SEM)",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 

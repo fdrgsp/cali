@@ -609,7 +609,7 @@ class ExtractionRunner:
             g_arr, sn = estimate_parameters(
                 dff,
                 p=1,  # AR(1)
-                range_ff=[0.25, 0.5],
+                range_ff=[0.25, 0.5],  # default
                 method="median",  # mean or logmexp (exponentiated mean of logvalues)
                 lags=10,
                 fudge_factor=0.98,
