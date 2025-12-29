@@ -123,7 +123,7 @@ def test_plot_thresholded_spikes_no_spikes(qtbot: QtBot) -> None:
 
 
 def test_plot_thresholded_spikes_clickable_curve(qtbot: QtBot) -> None:
-    """Test that the invisible baseline curve is created with correct properties."""
+    """Test that the spike lines are created with correct properties for clicking."""
     plot_widget = pg.PlotWidget()
     qtbot.addWidget(plot_widget)
     plot = plot_widget.getPlotItem()
@@ -145,7 +145,7 @@ def test_plot_thresholded_spikes_clickable_curve(qtbot: QtBot) -> None:
         p2=1.0,
     )
 
-    # Should return a PlotDataItem (the invisible baseline curve)
+    # Should return a PlotDataItem (the spike lines themselves)
     assert result is not None
     assert isinstance(result, pg.PlotDataItem)
 
@@ -156,7 +156,7 @@ def test_plot_thresholded_spikes_clickable_curve(qtbot: QtBot) -> None:
 
 
 def test_plot_thresholded_spikes_normalized_clickable_curve(qtbot: QtBot) -> None:
-    """Test that normalized plotting creates correctly positioned baseline."""
+    """Test that normalized plotting creates clickable spike lines."""
     plot_widget = pg.PlotWidget()
     qtbot.addWidget(plot_widget)
     plot = plot_widget.getPlotItem()
@@ -186,10 +186,11 @@ def test_plot_thresholded_spikes_normalized_clickable_curve(qtbot: QtBot) -> Non
     assert result.property("roi_label") == "roi_middle"
     assert result.property("roi_index") == 2
 
-    # Check that baseline is positioned at expected offset + 0.1 (bottom of ROI band)
-    expected_offset = (n_rois - 1 - index) * 1.1
+    # Verify it's the actual spike lines (has data with NaN separators)
+    x_data = result.xData
     y_data = result.yData
+    assert x_data is not None
     assert y_data is not None
-    assert len(y_data) == len(x)
-    # All y values should be at offset + 0.1
-    assert np.allclose(y_data, expected_offset + 0.1)
+    # Should have NaN values separating the vertical line segments
+    assert np.any(np.isnan(x_data))
+    assert np.any(np.isnan(y_data))

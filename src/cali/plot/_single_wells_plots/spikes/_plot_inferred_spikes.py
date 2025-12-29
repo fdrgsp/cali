@@ -465,34 +465,20 @@ def _plot_thresholded_spikes(
         x_lines.extend([x[spike_idx], x[spike_idx], np.nan])
         y_lines.extend([y_bottom, y_top, np.nan])
 
-    # Plot all lines as a single item
+    # Plot all lines as a single clickable item
     if x_lines:
-        plot.plot(
+        curve = plot.plot(
             x_lines,
             y_lines,
             pen=color,
             connect="finite",
+            name=f"ROI {roi_key}",
         )
+        curve.setProperty("roi_label", roi_key)
+        curve.setProperty("roi_index", index)
+        return curve
 
-    # Create an invisible curve for click handling
-    # Position it low in the spike region for better clickability
-    if normalize:
-        # For normalized, position at bottom of ROI band
-        baseline_y = np.full_like(x, offset + 0.1)
-    else:
-        # Position near bottom (just above 0) so clicks anywhere in spike region work
-        baseline_y = np.full_like(x, 0.01)
-
-    curve = plot.plot(
-        x,
-        baseline_y,
-        pen=pg.mkPen(None),  # Invisible
-        name=f"ROI {roi_key}",
-    )
-    curve.setProperty("roi_label", roi_key)
-    curve.setProperty("roi_index", index)
-
-    return curve
+    return None
 
 
 def _plot_spike_rising_edges(
@@ -561,34 +547,20 @@ def _plot_spike_rising_edges(
         x_lines.extend([x[edge_idx], x[edge_idx], np.nan])
         y_lines.extend([y_bottom, y_top, np.nan])
 
-    # Plot all lines as a single item
+    # Plot all lines as a single clickable item
     if x_lines:
-        plot.plot(
+        curve = plot.plot(
             x_lines,
             y_lines,
             pen=color,
             connect="finite",
+            name=f"ROI {roi_key}",
         )
+        curve.setProperty("roi_label", roi_key)
+        curve.setProperty("roi_index", index)
+        return curve
 
-    # Create an invisible curve for click handling
-    # Position it low in the spike region for better clickability
-    if normalize:
-        # For normalized, position at bottom of ROI band
-        baseline_y = np.full_like(x, offset + 0.1)
-    else:
-        # Position near bottom so clicks anywhere in spike region work
-        baseline_y = np.full_like(x, 0.01)
-
-    curve = plot.plot(
-        x,
-        baseline_y,
-        pen=pg.mkPen(None),  # Invisible
-        name=f"ROI {roi_key}",
-    )
-    curve.setProperty("roi_label", roi_key)
-    curve.setProperty("roi_index", index)
-
-    return curve
+    return None
 
 
 def _normalize_trace_percentile(trace: np.ndarray, p1: float, p2: float) -> np.ndarray:
