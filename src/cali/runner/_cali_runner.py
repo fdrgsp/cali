@@ -340,6 +340,9 @@ class CaliRunner:
                 assert det_id is not None
 
                 # 4. Determine which positions need detection
+                # Track whether user explicitly provided position indices
+                user_provided_positions = global_position_indices is not None
+
                 if global_position_indices is None:
                     if dataset.sequence is None:
                         msg = "Dataset sequence metadata is missing."
@@ -829,7 +832,10 @@ class CaliRunner:
                         from cali.util._database_to_csv import export_traces_to_csv
 
                         export_traces_to_csv(
-                            engine, export_traces, analysis_result_id, self._db_path
+                            engine,
+                            export_traces,
+                            analysis_result_id,
+                            self._db_path,
                         )
                         yield "🗂️ Exported traces to CSV"
                     # Export correlations to CSV if requested
@@ -843,6 +849,9 @@ class CaliRunner:
                             export_correlations,
                             analysis_result_id,
                             self._db_path,
+                            position_indices=(
+                                positions_processed if user_provided_positions else None
+                            ),
                         )
                         yield "🗂️ Exported correlations to CSV"
 

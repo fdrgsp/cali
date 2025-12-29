@@ -87,6 +87,7 @@ def test_csv_export_full_pipeline(
     assert export_dir.is_dir()
 
     # Verify all expected CSV files exist
+    # Trace CSVs have simple filenames (columns already contain FOV identifiers)
     expected_files = {
         RAW_CALCIUM_TRACES: "raw_traces.csv",
         DFF_TRACES: "dff_traces.csv",
@@ -153,7 +154,7 @@ def test_csv_export_selective(
 
     export_dir = test_db_path.parent / f"{test_db_path.stem}_exports" / f"run_{run_id}"
 
-    # Only selected files should exist
+    # Only selected files should exist (traces use simple filenames)
     assert (export_dir / "raw_traces.csv").exists()
     assert (export_dir / "dff_traces.csv").exists()
 
@@ -239,7 +240,7 @@ def test_csv_export_content_validation(
 
     engine.dispose(close=True)
 
-    # Load CSV and verify
+    # Load CSV and verify (traces use simple filenames)
     export_dir = test_db_path.parent / f"{test_db_path.stem}_exports" / f"run_{run_id}"
     csv_file = export_dir / "raw_traces.csv"
     df = pd.read_csv(csv_file)
