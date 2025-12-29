@@ -486,6 +486,9 @@ def _calculate_cross_correlation_with_lag(
     is preferred over Pearson correlation because zeros represent meaningful
     information (absence of spikes). Uses numba-optimized implementation for speed.
 
+    Note: This function maintains backward compatibility by returning only max values.
+    For full CCG analysis, use _compute_ccg_vector instead.
+
     Returns
     -------
     tuple[float, int]
@@ -497,6 +500,151 @@ def _calculate_cross_correlation_with_lag(
     """
     # Use numba-optimized version for significant speedup
     return _max_cross_correlation_numba(events_i, events_j, max_lag)  # type: ignore
+
+
+def _compute_ccg_vector(
+    events_i: np.ndarray,
+    events_j: np.ndarray,
+    max_lag: int,
+    normalization: Literal["cosine", "trigger_rate", "trigger_prob"] = "trigger_rate",
+    border_correction: bool = True,
+    dt: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute full cross-correlogram (CCG) vector following standard practices.
+
+    This implements standard CCG analysis as used in spike train analysis and
+    calcium imaging papers. Unlike the legacy _max_cross_correlation function,
+    this returns the complete CCG curve for further analysis.
+
+    Parameters
+    ----------
+    events_i : np.ndarray
+        Reference binary event train (1D array)
+    events_j : np.ndarray
+        Target binary event train (1D array)
+    max_lag : int
+        Maximum lag to compute (frames)
+    normalization : str
+        Normalization method:
+        - "trigger_rate": Per-trigger rate (counts/N_ref/dt), standard for CCGs
+        - "trigger_prob": Per-trigger probability (counts/N_ref)
+        - "cosine": Cosine similarity (legacy, for backward compatibility)
+    border_correction : bool
+        Apply correction for reduced overlap at large lags
+    dt : float
+        Time bin size (seconds) for rate calculation, only used with "trigger_rate"
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        (lags, ccg_values) where:
+        - lags: array of lag values from -max_lag to +max_lag
+        - ccg_values: corresponding CCG values at each lag
+
+    Notes
+    -----
+    Standard CCG definition: CCG(τ) = probability/rate of observing a spike in
+    the target train at lag τ relative to spikes in the reference train.
+
+    Positive lag means events_j lags behind events_i.
+    """
+    return _compute_ccg_vector_numba(  # type: ignore
+        events_i, events_j, max_lag, normalization, border_correction, dt
+    )
+
+
+def _compute_baseline_corrected_ccg(
+    events_i: np.ndarray,
+    events_j: np.ndarray,
+    max_lag: int,
+    n_shuffles: int = 100,
+    normalization: Literal["cosine", "trigger_rate", "trigger_prob"] = "trigger_rate",
+    border_correction: bool = True,
+    dt: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute baseline-corrected CCG using jitter/shuffle null model.
+
+    Standard practice in spike train CCG analysis is to compute a null model
+    (shift predictor or jitter) to account for slow co-modulations that aren't
+    true functional interactions. This function computes both the raw CCG and
+    a shuffled baseline, returning both for further analysis.
+
+    Parameters
+    ----------
+    events_i : np.ndarray
+        Reference binary event train
+    events_j : np.ndarray
+        Target binary event train
+    max_lag : int
+        Maximum lag to compute (frames)
+    n_shuffles : int
+        Number of shuffled surrogates for baseline estimation
+    normalization : str
+        Normalization method (see _compute_ccg_vector)
+    border_correction : bool
+        Apply border correction
+    dt : float
+        Time bin size (seconds)
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        (lags, ccg_raw, ccg_baseline_mean, ccg_baseline_std) where:
+        - lags: array of lag values
+        - ccg_raw: raw CCG values
+        - ccg_baseline_mean: mean of shuffled CCGs (null model)
+        - ccg_baseline_std: std of shuffled CCGs (for z-score calculation)
+
+    Notes
+    -----
+    The baseline-corrected CCG can be computed as:
+    - Residual: ccg_corrected = ccg_raw - ccg_baseline_mean
+    - Z-score: z_score = (ccg_raw - ccg_baseline_mean) / ccg_baseline_std
+    """
+    return _compute_baseline_corrected_ccg_numba(  # type: ignore
+        events_i,
+        events_j,
+        max_lag,
+        n_shuffles,
+        normalization,
+        border_correction,
+        dt,
+    )
+
+
+def _summarize_ccg_near_zero(
+    lags: np.ndarray,
+    ccg_values: np.ndarray,
+    window: int = 2,
+) -> float:
+    """Summarize CCG synchrony in a window around zero lag.
+
+    For synchrony analysis, the relevant signal is typically near zero lag.
+    This function extracts the peak or mean CCG value within a small window
+    around lag=0, which is more appropriate than the global maximum for
+    assessing functional connectivity.
+
+    Parameters
+    ----------
+    lags : np.ndarray
+        Array of lag values
+    ccg_values : np.ndarray
+        Corresponding CCG values
+    window : int
+        Window size around zero (in frames). CCG is summarized over [-window, +window]
+
+    Returns
+    -------
+    float
+        Peak CCG value within the window (or 0.0 if window is invalid)
+    """
+    # Find indices within window
+    mask = np.abs(lags) <= window
+    if not np.any(mask):
+        return 0.0
+
+    # Return peak value in window
+    return float(np.max(ccg_values[mask]))
 
 
 def _calculate_jitter_window_synchrony(
@@ -598,6 +746,9 @@ def _max_cross_correlation_numba(
 ) -> tuple[float, int]:  # pragma: no cover
     """Numba-optimized maximum cross-correlation within lag range.
 
+    LEGACY FUNCTION: Maintained for backward compatibility.
+    For standard CCG analysis, use _compute_ccg_vector_numba instead.
+
     Computes normalized dot product (NOT Pearson correlation) at each lag,
     following standard spike train analysis methodology. For binary spike trains,
     zeros represent meaningful information (absence of spikes), so mean-centering
@@ -652,6 +803,180 @@ def _max_cross_correlation_numba(
     max_corr = min(max(max_corr, 0.0), 1.0)
 
     return max_corr, best_lag
+
+
+@njit(cache=True)  # type: ignore
+def _compute_ccg_vector_numba(
+    events_i: np.ndarray,
+    events_j: np.ndarray,
+    max_lag: int,
+    normalization: str,
+    border_correction: bool,
+    dt: float,
+) -> tuple[np.ndarray, np.ndarray]:  # pragma: no cover
+    """Numba-optimized full CCG computation following standard practices.
+
+    Implements standard cross-correlogram analysis as described in:
+    - Elephant documentation (Neo/Elephant CCG)
+    - Common calcium imaging papers using deconvolved spikes
+    - Electrophysiology spike train analysis literature
+
+    Parameters
+    ----------
+    events_i : np.ndarray
+        Reference binary event train
+    events_j : np.ndarray
+        Target binary event train
+    max_lag : int
+        Maximum lag to compute (frames)
+    normalization : str
+        - "trigger_rate": counts / N_ref / dt (standard, gives Hz)
+        - "trigger_prob": counts / N_ref (probability per reference spike)
+        - "cosine": sqrt(sum(x^2) * sum(y^2)) (legacy cosine similarity)
+    border_correction : bool
+        If True, correct for reduced overlap at large lags by dividing by
+        the actual overlap length at each lag
+    dt : float
+        Time bin size (seconds) for rate calculation
+    """
+    n = len(events_i)
+    n_lags = 2 * max_lag + 1
+    lags = np.arange(-max_lag, max_lag + 1, dtype=np.int32)
+    ccg = np.zeros(n_lags, dtype=np.float64)
+
+    # Count reference spikes
+    n_ref = 0.0
+    for k in range(n):
+        n_ref += events_i[k]
+
+    if n_ref == 0.0:
+        return lags, ccg
+
+    # Compute normalization factors based on method
+    if normalization == "cosine":
+        # Legacy: precompute for cosine similarity
+        auto_i = 0.0
+        auto_j = 0.0
+        for k in range(n):
+            auto_i += events_i[k] * events_i[k]
+            auto_j += events_j[k] * events_j[k]
+
+        if auto_j == 0.0:
+            return lags, ccg
+
+        norm_factor = np.sqrt(auto_i * auto_j)
+    else:
+        norm_factor = 1.0  # Will apply per-trigger normalization later
+
+    # Compute CCG at each lag
+    for lag_idx in range(n_lags):
+        lag = lags[lag_idx]
+        count = 0.0
+        overlap = 0
+
+        if lag >= 0:
+            # j lags behind i: count coincidences where i[k] and j[k+lag] overlap
+            for k in range(n - lag):
+                count += events_i[k] * events_j[k + lag]
+            overlap = n - lag
+        else:
+            # j leads i: count coincidences where i[k-lag] and j[k] overlap
+            for k in range(n + lag):
+                count += events_i[k - lag] * events_j[k]
+            overlap = n + lag
+
+        # Apply normalization
+        if normalization == "cosine":
+            ccg[lag_idx] = count / norm_factor
+        elif normalization == "trigger_rate":
+            # Per-trigger rate: (count / N_ref) / dt
+            if border_correction and overlap > 0:
+                # Correct for reduced overlap at edges
+                # Scale count up as if we had full overlap
+                count = count * n / overlap
+            ccg[lag_idx] = (count / n_ref) / dt
+        else:  # "trigger_prob"
+            # Per-trigger probability: count / N_ref
+            if border_correction and overlap > 0:
+                count = count * n / overlap
+            ccg[lag_idx] = count / n_ref
+
+    return lags, ccg
+
+
+@njit(cache=True)  # type: ignore
+def _compute_baseline_corrected_ccg_numba(
+    events_i: np.ndarray,
+    events_j: np.ndarray,
+    max_lag: int,
+    n_shuffles: int,
+    normalization: str,
+    border_correction: bool,
+    dt: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:  # pragma: no cover
+    """Compute CCG with shuffled baseline for null model correction.
+
+    Uses circular shifts of events_j to create surrogate data that preserves
+    the temporal structure of each train but breaks their relationship. This is
+    the standard "shift predictor" approach in spike train analysis.
+
+    Returns
+    -------
+    (lags, ccg_raw, baseline_mean, baseline_std)
+    """
+    # Compute raw CCG
+    lags, ccg_raw = _compute_ccg_vector_numba(
+        events_i, events_j, max_lag, normalization, border_correction, dt
+    )
+
+    n_lags = len(lags)
+    n = len(events_j)
+
+    # Storage for shuffled CCGs
+    shuffled_ccgs = np.zeros((n_shuffles, n_lags), dtype=np.float64)
+
+    # Generate shuffled surrogates
+    for shuffle_idx in range(n_shuffles):
+        # Circular shift by random amount (avoid shifts smaller than max_lag
+        # to ensure independence from raw CCG)
+        shift = np.random.randint(max_lag + 1, n - max_lag)
+
+        # Create shifted version of events_j
+        events_j_shifted = np.zeros(n, dtype=events_j.dtype)
+        for i in range(n):
+            events_j_shifted[i] = events_j[(i + shift) % n]
+
+        # Compute CCG with shifted data
+        _, ccg_shuffled = _compute_ccg_vector_numba(
+            events_i,
+            events_j_shifted,
+            max_lag,
+            normalization,
+            border_correction,
+            dt,
+        )
+
+        shuffled_ccgs[shuffle_idx, :] = ccg_shuffled
+
+    # Compute mean and std of shuffled CCGs
+    baseline_mean = np.zeros(n_lags, dtype=np.float64)
+    baseline_std = np.zeros(n_lags, dtype=np.float64)
+
+    for lag_idx in range(n_lags):
+        # Mean
+        sum_val = 0.0
+        for shuffle_idx in range(n_shuffles):
+            sum_val += shuffled_ccgs[shuffle_idx, lag_idx]
+        baseline_mean[lag_idx] = sum_val / n_shuffles
+
+        # Std
+        sum_sq = 0.0
+        for shuffle_idx in range(n_shuffles):
+            diff = shuffled_ccgs[shuffle_idx, lag_idx] - baseline_mean[lag_idx]
+            sum_sq += diff * diff
+        baseline_std[lag_idx] = np.sqrt(sum_sq / n_shuffles)
+
+    return lags, ccg_raw, baseline_mean, baseline_std
 
 
 def _compute_zero_lag_corr_matrix(
