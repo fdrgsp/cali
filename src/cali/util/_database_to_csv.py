@@ -41,6 +41,7 @@ def export_raw_traces_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export raw fluorescence traces to CSV.
 
@@ -57,6 +58,9 @@ def export_raw_traces_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -64,6 +68,7 @@ def export_raw_traces_to_csv(
         trace_type=RAW_CALCIUM_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -73,6 +78,7 @@ def export_neuropil_traces_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export neuropil fluorescence traces to CSV.
 
@@ -89,6 +95,9 @@ def export_neuropil_traces_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -96,6 +105,7 @@ def export_neuropil_traces_to_csv(
         trace_type=NEUROPIL_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -105,6 +115,7 @@ def export_neuropil_corrected_traces_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export neuropil-corrected fluorescence traces to CSV.
 
@@ -121,6 +132,9 @@ def export_neuropil_corrected_traces_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -128,6 +142,7 @@ def export_neuropil_corrected_traces_to_csv(
         trace_type=NEUROPIL_CORRECTED_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -137,6 +152,7 @@ def export_dff_traces_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export ΔF/F traces to CSV.
 
@@ -153,6 +169,9 @@ def export_dff_traces_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -160,6 +179,7 @@ def export_dff_traces_to_csv(
         trace_type=DFF_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -169,6 +189,7 @@ def export_deconvolved_dff_traces_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export deconvolved ΔF/F traces to CSV.
 
@@ -185,6 +206,9 @@ def export_deconvolved_dff_traces_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -192,6 +216,7 @@ def export_deconvolved_dff_traces_to_csv(
         trace_type=DEC_DFF_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -201,6 +226,7 @@ def export_inferred_spikes_raw_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export raw inferred spike traces to CSV.
 
@@ -217,6 +243,9 @@ def export_inferred_spikes_raw_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -224,6 +253,7 @@ def export_inferred_spikes_raw_to_csv(
         trace_type=INFERRED_SPIKES_TRACES,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -233,6 +263,7 @@ def export_inferred_spikes_thresholded_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export thresholded inferred spike traces to CSV (binary).
 
@@ -250,6 +281,9 @@ def export_inferred_spikes_thresholded_to_csv(
         Specific FOV to export. If None, exports all FOVs
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
     """
     _export_trace_data(
         engine=engine,
@@ -257,6 +291,7 @@ def export_inferred_spikes_thresholded_to_csv(
         trace_type=INFERRED_SPIKES_THRESHOLDED_BINARY,
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -266,6 +301,7 @@ def export_correlation_matrices_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export all correlation matrices to CSV files.
 
@@ -288,6 +324,9 @@ def export_correlation_matrices_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -306,6 +345,9 @@ def export_correlation_matrices_to_csv(
 
         if fov_name is not None:
             stmt = stmt.where(col(FOV.name) == fov_name)
+
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
 
         results = session.exec(stmt).all()
 
@@ -379,6 +421,7 @@ def export_calcium_dff_correlation_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export ΔF/F correlation matrix to CSV.
 
@@ -392,6 +435,9 @@ def export_calcium_dff_correlation_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     _export_single_correlation_matrix(
         engine,
@@ -399,6 +445,7 @@ def export_calcium_dff_correlation_to_csv(
         "calcium_dff_correlation_matrix",
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -408,6 +455,7 @@ def export_calcium_dec_dff_correlation_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export deconvolved ΔF/F correlation matrix to CSV.
 
@@ -421,6 +469,9 @@ def export_calcium_dec_dff_correlation_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     _export_single_correlation_matrix(
         engine,
@@ -428,6 +479,7 @@ def export_calcium_dec_dff_correlation_to_csv(
         "calcium_dec_dff_corr_matrix",
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -437,6 +489,7 @@ def export_inferred_spikes_synchrony_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export inferred spikes synchrony matrix to CSV.
 
@@ -450,6 +503,9 @@ def export_inferred_spikes_synchrony_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     _export_single_correlation_matrix(
         engine,
@@ -457,6 +513,7 @@ def export_inferred_spikes_synchrony_to_csv(
         "spike_jitter_synchrony_matrix",
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -466,6 +523,7 @@ def export_inferred_spikes_cross_correlation_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export inferred spikes cross-correlation matrix to CSV.
 
@@ -479,6 +537,9 @@ def export_inferred_spikes_cross_correlation_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     _export_single_correlation_matrix(
         engine,
@@ -486,6 +547,7 @@ def export_inferred_spikes_cross_correlation_to_csv(
         "spike_max_lag_correlation_matrix",
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -495,6 +557,7 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export inferred spikes cross-correlation lags matrix to CSV.
 
@@ -508,6 +571,9 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     _export_single_correlation_matrix(
         engine,
@@ -515,6 +581,7 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
         "spike_max_lag_values_matrix",
         fov_name=fov_name,
         run_id=run_id,
+        position_indices=position_indices,
     )
 
 
@@ -528,6 +595,7 @@ def _export_single_correlation_matrix(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export a single correlation matrix type to CSV (internal helper).
 
@@ -543,6 +611,9 @@ def _export_single_correlation_matrix(
         Specific FOV to export. If None, exports all FOVs (one file per FOV)
     run_id : int | None, optional
         Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -561,6 +632,9 @@ def _export_single_correlation_matrix(
 
         if fov_name is not None:
             stmt = stmt.where(col(FOV.name) == fov_name)
+
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
 
         results = session.exec(stmt).all()
 
@@ -595,11 +669,9 @@ def _export_single_correlation_matrix(
             )
             sorted_roi_names = [f"ROI_{lbl}" for lbl in sorted_labels]
 
-            # Determine output path (add FOV prefix if multiple FOVs)
-            if len(results) > 1:
-                fov_output_path = output_path.parent / f"{fov.name}_{output_path.name}"
-            else:
-                fov_output_path = output_path
+            # Always add FOV prefix to correlation matrix filenames
+            # Each FOV gets its own correlation matrix file
+            fov_output_path = output_path.parent / f"{fov.name}_{output_path.name}"
 
             # Export matrix
             _export_matrix_to_csv(matrix, sorted_roi_names, fov_output_path)
@@ -623,6 +695,7 @@ def _export_trace_data(
     *,
     fov_name: str | None = None,
     run_id: int | None = None,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export trace data to CSV (internal helper)."""
     output_path = Path(output_path)
@@ -650,6 +723,9 @@ def _export_trace_data(
 
         if fov_name is not None:
             stmt = stmt.where(col(FOV.name) == fov_name)
+
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
 
         stmt = stmt.order_by(col(FOV.name), col(ROI.label_value))
         results = session.exec(stmt).all()
@@ -720,6 +796,7 @@ def _export_trace_data(
             raise ValueError(msg)
 
         # Build columns in order: stimulated first, then non-stimulated
+        # Always include FOV name in column to ensure uniqueness across positions
         all_data = []
         column_names = []
 
@@ -729,12 +806,9 @@ def _export_trace_data(
                 fov_data[fov_key]["stim"], key=lambda x: x["roi_label"]
             ):
                 all_data.append(roi_info["trace"])
-                if len(fov_data) > 1:
-                    column_names.append(
-                        f"{roi_info['fov_name']}_ROI_{roi_info['roi_label']}_stim"
-                    )
-                else:
-                    column_names.append(f"ROI_{roi_info['roi_label']}_stim")
+                column_names.append(
+                    f"{roi_info['fov_name']}_ROI_{roi_info['roi_label']}_stim"
+                )
 
             # Then add non-stimulated ROIs
             for roi_info in sorted(
@@ -746,12 +820,9 @@ def _export_trace_data(
                     if fov_data[fov_key]["stim"]
                     else ""  # Only add suffix if there are stim ROIs
                 )
-                if len(fov_data) > 1:
-                    column_names.append(
-                        f"{roi_info['fov_name']}_ROI_{roi_info['roi_label']}{suffix}"
-                    )
-                else:
-                    column_names.append(f"ROI_{roi_info['roi_label']}{suffix}")
+                column_names.append(
+                    f"{roi_info['fov_name']}_ROI_{roi_info['roi_label']}{suffix}"
+                )
 
         # Create DataFrame with traces as columns
         df = pd.DataFrame(np.array(all_data).T, columns=column_names)
@@ -765,6 +836,8 @@ def export_traces_to_csv(
     export_traces: dict[TraceDataType, bool],
     run_id: int,
     db_path: Path,
+    *,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export selected traces to CSV files.
 
@@ -779,6 +852,9 @@ def export_traces_to_csv(
         Analysis result ID to export
     db_path : Path
         Database path (used to determine output directory)
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     # Map trace type names to export functions
     export_map = {
@@ -816,7 +892,12 @@ def export_traces_to_csv(
                 from cali.logger import cali_logger
 
                 cali_logger.info(f"📊 Exporting {trace_type} to {output_path}...")
-                export_func(engine, output_path, run_id=run_id)
+                export_func(
+                    engine,
+                    output_path,
+                    run_id=run_id,
+                    position_indices=position_indices,
+                )
                 cali_logger.info(f"✅ Exported {trace_type} successfully")
             except Exception as e:
                 from cali.logger import cali_logger
@@ -838,6 +919,8 @@ def export_correlations_to_csv(
     ],
     run_id: int,
     db_path: Path,
+    *,
+    position_indices: list[int] | None = None,
 ) -> None:
     """Export selected correlation data to CSV files.
 
@@ -852,6 +935,9 @@ def export_correlations_to_csv(
         Analysis result ID to export
     db_path : Path
         Database path (used to determine output directory)
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
     """
     from cali._constants import (
         CALCIUM_DEC_DFF_CORRELATION,
@@ -890,15 +976,22 @@ def export_correlations_to_csv(
     export_dir.mkdir(parents=True, exist_ok=True)
 
     # Export each selected correlation type
+    # Note: Correlation exports are handled by individual functions that create
+    # separate files per FOV with FOV names in filenames
     for correlation_type, should_export in export_correlations.items():
         if should_export and correlation_type in export_map:
-            export_func, filename = export_map[correlation_type]
-            output_path = export_dir / filename
+            export_func, base_filename = export_map[correlation_type]
+            output_path = export_dir / base_filename
             try:
                 from cali.logger import cali_logger
 
                 cali_logger.info(f"📊 Exporting {correlation_type} to {output_path}...")
-                export_func(engine, output_path, run_id=run_id)
+                export_func(
+                    engine,
+                    output_path,
+                    run_id=run_id,
+                    position_indices=position_indices,
+                )
                 cali_logger.info(f"✅ Exported {correlation_type} successfully")
             except Exception as e:
                 from cali.logger import cali_logger
