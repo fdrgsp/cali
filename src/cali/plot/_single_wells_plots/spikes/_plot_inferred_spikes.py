@@ -68,6 +68,8 @@ def _plot_inferred_spikes(
     active_only: bool = False,
     dec_dff: bool = False,
     thresholds: bool = False,
+    thresholded: bool = False,
+    rising_edges: bool = False,
 ) -> None:
     """Plot inferred spikes data by querying database directly (pyqtgraph).
 
@@ -94,6 +96,10 @@ def _plot_inferred_spikes(
         Optionally overlay deconvolved ΔF/F traces
     thresholds : bool
         Show spike detection thresholds (only if single ROI selected)
+    thresholded : bool
+        Plot binarized (0/1) spike traces as vertical lines
+    rising_edges : bool
+        Mark rising edges of thresholded spikes with vertical lines
     """
     plot = widget.plot_item
     assert plot is not None
@@ -192,47 +198,90 @@ def _plot_inferred_spikes(
         # x-axis = frames
         x = np.arange(spike_data.size, dtype=float)
 
-        # Main spikes curve
-        # When dec_dff overlay is enabled, force white for spike traces
-        curve = _plot_spike_trace(
-            plot=plot,
-            roi_key=str(roi.label_value),
-            x=x,
-            trace=spike_data,
-            normalize=normalize,
-            index=count,
-            n_rois=1 if dec_dff else n_rois,  # Force white when dec_dff=True
-            p1=p1,
-            p2=p2,
-            thresholds=thresholds,
-            spikes_threshold=data_analysis.inferred_spikes_threshold,
-        )
-        if curve is not None:
-            curves.append(curve)
+        # For thresholded or rising_edges plots, compute binary data
+        if thresholded or rising_edges:
+            threshold = data_analysis.inferred_spikes_threshold
+            if threshold is None or threshold <= 0:
+                # Skip this ROI if no valid threshold
+                continue
 
-        # Optional overlay of deconvolved ΔF/F
-        if dec_dff and traces.dec_dff:
-            dec_trace = np.asarray(traces.dec_dff, dtype=float)
-            if dec_trace.size == spike_data.size:
-                _plot_spike_trace(
+            # Create binary mask where spikes exceed threshold
+            binary_spikes = (spike_data > threshold).astype(float)
+
+            if rising_edges:
+                # Detect rising edges (transitions from 0 to 1)
+                edges = np.diff(binary_spikes, prepend=0) > 0
+                curve = _plot_spike_rising_edges(
                     plot=plot,
                     roi_key=str(roi.label_value),
                     x=x,
-                    trace=dec_trace,
+                    edges=edges,
+                    normalize=normalize,
+                    index=count,
+                    n_rois=n_rois,
+                )
+            else:
+                # Plot thresholded spikes as vertical lines (amplitude-based)
+                curve = _plot_thresholded_spikes(
+                    plot=plot,
+                    roi_key=str(roi.label_value),
+                    x=x,
+                    spike_data=spike_data,
+                    threshold=threshold,
                     normalize=normalize,
                     index=count,
                     n_rois=n_rois,
                     p1=p1,
                     p2=p2,
-                    thresholds=False,
-                    spikes_threshold=None,
-                    pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
                 )
+
+            if curve is not None:
+                curves.append(curve)
+        else:
+            # Original continuous trace plotting
+            # Main spikes curve
+            # When dec_dff overlay is enabled, force white for spike traces
+            curve = _plot_spike_trace(
+                plot=plot,
+                roi_key=str(roi.label_value),
+                x=x,
+                trace=spike_data,
+                normalize=normalize,
+                index=count,
+                n_rois=1 if dec_dff else n_rois,  # Force white when dec_dff=True
+                p1=p1,
+                p2=p2,
+                thresholds=thresholds,
+                spikes_threshold=data_analysis.inferred_spikes_threshold,
+            )
+            if curve is not None:
+                curves.append(curve)
+
+            # Optional overlay of deconvolved ΔF/F
+            if dec_dff and traces.dec_dff:
+                dec_trace = np.asarray(traces.dec_dff, dtype=float)
+                if dec_trace.size == spike_data.size:
+                    _plot_spike_trace(
+                        plot=plot,
+                        roi_key=str(roi.label_value),
+                        x=x,
+                        trace=dec_trace,
+                        normalize=normalize,
+                        index=count,
+                        n_rois=n_rois,
+                        p1=p1,
+                        p2=p2,
+                        thresholds=False,
+                        spikes_threshold=None,
+                        pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
+                    )
 
         last_trace = list(traces.inferred_spikes)
         count += 1
 
-    _set_graph_title_and_labels_pg(plot, normalize, raw, dec_dff)
+    _set_graph_title_and_labels_pg(
+        plot, normalize, raw, dec_dff, thresholded, rising_edges
+    )
     total_frames = len(last_trace) if last_trace is not None else 1
     _update_time_axis_pg_for_spikes(plot, rois_rec_time, total_frames)
 
@@ -265,7 +314,7 @@ def _plot_spike_trace(
     p2: float,
     thresholds: bool = False,
     spikes_threshold: float | None = None,
-    pen: pg.mkPen = None,
+    pen: pg.QtGui.QPen | None = None,
 ) -> pg.PlotDataItem | None:
     """Plot inferred spikes trace in pyqtgraph, optionally normalized & stacked."""
     if trace.size == 0:
@@ -326,6 +375,222 @@ def _plot_spike_trace(
     return curve
 
 
+def _plot_thresholded_spikes(
+    plot: pg.PlotItem,
+    roi_key: str,
+    x: np.ndarray,
+    spike_data: np.ndarray,
+    threshold: float,
+    normalize: bool,
+    index: int,
+    n_rois: int,
+    p1: float,
+    p2: float,
+) -> pg.PlotDataItem | None:
+    """Plot thresholded spikes as vertical lines with amplitude heights.
+
+    Only plots spikes above threshold, with line heights corresponding to
+    spike amplitudes.
+
+    Parameters
+    ----------
+    plot : pg.PlotItem
+        The plot item to add the lines to
+    roi_key : str
+        ROI label/key for identification
+    x : np.ndarray
+        Frame indices
+    spike_data : np.ndarray
+        Array of spike amplitudes
+    threshold : float
+        Spike detection threshold
+    normalize : bool
+        Whether to stack ROIs vertically
+    index : int
+        ROI index for stacking
+    n_rois : int
+        Total number of ROIs
+    p1 : float
+        Lower percentile for normalization
+    p2 : float
+        Upper percentile for normalization
+
+    Returns
+    -------
+    pg.PlotDataItem | None
+        Invisible curve for click handling
+    """
+    if spike_data.size == 0:
+        return None
+
+    # Find where spikes exceed threshold
+    spike_indices = np.where(spike_data > threshold)[0]
+
+    if len(spike_indices) == 0:
+        return None
+
+    # Use black color for all traces
+    color = pg.mkPen("k", width=2)
+
+    # Calculate offset for normalization
+    if normalize:
+        offset = (n_rois - 1 - index) * 1.1
+    else:
+        offset = 0.0
+
+    # Build all vertical lines as a single PlotDataItem with NaN separators
+    # This is much more efficient than creating individual items
+    x_lines = []
+    y_lines = []
+
+    for spike_idx in spike_indices:
+        spike_amp = spike_data[spike_idx]
+
+        if normalize:
+            # Normalize the spike amplitude
+            denom = p2 - p1
+            if denom > 0:
+                spike_amp_norm = (spike_amp - p1) / denom
+                spike_amp_norm = float(np.clip(spike_amp_norm, 0.0, 1.0))
+            else:
+                spike_amp_norm = 0.0
+            y_bottom = offset
+            y_top = offset + spike_amp_norm
+        else:
+            # Use actual amplitude
+            y_bottom = 0.0
+            y_top = float(spike_amp)
+
+        # Add this vertical line segment
+        x_lines.extend([x[spike_idx], x[spike_idx], np.nan])
+        y_lines.extend([y_bottom, y_top, np.nan])
+
+    # Plot all lines as a single item
+    if x_lines:
+        plot.plot(
+            x_lines,
+            y_lines,
+            pen=color,
+            connect="finite",
+        )
+
+    # Create an invisible curve for click handling
+    # Position it low in the spike region for better clickability
+    if normalize:
+        # For normalized, position at bottom of ROI band
+        baseline_y = np.full_like(x, offset + 0.1)
+    else:
+        # Position near bottom (just above 0) so clicks anywhere in spike region work
+        baseline_y = np.full_like(x, 0.01)
+
+    curve = plot.plot(
+        x,
+        baseline_y,
+        pen=pg.mkPen(None),  # Invisible
+        name=f"ROI {roi_key}",
+    )
+    curve.setProperty("roi_label", roi_key)
+    curve.setProperty("roi_index", index)
+
+    return curve
+
+
+def _plot_spike_rising_edges(
+    plot: pg.PlotItem,
+    roi_key: str,
+    x: np.ndarray,
+    edges: np.ndarray,
+    normalize: bool,
+    index: int,
+    n_rois: int,
+) -> pg.PlotDataItem | None:
+    """Plot rising edges of thresholded spikes as vertical lines.
+
+    Parameters
+    ----------
+    plot : pg.PlotItem
+        The plot item to add the lines to
+    roi_key : str
+        ROI label/key for identification
+    x : np.ndarray
+        Frame indices
+    edges : np.ndarray
+        Boolean array indicating rising edge positions
+    normalize : bool
+        Whether to stack ROIs vertically
+    index : int
+        ROI index for stacking
+    n_rois : int
+        Total number of ROIs
+
+    Returns
+    -------
+    pg.PlotDataItem | None
+        Invisible curve for click handling
+    """
+    if edges.size == 0:
+        return None
+
+    # Find where rising edges occur
+    edge_indices = np.where(edges)[0]
+
+    if len(edge_indices) == 0:
+        return None
+
+    # Use black color for all traces
+    color = pg.mkPen("k", width=2)
+
+    if normalize:
+        # Stack ROIs vertically with reverse offset
+        offset = (n_rois - 1 - index) * 1.1
+        y_bottom = offset
+        y_top = offset + 1.0
+    else:
+        # All edges from 0 to 1
+        offset = 0.0
+        y_bottom = 0.0
+        y_top = 1.0
+
+    # Build all vertical lines as a single PlotDataItem with NaN separators
+    # This is much more efficient than creating individual items
+    x_lines = []
+    y_lines = []
+
+    for edge_idx in edge_indices:
+        # Add this vertical line segment
+        x_lines.extend([x[edge_idx], x[edge_idx], np.nan])
+        y_lines.extend([y_bottom, y_top, np.nan])
+
+    # Plot all lines as a single item
+    if x_lines:
+        plot.plot(
+            x_lines,
+            y_lines,
+            pen=color,
+            connect="finite",
+        )
+
+    # Create an invisible curve for click handling
+    # Position it low in the spike region for better clickability
+    if normalize:
+        # For normalized, position at bottom of ROI band
+        baseline_y = np.full_like(x, offset + 0.1)
+    else:
+        # Position near bottom so clicks anywhere in spike region work
+        baseline_y = np.full_like(x, 0.01)
+
+    curve = plot.plot(
+        x,
+        baseline_y,
+        pen=pg.mkPen(None),  # Invisible
+        name=f"ROI {roi_key}",
+    )
+    curve.setProperty("roi_label", roi_key)
+    curve.setProperty("roi_index", index)
+
+    return curve
+
+
 def _normalize_trace_percentile(trace: np.ndarray, p1: float, p2: float) -> np.ndarray:
     """Normalize a trace using p1th-p2th percentile, clipped to [0, 1]."""
     tr = np.asarray(trace, dtype=float)
@@ -337,23 +602,37 @@ def _normalize_trace_percentile(trace: np.ndarray, p1: float, p2: float) -> np.n
 
 
 def _set_graph_title_and_labels_pg(
-    plot: pg.PlotItem, normalize: bool, raw: bool, dec_dff: bool
+    plot: pg.PlotItem,
+    normalize: bool,
+    raw: bool,
+    dec_dff: bool,
+    thresholded: bool = False,
+    rising_edges: bool = False,
 ) -> None:
     """Set axis labels based on the plotted data."""
-    if dec_dff:
-        title = "Deconvolved ΔF/F & Inferred Spikes (Thresholded)"
+    # Initialize defaults
+    title = "Inferred Spikes"
+    y_lbl = "Spike Amplitude (a.u.)"
+
+    if thresholded:
+        if rising_edges:
+            if normalize:
+                title = "Normalized Inferred Spikes Thresholded - Rising Edges"
+            else:
+                title = "Inferred Spikes Thresholded - Rising Edges"
+            y_lbl = "ROI" if normalize else "Rising Edge Events"
+        else:
+            if normalize:
+                title = "Normalized Inferred Spikes Thresholded"
+            else:
+                title = "Inferred Spikes Thresholded"
+            y_lbl = "ROI" if normalize else "Spike Amplitude (a.u.)"
+    elif dec_dff:
+        title = "Deconvolved ΔF/F & Inferred Spikes"
+        y_lbl = "Deconvolved ΔF/F & Inferred Spikes (a.u.)"
     else:
         title = "Normalized Inferred Spikes" if normalize else "Inferred Spikes"
-        title += " (Raw)" if raw else " (Thresholded Spike Data)"
-    y_lbl = (
-        "ROI"
-        if normalize
-        else (
-            "Deconvolved ΔF/F & Inferred Spikes (a.u.)"
-            if dec_dff
-            else "Inferred Spikes (a.u.)"
-        )
-    )
+        y_lbl = "ROI" if normalize else "Inferred Spikes (a.u.)"
 
     plot.setTitle(title)
     plot.setLabel("left", y_lbl)
