@@ -66,8 +66,11 @@ def test_analysis_gui_get_export_options_filters_unchecked(qtbot: QtBot) -> None
     widget = _AnalysisGUI()
     qtbot.addWidget(widget)
 
-    # By default, the export group should be enabled
-    assert widget._export_group.isChecked()
+    # By default, the export group should be disabled
+    assert not widget._export_group.isChecked()
+
+    # Enable export group for testing
+    widget._export_group.setChecked(True)
 
     # Get export options
     export_options = widget.get_export_options()
@@ -126,6 +129,9 @@ def test_analysis_gui_toggle_individual_options(qtbot: QtBot) -> None:
     widget = _AnalysisGUI()
     qtbot.addWidget(widget)
 
+    # Enable export group for testing
+    widget._export_group.setChecked(True)
+
     # Initially CALCIUM_DFF_CORRELATION should not be in options
     initial_options = widget.get_export_options()
     assert initial_options is not None
@@ -164,6 +170,9 @@ def test_analysis_gui_no_unchecked_in_export_dict(qtbot: QtBot) -> None:
     """Test that unchecked items are completely absent from export options."""
     widget = _AnalysisGUI()
     qtbot.addWidget(widget)
+
+    # Enable export group for testing
+    widget._export_group.setChecked(True)
 
     export_options = widget.get_export_options()
     assert export_options is not None
