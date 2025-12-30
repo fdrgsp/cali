@@ -272,9 +272,32 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Thresholded with Deconvolved ΔF/F0 Traces",
+    name="Inferred Spikes with Deconvolved ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes, dec_dff=True),
+    category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Thresholded",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, thresholded=True),
+    category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Thresholded Normalized",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes, thresholded=True, normalize=True),
+    category="Inferred Spikes Traces",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Thresholded Normalized (Active Only)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(
+        _plot_inferred_spikes, thresholded=True, normalize=True, active_only=True
+    ),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -791,6 +814,10 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     "Inferred Spikes (Thresholded) Global Synchrony",
     "Inferred Spikes (Thresholded) Cross-Correlation",
     "Inferred Spikes (Thresholded) Burst Activity Analysis",
+    "Inferred Spikes Thresholded",
+    "Inferred Spikes Thresholded Normalized",
+    "Inferred Spikes Thresholded (Active Only)",
+    "Inferred Spikes Thresholded Normalized (Active Only)",
 }
 
 

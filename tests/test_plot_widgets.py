@@ -99,8 +99,8 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    # Removed 3 spike raster/heatmap plots (1 raw + 2 heatmaps)
-    assert disabled_count == 54
+    # Total disabled plot items when only run_id is set
+    assert disabled_count == 57
 
 
 def test_combo_enabled_with_fov_and_run_id(

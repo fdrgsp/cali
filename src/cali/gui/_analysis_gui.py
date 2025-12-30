@@ -153,6 +153,7 @@ class _AnalysisGUI(QWidget):
         self._metadata_wdg = _MetadataWidget(self)
 
         self._export_group = _ExportGroup()
+        self._export_group.setChecked(False)
         self._export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
         self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0)
         self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0)
