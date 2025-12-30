@@ -2,28 +2,46 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sqlalchemy import create_engine
 
 from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from pytestqt.qtbot import QtBot
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
+# Test data paths
+TEST_DB = Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
+
 
 @pytest.fixture
-def mock_widget(qtbot):
+def engine_with_analyzed_data() -> Generator[Engine, None, None]:
+    """Create database engine for test database with analyzed data."""
+    db_path = TEST_DB
+    assert db_path.exists(), f"Test database not found: {db_path}"
+    engine = create_engine(f"sqlite:///{db_path}")
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def mock_widget(qtbot: QtBot) -> _SingleWellGraphWidget:
     """Create a mock single well graph widget with a PlotItem."""
     from pyqtgraph import PlotItem
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
-    widget = _SingleWellGraphWidget()
+    widget = _SingleWellGraphWidget(parent=None)
     widget.plot_item = PlotItem()
     qtbot.addWidget(widget)
     return widget
@@ -96,7 +114,7 @@ def test_plot_inferred_spikes_thresholded_single_roi(
 def test_inferred_spike_thresholded_plot_signal_emission(
     mock_widget: _SingleWellGraphWidget,
     engine_with_analyzed_data: Engine,
-    qtbot,
+    qtbot: QtBot,
 ) -> None:
     """Test that clicking on thresholded spike traces emits roiSelected signal."""
     _plot_inferred_spikes(
