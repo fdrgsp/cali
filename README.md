@@ -51,6 +51,8 @@ Then run your installation command.
 
 ## Overview
 
+https://github.com/user-attachments/assets/4fdcabb9-6d7b-4c4f-ae84-8dffc8487376
+
 ### File Formats
 
 `cali` currently supports the following file formats:
