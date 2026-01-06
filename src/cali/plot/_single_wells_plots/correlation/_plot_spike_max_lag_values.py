@@ -30,6 +30,7 @@ def _get_spike_max_lag_values_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> tuple[np.ndarray | None, list[int] | None, int | None]:
     """Get the pre-computed spike max-lag values matrix from database.
 
@@ -41,6 +42,8 @@ def _get_spike_max_lag_values_matrix_from_db(
         Name of the FOV
     run_id : int | None
         Filter by specific analysis run
+    rising_edges : bool
+        If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
     Returns
     -------
@@ -68,16 +71,22 @@ def _get_spike_max_lag_values_matrix_from_db(
                 )
                 return None, None, None
 
-            if (
-                fov_analysis.spike_max_lag_values_matrix is None
-                or fov_analysis.active_roi_labels is None
-            ):
+            # Get the appropriate matrix based on rising_edges parameter
+            if rising_edges:
+                lag_matrix_data = fov_analysis.spike_max_lag_values_matrix_rising_edges
+                matrix_type = "rising edges"
+            else:
+                lag_matrix_data = fov_analysis.spike_max_lag_values_matrix
+                matrix_type = "thresholded binary"
+
+            if lag_matrix_data is None or fov_analysis.active_roi_labels is None:
                 cali_logger.info(
-                    f"FOVAnalysis for {fov_name} has no spike max-lag values matrix"
+                    f"FOVAnalysis for {fov_name} has no spike max-lag values "
+                    f"matrix ({matrix_type})"
                 )
                 return None, None, None
 
-            lag_matrix = np.asarray(fov_analysis.spike_max_lag_values_matrix, dtype=int)
+            lag_matrix = np.asarray(lag_matrix_data, dtype=int)
             roi_labels = list(fov_analysis.active_roi_labels)
 
             # Get max_lag from analysis settings
@@ -156,6 +165,7 @@ def _plot_spike_max_lag_values_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
     title_suffix: str = "",
+    rising_edges: bool = False,
 ) -> None:
     """Plot the spike max-lag values as a heatmap (pyqtgraph).
 
@@ -178,6 +188,8 @@ def _plot_spike_max_lag_values_data(
         Analysis run ID
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -202,7 +214,9 @@ def _plot_spike_max_lag_values_data(
         lag_matrix,
         roi_labels,
         max_lag_frames,
-    ) = _get_spike_max_lag_values_matrix_from_db(engine, fov_name, run_id)
+    ) = _get_spike_max_lag_values_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges
+    )
 
     if lag_matrix is None or roi_labels is None:
         plot.setTitle(f"Spike Max-Lag Values (No data){title_suffix}")
@@ -243,7 +257,8 @@ def _plot_spike_max_lag_values_data(
     # keep it square
     vb.setAspectLocked(True)
 
-    title = f"Spike Max-Lag Values (frames){title_suffix}"
+    spike_type = "Thresholded (Rising Edges)" if rising_edges else "Thresholded"
+    title = f"Spike Max-Lag Values ({spike_type}) (frames){title_suffix}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")

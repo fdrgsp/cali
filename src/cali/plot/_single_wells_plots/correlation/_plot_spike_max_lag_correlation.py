@@ -30,6 +30,7 @@ def _get_spike_max_lag_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Get the pre-computed spike max-lag correlation matrix from database.
 
@@ -41,6 +42,8 @@ def _get_spike_max_lag_correlation_matrix_from_db(
         Name of the FOV
     run_id : int | None
         Filter by specific analysis run
+    rising_edges : bool
+        If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
     Returns
     -------
@@ -68,19 +71,24 @@ def _get_spike_max_lag_correlation_matrix_from_db(
                 )
                 return None, None
 
-            if (
-                fov_analysis.spike_max_lag_correlation_matrix is None
-                or fov_analysis.active_roi_labels is None
-            ):
+            # Get the appropriate matrix based on rising_edges parameter
+            if rising_edges:
+                corr_matrix_data = (
+                    fov_analysis.spike_max_lag_correlation_matrix_rising_edges
+                )
+                matrix_type = "rising edges"
+            else:
+                corr_matrix_data = fov_analysis.spike_max_lag_correlation_matrix
+                matrix_type = "thresholded binary"
+
+            if corr_matrix_data is None or fov_analysis.active_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike max-lag "
-                    "correlation matrix"
+                    f"correlation matrix ({matrix_type})"
                 )
                 return None, None
 
-            corr_matrix = np.asarray(
-                fov_analysis.spike_max_lag_correlation_matrix, dtype=float
-            )
+            corr_matrix = np.asarray(corr_matrix_data, dtype=float)
             roi_labels = list(fov_analysis.active_roi_labels)
 
             return corr_matrix, roi_labels
@@ -142,11 +150,14 @@ def _plot_spike_max_lag_correlation_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
     title_suffix: str = "",
+    rising_edges: bool = False,
 ) -> None:
     """Plot the spike max-lag cross-correlation matrix as a heatmap (pyqtgraph).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -168,7 +179,7 @@ def _plot_spike_max_lag_correlation_data(
 
     # Query pre-computed correlation matrix from database
     correlation_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
-        engine, fov_name, run_id
+        engine, fov_name, run_id, rising_edges=rising_edges
     )
 
     if correlation_matrix is None or roi_labels is None:
@@ -208,8 +219,9 @@ def _plot_spike_max_lag_correlation_data(
     mask = ~np.eye(corr.shape[0], dtype=bool)
     median_corr = np.median(corr[mask])
 
+    spike_type = "Thresholded (Rising Edges)" if rising_edges else "Thresholded"
     title = (
-        f"Max-Lag Cross-Correlation (Inferred Spikes) "
+        f"Max-Lag Cross-Correlation (Inferred Spikes {spike_type}) "
         f"(median: {median_corr:.3f}){title_suffix}"
     )
     plot.setTitle(title)

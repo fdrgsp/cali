@@ -339,7 +339,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Raster Thresholded - Rising Edges",
+    name="Inferred Spikes Raster Thresholded (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_generate_spike_raster_plot, edges=True),
     category="Raster Plots",
@@ -455,6 +455,13 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
+    name="Inferred Spikes Thresholded Max Lag Correlation (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_max_lag_correlation_data, rising_edges=True),
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name="Inferred Spikes Thresholded Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_values_data,
@@ -462,9 +469,23 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
+    name="Inferred Spikes Thresholded Max Lag Values (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_max_lag_values_data, rising_edges=True),
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name="Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_synchrony_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Thresholded Global Synchrony (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_spike_synchrony_data, rising_edges=True),
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -529,7 +550,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     name=(
-        "Stimulated vs Non-Stimulated Raster Inferred Spikes Thresholded - Rising Edges"
+        "Stimulated vs Non-Stimulated Raster Inferred Spikes Thresholded (Rising Edges)"
     ),
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_raster,

@@ -589,9 +589,9 @@ def _set_graph_title_and_labels_pg(
     if thresholded:
         if rising_edges:
             if normalize:
-                title = "Normalized Inferred Spikes Thresholded - Rising Edges"
+                title = "Normalized Inferred Spikes Thresholded (Rising Edges)"
             else:
-                title = "Inferred Spikes Thresholded - Rising Edges"
+                title = "Inferred Spikes Thresholded (Rising Edges)"
             y_lbl = "ROI" if normalize else "Rising Edge Events"
         else:
             if normalize:

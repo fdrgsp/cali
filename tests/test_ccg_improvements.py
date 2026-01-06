@@ -373,5 +373,19 @@ def test_ccg_different_normalizations_consistent() -> None:
     assert peak_lag_cosine == peak_lag_prob == peak_lag_rate == 2
 
 
+def test_summarize_ccg_invalid_window() -> None:
+    """Test that summarize_ccg_near_zero handles invalid windows gracefully."""
+    lags = np.array([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5], dtype=np.int32)
+    ccg = np.array([0.1, 0.1, 0.2, 0.3, 0.5, 1.0, 0.5, 0.3, 0.2, 0.1, 0.1])
+
+    # Window that's larger than the lag range should still work
+    summary = _summarize_ccg_near_zero(lags, ccg, window=100)
+    assert summary == pytest.approx(1.0, abs=0.01)  # Still finds the peak
+
+    # Window size of 0 should just check lag=0
+    summary = _summarize_ccg_near_zero(lags, ccg, window=0)
+    assert summary == pytest.approx(1.0, abs=0.01)  # Peak is at 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

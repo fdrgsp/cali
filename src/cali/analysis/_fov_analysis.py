@@ -88,6 +88,7 @@ def compute_fov_analysis(
     spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
     peak_events_dict: dict[str, list[float]] = {}
     spike_data_dict: dict[str, list[float]] = {}
+    spike_data_dict_rising_edges: dict[str, list[float]] = {}
 
     for roi in active_rois:
         if roi.label_value is None:
@@ -153,6 +154,16 @@ def compute_fov_analysis(
                 spike_trains.append(spike_train)
                 spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
+                # Compute rising edges for this spike train
+                # Detect 0 -> 1 transitions
+                positive_vals = spike_train > 0
+                rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
+                spike_train_rising_edges = np.zeros_like(spike_train, dtype=float)
+                spike_train_rising_edges[rising] = 1.0
+                spike_data_dict_rising_edges[str(roi.label_value)] = (
+                    spike_train_rising_edges.tolist()
+                )
+
     if len(roi_labels) < 2:
         cali_logger.info(
             f"FOV {fov.name}: Not enough ROIs with valid traces "
@@ -191,11 +202,18 @@ def compute_fov_analysis(
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
-    # 4. Jitter synchrony on spikes
+    # 3b. Max lag correlation on spikes (rising edges)
+    spike_max_lag_corr_matrix_rising_edges = None
+    spike_max_lag_values_matrix_rising_edges = None
+    global_spike_max_lag_corr_rising_edges = None
+    # 4. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
+    # 4b. Jitter synchrony on spikes (rising edges)
+    spike_jitter_sync_matrix_rising_edges = None
+    global_spike_jitter_sync_rising_edges = None
     if len(spike_data_dict) >= 2:
-        # 3. Max lag correlation on spikes
+        # 3a. Max lag correlation on spikes (thresholded binary)
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
@@ -209,7 +227,22 @@ def compute_fov_analysis(
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
-        # 4. Jitter synchrony on spikes
+        # 3b. Max lag correlation on spikes (thresholded rising edges)
+        if len(spike_data_dict_rising_edges) >= 2:
+            (
+                spike_max_lag_corr_matrix_rising_edges,
+                spike_max_lag_values_matrix_rising_edges,
+            ) = _get_spike_correlations_matrix(
+                spike_data_dict_rising_edges,
+                method="cross_correlation",
+                max_lag=max_lag_frames,
+            )
+            if spike_max_lag_corr_matrix_rising_edges is not None:
+                global_spike_max_lag_corr_rising_edges = _get_spike_synchrony(
+                    spike_max_lag_corr_matrix_rising_edges
+                )
+
+        # 4. Jitter synchrony on spikes (thresholded binary)
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
         spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
@@ -219,6 +252,18 @@ def compute_fov_analysis(
         )
         if spike_jitter_sync_matrix is not None:
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
+
+        # 4b. Jitter synchrony on spikes (thresholded rising edges)
+        if len(spike_data_dict_rising_edges) >= 2:
+            spike_jitter_sync_matrix_rising_edges, _ = _get_spike_correlations_matrix(
+                spike_data_dict_rising_edges,
+                method="jitter_window",
+                jitter_window=jitter_window_frames,
+            )
+            if spike_jitter_sync_matrix_rising_edges is not None:
+                global_spike_jitter_sync_rising_edges = _get_spike_synchrony(
+                    spike_jitter_sync_matrix_rising_edges
+                )
 
     # 5. Burst detection on population spike activity
     spike_burst_count: int | None = None
@@ -298,12 +343,33 @@ def compute_fov_analysis(
             if spike_max_lag_values_matrix is not None
             else None
         ),
+        spike_max_lag_correlation_matrix_rising_edges=(
+            spike_max_lag_corr_matrix_rising_edges.tolist()
+            if spike_max_lag_corr_matrix_rising_edges is not None
+            else None
+        ),
+        global_spike_max_lag_correlation_rising_edges=(
+            global_spike_max_lag_corr_rising_edges
+        ),
+        spike_max_lag_values_matrix_rising_edges=(
+            spike_max_lag_values_matrix_rising_edges.tolist()
+            if spike_max_lag_values_matrix_rising_edges is not None
+            else None
+        ),
         spike_jitter_synchrony_matrix=(
             spike_jitter_sync_matrix.tolist()
             if spike_jitter_sync_matrix is not None
             else None
         ),
         global_spike_jitter_synchrony=global_spike_jitter_sync,
+        spike_jitter_synchrony_matrix_rising_edges=(
+            spike_jitter_sync_matrix_rising_edges.tolist()
+            if spike_jitter_sync_matrix_rising_edges is not None
+            else None
+        ),
+        global_spike_jitter_synchrony_rising_edges=(
+            global_spike_jitter_sync_rising_edges
+        ),
         # Population burst metrics (spike-based)
         spike_burst_count=spike_burst_count,
         spike_burst_avg_duration=spike_burst_avg_duration,

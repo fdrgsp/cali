@@ -1755,16 +1755,33 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_dec_dff_corr_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
     spike_max_lag_correlation_matrix : list[list[float]] | None
-        Max lag correlation on spike events (NxN for N active ROIs)
+        Max lag correlation on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
-        Median of off-diagonal spike max lag correlation values
+        Median of off-diagonal spike max lag correlation values (thresholded binary)
     spike_max_lag_values_matrix : list[list[int]] | None
-        Lag values (in frames) at max correlation for spike events (NxN).
+        Lag values (in frames) at max correlation for spike events
+        (thresholded binary) (NxN).
+        Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
+    spike_max_lag_correlation_matrix_rising_edges : list[list[float]] | None
+        Max lag correlation on spike events (thresholded rising edges)
+        (NxN for N active ROIs)
+    global_spike_max_lag_correlation_rising_edges : float | None
+        Median of off-diagonal spike max lag correlation values
+        (thresholded rising edges)
+    spike_max_lag_values_matrix_rising_edges : list[list[int]] | None
+        Lag values (in frames) at max correlation for spike events
+        (thresholded rising edges) (NxN).
         Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
     spike_jitter_synchrony_matrix : list[list[float]] | None
-        Jitter synchrony on spike events (NxN for N active ROIs)
+        Jitter synchrony on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
+        Median of off-diagonal spike jitter synchrony values (thresholded binary)
+    spike_jitter_synchrony_matrix_rising_edges : list[list[float]] | None
+        Jitter synchrony on spike events (thresholded rising edges)
+        (NxN for N active ROIs)
+    global_spike_jitter_synchrony_rising_edges : float | None
         Median of off-diagonal spike jitter synchrony values
+        (thresholded rising edges)
     spike_burst_count : int | None
         Number of spike-based population bursts detected
     spike_burst_avg_duration : float | None
@@ -1827,20 +1844,34 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     # Spike metrics (from inferred spikes)
-    # 1. Max lag correlation on spikes
+    # 1. Max lag correlation on spikes (thresholded binary)
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     global_spike_max_lag_correlation: float | None = None
-    # 2b. Lag values at max correlation for spikes
+    # 2a. Lag values at max correlation for spikes (thresholded binary)
     spike_max_lag_values_matrix: list[list[int]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    # 3. Jitter synchrony on spikes
+    # 2b. Max lag correlation on spikes (thresholded rising edges)
+    spike_max_lag_correlation_matrix_rising_edges: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_max_lag_correlation_rising_edges: float | None = None
+    # 2c. Lag values at max correlation for spikes (thresholded rising edges)
+    spike_max_lag_values_matrix_rising_edges: list[list[int]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 3. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     global_spike_jitter_synchrony: float | None = None
+    # 4. Jitter synchrony on spikes (thresholded rising edges)
+    spike_jitter_synchrony_matrix_rising_edges: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_jitter_synchrony_rising_edges: float | None = None
 
     # Population burst metrics (spike-based)
     spike_burst_count: int | None = None
