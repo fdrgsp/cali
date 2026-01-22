@@ -190,15 +190,15 @@ def test_compute_jitter_synchrony_matrix_numba() -> None:
 def test_get_spike_synchrony_matrix() -> None:
     from cali.analysis._util import _get_spike_correlations_matrix
 
-    # Empty dict
-    assert _get_spike_correlations_matrix({}) == (None, None)
+    # Empty dict - returns 3-tuple with all None
+    assert _get_spike_correlations_matrix({}) == (None, None, None)
 
-    # Single ROI
-    assert _get_spike_correlations_matrix({"roi1": [1, 0]}) == (None, None)
+    # Single ROI - returns 3-tuple with all None
+    assert _get_spike_correlations_matrix({"roi1": [1, 0]}) == (None, None, None)
 
     # Two ROIs, perfect sync
     data = {"roi1": [1.0, 0.0, 1.0, 0.0], "roi2": [1.0, 0.0, 1.0, 0.0]}
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -207,7 +207,7 @@ def test_get_spike_synchrony_matrix() -> None:
 
     # Two ROIs, no sync
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 0.0, 1.0, 0.0]}
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -216,7 +216,7 @@ def test_get_spike_synchrony_matrix() -> None:
     # Cross correlation method
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 1.0, 0.0, 0.0]}
     # Lag 1 should catch it
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="cross_correlation", max_lag=1
     )
     assert matrix is not None
@@ -289,7 +289,7 @@ def test_spike_synchrony_with_continuous_vs_events() -> None:
     spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
 
     # Calculate synchrony using jitter window method
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data, method="jitter_window", jitter_window=2
     )
 
@@ -306,7 +306,7 @@ def test_spike_synchrony_with_continuous_vs_events() -> None:
     roi2_trace = [0, 0, 0, 0, 0, 1, 1, 0]
     spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
 
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data, method="jitter_window", jitter_window=1
     )
 

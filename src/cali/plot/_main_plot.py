@@ -37,13 +37,16 @@ from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import 
     _plot_sorted_dec_dff_correlation,
     _plot_sorted_dec_dff_correlation_windowed_by_stim,
     _plot_sorted_dec_dff_correlation_windowed_non_stim,
+    _plot_sorted_spike_ccg_zscore,
     _plot_sorted_spike_max_lag_correlation,
+    _plot_sorted_spike_max_lag_values,
     _plot_sorted_spike_synchrony,
 )
 from ._single_wells_plots.correlation._plot_inferred_spike_synchrony import (
     _plot_spike_synchrony_data,
 )
 from ._single_wells_plots.correlation._plot_spike_max_lag_correlation import (
+    _plot_ccg_zscore_data,
     _plot_spike_max_lag_correlation_data,
 )
 from ._single_wells_plots.correlation._plot_spike_max_lag_values import (
@@ -462,6 +465,20 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
+    name="Inferred Spikes CCG Z-Score (Significance)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_ccg_zscore_data,
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes CCG Z-Score (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_ccg_zscore_data, rising_edges=True),
+    category="Inferred Spikes Correlation Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
     name="Inferred Spikes Thresholded Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_spike_max_lag_values_data,
@@ -583,7 +600,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Inferred Spikes Thresholded Synchrony",
+    name="Sorted Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_synchrony,
     category="Evoked Experiment",
@@ -594,6 +611,46 @@ AnalysisProduct(
     name="Sorted Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_max_lag_correlation,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded Max Lag Correlation (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_sorted_spike_max_lag_correlation, rising_edges=True),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded Max Lag Values",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_max_lag_values,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded Max Lag Values (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_sorted_spike_max_lag_values, rising_edges=True),
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded CCG Z-Score",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_sorted_spike_ccg_zscore,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded CCG Z-Score (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_sorted_spike_ccg_zscore, rising_edges=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

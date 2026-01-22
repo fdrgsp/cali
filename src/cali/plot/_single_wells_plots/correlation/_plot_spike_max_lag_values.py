@@ -219,18 +219,18 @@ def _plot_spike_max_lag_values_data(
     )
 
     if lag_matrix is None or roi_labels is None:
-        plot.setTitle(f"Spike Max-Lag Values (No data){title_suffix}")
-        plot.setLabel("bottom", "ROI")
-        plot.setLabel("left", "ROI")
+        plot.setTitle(f"Inferred Spikes Max-Lag Values (No data){title_suffix}")
+        plot.setLabel("bottom", "ROI (j)")
+        plot.setLabel("left", "ROI (i)")
         return
 
     # Filter to selected ROIs if specified
     lags, rois_idxs = _filter_matrix_by_rois(lag_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(f"Spike Max-Lag Values (Need ≥2 ROIs){title_suffix}")
-        plot.setLabel("bottom", "ROI")
-        plot.setLabel("left", "ROI")
+        plot.setTitle(f"Inferred Spikes Max-Lag Values (Need ≥2 ROIs){title_suffix}")
+        plot.setLabel("bottom", "ROI (j)")
+        plot.setLabel("left", "ROI (i)")
         return
 
     # ---------------- IMAGE ITEM (centered, full view) ---------------- #
@@ -243,7 +243,9 @@ def _plot_spike_max_lag_values_data(
         abs_max = max(abs(lags.min()), abs(lags.max()))
         vmin, vmax = -abs_max, abs_max
 
-    img.setLookupTable(CMAP.getLookupTable(vmin, vmax, 256))
+    # getLookupTable takes colormap positions (0-1), not data values
+    # setLevels maps data values to the colormap
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((vmin, vmax))
 
     plot.addItem(img)
@@ -257,11 +259,11 @@ def _plot_spike_max_lag_values_data(
     # keep it square
     vb.setAspectLocked(True)
 
-    spike_type = "Thresholded (Rising Edges)" if rising_edges else "Thresholded"
-    title = f"Spike Max-Lag Values ({spike_type}) (frames){title_suffix}"
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+    title = f"Inferred Spikes Max-Lag Values ({spike_type}) (frames){title_suffix}"
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI")
-    plot.setLabel("left", "ROI")
+    plot.setLabel("bottom", "ROI (j)")
+    plot.setLabel("left", "ROI (i)")
 
     # Hide axis tick labels (like the MPL version)
     plot.getAxis("bottom").setTicks([])

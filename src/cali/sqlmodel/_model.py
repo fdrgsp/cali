@@ -1772,6 +1772,12 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Lag values (in frames) at max correlation for spike events
         (thresholded rising edges) (NxN).
         Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
+    spike_ccg_zscore_matrix : list[list[float]] | None
+        Z-score matrix for CCG significance (thresholded binary).
+        Z = (CCG_raw - baseline_mean) / baseline_std at max-lag position.
+        |z| > 2 suggests significant functional connectivity.
+    spike_ccg_zscore_matrix_rising_edges : list[list[float]] | None
+        Z-score matrix for CCG significance (thresholded rising edges).
     spike_jitter_synchrony_matrix : list[list[float]] | None
         Jitter synchrony on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
@@ -1860,6 +1866,15 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     global_spike_max_lag_correlation_rising_edges: float | None = None
     # 2c. Lag values at max correlation for spikes (thresholded rising edges)
     spike_max_lag_values_matrix_rising_edges: list[list[int]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 2d. Z-score matrices for CCG significance (baseline-corrected)
+    # Z-score = (CCG_raw - baseline_mean) / baseline_std at the max-lag position
+    # |z| > 2 suggests significant functional connectivity
+    spike_ccg_zscore_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    spike_ccg_zscore_matrix_rising_edges: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     # 3. Jitter synchrony on spikes (thresholded binary)

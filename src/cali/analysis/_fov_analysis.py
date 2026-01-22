@@ -198,31 +198,43 @@ def compute_fov_analysis(
         # seconds * fps = frames
         return max(0, int((ms / 1000.0) * frame_rate))
 
-    # 3. Max lag correlation on spikes
+    # 3. Max lag correlation on spikes (standard CCG with baseline correction)
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
+    spike_ccg_zscore_matrix = None
     # 3b. Max lag correlation on spikes (rising edges)
     spike_max_lag_corr_matrix_rising_edges = None
     spike_max_lag_values_matrix_rising_edges = None
     global_spike_max_lag_corr_rising_edges = None
+    spike_ccg_zscore_matrix_rising_edges = None
     # 4. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
     # 4b. Jitter synchrony on spikes (rising edges)
     spike_jitter_sync_matrix_rising_edges = None
     global_spike_jitter_sync_rising_edges = None
+
+    # Compute dt for CCG normalization (time per frame in seconds)
+    1.0 / frame_rate
+
     if len(spike_data_dict) >= 2:
         # 3a. Max lag correlation on spikes (thresholded binary)
+        # Using standard CCG methodology with:
+        # - Per-trigger probability normalization (trigger_prob)
+        # - Border correction for unbiased estimates at large lags
+        # - Baseline correction using shift predictor (100 shuffles)
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
             spike_max_lag_corr_matrix,
             spike_max_lag_values_matrix,
+            spike_ccg_zscore_matrix,
         ) = _get_spike_correlations_matrix(
             spike_data_dict,
             method="cross_correlation",
             max_lag=max_lag_frames,
+            n_shuffles=100,
         )
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
@@ -232,10 +244,12 @@ def compute_fov_analysis(
             (
                 spike_max_lag_corr_matrix_rising_edges,
                 spike_max_lag_values_matrix_rising_edges,
+                spike_ccg_zscore_matrix_rising_edges,
             ) = _get_spike_correlations_matrix(
                 spike_data_dict_rising_edges,
                 method="cross_correlation",
                 max_lag=max_lag_frames,
+                n_shuffles=100,
             )
             if spike_max_lag_corr_matrix_rising_edges is not None:
                 global_spike_max_lag_corr_rising_edges = _get_spike_synchrony(
@@ -245,7 +259,7 @@ def compute_fov_analysis(
         # 4. Jitter synchrony on spikes (thresholded binary)
         jitter_window_ms = analysis_settings.spikes_sync_jitter_window
         jitter_window_frames = ms_to_frames(jitter_window_ms)
-        spike_jitter_sync_matrix, _ = _get_spike_correlations_matrix(
+        spike_jitter_sync_matrix, _, _ = _get_spike_correlations_matrix(
             spike_data_dict,
             method="jitter_window",
             jitter_window=jitter_window_frames,
@@ -255,10 +269,12 @@ def compute_fov_analysis(
 
         # 4b. Jitter synchrony on spikes (thresholded rising edges)
         if len(spike_data_dict_rising_edges) >= 2:
-            spike_jitter_sync_matrix_rising_edges, _ = _get_spike_correlations_matrix(
-                spike_data_dict_rising_edges,
-                method="jitter_window",
-                jitter_window=jitter_window_frames,
+            spike_jitter_sync_matrix_rising_edges, _, _ = (
+                _get_spike_correlations_matrix(
+                    spike_data_dict_rising_edges,
+                    method="jitter_window",
+                    jitter_window=jitter_window_frames,
+                )
             )
             if spike_jitter_sync_matrix_rising_edges is not None:
                 global_spike_jitter_sync_rising_edges = _get_spike_synchrony(
@@ -354,6 +370,17 @@ def compute_fov_analysis(
         spike_max_lag_values_matrix_rising_edges=(
             spike_max_lag_values_matrix_rising_edges.tolist()
             if spike_max_lag_values_matrix_rising_edges is not None
+            else None
+        ),
+        # Z-score matrices for CCG significance (baseline-corrected)
+        spike_ccg_zscore_matrix=(
+            spike_ccg_zscore_matrix.tolist()
+            if spike_ccg_zscore_matrix is not None
+            else None
+        ),
+        spike_ccg_zscore_matrix_rising_edges=(
+            spike_ccg_zscore_matrix_rising_edges.tolist()
+            if spike_ccg_zscore_matrix_rising_edges is not None
             else None
         ),
         spike_jitter_synchrony_matrix=(

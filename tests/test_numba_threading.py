@@ -54,7 +54,7 @@ def test_numba_synchrony_with_threading() -> None:
         assert matrix.shape == (n_rois, n_rois)
 
     def compute_spike_sync() -> None:
-        matrix, _ = _get_spike_correlations_matrix(
+        matrix, _, _ = _get_spike_correlations_matrix(
             spike_data_dict, method="jitter_window", jitter_window=5
         )
         assert matrix is not None

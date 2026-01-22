@@ -99,8 +99,10 @@ def test_combo_disabled_with_only_run_id(
         and model.item(i).text() != "None"
     )
 
-    # Total disabled plot items when only run_id is set (including 3 rising edges)
-    assert disabled_count == 60
+    # Total disabled plot items when only run_id is set
+    # (including sorted rising edges CCG + 2 CCG z-score plots
+    #  + 2 sorted max lag values + 2 sorted z-score for evoked)
+    assert disabled_count == 67
 
 
 def test_combo_enabled_with_fov_and_run_id(

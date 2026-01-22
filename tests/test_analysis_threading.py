@@ -134,7 +134,7 @@ def test_spike_correlations_with_lock() -> None:
         "2": [0, 0, 1, 0, 1, 0],
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, zscore_matrix = _get_spike_correlations_matrix(
         spike_data_dict,
         method="cross_correlation",
         max_lag=2,
@@ -142,12 +142,17 @@ def test_spike_correlations_with_lock() -> None:
 
     assert sync_matrix is not None
     assert lag_matrix is not None
+    # zscore_matrix is always computed for cross_correlation method
+    assert zscore_matrix is not None
     assert sync_matrix.shape == (2, 2)
     assert lag_matrix.shape == (2, 2)
+    assert zscore_matrix.shape == (2, 2)
 
     # Diagonal should be perfect
     assert sync_matrix[0, 0] == 1.0
     assert lag_matrix[0, 0] == 0
+    # Diagonal z-score is inf (undefined for self-correlation)
+    assert np.isinf(zscore_matrix[0, 0])
 
 
 def test_jitter_window_method_uses_numba() -> None:
@@ -205,7 +210,7 @@ def test_spike_jitter_synchrony_uses_numba() -> None:
         "2": [0, 0, 1, 0, 0, 1],
     }
 
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data_dict,
         method="jitter_window",
         jitter_window=1,
@@ -278,7 +283,7 @@ def test_spike_correlations_with_empty_roi() -> None:
         "2": [0.0, 0.0, 0.0, 0.0, 0.0],  # No spikes
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, _ = _get_spike_correlations_matrix(
         spike_data_dict,
         method="cross_correlation",
         max_lag=2,
@@ -320,14 +325,15 @@ def test_spike_correlations_fallback_method() -> None:
         "2": [1.0, 0.0, 1.0, 0.0, 1.0],
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, zscore_matrix = _get_spike_correlations_matrix(
         spike_data_dict,
         method="correlation",  # Default method
         max_lag=2,
     )
 
     assert sync_matrix is not None
-    assert lag_matrix is None
+    assert lag_matrix is None  # Default method doesn't compute lag
+    assert zscore_matrix is None  # Default method doesn't compute z-scores
 
     # Should have valid correlation values
     assert sync_matrix[0, 0] == 1.0

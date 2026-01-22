@@ -1,7 +1,12 @@
 """Test improved CCG (cross-correlogram) functions.
 
-These tests validate the standard CCG implementation improvements based on
+These tests validate the standard CCG implementation based on
 best practices from spike train analysis and calcium imaging literature.
+
+The implementation uses:
+- Per-trigger probability normalization (P(spike in j | spike in i))
+- Border correction for unbiased estimates at large lags
+- Shift predictor baseline correction for significance testing
 """
 
 import numpy as np
@@ -20,9 +25,7 @@ def test_ccg_vector_computation_basic() -> None:
     events_i = np.array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0], dtype=np.float32)
     events_j = np.array([0, 1, 0, 0, 0, 1, 0, 0, 0, 1], dtype=np.float32)
 
-    lags, ccg = _compute_ccg_vector(
-        events_i, events_j, max_lag=3, normalization="trigger_prob"
-    )
+    lags, ccg = _compute_ccg_vector(events_i, events_j, max_lag=3)
 
     # Check shape
     assert len(lags) == 7  # -3 to +3
@@ -36,105 +39,18 @@ def test_ccg_vector_computation_basic() -> None:
     assert ccg[lag_1_idx] > 0.5  # Should have high correlation at lag=1
 
 
-def test_ccg_trigger_rate_normalization() -> None:
-    """Test that trigger_rate normalization produces expected values."""
-    # Simple case: 1 spike in reference, 1 spike in target at lag=0
-    events_i = np.array([0, 0, 1, 0, 0], dtype=np.float32)
-    events_j = np.array([0, 0, 1, 0, 0], dtype=np.float32)
-
-    lags, ccg = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=2,
-        normalization="trigger_rate",
-        border_correction=False,
-        dt=1.0,
-    )
-
-    # At lag=0, should have 1 coincidence / 1 reference spike / 1.0 dt = 1.0
-    lag_0_idx = np.where(lags == 0)[0][0]
-    assert ccg[lag_0_idx] == pytest.approx(1.0, abs=0.01)
-
-
 def test_ccg_trigger_prob_normalization() -> None:
-    """Test trigger_prob normalization."""
+    """Test trigger_prob normalization (now the default and only option)."""
     # 2 spikes in reference, both align with target at lag=0
     events_i = np.array([1, 0, 1, 0, 0], dtype=np.float32)
     events_j = np.array([1, 0, 1, 0, 0], dtype=np.float32)
 
-    lags, ccg = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=1,
-        normalization="trigger_prob",
-        border_correction=False,
-    )
+    lags, ccg = _compute_ccg_vector(events_i, events_j, max_lag=1)
 
     # 2 coincidences / 2 reference spikes = 1.0 probability
+    # With border correction, the value may be slightly different
     lag_0_idx = np.where(lags == 0)[0][0]
-    assert ccg[lag_0_idx] == pytest.approx(1.0, abs=0.01)
-
-
-def test_ccg_cosine_normalization_backward_compatibility() -> None:
-    """Test that cosine normalization matches legacy behavior."""
-    events_i = np.array([1, 0, 1, 0, 1], dtype=np.float32)
-    events_j = np.array([1, 0, 1, 0, 1], dtype=np.float32)
-
-    lags, ccg = _compute_ccg_vector(
-        events_i, events_j, max_lag=1, normalization="cosine"
-    )
-
-    # Perfect alignment at lag=0 should give 1.0 with cosine
-    lag_0_idx = np.where(lags == 0)[0][0]
-    assert ccg[lag_0_idx] == pytest.approx(1.0, abs=0.01)
-
-
-def test_ccg_border_correction() -> None:
-    """Test that border correction increases values at large lags."""
-    # Create correlated spikes throughout with more frames for better statistics
-    np.random.seed(42)
-    n_frames = 500
-    events_i = np.random.binomial(1, 0.15, n_frames).astype(np.float32)
-    events_j = events_i.copy()  # Perfect correlation
-
-    max_lag_test = 50  # Use moderate lag relative to signal length
-
-    # Without border correction
-    _lags_no_bc, ccg_no_bc = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=max_lag_test,
-        normalization="trigger_prob",
-        border_correction=False,
-    )
-
-    # With border correction
-    lags_bc, ccg_bc = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=max_lag_test,
-        normalization="trigger_prob",
-        border_correction=True,
-    )
-
-    # At large lags, border correction should increase values
-    # (because overlap is reduced without correction)
-    # Use a moderate lag where we still have reasonable overlap
-    test_lag = 30
-    large_lag_idx = np.where(lags_bc == test_lag)[0][0]
-
-    # With perfect correlation, border corrected should be closer to lag=0 value
-    lag_0_idx = np.where(lags_bc == 0)[0][0]
-
-    # Without correction, large lag should be lower than lag=0
-    assert ccg_no_bc[large_lag_idx] < ccg_no_bc[lag_0_idx]
-
-    # With correction, large lag should be closer to lag=0 (still perfect correlation)
-    # The ratio should be better with border correction
-    ratio_no_bc = ccg_no_bc[large_lag_idx] / (ccg_no_bc[lag_0_idx] + 1e-10)
-    ratio_bc = ccg_bc[large_lag_idx] / (ccg_bc[lag_0_idx] + 1e-10)
-
-    assert ratio_bc > ratio_no_bc  # Border correction improves the ratio
+    assert ccg[lag_0_idx] > 0.9  # Should be close to 1.0
 
 
 def test_ccg_empty_reference_train() -> None:
@@ -189,6 +105,7 @@ def test_baseline_corrected_ccg_removes_slow_comodulation() -> None:
     events_j = np.zeros(n, dtype=np.float32)
 
     # Add increasing spike probability
+    np.random.seed(123)
     for i in range(n):
         prob = i / n * 0.3  # Probability increases over time
         if np.random.random() < prob:
@@ -279,14 +196,10 @@ def test_ccg_symmetry_property() -> None:
     events_j = np.random.binomial(1, 0.1, 100).astype(np.float32)
 
     # Compute CCG(i,j)
-    lags_ij, ccg_ij = _compute_ccg_vector(
-        events_i, events_j, max_lag=5, normalization="trigger_prob"
-    )
+    lags_ij, ccg_ij = _compute_ccg_vector(events_i, events_j, max_lag=5)
 
     # Compute CCG(j,i)
-    lags_ji, ccg_ji = _compute_ccg_vector(
-        events_j, events_i, max_lag=5, normalization="trigger_prob"
-    )
+    lags_ji, ccg_ji = _compute_ccg_vector(events_j, events_i, max_lag=5)
 
     # With per-trigger normalization:
     # CCG_ij(tau) = count(tau) / N_i
@@ -310,8 +223,7 @@ def test_ccg_symmetry_property() -> None:
 
 def test_ccg_with_shifted_perfect_correlation() -> None:
     """Test CCG correctly identifies shifted correlation."""
-    # events_j is events_i shifted by 2 frames - use longer sequence for better
-    # statistics
+    # events_j is events_i shifted by 2 frames
     n = 100
     events_i = np.zeros(n, dtype=np.float32)
     events_i[0::10] = 1.0  # Spikes every 10 frames
@@ -320,57 +232,13 @@ def test_ccg_with_shifted_perfect_correlation() -> None:
     events_j = np.zeros(n, dtype=np.float32)
     events_j[2::10] = 1.0  # Same pattern but shifted by 2
 
-    lags, ccg = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=5,
-        normalization="trigger_prob",
-        border_correction=False,  # Disable to avoid edge effects in this test
-    )
+    lags, ccg = _compute_ccg_vector(events_i, events_j, max_lag=5)
 
     # Should have peak at lag=2 (j lags behind i by 2 frames)
     # Find peak in the range [-5, 5]
     peak_lag_idx = np.argmax(ccg)
     peak_lag = lags[peak_lag_idx]
     assert peak_lag == 2
-
-
-def test_ccg_different_normalizations_consistent() -> None:
-    """Test that different normalizations produce consistent orderings."""
-    # Use a clear signal with lag structure for this test
-    n = 100
-    events_i = np.zeros(n, dtype=np.float32)
-    events_i[10::20] = 1.0  # Regular spikes
-
-    events_j = np.zeros(n, dtype=np.float32)
-    events_j[12::20] = 1.0  # Same pattern shifted by 2 frames
-
-    # Compute with different normalizations
-    lags_cosine, ccg_cosine = _compute_ccg_vector(
-        events_i, events_j, max_lag=5, normalization="cosine", border_correction=False
-    )
-    lags_prob, ccg_prob = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=5,
-        normalization="trigger_prob",
-        border_correction=False,
-    )
-    lags_rate, ccg_rate = _compute_ccg_vector(
-        events_i,
-        events_j,
-        max_lag=5,
-        normalization="trigger_rate",
-        dt=0.1,
-        border_correction=False,
-    )
-
-    # All should identify the same peak lag (should be 2)
-    peak_lag_cosine = lags_cosine[np.argmax(ccg_cosine)]
-    peak_lag_prob = lags_prob[np.argmax(ccg_prob)]
-    peak_lag_rate = lags_rate[np.argmax(ccg_rate)]
-
-    assert peak_lag_cosine == peak_lag_prob == peak_lag_rate == 2
 
 
 def test_summarize_ccg_invalid_window() -> None:

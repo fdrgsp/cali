@@ -349,7 +349,14 @@ Two modes are available:
 **Calculation**:
 
 1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
-2. **Z-score normalization**: Each trace is mean-centered and divided by its standard deviation
+2. **Z-score normalization**: Each trace is transformed to have zero mean and unit variance:
+
+   $z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$
+
+   where $x_i(t)$ is the raw ΔF/F value at time $t$, $\bar{x}_i$ is the mean, and $\sigma_i$ is the standard deviation.
+
+   *Example*: If an ROI has mean ΔF/F = 0.5 and std = 0.2, a raw value of 0.9 becomes z = (0.9 - 0.5) / 0.2 = 2.0. This standardization ensures that ROIs with different baseline fluorescence levels and noise amplitudes can be fairly compared — a correlation of 0.8 means the same thing regardless of whether the original signals ranged from 0-1 or 0-10.
+
 3. **Compute correlation**: Standard Pearson correlation coefficient is calculated between all pairs of z-scored traces at zero lag
 4. **Output**: NxN correlation matrix where each element represents the correlation between ROI pairs
 
@@ -362,102 +369,69 @@ Two modes are available:
 
 **Summary Metric**: Global synchrony = median of row means (excluding diagonal)
 
-#### Max-Lag Cross-Correlation on Inferred Spikes
+#### Cross-Correlogram (CCG) Analysis on Inferred Spikes
 
-**Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs).
+**Purpose**: Quantify temporal relationships between spike trains using standard cross-correlogram (CCG) methodology with statistical significance testing.
+
+**Overview**:
+
+The CCG analysis computes the probability that neuron j fires at a given time lag relative to neuron i.
 
 **Calculation**:
 
-1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike)
-2. Spike events are defined as the rising edges in the binary spike trains.
-3. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
-4. **Find maximum**: Return the correlation value and lag that gives the highest correlation
+1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike). Two spike event definitions are available:
+   - **Thresholded**: Uses the thresholded binary spike values directly (each 1 in the binary array counts as a spike event)
+   - **Rising Edges**: Uses only the rising edges (0→1 transitions) of the thresholded binary spike trains, which better captures distinct spike onsets when spikes span multiple frames
 
-**Important Note on Methodology**:
+2. **Per-trigger probability normalization**: For each lag τ, compute:
 
-Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation.
+   $CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$
 
-**Why not Pearson correlation for spike trains?**
+   This is calculated as the count of coincidences at lag τ divided by the number of reference spikes in neuron i.
 
-In Pearson correlation, data are mean-centered before computing the correlation coefficient. This is appropriate for continuous signals where values fluctuate around a mean. However, for binary spike trains:
+   *Example*: If neuron i has 10 spikes and 4 of them have a corresponding spike in neuron j at lag τ=2, then CCG(2) = 4/10 = 0.4, meaning there's a 40% probability that neuron j fires 2 frames after neuron i.
 
-- **0 means "no spike"** — this is real information about the absence of activity, not a missing or neutral value
-- **Mean-centering would convert 0 → negative values**, which has no biological interpretation (a neuron cannot have "negative spike absence")
-- **Pearson correlation on spike trains would penalize non-coincident spikes**, treating silent periods as anti-correlated rather than simply unrelated
+3. **Border correction**: At large lags, there are fewer overlapping time points between the two spike trains. Border correction scales the count to account for this reduced overlap, providing unbiased estimates across all lags.
 
-**What we use instead: Normalized Dot Product**
+   *Example*: With 100 frames and lag=10, only 90 frames overlap. If we count 3 coincidences in those 90 frames, border correction scales it to 3 × (100/90) ≈ 3.33 (~11% adjustment). With 1000 frames and the same lag, the correction is only 3 × (1000/990) ≈ 3.03 (~1% adjustment). The correction matters more for shorter recordings and larger lags.
 
-The normalized dot product counts coincident spikes (where both neurons fire at the same time) and normalizes by the geometric mean of spike counts:
+4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a null model using circular shifts of one spike train. The baseline is computed from 100 shuffled surrogates:
+   - **Baseline mean**: Average CCG across shuffles (captures slow co-modulations)
+   - **Baseline std**: Standard deviation across shuffles (for significance testing)
 
-$\text{Correlation}(i, j) = \frac{\sum_{t} s_i(t) \cdot s_j(t)}{\sqrt{\sum_{t} s_i(t)^2 \cdot \sum_{t} s_j(t)^2}}$
+   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 100 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
-where $s_i(t)$ and $s_j(t)$ are binary spike trains (0 or 1 at each time point).
+5. **Z-score calculation**: Statistical significance is computed as:
 
-This formula:
-- Counts only when **both neurons spike together** (1 × 1 = 1)
-- Ignores when **either or both are silent** (0 × 0 = 0, 0 × 1 = 0)
-- Normalizes by spike counts to make the measure independent of firing rate
-- Results are in **[0, 1]** where 1 = perfect synchrony, 0 = no temporal relationship
+   $z = \frac{CCG_{raw} - CCG_{baseline\_mean}}{CCG_{baseline\_std}}$
 
-**Example with Lag**:
+   A z-score with |z| > 2 suggests significant functional connectivity beyond what would be expected from slow co-modulations alone. The threshold of 2 corresponds to roughly the 95th percentile of a normal distribution (p < 0.05), meaning there's less than a 5% chance the observed CCG would occur by chance under the null model.
 
-Consider two neurons over 10 time bins:
+   *Example*: If raw CCG = 0.35, baseline mean = 0.20, and baseline std = 0.05, then z = (0.35 - 0.20) / 0.05 = 3.0. Since |3.0| > 2, this pair shows significant functional connectivity — the observed spike coincidence is 3 standard deviations above what's expected from chance co-modulation.
 
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]  (4 spikes)
-Neuron B: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1]  (4 spikes)
-```
+6. **Find optimal lag**: Return the CCG value and lag where the raw CCG is maximum.
 
-**At lag = 0** (no shift):
-- **Coincident spikes** (both = 1): time bins 2, 7, 10 → **3 coincidences**
-- **Correlation**: $\frac{3}{\sqrt{4 \cdot 4}} = \frac{3}{4} = 0.75$
+**Output**: Three heatmaps are generated:
 
-**At lag = +1** (shift B forward by 1 frame):
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
-Neuron B: [_, 0, 1, 0, 0, 1, 0, 1, 0, 0]  (shifted, last value wraps/drops)
-```
-- **Coincidences**: time bins 3, 6, 8 → **0 coincidences** (in this example)
-- **Correlation**: $\frac{0}{\sqrt{4 \cdot 4}} = 0$
+- **Peak CCG Matrix**: Maximum CCG values at optimal lag (per-trigger probability, between [0, 1])
+  - Higher values indicate stronger spike coincidence at the optimal lag
+  - Values represent P(spike in j | spike in i) at the optimal lag
 
-**At lag = -1** (shift B backward by 1 frame):
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
-Neuron B: [1, 0, 0, 1, 0, 1, 0, 0, 1, _]  (shifted)
-```
-- **Coincidences**: time bins 4, 6, 9 → **1 coincidence** 
-- **Correlation**: $\frac{1}{\sqrt{4 \cdot 4}} = 0.25$
-
-**The algorithm tests all lags from -max_lag to +max_lag** and returns:
-- **Maximum correlation value**: 0.75 (found at lag = 0)
-- **Optimal lag**: 0 frames (indicating synchronous firing)
-
-If the maximum had been at lag = +2, it would indicate Neuron B consistently fires ~2 frames after Neuron A.
-
-**Why this matters**: Neurons with delayed coupling (e.g., A → B) might have low correlation at zero lag but high correlation at positive lags, revealing directional relationships that zero-lag analysis would miss.
-
-**Comparison to Pearson correlation**:
-
-**Pearson correlation** would give a different answer because it would:
-1. Mean-center both trains (converting many 0s to negative values)
-2. Penalize non-overlapping spikes as negative correlation
-3. Produce values in [-1, 1] range, which is harder to interpret for spike coincidence
-
-**Output**: Two heatmaps are generated:
-
-- **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
-- **Lag Matrix**: Lag values in frames (± frame shifts where maximum correlation occurs)
-
-  - Positive lag: ROI j spikes lag behind ROI i
-  - Negative lag: ROI j spikes lead ROI i
+- **Lag Matrix**: Lag values in frames where maximum CCG occurs
+  - Positive lag: ROI j lags behind ROI i (i fires first)
+  - Negative lag: ROI j leads ROI i (j fires first)
   - Lag = 0: Synchronous activity
+
+- **Z-Score Matrix**: Statistical significance of the CCG values
+  - |z| > 2: Suggests significant functional connectivity
+  - |z| < 2: Connectivity may be due to slow co-modulations or chance
 
 **GUI Parameters**:
 
-- **Max Lag** (ms): maximum time offset (converted to frames) over which to search for correlations.
+- **Max Lag** (ms): Maximum time offset (converted to frames) over which to search for correlations.
 
-**Summary Metric**:  
-Global synchrony = median of the mean correlation per ROI (row means), excluding the diagonal.
+**Summary Metric**:
+Global synchrony = median of the mean CCG per ROI (row means), excluding the diagonal.
 
 #### Jitter Synchrony on Inferred Spikes
 
