@@ -465,14 +465,14 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes CCG Z-Score (Significance)",
+    name="Inferred Spikes Thresholded CCG Z-Score",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_ccg_zscore_data,
     category="Inferred Spikes Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes CCG Z-Score (Rising Edges)",
+    name="Inferred Spikes Thresholded CCG Z-Score (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_ccg_zscore_data, rising_edges=True),
     category="Inferred Spikes Correlation Analysis",
@@ -603,6 +603,14 @@ AnalysisProduct(
     name="Sorted Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_sorted_spike_synchrony,
+    category="Evoked Experiment",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Sorted Inferred Spikes Thresholded Global Synchrony (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_sorted_spike_synchrony, rising_edges=True),
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

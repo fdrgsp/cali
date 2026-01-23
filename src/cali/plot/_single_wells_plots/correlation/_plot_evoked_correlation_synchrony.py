@@ -362,11 +362,27 @@ def _plot_sorted_spike_synchrony(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> None:
     """Plot spike synchrony with ROIs sorted by stimulation status.
 
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    engine : Engine
+        Database engine
+    fov_name : str
+        FOV name
+    rois : list[int] | None
+        ROI filter
+    run_id : int | None
+        Analysis run ID
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -384,13 +400,15 @@ def _plot_sorted_spike_synchrony(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
         engine, fov_name, rois
     )
 
     if len(all_sorted) < 2:
-        plot.setTitle("Spike Global Synchrony (Sorted - Need ≥2 ROIs)")
+        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - Need ≥2 ROIs)")
         return
 
     # Get synchrony matrix from database
@@ -399,10 +417,12 @@ def _plot_sorted_spike_synchrony(
         roi_labels,
         _,  # global_sync not used - we calculate from filtered matrix
         jitter_ms,
-    ) = _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id)
+    ) = _get_spike_synchrony_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges
+    )
 
     if sync_matrix is None or roi_labels is None:
-        plot.setTitle("Spike Global Synchrony (Sorted - No data)")
+        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - No data)")
         return
 
     # Reorder matrix according to sorted ROIs
@@ -411,7 +431,9 @@ def _plot_sorted_spike_synchrony(
     )
 
     if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Spike Global Synchrony (Sorted - Insufficient ROIs)")
+        plot.setTitle(
+            f"Spike Global Synchrony ({spike_type}) (Sorted - Insufficient ROIs)"
+        )
         return
 
     # Plot the heatmap
@@ -447,7 +469,10 @@ def _plot_sorted_spike_synchrony(
     else:
         non_stim_median = np.nan
 
-    title = f"Spike Global Synchrony (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    title = (
+        f"Spike Global Synchrony ({spike_type}) "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
     if jitter_ms is not None:
         title += f" | Jitter: {jitter_ms}ms"
 
