@@ -1,11 +1,7 @@
 """Evoked experiment correlation and synchrony plots.
 
-Plots for stimulated vs non-stimulated ROIs. These wrappers filter ROIs
-by stimulation status before calling the standard correlation and synchrony
-plotting functions.
-
-Also includes sorted combined plots where stimulated ROIs are shown first,
-followed by non-stimulated ROIs, to visualize network clustering.
+Sorted combined plots where stimulated ROIs are shown first, followed by
+non-stimulated ROIs, to visualize network clustering.
 """
 
 from __future__ import annotations
@@ -25,12 +21,10 @@ from ._plot_calcium_traces_correlation import (
 )
 from ._plot_inferred_spike_synchrony import (
     _get_spike_synchrony_matrix_from_db,
-    _plot_spike_synchrony_data,
 )
 from ._plot_spike_max_lag_correlation import (
     _get_ccg_zscore_matrix_from_db,
     _get_spike_max_lag_correlation_matrix_from_db,
-    _plot_spike_max_lag_correlation_data,
 )
 from ._plot_spike_max_lag_values import (
     _get_spike_max_lag_values_matrix_from_db,
@@ -47,128 +41,6 @@ STIM_RECTANGLE_COLOR = "orange"
 STIM_RECTANGLE_WIDTH = 8
 CMAP_NAME = "viridis"
 CMAP = pg.colormap.get(CMAP_NAME)
-
-
-def _filter_rois_by_stimulation(
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None,
-    stimulated: bool,
-) -> list[int] | None:
-    """Filter ROIs by stimulation status.
-
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    fov_name : str
-        FOV name to query
-    rois : list[int] | None
-        Initial ROI filter (None for all ROIs in FOV)
-    stimulated : bool
-        If True, return only stimulated ROIs. If False, return only non-stimulated.
-
-    Returns
-    -------
-    list[int] | None
-        Filtered list of ROI label_values, or None if no ROIs match
-    """
-    with Session(engine) as session:
-        stmt = (
-            select(ROI.label_value)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.stimulated) == stimulated)  # Filter by stimulation status
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-
-        # Apply user ROI filter if provided
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        filtered_rois = list(session.exec(stmt).all())
-
-    return filtered_rois if filtered_rois else None
-
-
-# =============================================================================
-# Inferred Spikes - Stimulated ROIs
-# =============================================================================
-
-
-def _plot_stimulated_spike_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes synchrony for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_synchrony_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-def _plot_stimulated_spike_max_lag_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes max-lag cross-correlation for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_max_lag_correlation_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-# =============================================================================
-# Inferred Spikes - Non-Stimulated ROIs
-# =============================================================================
-
-
-def _plot_non_stimulated_spike_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes synchrony for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_spike_synchrony_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
-
-
-def _plot_non_stimulated_spike_max_lag_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes max-lag cross-correlation for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_spike_max_lag_correlation_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
 
 
 # =============================================================================
