@@ -606,16 +606,26 @@ class ExtractionRunner:
             sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
         else:
             # Estimate AR parameters + noise from ORIGINAL dff trace
-            g_arr, sn = estimate_parameters(
-                dff,
-                p=1,  # AR(1)
-                range_ff=[0.25, 0.5],  # default
-                method="median",  # mean or logmexp (exponentiated mean of logvalues)
-                lags=10,
-                fudge_factor=0.98,
-            )
-            # make sure g is a tuple
-            g = tuple(np.atleast_1d(g_arr))
+            try:
+                g_arr, sn = estimate_parameters(
+                    dff,
+                    p=1,  # AR(1)
+                    range_ff=[0.25, 0.5],  # default
+                    method="median",  # mean or logmexp
+                    lags=10,
+                    fudge_factor=0.98,
+                )
+                # make sure g is a tuple
+                g = tuple(np.atleast_1d(g_arr))
+            except (np.linalg.LinAlgError, ValueError) as e:
+                # estimate_parameters can fail with LinAlgError on edge-case traces
+                # (e.g., very short traces or numerical issues in autocorrelation)
+                cali_logger.warning(
+                    f"⚠️ OASIS parameter estimation failed for ROI {label_value} in "
+                    f"{fov_name}: {e}. Using default AR1 coefficient (0.95,)."
+                )
+                g = (0.95,)  # fallback stable AR(1) coefficient
+                sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
             optimize_g = 0  # set >0 only if you really want refine
 
         # Deconvolve with error handling for invalid AR coefficients
