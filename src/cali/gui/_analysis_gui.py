@@ -40,9 +40,14 @@ from cali._constants import (
     EVOKED,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
+    INFERRED_SPIKES_CCG_ZSCORE,
+    INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
     INFERRED_SPIKES_CROSS_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES,
+    INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES,
     INFERRED_SPIKES_SYNCHRONY,
+    INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     MULTIPLIER,
     SPONTANEOUS,
     CorrelationDataType,
@@ -154,11 +159,26 @@ class _AnalysisGUI(QWidget):
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
-        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0)
-        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 3, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 4, 0)
+        # Calcium correlations
+        self._export_group.add_section_label("Calcium Correlations", 0, 0)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 2, 0)
+        # Inferred Spikes - Thresholded Binary
+        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 3, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 4, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 5, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 6, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 7, 0)
+        # Inferred Spikes - Thresholded Rising Edges
+        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 8, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 9, 0)
+        self._export_group.add_option(
+            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 10, 0
+        )
+        self._export_group.add_option(
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 11, 0
+        )
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 12, 0)
         self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------

@@ -114,11 +114,19 @@ TraceDataType = Literal[
 ]
 
 CorrelationDataType = Literal[
+    # Calcium correlations
     "ΔF/F Correlation Matrix",  # CALCIUM_DFF_CORRELATION
     "Deconvolved ΔF/F Correlation Matrix",  # CALCIUM_DEC_DFF_CORRELATION
+    # Inferred Spikes - Thresholded Binary
     "Inferred Spikes Synchrony Matrix",  # INFERRED_SPIKES_SYNCHRONY
     "Inferred Spikes Cross-Correlation Matrix",  # INFERRED_SPIKES_CROSS_CORRELATION
     "Inferred Spikes Cross-Correlation Lags Matrix",  # INFERRED_SPIKES_CROSS_CORRELATION_LAGS  # noqa: E501
+    "Inferred Spikes CCG Z-Score Matrix",  # INFERRED_SPIKES_CCG_ZSCORE
+    # Inferred Spikes - Thresholded Rising Edges
+    "Inferred Spikes Synchrony Matrix (Rising Edges)",  # INFERRED_SPIKES_SYNCHRONY_RISING_EDGES  # noqa: E501
+    "Inferred Spikes Cross-Correlation Matrix (Rising Edges)",  # INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES  # noqa: E501
+    "Inferred Spikes Cross-Correlation Lags Matrix (Rising Edges)",  # INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES  # noqa: E501
+    "Inferred Spikes CCG Z-Score Matrix (Rising Edges)",  # INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES  # noqa: E501
 ]
 
 # fmt: off
@@ -131,9 +139,17 @@ INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes Traces"
 INFERRED_SPIKES_THRESHOLDED_BINARY: TraceDataType = "OASIS Thresholded Inferred Spikes (Binary)"  # noqa: E501
 # CALCIUM_PEAKS = "Calcium Peaks"
 
+# Calcium correlations
 CALCIUM_DFF_CORRELATION: CorrelationDataType = "ΔF/F Correlation Matrix"
 CALCIUM_DEC_DFF_CORRELATION: CorrelationDataType = "Deconvolved ΔF/F Correlation Matrix"
+# Inferred Spikes - Thresholded Binary
 INFERRED_SPIKES_SYNCHRONY: CorrelationDataType = "Inferred Spikes Synchrony Matrix"
 INFERRED_SPIKES_CROSS_CORRELATION: CorrelationDataType = "Inferred Spikes Cross-Correlation Matrix"  # noqa: E501
 INFERRED_SPIKES_CROSS_CORRELATION_LAGS: CorrelationDataType = "Inferred Spikes Cross-Correlation Lags Matrix"  # noqa: E501
+INFERRED_SPIKES_CCG_ZSCORE: CorrelationDataType = "Inferred Spikes CCG Z-Score Matrix"
+# Inferred Spikes - Thresholded Rising Edges
+INFERRED_SPIKES_SYNCHRONY_RISING_EDGES: CorrelationDataType = "Inferred Spikes Synchrony Matrix (Rising Edges)"  # noqa: E501
+INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES: CorrelationDataType = "Inferred Spikes Cross-Correlation Matrix (Rising Edges)"  # noqa: E501
+INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES: CorrelationDataType = "Inferred Spikes Cross-Correlation Lags Matrix (Rising Edges)"  # noqa: E501
+INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: CorrelationDataType = "Inferred Spikes CCG Z-Score Matrix (Rising Edges)"  # noqa: E501
 # fmt: on

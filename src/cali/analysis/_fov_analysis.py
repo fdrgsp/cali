@@ -223,7 +223,7 @@ def compute_fov_analysis(
         # Using standard CCG methodology with:
         # - Per-trigger probability normalization (trigger_prob)
         # - Border correction for unbiased estimates at large lags
-        # - Baseline correction using shift predictor (100 shuffles)
+        # - Baseline correction using shift predictor (50 shuffles)
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
         (
@@ -234,7 +234,7 @@ def compute_fov_analysis(
             spike_data_dict,
             method="cross_correlation",
             max_lag=max_lag_frames,
-            n_shuffles=100,
+            n_shuffles=50,
         )
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
@@ -249,7 +249,7 @@ def compute_fov_analysis(
                 spike_data_dict_rising_edges,
                 method="cross_correlation",
                 max_lag=max_lag_frames,
-                n_shuffles=100,
+                n_shuffles=50,
             )
             if spike_max_lag_corr_matrix_rising_edges is not None:
                 global_spike_max_lag_corr_rising_edges = _get_spike_synchrony(

@@ -400,6 +400,26 @@ class _ExportGroup(QGroupBox):
         elif direction == "horizontal":
             self._layout.setColumnStretch(self._layout.columnCount(), 1)
 
+    def add_section_label(
+        self, text: str, row: int, col: int = 0, col_span: int = 1
+    ) -> None:
+        """Add a section label to organize export options.
+
+        Parameters
+        ----------
+        text : str
+            The section label text.
+        row : int
+            Grid row position.
+        col : int
+            Grid column position, by default 0.
+        col_span : int
+            Number of columns to span, by default 1.
+        """
+        label = QLabel(f"<b>{text}</b>")
+        label.setStyleSheet("color: rgb(0, 183, 0); margin-top: 5px;")
+        self._layout.addWidget(label, row, col, 1, col_span)
+
     def value(self) -> dict[str, tuple[bool, int, int]]:
         """Return the current widget state.
 
