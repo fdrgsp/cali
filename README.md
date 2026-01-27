@@ -450,10 +450,13 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
    $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
    where $N_i$ and $N_j$ are the total number of spikes in neurons $i$ and $j$, respectively.
 
+
 This yields a synchrony score between 0 and 1:
 
 - **0** → no spikes occur near each other in time  
 - **1** → every spike from both neurons has a partner within the jitter window
+
+*Example*: Neuron i has 8 spikes and neuron j has 6 spikes. With a jitter window of ±2 frames: starting from neuron i's spikes, 5 of the 8 have a spike in neuron j within ±2 frames ($C_{i \to j}$ = 5). Starting from neuron j's spikes, 4 of the 6 have a spike in neuron i within ±2 frames ($C_{j \to i}$ = 4). The synchrony score is $S_{ij}$ = (5 + 4) / (8 + 6) = 9/14 ≈ 0.64. This means about 64% of all spikes from both neurons have a temporally coincident partner. If all spikes were perfectly synchronized (every spike in i matched one in j and vice versa), the score would be 1.0.
 
 **GUI Parameters**:
 
