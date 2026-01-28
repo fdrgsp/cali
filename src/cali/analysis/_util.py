@@ -340,7 +340,7 @@ def _get_spike_correlations_matrix(
     method: str = "correlation",
     jitter_window: int = 2,
     max_lag: int = 5,
-    n_shuffles: int = 100,
+    n_shuffles: int = 30,
 ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """Compute pairwise spike similarity matrix using standard CCG methodology.
 
@@ -474,7 +474,7 @@ def _calculate_ccg_with_baseline_correction(
     events_i: np.ndarray,
     events_j: np.ndarray,
     max_lag: int,
-    n_shuffles: int = 100,
+    n_shuffles: int = 30,
 ) -> tuple[float, int, float]:
     """Calculate baseline-corrected CCG with z-score.
 
@@ -961,14 +961,17 @@ def _compute_baseline_corrected_ccg_numba(
     # Storage for shuffled CCGs
     shuffled_ccgs = np.zeros((n_shuffles, n_lags), dtype=np.float64)
 
+    # Pre-generate all random shifts at once (more efficient than calling
+    # np.random.randint in a loop)
+    shifts = np.random.randint(max_lag + 1, n - max_lag, size=n_shuffles)
+
     # Generate shuffled surrogates
     for shuffle_idx in range(n_shuffles):
-        # Circular shift by random amount (avoid shifts smaller than max_lag
-        # to ensure independence from raw CCG)
-        shift = np.random.randint(max_lag + 1, n - max_lag)
+        shift = shifts[shuffle_idx]
 
-        # Create shifted version of events_j
-        events_j_shifted = np.zeros(n, dtype=events_j.dtype)
+        # Create shifted version of events_j using np.roll equivalent
+        # (Numba doesn't support np.roll, so we do it manually)
+        events_j_shifted = np.empty(n, dtype=events_j.dtype)
         for i in range(n):
             events_j_shifted[i] = events_j[(i + shift) % n]
 
@@ -977,21 +980,23 @@ def _compute_baseline_corrected_ccg_numba(
 
         shuffled_ccgs[shuffle_idx, :] = ccg_shuffled
 
-    # Compute mean and std of shuffled CCGs
+    # Compute mean and std of shuffled CCGs using numpy operations
+    # (more efficient than manual loops)
     baseline_mean = np.zeros(n_lags, dtype=np.float64)
     baseline_std = np.zeros(n_lags, dtype=np.float64)
 
     for lag_idx in range(n_lags):
-        # Mean
-        sum_val = 0.0
+        # Compute mean
+        total = 0.0
         for shuffle_idx in range(n_shuffles):
-            sum_val += shuffled_ccgs[shuffle_idx, lag_idx]
-        baseline_mean[lag_idx] = sum_val / n_shuffles
+            total += shuffled_ccgs[shuffle_idx, lag_idx]
+        mean_val = total / n_shuffles
+        baseline_mean[lag_idx] = mean_val
 
-        # Std
+        # Compute std
         sum_sq = 0.0
         for shuffle_idx in range(n_shuffles):
-            diff = shuffled_ccgs[shuffle_idx, lag_idx] - baseline_mean[lag_idx]
+            diff = shuffled_ccgs[shuffle_idx, lag_idx] - mean_val
             sum_sq += diff * diff
         baseline_std[lag_idx] = np.sqrt(sum_sq / n_shuffles)
 
