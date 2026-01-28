@@ -125,6 +125,7 @@ def test_fov_analysis_computes_rising_edges() -> None:
     settings = AnalysisSettings(
         experiment_type="spontaneous",
         spike_inference_threshold=0.0,
+        enable_rising_edge_analysis=True,
     )
 
     # Run FOV analysis
@@ -179,6 +180,7 @@ def test_rising_edge_vs_thresholded_metrics() -> None:
     settings = AnalysisSettings(
         experiment_type="spontaneous",
         spike_inference_threshold=0.0,
+        enable_rising_edge_analysis=True,
     )
 
     result = compute_fov_analysis(fov, settings)
