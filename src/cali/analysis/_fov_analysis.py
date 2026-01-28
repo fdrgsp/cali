@@ -223,9 +223,10 @@ def compute_fov_analysis(
         # Using standard CCG methodology with:
         # - Per-trigger probability normalization (trigger_prob)
         # - Border correction for unbiased estimates at large lags
-        # - Baseline correction using shift predictor (30 shuffles)
+        # - Baseline correction using shift predictor
         max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
         max_lag_frames = ms_to_frames(max_lag_ms)
+        n_shuffles = analysis_settings.ccg_n_shuffles
         (
             spike_max_lag_corr_matrix,
             spike_max_lag_values_matrix,
@@ -234,13 +235,17 @@ def compute_fov_analysis(
             spike_data_dict,
             method="cross_correlation",
             max_lag=max_lag_frames,
-            n_shuffles=30,
+            n_shuffles=n_shuffles,
         )
         if spike_max_lag_corr_matrix is not None:
             global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
 
         # 3b. Max lag correlation on spikes (thresholded rising edges)
-        if len(spike_data_dict_rising_edges) >= 2:
+        # Only compute if enabled (approximately doubles CCG computation time)
+        if (
+            analysis_settings.enable_rising_edge_analysis
+            and len(spike_data_dict_rising_edges) >= 2
+        ):
             (
                 spike_max_lag_corr_matrix_rising_edges,
                 spike_max_lag_values_matrix_rising_edges,
@@ -249,7 +254,7 @@ def compute_fov_analysis(
                 spike_data_dict_rising_edges,
                 method="cross_correlation",
                 max_lag=max_lag_frames,
-                n_shuffles=30,
+                n_shuffles=n_shuffles,
             )
             if spike_max_lag_corr_matrix_rising_edges is not None:
                 global_spike_max_lag_corr_rising_edges = _get_spike_synchrony(
@@ -268,7 +273,10 @@ def compute_fov_analysis(
             global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
 
         # 4b. Jitter synchrony on spikes (thresholded rising edges)
-        if len(spike_data_dict_rising_edges) >= 2:
+        if (
+            analysis_settings.enable_rising_edge_analysis
+            and len(spike_data_dict_rising_edges) >= 2
+        ):
             spike_jitter_sync_matrix_rising_edges, _, _ = (
                 _get_spike_correlations_matrix(
                     spike_data_dict_rising_edges,

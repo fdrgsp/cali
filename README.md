@@ -381,7 +381,7 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike). Two spike event definitions are available:
    - **Thresholded**: Uses the thresholded binary spike values directly (each 1 in the binary array counts as a spike event)
-   - **Rising Edges**: Uses only the rising edges (0→1 transitions) of the thresholded binary spike trains, which better captures distinct spike onsets when spikes span multiple frames
+   - **Rising Edges** (optional): Uses only the rising edges (0→1 transitions) of the thresholded binary spike trains, which better captures distinct spike onsets when spikes span multiple frames. Enable via "Enable Rising Edge Analysis" checkbox.
 
 2. **Per-trigger probability normalization**: For each lag τ, compute:
 
@@ -395,11 +395,11 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
    *Example*: With 100 frames and lag=10, only 90 frames overlap. If we count 3 coincidences in those 90 frames, border correction scales it to 3 × (100/90) ≈ 3.33 (~11% adjustment). With 1000 frames and the same lag, the correction is only 3 × (1000/990) ≈ 3.03 (~1% adjustment). The correction matters more for shorter recordings and larger lags.
 
-4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a null model using circular shifts of one spike train. The baseline is computed from 30 shuffled surrogates:
+4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a null model using circular shifts of one spike train. The baseline is computed from shuffled surrogates (configurable, default 30):
    - **Baseline mean**: Average CCG across shuffles (captures slow co-modulations)
    - **Baseline std**: Standard deviation across shuffles (for significance testing)
 
-   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 30 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
+   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across these shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
 5. **Z-score calculation**: Statistical significance is computed as:
 
@@ -428,7 +428,9 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
 **GUI Parameters**:
 
-- **Max Lag** (ms): Maximum time offset (converted to frames) over which to search for correlations.
+- **CCG Max Lag** (ms): Maximum time offset (converted to frames) over which to search for correlations.
+- **CCG Baseline Shuffles**: Number of circular shift surrogates for baseline correction (default: 30). More shuffles = more accurate baseline but slower computation.
+- **Enable Rising Edge Analysis**: When enabled, performs additional CCG analysis on spike onset times (0→1 transitions). Approximately doubles CCG computation time.
 
 **Summary Metric**:
 Global synchrony = median of the mean CCG per ROI (row means), excluding the diagonal.

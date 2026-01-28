@@ -37,7 +37,9 @@ from sqlmodel import (
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CCG_N_SHUFFLES,
     DEFAULT_DFF_WINDOW,
+    DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
@@ -1082,6 +1084,10 @@ class AnalysisSettings(SQLModel, table=True):
         Max lag for spike cross-correlation (milliseconds)
     spikes_sync_jitter_window : int
         Jitter window for spike synchrony (milliseconds)
+    ccg_n_shuffles : int
+        Number of shuffles for CCG baseline correction
+    enable_rising_edge_analysis : bool
+        Whether to compute CCG on spike rising edges
     frame_rate : float
         Acquisition frame rate (frames per second)
     led_power_equation : str | None
@@ -1128,6 +1134,8 @@ class AnalysisSettings(SQLModel, table=True):
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
     spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
+    ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
+    enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
 
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
@@ -1176,6 +1184,8 @@ class AnalysisSettings(SQLModel, table=True):
             and self.calcium_burst_gaussian_sigma == other.calcium_burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
             and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
+            and self.ccg_n_shuffles == other.ccg_n_shuffles
+            and self.enable_rising_edge_analysis == other.enable_rising_edge_analysis
             and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
@@ -1204,6 +1214,8 @@ class AnalysisSettings(SQLModel, table=True):
                 self.calcium_burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
                 self.spikes_sync_jitter_window,
+                self.ccg_n_shuffles,
+                self.enable_rising_edge_analysis,
                 self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,
