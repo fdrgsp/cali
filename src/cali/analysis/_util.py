@@ -340,7 +340,7 @@ def _get_spike_correlations_matrix(
     method: str = "correlation",
     jitter_window: int = 2,
     max_lag: int = 5,
-    n_shuffles: int = 30,
+    n_shuffles: int = 20,
 ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """Compute pairwise spike similarity matrix using standard CCG methodology.
 
@@ -474,7 +474,7 @@ def _calculate_ccg_with_baseline_correction(
     events_i: np.ndarray,
     events_j: np.ndarray,
     max_lag: int,
-    n_shuffles: int = 30,
+    n_shuffles: int = 20,
 ) -> tuple[float, int, float]:
     """Calculate baseline-corrected CCG with z-score.
 
