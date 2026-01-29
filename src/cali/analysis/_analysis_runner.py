@@ -216,9 +216,11 @@ class AnalysisRunner:
         # Compute FOV-level analysis (correlation/synchrony) after all ROIs processed
         if not self._check_for_abort_requested():
             from cali.analysis._fov_analysis import compute_fov_analysis
+            from cali.analysis._fov_analysis_parallel import compute_fov_analysis_parallel
 
             cali_logger.info(f"📊 Computing FOV-level analysis for {fov.name}...")
-            fov_analysis = compute_fov_analysis(fov, analysis_settings)
+            # fov_analysis = compute_fov_analysis(fov, analysis_settings)
+            fov_analysis = compute_fov_analysis_parallel(fov, analysis_settings)
             if fov_analysis is not None:
                 # Store in temporary attribute for later commit
                 if not hasattr(fov, "_new_fov_analysis"):

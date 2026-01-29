@@ -400,9 +400,11 @@ class ExtractionRunner:
         # Compute FOV-level analysis (correlation/synchrony) if analysis was run
         if analysis_settings is not None and not self._check_for_abort_requested():
             from cali.analysis._fov_analysis import compute_fov_analysis
+            from cali.analysis._fov_analysis_parallel import compute_fov_analysis_parallel
 
             cali_logger.info(f"📊 Computing FOV-level analysis for {fov_name}...")
-            fov_analysis = compute_fov_analysis(fov_to_analyze, analysis_settings)
+            # fov_analysis = compute_fov_analysis(fov_to_analyze, analysis_settings)
+            fov_analysis = compute_fov_analysis_parallel(fov_to_analyze, analysis_settings)
             if fov_analysis is not None:
                 # Store in temporary attribute for later commit
                 if not hasattr(fov_to_analyze, "_new_fov_analysis"):
