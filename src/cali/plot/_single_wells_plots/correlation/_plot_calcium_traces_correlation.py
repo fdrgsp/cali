@@ -182,6 +182,9 @@ def _filter_matrix_by_rois(
     if not indices:
         return np.array([]), []
 
+    if len(indices) < 2:
+        return matrix[:0, :0], [roi_labels[i] for i in indices]
+
     # Filter matrix
     filtered_matrix = matrix[np.ix_(indices, indices)]
     filtered_labels = [roi_labels[i] for i in indices]

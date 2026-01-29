@@ -131,7 +131,7 @@ def _filter_matrix_by_rois(
             filtered_labels.append(label)
 
     if len(indices) < 2:
-        return matrix, roi_labels  # Return full matrix if too few ROIs selected
+        return matrix[:0, :0], filtered_labels  # Return empty matrix if too few ROIs
 
     # Extract submatrix
     indices_arr = np.array(indices)
