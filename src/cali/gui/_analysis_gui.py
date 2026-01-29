@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
@@ -30,6 +31,8 @@ from cali._constants import (
     CALCIUM_DFF_CORRELATION,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CCG_N_SHUFFLES,
+    DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_MIN_BURST_DURATION,
@@ -40,9 +43,14 @@ from cali._constants import (
     EVOKED,
     GLOBAL_HEIGHT,
     GLOBAL_SPIKE_THRESHOLD,
+    INFERRED_SPIKES_CCG_ZSCORE,
+    INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
     INFERRED_SPIKES_CROSS_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES,
+    INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES,
     INFERRED_SPIKES_SYNCHRONY,
+    INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     MULTIPLIER,
     SPONTANEOUS,
     CorrelationDataType,
@@ -105,6 +113,8 @@ class SpikeData:
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
     synchrony_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # milliseconds
     synchrony_jitter: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # milliseconds
+    ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
+    enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
 
 
 class _AnalysisGUI(QWidget):
@@ -154,11 +164,26 @@ class _AnalysisGUI(QWidget):
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
-        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0)
-        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 3, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 4, 0)
+        # Calcium correlations
+        self._export_group.add_section_label("Calcium Correlations", 0, 0)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 2, 0)
+        # Inferred Spikes - Thresholded Binary
+        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 3, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 4, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 5, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 6, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 7, 0)
+        # Inferred Spikes - Thresholded Rising Edges
+        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 8, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 9, 0)
+        self._export_group.add_option(
+            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 10, 0
+        )
+        self._export_group.add_option(
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 11, 0
+        )
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 12, 0)
         self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
@@ -321,6 +346,14 @@ class _AnalysisGUI(QWidget):
                 spikes_data.synchrony_jitter
                 if spikes_data
                 else DEFAULT_SPIKE_SYNC_JITTER_WINDOW
+            ),
+            ccg_n_shuffles=(
+                spikes_data.ccg_n_shuffles if spikes_data else DEFAULT_CCG_N_SHUFFLES
+            ),
+            enable_rising_edge_analysis=(
+                spikes_data.enable_rising_edge_analysis
+                if spikes_data
+                else DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
             ),
             experiment_type=(
                 experiment_type_data.experiment_type
@@ -977,9 +1010,7 @@ class _SpikeWidget(QWidget):
             "Algorithm finds high correlation at lag +200ms and -100ms\n"
             "Result: High synchrony score based on best alignment."
         )
-        self._spikes_max_lag_lbl = QLabel(
-            "Correlation Max Lag:", self._spike_max_lag_wdg
-        )
+        self._spikes_max_lag_lbl = QLabel("CCG Max Lag:", self._spike_max_lag_wdg)
         self._spikes_max_lag_lbl.setSizePolicy(*FIXED)
         self._spikes_sync_cross_corr_max_lag = QDoubleSpinBox(self._spike_max_lag_wdg)
         self._spikes_sync_cross_corr_max_lag.setSuffix(" ms")
@@ -1026,14 +1057,72 @@ class _SpikeWidget(QWidget):
         spike_jitter_layout.addWidget(self._spike_jitter_lbl)
         spike_jitter_layout.addWidget(self._spike_jitter_spin)
 
+        # CCG baseline shuffles setting
+        self._ccg_shuffles_wdg = QWidget(self)
+        self._ccg_shuffles_wdg.setToolTip(
+            "CCG Baseline Correction Shuffles\n\n"
+            "Controls the number of circular shift surrogates used for baseline "
+            "correction in cross-correlogram (CCG) analysis.\n\n"
+            "How it works:\n"
+            "• The shift predictor method circularly shifts one spike train to "
+            "create surrogate pairs\n"
+            "• This breaks precise timing while preserving overall firing rates\n"
+            "• The baseline mean and std are computed from these shuffled CCGs\n"
+            "• Z-scores: (raw_CCG - baseline_mean) / baseline_std\n\n"
+            "Trade-offs:\n"
+            "• More shuffles: More accurate baseline, but slower\n"
+            "• Fewer shuffles: Faster, but noisier baseline estimates\n\n"
+        )
+        self._ccg_shuffles_lbl = QLabel(
+            "CCG Baseline Shuffles:", self._ccg_shuffles_wdg
+        )
+        self._ccg_shuffles_lbl.setSizePolicy(*FIXED)
+        self._ccg_shuffles_spin = QSpinBox(self._ccg_shuffles_wdg)
+        self._ccg_shuffles_spin.setRange(1, 500)
+        self._ccg_shuffles_spin.setSingleStep(1)
+        self._ccg_shuffles_spin.setValue(DEFAULT_CCG_N_SHUFFLES)
+        ccg_shuffles_layout = QHBoxLayout(self._ccg_shuffles_wdg)
+        ccg_shuffles_layout.setContentsMargins(0, 0, 0, 0)
+        ccg_shuffles_layout.setSpacing(5)
+        ccg_shuffles_layout.addWidget(self._ccg_shuffles_lbl)
+        ccg_shuffles_layout.addWidget(self._ccg_shuffles_spin)
+
+        # Rising edge analysis setting
+        self._rising_edge_wdg = QWidget(self)
+        self._rising_edge_wdg.setToolTip(
+            "Rising Edge Analysis\n\n"
+            "When enabled, performs additional CCG analysis using spike onset times "
+            "(rising edges) instead of the full spike duration.\n\n"
+            "How it works:\n"
+            "• Rising edges: transitions from 0→1 in binary spike train\n"
+            "• Captures precise spike onset timing\n"
+            "• Useful for detecting fine-scale temporal coordination\n\n"
+            "Trade-offs:\n"
+            "• Enabled: More detailed analysis, ~2x CCG computation time\n"
+            "• Disabled: Faster analysis using thresholded binary spikes\n\n"
+            "Note: Rising edge results are stored separately and can be exported "
+            "independently."
+        )
+        self._rising_edge_lbl = QLabel("Rising Edge Analysis:", self._rising_edge_wdg)
+        self._rising_edge_lbl.setSizePolicy(*FIXED)
+        self._rising_edge_checkbox = QCheckBox(self._rising_edge_wdg)
+        self._rising_edge_checkbox.setChecked(DEFAULT_ENABLE_RISING_EDGE_ANALYSIS)
+        rising_edge_layout = QHBoxLayout(self._rising_edge_wdg)
+        rising_edge_layout.setContentsMargins(0, 0, 0, 0)
+        rising_edge_layout.setSpacing(5)
+        rising_edge_layout.addWidget(self._rising_edge_lbl)
+        rising_edge_layout.addWidget(self._rising_edge_checkbox)
+
         # main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         layout.addWidget(self._spike_threshold_wdg)
-        layout.addWidget(self._burst_wdg)
         layout.addWidget(self._spike_max_lag_wdg)
         layout.addWidget(self._spike_jitter_wdg)
+        layout.addWidget(self._ccg_shuffles_wdg)
+        layout.addWidget(self._rising_edge_wdg)
+        layout.addWidget(self._burst_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1045,6 +1134,8 @@ class _SpikeWidget(QWidget):
         self._burst_wdg._burst_blur_label.setFixedWidth(width)
         self._spikes_max_lag_lbl.setFixedWidth(width)
         self._spike_jitter_lbl.setFixedWidth(width)
+        self._ccg_shuffles_lbl.setFixedWidth(width)
+        self._rising_edge_lbl.setFixedWidth(width)
 
     def value(self) -> SpikeData:
         """Get the current values of the widget."""
@@ -1052,6 +1143,8 @@ class _SpikeWidget(QWidget):
         burst_threshold, burst_min_duration, burst_blur_sigma = self._burst_wdg.value()
         synchrony_lag = self._spikes_sync_cross_corr_max_lag.value()
         synchrony_jitter = self._spike_jitter_spin.value()
+        ccg_n_shuffles = self._ccg_shuffles_spin.value()
+        enable_rising_edge = self._rising_edge_checkbox.isChecked()
 
         return SpikeData(
             spike_threshold=spike_threshold,
@@ -1061,6 +1154,8 @@ class _SpikeWidget(QWidget):
             burst_blur_sigma=burst_blur_sigma,
             synchrony_lag=synchrony_lag,
             synchrony_jitter=synchrony_jitter,
+            ccg_n_shuffles=ccg_n_shuffles,
+            enable_rising_edge_analysis=enable_rising_edge,
         )
 
     def setValue(self, value: SpikeData) -> None:
@@ -1071,6 +1166,8 @@ class _SpikeWidget(QWidget):
         self._burst_wdg.setValue(bst)
         self._spikes_sync_cross_corr_max_lag.setValue(value.synchrony_lag)
         self._spike_jitter_spin.setValue(value.synchrony_jitter)
+        self._ccg_shuffles_spin.setValue(value.ccg_n_shuffles)
+        self._rising_edge_checkbox.setChecked(value.enable_rising_edge_analysis)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -1084,6 +1181,8 @@ class _SpikeWidget(QWidget):
         )
         self._spikes_sync_cross_corr_max_lag.setValue(DEFAULT_SPIKE_SYNCHRONY_MAX_LAG)
         self._spike_jitter_spin.setValue(DEFAULT_SPIKE_SYNC_JITTER_WINDOW)
+        self._ccg_shuffles_spin.setValue(DEFAULT_CCG_N_SHUFFLES)
+        self._rising_edge_checkbox.setChecked(DEFAULT_ENABLE_RISING_EDGE_ANALYSIS)
 
 
 class _MetadataWidget(QWidget):

@@ -52,6 +52,8 @@
       "calcium_burst_min_duration": 100.0,
       "calcium_burst_gaussian_sigma": 0.01,
       "spikes_sync_cross_corr_lag": 500.0,
+      "ccg_n_shuffles": 30,
+      "enable_rising_edge_analysis": true,
       "frame_rate": 10.0,
       "experiment_type": "Evoked Activity",
       "led_power_equation": "",

@@ -128,13 +128,13 @@ def test_calcium_peaks_cross_correlation_with_lock() -> None:
 
 def test_spike_correlations_with_lock() -> None:
     """Test that spike correlations use lock correctly."""
-    # Create spike data for 2 ROIs
+    # Create binary spike data for 2 ROIs
     spike_data_dict = {
-        "1": [0, 1.5, 0, 1.5, 0, 0],
-        "2": [0, 0, 1.5, 0, 1.5, 0],
+        "1": [0, 1, 0, 1, 0, 0],
+        "2": [0, 0, 1, 0, 1, 0],
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, zscore_matrix = _get_spike_correlations_matrix(
         spike_data_dict,
         method="cross_correlation",
         max_lag=2,
@@ -142,12 +142,17 @@ def test_spike_correlations_with_lock() -> None:
 
     assert sync_matrix is not None
     assert lag_matrix is not None
+    # zscore_matrix is always computed for cross_correlation method
+    assert zscore_matrix is not None
     assert sync_matrix.shape == (2, 2)
     assert lag_matrix.shape == (2, 2)
+    assert zscore_matrix.shape == (2, 2)
 
     # Diagonal should be perfect
     assert sync_matrix[0, 0] == 1.0
     assert lag_matrix[0, 0] == 0
+    # Diagonal z-score is inf (undefined for self-correlation)
+    assert np.isinf(zscore_matrix[0, 0])
 
 
 def test_jitter_window_method_uses_numba() -> None:
@@ -201,11 +206,11 @@ def test_correlation_matrix_handles_single_roi() -> None:
 def test_spike_jitter_synchrony_uses_numba() -> None:
     """Test spike jitter synchrony with numba optimization."""
     spike_data_dict = {
-        "1": [0, 2.0, 0, 0, 2.0, 0],
-        "2": [0, 0, 2.0, 0, 0, 2.0],
+        "1": [0, 1, 0, 0, 1, 0],
+        "2": [0, 0, 1, 0, 0, 1],
     }
 
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data_dict,
         method="jitter_window",
         jitter_window=1,
@@ -274,11 +279,11 @@ def test_calcium_peaks_with_empty_roi() -> None:
 def test_spike_correlations_with_empty_roi() -> None:
     """Test spike correlations when one ROI has no spikes."""
     spike_data_dict = {
-        "1": [0.0, 2.0, 0.0, 2.0, 0.0],
+        "1": [0.0, 1.0, 0.0, 1.0, 0.0],
         "2": [0.0, 0.0, 0.0, 0.0, 0.0],  # No spikes
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, _ = _get_spike_correlations_matrix(
         spike_data_dict,
         method="cross_correlation",
         max_lag=2,
@@ -316,19 +321,36 @@ def test_calcium_peaks_fallback_correlation_method() -> None:
 def test_spike_correlations_fallback_method() -> None:
     """Test spike correlations with fallback correlation method."""
     spike_data_dict = {
-        "1": [0.0, 2.0, 0.0, 2.0, 0.0],
-        "2": [2.0, 0.0, 2.0, 0.0, 2.0],
+        "1": [0.0, 1.0, 0.0, 1.0, 0.0],
+        "2": [1.0, 0.0, 1.0, 0.0, 1.0],
     }
 
-    sync_matrix, lag_matrix = _get_spike_correlations_matrix(
+    sync_matrix, lag_matrix, zscore_matrix = _get_spike_correlations_matrix(
         spike_data_dict,
         method="correlation",  # Default method
         max_lag=2,
     )
 
     assert sync_matrix is not None
-    assert lag_matrix is None
+    assert lag_matrix is None  # Default method doesn't compute lag
+    assert zscore_matrix is None  # Default method doesn't compute z-scores
 
     # Should have valid correlation values
     assert sync_matrix[0, 0] == 1.0
     assert 0 <= sync_matrix[0, 1] <= 1
+
+
+def test_spike_correlations_rejects_non_binary() -> None:
+    """Test that spike correlations reject non-binary values."""
+    spike_data_dict = {
+        "1": [0.0, 1.5, 0.0, 2.0, 0.0],  # Non-binary values
+        "2": [1.0, 0.0, 1.0, 0.0, 1.0],
+    }
+
+    # Should raise ValueError for non-binary spike values
+    with pytest.raises(ValueError, match="Spike data contains non-binary values"):
+        _get_spike_correlations_matrix(
+            spike_data_dict,
+            method="cross_correlation",
+            max_lag=2,
+        )

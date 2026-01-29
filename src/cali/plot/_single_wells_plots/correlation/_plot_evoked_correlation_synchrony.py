@@ -1,11 +1,7 @@
 """Evoked experiment correlation and synchrony plots.
 
-Plots for stimulated vs non-stimulated ROIs. These wrappers filter ROIs
-by stimulation status before calling the standard correlation and synchrony
-plotting functions.
-
-Also includes sorted combined plots where stimulated ROIs are shown first,
-followed by non-stimulated ROIs, to visualize network clustering.
+Sorted combined plots where stimulated ROIs are shown first, followed by
+non-stimulated ROIs, to visualize network clustering.
 """
 
 from __future__ import annotations
@@ -25,11 +21,13 @@ from ._plot_calcium_traces_correlation import (
 )
 from ._plot_inferred_spike_synchrony import (
     _get_spike_synchrony_matrix_from_db,
-    _plot_spike_synchrony_data,
 )
 from ._plot_spike_max_lag_correlation import (
+    _get_ccg_zscore_matrix_from_db,
     _get_spike_max_lag_correlation_matrix_from_db,
-    _plot_spike_max_lag_correlation_data,
+)
+from ._plot_spike_max_lag_values import (
+    _get_spike_max_lag_values_matrix_from_db,
 )
 
 if TYPE_CHECKING:
@@ -43,128 +41,6 @@ STIM_RECTANGLE_COLOR = "orange"
 STIM_RECTANGLE_WIDTH = 8
 CMAP_NAME = "viridis"
 CMAP = pg.colormap.get(CMAP_NAME)
-
-
-def _filter_rois_by_stimulation(
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None,
-    stimulated: bool,
-) -> list[int] | None:
-    """Filter ROIs by stimulation status.
-
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    fov_name : str
-        FOV name to query
-    rois : list[int] | None
-        Initial ROI filter (None for all ROIs in FOV)
-    stimulated : bool
-        If True, return only stimulated ROIs. If False, return only non-stimulated.
-
-    Returns
-    -------
-    list[int] | None
-        Filtered list of ROI label_values, or None if no ROIs match
-    """
-    with Session(engine) as session:
-        stmt = (
-            select(ROI.label_value)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.stimulated) == stimulated)  # Filter by stimulation status
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-
-        # Apply user ROI filter if provided
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        filtered_rois = list(session.exec(stmt).all())
-
-    return filtered_rois if filtered_rois else None
-
-
-# =============================================================================
-# Inferred Spikes - Stimulated ROIs
-# =============================================================================
-
-
-def _plot_stimulated_spike_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes synchrony for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_synchrony_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-def _plot_stimulated_spike_max_lag_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes max-lag cross-correlation for stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(engine, fov_name, rois, stimulated=True)
-    _plot_spike_max_lag_correlation_data(
-        widget, engine, fov_name, filtered_rois, run_id, title_suffix=" (Stimulated)"
-    )
-
-
-# =============================================================================
-# Inferred Spikes - Non-Stimulated ROIs
-# =============================================================================
-
-
-def _plot_non_stimulated_spike_synchrony(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes synchrony for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_spike_synchrony_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
-
-
-def _plot_non_stimulated_spike_max_lag_correlation(
-    widget: _SingleWellGraphWidget,
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> None:
-    """Plot inferred spikes max-lag cross-correlation for non-stimulated ROIs only."""
-    filtered_rois = _filter_rois_by_stimulation(
-        engine, fov_name, rois, stimulated=False
-    )
-    _plot_spike_max_lag_correlation_data(
-        widget,
-        engine,
-        fov_name,
-        filtered_rois,
-        run_id,
-        title_suffix=" (Non-Stimulated)",
-    )
 
 
 # =============================================================================
@@ -358,11 +234,27 @@ def _plot_sorted_spike_synchrony(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> None:
     """Plot spike synchrony with ROIs sorted by stimulation status.
 
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    engine : Engine
+        Database engine
+    fov_name : str
+        FOV name
+    rois : list[int] | None
+        ROI filter
+    run_id : int | None
+        Analysis run ID
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -380,13 +272,15 @@ def _plot_sorted_spike_synchrony(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
         engine, fov_name, rois
     )
 
     if len(all_sorted) < 2:
-        plot.setTitle("Spike Synchrony (Sorted - Need ≥2 ROIs)")
+        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - Need ≥2 ROIs)")
         return
 
     # Get synchrony matrix from database
@@ -395,10 +289,12 @@ def _plot_sorted_spike_synchrony(
         roi_labels,
         _,  # global_sync not used - we calculate from filtered matrix
         jitter_ms,
-    ) = _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id)
+    ) = _get_spike_synchrony_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges
+    )
 
     if sync_matrix is None or roi_labels is None:
-        plot.setTitle("Spike Synchrony (Sorted - No data)")
+        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - No data)")
         return
 
     # Reorder matrix according to sorted ROIs
@@ -407,7 +303,9 @@ def _plot_sorted_spike_synchrony(
     )
 
     if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Spike Synchrony (Sorted - Insufficient ROIs)")
+        plot.setTitle(
+            f"Spike Global Synchrony ({spike_type}) (Sorted - Insufficient ROIs)"
+        )
         return
 
     # Plot the heatmap
@@ -443,7 +341,10 @@ def _plot_sorted_spike_synchrony(
     else:
         non_stim_median = np.nan
 
-    title = f"Spike Synchrony (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    title = (
+        f"Spike Global Synchrony ({spike_type}) "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
     if jitter_ms is not None:
         title += f" | Jitter: {jitter_ms}ms"
 
@@ -493,11 +394,27 @@ def _plot_sorted_spike_max_lag_correlation(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> None:
     """Plot spike max-lag correlation with ROIs sorted by stimulation status.
 
     ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
     This reveals network clustering based on stimulation.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    engine : Engine
+        Database engine
+    fov_name : str
+        FOV name
+    rois : list[int] | None
+        ROI filter
+    run_id : int | None
+        Analysis run ID
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -515,22 +432,29 @@ def _plot_sorted_spike_max_lag_correlation(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
         engine, fov_name, rois
     )
 
     if len(all_sorted) < 2:
-        plot.setTitle("Spike Max-Lag Correlation (Sorted - Need ≥2 ROIs)")
+        plot.setTitle(
+            f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
+            "(Sorted - Need ≥2 ROIs)"
+        )
         return
 
     # Get correlation matrix from database
     corr_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
-        engine, fov_name, run_id
+        engine, fov_name, run_id, rising_edges=rising_edges
     )
 
     if corr_matrix is None or roi_labels is None:
-        plot.setTitle("Spike Max-Lag Correlation (Sorted - No data)")
+        plot.setTitle(
+            f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) (Sorted - No data)"
+        )
         return
 
     # Reorder matrix according to sorted ROIs
@@ -539,13 +463,18 @@ def _plot_sorted_spike_max_lag_correlation(
     )
 
     if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Spike Max-Lag Correlation (Sorted - Insufficient ROIs)")
+        plot.setTitle(
+            f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
+            "(Sorted - Insufficient ROIs)"
+        )
         return
 
-    # Plot the heatmap (max-lag cross-correlation ranges from 0 to 1)
+    # Plot the heatmap - use data-driven color scale
     img = pg.ImageItem(reordered_matrix)
-    img.setLookupTable(CMAP.getLookupTable(0.0, 1.0, 256))
-    img.setLevels((0.0, 1.0))
+    vmin = 0.0
+    vmax = max(1.0, float(np.nanmax(reordered_matrix)))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
+    img.setLevels((vmin, vmax))
     plot.addItem(img)
 
     vb.invertY(True)
@@ -575,7 +504,10 @@ def _plot_sorted_spike_max_lag_correlation(
     else:
         non_stim_median = np.nan
 
-    title = f"Spike Max-Lag Correlation (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    title = (
+        f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
 
     # Add medians
     if not np.isnan(stim_median):
@@ -585,17 +517,17 @@ def _plot_sorted_spike_max_lag_correlation(
     title += f" | Global median: {global_median:.3f}"
 
     plot.setTitle(title)
-    plot.setLabel("bottom", "ROI")
-    plot.setLabel("left", "ROI")
+    plot.setLabel("bottom", "ROI (j)")
+    plot.setLabel("left", "ROI (i)")
 
     plot.getAxis("bottom").setTicks([])
     plot.getAxis("left").setTicks([])
 
     add_colorbar_to_widget(
-        widget, vmin=0.0, vmax=1.0, label="Correlation", colormap=CMAP_NAME
+        widget, vmin=vmin, vmax=vmax, label="P(spike|ref)", colormap=CMAP_NAME
     )
 
-    # Add visual marker for stimulated ROI block (green rectangle)
+    # Add visual marker for stimulated ROI block (orange rectangle)
     if n_stim > 0:
         rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
         rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
@@ -677,7 +609,7 @@ def _plot_sorted_dec_dff_correlation(
 
     # Plot the heatmap (Pearson correlation ranges from -1 to 1)
     img = pg.ImageItem(reordered_matrix)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((-1.0, 1.0))
     plot.addItem(img)
 
@@ -911,7 +843,7 @@ def _plot_sorted_dec_dff_correlation_windowed_by_stim(
 
     # Plot the heatmap (Pearson correlation ranges from -1 to 1)
     img = pg.ImageItem(reordered_matrix)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((-1.0, 1.0))
     plot.addItem(img)
 
@@ -1173,7 +1105,7 @@ def _plot_sorted_dec_dff_correlation_windowed_non_stim(
 
     # Plot the heatmap (Pearson correlation ranges from -1 to 1)
     img = pg.ImageItem(reordered_matrix)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((-1.0, 1.0))
     plot.addItem(img)
 
@@ -1255,3 +1187,456 @@ def _plot_sorted_dec_dff_correlation_windowed_non_stim(
 # Removed: _plot_sorted_spike_correlation_windowed_non_stim
 # These functions plotted Pearson correlation on continuous inferred spike traces,
 # which has been removed from the analysis pipeline.
+
+
+# -----------------------------------------------------------------------------
+# Sorted Max Lag Values (lag matrix) for Evoked Experiments
+# -----------------------------------------------------------------------------
+# Diverging colormap for lag values (negative = leads, positive = lags)
+LAG_CMAP_NAME = "CET-D1A"
+LAG_CMAP = pg.colormap.get(LAG_CMAP_NAME)
+
+
+def _plot_sorted_spike_max_lag_values(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+    rising_edges: bool = False,
+) -> None:
+    """Plot spike max-lag values with ROIs sorted by stimulation status.
+
+    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
+    This reveals timing relationships within and between stimulated/non-stimulated
+    groups.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    engine : Engine
+        Database engine
+    fov_name : str
+        FOV name
+    rois : list[int] | None
+        ROI filter
+    run_id : int | None
+        Analysis run ID
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    _detach_heatmap_interaction(plot)
+    plot.clear()
+    disconnect_hover_handlers(plot)
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Hide shared legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle(
+            f"Inferred Spikes Max-Lag Values ({spike_type}) (Sorted - Need ≥2 ROIs)"
+        )
+        return
+
+    # Get lag values matrix from database
+    (
+        lag_matrix,
+        roi_labels,
+        max_lag_frames,
+    ) = _get_spike_max_lag_values_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges
+    )
+
+    if lag_matrix is None or roi_labels is None:
+        plot.setTitle(
+            f"Inferred Spikes Max-Lag Values ({spike_type}) (Sorted - No data)"
+        )
+        return
+
+    # Reorder matrix according to sorted ROIs
+    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
+        lag_matrix, roi_labels, all_sorted
+    )
+
+    if reordered_matrix is None or len(final_rois) < 2:
+        plot.setTitle(
+            f"Inferred Spikes Max-Lag Values ({spike_type}) "
+            "(Sorted - Insufficient ROIs)"
+        )
+        return
+
+    # Plot the heatmap with diverging colormap centered at 0
+    img = pg.ImageItem(reordered_matrix.astype(float))
+
+    # Determine color scale limits (symmetric around 0)
+    if max_lag_frames is not None:
+        vmin, vmax = -max_lag_frames, max_lag_frames
+    else:
+        abs_max = max(1, int(np.abs(reordered_matrix).max()))
+        vmin, vmax = -abs_max, abs_max
+
+    img.setLookupTable(LAG_CMAP.getLookupTable(0, 1, 256))
+    img.setLevels((vmin, vmax))
+    plot.addItem(img)
+
+    vb.invertY(True)
+    vb.setAspectLocked(True)
+
+    # Build title with counts
+    n_stim = len([r for r in final_rois if r in stim_rois])
+    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    title = (
+        f"Inferred Spikes Max-Lag Values ({spike_type}) "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+    )
+    if max_lag_frames is not None:
+        title += f" | ±{max_lag_frames} frames"
+
+    plot.setTitle(title)
+    plot.setLabel("bottom", "ROI (j)")
+    plot.setLabel("left", "ROI (i)")
+
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    add_colorbar_to_widget(
+        widget,
+        vmin=vmin,
+        vmax=vmax,
+        label="Lag (frames)\n(+: j lags, -: j leads)",
+        colormap=LAG_CMAP_NAME,
+    )
+
+    # Add visual marker for stimulated ROI block (orange rectangle)
+    if n_stim > 0:
+        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
+        rect.setBrush(pg.mkBrush(None))
+        plot.addItem(rect)
+
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
+
+    # Add hover + click interaction
+    _attach_lag_heatmap_interaction(
+        widget, plot, title, vb, final_rois, reordered_matrix
+    )
+
+
+def _attach_lag_heatmap_interaction(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    base_title: str,
+    viewbox: pg.ViewBox,
+    rois: list[int],
+    values: np.ndarray,
+) -> None:
+    """Attach hover/click interaction to sorted lag heatmap."""
+    n_rows, n_cols = values.shape
+    scene = plot.scene()
+
+    # Cleanup existing handlers
+    old_hover = plot.property("sorted_lag_hover_handler")
+    old_click = plot.property("sorted_lag_click_handler")
+    if old_hover is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseMoved.disconnect(old_hover)
+    if old_click is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseClicked.disconnect(old_click)
+
+    def _on_mouse_moved(pos: pg.Point) -> None:
+        if not plot.sceneBoundingRect().contains(pos):
+            plot.setTitle(base_title)
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col_idx = int(mouse_point.x())
+        row_idx = int(mouse_point.y())
+        if 0 <= row_idx < n_rows and 0 <= col_idx < n_cols:
+            roi_i = rois[row_idx]
+            roi_j = rois[col_idx]
+            lag = int(values[row_idx, col_idx])
+            if lag > 0:
+                info = f"ROI {roi_j} lags ROI {roi_i} by {lag} frames"
+            elif lag < 0:
+                info = f"ROI {roi_j} leads ROI {roi_i} by {-lag} frames"
+            else:
+                info = f"ROI {roi_i} and ROI {roi_j} are synchronous"
+            plot.setTitle(f"{base_title} | {info}")
+        else:
+            plot.setTitle(base_title)
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col_idx = int(mouse_point.x())
+        row_idx = int(mouse_point.y())
+        if 0 <= row_idx < n_rows and 0 <= col_idx < n_cols:
+            roi_i = rois[row_idx]
+            roi_j = rois[col_idx]
+            widget.roiSelected.emit([str(roi_i), str(roi_j)])
+
+    scene.sigMouseMoved.connect(_on_mouse_moved)
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+
+    plot.setProperty("sorted_lag_hover_handler", _on_mouse_moved)
+    plot.setProperty("sorted_lag_click_handler", _on_mouse_clicked)
+
+
+# -----------------------------------------------------------------------------
+# Sorted CCG Z-Score (significance) for Evoked Experiments
+# -----------------------------------------------------------------------------
+ZSCORE_CMAP_NAME = "CET-D1A"
+ZSCORE_CMAP = pg.colormap.get(ZSCORE_CMAP_NAME)
+
+
+def _plot_sorted_spike_ccg_zscore(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    run_id: int | None = None,
+    rising_edges: bool = False,
+) -> None:
+    """Plot CCG z-score matrix with ROIs sorted by stimulation status.
+
+    Z-scores indicate statistical significance of the CCG values relative
+    to a shuffled baseline. |z| > 2 suggests significant functional
+    connectivity between the ROI pair.
+
+    ROIs are ordered: stimulated neurons first, then non-stimulated neurons.
+
+    Parameters
+    ----------
+    widget : _SingleWellGraphWidget
+        Widget to plot on
+    engine : Engine
+        Database engine
+    fov_name : str
+        FOV name
+    rois : list[int] | None
+        ROI filter
+    run_id : int | None
+        Analysis run ID
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
+    """
+    plot = widget.plot_item
+    assert plot is not None
+
+    # Clear previous plot
+    _detach_heatmap_interaction(plot)
+    plot.clear()
+    disconnect_hover_handlers(plot)
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(False)
+
+    # Hide shared legend
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle(
+            f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - Need ≥2 ROIs)"
+        )
+        return
+
+    # Get z-score matrix from database
+    zscore_matrix, roi_labels = _get_ccg_zscore_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges
+    )
+
+    if zscore_matrix is None or roi_labels is None:
+        plot.setTitle(f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - No data)")
+        return
+
+    # Reorder matrix according to sorted ROIs
+    reordered_matrix, final_rois = _reorder_matrix_by_roi_list(
+        zscore_matrix, roi_labels, all_sorted
+    )
+
+    if reordered_matrix is None or len(final_rois) < 2:
+        plot.setTitle(
+            f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - Insufficient ROIs)"
+        )
+        return
+
+    # Handle inf values on diagonal (self-correlation)
+    display_matrix = reordered_matrix.copy()
+    display_matrix[np.isinf(display_matrix)] = np.nan
+
+    # Plot the heatmap with diverging colormap centered at 0
+    img = pg.ImageItem(display_matrix)
+
+    # Symmetric color scale centered at 0
+    finite_vals = display_matrix[np.isfinite(display_matrix)]
+    if len(finite_vals) > 0:
+        abs_max = max(4.0, np.abs(finite_vals).max())
+    else:
+        abs_max = 4.0
+    vmin, vmax = -abs_max, abs_max
+
+    img.setLookupTable(ZSCORE_CMAP.getLookupTable(0, 1, 256))
+    img.setLevels((vmin, vmax))
+    plot.addItem(img)
+
+    vb.invertY(True)
+    vb.setAspectLocked(True)
+
+    # Build title with counts and statistics
+    n_stim = len([r for r in final_rois if r in stim_rois])
+    n_non_stim = len([r for r in final_rois if r in non_stim_rois])
+
+    # Calculate percentage of significant pairs
+    mask = ~np.eye(reordered_matrix.shape[0], dtype=bool) & np.isfinite(
+        reordered_matrix
+    )
+    if np.any(mask):
+        n_significant = np.sum(np.abs(reordered_matrix[mask]) > 2)
+        n_pairs = np.sum(mask)
+        pct_significant = 100.0 * n_significant / n_pairs if n_pairs > 0 else 0.0
+    else:
+        pct_significant = 0.0
+
+    title = (
+        f"Inferred Spikes CCG Z-Score ({spike_type}) "
+        f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim) "
+        f"| {pct_significant:.1f}% significant"
+    )
+
+    plot.setTitle(title)
+    plot.setLabel("bottom", "ROI (j)")
+    plot.setLabel("left", "ROI (i)")
+
+    plot.getAxis("bottom").setTicks([])
+    plot.getAxis("left").setTicks([])
+
+    add_colorbar_to_widget(
+        widget,
+        vmin=vmin,
+        vmax=vmax,
+        label="Z-score\n(|z|>2: significant)",
+        colormap=ZSCORE_CMAP_NAME,
+    )
+
+    # Add visual marker for stimulated ROI block (orange rectangle)
+    if n_stim > 0:
+        rect = pg.QtWidgets.QGraphicsRectItem(0, 0, n_stim, n_stim)
+        rect.setPen(pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH))
+        rect.setBrush(pg.mkBrush(None))
+        plot.addItem(rect)
+
+        # Add legend
+        if hasattr(widget, "legend") and widget.legend is not None:
+            widget.legend.clear()
+            widget.legend.addItem(
+                pg.PlotDataItem(
+                    pen=pg.mkPen(color=STIM_RECTANGLE_COLOR, width=STIM_RECTANGLE_WIDTH)
+                ),
+                "Stimulated ROIs",
+            )
+            widget.legend.setVisible(True)
+
+    # Add hover + click interaction
+    _attach_zscore_heatmap_interaction(
+        widget, plot, title, vb, final_rois, reordered_matrix
+    )
+
+
+def _attach_zscore_heatmap_interaction(
+    widget: _SingleWellGraphWidget,
+    plot: pg.PlotItem,
+    base_title: str,
+    viewbox: pg.ViewBox,
+    rois: list[int],
+    values: np.ndarray,
+) -> None:
+    """Attach hover/click interaction to sorted z-score heatmap."""
+    n_rows, n_cols = values.shape
+    scene = plot.scene()
+
+    # Cleanup existing handlers
+    old_hover = plot.property("sorted_zscore_hover_handler")
+    old_click = plot.property("sorted_zscore_click_handler")
+    if old_hover is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseMoved.disconnect(old_hover)
+    if old_click is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scene.sigMouseClicked.disconnect(old_click)
+
+    def _on_mouse_moved(pos: pg.Point) -> None:
+        if not plot.sceneBoundingRect().contains(pos):
+            plot.setTitle(base_title)
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col_idx = int(mouse_point.x())
+        row_idx = int(mouse_point.y())
+        if 0 <= row_idx < n_rows and 0 <= col_idx < n_cols:
+            roi_i = rois[row_idx]
+            roi_j = rois[col_idx]
+            z = float(values[row_idx, col_idx])
+            if np.isinf(z):
+                info = f"ROI {roi_i} vs {roi_j}: self"
+            elif abs(z) > 2:
+                info = f"ROI {roi_i} vs {roi_j}: z={z:.2f} (significant)"
+            else:
+                info = f"ROI {roi_i} vs {roi_j}: z={z:.2f}"
+            plot.setTitle(f"{base_title} | {info}")
+        else:
+            plot.setTitle(base_title)
+
+    def _on_mouse_clicked(ev: MouseClickEvent) -> None:
+        pos = ev.scenePos()
+        if not plot.sceneBoundingRect().contains(pos):
+            return
+        mouse_point = viewbox.mapSceneToView(pos)
+        col_idx = int(mouse_point.x())
+        row_idx = int(mouse_point.y())
+        if 0 <= row_idx < n_rows and 0 <= col_idx < n_cols:
+            roi_i = rois[row_idx]
+            roi_j = rois[col_idx]
+            widget.roiSelected.emit([str(roi_i), str(roi_j)])
+
+    scene.sigMouseMoved.connect(_on_mouse_moved)
+    scene.sigMouseClicked.connect(_on_mouse_clicked)
+
+    plot.setProperty("sorted_zscore_hover_handler", _on_mouse_moved)
+    plot.setProperty("sorted_zscore_click_handler", _on_mouse_clicked)

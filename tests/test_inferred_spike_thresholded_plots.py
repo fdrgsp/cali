@@ -214,3 +214,137 @@ def test_thresholded_normalized_stacks_rois(
     y_axis = plot.getAxis("left")
     # The style should hide values for normalized plots
     assert "ROI" in y_axis.labelText
+
+
+def test_plot_inferred_spikes_no_run_id(
+    mock_widget: _SingleWellGraphWidget,
+    engine_with_analyzed_data: Engine,
+) -> None:
+    """Test plot shows message when no run_id provided."""
+    _plot_inferred_spikes(
+        widget=mock_widget,
+        engine=engine_with_analyzed_data,
+        fov_name="B5_0000",
+        rois=[1, 2],
+        run_id=None,
+    )
+
+    plot = mock_widget.plot_item
+    assert plot is not None
+    assert "No analysis run selected" in plot.titleLabel.text
+
+
+def test_plot_inferred_spikes_no_data_found(
+    mock_widget: _SingleWellGraphWidget,
+    engine_with_analyzed_data: Engine,
+) -> None:
+    """Test plot shows message when no ROI data found."""
+    _plot_inferred_spikes(
+        widget=mock_widget,
+        engine=engine_with_analyzed_data,
+        fov_name="nonexistent_fov",
+        rois=[1, 2],
+        run_id=1,
+    )
+
+    plot = mock_widget.plot_item
+    assert plot is not None
+    assert "No ROI spike data found" in plot.titleLabel.text
+
+
+def test_get_traces_for_run_no_traces() -> None:
+    """Test _get_traces_for_run returns None when no traces_history."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_traces_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_roi.traces_history = []
+
+    result = _get_traces_for_run(mock_roi, run_id=1)
+    assert result is None
+
+
+def test_get_traces_for_run_no_matching_run() -> None:
+    """Test _get_traces_for_run returns None when run_id not found."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_traces_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_trace = MagicMock()
+    mock_trace.analysis_result_id = 999
+    mock_roi.traces_history = [mock_trace]
+
+    result = _get_traces_for_run(mock_roi, run_id=1)
+    assert result is None
+
+
+def test_get_traces_for_run_returns_first_when_no_run_id() -> None:
+    """Test _get_traces_for_run returns first trace when run_id is None."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_traces_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_trace1 = MagicMock()
+    mock_trace2 = MagicMock()
+    mock_roi.traces_history = [mock_trace1, mock_trace2]
+
+    result = _get_traces_for_run(mock_roi, run_id=None)
+    assert result is mock_trace1
+
+
+def test_get_data_analysis_for_run_no_history() -> None:
+    """Test _get_data_analysis_for_run returns None when no history."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_data_analysis_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_roi.data_analysis_history = []
+
+    result = _get_data_analysis_for_run(mock_roi, run_id=1)
+    assert result is None
+
+
+def test_get_data_analysis_for_run_returns_first_when_no_run_id() -> None:
+    """Test _get_data_analysis_for_run returns first when run_id is None."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_data_analysis_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_analysis1 = MagicMock()
+    mock_analysis2 = MagicMock()
+    mock_roi.data_analysis_history = [mock_analysis1, mock_analysis2]
+
+    result = _get_data_analysis_for_run(mock_roi, run_id=None)
+    assert result is mock_analysis1
+
+
+def test_get_data_analysis_for_run_fallback_to_first() -> None:
+    """Test _get_data_analysis_for_run returns first when run_id not matched."""
+    from unittest.mock import MagicMock
+
+    from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
+        _get_data_analysis_for_run,
+    )
+
+    mock_roi = MagicMock()
+    mock_analysis = MagicMock()
+    mock_analysis.analysis_result_id = 999
+    mock_roi.data_analysis_history = [mock_analysis]
+
+    result = _get_data_analysis_for_run(mock_roi, run_id=1)
+    assert result is mock_analysis

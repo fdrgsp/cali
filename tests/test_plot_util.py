@@ -190,15 +190,15 @@ def test_compute_jitter_synchrony_matrix_numba() -> None:
 def test_get_spike_synchrony_matrix() -> None:
     from cali.analysis._util import _get_spike_correlations_matrix
 
-    # Empty dict
-    assert _get_spike_correlations_matrix({}) == (None, None)
+    # Empty dict - returns 3-tuple with all None
+    assert _get_spike_correlations_matrix({}) == (None, None, None)
 
-    # Single ROI
-    assert _get_spike_correlations_matrix({"roi1": [1, 0]}) == (None, None)
+    # Single ROI - returns 3-tuple with all None
+    assert _get_spike_correlations_matrix({"roi1": [1, 0]}) == (None, None, None)
 
     # Two ROIs, perfect sync
     data = {"roi1": [1.0, 0.0, 1.0, 0.0], "roi2": [1.0, 0.0, 1.0, 0.0]}
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -207,7 +207,7 @@ def test_get_spike_synchrony_matrix() -> None:
 
     # Two ROIs, no sync
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 0.0, 1.0, 0.0]}
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="jitter_window", jitter_window=0
     )
     assert matrix is not None
@@ -216,7 +216,7 @@ def test_get_spike_synchrony_matrix() -> None:
     # Cross correlation method
     data = {"roi1": [1.0, 0.0, 0.0, 0.0], "roi2": [0.0, 1.0, 0.0, 0.0]}
     # Lag 1 should catch it
-    matrix, _ = _get_spike_correlations_matrix(
+    matrix, _, _ = _get_spike_correlations_matrix(
         data, method="cross_correlation", max_lag=1
     )
     assert matrix is not None
@@ -277,43 +277,41 @@ def test_detect_spike_onsets() -> None:
 
 
 def test_spike_synchrony_with_continuous_vs_events() -> None:
-    """Test synchrony is calculated on spike events (onsets), not continuous values."""
+    """Test synchrony is calculated on binary spike events."""
     from cali.analysis._util import _get_spike_correlations_matrix
 
-    # Create two ROIs with continuous spike traces that last multiple frames
-    # ROI 1: spike at frame 1-3, spike at frame 6-8
-    # ROI 2: spike at frame 2-4, spike at frame 7-9
-    roi1_trace = [0, 2.0, 1.5, 1.0, 0, 0, 1.8, 1.3, 0.9, 0]
-    roi2_trace = [0, 0, 2.5, 2.0, 1.5, 0, 0, 2.0, 1.7, 1.2]
+    # Create two ROIs with binary spike traces
+    # ROI 1: spikes at frames 1, 2, 3, 6, 7, 8
+    # ROI 2: spikes at frames 2, 3, 4, 7, 8, 9
+    roi1_trace = [0, 1, 1, 1, 0, 0, 1, 1, 1, 0]
+    roi2_trace = [0, 0, 1, 1, 1, 0, 0, 1, 1, 1]
 
     spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
 
     # Calculate synchrony using jitter window method
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data, method="jitter_window", jitter_window=2
     )
 
     assert sync_matrix is not None
-    # With onset detection:
-    # ROI1 onsets: frames 1, 6
-    # ROI2 onsets: frames 2, 7
-    # Both onsets are within jitter window of 2 frames
-    # Should have high synchrony (both spikes match)
-    assert sync_matrix[0, 1] > 0.8, (
-        f"Expected high synchrony with onset detection, got {sync_matrix[0, 1]}"
+    # ROI1 spikes: frames 1, 2, 3, 6, 7, 8
+    # ROI2 spikes: frames 2, 3, 4, 7, 8, 9
+    # Good overlap within jitter window
+    assert sync_matrix[0, 1] > 0.5, (
+        f"Expected high synchrony with overlapping spikes, got {sync_matrix[0, 1]}"
     )
 
     # Test with no overlap
-    roi1_trace = [0, 2.0, 1.5, 0, 0, 0, 0, 0]
-    roi2_trace = [0, 0, 0, 0, 0, 2.5, 2.0, 0]
+    roi1_trace = [0, 1, 1, 0, 0, 0, 0, 0]
+    roi2_trace = [0, 0, 0, 0, 0, 1, 1, 0]
     spike_data = {"roi1": roi1_trace, "roi2": roi2_trace}
 
-    sync_matrix, _ = _get_spike_correlations_matrix(
+    sync_matrix, _, _ = _get_spike_correlations_matrix(
         spike_data, method="jitter_window", jitter_window=1
     )
 
     assert sync_matrix is not None
-    # ROI1 onset: frame 1, ROI2 onset: frame 5 - no overlap with window=1
+    # ROI1 spikes: frames 1, 2; ROI2 spikes: frames 5, 6 - no overlap with window=1
     assert sync_matrix[0, 1] < 0.3, (
         f"Expected low synchrony with no overlap, got {sync_matrix[0, 1]}"
     )

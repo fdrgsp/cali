@@ -349,7 +349,14 @@ Two modes are available:
 **Calculation**:
 
 1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
-2. **Z-score normalization**: Each trace is mean-centered and divided by its standard deviation
+2. **Z-score normalization**: Each trace is transformed to have zero mean and unit variance:
+
+   $z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$
+
+   where $x_i(t)$ is the raw ΔF/F value at time $t$, $\bar{x}_i$ is the mean, and $\sigma_i$ is the standard deviation.
+
+   *Example*: If an ROI has mean ΔF/F = 0.5 and std = 0.2, a raw value of 0.9 becomes z = (0.9 - 0.5) / 0.2 = 2.0. This standardization ensures that ROIs with different baseline fluorescence levels and noise amplitudes can be fairly compared — a correlation of 0.8 means the same thing regardless of whether the original signals ranged from 0-1 or 0-10.
+
 3. **Compute correlation**: Standard Pearson correlation coefficient is calculated between all pairs of z-scored traces at zero lag
 4. **Output**: NxN correlation matrix where each element represents the correlation between ROI pairs
 
@@ -362,102 +369,92 @@ Two modes are available:
 
 **Summary Metric**: Global synchrony = median of row means (excluding diagonal)
 
-#### Max-Lag Cross-Correlation on Inferred Spikes
+#### Cross-Correlogram (CCG) Analysis on Inferred Spikes
 
-**Purpose**: Quantify temporal relationships between spike trains by computing cross-correlograms (CCGs).
+**Purpose**: Quantify temporal relationships between spike trains using standard cross-correlogram (CCG) methodology with statistical significance testing.
+
+**Overview**:
+
+The CCG analysis computes the probability that neuron j fires at a given time lag relative to neuron i.
 
 **Calculation**:
 
-1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike)
-2. Spike events are defined as the rising edges in the binary spike trains.
-3. **For each lag**: Shift one spike train relative to the other by ± lag frames and compute normalized dot product (spike coincidence count, normalized by the geometric mean of spike counts)
-4. **Find maximum**: Return the correlation value and lag that gives the highest correlation
+1. **Input**: Two binary spike trains (arrays of 0s and 1s where 1 = spike, 0 = no spike). Two spike event definitions are available:
+   - **Thresholded**: Uses the thresholded binary spike values directly (each 1 in the binary array counts as a spike event)
+   - **Rising Edges** (optional): Uses only the rising edges (0→1 transitions) of the thresholded binary spike trains, which better captures distinct spike onsets when spikes span multiple frames. Enable via "Enable Rising Edge Analysis" checkbox.
 
-**Important Note on Methodology**:
+2. **Per-trigger probability normalization**: For each lag τ, compute:
 
-Unlike continuous signal correlation (e.g., on ΔF/F traces), this analysis uses a **normalized dot product without mean centering**, not Pearson correlation.
+   $CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$
 
-**Why not Pearson correlation for spike trains?**
+   This is calculated as the count of coincidences at lag τ divided by the number of reference spikes in neuron i.
 
-In Pearson correlation, data are mean-centered before computing the correlation coefficient. This is appropriate for continuous signals where values fluctuate around a mean. However, for binary spike trains:
+   *Example*: If neuron i has 10 spikes and 4 of them have a corresponding spike in neuron j at lag τ=2, then CCG(2) = 4/10 = 0.4, meaning there's a 40% probability that neuron j fires 2 frames after neuron i.
 
-- **0 means "no spike"** — this is real information about the absence of activity, not a missing or neutral value
-- **Mean-centering would convert 0 → negative values**, which has no biological interpretation (a neuron cannot have "negative spike absence")
-- **Pearson correlation on spike trains would penalize non-coincident spikes**, treating silent periods as anti-correlated rather than simply unrelated
+3. **Border correction**: At large lags, there are fewer overlapping time points between the two spike trains. Border correction scales the count to account for this reduced overlap, providing unbiased estimates across all lags.
 
-**What we use instead: Normalized Dot Product**
+   *Example*: With 100 frames and lag=10, only 90 frames overlap. If we count 3 coincidences in those 90 frames, border correction scales it to 3 × (100/90) ≈ 3.33 (~11% adjustment). With 1000 frames and the same lag, the correction is only 3 × (1000/990) ≈ 3.03 (~1% adjustment). The correction matters more for shorter recordings and larger lags.
 
-The normalized dot product counts coincident spikes (where both neurons fire at the same time) and normalizes by the geometric mean of spike counts:
+4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a **null model** that represents what the CCG would look like if there were no precise timing relationships between the neurons.
 
-$\text{Correlation}(i, j) = \frac{\sum_{t} s_i(t) \cdot s_j(t)}{\sqrt{\sum_{t} s_i(t)^2 \cdot \sum_{t} s_j(t)^2}}$
+   **What is a circular shift?**
+   A circular shift (also called circular permutation) wraps the spike train around itself: elements that "fall off" one end reappear at the other. For example, with a spike train `[0,0,1,0,1,1,0,0]` and a shift of 3 positions:
+   - The last 3 elements `[1,0,0]` move to the front
+   - Result: `[1,0,0,0,0,1,0,1]`
 
-where $s_i(t)$ and $s_j(t)$ are binary spike trains (0 or 1 at each time point).
+   This operation preserves the total number of spikes and the overall firing rate pattern, but destroys the precise frame-by-frame timing relationship between the two spike trains.
 
-This formula:
-- Counts only when **both neurons spike together** (1 × 1 = 1)
-- Ignores when **either or both are silent** (0 × 0 = 0, 0 × 1 = 0)
-- Normalizes by spike counts to make the measure independent of firing rate
-- Results are in **[0, 1]** where 1 = perfect synchrony, 0 = no temporal relationship
+   **Why circular shifts create a valid null model:**
+   - If two neurons have a true synaptic connection, their spikes will be precisely timed relative to each other (e.g., neuron j consistently fires 2-3 frames after neuron i)
+   - If two neurons are merely co-modulated by a common input (e.g., both increase firing during arousal), they will have correlated activity but no precise timing relationship
+   - By circularly shifting one spike train, we break precise timing while preserving the slow co-modulation pattern
+   - The CCG computed on shifted data represents what we'd expect from co-modulation alone
 
-**Example with Lag**:
+   **Computing the baseline:**
+   We repeat this process multiple times (configurable, default 30 shuffles), each time shifting by a different random amount:
+   - **Baseline mean ($\mu_{baseline}$)**: Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
+   - **Baseline std ($\sigma_{baseline}$)**: Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
 
-Consider two neurons over 10 time bins:
+   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 30 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]  (4 spikes)
-Neuron B: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1]  (4 spikes)
-```
+5. **Z-score calculation**: Using the baseline from step 4, we compute statistical significance:
 
-**At lag = 0** (no shift):
-- **Coincident spikes** (both = 1): time bins 2, 7, 10 → **3 coincidences**
-- **Correlation**: $\frac{3}{\sqrt{4 \cdot 4}} = \frac{3}{4} = 0.75$
+   $z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$
 
-**At lag = +1** (shift B forward by 1 frame):
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
-Neuron B: [_, 0, 1, 0, 0, 1, 0, 1, 0, 0]  (shifted, last value wraps/drops)
-```
-- **Coincidences**: time bins 3, 6, 8 → **0 coincidences** (in this example)
-- **Correlation**: $\frac{0}{\sqrt{4 \cdot 4}} = 0$
+   The z-score tells us how many standard deviations the observed CCG is above (or below) the null model expectation:
+   - **z > 2**: The observed spike coincidence is significantly *higher* than expected from co-modulation alone → suggests excitatory functional connectivity
+   - **z < -2**: The observed spike coincidence is significantly *lower* than expected → suggests inhibitory functional connectivity or anti-correlation
+   - **|z| < 2**: The observed CCG is within the range expected from slow co-modulations; no significant precise-timing relationship detected
 
-**At lag = -1** (shift B backward by 1 frame):
-```
-Neuron A: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
-Neuron B: [1, 0, 0, 1, 0, 1, 0, 0, 1, _]  (shifted)
-```
-- **Coincidences**: time bins 4, 6, 9 → **1 coincidence** 
-- **Correlation**: $\frac{1}{\sqrt{4 \cdot 4}} = 0.25$
+   The threshold of |z| > 2 corresponds to roughly the 95th percentile of a normal distribution (p < 0.05), meaning there's less than a 5% chance the observed CCG would occur by chance under the null model.
 
-**The algorithm tests all lags from -max_lag to +max_lag** and returns:
-- **Maximum correlation value**: 0.75 (found at lag = 0)
-- **Optimal lag**: 0 frames (indicating synchronous firing)
+   *Example*: If raw CCG = 0.35, baseline mean = 0.20, and baseline std = 0.05, then z = (0.35 - 0.20) / 0.05 = 3.0. Since |3.0| > 2, this pair shows significant functional connectivity — the observed spike coincidence is 3 standard deviations above what's expected from chance co-modulation.
 
-If the maximum had been at lag = +2, it would indicate Neuron B consistently fires ~2 frames after Neuron A.
+6. **Find optimal lag**: Return the CCG value and lag where the raw CCG is maximum.
 
-**Why this matters**: Neurons with delayed coupling (e.g., A → B) might have low correlation at zero lag but high correlation at positive lags, revealing directional relationships that zero-lag analysis would miss.
+**Output**: Three heatmaps are generated:
 
-**Comparison to Pearson correlation**:
+- **Peak CCG Matrix**: Maximum CCG values at optimal lag (per-trigger probability, between [0, 1])
+  - Higher values indicate stronger spike coincidence at the optimal lag
+  - Values represent P(spike in j | spike in i) at the optimal lag
 
-**Pearson correlation** would give a different answer because it would:
-1. Mean-center both trains (converting many 0s to negative values)
-2. Penalize non-overlapping spikes as negative correlation
-3. Produce values in [-1, 1] range, which is harder to interpret for spike coincidence
-
-**Output**: Two heatmaps are generated:
-
-- **Correlation Matrix**: Maximum correlation values (range: 0 to 1, where 1 = perfect synchrony at optimal lag, 0 = no temporal relationship)
-- **Lag Matrix**: Lag values in frames (± frame shifts where maximum correlation occurs)
-
-  - Positive lag: ROI j spikes lag behind ROI i
-  - Negative lag: ROI j spikes lead ROI i
+- **Lag Matrix**: Lag values in frames where maximum CCG occurs
+  - Positive lag: ROI j lags behind ROI i (i fires first)
+  - Negative lag: ROI j leads ROI i (j fires first)
   - Lag = 0: Synchronous activity
+
+- **Z-Score Matrix**: Statistical significance of the CCG values
+  - |z| > 2: Suggests significant functional connectivity
+  - |z| < 2: Connectivity may be due to slow co-modulations or chance
 
 **GUI Parameters**:
 
-- **Max Lag** (ms): maximum time offset (converted to frames) over which to search for correlations.
+- **CCG Max Lag** (ms): Maximum time offset (converted to frames) over which to search for correlations.
+- **CCG Baseline Shuffles**: Number of circular shift surrogates for baseline correction (default: 30). More shuffles = more accurate baseline but slower computation.
+- **Enable Rising Edge Analysis**: When enabled, performs additional CCG analysis on spike onset times (0→1 transitions). Approximately doubles CCG computation time.
 
-**Summary Metric**:  
-Global synchrony = median of the mean correlation per ROI (row means), excluding the diagonal.
+**Summary Metric**:
+Global synchrony = median of the mean CCG per ROI (row means), excluding the diagonal.
 
 #### Jitter Synchrony on Inferred Spikes
 
@@ -480,6 +477,8 @@ This yields a synchrony score between 0 and 1:
 
 - **0** → no spikes occur near each other in time  
 - **1** → every spike from both neurons has a partner within the jitter window
+
+*Example*: Neuron i has 8 spikes and neuron j has 6 spikes. With a jitter window of ±2 frames: starting from neuron i's spikes, 5 of the 8 have a spike in neuron j within ±2 frames ($C_{i \to j}$ = 5). Starting from neuron j's spikes, 4 of the 6 have a spike in neuron i within ±2 frames ($C_{j \to i}$ = 4). The synchrony score is $S_{ij}$ = (5 + 4) / (8 + 6) = 9/14 ≈ 0.64. This means about 64% of all spikes from both neurons have a temporally coincident partner. If all spikes were perfectly synchronized (every spike in i matched one in j and vice versa), the score would be 1.0.
 
 **GUI Parameters**:
 

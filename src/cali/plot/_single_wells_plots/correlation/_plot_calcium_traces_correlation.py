@@ -248,7 +248,7 @@ def _plot_dff_correlation_data(
         return
 
     img = pg.ImageItem(corr)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((-1.0, 1.0))
 
     plot.addItem(img)
@@ -336,7 +336,7 @@ def _plot_dec_dff_correlation_data(
         return
 
     img = pg.ImageItem(corr)
-    img.setLookupTable(CMAP.getLookupTable(-1.0, 1.0, 256))
+    img.setLookupTable(CMAP.getLookupTable(0, 1, 256))
     img.setLevels((-1.0, 1.0))
 
     plot.addItem(img)

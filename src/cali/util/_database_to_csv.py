@@ -21,6 +21,7 @@ from cali._constants import (
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
+    CorrelationDataType,
     TraceDataType,
 )
 from cali.sqlmodel._model import (
@@ -585,6 +586,176 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
     )
 
 
+def export_inferred_spikes_ccg_zscore_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export inferred spikes CCG z-score matrix to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_ccg_zscore_matrix",
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+    )
+
+
+def export_inferred_spikes_synchrony_rising_edges_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export inferred spikes synchrony matrix (rising edges) to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_jitter_synchrony_matrix_rising_edges",
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+    )
+
+
+def export_inferred_spikes_cross_correlation_rising_edges_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export inferred spikes cross-correlation matrix (rising edges) to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_max_lag_correlation_matrix_rising_edges",
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+    )
+
+
+def export_inferred_spikes_cross_correlation_lags_rising_edges_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export inferred spikes cross-correlation lags matrix (rising edges) to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_max_lag_values_matrix_rising_edges",
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+    )
+
+
+def export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export inferred spikes CCG z-score matrix (rising edges) to CSV.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output file path for CSV
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs (one file per FOV)
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None
+        Optional list of position indices to filter exports.
+        If provided, only exports data from these positions.
+    """
+    _export_single_correlation_matrix(
+        engine,
+        output_path,
+        "spike_ccg_zscore_matrix_rising_edges",
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+    )
+
+
 # ==================== Helper Functions ====================
 
 
@@ -907,16 +1078,7 @@ def export_traces_to_csv(
 
 def export_correlations_to_csv(
     engine: Engine,
-    export_correlations: dict[
-        Literal[
-            "ΔF/F Correlation Matrix",
-            "Deconvolved ΔF/F Correlation Matrix",
-            "Inferred Spikes Synchrony Matrix",
-            "Inferred Spikes Cross-Correlation Matrix",
-            "Inferred Spikes Cross-Correlation Lags Matrix",
-        ],
-        bool,
-    ],
+    export_correlations: dict[CorrelationDataType, bool],
     run_id: int,
     db_path: Path,
     *,
@@ -942,13 +1104,19 @@ def export_correlations_to_csv(
     from cali._constants import (
         CALCIUM_DEC_DFF_CORRELATION,
         CALCIUM_DFF_CORRELATION,
+        INFERRED_SPIKES_CCG_ZSCORE,
+        INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
         INFERRED_SPIKES_CROSS_CORRELATION,
         INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+        INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES,
+        INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES,
         INFERRED_SPIKES_SYNCHRONY,
+        INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     )
 
     # Map correlation type names to export functions
     export_map = {
+        # Calcium correlations
         CALCIUM_DFF_CORRELATION: (
             export_calcium_dff_correlation_to_csv,
             "calcium_dff_correlation_matrix.csv",
@@ -957,6 +1125,7 @@ def export_correlations_to_csv(
             export_calcium_dec_dff_correlation_to_csv,
             "calcium_dec_dff_correlation_matrix.csv",
         ),
+        # Inferred Spikes - Thresholded Binary
         INFERRED_SPIKES_SYNCHRONY: (
             export_inferred_spikes_synchrony_to_csv,
             "inferred_spikes_synchrony_matrix.csv",
@@ -968,6 +1137,27 @@ def export_correlations_to_csv(
         INFERRED_SPIKES_CROSS_CORRELATION_LAGS: (
             export_inferred_spikes_cross_correlation_lags_to_csv,
             "inferred_spikes_cross_correlation_lags_matrix.csv",
+        ),
+        INFERRED_SPIKES_CCG_ZSCORE: (
+            export_inferred_spikes_ccg_zscore_to_csv,
+            "inferred_spikes_ccg_zscore_matrix.csv",
+        ),
+        # Inferred Spikes - Thresholded Rising Edges
+        INFERRED_SPIKES_SYNCHRONY_RISING_EDGES: (
+            export_inferred_spikes_synchrony_rising_edges_to_csv,
+            "inferred_spikes_synchrony_matrix_rising_edges.csv",
+        ),
+        INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES: (
+            export_inferred_spikes_cross_correlation_rising_edges_to_csv,
+            "inferred_spikes_cross_correlation_matrix_rising_edges.csv",
+        ),
+        INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES: (
+            export_inferred_spikes_cross_correlation_lags_rising_edges_to_csv,
+            "inferred_spikes_cross_correlation_lags_matrix_rising_edges.csv",
+        ),
+        INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: (
+            export_inferred_spikes_ccg_zscore_rising_edges_to_csv,
+            "inferred_spikes_ccg_zscore_matrix_rising_edges.csv",
         ),
     }
 

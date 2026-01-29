@@ -30,6 +30,7 @@ def _get_spike_synchrony_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
+    rising_edges: bool = False,
 ) -> tuple[np.ndarray | None, list[int] | None, float | None, float | None]:
     """Get the pre-computed spike synchrony matrix from database.
 
@@ -41,6 +42,8 @@ def _get_spike_synchrony_matrix_from_db(
         Name of the FOV
     run_id : int | None
         Filter by specific analysis run
+    rising_edges : bool
+        If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
     Returns
     -------
@@ -69,12 +72,22 @@ def _get_spike_synchrony_matrix_from_db(
                 )
                 return None, None, None, None
 
-            if (
-                fov_analysis.spike_jitter_synchrony_matrix is None
-                or fov_analysis.active_roi_labels is None
-            ):
+            # Get the appropriate matrix based on rising_edges parameter
+            if rising_edges:
+                sync_matrix_data = (
+                    fov_analysis.spike_jitter_synchrony_matrix_rising_edges
+                )
+                global_sync = fov_analysis.global_spike_jitter_synchrony_rising_edges
+                matrix_type = "rising edges"
+            else:
+                sync_matrix_data = fov_analysis.spike_jitter_synchrony_matrix
+                global_sync = fov_analysis.global_spike_jitter_synchrony
+                matrix_type = "thresholded binary"
+
+            if sync_matrix_data is None or fov_analysis.active_roi_labels is None:
                 cali_logger.info(
-                    f"FOVAnalysis for {fov_name} has no spike synchrony matrix"
+                    f"FOVAnalysis for {fov_name} has no spike synchrony matrix "
+                    f"({matrix_type})"
                 )
                 return None, None, None, None
 
@@ -92,11 +105,8 @@ def _get_spike_synchrony_matrix_from_db(
                 if analysis_settings:
                     jitter_window_ms = analysis_settings.spikes_sync_jitter_window
 
-            sync_matrix = np.asarray(
-                fov_analysis.spike_jitter_synchrony_matrix, dtype=float
-            )
+            sync_matrix = np.asarray(sync_matrix_data, dtype=float)
             roi_labels = list(fov_analysis.active_roi_labels)
-            global_sync = fov_analysis.global_spike_jitter_synchrony
 
             return sync_matrix, roi_labels, global_sync, jitter_window_ms
     except OperationalError:
@@ -142,11 +152,14 @@ def _plot_spike_synchrony_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
     title_suffix: str = "",
+    rising_edges: bool = False,
 ) -> None:
     """Plot spike-based synchrony analysis (pyqtgraph heatmap).
 
     title_suffix : str
         Optional suffix to add to plot titles (e.g., " - Stimulated")
+    rising_edges : bool
+        If True, use rising edge spike data; otherwise use thresholded binary
     """
     plot = widget.plot_item
     assert plot is not None
@@ -168,7 +181,7 @@ def _plot_spike_synchrony_data(
 
     # Query pre-computed synchrony matrix from database
     sync_matrix, roi_labels, global_synchrony, jitter_window_ms = (
-        _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id)
+        _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id, rising_edges)
     )
 
     if sync_matrix is None or roi_labels is None:
@@ -207,8 +220,9 @@ def _plot_spike_synchrony_data(
     else:
         jitter_str = "±window"
 
+    spike_type = "Thresholded (Rising Edges)" if rising_edges else "Thresholded"
     title = (
-        "Inferred Spike Synchrony - "
+        f"Inferred Spike Synchrony ({spike_type}) - "
         f"Jitter ({jitter_str}) - "
         f"Global Median: {global_synchrony:.4f}{title_suffix}"
     )

@@ -37,11 +37,12 @@ def test_numba_synchrony_with_threading() -> None:
         events[events >= 0.95] = 1.0
         peak_events_dict[str(i)] = events.tolist()
 
-    # Create random spike data
+    # Create random spike data (binary)
     spike_data_dict = {}
     for i in range(n_rois):
         spikes = np.random.rand(n_timepoints)
         spikes[spikes < 0.98] = 0.0  # Very sparse spikes
+        spikes[spikes >= 0.98] = 1.0  # Binary values
         spike_data_dict[str(i)] = spikes.tolist()
 
     # Function to run in thread - calls numba parallel function
@@ -53,7 +54,7 @@ def test_numba_synchrony_with_threading() -> None:
         assert matrix.shape == (n_rois, n_rois)
 
     def compute_spike_sync() -> None:
-        matrix, _ = _get_spike_correlations_matrix(
+        matrix, _, _ = _get_spike_correlations_matrix(
             spike_data_dict, method="jitter_window", jitter_window=5
         )
         assert matrix is not None

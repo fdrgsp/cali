@@ -387,9 +387,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        self._output_path = "tests/test_data/data_and_db_for_tests/"
+        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        # self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1363,13 +1363,12 @@ class CaliGui(QMainWindow):
                     assert self._database_path is not None
                     assert detection_settings is not None  # Ensured by pre-flight check
 
-                    # Get export options if extraction is being run
+                    # Get export options only if running that phase
                     export_traces = None
-                    if extraction_settings is not None:
+                    if value.run_extraction and extraction_settings is not None:
                         export_traces = self._extraction_wdg.get_export_options()
-                    # Get export options if analysis is being run
                     export_correlations = None
-                    if analysis_settings is not None:
+                    if value.run_analysis and analysis_settings is not None:
                         export_correlations = self._analysis_wdg.get_export_options()
 
                     result = self._runner.run(
@@ -1416,6 +1415,8 @@ class CaliGui(QMainWindow):
                         extraction_settings,
                         analysis_settings,
                         pos,
+                        run_extraction=value.run_extraction,
+                        run_analysis=value.run_analysis,
                     )
                 else:
                     # Re-raise other ValueErrors
@@ -1434,6 +1435,8 @@ class CaliGui(QMainWindow):
         extraction_settings: Any,
         analysis_settings: Any,
         positions: list[int],
+        run_extraction: bool,
+        run_analysis: bool,
     ) -> None:
         """Handle ambiguous run selection when multiple compatible runs exist.
 
@@ -1451,6 +1454,10 @@ class CaliGui(QMainWindow):
             Analysis settings, ID, or None
         positions : list[int]
             Positions to process
+        run_extraction : bool
+            Whether extraction is being run (for export filtering)
+        run_analysis : bool
+            Whether analysis is being run (for export filtering)
         """
         from sqlmodel import Session, create_engine, select
 
@@ -1540,13 +1547,12 @@ class CaliGui(QMainWindow):
             assert self._database_path is not None
             assert selected_run.detection_settings_id is not None
 
-            # Get export options if extraction settings exist
+            # Get export options only if running that phase
             export_traces = None
-            if selected_run.extraction_settings_id is not None:
+            if run_extraction and selected_run.extraction_settings_id is not None:
                 export_traces = self._extraction_wdg.get_export_options()
-            # Get export options if analysis settings exist
             export_correlations = None
-            if selected_run.analysis_settings_id is not None:
+            if run_analysis and selected_run.analysis_settings_id is not None:
                 export_correlations = self._analysis_wdg.get_export_options()
 
             result = self._runner.run(

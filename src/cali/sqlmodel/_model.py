@@ -37,7 +37,9 @@ from sqlmodel import (
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CCG_N_SHUFFLES,
     DEFAULT_DFF_WINDOW,
+    DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
     DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
@@ -1082,6 +1084,10 @@ class AnalysisSettings(SQLModel, table=True):
         Max lag for spike cross-correlation (milliseconds)
     spikes_sync_jitter_window : int
         Jitter window for spike synchrony (milliseconds)
+    ccg_n_shuffles : int
+        Number of shuffles for CCG baseline correction
+    enable_rising_edge_analysis : bool
+        Whether to compute CCG on spike rising edges
     frame_rate : float
         Acquisition frame rate (frames per second)
     led_power_equation : str | None
@@ -1128,6 +1134,8 @@ class AnalysisSettings(SQLModel, table=True):
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
     spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
+    ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
+    enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
 
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
@@ -1176,6 +1184,8 @@ class AnalysisSettings(SQLModel, table=True):
             and self.calcium_burst_gaussian_sigma == other.calcium_burst_gaussian_sigma
             and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
             and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
+            and self.ccg_n_shuffles == other.ccg_n_shuffles
+            and self.enable_rising_edge_analysis == other.enable_rising_edge_analysis
             and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
@@ -1204,6 +1214,8 @@ class AnalysisSettings(SQLModel, table=True):
                 self.calcium_burst_gaussian_sigma,
                 self.spikes_sync_cross_corr_lag,
                 self.spikes_sync_jitter_window,
+                self.ccg_n_shuffles,
+                self.enable_rising_edge_analysis,
                 self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,
@@ -1755,16 +1767,39 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_dec_dff_corr_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
     spike_max_lag_correlation_matrix : list[list[float]] | None
-        Max lag correlation on spike events (NxN for N active ROIs)
+        Max lag correlation on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
-        Median of off-diagonal spike max lag correlation values
+        Median of off-diagonal spike max lag correlation values (thresholded binary)
     spike_max_lag_values_matrix : list[list[int]] | None
-        Lag values (in frames) at max correlation for spike events (NxN).
+        Lag values (in frames) at max correlation for spike events
+        (thresholded binary) (NxN).
         Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
+    spike_max_lag_correlation_matrix_rising_edges : list[list[float]] | None
+        Max lag correlation on spike events (thresholded rising edges)
+        (NxN for N active ROIs)
+    global_spike_max_lag_correlation_rising_edges : float | None
+        Median of off-diagonal spike max lag correlation values
+        (thresholded rising edges)
+    spike_max_lag_values_matrix_rising_edges : list[list[int]] | None
+        Lag values (in frames) at max correlation for spike events
+        (thresholded rising edges) (NxN).
+        Positive lag means ROI_j lags behind ROI_i (i.e., i leads j).
+    spike_ccg_zscore_matrix : list[list[float]] | None
+        Z-score matrix for CCG significance (thresholded binary).
+        Z = (CCG_raw - baseline_mean) / baseline_std at max-lag position.
+        |z| > 2 suggests significant functional connectivity.
+    spike_ccg_zscore_matrix_rising_edges : list[list[float]] | None
+        Z-score matrix for CCG significance (thresholded rising edges).
     spike_jitter_synchrony_matrix : list[list[float]] | None
-        Jitter synchrony on spike events (NxN for N active ROIs)
+        Jitter synchrony on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
+        Median of off-diagonal spike jitter synchrony values (thresholded binary)
+    spike_jitter_synchrony_matrix_rising_edges : list[list[float]] | None
+        Jitter synchrony on spike events (thresholded rising edges)
+        (NxN for N active ROIs)
+    global_spike_jitter_synchrony_rising_edges : float | None
         Median of off-diagonal spike jitter synchrony values
+        (thresholded rising edges)
     spike_burst_count : int | None
         Number of spike-based population bursts detected
     spike_burst_avg_duration : float | None
@@ -1827,20 +1862,43 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     # Spike metrics (from inferred spikes)
-    # 1. Max lag correlation on spikes
+    # 1. Max lag correlation on spikes (thresholded binary)
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     global_spike_max_lag_correlation: float | None = None
-    # 2b. Lag values at max correlation for spikes
+    # 2a. Lag values at max correlation for spikes (thresholded binary)
     spike_max_lag_values_matrix: list[list[int]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    # 3. Jitter synchrony on spikes
+    # 2b. Max lag correlation on spikes (thresholded rising edges)
+    spike_max_lag_correlation_matrix_rising_edges: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_max_lag_correlation_rising_edges: float | None = None
+    # 2c. Lag values at max correlation for spikes (thresholded rising edges)
+    spike_max_lag_values_matrix_rising_edges: list[list[int]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 2d. Z-score matrices for CCG significance (baseline-corrected)
+    # Z-score = (CCG_raw - baseline_mean) / baseline_std at the max-lag position
+    # |z| > 2 suggests significant functional connectivity
+    spike_ccg_zscore_matrix: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    spike_ccg_zscore_matrix_rising_edges: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # 3. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     global_spike_jitter_synchrony: float | None = None
+    # 4. Jitter synchrony on spikes (thresholded rising edges)
+    spike_jitter_synchrony_matrix_rising_edges: list[list[float]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    global_spike_jitter_synchrony_rising_edges: float | None = None
 
     # Population burst metrics (spike-based)
     spike_burst_count: int | None = None
