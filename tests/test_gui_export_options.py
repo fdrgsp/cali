@@ -8,9 +8,13 @@ from cali._constants import (
     CALCIUM_DEC_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     DFF_TRACES,
+    INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
     INFERRED_SPIKES_CROSS_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
+    INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES,
+    INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES,
     INFERRED_SPIKES_SYNCHRONY,
+    INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
@@ -201,3 +205,49 @@ def test_analysis_gui_reset(qtbot: QtBot) -> None:
 
     expected_threads = max((os.cpu_count() or 1) - 2, 1)
     assert widget._threads.value() == expected_threads
+
+
+def test_analysis_gui_rising_edge_options_false_by_default(qtbot: QtBot) -> None:
+    """Test that rising edge export options are unchecked by default."""
+    widget = _AnalysisGUI()
+    qtbot.addWidget(widget)
+
+    # Enable export group for testing
+    widget._export_group.setChecked(True)
+
+    # Get export options
+    export_options = widget.get_export_options()
+    assert export_options is not None
+
+    # All rising edge options should NOT be in the export dict by default
+    # (because they are unchecked)
+    assert INFERRED_SPIKES_SYNCHRONY_RISING_EDGES not in export_options
+    assert INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES not in export_options
+    assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES not in export_options
+    assert INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES not in export_options
+
+
+def test_analysis_gui_enable_rising_edge_exports(qtbot: QtBot) -> None:
+    """Test that rising edge exports can be enabled individually."""
+    widget = _AnalysisGUI()
+    qtbot.addWidget(widget)
+
+    # Enable export group for testing
+    widget._export_group.setChecked(True)
+
+    # Find and check the rising edge synchrony checkbox
+    for text, (checkbox, _, _) in widget._export_group._checkboxes.items():
+        if text == INFERRED_SPIKES_SYNCHRONY_RISING_EDGES:
+            checkbox.setChecked(True)
+            break
+
+    # Now it should be in export options
+    export_options = widget.get_export_options()
+    assert export_options is not None
+    assert INFERRED_SPIKES_SYNCHRONY_RISING_EDGES in export_options
+    assert export_options[INFERRED_SPIKES_SYNCHRONY_RISING_EDGES] is True
+
+    # Other rising edge options should still be unchecked
+    assert INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES not in export_options
+    assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES not in export_options
+    assert INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES not in export_options
