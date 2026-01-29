@@ -215,9 +215,6 @@ def compute_fov_analysis(
     spike_jitter_sync_matrix_rising_edges = None
     global_spike_jitter_sync_rising_edges = None
 
-    # Compute dt for CCG normalization (time per frame in seconds)
-    1.0 / frame_rate
-
     if len(spike_data_dict) >= 2:
         # 3a. Max lag correlation on spikes (thresholded binary)
         # Using standard CCG methodology with:
