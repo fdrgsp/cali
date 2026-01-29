@@ -411,11 +411,11 @@ The CCG analysis computes the probability that neuron j fires at a given time la
    - The CCG computed on shifted data represents what we'd expect from co-modulation alone
 
    **Computing the baseline:**
-   We repeat this process multiple times (configurable, default 30 shuffles), each time shifting by a different random amount:
+   We repeat this process multiple times (configurable, default 20 shuffles), each time shifting by a different random amount:
    - **Baseline mean ($\mu_{baseline}$)**: Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
    - **Baseline std ($\sigma_{baseline}$)**: Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
 
-   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 30 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
+   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 20 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
 5. **Z-score calculation**: Using the baseline from step 4, we compute statistical significance:
 
