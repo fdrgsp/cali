@@ -203,3 +203,170 @@ def test_sorted_dec_dff_correlation_windowed_click(
             # Should emit something (exact value depends on correlation computation)
             # The key is that it shouldn't crash
             assert isinstance(emitted, list)
+
+
+def test_evoked_hover_outside_scene_bounds(
+    qtbot: QtBot, test_matrix: np.ndarray, test_roi_labels: list[int]
+) -> None:
+    """Test hover resets title when position is outside scene bounds."""
+    from cali.plot._single_wells_plots.correlation import (
+        _plot_evoked_correlation_synchrony,
+    )
+
+    _attach_heatmap_interaction = (
+        _plot_evoked_correlation_synchrony._attach_heatmap_interaction
+    )
+
+    widget = _SingleWellGraphWidget(None)  # type: ignore
+    qtbot.addWidget(widget)
+
+    plot = widget.plot_item
+    assert plot is not None
+    vb = plot.getViewBox()
+
+    base_title = "Evoked Correlation"
+    _attach_heatmap_interaction(
+        widget=widget,
+        plot=plot,
+        base_title=base_title,
+        viewbox=vb,
+        rois=test_roi_labels,
+        values=test_matrix,
+    )
+
+    hover_handler = plot.property("evoked_hover_handler")
+    assert hover_handler is not None
+
+    # Test hover outside scene bounds
+    with patch.object(plot, "sceneBoundingRect") as mock_rect:
+        mock_rect.return_value.contains.return_value = False
+        hover_handler(pg.Point(50, 50))
+
+        assert plot.titleLabel.text == base_title
+
+
+def test_evoked_hover_outside_matrix_indices(
+    qtbot: QtBot, test_matrix: np.ndarray, test_roi_labels: list[int]
+) -> None:
+    """Test hover resets title when indices are outside matrix dimensions."""
+    from cali.plot._single_wells_plots.correlation import (
+        _plot_evoked_correlation_synchrony,
+    )
+
+    _attach_heatmap_interaction = (
+        _plot_evoked_correlation_synchrony._attach_heatmap_interaction
+    )
+
+    widget = _SingleWellGraphWidget(None)  # type: ignore
+    qtbot.addWidget(widget)
+
+    plot = widget.plot_item
+    assert plot is not None
+    vb = plot.getViewBox()
+
+    base_title = "Evoked Correlation"
+    _attach_heatmap_interaction(
+        widget=widget,
+        plot=plot,
+        base_title=base_title,
+        viewbox=vb,
+        rois=test_roi_labels,
+        values=test_matrix,
+    )
+
+    hover_handler = plot.property("evoked_hover_handler")
+
+    # Hover at matrix position outside bounds (10, 10 for a 3x3 matrix)
+    with patch.object(vb, "mapSceneToView") as mock_map:
+        mock_map.return_value = pg.Point(10, 10)
+        with patch.object(plot, "sceneBoundingRect") as mock_rect:
+            mock_rect.return_value.contains.return_value = True
+            hover_handler(pg.Point(50, 50))
+
+            assert plot.titleLabel.text == base_title
+
+
+def test_evoked_hover_shows_correlation_value(
+    qtbot: QtBot, test_matrix: np.ndarray, test_roi_labels: list[int]
+) -> None:
+    """Test hover shows correct correlation value in title."""
+    from cali.plot._single_wells_plots.correlation import (
+        _plot_evoked_correlation_synchrony,
+    )
+
+    _attach_heatmap_interaction = (
+        _plot_evoked_correlation_synchrony._attach_heatmap_interaction
+    )
+
+    widget = _SingleWellGraphWidget(None)  # type: ignore
+    qtbot.addWidget(widget)
+
+    plot = widget.plot_item
+    assert plot is not None
+    vb = plot.getViewBox()
+
+    base_title = "Evoked Correlation"
+    _attach_heatmap_interaction(
+        widget=widget,
+        plot=plot,
+        base_title=base_title,
+        viewbox=vb,
+        rois=test_roi_labels,
+        values=test_matrix,
+    )
+
+    hover_handler = plot.property("evoked_hover_handler")
+
+    # Hover at position (0, 1) in matrix -> value 0.5
+    with patch.object(vb, "mapSceneToView") as mock_map:
+        mock_map.return_value = pg.Point(1, 0)  # col=1, row=0
+        with patch.object(plot, "sceneBoundingRect") as mock_rect:
+            mock_rect.return_value.contains.return_value = True
+            hover_handler(pg.Point(50, 50))
+
+            title = plot.titleLabel.text
+            assert "ROI 5" in title
+            assert "ROI 12" in title
+            assert "0.500" in title
+
+
+def test_evoked_click_outside_scene_bounds(
+    qtbot: QtBot, test_matrix: np.ndarray, test_roi_labels: list[int]
+) -> None:
+    """Test click outside scene bounds does not emit signal."""
+    from cali.plot._single_wells_plots.correlation import (
+        _plot_evoked_correlation_synchrony,
+    )
+
+    _attach_heatmap_interaction = (
+        _plot_evoked_correlation_synchrony._attach_heatmap_interaction
+    )
+
+    widget = _SingleWellGraphWidget(None)  # type: ignore
+    qtbot.addWidget(widget)
+
+    plot = widget.plot_item
+    assert plot is not None
+    vb = plot.getViewBox()
+
+    _attach_heatmap_interaction(
+        widget=widget,
+        plot=plot,
+        base_title="Test",
+        viewbox=vb,
+        rois=test_roi_labels,
+        values=test_matrix,
+    )
+
+    emitted = []
+    widget.roiSelected.connect(lambda r: emitted.append(r))
+
+    click_handler = plot.property("evoked_click_handler")
+
+    with patch.object(plot, "sceneBoundingRect") as mock_rect:
+        mock_rect.return_value.contains.return_value = False
+        mock_event = MagicMock()
+        mock_event.scenePos.return_value = QPointF(10, 20)
+        click_handler(mock_event)
+
+    assert len(emitted) == 0
