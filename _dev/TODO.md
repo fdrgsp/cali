@@ -16,13 +16,11 @@ ask to claude:
 
 - code and widget to load own label images for segmentation
 
-- export csv tables
-
 - export labels
 
 - is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
 
-- add "database only" tab in the init widget to open a database without the actual data loading so only the plotting and analysis can be done.
+- add the ability to open a database without the actual data so that analysis can be anyway run using database ifo from extraction. basically we need to skip the loading of the actual data and view images and just enable the rest (obviuously we cannot run full analysis or extraction, but analysis only).
 
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.
 
@@ -32,10 +30,3 @@ ask to claude:
 
 - add stim vs non-stim calcium peaks raster
 - add sotrted stim vs non-stim calcium and spikes heatmap to plots
-
-- add plot similar to plt.stem for spikes
-- add plot similar to plt.stem for spikes to stim vs non-stim plots
-    is it possible to add in #file:spikes and in #file:_plot_evoked_experiment_data_plots.py another type of inferred spike traces plot similar to matplotlib.stem?
-    the one in n #file:spikes should be one with raw and one thresholded traces and should be added to category="Inferred Spikes Traces".
-
-    In #file:_plot_evoked_experiment_data_plots.py  make it colored as for the other green stim magenta non-stim. do it only on thresholded data. the add it to the category="Evoked Experiment".
