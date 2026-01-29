@@ -395,17 +395,38 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
    *Example*: With 100 frames and lag=10, only 90 frames overlap. If we count 3 coincidences in those 90 frames, border correction scales it to 3 × (100/90) ≈ 3.33 (~11% adjustment). With 1000 frames and the same lag, the correction is only 3 × (1000/990) ≈ 3.03 (~1% adjustment). The correction matters more for shorter recordings and larger lags.
 
-4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a null model using circular shifts of one spike train. The baseline is computed from shuffled surrogates (configurable, default 30):
-   - **Baseline mean**: Average CCG across shuffles (captures slow co-modulations)
-   - **Baseline std**: Standard deviation across shuffles (for significance testing)
+4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a **null model** that represents what the CCG would look like if there were no precise timing relationships between the neurons.
 
-   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across these shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
+   **What is a circular shift?**
+   A circular shift (also called circular permutation) wraps the spike train around itself: elements that "fall off" one end reappear at the other. For example, with a spike train `[0,0,1,0,1,1,0,0]` and a shift of 3 positions:
+   - The last 3 elements `[1,0,0]` move to the front
+   - Result: `[1,0,0,0,0,1,0,1]`
 
-5. **Z-score calculation**: Statistical significance is computed as:
+   This operation preserves the total number of spikes and the overall firing rate pattern, but destroys the precise frame-by-frame timing relationship between the two spike trains.
 
-   $z = \frac{CCG_{raw} - CCG_{baseline\_mean}}{CCG_{baseline\_std}}$
+   **Why circular shifts create a valid null model:**
+   - If two neurons have a true synaptic connection, their spikes will be precisely timed relative to each other (e.g., neuron j consistently fires 2-3 frames after neuron i)
+   - If two neurons are merely co-modulated by a common input (e.g., both increase firing during arousal), they will have correlated activity but no precise timing relationship
+   - By circularly shifting one spike train, we break precise timing while preserving the slow co-modulation pattern
+   - The CCG computed on shifted data represents what we'd expect from co-modulation alone
 
-   A z-score with |z| > 2 suggests significant functional connectivity beyond what would be expected from slow co-modulations alone. The threshold of 2 corresponds to roughly the 95th percentile of a normal distribution (p < 0.05), meaning there's less than a 5% chance the observed CCG would occur by chance under the null model.
+   **Computing the baseline:**
+   We repeat this process multiple times (configurable, default 30 shuffles), each time shifting by a different random amount:
+   - **Baseline mean ($\mu_{baseline}$)**: Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
+   - **Baseline std ($\sigma_{baseline}$)**: Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
+
+   *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 30 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
+
+5. **Z-score calculation**: Using the baseline from step 4, we compute statistical significance:
+
+   $z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$
+
+   The z-score tells us how many standard deviations the observed CCG is above (or below) the null model expectation:
+   - **z > 2**: The observed spike coincidence is significantly *higher* than expected from co-modulation alone → suggests excitatory functional connectivity
+   - **z < -2**: The observed spike coincidence is significantly *lower* than expected → suggests inhibitory functional connectivity or anti-correlation
+   - **|z| < 2**: The observed CCG is within the range expected from slow co-modulations; no significant precise-timing relationship detected
+
+   The threshold of |z| > 2 corresponds to roughly the 95th percentile of a normal distribution (p < 0.05), meaning there's less than a 5% chance the observed CCG would occur by chance under the null model.
 
    *Example*: If raw CCG = 0.35, baseline mean = 0.20, and baseline std = 0.05, then z = (0.35 - 0.20) / 0.05 = 3.0. Since |3.0| > 2, this pair shows significant functional connectivity — the observed spike coincidence is 3 standard deviations above what's expected from chance co-modulation.
 
@@ -451,7 +472,6 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
 6. Combine and normalize:
    $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
    where $N_i$ and $N_j$ are the total number of spikes in neurons $i$ and $j$, respectively.
-
 
 This yields a synchrony score between 0 and 1:
 

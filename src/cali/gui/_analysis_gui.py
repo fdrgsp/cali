@@ -1072,15 +1072,14 @@ class _SpikeWidget(QWidget):
             "Trade-offs:\n"
             "• More shuffles: More accurate baseline, but slower\n"
             "• Fewer shuffles: Faster, but noisier baseline estimates\n\n"
-            "Recommended: 30 shuffles balances accuracy and speed."
         )
         self._ccg_shuffles_lbl = QLabel(
             "CCG Baseline Shuffles:", self._ccg_shuffles_wdg
         )
         self._ccg_shuffles_lbl.setSizePolicy(*FIXED)
         self._ccg_shuffles_spin = QSpinBox(self._ccg_shuffles_wdg)
-        self._ccg_shuffles_spin.setRange(10, 200)
-        self._ccg_shuffles_spin.setSingleStep(10)
+        self._ccg_shuffles_spin.setRange(1, 500)
+        self._ccg_shuffles_spin.setSingleStep(1)
         self._ccg_shuffles_spin.setValue(DEFAULT_CCG_N_SHUFFLES)
         ccg_shuffles_layout = QHBoxLayout(self._ccg_shuffles_wdg)
         ccg_shuffles_layout.setContentsMargins(0, 0, 0, 0)
