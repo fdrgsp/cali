@@ -176,14 +176,18 @@ class _AnalysisGUI(QWidget):
         self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 7, 0)
         # Inferred Spikes - Thresholded Rising Edges
         self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 8, 0)
-        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 9, 0)
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 10, 0
+            INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 9, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 11, 0
+            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 10, 0, checked=False
         )
-        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 12, 0)
+        self._export_group.add_option(
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 11, 0, checked=False
+        )
+        self._export_group.add_option(
+            INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 12, 0, checked=False
+        )
         self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
