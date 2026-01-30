@@ -126,6 +126,7 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Inferred Spikes**: parameters for analysis of inferred spikes obtained from OASIS deconvolution. This includes detection thresholds, burst detection parameters, and correlation / synchrony analysis between ROIs.
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
+- **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
 
 <img width="800" alt="Screenshot 2025-12-17 at 9 58 30 AM" src="https://github.com/user-attachments/assets/4c8c5080-dae1-450c-95f3-c9d90b81ba2f" />
 

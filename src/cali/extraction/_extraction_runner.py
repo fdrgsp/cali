@@ -130,7 +130,10 @@ class ExtractionRunner:
 
         cali_logger.info(f"⚡️ Using {extraction_settings.threads} threads")
 
-        # Execute analysis in parallel and yield results
+        # Phase 1: Execute extraction in parallel threads
+        # Collect FOVs that need FOV-level analysis
+        fovs_for_analysis: list[FOV] = []
+
         for fov_result in self._exec_in_threadpool(
             analyze=self._analyze_position,
             dataset=dataset,
@@ -141,6 +144,41 @@ class ExtractionRunner:
             max_workers=extraction_settings.threads,
         ):
             if fov_result is not None:
+                # Check if FOV needs analysis
+                if hasattr(fov_result, "_pending_analysis_settings"):
+                    fovs_for_analysis.append(fov_result)
+                else:
+                    yield fov_result
+
+        # Phase 2: Compute FOV-level analysis SEQUENTIALLY
+        # This uses multiprocessing internally for CCG pairs, which is much faster
+        # than having multiple threads each create their own Pool
+        if fovs_for_analysis and not self._cancellation_event.is_set():
+            from cali.analysis._fov_analysis_parallel import (
+                compute_fov_analysis_parallel,
+            )
+
+            cali_logger.info(
+                f"📊 Computing FOV-level analysis for {len(fovs_for_analysis)} FOVs..."
+            )
+            for fov_result in fovs_for_analysis:
+                if self._cancellation_event.is_set():
+                    break
+
+                pending_settings = fov_result._pending_analysis_settings
+                delattr(fov_result, "_pending_analysis_settings")
+
+                cali_logger.info(f"📊 Analyzing {fov_result.name}...")
+                fov_analysis = compute_fov_analysis_parallel(
+                    fov_result, pending_settings
+                )
+                if fov_analysis is not None:
+                    if not hasattr(fov_result, "_new_fov_analysis"):
+                        fov_result._new_fov_analysis = []
+                    fov_result._new_fov_analysis.append(fov_analysis)
+                cali_logger.info(
+                    f"✅ FOV-level analysis complete for {fov_result.name}."
+                )
                 yield fov_result
 
         if analysis_settings is None:
@@ -397,18 +435,12 @@ class ExtractionRunner:
                 existing_roi.active = active
                 existing_roi.stimulated = stimulated
 
-        # Compute FOV-level analysis (correlation/synchrony) if analysis was run
-        if analysis_settings is not None and not self._check_for_abort_requested():
-            from cali.analysis._fov_analysis import compute_fov_analysis
-
-            cali_logger.info(f"📊 Computing FOV-level analysis for {fov_name}...")
-            fov_analysis = compute_fov_analysis(fov_to_analyze, analysis_settings)
-            if fov_analysis is not None:
-                # Store in temporary attribute for later commit
-                if not hasattr(fov_to_analyze, "_new_fov_analysis"):
-                    fov_to_analyze._new_fov_analysis = []
-                fov_to_analyze._new_fov_analysis.append(fov_analysis)
-            cali_logger.info(f"✅ FOV-level analysis complete for {fov_name}.")
+        # NOTE: FOV-level analysis (CCG) is now computed AFTER the threadpool completes
+        # in _run_generator(). This avoids concurrent Pool creation when multiple
+        # threads call compute_fov_analysis_parallel simultaneously.
+        # The analysis_settings is stored on the FOV for later use.
+        if analysis_settings is not None:
+            fov_to_analyze._pending_analysis_settings = analysis_settings
 
         # Return the FOV with updated ROIs (will be committed by caller)
         return fov_to_analyze

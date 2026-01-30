@@ -153,7 +153,7 @@ class _ExtractionGUI(QWidget):
         group_layout.addWidget(self._trace_extraction_wdg)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
-        group_layout.addWidget(create_divider_line("Threads"))
+        group_layout.addWidget(create_divider_line("Parallelization"))
         group_layout.addWidget(threads_wdg)
         group_layout.addWidget(create_divider_line("Export Options"))
         group_layout.addWidget(self._export_group)
