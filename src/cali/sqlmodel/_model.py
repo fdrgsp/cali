@@ -1147,6 +1147,7 @@ class AnalysisSettings(SQLModel, table=True):
     led_pulse_on_frames: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     threads: int = Field(default=1)
+    n_processes: int = Field(default=1)
 
     # Foreign keys
     stimulation_mask_id: int | None = Field(

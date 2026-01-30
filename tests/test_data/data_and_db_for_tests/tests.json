@@ -61,7 +61,8 @@
       "led_pulse_powers": [2.0, 4.0, 6.0],
       "led_pulse_on_frames": [3, 53, 103],
       "stimulation_mask_path": "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/stimulation_mask.tif",
-      "threads": 3
+      "threads": 3,
+      "n_processes": 1
     }
   ],
   "runs": [

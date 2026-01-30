@@ -75,6 +75,7 @@ class AnalysisSettingsData:
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
     threads: int = max((os.cpu_count() or 1) - 2, 1)
+    n_processes: int = max((os.cpu_count() or 1) - 2, 1)
 
 
 @dataclass(frozen=True)
@@ -151,10 +152,34 @@ class _AnalysisGUI(QWidget):
         self._threads.setRange(1, 100)
         self._threads.setValue(cpu_to_use)
         threads_layout = QHBoxLayout(threads_wdg)
-        threads_layout.setContentsMargins(0, 0, 0, 10)
+        threads_layout.setContentsMargins(0, 0, 0, 0)
         threads_layout.setSpacing(5)
         threads_layout.addWidget(threads_lbl)
         threads_layout.addWidget(self._threads)
+
+        # N_PROCESSES WIDGET ---------------------------------------------------------
+        n_processes_wdg = QWidget()
+        n_processes_wdg.setToolTip(
+            "Number of worker processes for parallel CCG computation.\n\n"
+            "By default, the value is set to the number of CPUs - 2 "
+            f"(in your system: {cpu_to_use}).\n\n"
+            "CCG (Cross-Correlogram) computation is the slowest part of FOV analysis.\n"
+            "It uses multiprocessing to parallelize across ROI pairs.\n\n"
+            f"• Your system: {cpu_to_use} processes (auto)\n"
+            "• Higher values: Faster but more memory usage\n"
+            "• Lower values: Slower but less resource intensive\n\n"
+            "Note: This is separate from 'threads' which controls ROI extraction."
+        )
+        n_processes_lbl = QLabel("CCG Worker Processes:", n_processes_wdg)
+        n_processes_lbl.setSizePolicy(*FIXED)
+        self._n_processes = QSpinBox(n_processes_wdg)
+        self._n_processes.setRange(1, 100)
+        self._n_processes.setValue(cpu_to_use)
+        n_processes_layout = QHBoxLayout(n_processes_wdg)
+        n_processes_layout.setContentsMargins(0, 0, 0, 10)
+        n_processes_layout.setSpacing(5)
+        n_processes_layout.addWidget(n_processes_lbl)
+        n_processes_layout.addWidget(self._n_processes)
 
         # ANALYSIS WIDGETS -----------------------------------------------------------
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
@@ -208,8 +233,9 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(self._spike_wdg)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
-        group_layout.addWidget(create_divider_line("Threads"))
+        group_layout.addWidget(create_divider_line("Parallelization"))
         group_layout.addWidget(threads_wdg)
+        group_layout.addWidget(n_processes_wdg)
         group_layout.addWidget(create_divider_line("Export Options"))
         group_layout.addWidget(self._export_group)
         group_layout.addStretch(1)
@@ -228,6 +254,7 @@ class _AnalysisGUI(QWidget):
         self._spike_wdg.set_labels_width(fix_width)
         self._metadata_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
+        n_processes_lbl.setFixedWidth(fix_width)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -249,6 +276,7 @@ class _AnalysisGUI(QWidget):
             self._experiment_type_wdg.value(),
             self._metadata_wdg.value(),
             self._threads.value(),
+            self._n_processes.value(),
         )
 
     def setValue(self, value: AnalysisSettingsData) -> None:
@@ -261,6 +289,7 @@ class _AnalysisGUI(QWidget):
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
         self._threads.setValue(value.threads)
+        self._n_processes.setValue(value.n_processes)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -269,6 +298,7 @@ class _AnalysisGUI(QWidget):
         self._spike_wdg.reset()
         self._metadata_wdg.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+        self._n_processes.setValue(max((os.cpu_count() or 1) - 2, 1))
 
     def get_export_options(self) -> dict[CorrelationDataType, bool] | None:
         """Return export options selected as dict[CorrelationDataType, bool]."""
@@ -298,6 +328,7 @@ class _AnalysisGUI(QWidget):
         return AnalysisSettings(
             created_at=datetime.now(),
             threads=self._threads.value(),
+            n_processes=self._n_processes.value(),
             frame_rate=settings.frame_rate,
             peaks_height_value=(
                 peaks_data.peaks_height if peaks_data else DEFAULT_HEIGHT

@@ -190,8 +190,6 @@ def _extract_fov_data(
 def compute_fov_analysis_parallel(
     fov: FOV,
     analysis_settings: AnalysisSettings,
-    n_workers: int | None = None,
-    min_rois_for_parallel: int = 20,
 ) -> FOVAnalysis | None:
     """Compute FOV analysis with parallel CCG computation.
 
@@ -203,12 +201,7 @@ def compute_fov_analysis_parallel(
     fov : FOV
         FOV containing ROIs with traces and analysis data
     analysis_settings : AnalysisSettings
-        Settings containing analysis parameters
-    n_workers : int | None
-        Number of worker processes. If None, uses CPU count - 1 (min 1).
-    min_rois_for_parallel : int
-        Minimum number of ROIs to use parallelization. Below this threshold,
-        falls back to sequential computation to avoid overhead.
+        Settings containing analysis parameters (uses n_processes for worker count)
 
     Returns
     -------
@@ -234,11 +227,12 @@ def compute_fov_analysis_parallel(
 
     n_rois = len(roi_labels)
     n_pairs = n_rois * (n_rois - 1) // 2
-    use_parallel = n_rois >= min_rois_for_parallel and len(spike_trains) >= 2
+    # Use parallel only if there are enough ROIs to justify overhead
+    # (10 ROIs = 45 pairs, reasonable threshold for multiprocessing)
+    use_parallel = n_rois >= 10 and len(spike_trains) >= 2
 
-    # Set number of workers
-    if n_workers is None:
-        n_workers = max(1, mp.cpu_count() - 2)
+    # Get number of workers from settings
+    n_workers = max(1, analysis_settings.n_processes)
 
     # Calcium trace correlations (fast, no parallelization needed)
     calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
@@ -346,11 +340,6 @@ def compute_fov_analysis_parallel(
         else:
             # Sequential computation for small FOVs
             from cali.analysis._util import _get_spike_correlations_matrix
-
-            cali_logger.info(
-                f"FOV {fov.name}: Sequential CCG "
-                f"({n_rois} ROIs < {min_rois_for_parallel})"
-            )
 
             (
                 spike_max_lag_corr_matrix,
