@@ -25,7 +25,7 @@ custom_files = sorted(
 # A1_0000.tif, A1_0001.tif for well A1 fovs 0 and 1
 # B1_0000.tif, B1_0001.tif for well B1 fovs 0 and 1
 # etc.
-# Otherwise you would need to create the file_map accordingly, e.g.:
+# You would need to create the file_map accordingly, e.g.:
 # {
 #     'A1': [
 #         path/t/files/well_A1_fov0.tiff'),
