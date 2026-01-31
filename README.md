@@ -111,6 +111,7 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
 - **Neuropil correction**: enable/disable and set neuropil mask parameters
 - **ΔF/F and OASIS deconvolution**:
   - window size for ΔF/F calculation
+  - percentile for ΔF/F baseline
   - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
@@ -166,6 +167,7 @@ Available visualizations include:
 - **Inferred Spikes**: raw and thresholded inferred spike trains from OASIS.
 - **Raster Plots**: raster plots of calcium peaks and inferred spikes across all ROIs.
 - **Calcium Metrics**: amplitude, frequency, and other per-ROI metrics.
+- **Inferred Spikes Metrics**: frequency (on thresholded and/or thresholded rising edges).
 - **Calcium and Inferred Spikes Bursts**: burst metrics based on calcium peaks and inferred spikes (for inferred spikes raster, events are defined as rising edges in the thresholded binary spike train).
 - **Correlation Metrics**:
   - pairwise Pearson correlation on calcium traces
@@ -205,7 +207,8 @@ The baseline \(F_0(t)\) is computed by taking the 10th percentile of the fluores
 
 **GUI Parameters**:
 
-- **Window Size** (ms): size of the sliding window for baseline calculation.
+- **Window Size** (s): size of the sliding window for baseline calculation.
+- **Percentile**: percentile of fluorescence values used as the baseline F₀ (default: 10).
 
 #### OASIS Deconvolution
 

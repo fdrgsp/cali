@@ -38,6 +38,7 @@ from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
+    DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
@@ -925,7 +926,9 @@ class ExtractionSettings(SQLModel, table=True):
     decay_constant : float
         Decay constant for deconvolution (seconds)
     dff_window : int
-        Window size for ΔF/F baseline calculation (milliseconds)
+        Window size for ΔF/F baseline calculation (seconds)
+    dff_percentile : int
+        Percentile for ΔF/F baseline calculation (0-100, default: 10)
     frame_rate : float
         Acquisition frame rate (frames per second)
     threads : int
@@ -942,7 +945,8 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor: float = 0.0
 
     decay_constant: float = 0.0
-    dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
+    dff_window: float = DEFAULT_DFF_WINDOW  # seconds
+    dff_percentile: int = DEFAULT_DFF_PERCENTILE  # percentile for ΔF/F baseline
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
     pixel_size: float | None = None  # pixel size in micrometers (µm)
 
@@ -962,6 +966,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
+            and self.dff_percentile == other.dff_percentile
             and self.frame_rate == other.frame_rate
             and self.pixel_size == other.pixel_size
             and self.threads == other.threads
@@ -976,6 +981,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.neuropil_correction_factor,
                 self.decay_constant,
                 self.dff_window,
+                self.dff_percentile,
                 self.frame_rate,
                 self.pixel_size,
                 self.threads,
