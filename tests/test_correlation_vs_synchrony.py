@@ -11,7 +11,7 @@ import pytest
 from scipy.signal import correlate
 from scipy.stats import zscore
 
-from cali.analysis._util import _calculate_jitter_window_synchrony
+from cali.analysis._fov_metrics import _calculate_jitter_window_synchrony
 
 # =============================================================================
 # Test Helpers: Synthetic Trace Generation

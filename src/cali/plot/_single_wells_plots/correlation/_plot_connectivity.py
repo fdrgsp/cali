@@ -492,7 +492,10 @@ def _plot_connectivity_network_data(
     # Compute connectivity metrics with current threshold and method
     from typing import cast
 
-    from cali.analysis._util import ConnectivityMethod, _compute_connectivity_metrics
+    from cali.analysis._fov_metrics import (
+        ConnectivityMethod,
+        _compute_connectivity_metrics,
+    )
 
     try:
         adjacency, weights, roi_labels = _compute_connectivity_metrics(

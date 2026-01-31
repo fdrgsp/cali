@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     _compute_jitter_synchrony_matrix_numba,
     _detect_spike_onsets,
     _get_calcium_peaks_event_correlations_matrix,
@@ -188,7 +188,7 @@ def test_compute_jitter_synchrony_matrix_numba() -> None:
 
 
 def test_get_spike_synchrony_matrix() -> None:
-    from cali.analysis._util import _get_spike_correlations_matrix
+    from cali.analysis._fov_metrics import _get_spike_correlations_matrix
 
     # Empty dict - returns 3-tuple with all None
     assert _get_spike_correlations_matrix({}) == (None, None, None)
@@ -224,7 +224,7 @@ def test_get_spike_synchrony_matrix() -> None:
 
 
 def test_get_spike_synchrony() -> None:
-    from cali.analysis._util import _get_spike_synchrony
+    from cali.analysis._fov_metrics import _get_spike_synchrony
 
     # Empty or None
     assert _get_spike_synchrony(None) is None
@@ -278,7 +278,7 @@ def test_detect_spike_onsets() -> None:
 
 def test_spike_synchrony_with_continuous_vs_events() -> None:
     """Test synchrony is calculated on binary spike events."""
-    from cali.analysis._util import _get_spike_correlations_matrix
+    from cali.analysis._fov_metrics import _get_spike_correlations_matrix
 
     # Create two ROIs with binary spike traces
     # ROI 1: spikes at frames 1, 2, 3, 6, 7, 8
@@ -318,7 +318,7 @@ def test_spike_synchrony_with_continuous_vs_events() -> None:
 
 
 def test_calculate_cross_correlation_synchrony() -> None:
-    from cali.analysis._util import _calculate_cross_correlation_with_lag
+    from cali.analysis._fov_metrics import _calculate_cross_correlation_with_lag
 
     # Perfect sync
     events_i = np.array([1.0, 0.0, 1.0])
@@ -459,7 +459,7 @@ def test_get_spikes_over_threshold(mock_session_cls: MagicMock) -> None:
     assert _get_spikes_over_threshold(engine, "fov1", 99) is None
 
 
-@patch("cali.analysis._util.Session")
+@patch("cali.analysis._fov_metrics.Session")
 def test_get_calcium_peaks_events_from_rois(mock_session_cls: MagicMock) -> None:
     # Mock engine
     engine = MagicMock()
@@ -508,7 +508,7 @@ def test_get_calcium_peaks_events_from_rois(mock_session_cls: MagicMock) -> None
 
 
 def test_calculate_jitter_window_synchrony() -> None:
-    from cali.analysis._util import _calculate_jitter_window_synchrony
+    from cali.analysis._fov_metrics import _calculate_jitter_window_synchrony
 
     # Perfect sync
     events_i = np.array([1.0, 0.0, 1.0])
@@ -530,7 +530,7 @@ def test_equation_from_str_invalid() -> None:
     assert equation_from_str("invalid equation") is None
 
 
-@patch("cali.analysis._util.Session")
+@patch("cali.analysis._fov_metrics.Session")
 def test_get_calcium_peaks_events_from_rois_extra_cases(
     mock_session_cls: MagicMock,
 ) -> None:

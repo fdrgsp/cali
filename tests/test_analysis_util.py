@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     create_stimulation_mask,
     get_overlap_roi_with_stimulated_area,
 )
@@ -400,7 +400,7 @@ def test_compute_fov_analysis_no_active_rois() -> None:
 
 def test_detect_population_bursts_basic() -> None:
     """Test basic population burst detection with spike trains."""
-    from cali.analysis._util import _detect_spikes_population_bursts
+    from cali.analysis._fov_metrics import _detect_spikes_population_bursts
 
     # Create spike trains with clear bursts
     # 3 ROIs, 200 frames, frame_rate=10 Hz
@@ -446,7 +446,7 @@ def test_detect_population_bursts_basic() -> None:
 
 def test_detect_population_bursts_no_bursts() -> None:
     """Test population burst detection with no bursts."""
-    from cali.analysis._util import _detect_spikes_population_bursts
+    from cali.analysis._fov_metrics import _detect_spikes_population_bursts
 
     # Create sparse spike trains that don't form population bursts
     spike_trains = []
@@ -482,7 +482,7 @@ def test_detect_population_bursts_no_bursts() -> None:
 
 def test_detect_population_bursts_insufficient_rois() -> None:
     """Test population burst detection with < 2 ROIs."""
-    from cali.analysis._util import _detect_spikes_population_bursts
+    from cali.analysis._fov_metrics import _detect_spikes_population_bursts
 
     spike_trains = [np.ones(100)]  # Only 1 ROI
 
@@ -513,7 +513,7 @@ def test_detect_population_bursts_insufficient_rois() -> None:
 
 def test_detect_population_bursts_min_duration_filter() -> None:
     """Test that short bursts are filtered by minimum duration."""
-    from cali.analysis._util import _detect_spikes_population_bursts
+    from cali.analysis._fov_metrics import _detect_spikes_population_bursts
 
     frame_rate = 10.0
     n_frames = 200
@@ -553,7 +553,7 @@ def test_detect_population_bursts_min_duration_filter() -> None:
 
 def test_detect_calcium_population_bursts_basic() -> None:
     """Test basic population burst detection with deconvolved df/f traces."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     # Create deconvolved df/f traces with clear bursts
     # 3 ROIs, 200 frames, frame_rate=10 Hz
@@ -594,7 +594,7 @@ def test_detect_calcium_population_bursts_basic() -> None:
 
 def test_detect_calcium_population_bursts_no_bursts() -> None:
     """Test calcium burst detection with no bursts."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     # Create traces with very brief activity that's filtered out by min_duration
     # The key is to have activity that's above threshold but too short to be a burst
@@ -633,7 +633,7 @@ def test_detect_calcium_population_bursts_no_bursts() -> None:
 
 def test_detect_calcium_population_bursts_insufficient_rois() -> None:
     """Test calcium burst detection with < 2 ROIs."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     dec_dff_traces = [np.ones(100)]  # Only 1 ROI
 
@@ -660,7 +660,7 @@ def test_detect_calcium_population_bursts_insufficient_rois() -> None:
 
 def test_detect_calcium_population_bursts_constant_activity() -> None:
     """Test calcium burst detection with brief spikes too short to be bursts."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     # Create traces with brief spikes that are too short after smoothing
     # At 10fps, 1 second = 10 frames, so min_duration=1000ms requires 10 frames
@@ -695,7 +695,7 @@ def test_detect_calcium_population_bursts_constant_activity() -> None:
 
 def test_detect_calcium_population_bursts_normalization() -> None:
     """Test that burst detection properly normalizes traces before thresholding."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     frame_rate = 10.0
     n_frames = 200
@@ -730,7 +730,7 @@ def test_detect_calcium_population_bursts_normalization() -> None:
 
 def test_detect_calcium_population_bursts_min_duration_filter() -> None:
     """Test that short calcium bursts are filtered by minimum duration."""
-    from cali.analysis._util import _detect_calcium_population_bursts
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     frame_rate = 10.0
     n_frames = 200
@@ -768,7 +768,7 @@ def test_detect_calcium_population_bursts_min_duration_filter() -> None:
 
 def test_detect_population_bursts_edge_cases() -> None:
     """Test population burst detection edge cases."""
-    from cali.analysis._util import _detect_spikes_population_bursts
+    from cali.analysis._fov_metrics import _detect_spikes_population_bursts
 
     frame_rate = 10.0
 

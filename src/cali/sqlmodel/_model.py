@@ -1708,6 +1708,10 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Peak height threshold used for this ROI (calculated)
     inferred_spikes_threshold : float | None
         Spike detection threshold used for this ROI (calculated)
+    inferred_spikes_frequency : float | None
+        Frequency of thresholded inferred spikes (Hz)
+    inferred_spikes_rising_edge_frequency : float | None
+        Frequency of thresholded inferred spikes rising edges (Hz)
     roi : ROI
         Parent ROI
     analysis_result : CaliResult
@@ -1737,6 +1741,8 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes_threshold: float | None = None
+    inferred_spikes_frequency: float | None = None
+    inferred_spikes_rising_edge_frequency: float | None = None
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")

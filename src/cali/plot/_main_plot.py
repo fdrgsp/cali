@@ -65,6 +65,9 @@ from ._single_wells_plots.metrics._plot_calcium_amplitudes_and_frequencies_data 
 )
 from ._single_wells_plots.metrics._plot_calcium_peaks_iei_data import _plot_iei_data
 from ._single_wells_plots.metrics._plot_cell_size import _plot_cell_size_data
+from ._single_wells_plots.metrics._plot_inferred_spikes_frequency_data import (
+    _plot_inferred_spikes_frequency_data,
+)
 from ._single_wells_plots.raster._plot_calcium_peaks_raster_plots import (
     _generate_intensity_heatmap,
     _generate_raster_plot,
@@ -349,7 +352,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Amplitude and Frequency Group
+# Calcium Amplitude and Frequency Group
 AnalysisProduct(
     name="Calcium Peaks Amplitudes (Deconvolved ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -376,6 +379,22 @@ AnalysisProduct(
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_iei_data,
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+
+# Inferred Spikes Amplitude and Frequency Group
+AnalysisProduct(
+    name="Inferred Spikes Thresholded Frequency",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes_frequency_data, rising_edge=False),
+    category="Inferred Spikes Frequency",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Inferred Spikes Thresholded Frequency (Rising Edges)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(_plot_inferred_spikes_frequency_data, rising_edge=True),
+    category="Inferred Spikes Frequency",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
@@ -904,6 +923,8 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     "Inferred Spikes Thresholded Normalized",
     "Inferred Spikes Thresholded (Active Only)",
     "Inferred Spikes Thresholded Normalized (Active Only)",
+    "Inferred Spikes Thresholded Frequency",
+    "Inferred Spikes Rising Edge Frequency",
 }
 
 
