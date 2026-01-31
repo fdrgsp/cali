@@ -1,14 +1,13 @@
 # TODO
 
-- fix csv export of analysis results
-
 - CaImAn
 
 - Cascade (instead of OASIS)
     - https://github.com/HelmchenLabSoftware/Cascade
     - https://www.scientifica.uk.com/learning-zone/how-to-compute-δf-f-from-calcium-imaging-data?utm_source=chatgpt.com
 
-ask to claude:
+
+
 
 - ‼ Multi-Plot ‼
 
@@ -30,3 +29,7 @@ ask to claude:
 
 - add stim vs non-stim calcium peaks raster
 - add sotrted stim vs non-stim calcium and spikes heatmap to plots
+
+- add clustering
+
+- refactor tests: too many, I think we can merge some of them, parametrized tests and remove (or move in the tests folder) all the function used in tests but not in the code

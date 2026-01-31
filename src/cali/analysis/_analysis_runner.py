@@ -19,14 +19,15 @@ from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import ROI, Traces
+from ._fov_metrics import get_overlap_roi_with_stimulated_area
 from ._trace_analysis import (
     calculate_frequency,
     calculate_inter_event_intervals,
     compute_calcium_peak_detection_thresholds,
     compute_inferred_spike_threshold,
+    count_thresholded_spike_events,
     detect_peaks_in_trace,
 )
-from ._util import get_overlap_roi_with_stimulated_area
 
 
 class AnalysisRunner:
@@ -324,12 +325,24 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return None
 
-        # Calculate frequency
+        # Calculate calcium event frequency
         frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
 
-        # Calculate IEI (convert from ms to sec)
+        # Calculate calcium event inter-event intervals (IEI)
         iei_ms = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
         iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
+
+        # Calculate inferred spike frequency
+        num_thresholded_spikes, num_rising_edges = count_thresholded_spike_events(
+            spikes_array, spike_detection_threshold
+        )
+        inferred_spikes_freq = calculate_frequency(num_thresholded_spikes, tot_time_sec)
+        # Only compute rising edge frequency if enabled
+        inferred_spikes_rising_edge_freq = None
+        if analysis_settings.enable_rising_edge_analysis:
+            inferred_spikes_rising_edge_freq = calculate_frequency(
+                num_rising_edges, tot_time_sec
+            )
 
         # Check if the ROI is stimulated (evoked experiments only)
         stimulated = False
@@ -364,6 +377,8 @@ class AnalysisRunner:
             peaks_prominence_dec_dff=peaks_prominence_dec_dff,
             peaks_height_dec_dff=peaks_height_dec_dff,
             inferred_spikes_threshold=spike_detection_threshold,
+            inferred_spikes_frequency=inferred_spikes_freq,
+            inferred_spikes_rising_edge_frequency=inferred_spikes_rising_edge_freq,
         )
 
         active = len(peaks_dec_dff) > 0
