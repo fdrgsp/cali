@@ -24,6 +24,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from superqt import QCollapsible
 from superqt.utils import signals_blocked
 
 from cali._constants import (
@@ -237,7 +238,14 @@ class _AnalysisGUI(QWidget):
         group_layout.addWidget(threads_wdg)
         group_layout.addWidget(n_processes_wdg)
         group_layout.addWidget(create_divider_line("Export Options"))
-        group_layout.addWidget(self._export_group)
+        export_collapsible = QCollapsible("Select the Data to Export as csv")
+        export_collapsible.setToolTip(
+            "Enable/disable export options and select which data types to export\n"
+            "as CSV files. Check the boxes for the data you want to save."
+        )
+        export_collapsible.layout().setContentsMargins(0, 0, 0, 0)
+        export_collapsible.addWidget(self._export_group)
+        group_layout.addWidget(export_collapsible)
         group_layout.addStretch(1)
         analysis_scroll_area.setWidget(group_wdg)
 

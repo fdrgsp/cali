@@ -349,7 +349,7 @@ class _ExportGroup(QGroupBox):
         self.setCheckable(True)
         self.setChecked(True)
         self.setStyleSheet("QGroupBox::title { font-size: 14px; }")
-        self.setTitle("Enable/Disable Export Options (as .csv)")
+        self.setTitle("Enable/Disable Export Options")
 
         self._checkboxes: dict[str, tuple[QCheckBox, int, int]] = {}
 
