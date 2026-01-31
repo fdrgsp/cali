@@ -2087,6 +2087,7 @@ class CaliGui(QMainWindow):
                     ExtractionSettingsData(
                         trace_extraction_data=TraceExtractionData(
                             dff_window_size=e_settings.dff_window,
+                            dff_percentile=e_settings.dff_percentile,
                             decay_constant=e_settings.decay_constant,
                             neuropil_inner_radius=e_settings.neuropil_inner_radius,
                             neuropil_min_pixels=e_settings.neuropil_min_pixels,

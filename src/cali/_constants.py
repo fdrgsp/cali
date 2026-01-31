@@ -99,6 +99,7 @@ DEFAULT_ENABLE_RISING_EDGE_ANALYSIS = False  # whether to compute CCG on rising 
 DEFAULT_NEUROPIL_INNER_RADIUS = 0
 DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
+DEFAULT_DFF_PERCENTILE = 10  # percentile for ΔF/F baseline calculation
 
 # ==================== Database ====================
 DEFAULT_CALI_DB_NAME = "results.cali"

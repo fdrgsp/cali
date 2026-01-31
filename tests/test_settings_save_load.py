@@ -68,6 +68,7 @@ def test_save_settings_creates_valid_json(
     trace_data = extraction["trace_extraction_data"]
     assert "decay_constant" in trace_data
     assert "dff_window_size" in trace_data
+    assert "dff_percentile" in trace_data
     assert "metadata_data" in extraction
     metadata_data = extraction["metadata_data"]
     assert "frame_rate" in metadata_data
@@ -98,6 +99,7 @@ def test_load_settings_restores_gui_state(
         "extraction": {
             "trace_extraction_data": {
                 "dff_window_size": 2500.0,
+                "dff_percentile": 15,
                 "decay_constant": 0.6,
                 "frame_rate": 25.0,
                 "neuropil_inner_radius": 4,
@@ -162,6 +164,7 @@ def test_load_settings_restores_gui_state(
     assert extraction_value.trace_extraction_data.frame_rate == 10.0
     assert extraction_value.trace_extraction_data.decay_constant == 0.6
     assert extraction_value.trace_extraction_data.dff_window_size == 2500.0
+    assert extraction_value.trace_extraction_data.dff_percentile == 15
 
     # Verify analysis settings
     assert analysis_value.calcium_peaks_data is not None
@@ -222,6 +225,10 @@ def test_save_and_load_roundtrip(
     assert (
         loaded_extraction.trace_extraction_data.decay_constant
         == original_extraction.trace_extraction_data.decay_constant
+    )
+    assert (
+        loaded_extraction.trace_extraction_data.dff_percentile
+        == original_extraction.trace_extraction_data.dff_percentile
     )
 
     # Check analysis settings
@@ -370,6 +377,7 @@ def test_load_settings_with_evoked_experiment_data(
         "extraction": {
             "trace_extraction_data": {
                 "dff_window_size": 3000.0,
+                "dff_percentile": 20,
                 "decay_constant": 0.4,
                 "frame_rate": 30.0,
                 "neuropil_inner_radius": 2,
@@ -430,3 +438,85 @@ def test_load_settings_with_evoked_experiment_data(
         loaded_analysis.experiment_type_data.stimulation_area_path.replace("\\", "/")
         == "/path/to/stim/mask.tif"
     )
+
+
+def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
+    """Test that selecting run loads all extraction, analysis, and detection
+    settings."""
+    # Use the test database which has runs with dff_percentile=10
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+
+    # Initialize the GUI from the test database
+    cali_gui._initialize_from_database(db_path, data_path)
+
+    # Set a different value first to verify it changes
+    from cali.gui._extraction_gui import (
+        ExtractionSettingsData,
+        MetadataData,
+        TraceExtractionData,
+    )
+
+    cali_gui._extraction_wdg.setValue(
+        ExtractionSettingsData(
+            trace_extraction_data=TraceExtractionData(
+                dff_window_size=5000.0,
+                dff_percentile=50,  # Different from the db value
+                decay_constant=1.0,
+            ),
+            metadata_data=MetadataData(frame_rate=20.0),
+        )
+    )
+
+    # Verify the value was set
+    assert cali_gui._extraction_wdg.value().trace_extraction_data.dff_percentile == 50
+
+    # Simulate selecting run 1 (which has dff_percentile=10)
+    cali_gui._on_run_item_selected(1)
+
+    # Verify all extraction settings were loaded from the database
+    extraction_value = cali_gui._extraction_wdg.value()
+    assert extraction_value.trace_extraction_data is not None
+    assert extraction_value.trace_extraction_data.dff_percentile == 10
+    assert extraction_value.trace_extraction_data.dff_window_size == 10000.0
+    assert extraction_value.trace_extraction_data.decay_constant == 0.0
+    assert extraction_value.trace_extraction_data.neuropil_inner_radius == 2
+    assert extraction_value.trace_extraction_data.neuropil_min_pixels == 200
+    assert extraction_value.trace_extraction_data.neuropil_correction_factor == 0.6
+    assert extraction_value.metadata_data is not None
+    assert extraction_value.metadata_data.frame_rate == 10.0
+    assert extraction_value.metadata_data.pixel_size == 0.65
+    assert extraction_value.threads == 3
+
+    # Verify all analysis settings were loaded from the database
+    analysis_value = cali_gui._analysis_wdg.value()
+    assert analysis_value.calcium_peaks_data is not None
+    assert analysis_value.calcium_peaks_data.peaks_height == 2.0
+    assert analysis_value.calcium_peaks_data.peaks_height_mode == "multiplier"
+    assert analysis_value.calcium_peaks_data.peaks_distance == 200.0
+    assert analysis_value.calcium_peaks_data.peaks_prominence_multiplier == 1.0
+    assert analysis_value.calcium_peaks_data.burst_threshold == 50.0
+    assert analysis_value.calcium_peaks_data.burst_min_duration == 100.0
+    assert analysis_value.calcium_peaks_data.burst_blur_sigma == 0.01
+    assert analysis_value.spikes_data is not None
+    assert analysis_value.spikes_data.spike_threshold == 1.0
+    assert analysis_value.spikes_data.spike_threshold_mode == "multiplier"
+    assert analysis_value.spikes_data.burst_threshold == 50.0
+    assert analysis_value.spikes_data.burst_min_duration == 100.0
+    assert analysis_value.spikes_data.burst_blur_sigma == 0.01
+    assert analysis_value.spikes_data.synchrony_lag == 500.0
+    assert analysis_value.experiment_type_data is not None
+    assert analysis_value.experiment_type_data.experiment_type == "Evoked Activity"
+    assert analysis_value.experiment_type_data.led_power_equation == ""
+    assert analysis_value.experiment_type_data.led_pulse_duration == 100.0
+    assert analysis_value.experiment_type_data.led_pulse_powers == [2.0, 4.0, 6.0]
+    assert analysis_value.experiment_type_data.led_pulse_on_frames == [3, 53, 103]
+    expected_path = (
+        "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/"
+        "stimulation_mask.tif"
+    )
+    assert (
+        analysis_value.experiment_type_data.stimulation_area_path.replace("\\", "/")
+        == expected_path
+    )
+    assert analysis_value.threads == 3

@@ -620,6 +620,7 @@ class ExtractionRunner:
                 roi_trace,
                 window_ms=extraction_settings.dff_window,
                 frame_rate=frame_rate,
+                percentile=extraction_settings.dff_percentile,
             )
 
         # Check for cancellation after DFF calculation
