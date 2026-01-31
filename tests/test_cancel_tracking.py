@@ -20,7 +20,7 @@ from cali.sqlmodel import (
     Experiment,
     ExtractionSettings,
 )
-from tests.test_runners import create_mock_fov
+from tests.conftest import create_mock_fov
 
 
 def test_cancel_between_detection_and_extraction(

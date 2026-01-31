@@ -20,7 +20,7 @@ from cali.sqlmodel import (
     ExtractionSettings,
     Traces,
 )
-from tests.test_runners import create_mock_fov
+from tests.conftest import create_mock_fov
 
 
 def test_cancel_mid_position_roi_processing(
