@@ -12,7 +12,7 @@ The implementation uses:
 import numpy as np
 import pytest
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     _compute_baseline_corrected_ccg,
     _compute_ccg_vector,
     _summarize_ccg_near_zero,

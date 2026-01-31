@@ -179,6 +179,86 @@ def calculate_frequency(
     return None
 
 
+def threshold_spike_train(
+    spikes: np.ndarray,
+    threshold: float,
+) -> np.ndarray:
+    """Create binary spike train by thresholding continuous spike trace.
+
+    Parameters
+    ----------
+    spikes : np.ndarray
+        Continuous spike trace (e.g., from OASIS deconvolution)
+    threshold : float
+        Spike detection threshold
+
+    Returns
+    -------
+    np.ndarray
+        Binary spike train (1.0 where spike > threshold, 0.0 elsewhere)
+    """
+    spikes_binary = spikes.copy()
+    spikes_binary[spikes_binary <= threshold] = 0.0
+    return (spikes_binary > 0.0).astype(float)
+
+
+def compute_rising_edges(
+    spike_train: np.ndarray,
+) -> np.ndarray:
+    """Compute rising edges from a binary spike train.
+
+    Detects transitions from 0 to positive values (below to above threshold).
+
+    Parameters
+    ----------
+    spike_train : np.ndarray
+        Binary spike train (from threshold_spike_train)
+
+    Returns
+    -------
+    np.ndarray
+        Binary array with 1.0 at rising edges, 0.0 elsewhere
+    """
+    positive_vals = spike_train > 0
+    rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
+    spike_train_rising_edges = np.zeros_like(spike_train, dtype=float)
+    spike_train_rising_edges[rising] = 1.0
+    return spike_train_rising_edges
+
+
+def count_thresholded_spike_events(
+    spikes: np.ndarray,
+    threshold: float,
+) -> tuple[int, int]:
+    """Count thresholded spike events and rising edges.
+
+    This function counts both the number of frames where spike values exceed
+    the threshold (thresholded spikes) and the number of rising edge events
+    (transitions from below to above threshold).
+
+    Parameters
+    ----------
+    spikes : np.ndarray
+        Continuous spike trace (e.g., from OASIS deconvolution)
+    threshold : float
+        Spike detection threshold
+
+    Returns
+    -------
+    tuple[int, int]
+        (num_thresholded_frames, num_rising_edges)
+        - num_thresholded_frames: Number of frames where spike > threshold
+        - num_rising_edges: Number of transitions from below to above threshold
+    """
+    spike_train = threshold_spike_train(spikes, threshold)
+    num_thresholded = int(np.sum(spike_train > 0))
+
+    rising_edges = compute_rising_edges(spike_train)
+    num_rising_edges = int(np.sum(rising_edges))
+
+    return num_thresholded, num_rising_edges
+
+
 def calculate_inter_event_intervals(
     peak_indices: np.ndarray,
     elapsed_time_list: list[float],

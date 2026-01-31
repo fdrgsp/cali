@@ -23,13 +23,17 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     _compute_baseline_corrected_ccg_numba,
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
     _detect_spikes_population_bursts,
     _get_spike_synchrony,
     _jitter_window_synchrony_numba,
+)
+from cali.analysis._trace_analysis import (
+    compute_rising_edges,
+    threshold_spike_train,
 )
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOVAnalysis
@@ -162,17 +166,12 @@ def _extract_fov_data(
             )
 
             if spike_threshold is not None:
-                spikes_binary = spikes.copy()
-                spikes_binary[spikes_binary <= spike_threshold] = 0.0
-                spike_train = (spikes_binary > 0.0).astype(float)
+                spike_train = threshold_spike_train(spikes, spike_threshold)
                 spike_trains.append(spike_train)
                 spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
                 # Compute rising edges
-                positive_vals = spike_train > 0
-                rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
-                spike_train_rising_edges = np.zeros_like(spike_train, dtype=float)
-                spike_train_rising_edges[rising] = 1.0
+                spike_train_rising_edges = compute_rising_edges(spike_train)
                 spike_data_dict_rising_edges[str(roi.label_value)] = (
                     spike_train_rising_edges.tolist()
                 )
@@ -339,7 +338,7 @@ def compute_fov_analysis_parallel(
 
         else:
             # Sequential computation for small FOVs
-            from cali.analysis._util import _get_spike_correlations_matrix
+            from cali.analysis._fov_metrics import _get_spike_correlations_matrix
 
             (
                 spike_max_lag_corr_matrix,
@@ -371,7 +370,7 @@ def compute_fov_analysis_parallel(
             analysis_settings.enable_rising_edge_analysis
             and len(spike_data_dict_rising_edges) >= 2
         ):
-            from cali.analysis._util import _get_spike_correlations_matrix
+            from cali.analysis._fov_metrics import _get_spike_correlations_matrix
 
             (
                 spike_max_lag_corr_matrix_rising_edges,
