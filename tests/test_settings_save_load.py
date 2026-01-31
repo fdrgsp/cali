@@ -98,7 +98,7 @@ def test_load_settings_restores_gui_state(
         },
         "extraction": {
             "trace_extraction_data": {
-                "dff_window_size": 2500.0,
+                "dff_window_size": 2.5,
                 "dff_percentile": 15,
                 "decay_constant": 0.6,
                 "frame_rate": 25.0,
@@ -163,7 +163,7 @@ def test_load_settings_restores_gui_state(
     assert extraction_value.trace_extraction_data is not None
     assert extraction_value.trace_extraction_data.frame_rate == 10.0
     assert extraction_value.trace_extraction_data.decay_constant == 0.6
-    assert extraction_value.trace_extraction_data.dff_window_size == 2500.0
+    assert extraction_value.trace_extraction_data.dff_window_size == 2.5
     assert extraction_value.trace_extraction_data.dff_percentile == 15
 
     # Verify analysis settings
@@ -376,7 +376,7 @@ def test_load_settings_with_evoked_experiment_data(
         },
         "extraction": {
             "trace_extraction_data": {
-                "dff_window_size": 3000.0,
+                "dff_window_size": 3.0,
                 "dff_percentile": 20,
                 "decay_constant": 0.4,
                 "frame_rate": 30.0,
@@ -460,7 +460,7 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
     cali_gui._extraction_wdg.setValue(
         ExtractionSettingsData(
             trace_extraction_data=TraceExtractionData(
-                dff_window_size=5000.0,
+                dff_window_size=5.0,
                 dff_percentile=50,  # Different from the db value
                 decay_constant=1.0,
             ),
@@ -478,7 +478,7 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
     extraction_value = cali_gui._extraction_wdg.value()
     assert extraction_value.trace_extraction_data is not None
     assert extraction_value.trace_extraction_data.dff_percentile == 10
-    assert extraction_value.trace_extraction_data.dff_window_size == 10000.0
+    assert extraction_value.trace_extraction_data.dff_window_size == 10.0
     assert extraction_value.trace_extraction_data.decay_constant == 0.0
     assert extraction_value.trace_extraction_data.neuropil_inner_radius == 2
     assert extraction_value.trace_extraction_data.neuropil_min_pixels == 200

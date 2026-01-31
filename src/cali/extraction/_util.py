@@ -6,7 +6,7 @@ from numba import njit
 
 def calculate_dff(
     data: np.ndarray,
-    window_ms: float = 500,
+    window_sec: float = 10,
     frame_rate: float = 10.0,
     percentile: int = 10,
 ) -> np.ndarray:
@@ -16,9 +16,9 @@ def calculate_dff(
     ----------
     data : np.ndarray
         Array representing the fluorescence trace.
-    window_ms : float
-        Size of the moving window for the background calculation in milliseconds.
-        Default is 10000 ms (10 seconds).
+    window_sec : float
+        Size of the moving window for the background calculation in seconds.
+        Default is 10.0 seconds.
     frame_rate : float
         Acquisition frame rate in frames per second.
         Default is 10.0 fps (100ms exposure time).
@@ -30,10 +30,9 @@ def calculate_dff(
     np.ndarray
         Array representing the delta F/F.
     """
-    # Convert window from milliseconds to frames
-    # window_ms / 1000 = window_sec
+    # Convert window from seconds to frames
     # window_sec * frame_rate = window_frames
-    window_frames = int((window_ms / 1000.0) * frame_rate)
+    window_frames = int(window_sec * frame_rate)
     # Ensure at least 1 frame
     window_frames = max(1, window_frames)
 

@@ -926,7 +926,7 @@ class ExtractionSettings(SQLModel, table=True):
     decay_constant : float
         Decay constant for deconvolution (seconds)
     dff_window : int
-        Window size for ΔF/F baseline calculation (milliseconds)
+        Window size for ΔF/F baseline calculation (seconds)
     dff_percentile : int
         Percentile for ΔF/F baseline calculation (0-100, default: 10)
     frame_rate : float
@@ -945,7 +945,7 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor: float = 0.0
 
     decay_constant: float = 0.0
-    dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
+    dff_window: float = DEFAULT_DFF_WINDOW  # seconds
     dff_percentile: int = DEFAULT_DFF_PERCENTILE  # percentile for ΔF/F baseline
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
     pixel_size: float | None = None  # pixel size in micrometers (µm)

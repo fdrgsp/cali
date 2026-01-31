@@ -618,7 +618,7 @@ class ExtractionRunner:
         with _NUMBA_LOCK:
             dff = calculate_dff(
                 roi_trace,
-                window_ms=extraction_settings.dff_window,
+                window_sec=extraction_settings.dff_window,
                 frame_rate=frame_rate,
                 percentile=extraction_settings.dff_percentile,
             )

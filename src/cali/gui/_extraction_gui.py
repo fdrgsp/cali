@@ -76,7 +76,7 @@ class NeuropilData:
 class TraceExtractionData:
     """Data structure to hold the trace extraction settings."""
 
-    dff_window_size: float = DEFAULT_DFF_WINDOW  # milliseconds
+    dff_window_size: float = DEFAULT_DFF_WINDOW  # seconds
     dff_percentile: int = DEFAULT_DFF_PERCENTILE  # percentile for baseline
     decay_constant: float = 0.0  # seconds
     frame_rate: float = DEFAULT_FRAME_RATE  # frames per second
@@ -387,7 +387,7 @@ class _TraceExtractionWidget(QWidget):
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
         self._dff_wdg.setToolTip(
-            "Sliding Window Size for ΔF/F₀ Baseline (milliseconds)\n\n"
+            "Sliding Window Size for ΔF/F₀ Baseline (seconds)\n\n"
             "Controls the duration of the sliding window used to estimate the baseline "
             "fluorescence F₀ for ΔF/F₀ computation in single-photon calcium imaging."
             "\n\nHow the baseline is computed:\n"
@@ -396,22 +396,21 @@ class _TraceExtractionWidget(QWidget):
             " the baseline F₀\n"
             "• ΔF/F₀ is calculated as: (F - F₀) / F₀\n\n"
             "Choosing the window size:\n"
-            "• Large windows (10000-60000 ms): Very stable baseline; best for "
+            "• Large windows (10-60 s): Very stable baseline; best for "
             "recordings with slow drift or bleaching\n"
-            "• Medium windows (5000-15000 ms): Good all-purpose choice; follows "
+            "• Medium windows (5-15 s): Good all-purpose choice; follows "
             "baseline variations without tracking individual transients too closely\n"
-            "• Small windows (<2000 ms): Baseline begins to follow the activity itself,"
+            "• Small windows (<2 s): Baseline begins to follow the activity itself,"
             " which can reduce ΔF/F₀ amplitude and distort transients; not recommended"
             " in most cases\n\n"
-            "Recommended default: 5000-10000 ms (5-10 seconds), depending on frame rate"
-            " and expected drift. Default: 10000 ms (15 seconds)"
+            "Default: 10 seconds"
         )
         self._dff_lbl = QLabel("ΔF/F0 Window:", self._dff_wdg)
         self._dff_lbl.setSizePolicy(*FIXED)
         self._dff_window_size_spin = QDoubleSpinBox(self._dff_wdg)
-        self._dff_window_size_spin.setSuffix(" ms")
-        self._dff_window_size_spin.setRange(0.1, 1000000)
-        self._dff_window_size_spin.setSingleStep(100)
+        self._dff_window_size_spin.setSuffix(" s")
+        self._dff_window_size_spin.setRange(0.1, 1000)
+        self._dff_window_size_spin.setSingleStep(1)
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         dff_layout = QHBoxLayout(self._dff_wdg)
         dff_layout.setContentsMargins(0, 0, 0, 0)
@@ -426,7 +425,8 @@ class _TraceExtractionWidget(QWidget):
             "Specifies which percentile of fluorescence values within the sliding "
             "window is used as the baseline F₀ for ΔF/F₀ computation.\n\n"
             "How the baseline is computed:\n"
-            "• A centered sliding window is taken around each timepoint\n"
+            "• A centered sliding window is taken around each timepoint (based on the "
+            "window size parameter)\n"
             "• The Nth percentile of fluorescence values within that window is used as"
             " the baseline F₀\n"
             "• ΔF/F₀ is calculated as: (F - F₀) / F₀\n\n"
@@ -436,8 +436,7 @@ class _TraceExtractionWidget(QWidget):
             "frequent calcium transients.\n"
             "• Higher percentiles (20-50): Baseline follows activity more closely; may "
             "underestimate ΔF/F₀ if there is sustained activity.\n\n"
-            "Recommended default: 10 (10th percentile) - balances robustness to "
-            "transients while tracking slow baseline drift."
+            "Default: 10 (10th percentile)."
         )
         self._dff_percentile_lbl = QLabel("ΔF/F0 Percentile:", self._dff_percentile_wdg)
         self._dff_percentile_lbl.setSizePolicy(*FIXED)
