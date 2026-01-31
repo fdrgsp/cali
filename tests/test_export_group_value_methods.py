@@ -4,45 +4,44 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from cali._constants import DFF_TRACES, NEUROPIL_TRACES, RAW_CALCIUM_TRACES
 from cali.gui._util import _ExportGroup
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
-    pass
 
-
-def test_export_group_add_stretch_vertical(qtbot: QtBot) -> None:
-    """Test add_stretch with vertical direction."""
+@pytest.mark.parametrize(
+    ("direction", "check_attr", "get_count_method"),
+    [
+        ("vertical", "rowStretch", "rowCount"),
+        ("horizontal", "columnStretch", "columnCount"),
+    ],
+)
+def test_export_group_add_stretch(
+    qtbot: QtBot, direction: str, check_attr: str, get_count_method: str
+) -> None:
+    """Test add_stretch with different directions."""
     widget = _ExportGroup("Test Export")
     qtbot.addWidget(widget)
 
     # Add some options first
-    widget.add_option("Option 1", 0, 0)
-    widget.add_option("Option 2", 1, 0)
+    if direction == "vertical":
+        widget.add_option("Option 1", 0, 0)
+        widget.add_option("Option 2", 1, 0)
+    else:
+        widget.add_option("Option 1", 0, 0)
+        widget.add_option("Option 2", 0, 1)
 
-    # Add vertical stretch
-    widget.add_stretch("vertical")
+    # Add stretch
+    widget.add_stretch(direction)
 
-    # Check that stretch was added to last row
-    assert widget._layout.rowStretch(widget._layout.rowCount() - 1) == 1
-
-
-def test_export_group_add_stretch_horizontal(qtbot: QtBot) -> None:
-    """Test add_stretch with horizontal direction."""
-    widget = _ExportGroup("Test Export")
-    qtbot.addWidget(widget)
-
-    # Add some options first
-    widget.add_option("Option 1", 0, 0)
-    widget.add_option("Option 2", 0, 1)
-
-    # Add horizontal stretch
-    widget.add_stretch("horizontal")
-
-    # Check that stretch was added to last column
-    assert widget._layout.columnStretch(widget._layout.columnCount() - 1) == 1
+    # Check that stretch was added to last row/column
+    count = getattr(widget._layout, get_count_method)()
+    stretch_value = getattr(widget._layout, check_attr)(count - 1)
+    assert stretch_value == 1
 
 
 def test_export_group_value_returns_state(qtbot: QtBot) -> None:
