@@ -96,67 +96,7 @@ def verify_mask_fields(
     assert mask.width == expected_dims[1], f"width should be {expected_dims[1]}"
 
 
-def create_mock_fov(
-    position_index: int = 0, num_rois: int = 3, name: str | None = None
-) -> FOV:
-    """Create a mock FOV with ROIs for testing without running cellpose."""
-    if name is None:
-        # Default naming - use actual test data names
-        name = "B5_0000" if position_index == 0 else "B6_0000"
-    fov = FOV(position_index=position_index, name=name)
-
-    rois = []
-    for i in range(1, num_rois + 1):
-        # Create a simple circular mask matching dataset dims (256x256)
-        mask_data = np.zeros((256, 256), dtype=np.uint8)
-        cy, cx = 50 + i * 20, 50 + i * 20
-        y, x = np.ogrid[:256, :256]
-        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
-        mask_data[mask_region] = 1
-
-        # Get coordinates from mask
-        coords = np.where(mask_data)
-        coords_y = coords[0].tolist()
-        coords_x = coords[1].tolist()
-
-        mask = Mask(
-            mask_type="roi",
-            coords_y=coords_y,
-            coords_x=coords_x,
-            height=256,
-            width=256,
-        )
-
-        roi = ROI(
-            label_value=i,
-            roi_mask=mask,
-        )
-        rois.append(roi)
-
-    fov.rois = rois
-    return fov
-
-
-@pytest.fixture
-def mock_detection_runner() -> Generator[MagicMock, None, None]:
-    """Fixture that patches DetectionRunner to return mock FOVs quickly."""
-    with patch(
-        "cali.detection._detection_runner.DetectionRunner._run_cellpose"
-    ) as mock:
-
-        def mock_detection(
-            dataset: Any,
-            detection_settings: Any,
-            position_indices: list[int],
-            *args: Any,
-            **kwargs: Any,
-        ) -> Iterator[FOV]:
-            for pos_idx in position_indices:
-                yield create_mock_fov(pos_idx)
-
-        mock.side_effect = mock_detection
-        print("👺 Using mocked DetectionRunner")
-        yield mock
+# Note: create_mock_fov and mock_detection_runner are provided by conftest.py
 
 
 @pytest.fixture(autouse=True)

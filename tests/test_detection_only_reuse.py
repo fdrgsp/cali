@@ -1,82 +1,19 @@
 """Test detection-only runs update existing results instead of creating new ones."""
 
-from collections.abc import Generator, Iterator
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 from sqlmodel import Session, create_engine, select
 
 from cali.runner import CaliRunner
 from cali.sqlmodel import (
-    FOV,
-    ROI,
     AnalysisSettings,
     CaliResult,
     DetectionSettings,
     Experiment,
     ExtractionSettings,
-    Mask,
 )
-
-
-def create_mock_fov(
-    position_index: int = 0, num_rois: int = 3, name: str | None = None
-) -> FOV:
-    """Create a mock FOV with ROIs for testing without running cellpose."""
-    if name is None:
-        name = "B5_0000" if position_index == 0 else "B6_0000"
-    fov = FOV(position_index=position_index, name=name)
-
-    rois = []
-    for i in range(1, num_rois + 1):
-        mask_data = np.zeros((256, 256), dtype=np.uint8)
-        cy, cx = 50 + i * 20, 50 + i * 20
-        y, x = np.ogrid[:256, :256]
-        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
-        mask_data[mask_region] = 1
-
-        coords = np.where(mask_data)
-        coords_y = coords[0].tolist()
-        coords_x = coords[1].tolist()
-
-        mask = Mask(
-            mask_type="roi",
-            coords_y=coords_y,
-            coords_x=coords_x,
-            height=256,
-            width=256,
-        )
-
-        # Use placeholder fov_id=0, will be set by commit_fov_result
-        roi = ROI(label_value=i, roi_mask=mask, fov_id=0)
-        rois.append(roi)
-
-    fov.rois = rois
-    return fov
-
-
-@pytest.fixture
-def mock_detection_runner() -> Generator[MagicMock, None, None]:
-    """Fixture that patches DetectionRunner to return mock FOVs quickly."""
-    with patch(
-        "cali.detection._detection_runner.DetectionRunner._run_cellpose"
-    ) as mock:
-
-        def mock_detection(
-            dataset: Any,
-            detection_settings: Any,
-            position_indices: list[int],
-            *args: Any,
-            **kwargs: Any,
-        ) -> Iterator[FOV]:
-            for pos_idx in position_indices:
-                yield create_mock_fov(pos_idx)
-
-        mock.side_effect = mock_detection
-        yield mock
 
 
 @pytest.fixture
@@ -177,9 +114,10 @@ def test_detection_only_reuses_existing_result(
 
         result = results[0]
         assert result.id == run_1_id, "Result ID should remain the same"
-        assert result.positions_detected == [0, 1], (
-            f"Expected positions_detected=[0, 1], got {result.positions_detected}"
-        )
+        assert result.positions_detected == [
+            0,
+            1,
+        ], f"Expected positions_detected=[0, 1], got {result.positions_detected}"
         # Settings should remain unchanged
         assert result.detection_settings_id is not None
         assert result.extraction_settings_id is not None
