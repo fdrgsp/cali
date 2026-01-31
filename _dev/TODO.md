@@ -32,4 +32,4 @@
 
 - add clustering
 
-- refactor tests: too many, I think we can merge some of them, parametrized tests and remove (or move in the tests folder) all the function used in tests but not in the code
+- test more gui stuff

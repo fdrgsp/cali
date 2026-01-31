@@ -4,9 +4,7 @@ import useq
 from sqlalchemy import create_engine
 
 from cali.sqlmodel import load_analysis_from_json
-from cali.sqlmodel._visualize_experiment import (
-    print_cali_results,
-)
+from cali.sqlmodel._visualize_experiment import print_cali_results
 
 # Set paths for data, labels, and analysis directory
 data_path = "tests/test_data/evoked/evk.tensorstore.zarr"

@@ -31,10 +31,7 @@ from cali.sqlmodel import (
 from cali.util import load_fovs_from_database, update_fovs_in_database
 from cali.util._util import load_data_from_path
 
-dataset_path = (
-    "/Volumes/T7 Shield/for FG/TSC_hSynLAM77_ACTX250730_D36/"
-    "TSC_hSynLAM77_ACTX250730_D36_DIV54_250923_jRCaMP1b_Spt.tensorstore.zarr"
-)
+dataset_path = "tests/test_data/evoked/evk.tensorstore.zarr"
 db_path = Path("manual_run.cali")
 
 # Clean up previous run for this example
@@ -53,7 +50,6 @@ engine = create_engine(
 )
 
 # set the positions (fovs) to process
-# positions_to_process = [17, 18]
 data = load_data_from_path(dataset_path)
 assert data is not None
 assert data.sequence is not None
@@ -61,11 +57,7 @@ positions_to_process = list(range(len(data.sequence.stage_positions)))
 
 # detection -----------------------------------------------------------------------
 detection_runner = DetectionRunner()
-detection_settings = DetectionSettings(
-    method="cellpose",
-    model_type="custom",
-    custom_model="/Users/fdrgsp/Documents/git/cali/src/cali/detection/cellpose_models/cp3_img8_epoch7000_py",
-)
+detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
 for fov in detection_runner.run(
     dataset=data,
     detection_settings=detection_settings,
