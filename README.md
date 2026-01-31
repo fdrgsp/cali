@@ -102,7 +102,7 @@ Hovering over each parameter in the Detection, Extraction, and Analysis tabs sho
 
 The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Currently, only **Cellpose** is supported as the segmentation method. The user can set Cellpose parameters and run the segmentation.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 19 AM" src="https://github.com/user-attachments/assets/d4a9a17f-6688-4d90-a0ce-d71f86033750" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
 
 #### Extraction Tab
 
@@ -116,7 +116,7 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 26 AM" src="https://github.com/user-attachments/assets/a93c48e6-f688-41f9-ab79-75d008e366b6" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 12 PM" src="https://github.com/user-attachments/assets/639a7c5a-84e1-4f9c-8fc4-c99bff962094" />
 
 #### Analysis Tab
 
@@ -129,7 +129,7 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 - **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 30 AM" src="https://github.com/user-attachments/assets/4c8c5080-dae1-450c-95f3-c9d90b81ba2f" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 21 PM" src="https://github.com/user-attachments/assets/fe17ae9b-410f-4579-b532-1342a0598ca1" />
 
 ### Run the Pipeline
 
