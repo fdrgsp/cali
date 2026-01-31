@@ -391,7 +391,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes Rising Edge Frequency",
+    name="Inferred Spikes Thresholded Frequency (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_inferred_spikes_frequency_data, rising_edge=True),
     category="Inferred Spikes Frequency",
