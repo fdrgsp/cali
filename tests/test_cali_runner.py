@@ -35,8 +35,7 @@ from cali.sqlmodel import (
 from cali.util import load_data_from_path
 
 THREADS = 1
-MODEL = "cpsam"  # cellpose4
-# MODEL = "cyto3"  # cellpose3
+MODEL = "cpsam"
 
 
 def create_stimulation_mask_file(tmp_path: Path, name: str = "stim_mask.tif") -> Path:

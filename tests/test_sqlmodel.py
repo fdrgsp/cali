@@ -2443,3 +2443,44 @@ def test_save_experiment_to_database_overwrite(tmp_path: Path) -> None:
     loaded = load_experiment_from_database(_get_actual_db_path(db_path))
     assert loaded is not None
     assert loaded.name == "Test2"
+
+
+def test_cali_result_equality_and_hash() -> None:
+    """Test that CaliResult equality and hash include position fields."""
+    result1 = CaliResult(
+        experiment=1,
+        detection_settings_id=1,
+        extraction_settings_id=None,
+        analysis_settings_id=None,
+        positions_detected=[0, 1],
+        positions_extracted=None,
+        positions_analyzed=None,
+    )
+
+    result2 = CaliResult(
+        experiment=1,
+        detection_settings_id=1,
+        extraction_settings_id=None,
+        analysis_settings_id=None,
+        positions_detected=[0, 1],
+        positions_extracted=None,
+        positions_analyzed=None,
+    )
+
+    result3 = CaliResult(
+        experiment=1,
+        detection_settings_id=1,
+        extraction_settings_id=None,
+        analysis_settings_id=None,
+        positions_detected=[0, 1, 2],  # Different
+        positions_extracted=None,
+        positions_analyzed=None,
+    )
+
+    # Same positions should be equal
+    assert result1 == result2
+    assert hash(result1) == hash(result2)
+
+    # Different positions should not be equal
+    assert result1 != result3
+    assert hash(result1) != hash(result3)
