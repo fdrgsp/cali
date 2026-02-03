@@ -196,14 +196,14 @@ If the plate was treated with different conditions (e.g. drug vs control), click
 
 **Calculation**:
 
-$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$
+$$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$$
 
 where:
 
-- \(F(t)\) is the raw fluorescence at time \(t\)
-- \(F_0(t)\) is the baseline fluorescence estimated from a sliding window
+- $F(t)$ is the raw fluorescence at time $t$
+- $F_0(t)$ is the baseline fluorescence estimated from a sliding window
 
-The baseline \(F_0(t)\) is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
+The baseline $F_0(t)$ is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
 
 **GUI Parameters**:
 
@@ -222,7 +222,7 @@ For each ROI, `OASIS` is used to:
 **GUI Parameters**  
 Currently, only the following parameter is exposed in the GUI:
 
-- **Decay Constant** (\(\tau\), seconds): calcium decay time constant (depends on the calcium indicator and cell type).
+- **Decay Constant** ($\tau$, seconds): calcium decay time constant (depends on the calcium indicator and cell type).
   - If set to **0 (auto)**, `OASIS` estimates it from the data.
 
 All other `OASIS` parameters are currently kept at default values:
@@ -327,7 +327,7 @@ Two modes are available:
 **Calculation** (population-level, based on binary spike trains):
 
 1. **Population Spike Rate**: compute the fraction of active ROIs per frame.
-2. **Smoothing**: apply a Gaussian filter with standard deviation \(σ\) (optional).
+2. **Smoothing**: apply a Gaussian filter with standard deviation $\sigma$ (optional).
 3. **Threshold**: detect periods where the smoothed population rate exceeds a percentage threshold.
 4. **Duration Filter**: retain bursts that last at least a minimum duration.
 
@@ -355,7 +355,7 @@ Two modes are available:
 1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
 2. **Z-score normalization**: Each trace is transformed to have zero mean and unit variance:
 
-   $z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$
+   $$z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$$
 
    where $x_i(t)$ is the raw ΔF/F value at time $t$, $\bar{x}_i$ is the mean, and $\sigma_i$ is the standard deviation.
 
@@ -389,7 +389,7 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
 2. **Per-trigger probability normalization**: For each lag τ, compute:
 
-   $CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$
+   $$CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$$
 
    This is calculated as the count of coincidences at lag τ divided by the number of reference spikes in neuron i.
 
@@ -416,14 +416,14 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
    **Computing the baseline:**
    We repeat this process multiple times (configurable, default 20 shuffles), each time shifting by a different random amount:
-   - **Baseline mean ($\mu_{baseline}$)**: Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
-   - **Baseline std ($\sigma_{baseline}$)**: Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
+   - **Baseline mean** ($\mu_{baseline}$): Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
+   - **Baseline std** ($\sigma_{baseline}$): Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
 
    *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 20 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
 5. **Z-score calculation**: Using the baseline from step 4, we compute statistical significance:
 
-   $z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$
+   $$z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$$
 
    The z-score tells us how many standard deviations the observed CCG is above (or below) the null model expectation:
    - **z > 2**: The observed spike coincidence is significantly *higher* than expected from co-modulation alone → suggests excitatory functional connectivity
@@ -474,7 +474,9 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
    - $C_{i \to j}$: coincidences found starting from spikes in $i$
    - $C_{j \to i}$: coincidences found starting from spikes in $j$
 6. Combine and normalize:
-   $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
+
+   $$S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$$
+
    where $N_i$ and $N_j$ are the total number of spikes in neurons $i$ and $j$, respectively.
 
 This yields a synchrony score between 0 and 1:
