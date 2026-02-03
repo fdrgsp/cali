@@ -90,6 +90,9 @@ def compute_fov_analysis(
     dff_traces: list[np.ndarray] = []
     dec_dff_traces: list[np.ndarray] = []
     spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
+    calcium_peak_events: list[
+        np.ndarray
+    ] = []  # Binary calcium peaks for burst detection
     peak_events_dict: dict[str, list[float]] = {}
     spike_data_dict: dict[str, list[float]] = {}
     spike_data_dict_rising_edges: dict[str, list[float]] = {}
@@ -135,6 +138,7 @@ def compute_fov_analysis(
             for idx in peak_indices:
                 if 0 <= idx < len(peak_array):
                     peak_array[idx] = 1.0
+            calcium_peak_events.append(peak_array)  # For burst detection
             peak_events_dict[str(roi.label_value)] = peak_array.tolist()
 
         # Build spike data for inferred spikes
@@ -319,7 +323,7 @@ def compute_fov_analysis(
     calcium_population_activity: np.ndarray | None = None
     calcium_population_activity_raw: np.ndarray | None = None
 
-    if len(dec_dff_traces) >= 2:
+    if len(calcium_peak_events) >= 2:
         (
             calcium_burst_count,
             calcium_burst_avg_duration,
@@ -329,7 +333,7 @@ def compute_fov_analysis(
             calcium_population_activity,
             calcium_population_activity_raw,
         ) = _detect_calcium_population_bursts(
-            dec_dff_traces=dec_dff_traces,
+            peak_events=calcium_peak_events,
             frame_rate=analysis_settings.frame_rate,
             burst_threshold_percent=analysis_settings.calcium_burst_threshold,
             min_duration_ms=analysis_settings.calcium_burst_min_duration,

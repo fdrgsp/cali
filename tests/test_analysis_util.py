@@ -552,22 +552,22 @@ def test_detect_population_bursts_min_duration_filter() -> None:
 
 
 def test_detect_calcium_population_bursts_basic() -> None:
-    """Test basic population burst detection with deconvolved df/f traces."""
+    """Test basic population burst detection with calcium peak events."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
-    # Create deconvolved df/f traces with clear bursts
+    # Create binary peak event arrays with clear bursts
     # 3 ROIs, 200 frames, frame_rate=10 Hz
     frame_rate = 10.0
     n_frames = 200
 
-    # Create synchronized activity bursts at frames 20-40, 80-100, 140-160
-    dec_dff_traces = []
+    # Create synchronized peak activity bursts at frames 20-40, 80-100, 140-160
+    peak_events = []
     for _ in range(3):
-        trace = np.zeros(n_frames)
-        trace[20:40] = 2.0  # First burst - high activity
-        trace[80:100] = 2.5  # Second burst
-        trace[140:160] = 2.0  # Third burst
-        dec_dff_traces.append(trace)
+        peaks = np.zeros(n_frames)
+        peaks[20:40] = 1.0  # First burst - all ROIs have peaks
+        peaks[80:100] = 1.0  # Second burst
+        peaks[140:160] = 1.0  # Third burst
+        peak_events.append(peaks)
 
     (
         burst_count,
@@ -578,9 +578,9 @@ def test_detect_calcium_population_bursts_basic() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=frame_rate,
-        burst_threshold_percent=60.0,  # 60% of normalized max
+        burst_threshold_percent=60.0,  # 60% of ROIs must have peaks
         min_duration_ms=100.0,  # 0.1 sec = 1 frame at 10 Hz
         gaussian_sigma_sec=0.1,  # Minimal smoothing
     )
@@ -596,18 +596,18 @@ def test_detect_calcium_population_bursts_no_bursts() -> None:
     """Test calcium burst detection with no bursts."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
-    # Create traces with very brief activity that's filtered out by min_duration
+    # Create peak events with very brief activity that's filtered out by min_duration
     # The key is to have activity that's above threshold but too short to be a burst
     np.random.seed(42)
-    dec_dff_traces = []
+    peak_events = []
     for _i in range(3):
-        # Create baseline with brief spikes that are too short (< min_duration)
-        trace = np.zeros(200)
-        # Add very brief  spikes (2-3 frames each, but min_duration requires 5 frames)
-        trace[50:52] = 1.0  # 2 frames - too short
-        trace[100:102] = 1.0  # 2 frames - too short
-        trace[150:152] = 1.0  # 2 frames - too short
-        dec_dff_traces.append(trace)
+        # Create baseline with brief peaks that are too short (< min_duration)
+        peaks = np.zeros(200)
+        # Add very brief peaks (2-3 frames each, but min_duration requires 5 frames)
+        peaks[50:52] = 1.0  # 2 frames - too short
+        peaks[100:102] = 1.0  # 2 frames - too short
+        peaks[150:152] = 1.0  # 2 frames - too short
+        peak_events.append(peaks)
 
     (
         burst_count,
@@ -618,7 +618,7 @@ def test_detect_calcium_population_bursts_no_bursts() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=10.0,
         burst_threshold_percent=50.0,  # Moderate threshold
         min_duration_ms=500.0,  # 5 frames minimum (500ms / 100ms per frame)
@@ -635,7 +635,7 @@ def test_detect_calcium_population_bursts_insufficient_rois() -> None:
     """Test calcium burst detection with < 2 ROIs."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
-    dec_dff_traces = [np.ones(100)]  # Only 1 ROI
+    peak_events = [np.ones(100)]  # Only 1 ROI
 
     (
         burst_count,
@@ -646,7 +646,7 @@ def test_detect_calcium_population_bursts_insufficient_rois() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=10.0,
         burst_threshold_percent=50.0,
         min_duration_ms=100.0,
@@ -662,14 +662,14 @@ def test_detect_calcium_population_bursts_constant_activity() -> None:
     """Test calcium burst detection with brief spikes too short to be bursts."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
-    # Create traces with brief spikes that are too short after smoothing
+    # Create peak events with brief bursts that are too short after smoothing
     # At 10fps, 1 second = 10 frames, so min_duration=1000ms requires 10 frames
-    dec_dff_traces = []
+    peak_events = []
     for _ in range(3):
-        trace = np.zeros(200)
-        # Add 3-frame spike - still too short for min_duration of 1000ms (10 frames)
-        trace[100:103] = 5.0  # 3 frames @ 10fps = 300ms, < 1000ms required
-        dec_dff_traces.append(trace)
+        peaks = np.zeros(200)
+        # Add 3-frame burst - still too short for min_duration of 1000ms (10 frames)
+        peaks[100:103] = 1.0  # 3 frames @ 10fps = 300ms, < 1000ms required
+        peak_events.append(peaks)
 
     (
         burst_count,
@@ -680,7 +680,7 @@ def test_detect_calcium_population_bursts_constant_activity() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=10.0,
         burst_threshold_percent=50.0,
         min_duration_ms=1000.0,  # 10 frames at 10fps = 1000ms required
@@ -694,20 +694,22 @@ def test_detect_calcium_population_bursts_constant_activity() -> None:
 
 
 def test_detect_calcium_population_bursts_normalization() -> None:
-    """Test that burst detection properly normalizes traces before thresholding."""
+    """Test that burst detection works with different ROIs having peaks."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
     frame_rate = 10.0
     n_frames = 200
 
-    # Create traces with different scales but same burst pattern
-    dec_dff_traces = []
-    for scale in [1.0, 2.0, 3.0]:
-        trace = np.zeros(n_frames)
-        trace[40:60] = 5.0 * scale  # Burst scaled differently for each ROI
-        dec_dff_traces.append(trace)
+    # Create peak events - all ROIs have synchronized peaks
+    # (The "normalization" concept doesn't apply to binary peak events,
+    # but we test that synchronized peaks are detected regardless)
+    peak_events = []
+    for _ in range(3):
+        peaks = np.zeros(n_frames)
+        peaks[40:60] = 1.0  # All ROIs have peaks in this window
+        peak_events.append(peaks)
 
-    # Should still detect the synchronized burst despite different scales
+    # Should detect the synchronized burst
     (
         burst_count,
         avg_duration,
@@ -717,7 +719,7 @@ def test_detect_calcium_population_bursts_normalization() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=frame_rate,
         burst_threshold_percent=50.0,
         min_duration_ms=100.0,
@@ -736,12 +738,12 @@ def test_detect_calcium_population_bursts_min_duration_filter() -> None:
     n_frames = 200
 
     # Create short bursts (5 frames = 0.5 sec) and long bursts (20 frames = 2 sec)
-    dec_dff_traces = []
+    peak_events = []
     for _ in range(3):
-        trace = np.zeros(n_frames)
-        trace[20:25] = 2.0  # Short burst: 5 frames = 500ms
-        trace[80:100] = 2.0  # Long burst: 20 frames = 2000ms
-        dec_dff_traces.append(trace)
+        peaks = np.zeros(n_frames)
+        peaks[20:25] = 1.0  # Short burst: 5 frames = 500ms
+        peaks[80:100] = 1.0  # Long burst: 20 frames = 2000ms
+        peak_events.append(peaks)
 
     # Set min_duration to 1000ms - should only detect the long burst
     (
@@ -753,7 +755,7 @@ def test_detect_calcium_population_bursts_min_duration_filter() -> None:
         _,  # pop_activity
         _,  # smoothed
     ) = _detect_calcium_population_bursts(
-        dec_dff_traces=dec_dff_traces,
+        peak_events=peak_events,
         frame_rate=frame_rate,
         burst_threshold_percent=50.0,
         min_duration_ms=1000.0,

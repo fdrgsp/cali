@@ -1236,7 +1236,7 @@ def _detect_spikes_population_bursts(
 
 
 def _detect_calcium_population_bursts(
-    dec_dff_traces: list[np.ndarray],
+    peak_events: list[np.ndarray],
     frame_rate: float,
     burst_threshold_percent: float,
     min_duration_ms: float,
@@ -1250,21 +1250,23 @@ def _detect_calcium_population_bursts(
     np.ndarray | None,
     np.ndarray | None,
 ]:
-    """Detect bursts in population calcium activity (deconvolved DF/F).
+    """Detect bursts in population calcium activity based on peak events.
 
-    Burst detection is done directly on the mean deconvolved DF/F trace
-    (optionally smoothed), without explicit normalization. The threshold is
-    interpreted as a percentage of the maximum smoothed population activity.
+    Computes population activity as the fraction of active ROIs with detected
+    peaks at each frame. This is consistent with spike burst detection and
+    provides an interpretable measure of network synchrony.
 
     Parameters
     ----------
-    dec_dff_traces : list[np.ndarray]
-        List of deconvolved DF/F traces for active ROIs
+    peak_events : list[np.ndarray]
+        List of binary peak event arrays for active ROIs (0/1 per frame,
+        where 1 indicates a detected calcium peak)
     frame_rate : float
         Frame rate in Hz (frames per second)
     burst_threshold_percent : float
-        Threshold as percentage of the maximum smoothed population activity
-        (e.g., 65.0 means 0.65 * max(smoothed_activity)).
+        Threshold as percentage of active ROIs. Population activity is the
+        fraction of ROIs with peaks (in [0,1]). A value of 25.0 means 25%
+        of ROIs must have peaks simultaneously to define a burst.
     min_duration_ms : float
         Minimum burst duration in milliseconds
     gaussian_sigma_sec : float
@@ -1279,15 +1281,16 @@ def _detect_calcium_population_bursts(
         - burst_avg_interval (float | None): Average inter-burst interval
         - burst_starts (list[int]): Frame indices where bursts start
         - burst_ends (list[int]): Frame indices where bursts end (exclusive)
-        - population_activity (np.ndarray | None): Raw mean population activity
+        - population_activity (np.ndarray | None): Raw population activity
+          (fraction of active ROIs with peaks, in [0,1])
         - smoothed_activity (np.ndarray | None): Smoothed population activity
     """
-    if len(dec_dff_traces) < 2:
+    if len(peak_events) < 2:
         return 0, None, None, [], [], None, None
 
-    # Stack traces and compute population activity (mean across ROIs)
-    traces_array = np.vstack(dec_dff_traces)  # (n_rois, n_frames)
-    population_activity = np.mean(traces_array, axis=0)  # raw mean (n_frames,)
+    # Stack peak events and compute population activity (fraction of ROIs with peaks)
+    peak_array = np.vstack(peak_events)  # (n_rois, n_frames), values 0 or 1
+    population_activity = np.mean(peak_array, axis=0)  # (n_frames,), in [0,1]
 
     if population_activity.size == 0:
         return 0, None, None, [], [], None, None
@@ -1309,9 +1312,9 @@ def _detect_calcium_population_bursts(
     if max_val < np.finfo(float).eps:
         return 0, None, None, [], [], population_activity, smoothed_activity
 
-    # Threshold in the SAME UNITS as smoothed_activity
-    # e.g. burst_threshold_percent = 65 → 0.65 * max(smoothed_activity)
-    burst_threshold_value = (burst_threshold_percent / 100.0) * max_val
+    # Threshold in the same [0,1] units as smoothed_activity
+    # e.g. burst_threshold_percent = 25 → threshold_value = 0.25
+    burst_threshold_value = burst_threshold_percent / 100.0
 
     # Detect regions above threshold
     above_threshold = smoothed_activity > burst_threshold_value

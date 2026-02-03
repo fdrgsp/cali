@@ -37,6 +37,7 @@ from sqlmodel import (
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CALCIUM_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
     DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
@@ -1135,7 +1136,7 @@ class AnalysisSettings(SQLModel, table=True):
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
-    calcium_burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    calcium_burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
     calcium_burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms

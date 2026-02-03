@@ -84,7 +84,8 @@ GLOBAL_SPIKE_THRESHOLD = "global"
 MULTIPLIER = "multiplier"
 
 # ==================== Default Values ====================
-DEFAULT_BURST_THRESHOLD = 65.0
+DEFAULT_BURST_THRESHOLD = 65.0  # For inferred spike bursts
+DEFAULT_CALCIUM_BURST_THRESHOLD = 25.0  # For calcium peak bursts
 DEFAULT_MIN_BURST_DURATION = 3
 DEFAULT_BURST_GAUSS_SIGMA = 0.0
 DEFAULT_FRAME_RATE = 10.0  # frames per second (fps)
