@@ -55,7 +55,7 @@ def test_commit_batch_logging_reports_correct_count(
     runner = CaliRunner(commit_batch_size=10)
 
     # Run pipeline with 2 positions
-    with caplog.at_level("INFO"):
+    with caplog.at_level("INFO", logger="cali_logger"):
         runner.run(
             exp,
             data_path,

@@ -111,6 +111,8 @@ class CaliResult(SQLModel, table=True):
         Primary key, auto-generated
     created_at : datetime
         Timestamp when analysis was created
+    last_modified : datetime
+        Timestamp when analysis was last modified (with microsecond precision)
     experiment : int
         Foreign key to experiment
     detection_settings : int | None
@@ -135,6 +137,7 @@ class CaliResult(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
+    last_modified: datetime = Field(default_factory=datetime.now)
 
     # Foreign keys
     experiment: int = Field(foreign_key="experiment.id")
@@ -163,15 +166,18 @@ class CaliResult(SQLModel, table=True):
     )
 
     def __eq__(self, other: object) -> bool:
-        """Custom equality that excludes created_at for semantic comparison.
+        """Custom equality.
+
+        Excludes created_at and last_modified for semantic comparison.
 
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
           positions_analyzed
 
-        The created_at field is excluded since it's automatically generated
-        and doesn't represent semantic differences in analysis configuration.
+        The created_at and last_modified fields are excluded since they are
+        automatically generated and don't represent semantic differences in
+        analysis configuration.
         """
         if not isinstance(other, CaliResult):
             return False
@@ -186,7 +192,9 @@ class CaliResult(SQLModel, table=True):
         )
 
     def __hash__(self) -> int:
-        """Custom hash that excludes created_at for consistency with __eq__.
+        """Custom hash.
+
+        Excludes created_at and last_modified for consistency with __eq__.
 
         Note: id is excluded since it's None before database insertion.
         """
