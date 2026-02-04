@@ -3008,3 +3008,147 @@ def test_cali_runner_analysis_only_skip_extraction_mocked(
             # Note: If <2 active ROIs, DataAnalysis won't be created (expected)
     finally:
         engine.dispose()
+
+
+def test_analysis_only_all_positions_have_extraction_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+    caplog: Any,
+) -> None:
+    """Test Analysis Only mode when ALL positions already have extraction.
+
+    This covers line 643 in _cali_runner.py where it logs that extraction exists
+    for ALL positions and will run analysis-only.
+    """
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    # 1. Run Detection + Extraction on ALL positions
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Get settings IDs
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            es = session.exec(select(ExtractionSettings)).first()
+            assert ds is not None and es is not None
+            ds_id, es_id = ds.id, es.id
+    finally:
+        engine.dispose()
+
+    # 2. Run Analysis Only on the SAME positions
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
+
+    # Clear log to capture specific message
+    import logging
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=ds_id,
+            extraction_settings=es_id,
+            analysis_settings=analysis_settings,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[0, 1],  # ALL positions
+        )
+
+    # Verify the specific log message for ALL positions having extraction
+    assert any(
+        "Extraction already exists for all positions" in record.message
+        and "Running analysis only" in record.message
+        for record in caplog.records
+    ), "Should log that extraction exists for ALL positions"
+
+
+def test_last_modified_updated_on_result_update(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that last_modified is updated when CaliResult is upgraded/modified.
+
+    This covers line 1991 and similar lines in _cali_runner.py.
+    """
+    import time
+
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+
+    # 1. Run Detection only
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Get result and record initial last_modified
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            initial_last_modified = result.last_modified
+            result_id = result.id
+    finally:
+        engine.dispose()
+
+    # Wait a bit to ensure timestamp changes
+    time.sleep(0.01)
+
+    # 2. Upgrade with extraction (should update last_modified)
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify last_modified was updated
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(
+                select(CaliResult).where(CaliResult.id == result_id)
+            ).first()
+            assert result is not None
+            assert result.last_modified > initial_last_modified, (
+                "last_modified should be updated when result is upgraded"
+            )
+    finally:
+        engine.dispose()
