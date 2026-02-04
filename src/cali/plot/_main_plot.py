@@ -382,7 +382,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Inferred Spikes Amplitude and Frequency Group
+# Inferred Spikes Frequency Group
 AnalysisProduct(
     name="Inferred Spikes Thresholded Frequency",
     group=AnalysisGroup.SINGLE_WELL,

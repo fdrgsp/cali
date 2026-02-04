@@ -32,6 +32,7 @@ from cali._constants import (
     CALCIUM_DFF_CORRELATION,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CALCIUM_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
@@ -99,7 +100,7 @@ class CalciumPeaksData:
     peaks_height_mode: str = MULTIPLIER
     peaks_distance: float = DEFAULT_PEAKS_DISTANCE  # milliseconds
     peaks_prominence_multiplier: float = 2.0
-    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
 
@@ -370,7 +371,9 @@ class _AnalysisGUI(QWidget):
                 else DEFAULT_BURST_GAUSS_SIGMA
             ),
             calcium_burst_threshold=(
-                peaks_data.burst_threshold if peaks_data else DEFAULT_BURST_THRESHOLD
+                peaks_data.burst_threshold
+                if peaks_data
+                else DEFAULT_CALCIUM_BURST_THRESHOLD
             ),
             calcium_burst_min_duration=(
                 peaks_data.burst_min_duration
@@ -701,8 +704,8 @@ class _PeaksHeightWidget(QWidget):
             "• Noise Multiplier: Adaptive threshold computed individually for EACH "
             "ROI in EACH FOV.\n"
             "  Threshold = noise_level * multiplier, where noise_level is estimated "
-            "  during OASIS deconvolution: the noise standard deviation (sn) is "
-            "estimated independently for each ROI based on the high-frequency "
+            "  during OASIS deconvolution: the noise standard deviation (sn)\n"
+            "  is estimated independently for each ROI based on the high-frequency "
             "components of the raw fluorescence trace using an autoregressive (AR) "
             "noise model.\n\n"
             "For example, a multiplier of 3.0 detects events that exceed three times "
@@ -960,8 +963,8 @@ class _BurstWidget(QWidget):
             "burst detection.\n"
             "   Reduces noise and connects nearby activity peaks into "
             "coherent bursts.\n"
-            "   Higher values (2-5) provide more smoothing, merging closer events.\n"
-            "   Lower values (0.5-1) preserve temporal precision but may "
+            "   Higher values provide more smoothing, merging closer events.\n"
+            "   Lower values preserve temporal precision but may "
             "fragment bursts.\n"
             "   Set to 0 to disable smoothing."
         )

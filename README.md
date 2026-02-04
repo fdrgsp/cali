@@ -277,18 +277,28 @@ After detection, the following metrics are computed per ROI:
 
 **Purpose**: Detect periods of sustained, elevated population activity in calcium signals. Bursts represent synchronized events where many cells are co-active.
 
-**Calculation** (population-level, based on deconvolved ΔF/F):
+**Calculation** (population-level, based on detected calcium peaks):
 
-1. **Population Activity**: compute the mean deconvolved ΔF/F across all active ROIs.
-2. **Smoothing**: apply a Gaussian filter to the population trace (optional, to reduce noise).
-3. **Threshold**: detect periods where the smoothed activity exceeds a fraction of its maximum.
-4. **Duration Filter**: keep only bursts lasting at least a minimum duration.
+1. **Binary peak events**: for each ROI, detected calcium peaks are converted to binary arrays (1 at peak frames, 0 elsewhere).
+2. **Population activity**: compute the fraction of active ROIs with peaks at each frame:
+
+   ```
+   ROI 1: [0, 0, 1, 0, 1, 0, 1, 0, ...]
+   ROI 2: [0, 0, 1, 0, 0, 0, 1, 0, ...]
+   ROI 3: [0, 0, 0, 0, 1, 0, 1, 0, ...]
+   ─────────────────────────────────────
+   Mean:  [0, 0, .67, 0, .67, 0, 1.0, 0, ...]
+   ```
+
+3. **Smoothing**: apply a Gaussian filter (default sigma=0.3s) to the population trace. This is needed because peak detection has limited temporal precision (~1-2 frames), so cells firing together may have peaks on nearby but not identical frames. Smoothing bridges these small gaps.
+4. **Threshold**: detect periods where the smoothed fraction exceeds the threshold (e.g., 25% → 0.25).
+5. **Duration Filter**: keep only bursts lasting at least a minimum duration.
 
 **GUI Parameters**:
 
-- **Burst Threshold** (%): percentage of maximum smoothed activity used as the detection threshold.
+- **Burst Threshold** (%): percentage of active ROIs that must have peaks simultaneously (e.g., 25% means at least 25% of active cells must fire together).
 - **Min Duration** (ms): minimum burst duration to be retained.
-- **Gaussian Sigma** (s): temporal smoothing (standard deviation) for the population activity.
+- **Gaussian Sigma** (s): temporal smoothing (standard deviation) for the population activity. Default 0.3s.
 
 **Computed Metrics**:
 
