@@ -2705,11 +2705,26 @@ def test_delete_run_and_recreate_same_settings(
             results = session.exec(select(CaliResult)).all()
             assert len(results) == 3
 
-            # Verify traces exist for all runs
+            # Verify traces exist
+            # Note: run1 has its own extraction (es1), run2/run4 share extraction (es2)
+            # When run3 was deleted and recreated as run4, it reused run2's traces
+            # (analysis-only mode doesn't create new traces)
             for result in results:
-                stmt = select(Traces).where(Traces.analysis_result_id == result.id)
-                traces = session.exec(stmt).all()
-                assert len(traces) > 0, f"No traces found for run {result.id}"
+                if result.extraction_settings_id == 1:
+                    # Run1 has its own traces
+                    stmt = select(Traces).where(Traces.analysis_result_id == result.id)
+                    traces = session.exec(stmt).all()
+                    assert len(traces) > 0, f"No traces found for run {result.id}"
+                elif result.extraction_settings_id == 2:
+                    # Run2 created traces, run4 reused them (analysis-only)
+                    # Check that at least traces exist with this extraction setting
+                    stmt = (
+                        select(Traces)
+                        .join(CaliResult)
+                        .where(CaliResult.extraction_settings_id == 2)
+                    )
+                    traces = session.exec(stmt).all()
+                    assert len(traces) > 0, "No traces found for extraction_settings 2"
     finally:
         engine.dispose()
 
@@ -2897,5 +2912,99 @@ def test_fov_analysis_not_created_without_analysis(
             # Verify no FOVAnalysis was created (no analysis settings)
             fov_analyses = session.exec(select(FOVAnalysis)).all()
             assert len(fov_analyses) == 0, "No FOVAnalysis without analysis settings"
+    finally:
+        engine.dispose()
+
+
+def test_cali_runner_analysis_only_skip_extraction_mocked(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test Analysis Only mode - skips extraction when it already exists."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    # 1. Run Detection + Extraction
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Get settings IDs
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            es = session.exec(select(ExtractionSettings)).first()
+            assert ds is not None and es is not None
+            ds_id, es_id = ds.id, es.id
+
+            # Verify extraction exists (traces were created)
+            traces_count_before = len(session.exec(select(Traces)).all())
+            assert traces_count_before > 0, "Extraction should have created traces"
+    finally:
+        engine.dispose()
+
+    # 2. Run Analysis Only (using existing extraction)
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
+
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,  # Provide extraction ID
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Verify: extraction was skipped but analysis ran
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # Traces count should NOT increase (extraction was skipped)
+            traces_count_after = len(session.exec(select(Traces)).all())
+            assert traces_count_after == traces_count_before, (
+                "Extraction should have been skipped (same trace count)"
+            )
+
+            # Verify result was upgraded with analysis
+            result = session.exec(
+                select(CaliResult).where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
+            ).first()
+            assert result is not None
+            assert result.detection_settings_id == ds_id
+            assert result.extraction_settings_id == es_id
+            assert result.analysis_settings_id is not None
+            assert result.positions_analyzed == [0, 1]
+
+            # Check if ROIs are active (have detected calcium events)
+            rois = session.exec(select(ROI)).all()
+            active_rois = [roi for roi in rois if roi.active]
+
+            # DataAnalysis creation depends on having active ROIs
+            data_analyses = session.exec(select(DataAnalysis)).all()
+            if len(active_rois) >= 2:
+                # With enough active ROIs, analysis metrics should be computed
+                assert len(data_analyses) > 0, (
+                    "Analysis should have created DataAnalysis with active ROIs"
+                )
+            # Note: If <2 active ROIs, DataAnalysis won't be created (expected)
     finally:
         engine.dispose()
