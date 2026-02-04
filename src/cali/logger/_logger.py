@@ -3,6 +3,7 @@ from pathlib import Path
 
 LOGGER = logging.getLogger("cali_logger")
 LOGGER.setLevel(logging.DEBUG)
+LOGGER.propagate = False  # Prevent duplicate logs from propagating to root logger
 
 # Create formatter
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")

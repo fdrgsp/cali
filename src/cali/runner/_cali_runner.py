@@ -887,6 +887,7 @@ class CaliRunner:
                     if export_traces and analysis_result_id is not None:
                         from cali.util._database_to_csv import export_traces_to_csv
 
+                        yield "🗂️ Exporting traces to CSV..."
                         export_traces_to_csv(
                             engine,
                             export_traces,
@@ -900,6 +901,7 @@ class CaliRunner:
                             export_correlations_to_csv,
                         )
 
+                        yield "🗂️ Exporting correlations to CSV..."
                         export_correlations_to_csv(
                             engine,
                             export_correlations,
