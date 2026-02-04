@@ -803,3 +803,69 @@ def test_detect_population_bursts_edge_cases() -> None:
         gaussian_sigma_sec=0.1,
     )
     assert burst_count >= 1
+
+
+def test_detect_calcium_population_bursts_absolute_threshold() -> None:
+    """Test that calcium burst detection uses an absolute threshold.
+
+    The threshold is burst_threshold_percent / 100, i.e. a fraction of ROIs
+    that must have simultaneous peaks, NOT scaled by the max population activity.
+    """
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
+
+    n_frames = 200
+    frame_rate = 10.0
+
+    # 4 ROIs: only 1 out of 4 is active at frames 50-70 → fraction = 0.25
+    peak_events = [np.zeros(n_frames) for _ in range(4)]
+    peak_events[0][50:70] = 1.0  # Only ROI 0 is active
+
+    # Threshold at 20% (0.20) — should detect the burst (0.25 > 0.20)
+    burst_count_low, _, _, _, _, raw, _smoothed = _detect_calcium_population_bursts(
+        peak_events=peak_events,
+        frame_rate=frame_rate,
+        burst_threshold_percent=20.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.0,
+    )
+    assert burst_count_low >= 1, "25% activity should exceed 20% threshold"
+    # Raw population activity should be 0.25 during the active window
+    assert raw is not None
+    assert abs(float(np.max(raw)) - 0.25) < 1e-6
+
+    # Threshold at 30% (0.30) — should NOT detect (0.25 < 0.30)
+    burst_count_high, _, _, _, _, _, _ = _detect_calcium_population_bursts(
+        peak_events=peak_events,
+        frame_rate=frame_rate,
+        burst_threshold_percent=30.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.0,
+    )
+    assert burst_count_high == 0, "25% activity should not exceed 30% threshold"
+
+
+def test_detect_calcium_population_bursts_returns_raw_before_smoothed() -> None:
+    """Test that return order is (raw, smoothed) not (smoothed, raw)."""
+    from cali.analysis._fov_metrics import _detect_calcium_population_bursts
+
+    n_frames = 100
+    peak_events = []
+    for _ in range(3):
+        trace = np.zeros(n_frames)
+        trace[30:50] = 1.0
+        peak_events.append(trace)
+
+    _, _, _, _, _, raw, smoothed = _detect_calcium_population_bursts(
+        peak_events=peak_events,
+        frame_rate=10.0,
+        burst_threshold_percent=50.0,
+        min_duration_ms=100.0,
+        gaussian_sigma_sec=0.5,
+    )
+    assert raw is not None and smoothed is not None
+    # Raw should have sharp edges; smoothed should be wider
+    raw_nonzero = np.count_nonzero(raw > 0.01)
+    smoothed_nonzero = np.count_nonzero(smoothed > 0.01)
+    assert smoothed_nonzero >= raw_nonzero, (
+        "Smoothed trace should be at least as wide as raw"
+    )

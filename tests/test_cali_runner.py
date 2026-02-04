@@ -3153,3 +3153,246 @@ def test_last_modified_updated_on_result_update(
             )
     finally:
         engine.dispose()
+
+
+def test_find_source_trace_by_extraction_and_detection(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test _find_source_trace filters by extraction and detection settings IDs."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    # Run detection + extraction
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            es = session.exec(select(ExtractionSettings)).first()
+            assert ds is not None and es is not None
+
+            # Get an ROI ID with traces
+            traces_list = session.exec(select(Traces)).all()
+            assert len(traces_list) > 0
+            roi_id = traces_list[0].roi_id
+
+            # Should find trace with correct settings
+            found = CaliRunner._find_source_trace(session, roi_id, es.id, ds.id)
+            assert found is not None
+            assert found.roi_id == roi_id
+
+            # Should NOT find trace with wrong extraction settings ID
+            found_wrong = CaliRunner._find_source_trace(session, roi_id, 9999, ds.id)
+            assert found_wrong is None
+
+            # Should NOT find trace with wrong detection settings ID
+            found_wrong_det = CaliRunner._find_source_trace(
+                session, roi_id, es.id, 9999
+            )
+            assert found_wrong_det is None
+
+            # Should find trace with no filter (most recent)
+            found_any = CaliRunner._find_source_trace(session, roi_id, None, None)
+            assert found_any is not None
+    finally:
+        engine.dispose()
+
+
+def test_analysis_only_creates_data_analysis_records(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that analysis-only run creates DataAnalysis records for each ROI.
+
+    This verifies the fix where _run_analysis_only now uses AnalysisRunner
+    to create ROI-level DataAnalysis records, not just FOV-level FOVAnalysis.
+    """
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    # 1. Run Detection + Extraction (no analysis)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            es = session.exec(select(ExtractionSettings)).first()
+            assert ds is not None and es is not None
+            ds_id, es_id = ds.id, es.id
+
+            # No DataAnalysis or FOVAnalysis should exist yet
+            data_analyses_before = session.exec(select(DataAnalysis)).all()
+            fov_analyses_before = session.exec(select(FOVAnalysis)).all()
+            assert len(data_analyses_before) == 0
+            assert len(fov_analyses_before) == 0
+
+            roi_count = len(session.exec(select(ROI)).all())
+            assert roi_count > 0
+    finally:
+        engine.dispose()
+
+    # 2. Run Analysis Only
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # 3. Verify DataAnalysis and FOVAnalysis records were created
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # DataAnalysis records should exist for each ROI
+            data_analyses_after = session.exec(select(DataAnalysis)).all()
+            assert len(data_analyses_after) > 0, (
+                "Analysis-only run should create DataAnalysis records"
+            )
+            assert len(data_analyses_after) == roi_count, (
+                "Should have one DataAnalysis per ROI"
+            )
+
+            # FOVAnalysis records should also exist
+            fov_analyses_after = session.exec(select(FOVAnalysis)).all()
+            assert len(fov_analyses_after) > 0, (
+                "Analysis-only run should create FOVAnalysis records"
+            )
+
+            # All DataAnalysis should be linked to the new run
+            result = session.exec(
+                select(CaliResult).where(
+                    CaliResult.analysis_settings_id.is_not(None)  # type: ignore
+                )
+            ).first()
+            assert result is not None
+            for da in data_analyses_after:
+                assert da.analysis_result_id == result.id
+    finally:
+        engine.dispose()
+
+
+def test_analysis_only_copies_traces_to_new_run(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Test that traces are copied (not shared) when running analysis-only."""
+    runner = CaliRunner(commit_batch_size=1)
+
+    detection_settings = DetectionSettings(
+        method="cellpose", model_type=MODEL, diameter=30.0
+    )
+    extraction_settings = ExtractionSettings(
+        neuropil_inner_radius=2, neuropil_min_pixels=50, threads=THREADS
+    )
+
+    # Run detection + extraction
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            ds = session.exec(select(DetectionSettings)).first()
+            es = session.exec(select(ExtractionSettings)).first()
+            assert ds is not None and es is not None
+            ds_id, es_id = ds.id, es.id
+
+            original_traces = session.exec(select(Traces)).all()
+            original_count = len(original_traces)
+            assert original_count > 0
+
+            # Record original trace data for comparison
+            original_traces[0]
+    finally:
+        engine.dispose()
+
+    # Run analysis-only
+    analysis_settings = AnalysisSettings(
+        peaks_prominence_multiplier=3.0, threads=THREADS
+    )
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=ds_id,
+        extraction_settings=es_id,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            all_traces = session.exec(select(Traces)).all()
+            assert len(all_traces) == original_count * 2, (
+                "Each trace should be copied for the new run"
+            )
+
+            # Verify each ROI now has exactly 2 traces
+            from collections import Counter
+
+            roi_trace_counts = Counter(t.roi_id for t in all_traces)
+            for roi_id, count in roi_trace_counts.items():
+                assert count == 2, (
+                    f"ROI {roi_id} should have 2 traces (original + copy)"
+                )
+
+            # Verify the copied traces have distinct IDs from originals
+            trace_ids = [t.id for t in all_traces]
+            assert len(set(trace_ids)) == len(trace_ids), (
+                "All traces should have unique IDs"
+            )
+    finally:
+        engine.dispose()
