@@ -430,8 +430,8 @@ def compute_fov_analysis_parallel(
             spike_burst_avg_interval,
             spike_burst_starts,
             spike_burst_ends,
-            spike_population_activity,
             spike_population_activity_raw,
+            spike_population_activity,
         ) = _detect_spikes_population_bursts(
             spike_trains=spike_trains,
             frame_rate=analysis_settings.frame_rate,
@@ -455,8 +455,8 @@ def compute_fov_analysis_parallel(
             calcium_burst_avg_interval,
             calcium_burst_starts,
             calcium_burst_ends,
-            calcium_population_activity,
             calcium_population_activity_raw,
+            calcium_population_activity,
         ) = _detect_calcium_population_bursts(
             peak_events=calcium_peak_events,
             frame_rate=analysis_settings.frame_rate,
