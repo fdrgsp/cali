@@ -963,8 +963,8 @@ class _BurstWidget(QWidget):
             "burst detection.\n"
             "   Reduces noise and connects nearby activity peaks into "
             "coherent bursts.\n"
-            "   Higher values (2-5) provide more smoothing, merging closer events.\n"
-            "   Lower values (0.5-1) preserve temporal precision but may "
+            "   Higher values provide more smoothing, merging closer events.\n"
+            "   Lower values preserve temporal precision but may "
             "fragment bursts.\n"
             "   Set to 0 to disable smoothing."
         )
