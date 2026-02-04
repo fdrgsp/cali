@@ -1091,7 +1091,7 @@ def test_cali_runner_settings_errors_mocked(
 
     # 3. Non-existent ExtractionSettings ID
     ds_valid = DetectionSettings(method="cellpose")
-    with pytest.raises(ValueError, match="ExtractionSettings ID 999 not found"):
+    with pytest.raises(ValueError, match="ExtractionSettings with ID 999 not found"):
         runner.run(
             experiment=test_experiment,
             dataset_path=data_path,
