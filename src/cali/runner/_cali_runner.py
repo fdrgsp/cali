@@ -589,40 +589,39 @@ class CaliRunner:
                     )
 
                     # Determine which positions need extraction/analysis
-                    # First, check which positions need extraction
-                    positions_needing_extraction = self._get_positions_for_extraction(
-                        session,
-                        det_id,
-                        extraction_settings_id,  # type: ignore
-                        global_position_indices,
-                        force=force,
-                    )
-
-                    # Then, check which positions need analysis
-                    if analysis_settings_id is not None:
-                        # For analysis: check which positions need analysis
-                        # (they must have extraction results already)
-                        positions_needing_analysis = self._get_positions_for_analysis(
+                    positions_need_extraction = set(
+                        self._get_positions_for_extraction(
                             session,
                             det_id,
                             extraction_settings_id,  # type: ignore
-                            analysis_settings_id,
                             global_position_indices,
                             force=force,
                         )
-                        # Combine: positions needing extraction or analysis
-                        positions_for_extraction = sorted(
-                            set(positions_needing_extraction)
-                            | set(positions_needing_analysis)
-                        )
-                    else:
-                        # Extraction-only mode
-                        positions_for_extraction = positions_needing_extraction
+                    )
 
-                    if not positions_for_extraction:
+                    # Check which positions need analysis (if analysis is requested)
+                    positions_need_analysis = set()
+                    if analysis_settings_id is not None:
+                        positions_need_analysis = set(
+                            self._get_positions_for_analysis(
+                                session,
+                                det_id,
+                                extraction_settings_id,  # type: ignore
+                                analysis_settings_id,
+                                global_position_indices,
+                                force=force,
+                            )
+                        )
+
+                    # Combine all positions that need processing
+                    positions_to_process = sorted(
+                        positions_need_extraction | positions_need_analysis
+                    )
+
+                    if not positions_to_process:
                         return
 
-                    yield f"PROGRESS:RESET:{len(positions_for_extraction)}"
+                    yield f"PROGRESS:RESET:{len(positions_to_process)}"
 
                     # Create CaliResult FIRST with expected positions so we have the ID
                     analysis_result_id = None
@@ -638,9 +637,9 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=analysis_settings_id,
-                                    positions_detected=list(positions_for_extraction),
-                                    positions_extracted=list(positions_for_extraction),
-                                    positions_analyzed=list(positions_for_extraction),
+                                    positions_detected=list(positions_to_process),
+                                    positions_extracted=list(positions_to_process),
+                                    positions_analyzed=list(positions_to_process),
                                 )
                             )
                         else:
@@ -652,18 +651,18 @@ class CaliRunner:
                                     detection_settings_id=det_id,
                                     extraction_settings_id=extraction_settings_id,
                                     analysis_settings_id=None,
-                                    positions_detected=list(positions_for_extraction),
-                                    positions_extracted=list(positions_for_extraction),
+                                    positions_detected=list(positions_to_process),
+                                    positions_extracted=list(positions_to_process),
                                 )
                             )
 
                     if (
                         force
                         and analysis_result_id is not None
-                        and positions_for_extraction
+                        and positions_to_process
                     ):
                         self._delete_extraction_results(
-                            session, analysis_result_id, list(positions_for_extraction)
+                            session, analysis_result_id, list(positions_to_process)
                         )
 
                     # Process in batches
@@ -676,7 +675,7 @@ class CaliRunner:
                     positions_processed = []
                     fov_count = 0
 
-                    for i in range(0, len(positions_for_extraction), batch_size):
+                    for i in range(0, len(positions_to_process), batch_size):
                         # Check for cancellation before each batch
                         if self._extraction_runner._cancellation_event.is_set():
                             cali_logger.info("🛑 Run cancelled during extraction!")
@@ -684,27 +683,12 @@ class CaliRunner:
 
                         # Track FOVs committed in this batch for final commit logging
                         batch_fov_count = 0
-                        batch_positions = positions_for_extraction[i : i + batch_size]
-
-                        # Separate positions that need extraction vs only analysis
-                        batch_positions_need_extraction = [
-                            p
-                            for p in batch_positions
-                            if p in positions_needing_extraction
-                        ]
-                        batch_positions_only_analysis = [
-                            p
-                            for p in batch_positions
-                            if p not in positions_needing_extraction
-                        ]
-
-                        # Prepare FOVs for this batch
-                        batch_fovs = []
+                        batch_positions = positions_to_process[i : i + batch_size]
 
                         cali_logger.info(
                             f"💿 Loading {len(batch_positions)} FOVs from database..."
                         )
-                        loaded_fovs = self._load_fovs_from_db(
+                        batch_fovs = self._load_fovs_from_db(
                             session, det_id, batch_positions
                         )
 
@@ -713,24 +697,22 @@ class CaliRunner:
                         # and _run_analysis uses a ThreadPoolExecutor.
                         # Since we used selectinload in _load_fovs_from_db, all needed
                         # data (ROIs, masks, traces) is already loaded.
-                        for fov in loaded_fovs:
+                        for fov in batch_fovs:
                             session.expunge(fov)
-
-                        batch_fovs.extend(loaded_fovs)
 
                         if not batch_fovs:
                             continue
 
-                        # Split FOVs into those needing extraction vs only analysis
+                        # Split FOVs based on whether they need extraction
                         fovs_need_extraction = [
                             fov
                             for fov in batch_fovs
-                            if fov.position_index in batch_positions_need_extraction
+                            if fov.position_index in positions_need_extraction
                         ]
                         fovs_only_analysis = [
                             fov
                             for fov in batch_fovs
-                            if fov.position_index in batch_positions_only_analysis
+                            if fov.position_index not in positions_need_extraction
                         ]
 
                         # Run extraction only on FOVs that need it
@@ -740,42 +722,12 @@ class CaliRunner:
                             analysis_settings_obj if fovs_need_extraction else None,
                             fovs=fovs_need_extraction if fovs_need_extraction else [],
                         ):
-                            # Move new traces/analysis from temporary storage to actual
-                            # collections and set analysis_result_id
-                            if analysis_result_id is not None:
-                                for roi in fov.rois:
-                                    # Process temporary new traces
-                                    if hasattr(roi, "_new_traces"):
-                                        for trace in roi._new_traces:
-                                            trace.analysis_result_id = (
-                                                analysis_result_id
-                                            )
-                                            roi.traces_history.append(trace)
-                                        delattr(roi, "_new_traces")
-
-                                    # Process temporary new data analysis
-                                    if hasattr(roi, "_new_data_analysis"):
-                                        for data_analysis in roi._new_data_analysis:
-                                            data_analysis.analysis_result_id = (
-                                                analysis_result_id
-                                            )
-                                            roi.data_analysis_history.append(
-                                                data_analysis
-                                            )
-                                        delattr(roi, "_new_data_analysis")
-
-                                # Process temporary new FOV analysis
-                                # Add directly to session instead of using relationship
-                                # (avoids DetachedInstanceError)
-                                if hasattr(fov, "_new_fov_analysis"):
-                                    for fov_analysis in fov._new_fov_analysis:
-                                        fov_analysis.analysis_result_id = (
-                                            analysis_result_id
-                                        )
-                                        fov_analysis.fov_id = fov.id
-                                        session.add(fov_analysis)
-                                    delattr(fov, "_new_fov_analysis")
-
+                            self._process_fov_results(
+                                fov,
+                                session,
+                                analysis_result_id,
+                                include_traces=True,
+                            )
                             fov_count += 1
                             batch_fov_count += 1
                             yield "PROGRESS:UPDATE"
@@ -784,7 +736,7 @@ class CaliRunner:
                                 cali_logger.info(
                                     f"💾 Committing batch of {self.commit_batch_size} "
                                     f"FOVs (total: {fov_count}/"
-                                    f"{len(positions_for_extraction)})..."
+                                    f"{len(positions_to_process)})..."
                                 )
                             commit_fov_result(
                                 session, experiment, fov, commit=should_commit
@@ -794,7 +746,7 @@ class CaliRunner:
                                     f"💾 Committed batch of "
                                     f"{self.commit_batch_size} FOVs "
                                     f"(total: {fov_count}/"
-                                    f"{len(positions_for_extraction)})"
+                                    f"{len(positions_to_process)})"
                                 )
                             positions_processed.append(fov.position_index)
 
@@ -809,40 +761,22 @@ class CaliRunner:
                                 analysis_settings_obj,
                                 fovs=fovs_only_analysis,
                             ):
-                                # Move new analysis to actual collections
-                                if analysis_result_id is not None:
-                                    for roi in fov.rois:
-                                        # Process temporary new data analysis
-                                        if hasattr(roi, "_new_data_analysis"):
-                                            for data_analysis in roi._new_data_analysis:
-                                                data_analysis.analysis_result_id = (
-                                                    analysis_result_id
-                                                )
-                                                roi.data_analysis_history.append(
-                                                    data_analysis
-                                                )
-                                            delattr(roi, "_new_data_analysis")
-
-                                    # Process temporary new FOV analysis
-                                    if hasattr(fov, "_new_fov_analysis"):
-                                        for fov_analysis in fov._new_fov_analysis:
-                                            fov_analysis.analysis_result_id = (
-                                                analysis_result_id
-                                            )
-                                            fov_analysis.fov_id = fov.id
-                                            session.add(fov_analysis)
-                                        delattr(fov, "_new_fov_analysis")
-
+                                self._process_fov_results(
+                                    fov,
+                                    session,
+                                    analysis_result_id,
+                                    include_traces=False,
+                                )
                                 fov_count += 1
                                 batch_fov_count += 1
                                 yield "PROGRESS:UPDATE"
                                 should_commit = fov_count % self.commit_batch_size == 0
                                 if should_commit:
-                                    n = self.commit_batch_size
                                     cali_logger.info(
-                                        f"💾 Committing batch of {n} FOVs "
+                                        f"💾 Committing batch of "
+                                        f"{self.commit_batch_size} FOVs "
                                         f"(total: {fov_count}/"
-                                        f"{len(positions_for_extraction)})..."
+                                        f"{len(positions_to_process)})..."
                                     )
                                 commit_fov_result(
                                     session, experiment, fov, commit=should_commit
@@ -852,7 +786,7 @@ class CaliRunner:
                                         f"💾 Committed batch of "
                                         f"{self.commit_batch_size} FOVs "
                                         f"(total: {fov_count}/"
-                                        f"{len(positions_for_extraction)})"
+                                        f"{len(positions_to_process)})"
                                     )
                                 positions_processed.append(fov.position_index)
 
@@ -1565,6 +1499,52 @@ class CaliRunner:
             analysis_settings=analysis_settings,
             as_generator=True,
         )
+
+    def _process_fov_results(
+        self,
+        fov: FOV,
+        session: Session,
+        analysis_result_id: int | None,
+        include_traces: bool,
+    ) -> None:
+        """Process FOV results by moving temporary data to permanent collections.
+
+        Parameters
+        ----------
+        fov : FOV
+            The FOV with temporary result data
+        session : Session
+            Database session for adding FOV-level analysis
+        analysis_result_id : int | None
+            The CaliResult ID to associate with the results
+        include_traces : bool
+            Whether to process traces (True for extraction, False for analysis-only)
+        """
+        if analysis_result_id is None:
+            return
+
+        for roi in fov.rois:
+            # Process traces (only for extraction path)
+            if include_traces and hasattr(roi, "_new_traces"):
+                for trace in roi._new_traces:
+                    trace.analysis_result_id = analysis_result_id
+                    roi.traces_history.append(trace)
+                delattr(roi, "_new_traces")
+
+            # Process ROI-level analysis (both extraction and analysis-only)
+            if hasattr(roi, "_new_data_analysis"):
+                for data_analysis in roi._new_data_analysis:
+                    data_analysis.analysis_result_id = analysis_result_id
+                    roi.data_analysis_history.append(data_analysis)
+                delattr(roi, "_new_data_analysis")
+
+        # Process FOV-level analysis (both extraction and analysis-only)
+        if hasattr(fov, "_new_fov_analysis"):
+            for fov_analysis in fov._new_fov_analysis:
+                fov_analysis.analysis_result_id = analysis_result_id
+                fov_analysis.fov_id = fov.id
+                session.add(fov_analysis)
+            delattr(fov, "_new_fov_analysis")
 
     def _run_analysis_only(
         self,
