@@ -10,6 +10,7 @@ from sqlalchemy import event
 from sqlmodel import Session, create_engine, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME, CorrelationDataType, TraceDataType
+from cali.analysis import AnalysisRunner
 from cali.detection import DetectionRunner
 from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
@@ -104,9 +105,11 @@ class CaliRunner:
         return str(self._db_path) if self._db_path is not None else None
 
     def cancel(self) -> None:
-        """Cancel both detection and extraction processes."""
+        """Cancel detection, extraction, and analysis processes."""
         self._detection_runner.cancel()
         self._extraction_runner.cancel()
+        if hasattr(self, "_analysis_runner"):
+            self._analysis_runner.cancel()
 
     def run(
         self,
@@ -1657,6 +1660,9 @@ class CaliRunner:
     ) -> Generator[FOV, None, None]:
         """Run analysis only on FOVs that already have extraction results.
 
+        Uses the AnalysisRunner to compute both ROI-level analysis
+        (DataAnalysis records) and FOV-level analysis (FOVAnalysis records).
+
         Parameters
         ----------
         analysis_settings : AnalysisSettings
@@ -1664,16 +1670,13 @@ class CaliRunner:
         fovs : Iterable[FOV]
             FOVs with ROIs and existing traces to analyze
         """
-        from cali.analysis._fov_analysis import compute_fov_analysis
-
         cali_logger.info("📊 Running Analysis (using existing extraction)...")
-        for fov in fovs:
-            fov_analysis = compute_fov_analysis(fov, analysis_settings)
-            if fov_analysis is not None:
-                if not hasattr(fov, "_new_fov_analysis"):
-                    fov._new_fov_analysis = []
-                fov._new_fov_analysis.append(fov_analysis)
-            yield fov
+        self._analysis_runner = AnalysisRunner()
+        yield from self._analysis_runner.run(
+            fovs=fovs,
+            analysis_settings=analysis_settings,
+            as_generator=True,
+        )
 
     def _load_fovs_from_db(
         self,
