@@ -621,6 +621,28 @@ class CaliRunner:
                     if not positions_to_process:
                         return
 
+                    # Log information about position distribution
+                    positions_only_analysis = (
+                        positions_need_analysis - positions_need_extraction
+                    )
+                    if positions_only_analysis:
+                        positions_list = sorted(positions_only_analysis)
+                        if positions_only_analysis == positions_need_analysis:
+                            # ALL positions are analysis-only
+                            cali_logger.info(
+                                f"⚠️ Extraction already exists for all positions "
+                                f"with DetectionSettings ID {det_id} and "
+                                f"ExtractionSettings ID {extraction_settings_id}. "
+                                "Running analysis only on these positions."
+                            )
+                        else:
+                            # SOME positions are analysis-only
+                            cali_logger.info(
+                                f"⚠️ Extraction already exists for positions "
+                                f"{positions_list}. "
+                                "Running analysis only on these positions."
+                            )
+
                     yield f"PROGRESS:RESET:{len(positions_to_process)}"
 
                     # Create CaliResult FIRST with expected positions so we have the ID
@@ -715,6 +737,19 @@ class CaliRunner:
                             if fov.position_index not in positions_need_extraction
                         ]
 
+                        # Log batch processing plan
+                        if fovs_need_extraction:
+                            n_extraction = len(fovs_need_extraction)
+                            cali_logger.info(
+                                f"📈 Running extraction on {n_extraction} FOVs..."
+                            )
+                        if fovs_only_analysis:
+                            n_analysis = len(fovs_only_analysis)
+                            cali_logger.info(
+                                f"📊 Running analysis only on {n_analysis} FOVs "
+                                "(extraction already exists)..."
+                            )
+
                         # Run extraction only on FOVs that need it
                         for fov in self._run_extraction(
                             dataset,
@@ -752,11 +787,6 @@ class CaliRunner:
 
                         # Run analysis-only for FOVs with existing extraction
                         if analysis_settings_obj and fovs_only_analysis:
-                            cali_logger.info(
-                                f"📊 Running analysis only on "
-                                f"{len(fovs_only_analysis)} FOVs "
-                                "(extraction already exists)..."
-                            )
                             for fov in self._run_analysis_only(
                                 analysis_settings_obj,
                                 fovs=fovs_only_analysis,
@@ -1091,16 +1121,15 @@ class CaliRunner:
             p for p in global_position_indices if p not in existing_positions
         ]
 
-        if not positions_needing_extraction:
-            cali_logger.info(
-                f"⚠️ Extraction already exists for all positions with "
-                f"DetectionSettings ID {detection_settings_id} and "
-                f"ExtractionSettings ID {extraction_settings_id}. "
-                "Skipping extraction."
-            )
+        # Don't log here if we're just checking for analysis-only mode
+        # The caller will log more detailed information about the split
+        if not positions_needing_extraction and not force:
+            # Still return empty list, but don't log yet
+            # This allows the caller to provide context about whether
+            # analysis will run on these positions
             return []
 
-        if existing_positions:
+        if existing_positions and positions_needing_extraction:
             cali_logger.info(
                 f"⚠️ Extraction exists for {len(existing_positions)} position(s) "
                 f"but missing for {len(positions_needing_extraction)} position(s): "
