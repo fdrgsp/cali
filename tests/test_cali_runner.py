@@ -2978,10 +2978,11 @@ def test_cali_runner_analysis_only_skip_extraction_mocked(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            # Traces count should NOT increase (extraction was skipped)
+            # Traces are copied (not re-extracted) for the analysis-only run
+            # so each ROI now has 2 trace records (original + copy for new run)
             traces_count_after = len(session.exec(select(Traces)).all())
-            assert traces_count_after == traces_count_before, (
-                "Extraction should have been skipped (same trace count)"
+            assert traces_count_after == traces_count_before * 2, (
+                "Each ROI should have a copy of its traces for the new run"
             )
 
             # Verify result was upgraded with analysis

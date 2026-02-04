@@ -798,6 +798,8 @@ class CaliRunner:
                                     session,
                                     analysis_result_id,
                                     include_traces=False,
+                                    source_extraction_settings_id=extraction_settings_id,
+                                    source_detection_settings_id=det_id,
                                 )
                                 fov_count += 1
                                 batch_fov_count += 1
@@ -1539,6 +1541,8 @@ class CaliRunner:
         session: Session,
         analysis_result_id: int | None,
         include_traces: bool,
+        source_extraction_settings_id: int | None = None,
+        source_detection_settings_id: int | None = None,
     ) -> None:
         """Process FOV results by moving temporary data to permanent collections.
 
@@ -1552,17 +1556,47 @@ class CaliRunner:
             The CaliResult ID to associate with the results
         include_traces : bool
             Whether to process traces (True for extraction, False for analysis-only)
+        source_extraction_settings_id : int | None
+            When include_traces is False (analysis-only), the extraction settings
+            ID to find the correct source traces to copy.
+        source_detection_settings_id : int | None
+            When include_traces is False (analysis-only), the detection settings
+            ID to find the correct source traces to copy.
         """
         if analysis_result_id is None:
             return
 
         for roi in fov.rois:
-            # Process traces (only for extraction path)
+            # Process traces
             if include_traces and hasattr(roi, "_new_traces"):
+                # Extraction path: use newly created traces
                 for trace in roi._new_traces:
                     trace.analysis_result_id = analysis_result_id
                     roi.traces_history.append(trace)
                 delattr(roi, "_new_traces")
+            elif not include_traces and roi.id is not None:
+                # Analysis-only path: copy existing traces to new run
+                source_trace = self._find_source_trace(
+                    session,
+                    roi.id,
+                    source_extraction_settings_id,
+                    source_detection_settings_id,
+                )
+                if source_trace is not None:
+                    new_trace = Traces(
+                        raw_trace=source_trace.raw_trace,
+                        corrected_trace=source_trace.corrected_trace,
+                        neuropil_trace=source_trace.neuropil_trace,
+                        dff=source_trace.dff,
+                        dec_dff=source_trace.dec_dff,
+                        inferred_spikes=source_trace.inferred_spikes,
+                        x_axis=source_trace.x_axis,
+                        x_axis_units=source_trace.x_axis_units,
+                        roi_id=roi.id,
+                        analysis_result_id=analysis_result_id,
+                        neuropil_mask_id=source_trace.neuropil_mask_id,
+                    )
+                    session.add(new_trace)
 
             # Process ROI-level analysis (both extraction and analysis-only)
             if hasattr(roi, "_new_data_analysis"):
@@ -1578,6 +1612,43 @@ class CaliRunner:
                 fov_analysis.fov_id = fov.id
                 session.add(fov_analysis)
             delattr(fov, "_new_fov_analysis")
+
+    @staticmethod
+    def _find_source_trace(
+        session: Session,
+        roi_id: int,
+        extraction_settings_id: int | None,
+        detection_settings_id: int | None = None,
+    ) -> Traces | None:
+        """Find the source trace for an ROI from a specific extraction run.
+
+        Parameters
+        ----------
+        session : Session
+            Database session
+        roi_id : int
+            ROI ID to find traces for
+        extraction_settings_id : int | None
+            Extraction settings ID to match. If None, returns most recent trace.
+        detection_settings_id : int | None
+            Detection settings ID to match. Ensures we find traces from the
+            correct detection+extraction combination.
+        """
+        from sqlmodel import col, select
+
+        stmt = select(Traces).where(col(Traces.roi_id) == roi_id)
+        if extraction_settings_id is not None or detection_settings_id is not None:
+            stmt = stmt.join(CaliResult)
+            if extraction_settings_id is not None:
+                stmt = stmt.where(
+                    col(CaliResult.extraction_settings_id) == extraction_settings_id
+                )
+            if detection_settings_id is not None:
+                stmt = stmt.where(
+                    col(CaliResult.detection_settings_id) == detection_settings_id
+                )
+        stmt = stmt.order_by(col(Traces.id).desc()).limit(1)
+        return session.exec(stmt).first()  # type: ignore
 
     def _run_analysis_only(
         self,

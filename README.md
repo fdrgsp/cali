@@ -279,16 +279,26 @@ After detection, the following metrics are computed per ROI:
 
 **Calculation** (population-level, based on detected calcium peaks):
 
-1. **Population Activity**: compute the fraction of active ROIs with detected peaks at each frame. Since peaks are single-frame events, nearby peaks need to be integrated over time.
-2. **Smoothing**: apply a Gaussian filter to convert temporally-spread single-frame peaks into sustained periods of elevated activity. This is essential because network bursts are periods where many cells fire within a time window (typically 1-3 seconds), not necessarily at the exact same frame.
-3. **Threshold**: detect periods where the smoothed fraction exceeds the threshold (e.g., 25% → 0.25).
-4. **Duration Filter**: keep only bursts lasting at least a minimum duration.
+1. **Binary peak events**: for each ROI, detected calcium peaks are converted to binary arrays (1 at peak frames, 0 elsewhere).
+2. **Population activity**: compute the fraction of active ROIs with peaks at each frame:
+
+   ```
+   ROI 1: [0, 0, 1, 0, 1, 0, 1, 0, ...]
+   ROI 2: [0, 0, 1, 0, 0, 0, 1, 0, ...]
+   ROI 3: [0, 0, 0, 0, 1, 0, 1, 0, ...]
+   ─────────────────────────────────────
+   Mean:  [0, 0, .67, 0, .67, 0, 1.0, 0, ...]
+   ```
+
+3. **Smoothing**: apply a Gaussian filter (default sigma=0.3s) to the population trace. This is needed because peak detection has limited temporal precision (~1-2 frames), so cells firing together may have peaks on nearby but not identical frames. Smoothing bridges these small gaps.
+4. **Threshold**: detect periods where the smoothed fraction exceeds the threshold (e.g., 25% → 0.25).
+5. **Duration Filter**: keep only bursts lasting at least a minimum duration.
 
 **GUI Parameters**:
 
-- **Burst Threshold** (%): percentage of active ROIs that must have peaks (e.g., 25% means at least 25% of active cells firing within the smoothing window).
+- **Burst Threshold** (%): percentage of active ROIs that must have peaks simultaneously (e.g., 25% means at least 25% of active cells must fire together).
 - **Min Duration** (ms): minimum burst duration to be retained.
-- **Gaussian Sigma** (s): temporal smoothing window (standard deviation). Recommended: 0.5-1.0 seconds to match calcium transient timescales. Higher values detect broader/fewer bursts; lower values detect brief/more bursts.
+- **Gaussian Sigma** (s): temporal smoothing (standard deviation) for the population activity. Default 0.3s.
 
 **Computed Metrics**:
 
