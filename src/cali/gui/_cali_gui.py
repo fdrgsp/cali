@@ -1149,33 +1149,22 @@ class CaliGui(QMainWindow):
                 )
 
                 if missing_detection or missing_extraction:
-                    msg = "Data Missing for Analysis\n\n"
+                    # Simply inform the user and ask them to fix the issue
+                    msg = "Cannot Run Analysis - Missing Required Data\n\n"
+                    msg += f"Selected positions: {pos}\n\n"
                     if missing_detection:
-                        msg = msg + f"Missing detection data: {missing_detection}"
+                        msg += f"Positions missing detection: {missing_detection}\n"
                     if missing_extraction:
-                        msg = msg + f"Missing extraction data: {missing_extraction}"
-
-                    msg = msg + (
-                        "\n\nDo you want to run the full pipeline (detection + "
-                        "extraction + analysis) on these positions?\n"
-                        "(If you select 'No', only positions with existing "
-                        "data will be processed)."
+                        msg += f"Positions missing extraction: {missing_extraction}\n\n"
+                    msg += (
+                        "To run analysis-only, you must:\n"
+                        "  1. First run detection and/or extraction on the missing "
+                        "positions, OR\n"
+                        "  2. Remove the positions without data from your selection\n\n"
+                        "Please fix the issue and try again."
                     )
-                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
-                    if mbox.exec():  # type: ignore
-                        # User wants to run full pipeline - switch modes
-                        # Use the selected IDs from combo boxes, not GUI widgets
-                        value = CaliRunSettings(
-                            positions=value.positions,
-                            run_detection=True,
-                            run_extraction=True,
-                            run_analysis=True,
-                            detection_settings_id=None,
-                            extraction_settings_id=None,
-                        )
-                        # Use the IDs that were selected in the combo boxes
-                        detection_settings = detection_settings_id_check
-                        extraction_settings = extraction_settings_id
+                    show_error_dialog(self, msg)
+                    return
             elif value.run_extraction and extraction_settings is None:
                 # Extraction or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
@@ -1230,31 +1219,19 @@ class CaliGui(QMainWindow):
                     detection_settings_id, pos
                 )
                 if missing_detection:
-                    msg = "Detection Data Missing\n\n"
-                    msg += "The following positions are missing detection data:\n"
-                    msg += f"{missing_detection}\n\n"
-                    msg += "Do you want to run detection first on these positions?\n"
+                    # Simply inform the user and ask them to fix the issue
+                    msg = "Cannot Run Extraction - Missing Detection Data\n\n"
+                    msg += f"Selected positions: {pos}\n"
+                    msg += f"Positions missing detection: {missing_detection}\n\n"
                     msg += (
-                        "(If you select 'No', only positions with existing detection "
-                        "will be processed)."
+                        "To run extraction-only, you must:\n"
+                        "  1. First run detection on the missing positions, OR\n"
+                        "  2. Remove the positions without detection from your "
+                        "selection\n\n"
+                        "Please fix the issue and try again."
                     )
-                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
-                    if mbox.exec():  # type: ignore
-                        # User wants to run detection first - switch to full pipeline
-                        # Use the selected detection ID from combo box, not GUI widget
-                        value = CaliRunSettings(
-                            positions=value.positions,
-                            run_detection=True,
-                            run_extraction=True,
-                            run_analysis=value.run_analysis,
-                            detection_settings_id=None,
-                            extraction_settings_id=None,
-                        )
-                        # Use the detection ID that was selected in the combo box
-                        detection_settings = detection_settings_id
-                        # For extraction, use GUI widget since we're in
-                        # extraction-only mode
-                        extraction_settings = self._extraction_wdg.to_model_settings()
+                    show_error_dialog(self, msg)
+                    return
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
