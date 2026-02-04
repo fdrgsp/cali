@@ -783,6 +783,7 @@ def test_cali_result_with_all_fields() -> None:
     assert result.positions_analyzed == [0, 1, 2, 3, 4]
     assert result.id is None  # Not yet saved
     assert result.created_at is not None
+    assert result.last_modified is not None  # Should be set by default_factory
 
 
 def test_cali_result_positions_sorted() -> None:

@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlmodel import Session, create_engine, select
 from superqt.utils import create_worker
 from tqdm import tqdm
 
@@ -1692,6 +1693,36 @@ class CaliGui(QMainWindow):
         self._runner.cancel()
         self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
 
+    def _select_most_recently_modified_run(self) -> None:
+        """Query and select the most recently modified CaliResult."""
+        if not self._database_path:
+            return
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            echo=False,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Query for most recently modified CaliResult
+                most_recent = session.exec(
+                    select(CaliResult)
+                    .order_by(CaliResult.last_modified.desc())  # type: ignore
+                    .limit(1)
+                ).first()
+                if most_recent and most_recent.id is not None:
+                    self._runs_panel.select_run_by_id(most_recent.id)
+                else:
+                    cali_logger.warning(
+                        "⚠️ No CaliResult found to select the most recent run."
+                    )
+        except Exception as e:
+            cali_logger.error(f"❌ Failed to select most recent run: {e}")
+        finally:
+            engine.dispose(close=True)
+
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
@@ -1703,14 +1734,13 @@ class CaliGui(QMainWindow):
         if self._database_path:
             self._populate_settings(self._database_path)
             self._update_graph_properties(self._database_path)
-        # update GUI with the latest run (latest run is at the end of the list)
-        last_idx = self._runs_panel._runs_list.count() - 1
-        # select last run (no signal emitted)
-        self._runs_panel.select_run_by_index(last_idx, block_signals=True)
-        # Update run_id in all graph widgets
-        self._update_graph_with_run_id(self._runs_panel.get_run_id_by_index(last_idx))
+        # Select the most recently modified run
+        self._select_most_recently_modified_run()
         # Refresh the image viewer to update labels with the new detection settings
         self._on_fov_table_selection_changed()
+        # Refresh plot combo availability to reflect new analysis data
+        # for sw_graph in self.SW_GRAPHS:
+        #     sw_graph._update_combo_item_availability()
 
     def _save_plate_map_to_database(self) -> None:
         """Save plate map data from GUI to database."""

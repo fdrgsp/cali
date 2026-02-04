@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -365,9 +366,11 @@ class CaliRunner:
                 yield "🔍 Running Detection..."
 
                 # 5. Run detection if needed
+                # Initialize result IDs at the beginning to avoid UnboundLocalError
+                analysis_result_id: int | None = None
+                detection_result_id: int | None = None
                 positions_processed_detection = []
                 total_rois_detected = 0
-                detection_result_id = None  # Track result ID for updating positions
 
                 # Create detection-only result if no extraction/analysis will follow
                 needs_detection_result = (
@@ -646,7 +649,6 @@ class CaliRunner:
                     yield f"PROGRESS:RESET:{len(positions_to_process)}"
 
                     # Create CaliResult FIRST with expected positions so we have the ID
-                    analysis_result_id = None
                     analysis_result_was_created = False
                     if experiment.id is not None:
                         # For extraction/analysis, we track both stages
@@ -1753,6 +1755,8 @@ class CaliRunner:
                 new = set(positions_analyzed)
                 exact_match.positions_analyzed = sorted(old | new)
 
+            exact_match.last_modified = datetime.now()
+
             session.add(exact_match)
             session.commit()
             session.refresh(exact_match)
@@ -1803,6 +1807,9 @@ class CaliRunner:
                     upgradeable_result.positions_analyzed = sorted(old | new)
 
                 upgradeable_result.analysis_settings_id = analysis_settings_id
+
+                upgradeable_result.last_modified = datetime.now()
+
                 session.add(upgradeable_result)
                 session.commit()
                 session.refresh(upgradeable_result)
@@ -1888,6 +1895,8 @@ class CaliRunner:
                     new = set(positions_detected)
                     any_result_with_detection.positions_detected = sorted(old | new)
 
+                any_result_with_detection.last_modified = datetime.now()
+
                 session.add(any_result_with_detection)
                 session.commit()
                 session.refresh(any_result_with_detection)
@@ -1936,6 +1945,9 @@ class CaliRunner:
                     upgradeable_result.positions_analyzed = sorted(old | new)
 
                 upgradeable_result.extraction_settings_id = extraction_settings_id
+
+                upgradeable_result.last_modified = datetime.now()
+
                 session.add(upgradeable_result)
                 session.commit()
                 session.refresh(upgradeable_result)
@@ -1975,6 +1987,8 @@ class CaliRunner:
                     old = set(compatible_result.positions_analyzed or [])
                     new = set(positions_analyzed)
                     compatible_result.positions_analyzed = sorted(old | new)
+
+                compatible_result.last_modified = datetime.now()
 
                 session.add(compatible_result)
                 session.commit()

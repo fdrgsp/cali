@@ -475,49 +475,50 @@ def test_combo_visibility_changes(qtbot: QtBot) -> None:
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
 
-def test_on_worker_finished_selects_last_run(qtbot: QtBot) -> None:
-    """Test that _on_worker_finished selects the last run in the runs panel."""
+def test_on_worker_finished_selects_recent_run(qtbot: QtBot) -> None:
+    """Test that _on_worker_finished selects the most recently modified run."""
     gui = CaliGui()
     qtbot.addWidget(gui)
     gui.show()
     qtbot.waitExposed(gui)
 
-    # Add some items to the runs list to simulate existing runs
-    gui._runs_panel._runs_list.addItem("Run 1")
-    gui._runs_panel._runs_list.addItem("Run 2")
-    gui._runs_panel._runs_list.addItem("Run 3")
+    # Load the test database which has 2 runs with different last_modified times
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 
-    # Set run IDs in the item data (assuming Qt.ItemDataRole.UserRole stores the run ID)
-    from qtpy.QtCore import Qt
+    # Initialize GUI from database
+    gui._initialize_from_database(db_path, data_path)
 
-    item0 = gui._runs_panel._runs_list.item(0)
-    assert item0 is not None
-    item0.setData(Qt.ItemDataRole.UserRole, 1)
+    # Get the most recently modified run from database to know which one to expect
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        from sqlmodel import select
 
-    item1 = gui._runs_panel._runs_list.item(1)
-    assert item1 is not None
-    item1.setData(Qt.ItemDataRole.UserRole, 2)
+        most_recent = session.exec(
+            select(CaliResult)
+            .order_by(CaliResult.last_modified.desc())  # type: ignore
+            .limit(1)
+        ).first()
+        assert most_recent is not None
+        expected_run_id = most_recent.id
 
-    item2 = gui._runs_panel._runs_list.item(2)
-    assert item2 is not None
-    item2.setData(Qt.ItemDataRole.UserRole, 3)
+    engine.dispose(close=True)
 
-    # Mock refresh_runs to do nothing so items remain
+    # Mock refresh_runs to avoid reloading (we just want to test selection)
     import unittest.mock
 
     with unittest.mock.patch.object(gui._runs_panel, "refresh_runs"):
-        # Call the method that should select the last run
+        # Call the method that should select the most recently modified run
         gui._on_worker_finished()
 
-    # Check that the last item (index 2) is selected
-    assert gui._runs_panel._runs_list.currentRow() == 2
-
-    # Check that the graphs have been updated with the last run ID
-    # Assuming there are graphs in SW_GRAPHS
-    if gui.SW_GRAPHS:
-        assert gui.SW_GRAPHS[0].run_id == 3
-    if gui.MW_GRAPHS:
-        assert gui.MW_GRAPHS[0].run_id == 3
+    # Verify that the most recently modified run is now selected
+    selected_item = gui._runs_panel._runs_list.currentItem()
+    assert selected_item is not None
+    selected_run_id = selected_item.data(Qt.ItemDataRole.UserRole)
+    assert selected_run_id == expected_run_id, (
+        f"Expected run {expected_run_id} to be selected, "
+        f"but run {selected_run_id} is selected"
+    )
 
     # Cleanup
     gui.close()
