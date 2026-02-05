@@ -5,7 +5,7 @@ It reads tests/test_data/data_and_db_for_tests/tests.json and creates a fresh
 test_db.cali file with the specified data.
 
 Usage:
-    python tests/rebuild_test_db.py
+    python tests/test_data/data_and_db_for_tests/rebuild_test_db.py
 """
 
 from __future__ import annotations
@@ -16,22 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 # Add src to path so we can import cali modules
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
-    CALCIUM_DFF_CORRELATION,
-    DEC_DFF_TRACES,
-    DFF_TRACES,
-    INFERRED_SPIKES_CROSS_CORRELATION,
-    INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
-    INFERRED_SPIKES_SYNCHRONY,
-    INFERRED_SPIKES_THRESHOLDED_BINARY,
-    INFERRED_SPIKES_TRACES,
-    NEUROPIL_CORRECTED_TRACES,
-    NEUROPIL_TRACES,
-    RAW_CALCIUM_TRACES,
-)
 from cali.runner import CaliRunner
 from cali.sqlmodel import (
     AnalysisSettings,
@@ -63,15 +49,18 @@ def rebuild_test_database() -> None:
     print(f"🔨 Building new database at {db_path}")
 
     # Create experiment with plate structure
+    positions_info = schema.get("positions", {})
+    wells = positions_info.get("wells", ["B5", "B6", "B7", "B8"])
+
     experiment = Experiment.create(
         name=schema["experiment"]["name"],
         description=schema["experiment"]["description"],
         plate_type="96-well",
-        well_names=["B5", "B6"],  # Only these wells are used
-        fovs_per_well=1,
+        well_names=wells,
+        fovs_per_well=positions_info.get("fovs_per_well", 2),
         plate_maps={
-            "genotype": {"B5": "g1", "B6": "g2"},
-            "treatment": {"B5": "t1", "B6": "t2"},
+            "genotype": {w: f"g{i + 1}" for i, w in enumerate(wells)},
+            "treatment": {w: f"t{i + 1}" for i, w in enumerate(wells)},
         },
     )
 
@@ -135,34 +124,24 @@ def rebuild_test_database() -> None:
                 calcium_burst_min_duration=as_config["calcium_burst_min_duration"],
                 calcium_burst_gaussian_sigma=as_config["calcium_burst_gaussian_sigma"],
                 spikes_sync_cross_corr_lag=as_config["spikes_sync_cross_corr_lag"],
+                ccg_n_shuffles=as_config.get("ccg_n_shuffles", 30),
+                enable_rising_edge_analysis=as_config.get(
+                    "enable_rising_edge_analysis", True
+                ),
                 frame_rate=as_config["frame_rate"],
                 experiment_type=as_config["experiment_type"],
                 led_power_equation=as_config.get("led_power_equation"),
                 led_pulse_duration=as_config.get("led_pulse_duration"),
                 led_pulse_powers=as_config.get("led_pulse_powers"),
                 led_pulse_on_frames=as_config.get("led_pulse_on_frames"),
-                stimulation_mask_path=as_config.get("stimulation_mask_path"),
+                stimulation_mask_path=(
+                    str(Path(as_config["stimulation_mask_path"]).resolve())
+                    if as_config.get("stimulation_mask_path")
+                    else None
+                ),
                 threads=as_config["threads"],
+                n_processes=as_config.get("n_processes", 1),
             )
-
-        # Configure CSV exports for testing
-        export_traces = {
-            RAW_CALCIUM_TRACES: True,
-            NEUROPIL_TRACES: True,
-            NEUROPIL_CORRECTED_TRACES: True,
-            DFF_TRACES: True,
-            DEC_DFF_TRACES: True,
-            INFERRED_SPIKES_TRACES: True,
-            INFERRED_SPIKES_THRESHOLDED_BINARY: True,
-        }
-
-        export_correlations = {
-            CALCIUM_DFF_CORRELATION: True,
-            CALCIUM_DEC_DFF_CORRELATION: True,
-            INFERRED_SPIKES_SYNCHRONY: True,
-            INFERRED_SPIKES_CROSS_CORRELATION: True,
-            INFERRED_SPIKES_CROSS_CORRELATION_LAGS: True,
-        }
 
         # Run the pipeline
         positions = run_config["positions_to_analyze"]
@@ -173,15 +152,38 @@ def rebuild_test_database() -> None:
             detection_settings=detection_settings,
             extraction_settings=extraction_settings,
             analysis_settings=analysis_settings,
-            global_position_indices=run_config["positions_to_analyze"],
+            global_position_indices=positions,
             output_path=db_path.parent,
             database_name=db_path.name,
-            export_traces=export_traces,
-            export_correlations=export_correlations,
         )
 
     print(f"\n✅ Database rebuild complete: {db_path}")
-    print("   Use this database for all tests")
+
+    # Print summary of what's in the database
+    from sqlmodel import Session, create_engine, select
+
+    from cali.sqlmodel._model import FOV, ROI, CaliResult
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        results = session.exec(select(CaliResult)).all()
+        fovs = session.exec(select(FOV)).all()
+        rois = session.exec(select(ROI)).all()
+
+        print("\n📊 Database Summary:")
+        print(f"   CaliResults: {len(results)}")
+        for r in results:
+            print(
+                f"     ID {r.id}: det={r.detection_settings_id}, "
+                f"ext={r.extraction_settings_id}, ana={r.analysis_settings_id}"
+            )
+            print(f"       detected: {r.positions_detected}")
+            print(f"       extracted: {r.positions_extracted}")
+            print(f"       analyzed: {r.positions_analyzed}")
+        print(f"   FOVs: {len(fovs)}")
+        print(f"   ROIs: {len(rois)}")
+
+    engine.dispose()
 
 
 if __name__ == "__main__":
