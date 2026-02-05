@@ -678,7 +678,7 @@ class CaliRunner:
                                     fov,
                                     session,
                                     analysis_result_id,
-                                    include_traces=False,
+                                    include_traces=True,
                                 )
                                 fov_count += 1
                                 batch_fov_count += 1
@@ -1441,6 +1441,11 @@ class CaliRunner:
     ) -> Generator[FOV, None, None]:
         """Run analysis only on FOVs that already have extraction results.
 
+        This method:
+        1. Runs AnalysisRunner to create ROI-level DataAnalysis records
+        2. Runs FOV-level analysis (CCG, burst detection)
+        3. Copies existing traces to associate with the new CaliResult
+
         Parameters
         ----------
         analysis_settings : AnalysisSettings
@@ -1448,15 +1453,52 @@ class CaliRunner:
         fovs : Iterable[FOV]
             FOVs with ROIs and existing traces to analyze
         """
+        from cali.analysis import AnalysisRunner
         from cali.analysis._fov_analysis import compute_fov_analysis
 
         cali_logger.info("📊 Running Analysis (using existing extraction)...")
-        for fov in fovs:
+
+        # Convert to list so we can iterate multiple times
+        fov_list = list(fovs)
+
+        # Run ROI-level analysis (peaks, frequencies, IEI) via AnalysisRunner
+        # This creates DataAnalysis records and attaches them to ROIs
+        analysis_runner = AnalysisRunner()
+        analyzed_fovs = list(analysis_runner.run(fov_list, analysis_settings))
+
+        # Run FOV-level analysis (CCG, burst detection) and copy traces
+        for fov in analyzed_fovs:
+            # FOV-level analysis
             fov_analysis = compute_fov_analysis(fov, analysis_settings)
             if fov_analysis is not None:
                 if not hasattr(fov, "_new_fov_analysis"):
                     fov._new_fov_analysis = []
                 fov._new_fov_analysis.append(fov_analysis)
+
+            # Copy existing traces to associate with the new CaliResult
+            # This ensures queries by analysis_result_id return complete data
+            for roi in fov.rois:
+                if roi.traces_history:
+                    # Get the most recent trace (last in history)
+                    source_trace = roi.traces_history[-1]
+                    # Create a copy with fields that will get new analysis_result_id
+                    new_trace = Traces(
+                        roi_id=roi.id,
+                        raw_trace=source_trace.raw_trace,
+                        corrected_trace=source_trace.corrected_trace,
+                        neuropil_trace=source_trace.neuropil_trace,
+                        dff=source_trace.dff,
+                        dec_dff=source_trace.dec_dff,
+                        inferred_spikes=source_trace.inferred_spikes,
+                        x_axis=source_trace.x_axis,
+                        x_axis_units=source_trace.x_axis_units,
+                        neuropil_mask_id=source_trace.neuropil_mask_id,
+                    )
+                    # Store in temporary attribute for _process_fov_results
+                    if not hasattr(roi, "_new_traces"):
+                        roi._new_traces = []
+                    roi._new_traces.append(new_trace)
+
             yield fov
 
     def _load_fovs_from_db(
