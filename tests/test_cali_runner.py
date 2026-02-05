@@ -4178,3 +4178,381 @@ def test_scenario_l1_incremental_position_expansion(
             assert set(result.positions_analyzed) == {0, 1, 2}
     finally:
         engine.dispose()
+
+
+def test_scenario_b4_extraction_on_undetected_position(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario B4: Extraction on position with no detection produces no traces."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+
+    # Run detection on [0, 1] only
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            assert set(result.positions_detected) == {0, 1}
+            assert result.extraction_settings_id is None
+    finally:
+        engine.dispose()
+
+    # Try extraction on [2] - position without detection
+    # This should process but produce no traces (no ROIs to extract from)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[2],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            # Detection should now include [2] (new detection is run)
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            # Same detection settings, so positions get merged
+            assert 2 in result.positions_detected
+            # Position 2 should have extraction (it ran detection first)
+            assert result.positions_extracted is not None
+            assert 2 in result.positions_extracted
+    finally:
+        engine.dispose()
+
+
+def test_scenario_b5_extraction_mixed_detected_undetected(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario B5: Extraction on [0,1,2] when only [0,1] detected."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+
+    # Run detection on [0, 1] only
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Run extraction on [0, 1, 2] - position 2 has no detection yet
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1, 2],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            # Detection should run on [2] as well
+            assert set(result.positions_detected) == {0, 1, 2}
+            # Extraction should cover all three positions
+            assert set(result.positions_extracted) == {0, 1, 2}
+
+            # Verify traces exist for all processed positions
+            traces = session.exec(select(Traces)).all()
+            assert len(traces) > 0
+    finally:
+        engine.dispose()
+
+
+def test_scenario_c4_analysis_on_unextracted_position(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario C4: Analysis on position with no extraction - runs extraction first."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+    analysis_settings = AnalysisSettings(threads=THREADS)
+
+    # Run det+ext on [0, 1] only
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            assert set(result.positions_detected) == {0, 1}
+            assert set(result.positions_extracted) == {0, 1}
+    finally:
+        engine.dispose()
+
+    # Request analysis on [2] - position without extraction
+    # The runner should run detection and extraction on [2] first
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[2],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            # All three positions should be processed
+            assert 2 in result.positions_detected
+            assert 2 in result.positions_extracted
+            assert 2 in result.positions_analyzed
+    finally:
+        engine.dispose()
+
+
+def test_scenario_c5_analysis_mixed_extracted_unextracted(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario C5: Analysis on [0,1,2] when only [0,1] have extraction."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+    analysis_settings = AnalysisSettings(threads=THREADS)
+
+    # Run det+ext on [0, 1] only
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Request full pipeline on [0, 1, 2] - position 2 needs det+ext first
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1, 2],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            # All positions should be fully processed
+            assert set(result.positions_detected) == {0, 1, 2}
+            assert set(result.positions_extracted) == {0, 1, 2}
+            assert set(result.positions_analyzed) == {0, 1, 2}
+
+            # Verify analysis data exists
+            data_analysis = session.exec(select(DataAnalysis)).all()
+            assert len(data_analysis) > 0
+    finally:
+        engine.dispose()
+
+
+def test_scenario_i2_position_not_in_dataset(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+) -> None:
+    """Scenario I2: Run on position index not in dataset - ValueError raised.
+
+    When running detection on a position that doesn't exist in the dataset,
+    tensorstore raises a ValueError (OUT_OF_RANGE) when trying to access
+    that position's data.
+    The test does NOT use mock_detection_runner so actual dataset access occurs.
+    """
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+
+    # Dataset has 8 positions (0-7), request position 99
+    # This should raise a ValueError when the actual detection runner
+    # tries to access the non-existent position in the dataset
+    with pytest.raises(ValueError, match="OUT_OF_RANGE"):
+        runner.run(
+            experiment=test_experiment,
+            dataset_path=data_path,
+            detection_settings=detection_settings,
+            database_name=test_db_path.name,
+            output_path=test_db_path.parent,
+            global_position_indices=[99],  # Invalid position
+        )
+
+
+def test_scenario_l2_analysis_without_extraction_for_some_positions(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario L2: Det [0,1], Ext [0], then Ana [0,1] - runs ext on [1] first."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+    analysis_settings = AnalysisSettings(threads=THREADS)
+
+    # Step 1: Detection on [0, 1]
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Step 2: Extraction only on [0]
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            assert set(result.positions_detected) == {0, 1}
+            assert result.positions_extracted == [0]
+    finally:
+        engine.dispose()
+
+    # Step 3: Analysis on [0, 1] - needs ext on [1] first
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            assert set(result.positions_detected) == {0, 1}
+            assert set(result.positions_extracted) == {0, 1}  # Both extracted now
+            assert set(result.positions_analyzed) == {0, 1}  # Both analyzed
+    finally:
+        engine.dispose()
+
+
+def test_scenario_l3_mixed_extraction_then_full_pipeline(
+    test_db_path: Path,
+    test_experiment: Experiment,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """Scenario L3: Det [0,1], Ext [0], then Ext+Ana [0,1]."""
+    runner = CaliRunner(commit_batch_size=1)
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+    analysis_settings = AnalysisSettings(threads=THREADS)
+
+    # Step 1: Detection on [0, 1]
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    # Step 2: Extraction only on [0]
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0],
+    )
+
+    # Step 3: Ext+Ana on [0, 1] - should skip ext [0], run ext [1], run ana [0,1]
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        extraction_settings=extraction_settings,
+        analysis_settings=analysis_settings,
+        database_name=test_db_path.name,
+        output_path=test_db_path.parent,
+        global_position_indices=[0, 1],
+    )
+
+    engine = create_engine(f"sqlite:///{test_db_path}")
+    try:
+        with Session(engine) as session:
+            result = session.exec(select(CaliResult)).first()
+            assert result is not None
+            assert set(result.positions_detected) == {0, 1}
+            assert set(result.positions_extracted) == {0, 1}
+            assert set(result.positions_analyzed) == {0, 1}
+
+            # Verify we have traces and analysis for both positions
+            traces = session.exec(select(Traces)).all()
+            assert len(traces) > 0
+
+            data_analysis = session.exec(select(DataAnalysis)).all()
+            assert len(data_analysis) > 0
+    finally:
+        engine.dispose()
