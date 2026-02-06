@@ -60,12 +60,21 @@ dependencies = [
 # Cellpose is optional - choose the version that fits your Python version
 cp3 = ["cellpose>=3.0.0,<4.0.0"]
 cp4 = ["cellpose>=4.0.0"]
+# CUDA variants for GPU-accelerated PyTorch (Windows/Linux only)
+cu126 = ["torch", "torchvision"]
+cu128 = ["torch", "torchvision"]
+cu130 = ["torch", "torchvision"]
 
 [tool.uv]
 conflicts = [
     [
       { extra = "cp3" },
       { extra = "cp4" },
+    ],
+    [
+      { extra = "cu126" },
+      { extra = "cu128" },
+      { extra = "cu130" },
     ],
 ]
 
@@ -92,6 +101,31 @@ cali = "cali.__main__:main"
 
 [tool.uv.sources]
 cali = { workspace = true }
+torch = [
+    { index = "pytorch-cu126", extra = "cu126" },
+    { index = "pytorch-cu128", extra = "cu128" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+torchvision = [
+    { index = "pytorch-cu126", extra = "cu126" },
+    { index = "pytorch-cu128", extra = "cu128" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 only-include = ["src"]

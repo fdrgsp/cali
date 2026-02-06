@@ -5,7 +5,7 @@ A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 [![CI](https://github.com/fdrgsp/cali/actions/workflows/ci.yml/badge.svg)](https://github.com/fdrgsp/cali/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/fdrgsp/cali/branch/main/graph/badge.svg)](https://codecov.io/gh/fdrgsp/cali)
 
-`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
+`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
 <img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
@@ -13,28 +13,76 @@ A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` directly without installing it using:
 
-`uvx "git+https://github.com/fdrgsp/cali"`
+```bash
+uvx -p 3.13 "git+https://github.com/fdrgsp/cali[cp4]"
+```
 
-**Note:** Cellpose is an optional dependency. To use segmentation features, install with:
+***NOTE**: use python 3.11 or greater. Swap `cp4` with `cp3` to use Cellpose 3.x.*
 
-`uvx -p 3.13 "git+https://github.com/fdrgsp/cali[cp4]"` for Cellpose 4.x (cellpose-sam) (use python 3.11 or greater)
+**For GPU support (CUDA, Windows/Linux only):**
 
-- `uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp3]"` for Cellpose 3.x (use python 3.11 or greater)
+```bash
+uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+https://github.com/fdrgsp/cali[cp4,cu130]"
+```
+
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions and `cp4` with `cp3` to use Cellpose 3.x.*
 
 ## To install
 
-### Using uv (pip)
+### Using (uv) pip
 
-Create a new virtual environment and install `cali` using `uv` (pip):
+Install `cali` directly without cloning (use python 3.11 or greater):
 
-`uv pip install git+https://github.com/fdrgsp/cali`
+```bash
+(uv) pip install "git+https://github.com/fdrgsp/cali[cp4]"
+```
+
+***NOTE**: swap `cp4` with `cp3` to use Cellpose 3.x.*
+
+To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed:
+
+```bash
+(uv) pip install --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+https://github.com/fdrgsp/cali[cp4,cu130]"
+```
+
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions and `cp4` with `cp3` to use Cellpose 3.x.*
+***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
+
+```bash
+nvidia-smi
+```
+
+### Using uv
+
+Clone the repository and install with `uv sync`:
+
+```bash
+git clone https://github.com/fdrgsp/cali
+cd cali
+```
 
 To install with Cellpose:
 
-- `uv pip install git+https://github.com/fdrgsp/cali[cp4]` for Cellpose 4.x (cellpose-sam)
-- `uv pip install git+https://github.com/fdrgsp/cali[cp3]` for Cellpose 3.x
+```bash
+uv sync --extra cp4
+```
 
-### NOTE
+***NOTE**: swap `cp4` with `cp3` to use Cellpose 3.x.*
+
+To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed. Add a CUDA extra alongside your Cellpose extra:
+
+```bash
+uv sync --extra cp4 --extra cu130   # Cellpose 4.x + CUDA 13.0
+```
+
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions.*
+***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
+
+```bash
+nvidia-smi
+```
+
+### NOTES
 
 #### Building on macOS
 
@@ -51,7 +99,7 @@ Then run your installation command.
 
 ## Overview
 
-https://github.com/user-attachments/assets/4fdcabb9-6d7b-4c4f-ae84-8dffc8487376
+<https://github.com/user-attachments/assets/4fdcabb9-6d7b-4c4f-ae84-8dffc8487376>
 
 ### File Formats
 
