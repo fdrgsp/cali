@@ -19,7 +19,7 @@ uvx -p 3.13 "git+https://github.com/fdrgsp/cali[cp4]"
 
 ***NOTE**: use python 3.11 or greater. Swap `cp4` with `cp3` to use Cellpose 3.x.*
 
-**For GPU support (CUDA, Windows/Linux only):**
+To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed:
 
 ```bash
 uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+https://github.com/fdrgsp/cali[cp4,cu130]"
