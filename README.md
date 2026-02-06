@@ -5,7 +5,7 @@ A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 [![CI](https://github.com/fdrgsp/cali/actions/workflows/ci.yml/badge.svg)](https://github.com/fdrgsp/cali/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/fdrgsp/cali/branch/main/graph/badge.svg)](https://codecov.io/gh/fdrgsp/cali)
 
-`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager]` and [pymmcore-plus](https://github.com/pymmcore-plus).
+`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
 <img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
@@ -13,29 +13,58 @@ A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` directly without installing it using:
 
-for Cellpose 4.x (cellpose-sam)
+**▸ For Cellpose 4.x (cellpose-sam):**
 
 ```bash
 uvx -p 3.13 "git+https://github.com/fdrgsp/cali[cp4]"
 ```
 
-or for Cellpose 3.x:
+**▸ For Cellpose 3.x:**
 
 ```bash
 uvx -p 3.12 "git+https://github.com/fdrgsp/cali[cp3]"
 ```
 
-NOTE: use python 3.11 or greater
+***NOTE**: use python 3.11 or greater*
 
-For GPU support (CUDA, Windows/Linux only):
+**▸ For GPU support (CUDA, Windows/Linux only):**
 
 ```bash
 uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+https://github.com/fdrgsp/cali[cp4,cu130]"
 ```
 
-NOTE: swap `cu130` with `cu126` or `cu128` for different CUDA versions.
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions.*
 
 ## To install
+
+### Using (uv) pip
+
+Install `cali` directly without cloning (use python 3.11 or greater):
+
+**▸ For Cellpose 4.x (cellpose-sam):**
+
+```bash
+(uv) pip install "git+https://github.com/fdrgsp/cali[cp4]"
+```
+
+**▸ For Cellpose 3.x:**
+
+```bash
+(uv) pip install "git+https://github.com/fdrgsp/cali[cp3]"
+```
+
+**▸ For GPU support (CUDA, Windows/Linux only):**
+
+```bash
+(uv) pip install --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+https://github.com/fdrgsp/cali[cp4,cu130]"
+```
+
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions.*
+***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
+
+```bash
+nvidia-smi
+```
 
 ### Using uv
 
@@ -48,13 +77,13 @@ cd cali
 
 To install with Cellpose:
 
-for Cellpose 4.x (cellpose-sam):
+**▸ For Cellpose 4.x (cellpose-sam):**
 
 ```bash
 uv sync --extra cp4
 ```
 
-or for Cellpose 3.x:
+**▸ For Cellpose 3.x:**
 
 ```bash
 uv sync --extra cp3
@@ -66,43 +95,14 @@ To install with GPU support (CUDA, Windows/Linux only), add a CUDA extra alongsi
 uv sync --extra cp4 --extra cu130   # Cellpose 4.x + CUDA 13.0
 ```
 
-NOTE: swap `cu130` with `cu126` or `cu128` for different CUDA versions.
-NOTE: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:
+***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions.*
+***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
 
 ```bash
 nvidia-smi
 ```
 
-### Using (uv) pip
-
-Install `cali` directly without cloning (use python 3.11 or greater):
-
-for Cellpose 4.x (cellpose-sam):
-
-```bash
-(uv) pip install "git+https://github.com/fdrgsp/cali[cp4]"
-```
-
-or for Cellpose 3.x:
-
-```bash
-(uv) pip install "git+https://github.com/fdrgsp/cali[cp3]"
-```
-
-For GPU support (CUDA, Windows/Linux only), pass the PyTorch CUDA index:
-
-```bash
-(uv) pip install --index pytorch-cu126=https://download.pytorch.org/whl/cu126 "git+https://github.com/fdrgsp/cali[cp4,cu126]"
-```
-
-NOTE: swap `cu130` with `cu126` or `cu128` for different CUDA versions.
-NOTE: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:
-
-```bash
-nvidia-smi
-```
-
-### NOTE
+### NOTES
 
 #### Building on macOS
 
