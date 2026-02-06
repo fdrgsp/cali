@@ -46,6 +46,7 @@ To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to b
 ```
 
 ***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions and `cp4` with `cp3` to use Cellpose 3.x.*
+
 ***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
 
 ```bash
@@ -76,6 +77,7 @@ uv sync --extra cp4 --extra cu130   # Cellpose 4.x + CUDA 13.0
 ```
 
 ***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions.*
+
 ***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
 
 ```bash
