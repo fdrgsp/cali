@@ -1,73 +1,14 @@
 """Test CaliGui initialization from database and directories."""
 
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
-import numpy as np
 import pytest
 from pytestqt.qtbot import QtBot
 from qtpy.QtWidgets import QMessageBox
 
 from cali.gui import CaliGui
-from cali.sqlmodel import FOV, ROI, Experiment, Mask
-
-
-def create_mock_fov(
-    position_index: int = 0, num_rois: int = 3, name: str | None = None
-) -> FOV:
-    """Create a mock FOV with ROIs for testing without running cellpose."""
-    if name is None:
-        name = "B5_0000" if position_index == 0 else "B6_0000"
-    fov = FOV(position_index=position_index, name=name)
-
-    rois = []
-    for i in range(1, num_rois + 1):
-        mask_data = np.zeros((256, 256), dtype=np.uint8)
-        cy, cx = 50 + i * 20, 50 + i * 20
-        y, x = np.ogrid[:256, :256]
-        mask_region = ((x - cx) ** 2 + (y - cy) ** 2) <= 100
-        mask_data[mask_region] = 1
-
-        coords = np.where(mask_data)
-        coords_y = coords[0].tolist()
-        coords_x = coords[1].tolist()
-
-        mask = Mask(
-            mask_type="roi",
-            coords_y=coords_y,
-            coords_x=coords_x,
-            height=256,
-            width=256,
-        )
-
-        roi = ROI(label_value=i, roi_mask=mask)
-        rois.append(roi)
-
-    fov.rois = rois
-    return fov
-
-
-@pytest.fixture
-def mock_cellpose() -> Iterator[MagicMock]:
-    """Mock cellpose detection to avoid slow model loading."""
-    with patch(
-        "cali.detection._detection_runner.DetectionRunner._run_cellpose"
-    ) as mock:
-
-        def mock_detection(
-            dataset: Any,
-            detection_settings: Any,
-            position_indices: list[int],
-            *args: Any,
-            **kwargs: Any,
-        ) -> Iterator[FOV]:
-            for pos_idx in position_indices:
-                yield create_mock_fov(pos_idx)
-
-        mock.side_effect = mock_detection
-        yield mock
+from cali.sqlmodel import Experiment
 
 
 @pytest.fixture
@@ -79,7 +20,7 @@ def gui(qtbot: QtBot) -> CaliGui:
 
 
 def test_initialize_from_database_success(
-    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_cellpose: MagicMock
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
 ) -> None:
     """Test successful initialization from existing database."""
     from cali.runner import CaliRunner
@@ -172,7 +113,7 @@ def test_initialize_from_directories_new_database(
 
 
 def test_initialize_from_directories_existing_db_no_overwrite(
-    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_cellpose: MagicMock
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
 ) -> None:
     """Test loading existing database when user chooses not to overwrite."""
     # Create existing database
@@ -297,7 +238,7 @@ def test_clear_widget_before_initialization(gui: CaliGui, qtbot: QtBot) -> None:
 
 
 def test_initialize_updates_graph_properties(
-    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_cellpose: MagicMock
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
 ) -> None:
     """Test that graph widgets are updated with database path."""
     from cali.runner import CaliRunner

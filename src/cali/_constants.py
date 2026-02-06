@@ -85,10 +85,11 @@ MULTIPLIER = "multiplier"
 
 # ==================== Default Values ====================
 DEFAULT_BURST_THRESHOLD = 65.0
+DEFAULT_CALCIUM_BURST_THRESHOLD = 25.0
 DEFAULT_MIN_BURST_DURATION = 3
-DEFAULT_BURST_GAUSS_SIGMA = 0.0
+DEFAULT_BURST_GAUSS_SIGMA = 0.3
 DEFAULT_FRAME_RATE = 10.0  # frames per second (fps)
-DEFAULT_DFF_WINDOW = 10000  # milliseconds (10 seconds)
+DEFAULT_DFF_WINDOW = 10.0  # seconds
 DEFAULT_PEAKS_DISTANCE = 200.0  # milliseconds (2 frames at 10 fps)
 DEFAULT_HEIGHT = 3
 DEFAULT_SPIKE_THRESHOLD = 3
@@ -99,6 +100,7 @@ DEFAULT_ENABLE_RISING_EDGE_ANALYSIS = False  # whether to compute CCG on rising 
 DEFAULT_NEUROPIL_INNER_RADIUS = 0
 DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
+DEFAULT_DFF_PERCENTILE = 10  # percentile for ΔF/F baseline calculation
 
 # ==================== Database ====================
 DEFAULT_CALI_DB_NAME = "results.cali"

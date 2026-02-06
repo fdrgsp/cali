@@ -17,7 +17,7 @@ import threading
 import numpy as np
 import pytest
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     _get_calcium_peaks_event_correlations_matrix,
     _get_spike_correlations_matrix,
 )

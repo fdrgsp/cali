@@ -470,10 +470,13 @@ class _RunsPanel(QGroupBox):
         """
         # Format the display text
         created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        # Include milliseconds (trim to 3 decimal places)
+        last_modified = result.last_modified.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
         d_id = result.detection_settings_id
         item_text = (
             f"Run #{result.id} - {created_at}\n"
+            f"  📝 Modified: {last_modified}\n"
             f"  ✅ Detection ID: {d_id} ({detection_settings.method})\n"
         )
 
@@ -518,7 +521,8 @@ class _RunsPanel(QGroupBox):
 
         item.setToolTip(
             f"Run #{result.id}\n"
-            f"Created at: {created_at}\n"
+            f"Created: {created_at}\n"
+            f"Last Modified: {last_modified}\n"
             f"Detection Settings ID: {d_id}\n"
             f"Extraction Settings ID: {result.extraction_settings_id}\n"
             f"Analysis Settings ID: {result.analysis_settings_id}\n"

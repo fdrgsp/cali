@@ -108,7 +108,9 @@ def rebuild_test_database() -> None:
             neuropil_correction_factor=es_config["neuropil_correction_factor"],
             decay_constant=es_config["decay_constant"],
             dff_window=es_config["dff_window"],
+            dff_percentile=es_config["dff_percentile"],
             frame_rate=es_config["frame_rate"],
+            pixel_size=es_config["pixel_size"],
             threads=es_config["threads"],
         )
 

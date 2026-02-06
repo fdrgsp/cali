@@ -100,7 +100,7 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
 
 def test_connectivity_metrics_with_zero_spike_rois() -> None:
     """Test that connectivity metrics work with zero-spike ROIs."""
-    from cali.analysis._util import _compute_connectivity_metrics
+    from cali.analysis._fov_metrics import _compute_connectivity_metrics
     from cali.sqlmodel import FOVAnalysis
 
     # Create FOV analysis with 3 ROIs, including one with no spikes

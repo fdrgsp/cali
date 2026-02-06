@@ -783,6 +783,7 @@ def test_cali_result_with_all_fields() -> None:
     assert result.positions_analyzed == [0, 1, 2, 3, 4]
     assert result.id is None  # Not yet saved
     assert result.created_at is not None
+    assert result.last_modified is not None  # Should be set by default_factory
 
 
 def test_cali_result_positions_sorted() -> None:
@@ -961,6 +962,27 @@ def test_analysis_settings_minimal() -> None:
     # Should have default values
     assert settings.id is None
     assert settings.created_at is not None
+
+
+def test_analysis_settings_calcium_burst_defaults() -> None:
+    """Test that calcium burst threshold defaults differ from spike burst."""
+    from cali._constants import (
+        DEFAULT_BURST_GAUSS_SIGMA,
+        DEFAULT_BURST_THRESHOLD,
+        DEFAULT_CALCIUM_BURST_THRESHOLD,
+    )
+
+    settings = AnalysisSettings()
+
+    # Calcium burst threshold should use its own default (25.0), not
+    # the spike burst threshold (65.0)
+    assert settings.calcium_burst_threshold == DEFAULT_CALCIUM_BURST_THRESHOLD
+    assert settings.calcium_burst_threshold != DEFAULT_BURST_THRESHOLD
+    assert settings.burst_threshold == DEFAULT_BURST_THRESHOLD
+
+    # Both should use the same gaussian sigma default
+    assert settings.burst_gaussian_sigma == DEFAULT_BURST_GAUSS_SIGMA
+    assert settings.calcium_burst_gaussian_sigma == DEFAULT_BURST_GAUSS_SIGMA
 
 
 def test_cali_result_str_representation() -> None:

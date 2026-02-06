@@ -7,7 +7,7 @@ from cali.extraction._util import _calculate_bg, calculate_dff, get_iei
 def test_calculate_dff() -> None:
     """Test calculate_dff."""
     data = np.array([100, 110, 120, 110, 100, 90, 100, 110, 120, 110], dtype=float)
-    dff = calculate_dff(data, window_ms=500.0, frame_rate=10.0, percentile=10)
+    dff = calculate_dff(data, window_sec=5.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
 
@@ -108,7 +108,7 @@ def test_get_iei_exact_values() -> None:
 def test_calculate_dff_small_window() -> None:
     """Test calculate_dff with very small window."""
     data = np.array([100, 110, 120, 110, 100], dtype=float)
-    dff = calculate_dff(data, window_ms=100.0, frame_rate=10.0, percentile=10)
+    dff = calculate_dff(data, window_sec=1.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
 
@@ -116,7 +116,7 @@ def test_calculate_dff_small_window() -> None:
 def test_calculate_dff_large_window() -> None:
     """Test calculate_dff with window larger than data."""
     data = np.array([100, 110, 120], dtype=float)
-    dff = calculate_dff(data, window_ms=10000.0, frame_rate=10.0, percentile=10)
+    dff = calculate_dff(data, window_sec=100.0, frame_rate=10.0, percentile=10)
     assert dff.shape == data.shape
     assert not np.any(np.isnan(dff))
 
@@ -126,15 +126,15 @@ def test_calculate_dff_different_percentiles() -> None:
     data = np.arange(100, dtype=float)
 
     # Test with 10th percentile
-    dff_10 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=10)
+    dff_10 = calculate_dff(data, window_sec=10.0, frame_rate=10.0, percentile=10)
     assert not np.any(np.isnan(dff_10))
 
     # Test with 50th percentile (median)
-    dff_50 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
+    dff_50 = calculate_dff(data, window_sec=10.0, frame_rate=10.0, percentile=50)
     assert not np.any(np.isnan(dff_50))
 
     # Test with 90th percentile
-    dff_90 = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=90)
+    dff_90 = calculate_dff(data, window_sec=10.0, frame_rate=10.0, percentile=90)
     assert not np.any(np.isnan(dff_90))
 
     # Higher percentile should generally give different results
@@ -145,7 +145,7 @@ def test_calculate_dff_constant_trace() -> None:
     """Test calculate_dff with constant fluorescence trace."""
     data = np.ones(100) * 150.0
     # With constant data, background should equal data, resulting in dff of 0
-    dff = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
+    dff = calculate_dff(data, window_sec=10.0, frame_rate=10.0, percentile=50)
     # dff = (data - bg) / bg = (150 - 150) / 150 = 0
     np.testing.assert_allclose(dff, 0.0, atol=1e-10)
 
@@ -154,7 +154,7 @@ def test_calculate_dff_edge_effects() -> None:
     """Test calculate_dff edge behavior at start and end of trace."""
     # Create data with a step function
     data = np.concatenate([np.ones(50) * 100, np.ones(50) * 200])
-    dff = calculate_dff(data, window_ms=1000.0, frame_rate=10.0, percentile=50)
+    dff = calculate_dff(data, window_sec=10.0, frame_rate=10.0, percentile=50)
 
     # Should handle edges without producing NaN or inf
     assert not np.any(np.isnan(dff))
@@ -205,10 +205,10 @@ def test_calculate_bg_window_edges() -> None:
 def test_calculate_dff_parameter_combinations(window: int, percentile: int) -> None:
     """Test calculate_dff with various parameter combinations."""
     data = np.random.randn(200) * 10 + 100
-    # Convert window frames to milliseconds at 10fps (100ms per frame)
-    window_ms = window * 100.0
+    # Convert window frames to seconds at 10fps (0.1s per frame)
+    window_sec = window * 0.1
     dff = calculate_dff(
-        data, window_ms=window_ms, frame_rate=10.0, percentile=percentile
+        data, window_sec=window_sec, frame_rate=10.0, percentile=percentile
     )
 
     assert dff.shape == data.shape
@@ -248,3 +248,62 @@ def test_get_iei_irregular_intervals() -> None:
     expected = [0.05, 0.15, 0.05]
 
     np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+
+def test_calculate_dff_edge_cases() -> None:
+    """Test calculate_dff with edge cases."""
+    # Test with very small values
+    data = np.array([0.001, 0.002, 0.001, 0.003, 0.002], dtype=float)
+    dff = calculate_dff(data, window_sec=0.3, frame_rate=10.0, percentile=10)
+    assert dff.shape == data.shape
+    assert not np.any(np.isnan(dff))
+
+    # Test with zero baseline (should handle division by zero)
+    data = np.zeros(50, dtype=float)
+    dff = calculate_dff(data, window_sec=1.0, frame_rate=10.0, percentile=10)
+    assert dff.shape == data.shape
+    # Should handle zeros gracefully
+
+
+def test_calculate_dff_with_negative_values() -> None:
+    """Test calculate_dff with negative values in data."""
+    data = np.array([-10, -5, 0, 5, 10, 5, 0, -5, -10], dtype=float)
+    dff = calculate_dff(data, window_sec=0.5, frame_rate=10.0, percentile=10)
+    assert dff.shape == data.shape
+    assert not np.any(np.isnan(dff))
+
+
+def test_calculate_bg_edge_window_sizes() -> None:
+    """Test _calculate_bg with edge case window sizes."""
+    data = np.arange(100, dtype=float)
+
+    # Very small window
+    bg = _calculate_bg(data, window=1, percentile=50)
+    assert bg.shape == data.shape
+    np.testing.assert_allclose(bg, data)  # Window of 1 should return the data itself
+
+    # Window larger than data
+    bg = _calculate_bg(data, window=200, percentile=50)
+    assert bg.shape == data.shape
+    assert not np.any(np.isnan(bg))
+
+    # Even window size
+    bg = _calculate_bg(data, window=10, percentile=50)
+    assert bg.shape == data.shape
+
+
+def test_calculate_bg_different_percentiles() -> None:
+    """Test _calculate_bg with different percentile values."""
+    data = np.random.randn(100) * 10 + 100
+
+    # Test extremes
+    bg_min = _calculate_bg(data, window=10, percentile=0)
+    bg_max = _calculate_bg(data, window=10, percentile=100)
+    bg_median = _calculate_bg(data, window=10, percentile=50)
+
+    assert bg_min.shape == data.shape
+    assert bg_max.shape == data.shape
+    assert bg_median.shape == data.shape
+
+    # In general, min percentile should give lower values than max
+    assert np.mean(bg_min) <= np.mean(bg_max)

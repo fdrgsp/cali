@@ -1098,7 +1098,7 @@ def _plot_calcium_burst_activity(
         population_activity_list = fov_analysis.calcium_population_activity
 
         if population_activity_list:
-            # calcium_population_activity contains smoothed mean ΔF/F trace
+            # calcium_population_activity contains smoothed population trace
             population_activity = np.array(population_activity_list)
 
             # Get raw activity if available
@@ -1124,17 +1124,11 @@ def _plot_calcium_burst_activity(
             bursts = list(zip(burst_starts, burst_ends))
 
             # Get threshold from AnalysisSettings for display
-            # For calcium: threshold = (percent / 100) * max(smoothed_activity)
+            # For calcium: threshold = percent / 100 (fraction of active ROIs)
             calcium_burst_params = _get_calcium_burst_parameters(engine, run_id)
-            max_smoothed = (
-                float(np.max(population_activity))
-                if population_activity.size > 0
-                else 1.0
+            the_value = (
+                (calcium_burst_params[0] / 100.0) if calcium_burst_params else 0.25
             )
-            if calcium_burst_params:
-                the_value = (calcium_burst_params[0] / 100.0) * max_smoothed
-            else:
-                the_value = 0.5 * max_smoothed
 
             # --- Draw raw + smoothed activity + threshold + bursts ---
             # Plot raw population activity (mean ΔF/F, black)
@@ -1226,13 +1220,14 @@ def _plot_calcium_burst_activity(
             # --- Stats text in title ---
             stats_text = _burst_statistics_text(bursts, time_axis)
             title = (
-                "Calcium Population Activity and Burst Detection (Deconvolved ΔF/F0)\n"
+                "Calcium Population Activity and Burst Detection"
+                " (Fraction of Active ROIs with Peaks)\n"
                 f"{stats_text}"
             )
             plot.setTitle(title)
 
             plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Mean Population ΔF/F0 (a.u.)")
+            plot.setLabel("left", "Fraction of Active ROIs")
 
             # Auto-range once everything is added
             vb.enableAutoRange(x=True, y=True)
@@ -1246,7 +1241,7 @@ def _plot_calcium_burst_activity(
                 "(No pre-computed data available - please re-run analysis)"
             )
             plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Mean Population ΔF/F0 (a.u.)")
+            plot.setLabel("left", "Fraction of Active ROIs")
     else:
         cali_logger.warning("No calcium burst analysis data found in database")
         plot.setTitle(

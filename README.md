@@ -145,7 +145,7 @@ Hovering over each parameter in the Detection, Extraction, and Analysis tabs sho
 
 The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Currently, only **Cellpose** is supported as the segmentation method. The user can set Cellpose parameters and run the segmentation.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 19 AM" src="https://github.com/user-attachments/assets/d4a9a17f-6688-4d90-a0ce-d71f86033750" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
 
 #### Extraction Tab
 
@@ -154,11 +154,12 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
 - **Neuropil correction**: enable/disable and set neuropil mask parameters
 - **ΔF/F and OASIS deconvolution**:
   - window size for ΔF/F calculation
+  - percentile for ΔF/F baseline
   - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 26 AM" src="https://github.com/user-attachments/assets/a93c48e6-f688-41f9-ab79-75d008e366b6" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 12 PM" src="https://github.com/user-attachments/assets/639a7c5a-84e1-4f9c-8fc4-c99bff962094" />
 
 #### Analysis Tab
 
@@ -171,7 +172,7 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 - **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
 
-<img width="800" alt="Screenshot 2025-12-17 at 9 58 30 AM" src="https://github.com/user-attachments/assets/4c8c5080-dae1-450c-95f3-c9d90b81ba2f" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 21 PM" src="https://github.com/user-attachments/assets/fe17ae9b-410f-4579-b532-1342a0598ca1" />
 
 ### Run the Pipeline
 
@@ -209,6 +210,7 @@ Available visualizations include:
 - **Inferred Spikes**: raw and thresholded inferred spike trains from OASIS.
 - **Raster Plots**: raster plots of calcium peaks and inferred spikes across all ROIs.
 - **Calcium Metrics**: amplitude, frequency, and other per-ROI metrics.
+- **Inferred Spikes Metrics**: frequency (on thresholded and/or thresholded rising edges).
 - **Calcium and Inferred Spikes Bursts**: burst metrics based on calcium peaks and inferred spikes (for inferred spikes raster, events are defined as rising edges in the thresholded binary spike train).
 - **Correlation Metrics**:
   - pairwise Pearson correlation on calcium traces
@@ -237,18 +239,19 @@ If the plate was treated with different conditions (e.g. drug vs control), click
 
 **Calculation**:
 
-$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$
+$$\Delta F/F(t) = \frac{F(t) - F_0(t)}{F_0(t)}$$
 
 where:
 
-- \(F(t)\) is the raw fluorescence at time \(t\)
-- \(F_0(t)\) is the baseline fluorescence estimated from a sliding window
+- $F(t)$ is the raw fluorescence at time $t$
+- $F_0(t)$ is the baseline fluorescence estimated from a sliding window
 
-The baseline \(F_0(t)\) is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
+The baseline $F_0(t)$ is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
 
 **GUI Parameters**:
 
-- **Window Size** (ms): size of the sliding window for baseline calculation.
+- **Window Size** (s): size of the sliding window for baseline calculation.
+- **Percentile**: percentile of fluorescence values used as the baseline F₀ (default: 10).
 
 #### OASIS Deconvolution
 
@@ -262,7 +265,7 @@ For each ROI, `OASIS` is used to:
 **GUI Parameters**  
 Currently, only the following parameter is exposed in the GUI:
 
-- **Decay Constant** (\(\tau\), seconds): calcium decay time constant (depends on the calcium indicator and cell type).
+- **Decay Constant** ($\tau$, seconds): calcium decay time constant (depends on the calcium indicator and cell type).
   - If set to **0 (auto)**, `OASIS` estimates it from the data.
 
 All other `OASIS` parameters are currently kept at default values:
@@ -317,18 +320,28 @@ After detection, the following metrics are computed per ROI:
 
 **Purpose**: Detect periods of sustained, elevated population activity in calcium signals. Bursts represent synchronized events where many cells are co-active.
 
-**Calculation** (population-level, based on deconvolved ΔF/F):
+**Calculation** (population-level, based on detected calcium peaks):
 
-1. **Population Activity**: compute the mean deconvolved ΔF/F across all active ROIs.
-2. **Smoothing**: apply a Gaussian filter to the population trace (optional, to reduce noise).
-3. **Threshold**: detect periods where the smoothed activity exceeds a fraction of its maximum.
-4. **Duration Filter**: keep only bursts lasting at least a minimum duration.
+1. **Binary peak events**: for each ROI, detected calcium peaks are converted to binary arrays (1 at peak frames, 0 elsewhere).
+2. **Population activity**: compute the fraction of active ROIs with peaks at each frame:
+
+   ```
+   ROI 1: [0, 0, 1, 0, 1, 0, 1, 0, ...]
+   ROI 2: [0, 0, 1, 0, 0, 0, 1, 0, ...]
+   ROI 3: [0, 0, 0, 0, 1, 0, 1, 0, ...]
+   ─────────────────────────────────────
+   Mean:  [0, 0, .67, 0, .67, 0, 1.0, 0, ...]
+   ```
+
+3. **Smoothing**: apply a Gaussian filter (default sigma=0.3s) to the population trace. This is needed because peak detection has limited temporal precision (~1-2 frames), so cells firing together may have peaks on nearby but not identical frames. Smoothing bridges these small gaps.
+4. **Threshold**: detect periods where the smoothed fraction exceeds the threshold (e.g., 25% → 0.25).
+5. **Duration Filter**: keep only bursts lasting at least a minimum duration.
 
 **GUI Parameters**:
 
-- **Burst Threshold** (%): percentage of maximum smoothed activity used as the detection threshold.
+- **Burst Threshold** (%): percentage of active ROIs that must have peaks simultaneously (e.g., 25% means at least 25% of active cells must fire together).
 - **Min Duration** (ms): minimum burst duration to be retained.
-- **Gaussian Sigma** (s): temporal smoothing (standard deviation) for the population activity.
+- **Gaussian Sigma** (s): temporal smoothing (standard deviation) for the population activity. Default 0.3s.
 
 **Computed Metrics**:
 
@@ -367,7 +380,7 @@ Two modes are available:
 **Calculation** (population-level, based on binary spike trains):
 
 1. **Population Spike Rate**: compute the fraction of active ROIs per frame.
-2. **Smoothing**: apply a Gaussian filter with standard deviation \(σ\) (optional).
+2. **Smoothing**: apply a Gaussian filter with standard deviation $\sigma$ (optional).
 3. **Threshold**: detect periods where the smoothed population rate exceeds a percentage threshold.
 4. **Duration Filter**: retain bursts that last at least a minimum duration.
 
@@ -395,7 +408,7 @@ Two modes are available:
 1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
 2. **Z-score normalization**: Each trace is transformed to have zero mean and unit variance:
 
-   $z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$
+   $$z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$$
 
    where $x_i(t)$ is the raw ΔF/F value at time $t$, $\bar{x}_i$ is the mean, and $\sigma_i$ is the standard deviation.
 
@@ -429,7 +442,7 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
 2. **Per-trigger probability normalization**: For each lag τ, compute:
 
-   $CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$
+   $$CCG(\tau) = P(\text{spike in } j \text{ at lag } \tau \mid \text{spike in } i)$$
 
    This is calculated as the count of coincidences at lag τ divided by the number of reference spikes in neuron i.
 
@@ -456,14 +469,14 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 
    **Computing the baseline:**
    We repeat this process multiple times (configurable, default 20 shuffles), each time shifting by a different random amount:
-   - **Baseline mean ($\mu_{baseline}$)**: Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
-   - **Baseline std ($\sigma_{baseline}$)**: Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
+   - **Baseline mean** ($\mu_{baseline}$): Average CCG across all shuffles — this captures the expected CCG due to slow co-modulations alone
+   - **Baseline std** ($\sigma_{baseline}$): Standard deviation across shuffles — this measures the variability in the null model, used for significance testing
 
    *Example*: If two neurons both fire more frequently during the second half of a recording (slow co-modulation), the raw CCG might show elevated values. By circularly shifting one spike train (e.g., moving the last 200 frames to the beginning), we break the precise timing relationship while preserving the overall firing rates. Averaging CCG across 20 such shifts gives a baseline that captures this slow co-modulation, allowing us to identify whether the observed CCG is higher than expected by chance.
 
 5. **Z-score calculation**: Using the baseline from step 4, we compute statistical significance:
 
-   $z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$
+   $$z = \frac{CCG_{raw} - \mu_{baseline}}{\sigma_{baseline}}$$
 
    The z-score tells us how many standard deviations the observed CCG is above (or below) the null model expectation:
    - **z > 2**: The observed spike coincidence is significantly *higher* than expected from co-modulation alone → suggests excitatory functional connectivity
@@ -514,7 +527,9 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
    - $C_{i \to j}$: coincidences found starting from spikes in $i$
    - $C_{j \to i}$: coincidences found starting from spikes in $j$
 6. Combine and normalize:
-   $S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$
+
+   $$S_{ij} = \frac{C_{i \to j} + C_{j \to i}}{N_i + N_j}$$
+
    where $N_i$ and $N_j$ are the total number of spikes in neurons $i$ and $j$, respectively.
 
 This yields a synchrony score between 0 and 1:

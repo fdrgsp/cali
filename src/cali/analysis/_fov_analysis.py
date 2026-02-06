@@ -12,12 +12,16 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from cali.analysis._util import (
+from cali.analysis._fov_metrics import (
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
     _detect_spikes_population_bursts,
     _get_spike_correlations_matrix,
     _get_spike_synchrony,
+)
+from cali.analysis._trace_analysis import (
+    compute_rising_edges,
+    threshold_spike_train,
 )
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOVAnalysis
@@ -86,6 +90,9 @@ def compute_fov_analysis(
     dff_traces: list[np.ndarray] = []
     dec_dff_traces: list[np.ndarray] = []
     spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
+    calcium_peak_events: list[
+        np.ndarray
+    ] = []  # Binary calcium peaks for burst detection
     peak_events_dict: dict[str, list[float]] = {}
     spike_data_dict: dict[str, list[float]] = {}
     spike_data_dict_rising_edges: dict[str, list[float]] = {}
@@ -131,6 +138,7 @@ def compute_fov_analysis(
             for idx in peak_indices:
                 if 0 <= idx < len(peak_array):
                     peak_array[idx] = 1.0
+            calcium_peak_events.append(peak_array)  # For burst detection
             peak_events_dict[str(roi.label_value)] = peak_array.tolist()
 
         # Build spike data for inferred spikes
@@ -146,20 +154,14 @@ def compute_fov_analysis(
 
             if spike_threshold is not None:
                 # Threshold and binarize
-                spikes_binary = spikes.copy()
-                spikes_binary[spikes_binary <= spike_threshold] = 0.0
-                spike_train = (spikes_binary > 0.0).astype(float)
+                spike_train = threshold_spike_train(spikes, spike_threshold)
                 # Always append spike train, even if sum == 0
                 # This ensures spike matrices have same dimensions as active_roi_labels
                 spike_trains.append(spike_train)
                 spike_data_dict[str(roi.label_value)] = spike_train.tolist()
 
                 # Compute rising edges for this spike train
-                # Detect 0 -> 1 transitions
-                positive_vals = spike_train > 0
-                rising = positive_vals & ~np.concatenate(([False], positive_vals[:-1]))
-                spike_train_rising_edges = np.zeros_like(spike_train, dtype=float)
-                spike_train_rising_edges[rising] = 1.0
+                spike_train_rising_edges = compute_rising_edges(spike_train)
                 spike_data_dict_rising_edges[str(roi.label_value)] = (
                     spike_train_rising_edges.tolist()
                 )
@@ -302,8 +304,8 @@ def compute_fov_analysis(
             spike_burst_avg_interval,
             spike_burst_starts,
             spike_burst_ends,
-            spike_population_activity,
             spike_population_activity_raw,
+            spike_population_activity,
         ) = _detect_spikes_population_bursts(
             spike_trains=spike_trains,
             frame_rate=analysis_settings.frame_rate,
@@ -321,17 +323,17 @@ def compute_fov_analysis(
     calcium_population_activity: np.ndarray | None = None
     calcium_population_activity_raw: np.ndarray | None = None
 
-    if len(dec_dff_traces) >= 2:
+    if len(calcium_peak_events) >= 2:
         (
             calcium_burst_count,
             calcium_burst_avg_duration,
             calcium_burst_avg_interval,
             calcium_burst_starts,
             calcium_burst_ends,
-            calcium_population_activity,
             calcium_population_activity_raw,
+            calcium_population_activity,
         ) = _detect_calcium_population_bursts(
-            dec_dff_traces=dec_dff_traces,
+            peak_events=calcium_peak_events,
             frame_rate=analysis_settings.frame_rate,
             burst_threshold_percent=analysis_settings.calcium_burst_threshold,
             min_duration_ms=analysis_settings.calcium_burst_min_duration,

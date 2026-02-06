@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlmodel import Session, create_engine, select
 from superqt.utils import create_worker
 from tqdm import tqdm
 
@@ -387,9 +388,9 @@ class CaliGui(QMainWindow):
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
 
-        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        # self._output_path = "tests/test_data/data_and_db_for_tests/"
+        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        self._output_path = "tests/test_data/data_and_db_for_tests/"
 
         # fmt: on
         # _____________________________________________________________________________
@@ -1149,33 +1150,22 @@ class CaliGui(QMainWindow):
                 )
 
                 if missing_detection or missing_extraction:
-                    msg = "Data Missing for Analysis\n\n"
+                    # Simply inform the user and ask them to fix the issue
+                    msg = "Cannot Run Analysis - Missing Required Data\n\n"
+                    msg += f"Selected positions: {pos}\n\n"
                     if missing_detection:
-                        msg = msg + f"Missing detection data: {missing_detection}"
+                        msg += f"Positions missing detection: {missing_detection}\n"
                     if missing_extraction:
-                        msg = msg + f"Missing extraction data: {missing_extraction}"
-
-                    msg = msg + (
-                        "\n\nDo you want to run the full pipeline (detection + "
-                        "extraction + analysis) on these positions?\n"
-                        "(If you select 'No', only positions with existing "
-                        "data will be processed)."
+                        msg += f"Positions missing extraction: {missing_extraction}\n\n"
+                    msg += (
+                        "To run analysis-only, you must:\n"
+                        "  1. First run detection and/or extraction on the missing "
+                        "positions, OR\n"
+                        "  2. Remove the positions without data from your selection\n\n"
+                        "Please fix the issue and try again."
                     )
-                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
-                    if mbox.exec():  # type: ignore
-                        # User wants to run full pipeline - switch modes
-                        # Use the selected IDs from combo boxes, not GUI widgets
-                        value = CaliRunSettings(
-                            positions=value.positions,
-                            run_detection=True,
-                            run_extraction=True,
-                            run_analysis=True,
-                            detection_settings_id=None,
-                            extraction_settings_id=None,
-                        )
-                        # Use the IDs that were selected in the combo boxes
-                        detection_settings = detection_settings_id_check
-                        extraction_settings = extraction_settings_id
+                    show_error_dialog(self, msg)
+                    return
             elif value.run_extraction and extraction_settings is None:
                 # Extraction or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
@@ -1230,31 +1220,19 @@ class CaliGui(QMainWindow):
                     detection_settings_id, pos
                 )
                 if missing_detection:
-                    msg = "Detection Data Missing\n\n"
-                    msg += "The following positions are missing detection data:\n"
-                    msg += f"{missing_detection}\n\n"
-                    msg += "Do you want to run detection first on these positions?\n"
+                    # Simply inform the user and ask them to fix the issue
+                    msg = "Cannot Run Extraction - Missing Detection Data\n\n"
+                    msg += f"Selected positions: {pos}\n"
+                    msg += f"Positions missing detection: {missing_detection}\n\n"
                     msg += (
-                        "(If you select 'No', only positions with existing detection "
-                        "will be processed)."
+                        "To run extraction-only, you must:\n"
+                        "  1. First run detection on the missing positions, OR\n"
+                        "  2. Remove the positions without detection from your "
+                        "selection\n\n"
+                        "Please fix the issue and try again."
                     )
-                    mbox = show_error_dialog(self, msg, type="warning", choice=True)
-                    if mbox.exec():  # type: ignore
-                        # User wants to run detection first - switch to full pipeline
-                        # Use the selected detection ID from combo box, not GUI widget
-                        value = CaliRunSettings(
-                            positions=value.positions,
-                            run_detection=True,
-                            run_extraction=True,
-                            run_analysis=value.run_analysis,
-                            detection_settings_id=None,
-                            extraction_settings_id=None,
-                        )
-                        # Use the detection ID that was selected in the combo box
-                        detection_settings = detection_settings_id
-                        # For extraction, use GUI widget since we're in
-                        # extraction-only mode
-                        extraction_settings = self._extraction_wdg.to_model_settings()
+                    show_error_dialog(self, msg)
+                    return
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
@@ -1715,6 +1693,36 @@ class CaliGui(QMainWindow):
         self._runner.cancel()
         self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
 
+    def _select_most_recently_modified_run(self) -> None:
+        """Query and select the most recently modified CaliResult."""
+        if not self._database_path:
+            return
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            echo=False,
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        try:
+            with Session(engine) as session:
+                # Query for most recently modified CaliResult
+                most_recent = session.exec(
+                    select(CaliResult)
+                    .order_by(CaliResult.last_modified.desc())  # type: ignore
+                    .limit(1)
+                ).first()
+                if most_recent and most_recent.id is not None:
+                    self._runs_panel.select_run_by_id(most_recent.id)
+                else:
+                    cali_logger.warning(
+                        "⚠️ No CaliResult found to select the most recent run."
+                    )
+        except Exception as e:
+            cali_logger.error(f"❌ Failed to select most recent run: {e}")
+        finally:
+            engine.dispose(close=True)
+
     def _on_worker_finished(self) -> None:
         """Handle completion of the runner."""
         self._enable(True)
@@ -1726,14 +1734,13 @@ class CaliGui(QMainWindow):
         if self._database_path:
             self._populate_settings(self._database_path)
             self._update_graph_properties(self._database_path)
-        # update GUI with the latest run (latest run is at the end of the list)
-        last_idx = self._runs_panel._runs_list.count() - 1
-        # select last run (no signal emitted)
-        self._runs_panel.select_run_by_index(last_idx, block_signals=True)
-        # Update run_id in all graph widgets
-        self._update_graph_with_run_id(self._runs_panel.get_run_id_by_index(last_idx))
+        # Select the most recently modified run
+        self._select_most_recently_modified_run()
         # Refresh the image viewer to update labels with the new detection settings
         self._on_fov_table_selection_changed()
+        # Refresh plot combo availability to reflect new analysis data
+        # for sw_graph in self.SW_GRAPHS:
+        #     sw_graph._update_combo_item_availability()
 
     def _save_plate_map_to_database(self) -> None:
         """Save plate map data from GUI to database."""
@@ -2087,6 +2094,7 @@ class CaliGui(QMainWindow):
                     ExtractionSettingsData(
                         trace_extraction_data=TraceExtractionData(
                             dff_window_size=e_settings.dff_window,
+                            dff_percentile=e_settings.dff_percentile,
                             decay_constant=e_settings.decay_constant,
                             neuropil_inner_radius=e_settings.neuropil_inner_radius,
                             neuropil_min_pixels=e_settings.neuropil_min_pixels,

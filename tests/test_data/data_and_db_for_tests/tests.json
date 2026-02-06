@@ -21,7 +21,8 @@
       "neuropil_min_pixels": 200,
       "neuropil_correction_factor": 0.6,
       "decay_constant": 0.0,
-      "dff_window": 10000.0,
+      "dff_window": 10.0,
+      "dff_percentile": 10,
       "frame_rate": 10.0,
       "pixel_size": 0.65,
       "threads": 3
@@ -31,7 +32,8 @@
       "neuropil_min_pixels": 0,
       "neuropil_correction_factor": 0.0,
       "decay_constant": 0.0,
-      "dff_window": 10000.0,
+      "dff_window": 10.0,
+      "dff_percentile": 10,
       "frame_rate": 10.0,
       "pixel_size": 0.65,
       "threads": 3

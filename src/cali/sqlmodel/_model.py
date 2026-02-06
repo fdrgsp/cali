@@ -37,7 +37,9 @@ from sqlmodel import (
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
+    DEFAULT_CALCIUM_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
+    DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
@@ -109,6 +111,8 @@ class CaliResult(SQLModel, table=True):
         Primary key, auto-generated
     created_at : datetime
         Timestamp when analysis was created
+    last_modified : datetime
+        Timestamp when analysis was last modified (with microsecond precision)
     experiment : int
         Foreign key to experiment
     detection_settings : int | None
@@ -133,6 +137,7 @@ class CaliResult(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
+    last_modified: datetime = Field(default_factory=datetime.now)
 
     # Foreign keys
     experiment: int = Field(foreign_key="experiment.id")
@@ -161,15 +166,18 @@ class CaliResult(SQLModel, table=True):
     )
 
     def __eq__(self, other: object) -> bool:
-        """Custom equality that excludes created_at for semantic comparison.
+        """Custom equality.
+
+        Excludes created_at and last_modified for semantic comparison.
 
         Two CaliResults are considered equal if they have the same:
         - experiment, detection_settings, extraction_settings,
           analysis_settings, positions_detected, positions_extracted,
           positions_analyzed
 
-        The created_at field is excluded since it's automatically generated
-        and doesn't represent semantic differences in analysis configuration.
+        The created_at and last_modified fields are excluded since they are
+        automatically generated and don't represent semantic differences in
+        analysis configuration.
         """
         if not isinstance(other, CaliResult):
             return False
@@ -184,7 +192,9 @@ class CaliResult(SQLModel, table=True):
         )
 
     def __hash__(self) -> int:
-        """Custom hash that excludes created_at for consistency with __eq__.
+        """Custom hash.
+
+        Excludes created_at and last_modified for consistency with __eq__.
 
         Note: id is excluded since it's None before database insertion.
         """
@@ -925,7 +935,9 @@ class ExtractionSettings(SQLModel, table=True):
     decay_constant : float
         Decay constant for deconvolution (seconds)
     dff_window : int
-        Window size for ΔF/F baseline calculation (milliseconds)
+        Window size for ΔF/F baseline calculation (seconds)
+    dff_percentile : int
+        Percentile for ΔF/F baseline calculation (0-100, default: 10)
     frame_rate : float
         Acquisition frame rate (frames per second)
     threads : int
@@ -942,7 +954,8 @@ class ExtractionSettings(SQLModel, table=True):
     neuropil_correction_factor: float = 0.0
 
     decay_constant: float = 0.0
-    dff_window: float = DEFAULT_DFF_WINDOW  # milliseconds
+    dff_window: float = DEFAULT_DFF_WINDOW  # seconds
+    dff_percentile: int = DEFAULT_DFF_PERCENTILE  # percentile for ΔF/F baseline
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
     pixel_size: float | None = None  # pixel size in micrometers (µm)
 
@@ -962,6 +975,7 @@ class ExtractionSettings(SQLModel, table=True):
             and self.neuropil_correction_factor == other.neuropil_correction_factor
             and self.decay_constant == other.decay_constant
             and self.dff_window == other.dff_window
+            and self.dff_percentile == other.dff_percentile
             and self.frame_rate == other.frame_rate
             and self.pixel_size == other.pixel_size
             and self.threads == other.threads
@@ -976,6 +990,7 @@ class ExtractionSettings(SQLModel, table=True):
                 self.neuropil_correction_factor,
                 self.decay_constant,
                 self.dff_window,
+                self.dff_percentile,
                 self.frame_rate,
                 self.pixel_size,
                 self.threads,
@@ -1129,7 +1144,7 @@ class AnalysisSettings(SQLModel, table=True):
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
-    calcium_burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    calcium_burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
     calcium_burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
@@ -1708,6 +1723,10 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Peak height threshold used for this ROI (calculated)
     inferred_spikes_threshold : float | None
         Spike detection threshold used for this ROI (calculated)
+    inferred_spikes_frequency : float | None
+        Frequency of thresholded inferred spikes (Hz)
+    inferred_spikes_rising_edge_frequency : float | None
+        Frequency of thresholded inferred spikes rising edges (Hz)
     roi : ROI
         Parent ROI
     analysis_result : CaliResult
@@ -1737,6 +1756,8 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes_threshold: float | None = None
+    inferred_spikes_frequency: float | None = None
+    inferred_spikes_rising_edge_frequency: float | None = None
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")

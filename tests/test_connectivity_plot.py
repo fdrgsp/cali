@@ -110,7 +110,7 @@ def test_compute_connectivity_metrics_thresholds(
     expected_edges: int,
 ) -> None:
     """Test connectivity metrics with various thresholds."""
-    from cali.analysis._util import _compute_connectivity_metrics
+    from cali.analysis._fov_metrics import _compute_connectivity_metrics
 
     corr_matrix, _, roi_labels = four_node_data
 
@@ -132,7 +132,7 @@ def test_compute_connectivity_specific_threshold_values(
     four_node_data: tuple[np.ndarray, np.ndarray, list[int]],
 ) -> None:
     """Test specific adjacency values with threshold 0.5."""
-    from cali.analysis._util import _compute_connectivity_metrics
+    from cali.analysis._fov_metrics import _compute_connectivity_metrics
 
     corr_matrix, _, roi_labels = four_node_data
 
@@ -157,7 +157,7 @@ def test_compute_connectivity_specific_threshold_values(
 )
 def test_compute_connectivity_different_methods(method: str) -> None:
     """Test computing connectivity with different correlation methods."""
-    from cali.analysis._util import _compute_connectivity_metrics
+    from cali.analysis._fov_metrics import _compute_connectivity_metrics
 
     fov_analysis = FOVAnalysis(
         id=1,

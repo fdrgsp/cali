@@ -3,7 +3,7 @@
 from cali.sqlmodel import Experiment
 from cali.sqlmodel._util import save_experiment_to_database
 
-# Create experiment with plate structure in one call - much simpler!
+# Create experiment with plate structure in one call
 exp = Experiment.create(
     name="New Experiment",
     plate_type="96-well",
@@ -20,7 +20,7 @@ out = "/Users/fdrgsp/Desktop/cali_test"
 save_experiment_to_database(exp, out, overwrite=True)
 
 
-# Create experiment with plate structure in one call - much simpler!
+# Create experiment with plate structure in one call
 exp = Experiment.create_from_data(
     name="New Experiment",
     data_path="tests/test_data/evoked/evk.tensorstore.zarr",
@@ -46,8 +46,8 @@ import useq  # noqa: E402
 pp = useq.WellPlatePlan(
     plate=useq.WellPlate.from_str("96-well"),
     a1_center_xy=(0.0, 0.0),
-    selected_wells=((6,), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)),
-    well_points_plan=useq.RandomPoints(num_points=2),
+    selected_wells=((1,), (4,)),
+    well_points_plan=useq.RandomPoints(num_points=1),
 )
 # If you instead do not want to use a plate plan, you still have to create a plan with
 # a simple rectangular of circular dish/coverslip with the number of positions you have.

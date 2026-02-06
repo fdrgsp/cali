@@ -1,6 +1,8 @@
 .DS_Store
 uv.lock
 
+.claude
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -824,7 +824,7 @@ def _plot_sorted_dec_dff_correlation_windowed_by_stim(
     traces_array = np.array([windowed_traces[label] for label in roi_labels_ordered])
 
     # Compute zero-lag Pearson correlation
-    from cali.analysis._util import _compute_zero_lag_corr_matrix
+    from cali.analysis._fov_metrics import _compute_zero_lag_corr_matrix
 
     corr_matrix = _compute_zero_lag_corr_matrix(list(traces_array))
 
@@ -1086,7 +1086,7 @@ def _plot_sorted_dec_dff_correlation_windowed_non_stim(
     traces_array = np.array([windowed_traces[label] for label in roi_labels_ordered])
 
     # Compute zero-lag Pearson correlation
-    from cali.analysis._util import _compute_zero_lag_corr_matrix
+    from cali.analysis._fov_metrics import _compute_zero_lag_corr_matrix
 
     corr_matrix = _compute_zero_lag_corr_matrix(list(traces_array))
 
