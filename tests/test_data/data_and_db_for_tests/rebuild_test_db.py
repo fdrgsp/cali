@@ -58,10 +58,7 @@ def rebuild_test_database() -> None:
         plate_type="96-well",
         well_names=wells,
         fovs_per_well=positions_info.get("fovs_per_well", 2),
-        plate_maps={
-            "genotype": {w: f"g{i + 1}" for i, w in enumerate(wells)},
-            "treatment": {w: f"t{i + 1}" for i, w in enumerate(wells)},
-        },
+        plate_maps=schema.get("plate_maps"),
     )
 
     # Create runner

@@ -123,6 +123,10 @@
       "positions_to_analyze": [2, 3]
     }
   ],
+  "plate_maps": {
+    "genotype": {"B5": "g1", "B6": "g1", "B7": "g2", "B8": "g2"},
+    "treatment": {"B5": "t1", "B6": "t2", "B7": "t1", "B8": "t2"}
+  },
   "positions": {
     "total": 8,
     "wells": ["B5", "B6", "B7", "B8"],

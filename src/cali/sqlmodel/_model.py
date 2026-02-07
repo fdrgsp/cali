@@ -1474,7 +1474,7 @@ class Well(SQLModel, table=True):  # type: ignore[call-arg]
     plate: "Plate" = Relationship(back_populates="wells")
     conditions: list["Condition"] = Relationship(
         link_model=WellCondition,
-        sa_relationship_kwargs={"lazy": "selectin"},
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all"},
     )
     fovs: list["FOV"] = Relationship(back_populates="well", cascade_delete=True)
 

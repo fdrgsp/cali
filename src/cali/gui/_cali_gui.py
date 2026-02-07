@@ -387,11 +387,9 @@ class CaliGui(QMainWindow):
 
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
-
-        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        self._output_path = "tests/test_data/data_and_db_for_tests/"
-
+        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        # self._output_path = "tests/test_data/data_and_db_for_tests/"
         # fmt: on
         # _____________________________________________________________________________
 
