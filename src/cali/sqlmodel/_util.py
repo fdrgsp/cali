@@ -12,7 +12,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from sqlmodel import Session, create_engine
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, create_engine, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME
 
@@ -122,8 +123,76 @@ def save_experiment_to_database(
 
     try:
         with Session(engine) as session:
-            # Merge handles add/update for the entire object tree with cascade
+            # Pre-resolve conditions BEFORE merge to avoid session.merge()
+            # limitations with link_model many-to-many relationships.
+            # Safely check if plate is loaded without triggering lazy load
+            # on detached instance
+            from sqlalchemy import inspect as sa_inspect
+            from sqlalchemy import or_
+
+            from cali.sqlmodel._model import Condition
+
+            insp = sa_inspect(experiment)
+            plate_loaded = "plate" in insp.dict and insp.dict["plate"] is not None
+
+            # Store original well-to-conditions mapping BEFORE merge
+            well_condition_map: dict[int, list[tuple[str, str]]] = {}
+            if plate_loaded and experiment.plate is not None:
+                # Collect all unique (name, condition_type) pairs from all wells
+                conditions_needed: set[tuple[str, str]] = set()
+                for idx, well in enumerate(experiment.plate.wells):
+                    # Store this well's condition keys
+                    well_keys = [(c.name, c.condition_type) for c in well.conditions]
+                    well_condition_map[idx] = well_keys
+                    conditions_needed.update(well_keys)
+
+                # Batch fetch existing conditions in ONE query
+                condition_lookup: dict[tuple[str, str], Condition] = {}
+                if conditions_needed:
+                    or_clauses = [
+                        (Condition.name == name) & (Condition.condition_type == ctype)
+                        for name, ctype in conditions_needed
+                    ]
+                    existing = session.exec(
+                        select(Condition).where(or_(*or_clauses))
+                    ).all()
+                    condition_lookup = {(c.name, c.condition_type): c for c in existing}
+
+            # Merge experiment into session first
             merged_exp = session.merge(experiment)
+
+            # Now fix up conditions on the session-attached wells
+            if plate_loaded and merged_exp.plate is not None:
+                for idx, well in enumerate(merged_exp.plate.wells):
+                    # Use original well's condition keys (before merge)
+                    condition_keys = well_condition_map.get(idx, [])
+                    if not condition_keys:
+                        # No conditions for this well, skip it
+                        continue
+
+                    resolved_conditions: list[Condition] = []
+
+                    for key in condition_keys:
+                        existing_cond = condition_lookup.get(key)
+                        if existing_cond:
+                            # Use existing condition from DB
+                            resolved_conditions.append(existing_cond)
+                        else:
+                            # Condition doesn't exist - query for it
+                            name, ctype = key
+                            stmt = select(Condition).where(
+                                (Condition.name == name)
+                                & (Condition.condition_type == ctype)
+                            )
+                            cond_in_session = session.exec(stmt).first()
+                            if cond_in_session:
+                                resolved_conditions.append(cond_in_session)
+                            # else: condition not found, skip it
+
+                    # Assign resolved conditions (replaces whatever merge() set)
+                    if resolved_conditions:
+                        well.conditions = resolved_conditions
+
             session.commit()
             # Refresh to get the ID assigned by the database
             session.refresh(merged_exp)
@@ -133,6 +202,13 @@ def save_experiment_to_database(
         cali_logger.info(
             f"💾 Experiment analysis updated and saved to database at {db_path}."
         )
+
+    except IntegrityError as e:
+        cali_logger.error(
+            f"❌ Failed to save experiment to database. "
+            f"Integrity constraint violated: {e}"
+        )
+        raise
     finally:
         # Dispose engine to release database connections (Windows compatibility)
         engine.dispose(close=True)

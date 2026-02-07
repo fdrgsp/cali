@@ -67,9 +67,12 @@ def test_manual_pipeline_execution(tmp_path: Path) -> None:
         # Save FOVs to our new database
         update_fovs_in_database(engine, fovs)
 
-        # Verify saved
+        # Verify saved - only check FOVs for positions we processed
+        # (The experiment creation makes FOV entries for all 8 positions in the data)
         with Session(engine) as session:
-            saved_fovs = session.exec(select(FOV)).all()
+            saved_fovs = session.exec(
+                select(FOV).where(FOV.position_index.in_(positions_to_process))
+            ).all()
             assert len(saved_fovs) == 2
             assert all(len(fov.rois) > 0 for fov in saved_fovs)
 

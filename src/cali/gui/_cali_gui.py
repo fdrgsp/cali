@@ -387,11 +387,9 @@ class CaliGui(QMainWindow):
 
         # TO REMOVE, IT IS ONLY TO TEST________________________________________________
         # fmt off
-
-        self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-        self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
-        self._output_path = "tests/test_data/data_and_db_for_tests/"
-
+        # self._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+        # self._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+        # self._output_path = "tests/test_data/data_and_db_for_tests/"
         # fmt: on
         # _____________________________________________________________________________
 
@@ -487,8 +485,16 @@ class CaliGui(QMainWindow):
             extraction = settings.get("extraction", {})
             ext_settings = extraction.get("trace_extraction_data", {})
             metadata_settings = extraction.get("metadata_data", {})
-            if ext_settings or metadata_settings:
+            ext_export_options = extraction.get("export_options")
+            ext_export_enabled = extraction.get("export_enabled", True)
+            if ext_settings or metadata_settings or ext_export_options:
                 from cali.gui._extraction_gui import MetadataData
+
+                # Convert list values back to tuples for export options
+                if ext_export_options is not None:
+                    ext_export_options = {
+                        k: tuple(v) for k, v in ext_export_options.items()
+                    }
 
                 self._extraction_wdg.setValue(
                     ExtractionSettingsData(
@@ -502,6 +508,8 @@ class CaliGui(QMainWindow):
                             if metadata_settings
                             else None
                         ),
+                        export_options=ext_export_options,
+                        export_enabled=ext_export_enabled,
                     )
                 )
 
@@ -510,6 +518,15 @@ class CaliGui(QMainWindow):
             calcium_peaks_data = analysis.get("calcium_peaks_data", {})
             spikes_data = analysis.get("spikes_data", {})
             experiment_type_data = analysis.get("experiment_type_data", {})
+            analysis_export_options = analysis.get("export_options")
+            analysis_export_enabled = analysis.get("export_enabled", False)
+
+            # Convert list values back to tuples for export options
+            if analysis_export_options is not None:
+                analysis_export_options = {
+                    k: tuple(v) for k, v in analysis_export_options.items()
+                }
+
             self._analysis_wdg.setValue(
                 AnalysisSettingsData(
                     calcium_peaks_data=(
@@ -523,6 +540,8 @@ class CaliGui(QMainWindow):
                         if experiment_type_data
                         else None
                     ),
+                    export_options=analysis_export_options,
+                    export_enabled=analysis_export_enabled,
                 )
             )
 
@@ -2152,6 +2171,8 @@ class CaliGui(QMainWindow):
                             burst_blur_sigma=a_settings.burst_gaussian_sigma,
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
                             synchrony_jitter=a_settings.spikes_sync_jitter_window,
+                            ccg_n_shuffles=a_settings.ccg_n_shuffles,
+                            enable_rising_edge_analysis=a_settings.enable_rising_edge_analysis,
                         ),
                         threads=a_settings.threads,
                     )

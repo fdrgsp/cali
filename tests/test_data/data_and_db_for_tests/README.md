@@ -4,7 +4,7 @@ This directory contains the **primary test dataset** used across all Cali tests.
 
 ## Files
 
-- **evk.tensorstore.zarr**: Evoked activity dataset with 2 positions (B5, B6) and 153 timepoints
+- **evk.tensorstore.zarr**: Evoked activity dataset with 8 positions (4 wells × 2 FOVs) and 153 timepoints
   - Used for detection, extraction, analysis, and GUI tests
   - Contains LED stimulation events at frames [3, 53, 103]
   - Powers: [2.0, 4.0, 6.0] mW/mm²
@@ -13,7 +13,9 @@ This directory contains the **primary test dataset** used across all Cali tests.
 - **test_db.cali**: Pre-built database with complete analysis results
   - Generated from evk.tensorstore.zarr
   - Contains 2 CaliResults with different extraction settings
-  - Includes plate map with conditions: genotype (g1, g2) and treatment (t1, t2)
+  - Run 1: Positions [0, 1] (B5_0000, B5_0001) with neuropil correction
+  - Run 2: Positions [2, 3] (B6_0000, B6_0001) without neuropil correction
+  - Includes plate map with conditions: genotype (g1-g4) and treatment (t1-t4)
   - LED stimulation settings configured for evoked activity analysis
 
 - **stimulation_mask.tif**: Binary mask indicating stimulated ROIs
@@ -28,6 +30,11 @@ This directory contains the **primary test dataset** used across all Cali tests.
 - **rebuild_test_db.py**: Script to regenerate test_db.cali from tests.json
   - Run when SQLModel schema changes
   - Ensures database matches current models
+
+- **expand_zarr_properly.py**: Script to expand zarr from 2 to 8 positions
+  - Creates 4 wells (B5, B6, B7, B8) with 2 FOVs each
+  - Copies original data to maintain data integrity
+  - Updates metadata with proper WellPlatePlan structure
 
 ## Usage
 
@@ -61,6 +68,16 @@ This will:
 3. Run CaliRunner with specified settings
 4. Create identical database with updated schema
 
+### Expanding the Zarr Data
+
+If the zarr data needs to be re-expanded from the original 2-position data:
+
+```bash
+git checkout -- tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr
+python tests/test_data/data_and_db_for_tests/expand_zarr_properly.py
+python tests/test_data/data_and_db_for_tests/rebuild_test_db.py
+```
+
 ## Test Data Organization
 
 The test suite uses specialized datasets for specific purposes:
@@ -72,16 +89,29 @@ The test suite uses specialized datasets for specific purposes:
 
 ## Dataset Details
 
-**Experiment Type**: Evoked Activity  
-**Plate Type**: 96-well  
-**Wells**: B5, B6  
-**Positions**: 2 (B5_0000, B6_0000)  
-**Timepoints**: 153 frames  
-**Frame Rate**: 10.0 fps  
-**Duration**: 15.3 seconds  
-**LED Pulse Duration**: 100 ms  
-**LED Pulse Powers**: [2.0, 4.0, 6.0] mW/mm²  
-**LED Pulse Frames**: [3, 53, 103]  
+**Experiment Type**: Evoked Activity
+**Plate Type**: 96-well
+**Wells**: B5, B6, B7, B8
+**Positions**: 8 (4 wells × 2 FOVs)
+**Position Mapping**:
+
+| Position | FOV Name | Source         |
+| -------- | -------- | -------------- |
+| 0        | B5_0000  | Original pos 0 |
+| 1        | B5_0001  | Copy of pos 0  |
+| 2        | B6_0000  | Original pos 1 |
+| 3        | B6_0001  | Copy of pos 1  |
+| 4        | B7_0000  | Copy of pos 0  |
+| 5        | B7_0001  | Copy of pos 0  |
+| 6        | B8_0000  | Copy of pos 1  |
+| 7        | B8_0001  | Copy of pos 1  |
+
+**Timepoints**: 153 frames
+**Frame Rate**: 10.0 fps
+**Duration**: 15.3 seconds
+**LED Pulse Duration**: 100 ms
+**LED Pulse Powers**: [2.0, 4.0, 6.0] mW/mm²
+**LED Pulse Frames**: [3, 53, 103]
 
 ## Conditions
 
@@ -89,15 +119,17 @@ The test suite uses specialized datasets for specific purposes:
 |------|----------|-----------|
 | B5   | g1       | t1        |
 | B6   | g2       | t2        |
+| B7   | g3       | t3        |
+| B8   | g4       | t4        |
 
 ## Database Contents
 
 - 1 Plate (96-well)
-- 2 Wells (B5, B6)
-- 4 Conditions (g1, g2, t1, t2)
-- 2 FOVs
+- 4 Wells (B5, B6, B7, B8)
+- 8 Conditions (g1-g4, t1-t4)
+- 8 FOVs (2 per well)
 - 1 DetectionSettings (Cellpose with cpsam model)
 - 2 ExtractionSettings (with and without neuropil correction)
-- 1 AnalysisSettings (Evoked Activity with LED settings)
-- 2 CaliResults (different extraction configurations)
-- 8 ROIs total
+- 1 AnalysisSettings (Evoked Activity with LED settings and stimulation mask)
+- 2 CaliResults (different extraction configurations, positions [0,1] and [2,3])
+- 16 ROIs total (4 per processed FOV)

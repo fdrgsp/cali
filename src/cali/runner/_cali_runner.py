@@ -326,7 +326,10 @@ class CaliRunner:
                     )
                     extraction_settings_id = extraction_settings_obj.id
                     extraction_threads = extraction_settings_obj.threads
-                    assert extraction_settings_id is not None
+                    if extraction_settings_id is None:
+                        raise ValueError(
+                            "ExtractionSettings must have an ID after persistence."
+                        )
                 else:
                     extraction_settings_id = None
                     extraction_threads = None
@@ -336,12 +339,18 @@ class CaliRunner:
                         session, analysis_settings
                     )
                     analysis_settings_id = analysis_settings_obj.id
-                    assert analysis_settings_id is not None
+                    if analysis_settings_id is None:
+                        raise ValueError(
+                            "AnalysisSettings must have an ID after persistence."
+                        )
                 else:
                     analysis_settings_id = None
 
                 det_id = detection_settings.id
-                assert det_id is not None
+                if det_id is None:
+                    raise ValueError(
+                        "DetectionSettings must have an ID after persistence."
+                    )
 
                 # 4. Determine which positions need detection
                 # Track whether user explicitly provided position indices
@@ -369,140 +378,19 @@ class CaliRunner:
                 yield "🔍 Running Detection..."
 
                 # 5. Run detection if needed
-                # Initialize result IDs at the beginning to avoid UnboundLocalError
                 analysis_result_id: int | None = None
-                detection_result_id: int | None = None
-                positions_processed_detection = []
-                total_rois_detected = 0
-
-                # Create detection-only result if no extraction/analysis will follow
-                needs_detection_result = (
-                    positions_for_detection
-                    and extraction_settings is None
-                    and analysis_settings is None
-                    and experiment.id is not None
+                cancelled = yield from self._run_detection_phase(
+                    session=session,
+                    experiment=experiment,
+                    dataset=dataset,
+                    detection_settings=detection_settings,
+                    det_id=det_id,
+                    positions_for_detection=positions_for_detection,
+                    detection_only=(
+                        extraction_settings is None and analysis_settings is None
+                    ),
                 )
-                detection_result_was_created = False
-                if needs_detection_result:
-                    # Optimistic: assume all will complete
-                    detection_result_id, detection_result_was_created = (
-                        self._create_or_update_analysis_result(
-                            session=session,
-                            experiment_id=experiment.id,  # type: ignore
-                            detection_settings_id=det_id,
-                            extraction_settings_id=None,
-                            analysis_settings_id=None,
-                            positions_detected=list(positions_for_detection),
-                        )
-                    )
-                if positions_for_detection:
-                    yield f"PROGRESS:RESET:{len(positions_for_detection)}"
-                    fov_count = 0
-                    for fov in self._run_detection(
-                        dataset,
-                        detection_settings,
-                        positions_for_detection,
-                    ):
-                        # Count ROIs before commit (they may become detached after)
-                        roi_count = len(fov.rois)
-                        total_rois_detected += roi_count
-                        fov_count += 1
-                        yield "PROGRESS:UPDATE"
-
-                        # Capture position index before expunging
-                        pos_idx = fov.position_index
-
-                        # Commit in batches
-                        should_commit = fov_count % self.commit_batch_size == 0
-                        if should_commit:
-                            cali_logger.info(
-                                f"💾 Committing batch of {self.commit_batch_size} FOVs "
-                                f"(total: {fov_count}/{len(positions_for_detection)})"
-                                "..."
-                            )
-                        commit_fov_result(
-                            session,
-                            experiment,
-                            fov,
-                            det_id,
-                            commit=should_commit,
-                        )
-                        if should_commit:
-                            cali_logger.info(
-                                f"💾 Committed batch of {self.commit_batch_size} FOVs "
-                                f"(total: {fov_count}/{len(positions_for_detection)})"
-                            )
-                            # Expunge FOV only after commit to free memory
-                            # Must check if fov is still in session first
-                            if fov in session:
-                                session.expunge(fov)
-
-                        positions_processed_detection.append(pos_idx)
-
-                    # Final commit for any remaining FOVs
-                    if fov_count % self.commit_batch_size != 0:
-                        remaining = fov_count % self.commit_batch_size
-                        cali_logger.info(
-                            f"💾 Committing final batch of {remaining} FOVs..."
-                        )
-                        session.commit()
-                        cali_logger.info(
-                            f"💾 Committed final batch of {remaining} FOVs."
-                        )
-                        # No need to expunge settings - they stay attached throughout
-
-                    # Log detection completion
-                    if positions_processed_detection:
-                        cali_logger.info(
-                            f"✅ Detection committed: {total_rois_detected} "
-                            f"ROIs across {len(positions_processed_detection)} FOVs"
-                        )
-
-                    # Update detection-only result with actually completed positions
-                    if detection_result_id is not None:
-                        result = session.get(CaliResult, detection_result_id)
-                        if result:
-                            if detection_result_was_created:
-                                # Replace: result was created in this run
-                                completed = sorted(positions_processed_detection)
-                                result.positions_detected = completed
-                            else:
-                                # Merge: result existed from previous run
-                                old_positions = set(result.positions_detected or [])
-                                new_positions = set(positions_processed_detection)
-                                completed = sorted(old_positions | new_positions)
-                                result.positions_detected = completed
-                            session.add(result)
-                            session.commit()
-                            cali_logger.info(
-                                f"📝 Updated CaliResult ID {detection_result_id} "
-                                f"with completed detected positions: {completed}"
-                            )
-
-                # Check for cancellation after detection completes
-                # If cancelled and we were planning to run extraction/analysis,
-                # we need to create a detection-only result for the completed positions
-                if self._detection_runner._cancellation_event.is_set():
-                    if (
-                        positions_processed_detection
-                        and detection_result_id is None
-                        and experiment.id is not None
-                    ):
-                        # Create a detection-only result for what we completed
-                        detection_result_id, _ = self._create_or_update_analysis_result(
-                            session=session,
-                            experiment_id=experiment.id,
-                            detection_settings_id=det_id,
-                            extraction_settings_id=None,
-                            analysis_settings_id=None,
-                            positions_detected=sorted(positions_processed_detection),
-                        )
-                        session.commit()
-                        cali_logger.info(
-                            f"📝 Created CaliResult ID {detection_result_id} for "
-                            f"cancelled run with detected positions: "
-                            f"{sorted(positions_processed_detection)}"
-                        )
+                if cancelled:
                     return
 
                 # 7. Run extraction if settings provided
@@ -696,7 +584,10 @@ class CaliRunner:
                     # Use a batch size that matches the number of threads to
                     # ensure good utilization without consuming too much memory.
                     # Loading too many FOVs at once can cause OOM errors.
-                    assert extraction_threads is not None
+                    if extraction_threads is None:
+                        raise ValueError(
+                            "extraction_threads must be set when running extraction."
+                        )
                     batch_size = extraction_threads
 
                     positions_processed = []
@@ -771,23 +662,13 @@ class CaliRunner:
                             fov_count += 1
                             batch_fov_count += 1
                             yield "PROGRESS:UPDATE"
-                            should_commit = fov_count % self.commit_batch_size == 0
-                            if should_commit:
-                                cali_logger.info(
-                                    f"💾 Committing batch of {self.commit_batch_size} "
-                                    f"FOVs (total: {fov_count}/"
-                                    f"{len(positions_to_process)})..."
-                                )
-                            commit_fov_result(
-                                session, experiment, fov, commit=should_commit
+                            self._commit_fov_batch(
+                                fov,
+                                session,
+                                experiment,
+                                fov_count,
+                                len(positions_to_process),
                             )
-                            if should_commit:
-                                cali_logger.info(
-                                    f"💾 Committed batch of "
-                                    f"{self.commit_batch_size} FOVs "
-                                    f"(total: {fov_count}/"
-                                    f"{len(positions_to_process)})"
-                                )
                             positions_processed.append(fov.position_index)
 
                         # Run analysis-only for FOVs with existing extraction
@@ -807,45 +688,22 @@ class CaliRunner:
                                 fov_count += 1
                                 batch_fov_count += 1
                                 yield "PROGRESS:UPDATE"
-                                should_commit = fov_count % self.commit_batch_size == 0
-                                if should_commit:
-                                    cali_logger.info(
-                                        f"💾 Committing batch of "
-                                        f"{self.commit_batch_size} FOVs "
-                                        f"(total: {fov_count}/"
-                                        f"{len(positions_to_process)})..."
-                                    )
-                                commit_fov_result(
-                                    session, experiment, fov, commit=should_commit
+                                self._commit_fov_batch(
+                                    fov,
+                                    session,
+                                    experiment,
+                                    fov_count,
+                                    len(positions_to_process),
                                 )
-                                if should_commit:
-                                    cali_logger.info(
-                                        f"💾 Committed batch of "
-                                        f"{self.commit_batch_size} FOVs "
-                                        f"(total: {fov_count}/"
-                                        f"{len(positions_to_process)})"
-                                    )
                                 positions_processed.append(fov.position_index)
 
                         # Commit any remaining in this batch and clear memory
-                        # Only commit if there were uncommitted FOVs in this batch
-                        uncommitted_count = batch_fov_count % self.commit_batch_size
-                        if uncommitted_count > 0:
-                            cali_logger.info(
-                                f"💾 Committing final batch of {uncommitted_count} "
-                                f"FOVs..."
-                            )
-                            session.commit()
-                            cali_logger.info(
-                                f"💾 Committed final batch of {uncommitted_count} FOVs."
-                            )
+                        self._commit_remaining_fovs(batch_fov_count, session)
 
                         # Expunge FOVs to free memory
                         for fov in batch_fovs:
-                            try:
+                            if fov in session:
                                 session.expunge(fov)
-                            except Exception:
-                                pass
 
                     # Log completion
                     if positions_processed:
@@ -866,15 +724,12 @@ class CaliRunner:
                                     result.positions_analyzed = completed
                             else:
                                 # Merge: result existed from previous run
-                                old_extracted = set(result.positions_extracted or [])
-                                new_extracted = set(positions_processed)
-                                result.positions_extracted = sorted(
-                                    old_extracted | new_extracted
+                                result.positions_extracted = self._merge_positions(
+                                    result.positions_extracted, positions_processed
                                 )
                                 if analysis_settings_id is not None:
-                                    old_analyzed = set(result.positions_analyzed or [])
-                                    result.positions_analyzed = sorted(
-                                        old_analyzed | new_extracted
+                                    result.positions_analyzed = self._merge_positions(
+                                        result.positions_analyzed, positions_processed
                                     )
                             session.add(result)
                             session.commit()
@@ -923,6 +778,149 @@ class CaliRunner:
         finally:
             cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)
+
+    # ==================== PHASE METHODS ====================
+
+    def _run_detection_phase(
+        self,
+        session: Session,
+        experiment: Experiment,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        detection_settings: DetectionSettings,
+        det_id: int,
+        positions_for_detection: list[int],
+        detection_only: bool,
+    ) -> Generator[str, None, bool]:
+        """Run the detection phase, committing results to the database.
+
+        Parameters
+        ----------
+        session : Session
+            Database session.
+        experiment : Experiment
+            Experiment being processed.
+        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+            Dataset to detect ROIs in.
+        detection_settings : DetectionSettings
+            Detection configuration.
+        det_id : int
+            Persisted DetectionSettings ID.
+        positions_for_detection : list[int]
+            Position indices that need detection.
+        detection_only : bool
+            True if no extraction/analysis will follow (creates a detection-
+            only CaliResult).
+
+        Returns
+        -------
+        bool
+            True if the run was cancelled and the caller should stop.
+        """
+        detection_result_id: int | None = None
+        positions_processed: list[int] = []
+        total_rois_detected = 0
+
+        # Create detection-only result if no extraction/analysis will follow
+        detection_result_was_created = False
+        if positions_for_detection and detection_only and experiment.id is not None:
+            detection_result_id, detection_result_was_created = (
+                self._create_or_update_analysis_result(
+                    session=session,
+                    experiment_id=experiment.id,
+                    detection_settings_id=det_id,
+                    extraction_settings_id=None,
+                    analysis_settings_id=None,
+                    positions_detected=list(positions_for_detection),
+                )
+            )
+
+        if positions_for_detection:
+            yield f"PROGRESS:RESET:{len(positions_for_detection)}"
+            fov_count = 0
+            for fov in self._run_detection(
+                dataset,
+                detection_settings,
+                positions_for_detection,
+            ):
+                # Count ROIs before commit (they may become detached after)
+                total_rois_detected += len(fov.rois)
+                fov_count += 1
+                yield "PROGRESS:UPDATE"
+
+                # Capture position index before expunging
+                pos_idx = fov.position_index
+
+                committed = self._commit_fov_batch(
+                    fov,
+                    session,
+                    experiment,
+                    fov_count,
+                    len(positions_for_detection),
+                    detection_settings_id=det_id,
+                )
+                if committed and fov in session:
+                    session.expunge(fov)
+
+                positions_processed.append(pos_idx)
+
+            self._commit_remaining_fovs(fov_count, session)
+
+            # Log detection completion
+            if positions_processed:
+                cali_logger.info(
+                    f"✅ Detection committed: {total_rois_detected} "
+                    f"ROIs across {len(positions_processed)} FOVs"
+                )
+
+            # Update detection-only result with actually completed positions
+            if detection_result_id is not None:
+                result = session.get(CaliResult, detection_result_id)
+                if result:
+                    if detection_result_was_created:
+                        completed: list[int] = sorted(positions_processed)
+                        result.positions_detected = completed
+                    else:
+                        completed = (
+                            self._merge_positions(
+                                result.positions_detected,
+                                positions_processed,
+                            )
+                            or []
+                        )
+                        result.positions_detected = completed
+                    session.add(result)
+                    session.commit()
+                    cali_logger.info(
+                        f"📝 Updated CaliResult ID {detection_result_id} "
+                        f"with completed detected positions: {completed}"
+                    )
+
+        # Check for cancellation after detection completes.
+        # If cancelled and we were planning to run extraction/analysis,
+        # create a detection-only result for the completed positions.
+        if self._detection_runner._cancellation_event.is_set():
+            if (
+                positions_processed
+                and detection_result_id is None
+                and experiment.id is not None
+            ):
+                detection_result_id, _ = self._create_or_update_analysis_result(
+                    session=session,
+                    experiment_id=experiment.id,
+                    detection_settings_id=det_id,
+                    extraction_settings_id=None,
+                    analysis_settings_id=None,
+                    positions_detected=sorted(positions_processed),
+                )
+                session.commit()
+                cali_logger.info(
+                    f"📝 Created CaliResult ID {detection_result_id} for "
+                    f"cancelled run with detected positions: "
+                    f"{sorted(positions_processed)}"
+                )
+            return True  # cancelled
+
+        return False  # not cancelled
 
     # ==================== PRIVATE HELPER METHODS ====================
 
@@ -1006,6 +1004,56 @@ class CaliRunner:
                 f"{len(da_to_delete)} analysis records."
             )
 
+    def _get_positions_needing_work(
+        self,
+        session: Session,
+        query: Any,
+        global_position_indices: Sequence[int],
+        label: str,
+        force: bool = False,
+        *,
+        skip_all_message: str | None = None,
+    ) -> list[int]:
+        """Return positions from *global_position_indices* not yet processed.
+
+        Parameters
+        ----------
+        session : Session
+            Database session.
+        query : Select
+            Query that returns ``FOV.position_index`` for already-processed
+            positions.
+        global_position_indices : Sequence[int]
+            Full set of requested positions.
+        label : str
+            Human-readable phase name for log messages (e.g. "Detection").
+        force : bool
+            If True, return all positions regardless of existing results.
+        skip_all_message : str | None
+            If provided, log this message when all positions are already done.
+            If None, return silently (useful when the caller logs instead).
+        """
+        if force:
+            return list(global_position_indices)
+
+        existing = set(session.exec(query).all())
+
+        needed = [p for p in global_position_indices if p not in existing]
+
+        if not needed:
+            if skip_all_message:
+                cali_logger.info(skip_all_message)
+            return []
+
+        if existing:
+            cali_logger.info(
+                f"⚠️ {label} exists for {len(existing)} position(s) "
+                f"but missing for {len(needed)} position(s): {needed}. "
+                f"Running {label.lower()} for missing positions."
+            )
+
+        return needed
+
     def _get_positions_for_detection(
         self,
         session: Session,
@@ -1013,64 +1061,27 @@ class CaliRunner:
         global_position_indices: Sequence[int],
         force: bool = False,
     ) -> list[int]:
-        """Get positions that need detection.
-
-        Returns positions that either:
-        - Don't have ROIs with this detection settings yet, OR
-        - force=True (re-run all)
-
-        Parameters
-        ----------
-        session : Session
-            Database session
-        detection_settings_id : int
-            Detection settings ID to check
-        global_position_indices : Sequence[int]
-            Positions to check
-        force : bool
-            If True, returns all positions regardless of existing results.
-
-        Returns
-        -------
-        list[int]
-            Positions that need detection. Empty list means skip all.
-        """
-        if force:
-            return list(global_position_indices)
-
-        # More efficient: convert to set directly
-        existing_positions = set(
-            session.exec(
-                select(FOV.position_index)
-                .join(ROI)
-                .where(
-                    ROI.detection_settings_id == detection_settings_id,
-                    FOV.position_index.in_(global_position_indices),  # type: ignore
-                )
-                .distinct()
-            ).all()
+        """Get positions that need detection."""
+        query = (
+            select(FOV.position_index)
+            .join(ROI)
+            .where(
+                ROI.detection_settings_id == detection_settings_id,
+                FOV.position_index.in_(global_position_indices),  # type: ignore
+            )
+            .distinct()
         )
-
-        positions_needing_detection = [
-            p for p in global_position_indices if p not in existing_positions
-        ]
-
-        if not positions_needing_detection:
-            cali_logger.info(
+        return self._get_positions_needing_work(
+            session,
+            query,
+            global_position_indices,
+            "Detection",
+            force,
+            skip_all_message=(
                 "⚠️ Detection already exists for all positions with "
                 f"DetectionSettings ID {detection_settings_id}. Skipping detection."
-            )
-            return []
-
-        if existing_positions:
-            cali_logger.info(
-                f"⚠️  Detection exists for {len(existing_positions)} position(s) "
-                f"but missing for {len(positions_needing_detection)} position(s): "
-                f"{positions_needing_detection}. "
-                "Running detection for missing positions."
-            )
-
-        return positions_needing_detection
+            ),
+        )
 
     def _get_positions_for_extraction(
         self,
@@ -1080,73 +1091,30 @@ class CaliRunner:
         global_position_indices: Sequence[int],
         force: bool = False,
     ) -> list[int]:
-        """Get positions that need extraction.
-
-        Returns positions that either:
-        - Don't have Traces with this extraction settings yet, OR
-        - force=True (re-run all)
-
-        Parameters
-        ----------
-        session : Session
-            Database session
-        detection_settings_id : int
-            Detection settings ID to check
-        extraction_settings_id : int
-            Extraction settings ID to check
-        global_position_indices : Sequence[int]
-            Positions to check
-        force : bool
-            If True, returns all positions regardless of existing results.
-
-        Returns
-        -------
-        list[int]
-            Positions that need extraction. Empty list means skip all.
-        """
-        if force:
-            return list(global_position_indices)
-
-        # Optimize by using set directly
-        existing_positions = set(
-            session.exec(
-                select(FOV.position_index)
-                .join(ROI)
-                .join(Traces)
-                .where(
-                    ROI.detection_settings_id == detection_settings_id,
-                    Traces.analysis_result_id.in_(  # type: ignore
-                        select(CaliResult.id).where(
-                            CaliResult.extraction_settings_id == extraction_settings_id
-                        )
-                    ),
-                    FOV.position_index.in_(global_position_indices),  # type: ignore
-                )
-                .distinct()
-            ).all()
-        )
-
-        positions_needing_extraction = [
-            p for p in global_position_indices if p not in existing_positions
-        ]
-
-        # Don't log here if we're just checking for analysis-only mode
-        # The caller will log more detailed information about the split
-        if not positions_needing_extraction and not force:
-            # Still return empty list, but don't log yet
-            # This allows the caller to provide context about whether
-            # analysis will run on these positions
-            return []
-
-        if existing_positions and positions_needing_extraction:
-            cali_logger.info(
-                f"⚠️ Extraction exists for {len(existing_positions)} position(s) "
-                f"but missing for {len(positions_needing_extraction)} position(s): "
-                f"{positions_needing_extraction}. "
-                "Running extraction for missing positions."
+        """Get positions that need extraction."""
+        query = (
+            select(FOV.position_index)
+            .join(ROI)
+            .join(Traces)
+            .where(
+                ROI.detection_settings_id == detection_settings_id,
+                Traces.analysis_result_id.in_(  # type: ignore
+                    select(CaliResult.id).where(
+                        CaliResult.extraction_settings_id == extraction_settings_id
+                    )
+                ),
+                FOV.position_index.in_(global_position_indices),  # type: ignore
             )
-
-        return positions_needing_extraction
+            .distinct()
+        )
+        # Don't log "skip all" — caller provides context about analysis-only
+        return self._get_positions_needing_work(
+            session,
+            query,
+            global_position_indices,
+            "Extraction",
+            force,
+        )
 
     def _get_positions_for_analysis(
         self,
@@ -1157,77 +1125,35 @@ class CaliRunner:
         global_position_indices: Sequence[int],
         force: bool = False,
     ) -> list[int]:
-        """Get positions that need analysis.
-
-        Returns positions that either:
-        - Don't have analysis results yet with this combination of settings, OR
-        - force=True (re-run all)
-
-        Parameters
-        ----------
-        session : Session
-            Database session
-        detection_settings_id : int
-            Detection settings ID to check
-        extraction_settings_id : int
-            Extraction settings ID to check (analysis depends on extraction)
-        analysis_settings_id : int
-            Analysis settings ID to check
-        global_position_indices : Sequence[int]
-            Positions to check
-        force : bool
-            If True, returns all positions regardless of existing results.
-
-        Returns
-        -------
-        list[int]
-            Positions that need analysis. Empty list means skip all.
-        """
-        if force:
-            return list(global_position_indices)
-
-        # Optimize by using set directly
-        # Build subquery for CaliResult filtering
+        """Get positions that need analysis."""
         result_subquery = select(CaliResult.id).where(
             CaliResult.extraction_settings_id == extraction_settings_id,
             CaliResult.analysis_settings_id == analysis_settings_id,
         )
-
-        existing_positions = set(
-            session.exec(
-                select(FOV.position_index)
-                .join(ROI)
-                .join(Traces)
-                .where(
-                    ROI.detection_settings_id == detection_settings_id,
-                    Traces.analysis_result_id.in_(result_subquery),  # type: ignore
-                    FOV.position_index.in_(global_position_indices),  # type: ignore
-                )
-                .distinct()
-            ).all()
+        query = (
+            select(FOV.position_index)
+            .join(ROI)
+            .join(Traces)
+            .where(
+                ROI.detection_settings_id == detection_settings_id,
+                Traces.analysis_result_id.in_(result_subquery),  # type: ignore
+                FOV.position_index.in_(global_position_indices),  # type: ignore
+            )
+            .distinct()
         )
-
-        positions_needing_analysis = [
-            p for p in global_position_indices if p not in existing_positions
-        ]
-
-        if not positions_needing_analysis:
-            cali_logger.info(
+        return self._get_positions_needing_work(
+            session,
+            query,
+            global_position_indices,
+            "Analysis",
+            force,
+            skip_all_message=(
                 f"⚠️ Analysis already exists for all positions with "
                 f"DetectionSettings ID {detection_settings_id}, "
                 f"ExtractionSettings ID {extraction_settings_id}, and "
                 f"AnalysisSettings ID {analysis_settings_id}. Skipping analysis."
-            )
-            return []
-
-        if existing_positions:
-            cali_logger.info(
-                f"⚠️ Analysis exists for {len(existing_positions)} position(s) "
-                f"but missing for {len(positions_needing_analysis)} position(s): "
-                f"{positions_needing_analysis}. Running analysis for missing positions."
-            )
-
-        return positions_needing_analysis
+            ),
+        )
 
     def _setup_database(
         self,
@@ -1285,206 +1211,135 @@ class CaliRunner:
             finally:
                 engine.dispose(close=True)
 
+    def _resolve_settings(
+        self,
+        session: Session,
+        settings: Any,
+        model_class: type,
+        label: str,
+        *,
+        use_merge: bool = False,
+    ) -> Any:
+        """Get existing or create new settings in database.
+
+        Implements settings deduplication - if identical settings already exist,
+        reuse them via pointer (foreign key) instead of creating duplicates.
+
+        Parameters
+        ----------
+        session : Session
+            Database session.
+        settings : settings object or int
+            Settings instance or existing settings ID.
+        model_class : type
+            The SQLModel class (DetectionSettings, ExtractionSettings, etc.).
+        label : str
+            Human-readable name for log messages.
+        use_merge : bool
+            If True, use ``session.merge()`` instead of ``session.add()`` when
+            persisting. Required for AnalysisSettings which may reference
+            objects from other sessions.
+        """
+        if isinstance(settings, int):
+            existing = session.get(model_class, settings)
+            if existing is None:
+                msg = f"{label} with ID {settings} not found in database."
+                cali_logger.error(msg)
+                raise ValueError(msg)
+            cali_logger.info(f"♻️ Reusing existing {label} ID {existing.id}")
+            return existing
+
+        if settings.id is None:
+            # Content-based dedup: check if identical settings already exist
+            for candidate in session.exec(select(model_class)).all():
+                if settings == candidate:
+                    cali_logger.info(f"♻️ Reusing existing {label} ID {candidate.id}")
+                    return candidate
+
+            # No match — persist new settings
+            if use_merge:
+                settings = session.merge(settings)
+            else:
+                session.add(settings)
+            session.commit()
+            session.refresh(settings)
+            cali_logger.info(f"⚙️ Created new {label} ID {settings.id}")
+            return settings
+
+        # Settings already has an ID
+        if use_merge:
+            settings = session.merge(settings)
+            cali_logger.info(f"♻️ Reusing existing {label} ID {settings.id}")
+            return settings
+
+        # Check DB for existing row with this ID
+        existing = session.get(model_class, settings.id)
+        if existing is not None:
+            cali_logger.info(f"♻️ Reusing existing {label} ID {existing.id}")
+            return existing
+
+        # ID doesn't exist in DB — create it
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+        cali_logger.info(f"⚙️ Created new {label} ID {settings.id}")
+        return settings
+
     def _get_or_create_detection_settings(
         self, session: Session, detection_settings: DetectionSettings | int
     ) -> DetectionSettings:
-        """Get existing or create new DetectionSettings in database.
-
-        This implements settings deduplication - if identical settings exist,
-        reuse them via pointer (foreign key) instead of creating duplicates.
-        """
+        """Get existing or create new DetectionSettings in database."""
         from sqlalchemy.orm import exc as orm_exc
 
         from cali.sqlmodel._model import DetectionSettings
 
-        if isinstance(detection_settings, int):
-            # Load existing settings by ID
-            existing = session.get(DetectionSettings, detection_settings)
-            if existing is None:
-                msg = (
-                    f"DetectionSettings with ID {detection_settings} not found "
-                    "in database."
-                )
-                cali_logger.error(msg)
-                raise ValueError(msg)
-            assert isinstance(existing, DetectionSettings)
-            cali_logger.info(
-                f"♻️ Reusing existing DetectionSettings ID {existing.id} "
-                f"(method: {existing.method})"
-            )
-            return existing
-
-        # Check if the object is detached and needs reattaching
-        try:
-            settings_id = detection_settings.id
-        except orm_exc.DetachedInstanceError:
-            # Object was detached - merge it back into session
-            detection_settings = session.merge(detection_settings)
-            assert isinstance(detection_settings, DetectionSettings)
-            cali_logger.info(
-                f"♻️ Reattached DetectionSettings ID {detection_settings.id} "
-                f"(method: {detection_settings.method})"
-            )
-            return detection_settings
-
-        if settings_id is None:
-            # Check if identical settings already exist
-            all_settings: list[DetectionSettings] = list(
-                session.exec(select(DetectionSettings)).all()
-            )
-            for candidate in all_settings:
-                if detection_settings == candidate:
-                    cali_logger.info(
-                        f"♻️ Reusing existing DetectionSettings ID {candidate.id} "
-                        f"(method: {candidate.method})"
-                    )
-                    return candidate
-
-            # New settings - create them
-            session.add(detection_settings)
-            session.commit()
-            session.refresh(detection_settings)
-            cali_logger.info(
-                f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
-                f"(method: {detection_settings.method})"
-            )
-            return detection_settings
-        else:
-            # Settings has ID - check if exists in database
-            existing = session.get(DetectionSettings, detection_settings.id)
-            if existing is not None:
-                assert isinstance(existing, DetectionSettings)
+        # Handle detached objects that lost their session
+        if not isinstance(detection_settings, int):
+            try:
+                _ = detection_settings.id
+            except orm_exc.DetachedInstanceError:
+                detection_settings = session.merge(detection_settings)
                 cali_logger.info(
-                    f"♻️ Reusing existing DetectionSettings ID {existing.id} "
-                    f"(method: {existing.method})"
+                    f"♻️ Reattached DetectionSettings ID {detection_settings.id}"  # type: ignore[union-attr]
                 )
-                return existing
+                return cast("DetectionSettings", detection_settings)
 
-            # ID doesn't exist - create it
-            session.add(detection_settings)
-            session.commit()
-            session.refresh(detection_settings)
-            cali_logger.info(
-                f"⚙️ Created new DetectionSettings ID {detection_settings.id} "
-                f"(method: {detection_settings.method})"
-            )
-            return detection_settings
+        return cast(
+            "DetectionSettings",
+            self._resolve_settings(
+                session, detection_settings, DetectionSettings, "DetectionSettings"
+            ),
+        )
 
     def _get_or_create_extraction_settings(
         self, session: Session, extraction_settings: ExtractionSettings | int
     ) -> ExtractionSettings:
-        """Get existing or create new ExtractionSettings in database.
-
-        This implements settings deduplication - if identical settings exist,
-        reuse them via pointer (foreign key) instead of creating duplicates.
-        """
+        """Get existing or create new ExtractionSettings in database."""
         from cali.sqlmodel._model import ExtractionSettings
 
-        if isinstance(extraction_settings, int):
-            # Load existing settings by ID
-            existing = session.get(ExtractionSettings, extraction_settings)
-            if existing is None:
-                msg = (
-                    f"ExtractionSettings ID {extraction_settings} not found in database"
-                )
-                cali_logger.error(msg)
-                raise ValueError(msg)
-            assert isinstance(existing, ExtractionSettings)
-            cali_logger.info(f"♻️ Reusing existing ExtractionSettings ID {existing.id}")
-            return existing
-
-        elif extraction_settings.id is None:
-            # Check if identical settings already exist
-            all_settings: list[ExtractionSettings] = list(
-                session.exec(select(ExtractionSettings)).all()
-            )
-            for candidate in all_settings:
-                if extraction_settings == candidate:
-                    cali_logger.info(
-                        f"♻️ Reusing existing ExtractionSettings ID {candidate.id}"
-                    )
-                    return candidate
-
-            # New settings - create them
-            session.add(extraction_settings)
-            session.commit()
-            session.refresh(extraction_settings)
-            cali_logger.info(
-                f"⚙️ Created new ExtractionSettings ID {extraction_settings.id}"
-            )
-            return extraction_settings
-        else:
-            # Settings has ID - check if exists in database
-            existing = session.get(ExtractionSettings, extraction_settings.id)
-            if existing is not None:
-                assert isinstance(existing, ExtractionSettings)
-                cali_logger.info(
-                    f"♻️ Reusing existing ExtractionSettings ID {existing.id}"
-                )
-                return existing
-
-            # ID doesn't exist - create it
-            session.add(extraction_settings)
-            session.commit()
-            session.refresh(extraction_settings)
-            cali_logger.info(
-                f"⚙️ Created new ExtractionSettings ID {extraction_settings.id}"
-            )
-            return extraction_settings
+        return cast(
+            "ExtractionSettings",
+            self._resolve_settings(
+                session, extraction_settings, ExtractionSettings, "ExtractionSettings"
+            ),
+        )
 
     def _get_or_create_analysis_settings(
         self, session: Session, analysis_settings: AnalysisSettings | int
     ) -> AnalysisSettings:
-        """Get existing or create new AnalysisSettings in database.
-
-        This implements settings deduplication - if identical settings exist,
-        reuse them via pointer (foreign key) instead of creating duplicates.
-        """
+        """Get existing or create new AnalysisSettings in database."""
         from cali.sqlmodel._model import AnalysisSettings
 
-        if isinstance(analysis_settings, int):
-            # Load existing settings by ID
-            existing = session.get(AnalysisSettings, analysis_settings)
-            if existing is None:
-                msg = (
-                    f"AnalysisSettings with ID {analysis_settings} not found "
-                    "in database."
-                )
-                cali_logger.error(msg)
-                raise ValueError(msg)
-            assert isinstance(existing, AnalysisSettings)
-            cali_logger.info(f"♻️ Reusing existing AnalysisSettings ID {existing.id}")
-            return existing
-
-        elif analysis_settings.id is None:
-            # Check if identical settings already exist
-            all_settings: list[AnalysisSettings] = list(
-                session.exec(select(AnalysisSettings)).all()
-            )
-            for candidate in all_settings:
-                if analysis_settings == candidate:
-                    cali_logger.info(
-                        f"♻️ Reusing existing AnalysisSettings ID {candidate.id}"
-                    )
-                    return candidate
-
-            # New settings - merge and commit
-            analysis_settings = session.merge(analysis_settings)
-            assert isinstance(analysis_settings, AnalysisSettings)
-            session.commit()
-            session.refresh(analysis_settings)
-            cali_logger.info(
-                f"⚙️ Created new AnalysisSettings ID {analysis_settings.id}"
-            )
-            return analysis_settings
-        else:
-            # Settings has ID - merge to reattach
-            analysis_settings = session.merge(analysis_settings)
-            assert isinstance(analysis_settings, AnalysisSettings)
-            cali_logger.info(
-                f"♻️ Reusing existing AnalysisSettings ID {analysis_settings.id}"
-            )
-            return analysis_settings
+        return cast(
+            "AnalysisSettings",
+            self._resolve_settings(
+                session,
+                analysis_settings,
+                AnalysisSettings,
+                "AnalysisSettings",
+                use_merge=True,
+            ),
+        )
 
     def _run_detection(
         self,
@@ -1814,21 +1669,12 @@ class CaliRunner:
         if exact_match:
             assert isinstance(exact_match, CaliResult)
             # Update existing result by merging positions for each stage
-            if positions_detected is not None:
-                old = set(exact_match.positions_detected or [])
-                new = set(positions_detected)
-                exact_match.positions_detected = sorted(old | new)
-
-            if positions_extracted is not None:
-                old = set(exact_match.positions_extracted or [])
-                new = set(positions_extracted)
-                exact_match.positions_extracted = sorted(old | new)
-
-            if positions_analyzed is not None:
-                old = set(exact_match.positions_analyzed or [])
-                new = set(positions_analyzed)
-                exact_match.positions_analyzed = sorted(old | new)
-
+            self._merge_result_positions(
+                exact_match,
+                positions_detected,
+                positions_extracted,
+                positions_analyzed,
+            )
             exact_match.last_modified = datetime.now()
 
             session.add(exact_match)
@@ -1865,21 +1711,12 @@ class CaliRunner:
             if upgradeable_result:
                 assert isinstance(upgradeable_result, CaliResult)
                 # Upgrade the existing result with analysis settings and merge positions
-                if positions_detected is not None:
-                    old = set(upgradeable_result.positions_detected or [])
-                    new = set(positions_detected)
-                    upgradeable_result.positions_detected = sorted(old | new)
-
-                if positions_extracted is not None:
-                    old = set(upgradeable_result.positions_extracted or [])
-                    new = set(positions_extracted)
-                    upgradeable_result.positions_extracted = sorted(old | new)
-
-                if positions_analyzed is not None:
-                    old = set(upgradeable_result.positions_analyzed or [])
-                    new = set(positions_analyzed)
-                    upgradeable_result.positions_analyzed = sorted(old | new)
-
+                self._merge_result_positions(
+                    upgradeable_result,
+                    positions_detected,
+                    positions_extracted,
+                    positions_analyzed,
+                )
                 upgradeable_result.analysis_settings_id = analysis_settings_id
 
                 upgradeable_result.last_modified = datetime.now()
@@ -1964,11 +1801,12 @@ class CaliRunner:
                 any_result_with_detection = all_results_with_detection[0]
                 assert isinstance(any_result_with_detection, CaliResult)
                 # Update the most complete existing result's detected positions
-                if positions_detected is not None:
-                    old = set(any_result_with_detection.positions_detected or [])
-                    new = set(positions_detected)
-                    any_result_with_detection.positions_detected = sorted(old | new)
-
+                self._merge_result_positions(
+                    any_result_with_detection,
+                    positions_detected,
+                    None,
+                    None,
+                )
                 any_result_with_detection.last_modified = datetime.now()
 
                 session.add(any_result_with_detection)
@@ -2003,21 +1841,12 @@ class CaliRunner:
             if upgradeable_result:
                 assert isinstance(upgradeable_result, CaliResult)
                 # Upgrade result with extraction settings and merge positions
-                if positions_detected is not None:
-                    old = set(upgradeable_result.positions_detected or [])
-                    new = set(positions_detected)
-                    upgradeable_result.positions_detected = sorted(old | new)
-
-                if positions_extracted is not None:
-                    old = set(upgradeable_result.positions_extracted or [])
-                    new = set(positions_extracted)
-                    upgradeable_result.positions_extracted = sorted(old | new)
-
-                if positions_analyzed is not None:
-                    old = set(upgradeable_result.positions_analyzed or [])
-                    new = set(positions_analyzed)
-                    upgradeable_result.positions_analyzed = sorted(old | new)
-
+                self._merge_result_positions(
+                    upgradeable_result,
+                    positions_detected,
+                    positions_extracted,
+                    positions_analyzed,
+                )
                 upgradeable_result.extraction_settings_id = extraction_settings_id
 
                 upgradeable_result.last_modified = datetime.now()
@@ -2047,21 +1876,12 @@ class CaliRunner:
             if compatible_result:
                 assert isinstance(compatible_result, CaliResult)
                 # Update positions for each stage (don't change analysis settings)
-                if positions_detected is not None:
-                    old = set(compatible_result.positions_detected or [])
-                    new = set(positions_detected)
-                    compatible_result.positions_detected = sorted(old | new)
-
-                if positions_extracted is not None:
-                    old = set(compatible_result.positions_extracted or [])
-                    new = set(positions_extracted)
-                    compatible_result.positions_extracted = sorted(old | new)
-
-                if positions_analyzed is not None:
-                    old = set(compatible_result.positions_analyzed or [])
-                    new = set(positions_analyzed)
-                    compatible_result.positions_analyzed = sorted(old | new)
-
+                self._merge_result_positions(
+                    compatible_result,
+                    positions_detected,
+                    positions_extracted,
+                    positions_analyzed,
+                )
                 compatible_result.last_modified = datetime.now()
 
                 session.add(compatible_result)
@@ -2126,6 +1946,78 @@ class CaliRunner:
         )
         assert result.id is not None
         return (result.id, True)
+
+    @staticmethod
+    def _merge_positions(
+        existing: list[int] | None, incoming: list[int] | None
+    ) -> list[int] | None:
+        """Merge existing and incoming position lists, returning sorted union.
+
+        Returns None if incoming is None (no update requested).
+        """
+        if incoming is None:
+            return existing
+        return sorted(set(existing or []) | set(incoming))
+
+    def _merge_result_positions(
+        self,
+        result: CaliResult,
+        positions_detected: list[int] | None,
+        positions_extracted: list[int] | None,
+        positions_analyzed: list[int] | None,
+    ) -> None:
+        """Merge position lists into an existing CaliResult."""
+        result.positions_detected = self._merge_positions(
+            result.positions_detected, positions_detected
+        )
+        result.positions_extracted = self._merge_positions(
+            result.positions_extracted, positions_extracted
+        )
+        result.positions_analyzed = self._merge_positions(
+            result.positions_analyzed, positions_analyzed
+        )
+
+    def _commit_fov_batch(
+        self,
+        fov: FOV,
+        session: Session,
+        experiment: Experiment,
+        fov_count: int,
+        total: int,
+        detection_settings_id: int | None = None,
+    ) -> bool:
+        """Commit a single FOV result with batch logging.
+
+        Commits to the database every ``self.commit_batch_size`` FOVs.
+
+        Returns
+        -------
+        bool
+            True if a batch commit was performed.
+        """
+        should_commit = fov_count % self.commit_batch_size == 0
+        if should_commit:
+            cali_logger.info(
+                f"💾 Committing batch of {self.commit_batch_size} FOVs "
+                f"(total: {fov_count}/{total})..."
+            )
+        commit_fov_result(
+            session, experiment, fov, detection_settings_id, commit=should_commit
+        )
+        if should_commit:
+            cali_logger.info(
+                f"💾 Committed batch of {self.commit_batch_size} FOVs "
+                f"(total: {fov_count}/{total})"
+            )
+        return should_commit
+
+    def _commit_remaining_fovs(self, fov_count: int, session: Session) -> None:
+        """Commit any remaining uncommitted FOVs in the current batch."""
+        uncommitted = fov_count % self.commit_batch_size
+        if uncommitted > 0:
+            cali_logger.info(f"💾 Committing final batch of {uncommitted} FOVs...")
+            session.commit()
+            cali_logger.info(f"💾 Committed final batch of {uncommitted} FOVs.")
 
     def _get_result_type(
         self, extraction_settings_id: int | None, analysis_settings_id: int | None

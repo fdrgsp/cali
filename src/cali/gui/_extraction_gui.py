@@ -61,6 +61,8 @@ class ExtractionSettingsData:
     trace_extraction_data: TraceExtractionData | None = None
     metadata_data: MetadataData | None = None
     threads: int = max((os.cpu_count() or 1) - 2, 1)
+    export_options: dict[str, tuple[bool, int, int]] | None = None
+    export_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -198,6 +200,8 @@ class _ExtractionGUI(QWidget):
             ),
             metadata_data=metadata_data,
             threads=self._threads.value(),
+            export_options=self._export_group.value(),
+            export_enabled=self._export_group.isChecked(),
         )
 
     def setValue(self, value: ExtractionSettingsData) -> None:
@@ -214,6 +218,9 @@ class _ExtractionGUI(QWidget):
         if value.metadata_data is not None:
             self._metadata_wdg.setValue(value.metadata_data)
         self._threads.setValue(value.threads)
+        if value.export_options is not None:
+            self._export_group.setValue(value.export_options)
+            self._export_group.setChecked(value.export_enabled)
 
     def reset(self) -> None:
         """Reset the widget to default values."""

@@ -1,22 +1,33 @@
 {
-  "description": "Test database schema for all tests. Modify this file and run rebuild_test_db.py to regenerate test_db.cali when models change.",
+  "description": "Test database schema for CaliRunner scenario tests. Modify this file and run rebuild_test_db.py to regenerate test_db.cali when models change.",
   "dataset_path": "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
   "experiment": {
-    "name": "Cali Experiment",
-    "description": "Experiment from data at tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr."
+    "name": "Runner Test Experiment",
+    "description": "Experiment for comprehensive CaliRunner scenario testing with 8 positions (4 wells x 2 FOVs)."
   },
   "detection_settings": [
     {
+      "id": 1,
       "method": "cellpose",
       "model_type": "cpsam",
       "diameter": null,
       "flow_threshold": 0.4,
       "cellprob_threshold": 0.0,
       "min_size": 10
+    },
+    {
+      "id": 2,
+      "method": "cellpose",
+      "model_type": "cpsam",
+      "diameter": 30,
+      "flow_threshold": 0.5,
+      "cellprob_threshold": 0.0,
+      "min_size": 15
     }
   ],
   "extraction_settings": [
     {
+      "id": 1,
       "neuropil_inner_radius": 2,
       "neuropil_min_pixels": 200,
       "neuropil_correction_factor": 0.6,
@@ -28,6 +39,7 @@
       "threads": 3
     },
     {
+      "id": 2,
       "neuropil_inner_radius": 0,
       "neuropil_min_pixels": 0,
       "neuropil_correction_factor": 0.0,
@@ -41,6 +53,7 @@
   ],
   "analysis_settings": [
     {
+      "id": 1,
       "peaks_height_value": 2.0,
       "peaks_height_mode": "multiplier",
       "peaks_distance": 200.0,
@@ -62,25 +75,71 @@
       "led_pulse_duration": 100.0,
       "led_pulse_powers": [2.0, 4.0, 6.0],
       "led_pulse_on_frames": [3, 53, 103],
-      "stimulation_mask_path": "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/stimulation_mask.tif",
+      "stimulation_mask_path": "tests/test_data/data_and_db_for_tests/stimulation_mask.tif",
+      "threads": 3,
+      "n_processes": 1
+    },
+    {
+      "id": 2,
+      "peaks_height_value": 3.0,
+      "peaks_height_mode": "multiplier",
+      "peaks_distance": 300.0,
+      "peaks_prominence_multiplier": 1.5,
+      "spike_threshold_value": 1.5,
+      "spike_threshold_mode": "multiplier",
+      "burst_threshold": 60.0,
+      "burst_min_duration": 150.0,
+      "burst_gaussian_sigma": 0.02,
+      "calcium_burst_threshold": 60.0,
+      "calcium_burst_min_duration": 150.0,
+      "calcium_burst_gaussian_sigma": 0.02,
+      "spikes_sync_cross_corr_lag": 500.0,
+      "ccg_n_shuffles": 30,
+      "enable_rising_edge_analysis": true,
+      "frame_rate": 10.0,
+      "experiment_type": "Evoked Activity",
+      "led_power_equation": "",
+      "led_pulse_duration": 100.0,
+      "led_pulse_powers": [2.0, 4.0, 6.0],
+      "led_pulse_on_frames": [3, 53, 103],
+      "stimulation_mask_path": null,
       "threads": 3,
       "n_processes": 1
     }
   ],
   "runs": [
     {
-      "description": "Full analysis run with evoked settings",
+      "description": "Full analysis on positions [0,1] with neuropil correction",
       "detection_settings_index": 0,
       "extraction_settings_index": 0,
       "analysis_settings_index": 0,
       "positions_to_analyze": [0, 1]
     },
     {
-      "description": "Analysis run with no neuropil correction",
+      "description": "Full analysis on positions [2,3] without neuropil correction",
       "detection_settings_index": 0,
       "extraction_settings_index": 1,
       "analysis_settings_index": 0,
-      "positions_to_analyze": [0, 1]
+      "positions_to_analyze": [2, 3]
     }
-  ]
+  ],
+  "plate_maps": {
+    "genotype": {"B5": "g1", "B6": "g1", "B7": "g2", "B8": "g2"},
+    "treatment": {"B5": "t1", "B6": "t2", "B7": "t1", "B8": "t2"}
+  },
+  "positions": {
+    "total": 8,
+    "wells": ["B5", "B6", "B7", "B8"],
+    "fovs_per_well": 2,
+    "mapping": {
+      "0": "B5_0000",
+      "1": "B5_0001",
+      "2": "B6_0000",
+      "3": "B6_0001",
+      "4": "B7_0000",
+      "5": "B7_0001",
+      "6": "B8_0000",
+      "7": "B8_0001"
+    }
+  }
 }

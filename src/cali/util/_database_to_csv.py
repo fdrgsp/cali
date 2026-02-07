@@ -848,6 +848,56 @@ def _export_single_correlation_matrix(
             _export_matrix_to_csv(matrix, sorted_roi_names, fov_output_path)
 
 
+def _get_condition_groups(
+    engine: Engine, *, run_id: int | None = None
+) -> dict[str, list[int]]:
+    """Map condition labels to FOV position indices.
+
+    If run_id is provided, only includes FOVs that have trace data for that run.
+    This prevents creating empty export subfolders for conditions without data.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    run_id : int | None
+        If provided, only include FOVs with trace data for this analysis run
+
+    Returns
+    -------
+    dict[str, list[int]]
+        Dict like ``{"WT_Drug": [0, 1], "KO_Vehicle": [2, 3], "": [4]}``
+        where the ``""`` key collects FOVs whose well has no conditions (or no well).
+    """
+    from cali.plot._multi_wells_plots._util import _get_condition_label
+
+    groups: dict[str, list[int]] = {}
+    with Session(engine) as session:
+        # Query FOVs, optionally filtered by run_id
+        if run_id is not None:
+            # Only include FOVs that have trace data for this run
+            stmt = (
+                select(FOV)
+                .join(ROI, FOV.id == ROI.fov_id)
+                .join(Traces, ROI.id == Traces.roi_id)
+                .where(Traces.analysis_result_id == run_id)
+                .distinct()
+            )
+            fovs = session.exec(stmt).all()
+        else:
+            # Get all FOVs
+            fovs = session.exec(select(FOV)).all()
+
+        for fov in fovs:
+            well = fov.well if fov.well_id is not None else None
+            if well is not None and well.conditions:
+                label = _get_condition_label(well)
+            else:
+                label = ""
+            groups.setdefault(label, []).append(fov.position_index)
+    return groups
+
+
 def _get_default_run_id(engine: Engine) -> int:
     """Get the first available analysis run ID."""
     with Session(engine) as session:
@@ -1054,26 +1104,47 @@ def export_traces_to_csv(
     export_dir = db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    # Export each selected trace type
-    for trace_type, should_export in export_traces.items():
-        if should_export and trace_type in export_map:
-            export_func, filename = export_map[trace_type]
-            output_path = export_dir / filename
-            try:
-                from cali.logger import cali_logger
+    # Group FOVs by condition for subfolder organization
+    # Only include conditions with data for this run_id
+    condition_groups = _get_condition_groups(engine, run_id=run_id)
+    has_conditions = any(label != "" for label in condition_groups)
 
-                cali_logger.info(f"📊 Exporting {trace_type} to {output_path}...")
-                export_func(
-                    engine,
-                    output_path,
-                    run_id=run_id,
-                    position_indices=position_indices,
-                )
-                cali_logger.info(f"✅ Exported {trace_type} successfully")
-            except Exception as e:
-                from cali.logger import cali_logger
+    # Build list of (output_dir, position_indices) pairs to export
+    if not has_conditions:
+        # No conditions — flat export as before
+        export_targets = [(export_dir, position_indices)]
+    else:
+        export_targets = []
+        for label, group_indices in sorted(condition_groups.items()):
+            # Filter by caller's position_indices if provided
+            if position_indices is not None:
+                group_indices = [i for i in group_indices if i in position_indices]
+                if not group_indices:
+                    continue
+            out_dir = export_dir / label if label else export_dir
+            export_targets.append((out_dir, group_indices))
 
-                cali_logger.error(f"❌ Failed to export {trace_type}: {e}")
+    # Export each selected trace type into each target directory
+    for target_dir, target_indices in export_targets:
+        for trace_type, should_export in export_traces.items():
+            if should_export and trace_type in export_map:
+                export_func, filename = export_map[trace_type]
+                output_path = target_dir / filename
+                try:
+                    from cali.logger import cali_logger
+
+                    cali_logger.info(f"📊 Exporting {trace_type} to {output_path}...")
+                    export_func(
+                        engine,
+                        output_path,
+                        run_id=run_id,
+                        position_indices=target_indices,
+                    )
+                    cali_logger.info(f"✅ Exported {trace_type} successfully")
+                except Exception as e:
+                    from cali.logger import cali_logger
+
+                    cali_logger.error(f"❌ Failed to export {trace_type}: {e}")
 
 
 def export_correlations_to_csv(
@@ -1165,28 +1236,46 @@ def export_correlations_to_csv(
     export_dir = db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    # Export each selected correlation type
-    # Note: Correlation exports are handled by individual functions that create
-    # separate files per FOV with FOV names in filenames
-    for correlation_type, should_export in export_correlations.items():
-        if should_export and correlation_type in export_map:
-            export_func, base_filename = export_map[correlation_type]
-            output_path = export_dir / base_filename
-            try:
-                from cali.logger import cali_logger
+    # Group FOVs by condition for subfolder organization
+    # Only include conditions with data for this run_id
+    condition_groups = _get_condition_groups(engine, run_id=run_id)
+    has_conditions = any(label != "" for label in condition_groups)
 
-                cali_logger.info(f"📊 Exporting {correlation_type} to {output_path}...")
-                export_func(
-                    engine,
-                    output_path,
-                    run_id=run_id,
-                    position_indices=position_indices,
-                )
-                cali_logger.info(f"✅ Exported {correlation_type} successfully")
-            except Exception as e:
-                from cali.logger import cali_logger
+    # Build list of (output_dir, position_indices) pairs to export
+    if not has_conditions:
+        export_targets = [(export_dir, position_indices)]
+    else:
+        export_targets = []
+        for label, group_indices in sorted(condition_groups.items()):
+            if position_indices is not None:
+                group_indices = [i for i in group_indices if i in position_indices]
+                if not group_indices:
+                    continue
+            out_dir = export_dir / label if label else export_dir
+            export_targets.append((out_dir, group_indices))
 
-                cali_logger.error(f"❌ Failed to export {correlation_type}: {e}")
+    # Export each selected correlation type into each target directory
+    # Note: Correlation exports create separate files per FOV
+    for target_dir, target_indices in export_targets:
+        for corr_type, should_export in export_correlations.items():
+            if should_export and corr_type in export_map:
+                export_func, base_filename = export_map[corr_type]
+                output_path = target_dir / base_filename
+                try:
+                    from cali.logger import cali_logger
+
+                    cali_logger.info(f"📊 Exporting {corr_type} to {output_path}...")
+                    export_func(
+                        engine,
+                        output_path,
+                        run_id=run_id,
+                        position_indices=target_indices,
+                    )
+                    cali_logger.info(f"✅ Exported {corr_type} successfully")
+                except Exception as e:
+                    from cali.logger import cali_logger
+
+                    cali_logger.error(f"❌ Failed to export {corr_type}: {e}")
 
 
 def _export_matrix_to_csv(
