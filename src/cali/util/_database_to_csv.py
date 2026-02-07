@@ -848,19 +848,46 @@ def _export_single_correlation_matrix(
             _export_matrix_to_csv(matrix, sorted_roi_names, fov_output_path)
 
 
-def _get_condition_groups(engine: Engine) -> dict[str, list[int]]:
+def _get_condition_groups(
+    engine: Engine, *, run_id: int | None = None
+) -> dict[str, list[int]]:
     """Map condition labels to FOV position indices.
 
-    Returns a dict like ``{"WT_Drug": [0, 1], "KO_Vehicle": [2, 3], "": [4]}``
-    where the ``""`` key collects FOVs whose well has no conditions (or no well).
+    If run_id is provided, only includes FOVs that have trace data for that run.
+    This prevents creating empty export subfolders for conditions without data.
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    run_id : int | None
+        If provided, only include FOVs with trace data for this analysis run
+
+    Returns
+    -------
+    dict[str, list[int]]
+        Dict like ``{"WT_Drug": [0, 1], "KO_Vehicle": [2, 3], "": [4]}``
+        where the ``""`` key collects FOVs whose well has no conditions (or no well).
     """
     from cali.plot._multi_wells_plots._util import _get_condition_label
 
     groups: dict[str, list[int]] = {}
     with Session(engine) as session:
-        # Query FOVs and access well via relationship so that
-        # Well.conditions (selectin lazy load) is properly triggered.
-        fovs = session.exec(select(FOV)).all()
+        # Query FOVs, optionally filtered by run_id
+        if run_id is not None:
+            # Only include FOVs that have trace data for this run
+            stmt = (
+                select(FOV)
+                .join(ROI, FOV.id == ROI.fov_id)
+                .join(Traces, ROI.id == Traces.roi_id)
+                .where(Traces.analysis_result_id == run_id)
+                .distinct()
+            )
+            fovs = session.exec(stmt).all()
+        else:
+            # Get all FOVs
+            fovs = session.exec(select(FOV)).all()
+
         for fov in fovs:
             well = fov.well if fov.well_id is not None else None
             if well is not None and well.conditions:
@@ -1078,7 +1105,8 @@ def export_traces_to_csv(
     export_dir.mkdir(parents=True, exist_ok=True)
 
     # Group FOVs by condition for subfolder organization
-    condition_groups = _get_condition_groups(engine)
+    # Only include conditions with data for this run_id
+    condition_groups = _get_condition_groups(engine, run_id=run_id)
     has_conditions = any(label != "" for label in condition_groups)
 
     # Build list of (output_dir, position_indices) pairs to export
@@ -1209,7 +1237,8 @@ def export_correlations_to_csv(
     export_dir.mkdir(parents=True, exist_ok=True)
 
     # Group FOVs by condition for subfolder organization
-    condition_groups = _get_condition_groups(engine)
+    # Only include conditions with data for this run_id
+    condition_groups = _get_condition_groups(engine, run_id=run_id)
     has_conditions = any(label != "" for label in condition_groups)
 
     # Build list of (output_dir, position_indices) pairs to export
