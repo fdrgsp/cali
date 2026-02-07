@@ -487,8 +487,16 @@ class CaliGui(QMainWindow):
             extraction = settings.get("extraction", {})
             ext_settings = extraction.get("trace_extraction_data", {})
             metadata_settings = extraction.get("metadata_data", {})
-            if ext_settings or metadata_settings:
+            ext_export_options = extraction.get("export_options")
+            ext_export_enabled = extraction.get("export_enabled", True)
+            if ext_settings or metadata_settings or ext_export_options:
                 from cali.gui._extraction_gui import MetadataData
+
+                # Convert list values back to tuples for export options
+                if ext_export_options is not None:
+                    ext_export_options = {
+                        k: tuple(v) for k, v in ext_export_options.items()
+                    }
 
                 self._extraction_wdg.setValue(
                     ExtractionSettingsData(
@@ -502,6 +510,8 @@ class CaliGui(QMainWindow):
                             if metadata_settings
                             else None
                         ),
+                        export_options=ext_export_options,
+                        export_enabled=ext_export_enabled,
                     )
                 )
 
@@ -510,6 +520,15 @@ class CaliGui(QMainWindow):
             calcium_peaks_data = analysis.get("calcium_peaks_data", {})
             spikes_data = analysis.get("spikes_data", {})
             experiment_type_data = analysis.get("experiment_type_data", {})
+            analysis_export_options = analysis.get("export_options")
+            analysis_export_enabled = analysis.get("export_enabled", False)
+
+            # Convert list values back to tuples for export options
+            if analysis_export_options is not None:
+                analysis_export_options = {
+                    k: tuple(v) for k, v in analysis_export_options.items()
+                }
+
             self._analysis_wdg.setValue(
                 AnalysisSettingsData(
                     calcium_peaks_data=(
@@ -523,6 +542,8 @@ class CaliGui(QMainWindow):
                         if experiment_type_data
                         else None
                     ),
+                    export_options=analysis_export_options,
+                    export_enabled=analysis_export_enabled,
                 )
             )
 

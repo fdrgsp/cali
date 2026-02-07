@@ -73,11 +73,21 @@ def test_save_settings_creates_valid_json(
     metadata_data = extraction["metadata_data"]
     assert "frame_rate" in metadata_data
 
+    # Verify export options are saved
+    assert "export_options" in extraction
+    assert "export_enabled" in extraction
+    assert isinstance(extraction["export_options"], dict)
+
     # Verify analysis settings exist
     analysis = settings["analysis"]
     assert "calcium_peaks_data" in analysis
     assert "spikes_data" in analysis
     assert "experiment_type_data" in analysis
+
+    # Verify analysis export options are saved
+    assert "export_options" in analysis
+    assert "export_enabled" in analysis
+    assert isinstance(analysis["export_options"], dict)
 
 
 def test_load_settings_restores_gui_state(
@@ -105,7 +115,12 @@ def test_load_settings_restores_gui_state(
                 "neuropil_inner_radius": 4,
                 "neuropil_min_pixels": 150,
                 "neuropil_correction_factor": 0.8,
-            }
+            },
+            "export_options": {
+                "Raw Calcium Traces": [False, 0, 0],
+                "\u0394F/F Traces": [True, 3, 0],
+            },
+            "export_enabled": False,
         },
         "analysis": {
             "calcium_peaks_data": {
@@ -136,6 +151,10 @@ def test_load_settings_restores_gui_state(
                 "led_pulse_on_frames": None,
                 "stimulation_area_path": None,
             },
+            "export_options": {
+                "\u0394F/F Correlation Matrix": [True, 1, 0],
+            },
+            "export_enabled": True,
         },
     }
 
@@ -180,6 +199,23 @@ def test_load_settings_restores_gui_state(
     assert analysis_value.spikes_data.synchrony_jitter == 250.0
     assert analysis_value.spikes_data.ccg_n_shuffles == 50
     assert analysis_value.spikes_data.enable_rising_edge_analysis is True
+
+    # Verify extraction export options were loaded
+    assert extraction_value.export_enabled is False
+    assert extraction_value.export_options is not None
+    raw_checked = extraction_value.export_options.get("Raw Calcium Traces")
+    assert raw_checked is not None
+    assert raw_checked[0] is False  # checked state
+    dff_checked = extraction_value.export_options.get("\u0394F/F Traces")
+    assert dff_checked is not None
+    assert dff_checked[0] is True
+
+    # Verify analysis export options were loaded
+    assert analysis_value.export_enabled is True
+    assert analysis_value.export_options is not None
+    corr_checked = analysis_value.export_options.get("\u0394F/F Correlation Matrix")
+    assert corr_checked is not None
+    assert corr_checked[0] is True
 
 
 def test_save_and_load_roundtrip(
@@ -260,6 +296,14 @@ def test_save_and_load_roundtrip(
         loaded_analysis.spikes_data.enable_rising_edge_analysis
         == original_analysis.spikes_data.enable_rising_edge_analysis
     )
+
+    # Check extraction export options preserved in round trip
+    assert loaded_extraction.export_enabled == original_extraction.export_enabled
+    assert loaded_extraction.export_options == original_extraction.export_options
+
+    # Check analysis export options preserved in round trip
+    assert loaded_analysis.export_enabled == original_analysis.export_enabled
+    assert loaded_analysis.export_options == original_analysis.export_options
 
 
 def test_load_settings_with_missing_fields_uses_defaults(
