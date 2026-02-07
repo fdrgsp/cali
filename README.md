@@ -9,6 +9,8 @@ A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 
 <img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
+<br><br>
+
 ## To Run
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` directly without installing it using:
@@ -19,6 +21,8 @@ uvx -p 3.13 "git+https://github.com/fdrgsp/cali[cp4]"
 
 ***NOTE**: use python 3.11 or greater. Swap `cp4` with `cp3` to use Cellpose 3.x.*
 
+<br>
+
 To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed:
 
 ```bash
@@ -27,9 +31,11 @@ uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+ht
 
 ***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions and `cp4` with `cp3` to use Cellpose 3.x.*
 
+<br>
+
 ## To install
 
-### Using (uv) pip
+### ▶ Using (uv) pip
 
 Install `cali` directly without cloning (use python 3.11 or greater):
 
@@ -38,6 +44,8 @@ Install `cali` directly without cloning (use python 3.11 or greater):
 ```
 
 ***NOTE**: swap `cp4` with `cp3` to use Cellpose 3.x.*
+
+<br>
 
 To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed:
 
@@ -53,7 +61,7 @@ To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to b
 nvidia-smi
 ```
 
-### Using uv
+### ▶ Using uv
 
 Clone the repository and install with `uv sync`:
 
@@ -70,6 +78,8 @@ uv sync --extra cp4
 
 ***NOTE**: swap `cp4` with `cp3` to use Cellpose 3.x.*
 
+<br>
+
 To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to be installed. Add a CUDA extra alongside your Cellpose extra:
 
 ```bash
@@ -84,7 +94,7 @@ uv sync --extra cp4 --extra cu130   # Cellpose 4.x + CUDA 13.0
 nvidia-smi
 ```
 
-### NOTES
+### ▶ NOTES
 
 #### Building on macOS
 
@@ -96,6 +106,8 @@ export LDFLAGS="-L${SDKROOT}/usr/lib"
 ```
 
 Then run your installation command.
+
+<br>
 
 ---
 
@@ -232,7 +244,9 @@ The Multi Well tab visualizes summary metrics across all wells/FOVs.
 
 If the plate was treated with different conditions (e.g. drug vs control), clicking the **Show/Edit Plate Map** button under the plate layout opens a plate map editor where each well can be assigned to a condition. Currently, two condition dimensions are supported (e.g. genotype and treatment). This information is used to group wells/FOVs in the Multi Well tab. If no plate map is defined, data are shown on a per-well basis.
 
-[screenshot of the multi well visualization tab]
+TODO: [screenshot of the multi well visualization tab once implemented]
+
+<br>
 
 ---
 
