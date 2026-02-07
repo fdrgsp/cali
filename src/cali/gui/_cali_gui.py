@@ -2152,6 +2152,8 @@ class CaliGui(QMainWindow):
                             burst_blur_sigma=a_settings.burst_gaussian_sigma,
                             synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
                             synchrony_jitter=a_settings.spikes_sync_jitter_window,
+                            ccg_n_shuffles=a_settings.ccg_n_shuffles,
+                            enable_rising_edge_analysis=a_settings.enable_rising_edge_analysis,
                         ),
                         threads=a_settings.threads,
                     )

@@ -125,6 +125,8 @@ def test_load_settings_restores_gui_state(
                 "burst_blur_sigma": 0.06,
                 "synchrony_lag": 600.0,
                 "synchrony_jitter": 250.0,
+                "ccg_n_shuffles": 50,
+                "enable_rising_edge_analysis": True,
             },
             "experiment_type_data": {
                 "experiment_type": "Spontaneous Activity",
@@ -176,6 +178,8 @@ def test_load_settings_restores_gui_state(
     assert analysis_value.spikes_data.burst_threshold == 75.0
     assert analysis_value.spikes_data.synchrony_lag == 600.0
     assert analysis_value.spikes_data.synchrony_jitter == 250.0
+    assert analysis_value.spikes_data.ccg_n_shuffles == 50
+    assert analysis_value.spikes_data.enable_rising_edge_analysis is True
 
 
 def test_save_and_load_roundtrip(
@@ -243,6 +247,18 @@ def test_save_and_load_roundtrip(
     assert (
         loaded_analysis.spikes_data.spike_threshold
         == original_analysis.spikes_data.spike_threshold
+    )
+    assert (
+        loaded_analysis.spikes_data.synchrony_jitter
+        == original_analysis.spikes_data.synchrony_jitter
+    )
+    assert (
+        loaded_analysis.spikes_data.ccg_n_shuffles
+        == original_analysis.spikes_data.ccg_n_shuffles
+    )
+    assert (
+        loaded_analysis.spikes_data.enable_rising_edge_analysis
+        == original_analysis.spikes_data.enable_rising_edge_analysis
     )
 
 
@@ -403,6 +419,8 @@ def test_load_settings_with_evoked_experiment_data(
                 "burst_blur_sigma": 0.05,
                 "synchrony_lag": 500.0,
                 "synchrony_jitter": 200.0,
+                "ccg_n_shuffles": 40,
+                "enable_rising_edge_analysis": True,
             },
             "experiment_type_data": {
                 "experiment_type": "Evoked Activity",
@@ -438,6 +456,11 @@ def test_load_settings_with_evoked_experiment_data(
         loaded_analysis.experiment_type_data.stimulation_area_path.replace("\\", "/")
         == "/path/to/stim/mask.tif"
     )
+
+    # Verify spike settings including ccg and rising edge
+    assert loaded_analysis.spikes_data is not None
+    assert loaded_analysis.spikes_data.ccg_n_shuffles == 40
+    assert loaded_analysis.spikes_data.enable_rising_edge_analysis is True
 
 
 def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
@@ -505,6 +528,9 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
     assert analysis_value.spikes_data.burst_min_duration == 100.0
     assert analysis_value.spikes_data.burst_blur_sigma == 0.01
     assert analysis_value.spikes_data.synchrony_lag == 500.0
+    assert analysis_value.spikes_data.synchrony_jitter == 200.0
+    assert analysis_value.spikes_data.ccg_n_shuffles == 30
+    assert analysis_value.spikes_data.enable_rising_edge_analysis is True
     assert analysis_value.experiment_type_data is not None
     assert analysis_value.experiment_type_data.experiment_type == "Evoked Activity"
     assert analysis_value.experiment_type_data.led_power_equation == ""
