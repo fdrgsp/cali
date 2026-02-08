@@ -61,6 +61,7 @@ class CellposeSettingsData:
     min_size: int = 10
     normalize: bool = True
     batch_size: int = 8
+    use_gpu: bool = True
 
 
 class _DetectionGUI(QWidget):
@@ -107,6 +108,7 @@ class _DetectionGUI(QWidget):
         cp._min_size_label.setMinimumWidth(fixed_lbl_width)
         cp._batch_label.setMinimumWidth(fixed_lbl_width)
         cp._normalize_label.setMinimumWidth(fixed_lbl_width)
+        cp._use_gpu_label.setMinimumWidth(fixed_lbl_width)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -157,6 +159,7 @@ class _DetectionGUI(QWidget):
             min_size=settings.min_size,
             normalize=settings.normalize,
             batch_size=settings.batch_size,
+            use_gpu=settings.use_gpu,
         )
 
 
@@ -316,6 +319,23 @@ class _CellposeDetectionWidget(QGroupBox):
         normalize_layout.addWidget(self._normalize_checkbox)
         normalize_layout.addStretch(1)
 
+        # USE GPU CHECKBOX ------------------------------------------------------------
+        self._use_gpu_wdg = QWidget(self)
+        self._use_gpu_wdg.setToolTip(
+            "Use GPU acceleration for faster processing if available.\n"
+            "If GPU is not available, CPU will be used automatically."
+        )
+        use_gpu_layout = QHBoxLayout(self._use_gpu_wdg)
+        use_gpu_layout.setContentsMargins(0, 0, 0, 0)
+        use_gpu_layout.setSpacing(5)
+        self._use_gpu_label = QLabel("Use GPU:", self._use_gpu_wdg)
+        self._use_gpu_label.setSizePolicy(*FIXED)
+        self._use_gpu_checkbox = QCheckBox(self._use_gpu_wdg)
+        self._use_gpu_checkbox.setChecked(True)
+        use_gpu_layout.addWidget(self._use_gpu_label)
+        use_gpu_layout.addWidget(self._use_gpu_checkbox)
+        use_gpu_layout.addStretch(1)
+
         # BATCH SIZE WIDGET -----------------------------------------------------------
         self._batch_wdg = QWidget(self)
         self._batch_wdg.setToolTip(
@@ -358,6 +378,7 @@ class _CellposeDetectionWidget(QGroupBox):
             self._flow_wdg.hide()
             self._min_size_wdg.hide()
             self._normalize_wdg.hide()
+            self._use_gpu_wdg.hide()
             self._batch_wdg.hide()
         else:
             cp_wdg_layout.addWidget(create_divider_line("Select Cellpose Model"))
@@ -369,6 +390,7 @@ class _CellposeDetectionWidget(QGroupBox):
             cp_wdg_layout.addWidget(self._flow_wdg)
             cp_wdg_layout.addWidget(self._min_size_wdg)
             cp_wdg_layout.addWidget(self._normalize_wdg)
+            cp_wdg_layout.addWidget(self._use_gpu_wdg)
             cp_wdg_layout.addWidget(create_divider_line("Batch Processing"))
             cp_wdg_layout.addWidget(self._batch_wdg)
 
@@ -384,6 +406,7 @@ class _CellposeDetectionWidget(QGroupBox):
         min_size = self._min_size_spin.value()
         normalize = self._normalize_checkbox.isChecked()
         batch_size = self._batch_size_spin.value()
+        use_gpu = self._use_gpu_checkbox.isChecked()
 
         return CellposeSettingsData(
             model_type=model_type,
@@ -394,6 +417,7 @@ class _CellposeDetectionWidget(QGroupBox):
             min_size=min_size,
             normalize=normalize,
             batch_size=batch_size,
+            use_gpu=use_gpu,
         )
 
     def setValue(self, value: CellposeSettingsData) -> None:
@@ -417,6 +441,7 @@ class _CellposeDetectionWidget(QGroupBox):
         self._min_size_spin.setValue(value.min_size)
         self._normalize_checkbox.setChecked(value.normalize)
         self._batch_size_spin.setValue(value.batch_size)
+        self._use_gpu_checkbox.setChecked(value.use_gpu)
 
     # PRIVATE METHODS -----------------------------------------------------------------
 

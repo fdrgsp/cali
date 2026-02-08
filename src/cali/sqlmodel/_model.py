@@ -774,6 +774,8 @@ class DetectionSettings(SQLModel, table=True):
         Whether to normalize images before detection
     batch_size : int
         Number of images to process per batch. By default, 8.
+    use_gpu : bool
+        Whether to use GPU acceleration if available. By default, True.
     """
 
     __tablename__ = "detection_settings"
@@ -793,8 +795,7 @@ class DetectionSettings(SQLModel, table=True):
     min_size: int = 10
     normalize: bool = True
     batch_size: int = 8
-
-    # TODO: add CaImAn settings
+    use_gpu: bool = True
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
@@ -814,6 +815,7 @@ class DetectionSettings(SQLModel, table=True):
             and self.min_size == other.min_size
             and self.normalize == other.normalize
             and self.batch_size == other.batch_size
+            and self.use_gpu == other.use_gpu
         )
 
     def __hash__(self) -> int:
@@ -829,6 +831,7 @@ class DetectionSettings(SQLModel, table=True):
                 self.min_size,
                 self.normalize,
                 self.batch_size,
+                self.use_gpu,
             )
         )
 

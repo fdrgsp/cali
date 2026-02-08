@@ -61,6 +61,7 @@ def test_save_settings_creates_valid_json(
     assert "model_type" in detection
     assert "cellprob_threshold" in detection
     assert "flow_threshold" in detection
+    assert "use_gpu" in detection
 
     # Verify extraction settings exist
     extraction = settings["extraction"]
@@ -105,6 +106,7 @@ def test_load_settings_restores_gui_state(
             "min_size": 15,
             "normalize": False,
             "batch_size": 16,
+            "use_gpu": False,
         },
         "extraction": {
             "trace_extraction_data": {
@@ -179,6 +181,7 @@ def test_load_settings_restores_gui_state(
     assert detection_value.diameter == 30.0
     assert detection_value.cellprob_threshold == 0.3
     assert detection_value.flow_threshold == 0.5
+    assert detection_value.use_gpu is False
 
     # Verify extraction settings
     assert extraction_value.trace_extraction_data is not None
@@ -254,6 +257,7 @@ def test_save_and_load_roundtrip(
     # Check detection settings
     assert loaded_detection.model_type == original_detection.model_type
     assert loaded_detection.diameter == original_detection.diameter
+    assert loaded_detection.use_gpu == original_detection.use_gpu
 
     # Check extraction settings
     assert loaded_extraction.trace_extraction_data is not None
@@ -317,6 +321,7 @@ def test_load_settings_with_missing_fields_uses_defaults(
             "diameter": 25.0,
             "cellprob_threshold": -2.0,
             "flow_threshold": 0.8,
+            # Note: use_gpu is intentionally omitted to test default handling
         }
     }
 
@@ -342,6 +347,8 @@ def test_load_settings_with_missing_fields_uses_defaults(
     assert loaded_detection.diameter == 25.0
     assert loaded_detection.cellprob_threshold == -2.0
     assert loaded_detection.flow_threshold == 0.8
+    # use_gpu should use default value (True) when not specified
+    assert loaded_detection.use_gpu is True
 
     # Verify extraction and analysis use defaults (should not be None)
     loaded_extraction = cali_gui._extraction_wdg.value()
@@ -433,6 +440,7 @@ def test_load_settings_with_evoked_experiment_data(
             "diameter": 30.0,
             "cellprob_threshold": 0.0,
             "flow_threshold": 0.4,
+            "use_gpu": True,
         },
         "extraction": {
             "trace_extraction_data": {

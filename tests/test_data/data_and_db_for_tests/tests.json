@@ -13,7 +13,8 @@
       "diameter": null,
       "flow_threshold": 0.4,
       "cellprob_threshold": 0.0,
-      "min_size": 10
+      "min_size": 10,
+      "use_gpu": false
     },
     {
       "id": 2,
@@ -22,7 +23,8 @@
       "diameter": 30,
       "flow_threshold": 0.5,
       "cellprob_threshold": 0.0,
-      "min_size": 15
+      "min_size": 15,
+      "use_gpu": false
     }
   ],
   "extraction_settings": [

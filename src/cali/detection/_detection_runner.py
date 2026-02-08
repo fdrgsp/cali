@@ -155,7 +155,15 @@ class DetectionRunner:
 
         cali_logger.info("🔍 Running Cellpose Detection...")
 
-        use_gpu = core.use_gpu()
+        # Check GPU availability and user preference
+        gpu_available = core.use_gpu()
+        use_gpu = detection_settings.use_gpu and gpu_available
+
+        if detection_settings.use_gpu and not gpu_available:
+            cali_logger.warning(
+                "⚠️ GPU requested but not available. Falling back to CPU processing."
+            )
+
         cali_logger.info(f"🖥️ Use GPU: {use_gpu}")
 
         # Use custom_model path if model_type is "custom", otherwise use model_type
