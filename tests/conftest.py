@@ -15,9 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
 from useq import register_well_plates
 
 from cali.sqlmodel import Experiment
@@ -48,44 +47,6 @@ register_well_plates(
         },
     }
 )
-
-
-def _migrate_database_schema(engine: Engine) -> None:
-    """Migrate database schema to add missing columns.
-
-    This function ensures backward compatibility by adding new columns
-    to existing test databases that were created with older schemas.
-    """
-    with engine.connect() as conn:
-        # Add use_gpu column to detection_settings if missing
-        try:
-            conn.execute(text("SELECT use_gpu FROM detection_settings LIMIT 1"))
-        except OperationalError:
-            try:
-                conn.execute(
-                    text(
-                        "ALTER TABLE detection_settings "
-                        "ADD COLUMN use_gpu BOOLEAN DEFAULT 1"
-                    )
-                )
-                conn.commit()
-            except OperationalError:
-                conn.rollback()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def migrate_test_databases() -> None:
-    """Automatically migrate test database schemas before running tests.
-
-    This fixture runs once per session and migrates all test databases
-    to include new schema columns added since the database was created.
-    """
-    # Migrate the shared test database if it exists
-    test_db_path = Path("tests/test_data/data_and_db_for_tests/test_db.cali")
-    if test_db_path.exists():
-        engine = create_engine(f"sqlite:///{test_db_path}")
-        _migrate_database_schema(engine)
-        engine.dispose(close=True)
 
 
 @pytest.fixture
