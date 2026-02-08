@@ -59,7 +59,6 @@ from cali.runner._cali_runner import CaliRunner
 from cali.sqlmodel import (
     Experiment,
     experiment_to_plate_map_data,
-    has_experiment_analysis,
     has_fov_analysis,
     save_experiment_to_database,
 )
@@ -77,7 +76,7 @@ from ._plate_plan_wizard import PlatePlanWizard
 from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
-from ._save_as_widgets import _SaveAsCSV, _SaveAsTiff
+from ._save_as_widgets import _SaveAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
     _ElapsedTimer,
@@ -135,11 +134,8 @@ class CaliGui(QMainWindow):
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
         save_as_tiff_action.triggered.connect(self._show_save_as_tiff_dialog)
-        # save_as_csv_action = QAction("Save Analysis Data as CSV...", self)
-        # save_as_csv_action.triggered.connect(self._show_save_as_csv_dialog)
         self.file_menu.addAction(open_action)
         self.file_menu.addAction(save_as_tiff_action)
-        # self.file_menu.addAction(save_as_csv_action)
         self.setMenuBar(self.menu_bar)
 
         # TIFF COLLECTION WIDGET ------------------------------------------------------
@@ -2087,6 +2083,7 @@ class CaliGui(QMainWindow):
                             min_size=d_settings.min_size,
                             normalize=d_settings.normalize,
                             batch_size=d_settings.batch_size,
+                            use_gpu=d_settings.use_gpu,
                         )
                     )
                 else:
@@ -2800,37 +2797,3 @@ class CaliGui(QMainWindow):
             # save the data as tiff
             tifffile.imwrite(Path(path) / f"{pos_name}.tiff", data)
             yield pos + 1
-
-    def _show_save_as_csv_dialog(self) -> None:
-        """Show the save as csv dialog."""
-        # Check if experiment has analysis data
-        if self._database_path is None:
-            show_error_dialog(
-                self, "❌ No data to save! Run or load analysis data first."
-            )
-            return
-
-        if not has_experiment_analysis(self._database_path):
-            show_error_dialog(
-                self, "❌ No data to save! Run or load analysis data first."
-            )
-            return
-
-        dialog = _SaveAsCSV(self)
-        dialog.resize(500, dialog.sizeHint().height())
-
-        if dialog.exec():
-            path = dialog.value()
-            if not Path(path).is_dir():
-                show_error_dialog(
-                    self,
-                    f"❌ The path {path} is not a directory! Cannot save the data.",
-                )
-                return
-
-            # TODO: Update these functions to work with SQLModel Experiment
-            # save_trace_data_to_csv(path, self._experiment)
-            # save_analysis_data_to_csv(path, self._experiment)
-            show_error_dialog(
-                self, "❌ CSV export is not yet implemented for SQLModel."
-            )

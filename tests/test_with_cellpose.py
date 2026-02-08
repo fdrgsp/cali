@@ -41,6 +41,8 @@ def test_cali_runner_real_cellpose(
     detection code path. It is marked as slow and should be skipped in
     fast CI runs using: pytest -m "not slow"
     """
+    from cellpose import core
+
     runner = CaliRunner(commit_batch_size=1)
 
     detection_settings = DetectionSettings(
@@ -49,6 +51,7 @@ def test_cali_runner_real_cellpose(
         diameter=30.0,
         cellprob_threshold=0.0,
         flow_threshold=0.4,
+        use_gpu=core.use_gpu(),
     )
 
     runner.run(
