@@ -468,7 +468,7 @@
       0.1310441417611091,
       0.12205330466289958
     ],
-    "dec_dff": [
+    "den_dff": [
       0.0,
       0.0,
       0.0,
@@ -623,18 +623,18 @@
       0.0005335991243787221,
       0.0004502720304055419
     ],
-    "peaks_dec_dff": [
+    "peaks_den_dff": [
       5,
       56,
       105
     ],
-    "peaks_amplitudes_dec_dff": [
+    "peaks_amplitudes_den_dff": [
       0.37418456553286994,
       0.7426895527629586,
       0.6735575947068573
     ],
-    "peaks_prominence_dec_dff": 0.02793757746129372,
-    "peaks_height_dec_dff": 0.08381273238388116,
+    "peaks_prominence_den_dff": 0.02793757746129372,
+    "peaks_height_den_dff": 0.08381273238388116,
     "inferred_spikes": [
       0.0,
       0.0,
@@ -791,7 +791,7 @@
       -5.421010862427522e-20
     ],
     "inferred_spikes_threshold": 6.505213034913027e-19,
-    "dec_dff_frequency": 0.18627355396492656,
+    "den_dff_frequency": 0.18627355396492656,
     "condition_1": "c1",
     "condition_2": "t1",
     "cell_size": 522.21,
@@ -3773,7 +3773,7 @@
       0.021183287250905944,
       0.014465881764059394
     ],
-    "dec_dff": [
+    "den_dff": [
       0.0,
       0.0,
       0.0,
@@ -3928,18 +3928,18 @@
       0.0007635755562478267,
       0.0006547543456441216
     ],
-    "peaks_dec_dff": [
+    "peaks_den_dff": [
       4,
       56,
       105
     ],
-    "peaks_amplitudes_dec_dff": [
+    "peaks_amplitudes_den_dff": [
       0.07004646710971031,
       0.37899495351533896,
       0.482696625278618
     ],
-    "peaks_prominence_dec_dff": 0.014527987746082762,
-    "peaks_height_dec_dff": 0.043583963238248286,
+    "peaks_prominence_den_dff": 0.014527987746082762,
+    "peaks_height_den_dff": 0.043583963238248286,
     "inferred_spikes": [
       0.0,
       0.0,
@@ -4096,7 +4096,7 @@
       0.0
     ],
     "inferred_spikes_threshold": 1.8973538018496328e-19,
-    "dec_dff_frequency": 0.18627355396492656,
+    "den_dff_frequency": 0.18627355396492656,
     "condition_1": "c1",
     "condition_2": "t1",
     "cell_size": 512.9150000000001,
@@ -7034,7 +7034,7 @@
       0.0022727015261538243,
       -0.0009877539114643635
     ],
-    "dec_dff": [
+    "den_dff": [
       0.0,
       0.0,
       0.0,
@@ -7189,16 +7189,16 @@
       0.0008849352489435834,
       0.0007471023445573764
     ],
-    "peaks_dec_dff": [
+    "peaks_den_dff": [
       6,
       105
     ],
-    "peaks_amplitudes_dec_dff": [
+    "peaks_amplitudes_den_dff": [
       0.18430587194561368,
       0.35578894723358345
     ],
-    "peaks_prominence_dec_dff": 0.05127629243190986,
-    "peaks_height_dec_dff": 0.15382887729572958,
+    "peaks_prominence_den_dff": 0.05127629243190986,
+    "peaks_height_den_dff": 0.15382887729572958,
     "inferred_spikes": [
       0.0,
       0.0,
@@ -7355,7 +7355,7 @@
       -2.168404344971009e-19
     ],
     "inferred_spikes_threshold": 8.673617379884035e-19,
-    "dec_dff_frequency": 0.12418236930995105,
+    "den_dff_frequency": 0.12418236930995105,
     "condition_1": "c1",
     "condition_2": "t1",
     "cell_size": 632.9050000000001,
@@ -10860,7 +10860,7 @@
       0.11574790745778309,
       0.10796246381231438
     ],
-    "dec_dff": [
+    "den_dff": [
       0.0,
       0.0,
       0.0,
@@ -11015,20 +11015,20 @@
       0.05535737690941497,
       0.04636060041461641
     ],
-    "peaks_dec_dff": [
+    "peaks_den_dff": [
       5,
       56,
       104,
       148
     ],
-    "peaks_amplitudes_dec_dff": [
+    "peaks_amplitudes_den_dff": [
       0.16364586613560195,
       0.2705640786214402,
       0.2953106117372118,
       0.09424424868089752
     ],
-    "peaks_prominence_dec_dff": 0.015615208451193964,
-    "peaks_height_dec_dff": 0.046845625353581895,
+    "peaks_prominence_den_dff": 0.015615208451193964,
+    "peaks_height_den_dff": 0.046845625353581895,
     "inferred_spikes": [
       0.0,
       0.0,
@@ -11185,7 +11185,7 @@
       -6.938893903907228e-18
     ],
     "inferred_spikes_threshold": 0.006770285329679749,
-    "dec_dff_frequency": 0.2483647386199021,
+    "den_dff_frequency": 0.2483647386199021,
     "condition_1": "c1",
     "condition_2": "t1",
     "cell_size": 452.07500000000005,

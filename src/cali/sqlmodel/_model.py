@@ -508,8 +508,8 @@ class Experiment(SQLModel, table=True):
         ... )
         >>> print(f"Created experiment with {len(exp.plate.wells)} wells")
         """
-        from ._json_to_db import parse_well_name
         from ._useq_plate_to_db import _row_index_to_label, useq_plate_plan_to_db
+        from ._util import _parse_well_name
 
         # Create experiment
         experiment = cls(
@@ -533,7 +533,7 @@ class Experiment(SQLModel, table=True):
             ]
 
         # Convert well names to row,col tuples for WellPlatePlan
-        selected_wells_list = [parse_well_name(well_name) for well_name in well_names]
+        selected_wells_list = [_parse_well_name(well_name) for well_name in well_names]
 
         # Convert to tuple of tuples format: ((rows...), (cols...))
         rows_tuple = tuple(well[0] for well in selected_wells_list)
@@ -1638,10 +1638,10 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Neuropil fluorescence trace
     dff : list[float] | None
         ΔF/F normalized trace
-    dec_dff : list[float] | None
-        Deconvolved ΔF/F trace
+    den_dff : list[float] | None
+        OASIS Denoised ΔF/F trace
     inferred_spikes : list[float] | None
-        Inferred spike trace (time-series of spike probabilities)
+        OASIS Inferred spike trace (time-series of spike probabilities)
     x_axis : list[float] | None
         Frame numbers or frame timestamps (milliseconds)
     x_axis_units : str | None
@@ -1663,7 +1663,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     corrected_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     neuropil_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
-    dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    den_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
     inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis_units: str | None = Field(default=None)  # "frames" or "ms"
@@ -1709,17 +1709,17 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Foreign key to the analysis run that created this result
     total_recording_time_sec : float | None
         Total recording duration (seconds)
-    dec_dff_frequency : float | None
-        Calcium event frequency (Hz)
-    peaks_dec_dff : list[float] | None
-        Peak indices in deconvolved trace
-    peaks_amplitudes_dec_dff : list[float] | None
-        Peak amplitudes
+    den_dff_frequency : float | None
+        Calcium event frequency (Hz) from OASIS denoised ΔF/F trace
+    peaks_den_dff : list[float] | None
+        Peak indices in OASIS denoised ΔF/F trace
+    peaks_amplitudes_den_dff : list[float] | None
+        Peak amplitudes from OASIS denoised ΔF/F trace
     iei : list[float] | None
-        Inter-event intervals (seconds)
-    peaks_prominence_dec_dff : float | None
+        Inter-event intervals (seconds) from OASIS denoised ΔF/F peaks
+    peaks_prominence_den_dff : float | None
         Peak prominence threshold used for this ROI (calculated)
-    peaks_height_dec_dff : float | None
+    peaks_height_den_dff : float | None
         Peak height threshold used for this ROI (calculated)
     inferred_spikes_threshold : float | None
         Spike detection threshold used for this ROI (calculated)
@@ -1747,11 +1747,11 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     total_recording_time_sec: float | None = None
-    dec_dff_frequency: float | None = None
-    peaks_dec_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
-    peaks_prominence_dec_dff: float | None = None
-    peaks_height_dec_dff: float | None = None
-    peaks_amplitudes_dec_dff: list[float] | None = Field(
+    den_dff_frequency: float | None = None
+    peaks_den_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    peaks_prominence_den_dff: float | None = None
+    peaks_height_den_dff: float | None = None
+    peaks_amplitudes_den_dff: list[float] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
@@ -1785,9 +1785,9 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Ordered list of active ROI label_values used for matrix indexing.
         Matrix[i,j] corresponds to ROIs active_roi_labels[i] and active_roi_labels[j].
     calcium_dff_correlation_matrix : list[list[float]] | None
-        Zero-lag Pearson correlation on DF/F traces (NxN for N active ROIs)
-    calcium_dec_dff_corr_matrix : list[list[float]] | None
-        Zero-lag Pearson correlation on deconvolved DF/F traces (NxN for N active ROIs)
+        Zero-lag Pearson correlation on denoised ΔF/F traces (NxN for N active ROIs)
+    calcium_den_dff_corr_matrix : list[list[float]] | None
+        Zero-lag Pearson correlation on denoised ΔF/F traces (NxN for N active ROIs)
     spike_max_lag_correlation_matrix : list[list[float]] | None
         Max lag correlation on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
@@ -1848,10 +1848,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_burst_ends : list[int] | None
         Frame indices where calcium bursts end (exclusive)
     calcium_population_activity : list[float] | None
-        Smoothed mean calcium population activity (deconvolved ΔF/F, raw values).
+        Smoothed mean calcium population activity (denoised ΔF/F, raw values).
         This is the smoothed trace used for burst detection and plotting.
     calcium_population_activity_raw : list[float] | None
-        Raw (unsmoothed) mean calcium population activity (deconvolved ΔF/F, raw values)
+        Raw (unsmoothed) mean calcium population activity (denoised ΔF/F, raw values)
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
@@ -1874,13 +1874,13 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     # ROI ordering for matrix interpretation
     active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
-    # Calcium peaks metrics (from dec_dff traces and peak events)
-    # 0. Zero-lag correlation on DF/F traces
+    # Calcium peaks metrics (from den_dff traces and peak events)
+    # 0. Zero-lag correlation on ΔF/F traces
     calcium_dff_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
-    # 1. Zero-lag correlation on deconvolved DF/F traces
-    calcium_dec_dff_corr_matrix: list[list[float]] | None = Field(
+    # 1. Zero-lag correlation on denoised ΔF/F traces
+    calcium_den_dff_corr_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     # Spike metrics (from inferred spikes)

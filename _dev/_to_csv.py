@@ -54,7 +54,7 @@ AVE_INTERVAL = "avg_interval_sec"
 RATE = "rate_burst_per_min"
 
 CSV_PARAMETERS: dict[str, str] = {
-    "calcium_peaks_amplitude": "peaks_amplitudes_dec_dff",
+    "calcium_peaks_amplitude": "peaks_amplitudes_den_dff",
     "calcium_peaks_frequency": "dec_dff_frequency",
     "cell_size": "cell_size",
     "calcium_peaks_iei": "iei",
@@ -395,10 +395,10 @@ def _export_dec_dff_data(path: Path | str, data: dict[str, dict[str, ROIData]]) 
     rows = {}
     for well_fov, rois in data.items():
         for roi_key, roi_data in rois.items():
-            if roi_data.dec_dff is None:
+            if roi_data.den_dff is None:
                 continue
             row_name = f"{well_fov}_{roi_key}"
-            rows[row_name] = roi_data.dec_dff
+            rows[row_name] = roi_data.den_dff
 
     if not rows:
         return

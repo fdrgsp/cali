@@ -23,7 +23,7 @@ save_experiment_to_database(exp, out, overwrite=True)
 # Create experiment with plate structure in one call
 exp = Experiment.create_from_data(
     name="New Experiment",
-    data_path="tests/test_data/evoked/evk.tensorstore.zarr",
+    data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
     plate_maps={
         "genotype": {"B5": "WT"},
         "treatment": {"B5": "Vehicle"},
@@ -62,7 +62,7 @@ pp = useq.WellPlatePlan(
 # Then you pass this plate_plan to Experiment.create_from_data:
 exp = Experiment.create_from_data(
     name="New Experiment",
-    data_path="tests/test_data/evoked/evk.tensorstore.zarr",
+    data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
     plate_maps={
         "genotype": {"B5": "WT"},
         "treatment": {"B5": "Vehicle"},

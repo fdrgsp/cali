@@ -1,7 +1,7 @@
 """Tests for roiSelected signal emission across all correlation plots.
 
 This module tests that all correlation plot click handlers emit roiSelected signal:
-1. Calcium traces correlation (DF/F and deconvolved DF/F)
+1. Calcium traces correlation (DF/F and denoised DF/F)
 2. Calcium peaks synchrony
 3. Inferred spike synchrony
 """
@@ -107,8 +107,8 @@ def test_inferred_spike_synchrony_emits_roi_selected(
         ),
         (
             "_plot_calcium_traces_correlation",
-            "_plot_dec_dff_correlation_data",
-            "_get_dec_dff_correlation_matrix_from_db",
+            "_plot_den_dff_correlation_data",
+            "_get_den_dff_correlation_matrix_from_db",
             "dff_corr_click_handler",
         ),
     ],

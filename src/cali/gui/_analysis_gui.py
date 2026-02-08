@@ -28,7 +28,7 @@ from superqt import QCollapsible
 from superqt.utils import signals_blocked
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
@@ -196,7 +196,7 @@ class _AnalysisGUI(QWidget):
         # Calcium correlations
         self._export_group.add_section_label("Calcium Correlations", 0, 0)
         self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 2, 0)
+        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 2, 0)
         # Inferred Spikes - Thresholded Binary
         self._export_group.add_section_label("Inferred Spikes (Thresholded)", 3, 0)
         self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 4, 0)
@@ -282,12 +282,12 @@ class _AnalysisGUI(QWidget):
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
         return AnalysisSettingsData(
-            self._calcium_peaks_wdg.value(),
-            self._spike_wdg.value(),
-            self._experiment_type_wdg.value(),
-            self._metadata_wdg.value(),
-            self._threads.value(),
-            self._n_processes.value(),
+            calcium_peaks_data=self._calcium_peaks_wdg.value(),
+            spikes_data=self._spike_wdg.value(),
+            experiment_type_data=self._experiment_type_wdg.value(),
+            frame_rate=self._metadata_wdg.value(),
+            threads=self._threads.value(),
+            n_processes=self._n_processes.value(),
             export_options=self._export_group.value(),
             export_enabled=self._export_group.isChecked(),
         )
@@ -305,6 +305,7 @@ class _AnalysisGUI(QWidget):
         self._n_processes.setValue(value.n_processes)
         if value.export_options is not None:
             self._export_group.setValue(value.export_options)
+        if value.export_enabled is not None:
             self._export_group.setChecked(value.export_enabled)
 
     def reset(self) -> None:
@@ -703,7 +704,7 @@ class _PeaksHeightWidget(QWidget):
         super().__init__(parent)
 
         self.setToolTip(
-            "Peak height threshold for detecting calcium transients in deconvolved "
+            "Peak height threshold for detecting calcium transients in denoised "
             "ΔF/F0 traces using scipy.signal.find_peaks.\n\n"
             "Two modes:\n"
             "• Global Minimum: Same absolute threshold applied to ALL ROIs across "
@@ -890,7 +891,7 @@ class _SpikeThresholdWidget(QWidget):
         super().__init__(parent)
 
         self.setToolTip(
-            "Spike detection threshold for identifying spikes in OASIS-deconvolved "
+            "Spike detection threshold for identifying spikes in OASIS-denoised "
             "inferred spike traces.\n\n"
             "Two modes:\n"
             "• Global Minimum: Same absolute threshold applied to ALL ROIs across "

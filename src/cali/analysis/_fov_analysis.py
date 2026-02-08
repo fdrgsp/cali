@@ -38,10 +38,10 @@ def compute_fov_analysis(
 
     This function calculates 5 pairwise metrics for all active ROIs in a FOV:
 
-    DF/F and Deconvolved DF/F Calcium Traces
+    DF/F and Denoised DF/F Calcium Traces
     -------------------
     1. Zero-lag Pearson correlation on ΔF/F traces
-    2. Zero-lag Pearson correlation on deconvolved ΔF/F traces
+    2. Zero-lag Pearson correlation on denoised ΔF/F traces
 
     Inferred Spikes
     ---------------
@@ -51,7 +51,7 @@ def compute_fov_analysis(
     Burst Detection
     ---------------
     5. Additionally, population-level burst detection is performed on both the
-    inferred spike trains and deconvolved ΔF/F traces, yielding metrics such as
+    inferred spike trains and denoised ΔF/F traces, yielding metrics such as
     burst count, average duration, average interval, and population activity traces.
 
     It requires that ROIs have traces and data_analysis attached
@@ -88,7 +88,7 @@ def compute_fov_analysis(
     # Otherwise fall back to traces_history/data_analysis_history
     roi_labels: list[int] = []
     dff_traces: list[np.ndarray] = []
-    dec_dff_traces: list[np.ndarray] = []
+    den_dff_traces: list[np.ndarray] = []
     spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
     calcium_peak_events: list[
         np.ndarray
@@ -108,7 +108,7 @@ def compute_fov_analysis(
         elif roi.traces_history:
             traces = roi.traces_history[-1]
 
-        if traces is None or traces.dec_dff is None:
+        if traces is None or traces.den_dff is None:
             continue
 
         # Get analysis data - prefer _new_data_analysis if available
@@ -122,19 +122,19 @@ def compute_fov_analysis(
         if dff.ndim != 1 or dff.size == 0:
             continue
 
-        dec_dff = np.asarray(traces.dec_dff, dtype=float)
-        if dec_dff.ndim != 1 or dec_dff.size == 0:
+        den_dff = np.asarray(traces.den_dff, dtype=float)
+        if den_dff.ndim != 1 or den_dff.size == 0:
             continue
 
         roi_labels.append(int(roi.label_value))
         dff_traces.append(dff)
-        dec_dff_traces.append(dec_dff)
+        den_dff_traces.append(den_dff)
 
         # Build peak event binary arrays
-        if data_analysis is not None and data_analysis.peaks_dec_dff is not None:
+        if data_analysis is not None and data_analysis.peaks_den_dff is not None:
             # Create binary peak event array
-            peak_indices = [int(p) for p in data_analysis.peaks_dec_dff]
-            peak_array = np.zeros(len(dec_dff), dtype=float)
+            peak_indices = [int(p) for p in data_analysis.peaks_den_dff]
+            peak_array = np.zeros(len(den_dff), dtype=float)
             for idx in peak_indices:
                 if 0 <= idx < len(peak_array):
                     peak_array[idx] = 1.0
@@ -173,12 +173,12 @@ def compute_fov_analysis(
         )
         return None
 
-    # Calcium trace metrics: ΔF/F and deconvolved ΔF/F
+    # Calcium trace metrics: ΔF/F and denoised ΔF/F
     # 1. Zero-lag correlation on ΔF/F traces
     calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
 
-    # 2. Zero-lag correlation on deconvolved ΔF/F traces
-    calcium_dec_dff_corr_matrix = _compute_zero_lag_corr_matrix(dec_dff_traces)
+    # 2. Zero-lag correlation on denoised ΔF/F traces
+    calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
 
     # Convert milliseconds to frames using frame_rate
     frame_rate = analysis_settings.frame_rate  # frames per second
@@ -349,9 +349,9 @@ def compute_fov_analysis(
             if calcium_dff_corr_matrix is not None
             else None
         ),
-        calcium_dec_dff_corr_matrix=(
-            calcium_dec_dff_corr_matrix.tolist()
-            if calcium_dec_dff_corr_matrix is not None
+        calcium_den_dff_corr_matrix=(
+            calcium_den_dff_corr_matrix.tolist()
+            if calcium_den_dff_corr_matrix is not None
             else None
         ),
         # Spike metrics

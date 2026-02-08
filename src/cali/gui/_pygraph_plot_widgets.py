@@ -69,7 +69,7 @@ class _SingleWellGraphWidget(QWidget):
 
         # Connectivity settings
         self._connectivity_threshold: float = 0.3
-        self._connectivity_method: str = "calcium_dec_dff_corr"
+        self._connectivity_method: str = "calcium_den_dff_corr"
 
         # ------------------------------------------------------------------ #
         # Top combo + save button
@@ -933,7 +933,7 @@ class _ConnectivityThresholdWidget(QGroupBox):
             "Functional connectivity here is computed as zero-lag Pearson correlation "
             "between calcium activity traces.\n\n"
             "• DF/F: uses raw ΔF/F traces.\n"
-            "• Deconvolved DF/F: uses OASIS-deconvolved ΔF/F traces for a cleaner, "
+            "• Denoised DF/F: uses OASIS-denoised ΔF/F traces for a cleaner, "
             "more stable network."
         )
 
@@ -947,7 +947,7 @@ class _ConnectivityThresholdWidget(QGroupBox):
         self._method_combo = QComboBox(self)
         self._method_combo.addItems(
             [
-                "Deconvolved DF/F Correlation",
+                "Denoised DF/F Correlation",
                 "DF/F Correlation",
             ]
         )
@@ -989,7 +989,7 @@ class _ConnectivityThresholdWidget(QGroupBox):
     def _get_method_from_combo(self) -> str:
         """Map combo box selection to ConnectivityMethod string."""
         method_map = {
-            0: "calcium_dec_dff_corr",
+            0: "calcium_den_dff_corr",
             1: "calcium_dff_corr",
         }
         return method_map[self._method_combo.currentIndex()]

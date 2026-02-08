@@ -34,7 +34,7 @@ class AnalysisRunner:
     """Runner for analyzing extracted trace data.
 
     Takes FOVs with ROIs containing Traces and computes DataAnalysis metrics:
-    - Peak detection in deconvolved traces
+    - Peak detection in denoised traces
     - Inter-event intervals
     - Event frequencies
     - Peak amplitudes
@@ -271,7 +271,7 @@ class AnalysisRunner:
         Parameters
         ----------
         traces : Traces
-            Traces object with dec_dff, inferred_spikes, etc.
+            Traces object with den_dff, inferred_spikes, etc.
         analysis_settings : AnalysisSettings
             Analysis parameters
         roi : ROI
@@ -288,7 +288,7 @@ class AnalysisRunner:
         # Convert traces to numpy arrays
         elapsed_time_list = traces.x_axis
         dff = np.array(traces.dff)
-        dec_dff_array = np.array(traces.dec_dff)
+        den_dff_array = np.array(traces.den_dff)
         spikes_array = np.array(traces.inferred_spikes)
 
         # Skip if no time axis data
@@ -304,7 +304,7 @@ class AnalysisRunner:
         sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
         # Compute thresholds
         spike_detection_threshold = compute_inferred_spike_threshold(spikes_array, analysis_settings)  # noqa E501
-        peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff_array, sn, analysis_settings)  # noqa E501
+        peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff_array, sn, analysis_settings)  # noqa E501
         # fmt: on
 
         if self._check_for_abort_requested():
@@ -315,10 +315,10 @@ class AnalysisRunner:
         min_distance_frames = max(
             1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
         )
-        peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
-            dec_dff_array,
-            peaks_height_dec_dff,
-            peaks_prominence_dec_dff,
+        peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
+            den_dff_array,
+            peaks_height_den_dff,
+            peaks_prominence_den_dff,
             min_distance_frames,
         )
 
@@ -326,10 +326,10 @@ class AnalysisRunner:
             return None
 
         # Calculate calcium event frequency
-        frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
+        frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
 
         # Calculate calcium event inter-event intervals (IEI)
-        iei_ms = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+        iei_ms = calculate_inter_event_intervals(peaks_den_dff, elapsed_time_list)
         iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
 
         # Calculate inferred spike frequency
@@ -370,17 +370,17 @@ class AnalysisRunner:
         # Create DataAnalysis object
         data_analysis = DataAnalysis(
             total_recording_time_sec=tot_time_sec,
-            dec_dff_frequency=frequency,
-            peaks_dec_dff=peaks_dec_dff.tolist(),
-            peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
+            den_dff_frequency=frequency,
+            peaks_den_dff=peaks_den_dff.tolist(),
+            peaks_amplitudes_den_dff=peaks_amplitudes_den_dff,
             iei=iei,
-            peaks_prominence_dec_dff=peaks_prominence_dec_dff,
-            peaks_height_dec_dff=peaks_height_dec_dff,
+            peaks_prominence_den_dff=peaks_prominence_den_dff,
+            peaks_height_den_dff=peaks_height_den_dff,
             inferred_spikes_threshold=spike_detection_threshold,
             inferred_spikes_frequency=inferred_spikes_freq,
             inferred_spikes_rising_edge_frequency=inferred_spikes_rising_edge_freq,
         )
 
-        active = len(peaks_dec_dff) > 0
+        active = len(peaks_den_dff) > 0
 
         return (data_analysis, active, stimulated)

@@ -14,7 +14,7 @@ import pandas as pd
 from sqlmodel import Session, col, select
 
 from cali._constants import (
-    DEC_DFF_TRACES,
+    DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
@@ -184,7 +184,7 @@ def export_dff_traces_to_csv(
     )
 
 
-def export_deconvolved_dff_traces_to_csv(
+def export_denoised_dff_traces_to_csv(
     engine: Engine,
     output_path: str | Path,
     *,
@@ -192,7 +192,7 @@ def export_deconvolved_dff_traces_to_csv(
     run_id: int | None = None,
     position_indices: list[int] | None = None,
 ) -> None:
-    """Export deconvolved ΔF/F traces to CSV.
+    """Export denoised ΔF/F traces to CSV.
 
     For evoked experiments, creates separate columns for stimulated and
     non-stimulated ROIs, with stimulated ROIs listed first.
@@ -214,7 +214,7 @@ def export_deconvolved_dff_traces_to_csv(
     _export_trace_data(
         engine=engine,
         output_path=output_path,
-        trace_type=DEC_DFF_TRACES,
+        trace_type=DEN_DFF_TRACES,
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
@@ -308,7 +308,7 @@ def export_correlation_matrices_to_csv(
 
     Creates separate CSV files for each correlation type:
     - calcium_dff_correlation.csv
-    - calcium_dec_dff_correlation.csv
+    - calcium_den_dff_correlation.csv
     - spike_max_lag_correlation.csv
     - spike_max_lag_values.csv
     - spike_jitter_synchrony.csv
@@ -392,9 +392,9 @@ def export_correlation_matrices_to_csv(
             )
 
             _export_matrix_to_csv(
-                fov_analysis.calcium_dec_dff_corr_matrix,
+                fov_analysis.calcium_den_dff_corr_matrix,
                 sorted_roi_names,
-                output_dir / f"{fov_prefix}calcium_dec_dff_correlation.csv",
+                output_dir / f"{fov_prefix}calcium_den_dff_correlation.csv",
             )
 
             _export_matrix_to_csv(
@@ -450,7 +450,7 @@ def export_calcium_dff_correlation_to_csv(
     )
 
 
-def export_calcium_dec_dff_correlation_to_csv(
+def export_calcium_den_dff_correlation_to_csv(
     engine: Engine,
     output_path: str | Path,
     *,
@@ -458,7 +458,7 @@ def export_calcium_dec_dff_correlation_to_csv(
     run_id: int | None = None,
     position_indices: list[int] | None = None,
 ) -> None:
-    """Export deconvolved ΔF/F correlation matrix to CSV.
+    """Export denoised ΔF/F correlation matrix to CSV.
 
     Parameters
     ----------
@@ -477,7 +477,7 @@ def export_calcium_dec_dff_correlation_to_csv(
     _export_single_correlation_matrix(
         engine,
         output_path,
-        "calcium_dec_dff_corr_matrix",
+        "calcium_den_dff_corr_matrix",
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
@@ -965,7 +965,7 @@ def _export_trace_data(
                 NEUROPIL_TRACES: "neuropil_trace",
                 NEUROPIL_CORRECTED_TRACES: "corrected_trace",
                 DFF_TRACES: "dff",
-                DEC_DFF_TRACES: "dec_dff",
+                DEN_DFF_TRACES: "den_dff",
                 INFERRED_SPIKES_TRACES: "inferred_spikes",
                 INFERRED_SPIKES_THRESHOLDED_BINARY: "inferred_spikes",
             }
@@ -1086,9 +1086,9 @@ def export_traces_to_csv(
             "neuropil_corrected_traces.csv",
         ),
         DFF_TRACES: (export_dff_traces_to_csv, "dff_traces.csv"),
-        DEC_DFF_TRACES: (
-            export_deconvolved_dff_traces_to_csv,
-            "deconvolved_dff_traces.csv",
+        DEN_DFF_TRACES: (
+            export_denoised_dff_traces_to_csv,
+            "denoised_dff_traces.csv",
         ),
         INFERRED_SPIKES_TRACES: (
             export_inferred_spikes_raw_to_csv,
@@ -1173,7 +1173,7 @@ def export_correlations_to_csv(
         If provided, only exports data from these positions.
     """
     from cali._constants import (
-        CALCIUM_DEC_DFF_CORRELATION,
+        CALCIUM_DEN_DFF_CORRELATION,
         CALCIUM_DFF_CORRELATION,
         INFERRED_SPIKES_CCG_ZSCORE,
         INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
@@ -1192,9 +1192,9 @@ def export_correlations_to_csv(
             export_calcium_dff_correlation_to_csv,
             "calcium_dff_correlation_matrix.csv",
         ),
-        CALCIUM_DEC_DFF_CORRELATION: (
-            export_calcium_dec_dff_correlation_to_csv,
-            "calcium_dec_dff_correlation_matrix.csv",
+        CALCIUM_DEN_DFF_CORRELATION: (
+            export_calcium_den_dff_correlation_to_csv,
+            "calcium_den_dff_correlation_matrix.csv",
         ),
         # Inferred Spikes - Thresholded Binary
         INFERRED_SPIKES_SYNCHRONY: (

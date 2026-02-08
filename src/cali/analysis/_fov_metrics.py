@@ -144,8 +144,8 @@ def _get_calcium_peaks_events_from_rois(
     for _, traces, data_analysis in roi_data:
         if traces and traces.corrected_trace is not None:
             max_frames = max(max_frames, len(traces.corrected_trace))
-        if data_analysis and data_analysis.peaks_dec_dff:
-            max_peak = max((int(p) for p in data_analysis.peaks_dec_dff), default=0)
+        if data_analysis and data_analysis.peaks_den_dff:
+            max_peak = max((int(p) for p in data_analysis.peaks_den_dff), default=0)
             max_frames = max(max_frames, max_peak + 1)
 
     if max_frames == 0:
@@ -161,14 +161,14 @@ def _get_calcium_peaks_events_from_rois(
         if traces is None or data_analysis is None:
             continue
 
-        peaks_dec_dff = data_analysis.peaks_dec_dff
+        peaks_den_dff = data_analysis.peaks_den_dff
 
-        if peaks_dec_dff is None or len(peaks_dec_dff) == 0:
+        if peaks_den_dff is None or len(peaks_den_dff) == 0:
             continue
 
         # Create binary peak event train
         peak_train = np.zeros(max_frames, dtype=np.float32)
-        for peak_frame in peaks_dec_dff:
+        for peak_frame in peaks_den_dff:
             if 0 <= int(peak_frame) < max_frames:
                 peak_train[int(peak_frame)] = 1.0
 
@@ -861,10 +861,7 @@ def _compute_ccg_vector_numba(
 ) -> tuple[np.ndarray, np.ndarray]:  # pragma: no cover
     """Numba-optimized standard CCG computation.
 
-    Implements standard cross-correlogram analysis as described in:
-    - Elephant documentation (Neo/Elephant CCG)
-    - Common calcium imaging papers using deconvolved spikes
-    - Electrophysiology spike train analysis literature
+    Implements standard cross-correlogram analysis.
 
     Uses per-trigger probability normalization with border correction.
 
@@ -1250,7 +1247,7 @@ def _detect_calcium_population_bursts(
     np.ndarray | None,
     np.ndarray | None,
 ]:
-    """Detect bursts in population calcium activity (deconvolved DF/F).
+    """Detect bursts in population calcium activity (denoised DF/F).
 
     Burst detection is done on the mean binary peak activity across ROIs
     (optionally smoothed). The threshold is interpreted as a fraction of
@@ -1392,20 +1389,17 @@ def _detect_calcium_population_bursts(
 ConnectivityMethod = Literal[
     # DF/F traces
     "calcium_dff_corr",  # 0. Zero-lag Pearson on DF/F
-    "calcium_dec_dff_corr",  # 1. Zero-lag Pearson on deconvolved DF/F (default)
-    # Calcium peaks
-    "calcium_peaks_maxlag",  # 3. Max-lag correlation on calcium peaks
-    "calcium_peaks_jitter",  # 4. Jitter synchrony on calcium peaks
+    "calcium_den_dff_corr",  # 1. Zero-lag Pearson on denoised DF/F (default)
     # Inferred spikes
-    "spike_corr",  # 5. Zero-lag Pearson on spike trains
-    "spike_maxlag",  # 6. Max-lag correlation (CCG) on spikes
-    "spike_jitter",  # 7. Jitter synchrony on spikes
+    "spike_corr",  # 2. Zero-lag Pearson on spike trains
+    "spike_maxlag",  # 3. Max-lag correlation (CCG) on spikes
+    "spike_jitter",  # 4. Jitter synchrony on spikes
 ]
 
 
 def _compute_connectivity_metrics(
     fov_analysis: FOVAnalysis,
-    method: ConnectivityMethod = "calcium_dec_dff_corr",
+    method: ConnectivityMethod = "calcium_den_dff_corr",
     threshold: float = 0.9,
     use_absolute_for_corr: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
@@ -1416,40 +1410,25 @@ def _compute_connectivity_metrics(
     ----------
     fov_analysis : FOVAnalysis
         Object containing FOV-wide matrices and ROI labels.
-        Uses:
-        - active_roi_labels
-        - calcium_dff_correlation_matrix
-        - calcium_dec_dff_corr_matrix
-        - spike_max_lag_correlation_matrix
-        - calcium_peaks_jitter_synchrony_matrix
-        - spike_correlation_matrix
-        - spike_max_lag_correlation_matrix
-        - spike_jitter_synchrony_matrix
-    method : ConnectivityMethod, default "calcium_dec_dff_corr"
+
+    method : ConnectivityMethod, default "calcium_den_dff_corr"
         Which metric to use:
 
         DF/F calcium traces
         -------------------
         - "calcium_dff_corr":
               zero-lag Pearson correlation on DF/F traces (metric 0)
-        - "calcium_dec_dff_corr" (default):
-              zero-lag Pearson on deconvolved DF/F traces (metric 1)
-
-        Calcium peaks
-        -------------
-        - "calcium_peaks_maxlag":
-              max-lag correlation on calcium peak events (metric 3)
-        - "calcium_peaks_jitter":
-              jitter synchrony on calcium peak events (metric 4)
+        - "calcium_den_dff_corr" (default):
+              zero-lag Pearson on denoised DF/F traces (metric 1)
 
         Inferred spikes
         ---------------
         - "spike_corr":
-              zero-lag Pearson on spike trains (metric 5)
+              zero-lag Pearson on spike trains (metric 2)
         - "spike_maxlag":
-              max-lag CCG-like correlation on spike events (metric 6)
+              max-lag CCG-like correlation on spike events (metric 3)
         - "spike_jitter":
-              jitter synchrony on spike events (metric 7)
+              jitter synchrony on spike events (metric 4)
 
     threshold : float, default 0.9
         Threshold applied to the chosen metric to create edges.
@@ -1495,17 +1474,9 @@ def _compute_connectivity_metrics(
         metric = fov_analysis.calcium_dff_correlation_matrix
         is_correlation = True
 
-    elif method == "calcium_dec_dff_corr":
-        metric = fov_analysis.calcium_dec_dff_corr_matrix
+    elif method == "calcium_den_dff_corr":
+        metric = fov_analysis.calcium_den_dff_corr_matrix
         is_correlation = True
-
-    elif method == "calcium_peaks_maxlag":
-        metric = fov_analysis.spike_max_lag_correlation_matrix
-        is_correlation = True
-
-    elif method == "calcium_peaks_jitter":
-        metric = fov_analysis.calcium_peaks_jitter_synchrony_matrix
-        is_correlation = False
 
     elif method == "spike_maxlag":
         metric = fov_analysis.spike_max_lag_correlation_matrix

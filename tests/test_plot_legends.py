@@ -200,13 +200,13 @@ def test_evoked_roi_traces_legend_with_both_types(qtbot: QtBot) -> None:
         id=1,
         roi_id=1,
         analysis_result_id=1,
-        dec_dff=[0.1, 0.5, 1.0, 0.5, 0.1] * 20,
+        den_dff=[0.1, 0.5, 1.0, 0.5, 0.1] * 20,
     )
     trace2 = Traces(
         id=2,
         roi_id=2,
         analysis_result_id=1,
-        dec_dff=[0.1, 0.3, 0.8, 0.3, 0.1] * 20,
+        den_dff=[0.1, 0.3, 0.8, 0.3, 0.1] * 20,
     )
 
     data1 = DataAnalysis(
@@ -214,14 +214,14 @@ def test_evoked_roi_traces_legend_with_both_types(qtbot: QtBot) -> None:
         roi_id=1,
         analysis_result_id=1,
         total_recording_time_sec=10.0,
-        peaks_dec_dff=[10, 30, 50],
+        peaks_den_dff=[10, 30, 50],
     )
     data2 = DataAnalysis(
         id=2,
         roi_id=2,
         analysis_result_id=1,
         total_recording_time_sec=10.0,
-        peaks_dec_dff=[15, 35, 55],
+        peaks_den_dff=[15, 35, 55],
     )
 
     mock_results = [
@@ -584,7 +584,7 @@ def test_evoked_spike_raster_legend(qtbot: QtBot) -> None:
     "plot_name",
     [
         "Inferred Spikes (Thresholded) Burst Activity Analysis",
-        "Stimulated vs Non-Stimulated Normalized Calcium Traces (Deconvolved ΔF/F0)",
+        "Stimulated vs Non-Stimulated Normalized Calcium Traces (Denoised ΔF/F0)",
     ],
 )
 def test_legend_visible_in_widget_plots(

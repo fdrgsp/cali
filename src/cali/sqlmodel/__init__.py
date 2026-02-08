@@ -2,24 +2,13 @@
 
 This package provides a complete SQLModel-based database schema for storing
 and querying calcium imaging analysis data. It includes models for hierarchical
-data organization (Experiment → Plate → Well → FOV → ROI), utilities for
-migrating existing JSON data to the database, and tools for visualization
+data organization (Experiment → Plate → Well → FOV → ROI) and tools for visualization
 and export.
-
-Main Components
----------------
-- Models: Experiment, Plate, Well, FOV, ROI, Condition, AnalysisSettings,
-  Traces, DataAnalysis, Mask
-- Migration: load_analysis_from_json, save_experiment_to_database
-- Import: useq_plate_plan_to_db
-- Export: experiment_to_useq_plate, experiment_to_useq_plate_plan
-- Visualization: print_experiment_tree
 """
 
 from ._data_to_plate import data_to_plate
 from ._db_to_plate_map import experiment_to_plate_map_data
 from ._db_to_useq_plate import experiment_to_useq_plate, experiment_to_useq_plate_plan
-from ._json_to_db import load_analysis_from_json
 from ._model import (
     FOV,
     ROI,
@@ -70,7 +59,6 @@ __all__ = [
     "experiment_to_useq_plate_plan",
     "has_experiment_analysis",
     "has_fov_analysis",
-    "load_analysis_from_json",
     "load_experiment_from_database",
     "print_cali_results",
     "save_experiment_to_database",

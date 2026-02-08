@@ -27,6 +27,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 import useq
+from _dev._json_to_db import (
+    load_plate_map,
+    parse_well_name,
+    roi_from_roi_data,
+)
 from sqlalchemy import Engine
 from sqlmodel import Session, create_engine, select
 
@@ -43,7 +48,6 @@ from cali.sqlmodel import (
     save_experiment_to_database,
     useq_plate_plan_to_db,
 )
-from cali.sqlmodel._json_to_db import load_plate_map, parse_well_name, roi_from_roi_data
 from cali.sqlmodel._model import (
     AnalysisSettings,
     CaliResult,
@@ -317,7 +321,7 @@ def test_experiment_create_from_data(tmp_path: Path) -> None:
     # Create experiment from test data
     exp = Experiment.create_from_data(
         name="Test Experiment From Data",
-        data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+        data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
         plate_maps={
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
@@ -484,100 +488,6 @@ def test_load_plate_map_missing_file(tmp_path: Path) -> None:
     """Test loading from non-existent file returns empty dict."""
     result = load_plate_map(tmp_path / "missing.json")
     assert result == {}
-
-
-# ==================== JSON Migration Tests ====================
-
-
-def test_load_analysis_from_json(tmp_path: Path) -> None:
-    """Test loading analysis from JSON directory."""
-    # Use evoked test data - copy to tmp_path to avoid conflicts
-    import shutil
-
-    from cali._constants import EVOKED
-    from cali.sqlmodel._json_to_db import load_analysis_from_json
-    from cali.sqlmodel._model import (
-        AnalysisSettings,
-        CaliResult,
-        DetectionSettings,
-        ExtractionSettings,
-    )
-    from cali.sqlmodel._util import load_experiment_from_database
-
-    test_data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
-    test_output_path = Path("tests/test_data/evoked/evk_analysis")
-
-    # Copy data to tmp_path
-    data_path = tmp_path / "evk.tensorstore.zarr"
-    output_path = tmp_path / "evk_analysis"
-    shutil.copytree(test_data_path, data_path)
-    shutil.copytree(test_output_path, output_path)
-
-    # Load from JSON (this will create database in output_path)
-    useq_plate = useq.WellPlate.from_str("96-well")
-    load_analysis_from_json(
-        data_path=str(data_path),
-        output_path=str(output_path),
-        useq_plate=useq_plate,
-        save_to_db=True,
-    )
-
-    # The database should be created in output_path
-    db_path = output_path / f"{data_path.name}.db"
-    # load_analysis_from_json doesn't add .cali extension
-    assert db_path.exists()
-
-    # Verify data was loaded correctly - reload from database
-    loaded_exp = load_experiment_from_database(db_path)
-    assert loaded_exp is not None
-
-    engine = create_engine(f"sqlite:///{db_path}")
-    try:
-        with Session(engine) as session:
-            # Check DetectionSettings was created
-            detection_settings = session.exec(select(DetectionSettings)).first()
-            assert detection_settings is not None
-            assert detection_settings.method == "cellpose"
-            assert detection_settings.model_type == "custom"
-
-            # Check ExtractionSettings was created
-            extraction_settings = session.exec(select(ExtractionSettings)).first()
-            assert extraction_settings is not None
-
-            # Check AnalysisSettings was created
-            analysis_settings = session.exec(select(AnalysisSettings)).first()
-            assert analysis_settings is not None
-            assert analysis_settings.experiment_type == EVOKED
-
-            # Check CaliResult was created
-            cali_result = session.exec(select(CaliResult)).first()
-            assert cali_result is not None
-            assert cali_result.experiment == loaded_exp.id
-            assert cali_result.detection_settings_id == detection_settings.id
-            assert cali_result.extraction_settings_id == extraction_settings.id
-            assert cali_result.analysis_settings_id == analysis_settings.id
-
-            # Check plate structure
-            assert loaded_exp.plate is not None
-            assert len(loaded_exp.plate.wells) == 1
-            well = loaded_exp.plate.wells[0]
-            assert well.name == "B5"
-
-            # Check FOVs
-            assert len(well.fovs) == 1
-            fov = well.fovs[0]
-            assert fov.name == "B5_0000_p0"
-
-            # Check ROIs
-            assert len(fov.rois) == 4
-            for roi in fov.rois:
-                assert roi.detection_settings_id == detection_settings.id
-                assert len(roi.traces_history) == 1
-                assert len(roi.data_analysis_history) == 1
-
-    finally:
-        engine.dispose(close=True)
-        gc.collect()
 
 
 def test_save_experiment_to_db(tmp_path: Path) -> None:
@@ -1048,7 +958,7 @@ def test_full_workflow(tmp_path: Path) -> None:
     # 1. Create experiment from data
     exp = Experiment.create_from_data(
         name="Full Workflow Test",
-        data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+        data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
         plate_maps={
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
@@ -1231,17 +1141,17 @@ def test_visualize_experiment_functions(
 
 def test_json_to_db_error_handling(tmp_path: Path) -> None:
     """Test JSON loading error cases."""
-    from cali.sqlmodel._json_to_db import parse_well_name
+    from cali.sqlmodel._util import _parse_well_name
 
     # Test parse_well_name edge cases
     with pytest.raises(ValueError):
-        parse_well_name("")
+        _parse_well_name("")
 
     with pytest.raises(ValueError):
-        parse_well_name("123")
+        _parse_well_name("123")
 
     with pytest.raises(ValueError):
-        parse_well_name("ABC")
+        _parse_well_name("ABC")
 
 
 def test_model_stimulated_mask_area() -> None:
@@ -1434,7 +1344,7 @@ def test_traces_all_fields(temp_db: TempDB) -> None:
         corrected_trace=[1.1, 2.1, 3.1],
         neuropil_trace=[0.1, 0.1, 0.1],
         dff=[0.0, 0.1, 0.2],
-        dec_dff=[0.0, 0.15, 0.25],
+        den_dff=[0.0, 0.15, 0.25],
         x_axis=[0.0, 100.0, 200.0],
     )
 
@@ -1445,7 +1355,7 @@ def test_traces_all_fields(temp_db: TempDB) -> None:
         result = session.exec(select(Traces)).first()
         assert result.corrected_trace == [1.1, 2.1, 3.1]
         assert result.neuropil_trace == [0.1, 0.1, 0.1]
-        assert result.dec_dff == [0.0, 0.15, 0.25]
+        assert result.den_dff == [0.0, 0.15, 0.25]
         assert result.x_axis == [0.0, 100.0, 200.0]
 
 
@@ -1469,9 +1379,9 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
     DataAnalysis(
         roi=roi,
         total_recording_time_sec=600.0,
-        dec_dff_frequency=2.5,
-        peaks_dec_dff=[10.0, 20.0, 30.0],
-        peaks_amplitudes_dec_dff=[0.5, 0.6, 0.7],
+        den_dff_frequency=2.5,
+        peaks_den_dff=[10.0, 20.0, 30.0],
+        peaks_amplitudes_den_dff=[0.5, 0.6, 0.7],
         iei=[10.0, 10.0],
     )
 
@@ -1481,7 +1391,7 @@ def test_data_analysis_all_fields(temp_db: TempDB) -> None:
 
         data_analysis = session.exec(select(DataAnalysis)).first()
         assert data_analysis.total_recording_time_sec == 600.0
-        assert data_analysis.peaks_amplitudes_dec_dff == [0.5, 0.6, 0.7]
+        assert data_analysis.peaks_amplitudes_den_dff == [0.5, 0.6, 0.7]
         assert data_analysis.iei == [10.0, 10.0]
 
 

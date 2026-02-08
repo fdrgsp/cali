@@ -181,10 +181,10 @@ def _plot_stim_and_non_stim_peaks_amplitude(
     non_stim_data: list[tuple[int, float, float, list[float]]] = []
 
     for roi_model, _traces, data_analysis in results:
-        if not (data_analysis and data_analysis.peaks_amplitudes_dec_dff):
+        if not (data_analysis and data_analysis.peaks_amplitudes_den_dff):
             continue
 
-        amps = np.asarray(data_analysis.peaks_amplitudes_dec_dff, dtype=float)
+        amps = np.asarray(data_analysis.peaks_amplitudes_den_dff, dtype=float)
         if amps.size == 0:
             continue
 
@@ -458,7 +458,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.dec_dff:
+        if trace_obj and trace_obj.den_dff:
             if roi_model.stimulated:
                 stimulated_data.append((roi_model, trace_obj, data_analysis))
             else:
@@ -469,8 +469,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     # ---------- GLOBAL PERCENTILE NORMALIZATION ----------
     all_values: list[float] = []
     for _, trace_obj, _ in results:
-        if trace_obj and trace_obj.dec_dff:
-            all_values.extend(trace_obj.dec_dff)
+        if trace_obj and trace_obj.den_dff:
+            all_values.extend(trace_obj.den_dff)
 
     if all_values:
         percentiles = np.percentile(all_values, [P1, P2])
@@ -484,17 +484,17 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     stim_peaks: list[list[int]] = []
 
     for roi_model, trace_obj, data_analysis in stimulated_data:
-        if not trace_obj.dec_dff:
+        if not trace_obj.den_dff:
             continue
         tr_norm = np.asarray(
-            _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            _normalize_trace_percentile(trace_obj.den_dff, p1, p2), dtype=float
         )
         if tr_norm.size == 0:
             continue
         stim_traces.append(tr_norm)
         stim_labels.append(roi_model.label_value)
-        if data_analysis and data_analysis.peaks_dec_dff:
-            stim_peaks.append([int(p) for p in data_analysis.peaks_dec_dff])
+        if data_analysis and data_analysis.peaks_den_dff:
+            stim_peaks.append([int(p) for p in data_analysis.peaks_den_dff])
         else:
             stim_peaks.append([])
 
@@ -503,17 +503,17 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     non_peaks: list[list[int]] = []
 
     for roi_model, trace_obj, data_analysis in non_stimulated_data:
-        if not trace_obj.dec_dff:
+        if not trace_obj.den_dff:
             continue
         tr_norm = np.asarray(
-            _normalize_trace_percentile(trace_obj.dec_dff, p1, p2), dtype=float
+            _normalize_trace_percentile(trace_obj.den_dff, p1, p2), dtype=float
         )
         if tr_norm.size == 0:
             continue
         non_traces.append(tr_norm)
         non_labels.append(roi_model.label_value)
-        if data_analysis and data_analysis.peaks_dec_dff:
-            non_peaks.append([int(p) for p in data_analysis.peaks_dec_dff])
+        if data_analysis and data_analysis.peaks_den_dff:
+            non_peaks.append([int(p) for p in data_analysis.peaks_den_dff])
         else:
             non_peaks.append([])
 
@@ -578,7 +578,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                         symbolSize=PEAKS_SYMBOL_SIZE,
                     )
 
-        first_stim_trace = stimulated_data[0][1].dec_dff
+        first_stim_trace = stimulated_data[0][1].den_dff
         if first_stim_trace:
             last_raw_trace = list(first_stim_trace)
 
@@ -623,7 +623,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
                     )
 
         if last_raw_trace is None:
-            first_non_trace = non_stimulated_data[0][1].dec_dff
+            first_non_trace = non_stimulated_data[0][1].den_dff
             if first_non_trace:
                 last_raw_trace = list(first_non_trace)
 
@@ -952,7 +952,7 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
 ) -> None:
     """Plot raster of calcium peaks (green=stim, magenta=non-stim) with pg.
 
-    Each detected calcium peak (from peaks_dec_dff) is shown as a tick mark.
+    Each detected calcium peak (from peaks_den_dff) is shown as a tick mark.
     """
     plot = widget.plot_item
     assert plot is not None
@@ -1014,7 +1014,7 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
     total_frames = 0
 
     for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.dec_dff is not None and data_analysis:
+        if trace_obj and trace_obj.den_dff is not None and data_analysis:
             active_roi_labels.append(roi_model.label_value)
             if roi_model.stimulated:
                 stimulated_rois.append((roi_model, trace_obj, data_analysis))
@@ -1024,7 +1024,7 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
             if data_analysis.total_recording_time_sec is not None:
                 rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-            total_frames = max(total_frames, len(trace_obj.dec_dff))
+            total_frames = max(total_frames, len(trace_obj.den_dff))
 
     if not stimulated_rois and not non_stimulated_rois:
         plot.setTitle("Calcium Peaks Raster\nNo calcium trace data available.")
@@ -1042,10 +1042,10 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
         row_index: int,
     ) -> bool:
         """Plot calcium peaks; return True if anything was plotted."""
-        if not data_analysis or not data_analysis.peaks_dec_dff:
+        if not data_analysis or not data_analysis.peaks_den_dff:
             return False
 
-        peak_indices = np.asarray(data_analysis.peaks_dec_dff, dtype=float)
+        peak_indices = np.asarray(data_analysis.peaks_den_dff, dtype=float)
         if peak_indices.size == 0:
             return False
 

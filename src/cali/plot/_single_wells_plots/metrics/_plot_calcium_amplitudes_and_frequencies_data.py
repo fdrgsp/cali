@@ -122,10 +122,10 @@ def _plot_amplitude_and_frequency_data(
     if amp and freq:
         # Amplitude vs frequency (mean ± SEM vs frequency)
         for roi, da in roi_data:
-            if not da.peaks_amplitudes_dec_dff or da.dec_dff_frequency is None:
+            if not da.peaks_amplitudes_den_dff or da.den_dff_frequency is None:
                 continue
 
-            amps = np.asarray(da.peaks_amplitudes_dec_dff, dtype=float)
+            amps = np.asarray(da.peaks_amplitudes_den_dff, dtype=float)
             if amps.size == 0:
                 continue
 
@@ -136,7 +136,7 @@ def _plot_amplitude_and_frequency_data(
             else:
                 sem_amp = 0.0
 
-            x_vals.append(float(da.dec_dff_frequency))
+            x_vals.append(float(da.den_dff_frequency))
             y_vals.append(mean_amp)
             yerr_vals.append(sem_amp)
             roi_labels.append(roi.label_value)
@@ -144,7 +144,7 @@ def _plot_amplitude_and_frequency_data(
         if not x_vals:
             plot.setTitle("No amplitude/frequency data available.")
             plot.setLabel("bottom", "Frequency (Hz)")
-            plot.setLabel("left", "Amplitude (dec ΔF/F a.u. )")
+            plot.setLabel("left", "Amplitude (Denoised ΔF/F a.u. )")
             return
 
         x_arr = np.asarray(x_vals, dtype=float)
@@ -189,10 +189,10 @@ def _plot_amplitude_and_frequency_data(
     elif amp:
         # Amplitude-only: x = per-ROI index, hide numeric ticks, show unit on Y
         for idx, (roi, da) in enumerate(roi_data):
-            if not da.peaks_amplitudes_dec_dff:
+            if not da.peaks_amplitudes_den_dff:
                 continue
 
-            amps = np.asarray(da.peaks_amplitudes_dec_dff, dtype=float)
+            amps = np.asarray(da.peaks_amplitudes_den_dff, dtype=float)
             if amps.size == 0:
                 continue
 
@@ -216,7 +216,7 @@ def _plot_amplitude_and_frequency_data(
         if not x_vals:
             plot.setTitle("No amplitude data available.")
             plot.setLabel("bottom", "ROI")
-            plot.setLabel("left", "Amplitude (dec ΔF/F a.u. )")
+            plot.setLabel("left", "Amplitude (Denoised ΔF/F a.u. )")
             return
 
         x_arr = np.asarray(x_vals, dtype=float)
@@ -275,12 +275,12 @@ def _plot_amplitude_and_frequency_data(
         axis.setStyle(showValues=False)
 
     elif freq:
-        # Frequency-only: x = ROI index, y = dec_dff_frequency
+        # Frequency-only: x = ROI index, y = den_dff_frequency
         for idx, (roi, da) in enumerate(roi_data):
-            if da.dec_dff_frequency is None:
+            if da.den_dff_frequency is None:
                 continue
             x_vals.append(float(idx))
-            y_vals.append(float(da.dec_dff_frequency))
+            y_vals.append(float(da.den_dff_frequency))
             roi_labels.append(roi.label_value)
 
         if not x_vals:
@@ -338,17 +338,15 @@ def _set_graph_title_and_labels_pg(
     y_lbl = ""
 
     if amp and freq:
-        title = (
-            "ROIs Mean Calcium Peaks Amplitude ± SEM vs Frequency (Deconvolved ΔF/F)"
-        )
+        title = "ROIs Mean Calcium Peaks Amplitude ± SEM vs Frequency (Denoised ΔF/F)"
         x_lbl = "Frequency (Hz)"
-        y_lbl = "Amplitude (dec ΔF/F a.u. )"
+        y_lbl = "Amplitude (Denoised ΔF/F a.u. )"
     elif amp:
-        title = "Calcium Peaks Mean Amplitude ± SEM (Deconvolved ΔF/F)"
+        title = "Calcium Peaks Mean Amplitude ± SEM (Denoised ΔF/F)"
         x_lbl = "ROI"
-        y_lbl = "Amplitude (dec ΔF/F a.u. )"
+        y_lbl = "Amplitude (Denoised ΔF/F a.u. )"
     elif freq:
-        title = "Calcium Peaks Frequency (Deconvolved ΔF/F)"
+        title = "Calcium Peaks Frequency (Denoised ΔF/F)"
         x_lbl = "ROI"
         y_lbl = "Frequency (Hz)"
 

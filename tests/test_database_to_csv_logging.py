@@ -8,7 +8,7 @@ import pytest
 from sqlmodel import create_engine
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     DFF_TRACES,
     NEUROPIL_CORRECTED_TRACES,
@@ -116,7 +116,7 @@ def test_export_correlations_respects_selection(
     # Only export one type
     export_correlations = {
         CALCIUM_DFF_CORRELATION: True,
-        CALCIUM_DEC_DFF_CORRELATION: False,
+        CALCIUM_DEN_DFF_CORRELATION: False,
     }
 
     export_correlations_to_csv(
@@ -135,10 +135,10 @@ def test_export_correlations_respects_selection(
     if len(correlation_files) == 0:
         pytest.skip("No FOV analysis data found in test database")
 
-    # Check that all files are calcium_dff, not calcium_dec_dff
+    # Check that all files are calcium_dff, not calcium_den_dff
     for file in correlation_files:
         assert "calcium_dff_correlation" in file.name
-        assert "calcium_dec_dff_correlation" not in file.name
+        assert "calcium_den_dff_correlation" not in file.name
 
 
 def test_export_traces_creates_condition_subfolders(

@@ -290,13 +290,13 @@ def test_compute_fov_analysis_with_active_rois() -> None:
     # Create synthetic traces with peaks at known locations
     num_timepoints = 100
     for i in range(1, 4):  # 3 ROIs
-        # Create dec_dff with peaks at specific locations for this ROI
-        dec_dff = np.zeros(num_timepoints)
+        # Create den_dff with peaks at specific locations for this ROI
+        den_dff = np.zeros(num_timepoints)
         # Add peaks at different times for each ROI (shifted slightly)
         peak_times = [10 + i * 2, 30 + i * 2, 50 + i * 2, 70 + i * 2]
         for pt in peak_times:
             if pt < num_timepoints:
-                dec_dff[pt] = 1.0
+                den_dff[pt] = 1.0
 
         # Create spikes at the same locations
         spikes = np.zeros(num_timepoints)
@@ -307,15 +307,15 @@ def test_compute_fov_analysis_with_active_rois() -> None:
         traces = Traces(
             raw=np.random.randn(num_timepoints).tolist(),
             dff=np.random.randn(num_timepoints).tolist(),
-            dec_dff=dec_dff.tolist(),
+            den_dff=den_dff.tolist(),
             inferred_spikes=spikes.tolist(),
         )
 
         data_analysis = DataAnalysis(
             total_recording_time_sec=10.0,
-            dec_dff_frequency=0.4,
-            peaks_dec_dff=peak_times,
-            peaks_amplitudes_dec_dff=[1.0] * len(peak_times),
+            den_dff_frequency=0.4,
+            peaks_den_dff=peak_times,
+            peaks_amplitudes_den_dff=[1.0] * len(peak_times),
             iei=[0.25] * (len(peak_times) - 1),
             inferred_spikes_threshold=0.5,  # Required for spike analysis
         )
@@ -363,7 +363,7 @@ def test_compute_fov_analysis_insufficient_rois() -> None:
     traces = Traces(
         raw=np.random.randn(100).tolist(),
         dff=np.random.randn(100).tolist(),
-        dec_dff=np.random.randn(100).tolist(),
+        den_dff=np.random.randn(100).tolist(),
     )
     roi._new_traces = [traces]
     fov.rois.append(roi)
@@ -386,7 +386,7 @@ def test_compute_fov_analysis_no_active_rois() -> None:
         traces = Traces(
             raw=np.random.randn(100).tolist(),
             dff=np.random.randn(100).tolist(),
-            dec_dff=np.random.randn(100).tolist(),
+            den_dff=np.random.randn(100).tolist(),
         )
         roi._new_traces = [traces]
         fov.rois.append(roi)
@@ -552,10 +552,10 @@ def test_detect_population_bursts_min_duration_filter() -> None:
 
 
 def test_detect_calcium_population_bursts_basic() -> None:
-    """Test basic population burst detection with deconvolved df/f traces."""
+    """Test basic population burst detection with denoised df/f traces."""
     from cali.analysis._fov_metrics import _detect_calcium_population_bursts
 
-    # Create deconvolved df/f traces with clear bursts
+    # Create denoised df/f traces with clear bursts
     # 3 ROIs, 200 frames, frame_rate=10 Hz
     frame_rate = 10.0
     n_frames = 200

@@ -140,7 +140,7 @@ def _query_roi_parameter_by_condition(
     engine : Engine
         Database engine
     parameter : str
-        Parameter name from DataAnalysis (e.g., 'dec_dff_frequency')
+        Parameter name from DataAnalysis (e.g., 'den_dff_frequency')
     run_id : int | None
         Filter by specific analysis run
     include_stim_status : bool
@@ -400,7 +400,7 @@ def _aggregate_fov_data_to_condition_stats(
             if not roi_values:
                 continue
 
-            # Flatten if values are lists (e.g., peaks_amplitudes_dec_dff, iei)
+            # Flatten if values are lists (e.g., peaks_amplitudes_den_dff, iei)
             # Some parameters return lists per ROI, we need to flatten them
             flat_values = []
             for val in roi_values:
@@ -656,7 +656,7 @@ def plot_parameter_bar_plot(
     run_id : int | None
         Filter by analysis run
     parameter : str
-        DataAnalysis attribute name (e.g., 'dec_dff_frequency')
+        DataAnalysis attribute name (e.g., 'den_dff_frequency')
     units : str
         Units for Y-axis label
     title_suffix : str

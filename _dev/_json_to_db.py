@@ -2,17 +2,6 @@
 
 This module provides functions to migrate calcium imaging analysis data
 from JSON format to the new SQLModel database format.
-
-Example
--------
->>> from pathlib import Path
->>> from cali.sqlmodel import load_analysis_from_json
->>> import useq
->>> data_dir = Path("tests/test_data/spontaneous/spont.tensorstore.zarr")
->>> analysis_dir = Path("tests/test_data/spontaneous/spont_analysis")
->>> plate = useq.WellPlate.from_str("96-well")
->>> experiment = load_analysis_from_json(str(data_dir), str(analysis_dir), plate)
->>> print(f"Loaded {len(experiment.plate.wells)} wells")
 """
 
 from __future__ import annotations
@@ -22,8 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cali._constants import EVOKED, SPONTANEOUS
-
-from ._model import (
+from cali.sqlmodel._model import (
     FOV,
     ROI,
     AnalysisSettings,
@@ -38,7 +26,7 @@ from ._model import (
     Traces,
     Well,
 )
-from ._util import ROIData
+from cali.sqlmodel._util import ROIData
 
 if TYPE_CHECKING:
     from useq import WellPlate
@@ -88,11 +76,11 @@ def load_analysis_from_json(
     -------
     >>> from pathlib import Path
     >>> import useq
-    >>> from cali.sqlmodel import load_analysis_from_json
+    >>> from ._json_to_db import load_analysis_from_json
     >>>
     >>> # Load from JSON and save to database (default)
-    >>> data_dir = "tests/test_data/spontaneous/spont.tensorstore.zarr"
-    >>> analysis_dir = "tests/test_data/spontaneous/spont_analysis"
+    >>> data_dir = "tests/test_data/evoked/evk.tensorstore.zarr"
+    >>> analysis_dir = "tests/test_data/evoked/evk_analysis"
     >>> plate = useq.WellPlate.from_str("96-well")
     >>> experiment = load_analysis_from_json(data_dir, analysis_dir, useq_plate=plate)
     >>> # Experiment is now saved in database with CaliResult tracking
@@ -386,7 +374,7 @@ def load_analysis_from_json(
     if save_to_db:
         from sqlmodel import Session, create_engine, select
 
-        from ._util import create_database_and_tables
+        from cali.sqlmodel._util import create_database_and_tables
 
         db_path = Path(output_path) / f"{Path(data_path).name}.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -683,7 +671,7 @@ def roi_from_roi_data(
         corrected_trace=roi_data.corrected_trace,
         neuropil_trace=roi_data.neuropil_trace,
         dff=roi_data.dff,
-        dec_dff=roi_data.dec_dff,
+        den_dff=roi_data.den_dff,
         inferred_spikes=roi_data.inferred_spikes,
         x_axis=roi_data.elapsed_time_list_ms,
         roi=roi,  # Use relationship instead
@@ -692,13 +680,13 @@ def roi_from_roi_data(
     # Create DataAnalysis
     data_analysis = DataAnalysis(
         total_recording_time_sec=roi_data.total_recording_time_sec,
-        peaks_dec_dff=roi_data.peaks_dec_dff,
-        peaks_amplitudes_dec_dff=roi_data.peaks_amplitudes_dec_dff,
-        dec_dff_frequency=roi_data.dec_dff_frequency,
+        peaks_den_dff=roi_data.peaks_den_dff,
+        peaks_amplitudes_den_dff=roi_data.peaks_amplitudes_den_dff,
+        den_dff_frequency=roi_data.den_dff_frequency,
         iei=roi_data.iei,
         # ROI-specific thresholds calculated during analysis
-        peaks_prominence_dec_dff=roi_data.peaks_prominence_dec_dff,
-        peaks_height_dec_dff=roi_data.peaks_height_dec_dff,
+        peaks_prominence_den_dff=roi_data.peaks_prominence_den_dff,
+        peaks_height_den_dff=roi_data.peaks_height_den_dff,
         inferred_spikes_threshold=roi_data.inferred_spikes_threshold,
         roi=roi,  # Use relationship instead
     )

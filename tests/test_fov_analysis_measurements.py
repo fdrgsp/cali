@@ -112,12 +112,12 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
     spike_pattern1[[5, 15, 25, 35, 45]] = 2.0
     traces1 = Traces(
         dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
-        dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        den_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
         inferred_spikes=spike_pattern1.tolist(),
     )
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(
-        peaks_dec_dff=[5, 15, 25, 35, 45], inferred_spikes_threshold=1.0
+        peaks_den_dff=[5, 15, 25, 35, 45], inferred_spikes_threshold=1.0
     )
     roi1._new_data_analysis = [data_analysis1]
 
@@ -127,12 +127,12 @@ def test_compute_fov_analysis_with_calcium_measurements() -> None:
     spike_pattern2[[6, 16, 26, 36, 46]] = 2.0
     traces2 = Traces(
         dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
-        dec_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
+        den_dff=[1.0, 2.0, 3.0, 4.0, 5.0] * 10,
         inferred_spikes=spike_pattern2.tolist(),
     )
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(
-        peaks_dec_dff=[6, 16, 26, 36, 46], inferred_spikes_threshold=1.0
+        peaks_den_dff=[6, 16, 26, 36, 46], inferred_spikes_threshold=1.0
     )
     roi2._new_data_analysis = [data_analysis2]
 
@@ -176,12 +176,12 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
     traces1 = Traces(
         dff=[1.0] * 50,
-        dec_dff=[1.0] * 50,
+        den_dff=[1.0] * 50,
         inferred_spikes=spike_pattern.tolist(),
     )
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(
-        peaks_dec_dff=[5, 15, 25],
+        peaks_den_dff=[5, 15, 25],
         inferred_spikes_threshold=1.0,
     )
     roi1._new_data_analysis = [data_analysis1]
@@ -193,12 +193,12 @@ def test_compute_fov_analysis_with_spike_measurements() -> None:
     roi2 = ROI(label_value=2, active=True, fov_id=fov.id)
     traces2 = Traces(
         dff=[1.0] * 50,
-        dec_dff=[1.0] * 50,
+        den_dff=[1.0] * 50,
         inferred_spikes=spike_pattern2.tolist(),
     )
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(
-        peaks_dec_dff=[6, 16, 26],
+        peaks_den_dff=[6, 16, 26],
         inferred_spikes_threshold=1.0,
     )
     roi2._new_data_analysis = [data_analysis2]
@@ -235,9 +235,9 @@ def test_compute_fov_analysis_insufficient_rois() -> None:
 
     # Create only 1 ROI
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
-    traces1 = Traces(dec_dff=[1.0, 2.0, 3.0])
+    traces1 = Traces(den_dff=[1.0, 2.0, 3.0])
     roi1._new_traces = [traces1]
-    data_analysis1 = DataAnalysis(peaks_dec_dff=[1])
+    data_analysis1 = DataAnalysis(peaks_den_dff=[1])
     roi1._new_data_analysis = [data_analysis1]
 
     fov.rois = [roi1]
@@ -256,13 +256,13 @@ def test_compute_fov_analysis_inactive_rois() -> None:
 
     # Create 2 ROIs but mark one as inactive
     roi1 = ROI(label_value=1, active=True, fov_id=fov.id)
-    traces1 = Traces(dec_dff=[1.0, 2.0, 3.0])
+    traces1 = Traces(den_dff=[1.0, 2.0, 3.0])
     roi1._new_traces = [traces1]
-    data_analysis1 = DataAnalysis(peaks_dec_dff=[1])
+    data_analysis1 = DataAnalysis(peaks_den_dff=[1])
     roi1._new_data_analysis = [data_analysis1]
 
     roi2 = ROI(label_value=2, active=False, fov_id=fov.id)  # Inactive
-    traces2 = Traces(dec_dff=[4.0, 5.0, 6.0])
+    traces2 = Traces(den_dff=[4.0, 5.0, 6.0])
     roi2._new_traces = [traces2]
 
     fov.rois = [roi1, roi2]
@@ -287,12 +287,12 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     spike_pattern1[[10, 20, 30]] = 2.0
     traces1 = Traces(
         dff=peak_array1.tolist(),
-        dec_dff=peak_array1.tolist(),
+        den_dff=peak_array1.tolist(),
         inferred_spikes=spike_pattern1.tolist(),
     )
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(
-        peaks_dec_dff=[10, 20, 30], inferred_spikes_threshold=1.0
+        peaks_den_dff=[10, 20, 30], inferred_spikes_threshold=1.0
     )
     roi1._new_data_analysis = [data_analysis1]
 
@@ -304,12 +304,12 @@ def test_jitter_synchrony_vs_max_lag_correlation() -> None:
     spike_pattern2[[15, 25, 35]] = 2.0
     traces2 = Traces(
         dff=peak_array2.tolist(),
-        dec_dff=peak_array2.tolist(),
+        den_dff=peak_array2.tolist(),
         inferred_spikes=spike_pattern2.tolist(),
     )
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(
-        peaks_dec_dff=[15, 25, 35], inferred_spikes_threshold=1.0
+        peaks_den_dff=[15, 25, 35], inferred_spikes_threshold=1.0
     )
     roi2._new_data_analysis = [data_analysis2]
 
@@ -348,7 +348,7 @@ def test_spike_max_lag_values_matrix() -> None:
     spike_array1[[10, 20, 30]] = 1.5  # Spike amplitudes
     traces1 = Traces(
         dff=spike_array1.tolist(),
-        dec_dff=spike_array1.tolist(),
+        den_dff=spike_array1.tolist(),
         inferred_spikes=spike_array1.tolist(),
     )
     roi1._new_traces = [traces1]
@@ -361,7 +361,7 @@ def test_spike_max_lag_values_matrix() -> None:
     spike_array2[[13, 23, 33]] = 1.5
     traces2 = Traces(
         dff=spike_array2.tolist(),
-        dec_dff=spike_array2.tolist(),
+        den_dff=spike_array2.tolist(),
         inferred_spikes=spike_array2.tolist(),
     )
     roi2._new_traces = [traces2]

@@ -712,7 +712,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
         raw=False,
         normalize=True,
         active_only=False,
-        dec_dff=False,
+        den_dff=False,
         thresholds=False,
     )
 
@@ -885,7 +885,7 @@ def _plot_calcium_normalized_with_bursts(
             "No analysis run selected.\nPlease select a run from the dropdown."
         )
         plot.setLabel("bottom", "Time (s)")
-        plot.setLabel("left", "Deconvolved ΔF/F0 (a.u.)")
+        plot.setLabel("left", "Denoised ΔF/F0 (a.u.)")
         return
 
     # ------------- Get pre-computed burst data from FOVAnalysis -------------#
@@ -1049,7 +1049,7 @@ def _plot_calcium_raster_with_bursts(
 
 
 # -----------------------------------------------------------------------------#
-# Calcium burst plotting (using deconvolved DF/F)
+# Calcium burst plotting (using denoised DF/F)
 # -----------------------------------------------------------------------------#
 def _plot_calcium_burst_activity(
     widget: _SingleWellGraphWidget,
@@ -1060,7 +1060,7 @@ def _plot_calcium_burst_activity(
 ) -> None:
     """Plot burst detection and network state analysis for calcium activity (pyqtgraph).
 
-    This analyzes population-level calcium activity (deconvolved DF/F) to detect
+    This analyzes population-level calcium activity (denoised DF/F) to detect
     synchronized burst events and displays burst statistics.
     """
     plot = widget.plot_item
@@ -1321,7 +1321,7 @@ def _get_population_calcium_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[str], np.ndarray]:
-    """Extract population calcium data (deconvolved DF/F) from database.
+    """Extract population calcium data (denoised DF/F) from database.
 
     Returns
     -------
@@ -1358,11 +1358,11 @@ def _get_population_calcium_data(
         if traces_obj is None:
             continue
 
-        dec_dff = traces_obj.dec_dff
-        if dec_dff is None or len(dec_dff) == 0:
+        den_dff = traces_obj.den_dff
+        if den_dff is None or len(den_dff) == 0:
             continue
 
-        calcium_traces.append(np.array(dec_dff, dtype=float))
+        calcium_traces.append(np.array(den_dff, dtype=float))
         roi_names.append(str(roi.label_value))
 
         # Get recording time from data_analysis (more reliable than x_axis)

@@ -132,15 +132,15 @@ def get_stimulated_amplitudes_from_roi_data(
     """
     if (
         not roi_data.evoked_experiment
-        or roi_data.dec_dff is None
-        or roi_data.peaks_dec_dff is None
+        or roi_data.den_dff is None
+        or roi_data.peaks_den_dff is None
         or roi_data.stimulations_frames_and_powers is None
     ):
         return {}, {}
 
     return separate_stimulated_vs_non_stimulated_peaks(
-        dec_dff=np.array(roi_data.dec_dff),
-        peaks_dec_dff=np.array(roi_data.peaks_dec_dff),
+        den_dff=np.array(roi_data.den_dff),
+        peaks_den_dff=np.array(roi_data.peaks_den_dff),
         pulse_on_frames_and_powers=roi_data.stimulations_frames_and_powers,
         is_roi_stimulated=roi_data.stimulated,
         led_pulse_duration=roi_data.led_pulse_duration or "unknown",
@@ -149,8 +149,8 @@ def get_stimulated_amplitudes_from_roi_data(
 
 
 def separate_stimulated_vs_non_stimulated_peaks(
-    dec_dff: np.ndarray,
-    peaks_dec_dff: np.ndarray,
+    den_dff: np.ndarray,
+    peaks_den_dff: np.ndarray,
     pulse_on_frames_and_powers: dict[str, int],
     is_roi_stimulated: bool,
     led_pulse_duration: str = "unknown",
@@ -160,8 +160,8 @@ def separate_stimulated_vs_non_stimulated_peaks(
     Separate peak amplitudes into stimulated and non-stimulated categories.
 
     Args:
-        dec_dff: Deconvolved dF/F signal
-        peaks_dec_dff: Array of peak indices
+        den_dff: Denoised dF/F signal
+        peaks_den_dff: Array of peak indices
         pulse_on_frames_and_powers: Dict mapping frame numbers to power values
         is_roi_stimulated: Whether this ROI is in a stimulated area
         led_pulse_duration: Duration of LED pulse (for labeling)
@@ -177,25 +177,25 @@ def separate_stimulated_vs_non_stimulated_peaks(
     amplitudes_stimulated_peaks: dict[str, list[float]] = {}
     amplitudes_non_stimulated_peaks: dict[str, list[float]] = {}
 
-    sorted_peaks_dec_dff = sorted(peaks_dec_dff)
+    sorted_peaks_den_dff = sorted(peaks_den_dff)
 
     for frame, power in pulse_on_frames_and_powers.items():
         stim_frame = int(frame)
         # Find index of first peak >= stim_frame
-        i = bisect.bisect_left(sorted_peaks_dec_dff, stim_frame)
+        i = bisect.bisect_left(sorted_peaks_den_dff, stim_frame)
 
         # Check if index is valid
-        if i >= len(sorted_peaks_dec_dff):
+        if i >= len(sorted_peaks_den_dff):
             continue
 
-        peak_idx = sorted_peaks_dec_dff[i]
+        peak_idx = sorted_peaks_den_dff[i]
 
         # Check if peak is within stimulation window
         if (
             peak_idx >= stim_frame
             and peak_idx <= stim_frame + MAX_FRAMES_AFTER_STIMULATION
         ):
-            amplitude = float(dec_dff[peak_idx])
+            amplitude = float(den_dff[peak_idx])
 
             # Format power value
             if led_power_equation is not None:

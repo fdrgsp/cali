@@ -1,7 +1,7 @@
 """Core analysis functions for trace data.
 
 This module contains pure functions for analyzing extracted traces:
-- Peak detection in deconvolved traces
+- Peak detection in denoised traces
 - Inter-event interval (IEI) calculation
 - Frequency computation
 - Amplitude extraction
@@ -72,7 +72,7 @@ def compute_inferred_spike_threshold(
 
 
 def compute_calcium_peak_detection_thresholds(
-    dec_dff: np.ndarray,
+    den_dff: np.ndarray,
     noise: float | None,
     settings: "AnalysisSettings",
 ) -> tuple[float, float]:
@@ -80,10 +80,10 @@ def compute_calcium_peak_detection_thresholds(
 
     Parameters
     ----------
-    dec_dff : np.ndarray
-        Deconvolved dF/F trace
+    den_dff : np.ndarray
+        Denoised dF/F trace
     noise : float | None
-        Estimated noise level; if None, it will be computed from dec_dff
+        Estimated noise level; if None, it will be computed from den_dff
         as Median Absolute Deviation (MAD)
     settings : AnalysisSettings
         Analysis settings containing threshold parameters
@@ -91,17 +91,17 @@ def compute_calcium_peak_detection_thresholds(
     Returns
     -------
     tuple[float, float]
-        - peaks_height_dec_dff: Height threshold for peak detection
-        - peaks_prominence_dec_dff: Prominence threshold
+        - peaks_height_den_dff: Height threshold for peak detection
+        - peaks_prominence_den_dff: Prominence threshold
     """
     if noise is None:
         # Get noise level from the ΔF/F0 trace using Median Absolute Deviation (MAD)
-        noise = float(np.median(np.abs(dec_dff - np.median(dec_dff))) / 0.6745)
+        noise = float(np.median(np.abs(den_dff - np.median(den_dff))) / 0.6745)
 
     # Set prominence threshold (how much peaks must stand out from surroundings)
     # Use a fraction of noise level to be less restrictive than height threshold
     prom_multiplier = settings.peaks_prominence_multiplier
-    peaks_prominence_dec_dff: float = noise * prom_multiplier
+    peaks_prominence_den_dff: float = noise * prom_multiplier
 
     # use the peaks height widget to get the height threshold
     # if the mode is GLOBAL_HEIGHT, use the value directly, otherwise
@@ -109,25 +109,25 @@ def compute_calcium_peak_detection_thresholds(
     peaks_height_value = settings.peaks_height_value
     peaks_height_mode = settings.peaks_height_mode
     if peaks_height_mode == GLOBAL_HEIGHT:
-        peaks_height_dec_dff = peaks_height_value
+        peaks_height_den_dff = peaks_height_value
     else:  # MULTIPLIER
-        peaks_height_dec_dff = noise * peaks_height_value
+        peaks_height_den_dff = noise * peaks_height_value
 
-    return peaks_height_dec_dff, peaks_prominence_dec_dff
+    return peaks_height_den_dff, peaks_prominence_den_dff
 
 
 def detect_peaks_in_trace(
-    dec_dff: np.ndarray,
+    den_dff: np.ndarray,
     peaks_height: float,
     peaks_prominence: float,
     min_distance_frames: int,
 ) -> tuple[np.ndarray, list[float]]:
-    """Detect peaks in deconvolved trace and extract amplitudes.
+    """Detect peaks in denoised trace and extract amplitudes.
 
     Parameters
     ----------
-    dec_dff : np.ndarray
-        Deconvolved dF/F trace
+    den_dff : np.ndarray
+        Denoised dF/F trace
     peaks_height : float
         Minimum peak height threshold
     peaks_prominence : float
@@ -138,22 +138,22 @@ def detect_peaks_in_trace(
     Returns
     -------
     tuple[np.ndarray, list[float]]
-        - peaks_dec_dff: Array of peak indices
-        - peaks_amplitudes_dec_dff: List of peak amplitudes
+        - peaks_den_dff: Array of peak indices
+        - peaks_amplitudes_den_dff: List of peak amplitudes
     """
-    # find peaks in the deconvolved trace
-    peaks_dec_dff, _ = find_peaks(
-        dec_dff,
+    # find peaks in the denoised trace
+    peaks_den_dff, _ = find_peaks(
+        den_dff,
         prominence=peaks_prominence,
         height=peaks_height,
         distance=min_distance_frames,
     )
-    peaks_dec_dff = cast("np.ndarray", peaks_dec_dff)
+    peaks_den_dff = cast("np.ndarray", peaks_den_dff)
 
-    # get the amplitudes of the peaks in the dec_dff trace
-    peaks_amplitudes_dec_dff = [float(dec_dff[p]) for p in peaks_dec_dff]
+    # get the amplitudes of the peaks in the den_dff trace
+    peaks_amplitudes_den_dff = [float(den_dff[p]) for p in peaks_den_dff]
 
-    return peaks_dec_dff, peaks_amplitudes_dec_dff
+    return peaks_den_dff, peaks_amplitudes_den_dff
 
 
 def calculate_frequency(

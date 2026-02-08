@@ -121,8 +121,8 @@ def test_get_calcium_peaks_event_synchrony_matrix() -> None:
 
 
 def test_separate_stimulated_vs_non_stimulated_peaks() -> None:
-    dec_dff = np.array([0.1, 0.5, 0.2, 0.8, 0.3, 0.6])
-    peaks_dec_dff = np.array([1, 3, 5])  # Peaks at frames 1, 3, 5
+    den_dff = np.array([0.1, 0.5, 0.2, 0.8, 0.3, 0.6])
+    peaks_den_dff = np.array([1, 3, 5])  # Peaks at frames 1, 3, 5
     # Amplitudes: 0.5, 0.8, 0.6
 
     # Stimulation at frame 2 with power 50
@@ -148,7 +148,7 @@ def test_separate_stimulated_vs_non_stimulated_peaks() -> None:
 
     # Case 1: ROI is stimulated
     stim, non_stim = separate_stimulated_vs_non_stimulated_peaks(
-        dec_dff, peaks_dec_dff, pulse_on_frames_and_powers, is_roi_stimulated=True
+        den_dff, peaks_den_dff, pulse_on_frames_and_powers, is_roi_stimulated=True
     )
 
     assert "50%_unknown" in stim
@@ -157,7 +157,7 @@ def test_separate_stimulated_vs_non_stimulated_peaks() -> None:
 
     # Case 2: ROI is not stimulated
     stim, non_stim = separate_stimulated_vs_non_stimulated_peaks(
-        dec_dff, peaks_dec_dff, pulse_on_frames_and_powers, is_roi_stimulated=False
+        den_dff, peaks_den_dff, pulse_on_frames_and_powers, is_roi_stimulated=False
     )
 
     assert len(stim) == 0
@@ -385,8 +385,8 @@ def test_get_stimulated_amplitudes_from_roi_data() -> None:
         active=True,
         stimulated=True,
         evoked_experiment=True,
-        dec_dff=[0.1, 0.5, 0.2, 0.8, 0.3, 0.6],
-        peaks_dec_dff=[1, 3, 5],
+        den_dff=[0.1, 0.5, 0.2, 0.8, 0.3, 0.6],
+        peaks_den_dff=[1, 3, 5],
         stimulations_frames_and_powers={"2": 50},
         led_pulse_duration="10ms",
     )
@@ -472,12 +472,12 @@ def test_get_calcium_peaks_events_from_rois(mock_session_cls: MagicMock) -> None
     # ROI 1: peaks at 1, 3. Max frame 5.
     roi1 = ROI(id=1, fov_id=1, label_value=1, active=True)
     traces1 = Traces(corrected_trace=[0.0] * 5)
-    da1 = DataAnalysis(peaks_dec_dff=[1, 3])
+    da1 = DataAnalysis(peaks_den_dff=[1, 3])
 
     # ROI 2: peaks at 2, 4. Max frame 5.
     roi2 = ROI(id=2, fov_id=1, label_value=2, active=True)
     traces2 = Traces(corrected_trace=[0.0] * 5)
-    da2 = DataAnalysis(peaks_dec_dff=[2, 4])
+    da2 = DataAnalysis(peaks_den_dff=[2, 4])
 
     # Return list of tuples (ROI, Traces, DataAnalysis)
     results = [(roi1, traces1, da1), (roi2, traces2, da2)]
@@ -542,11 +542,11 @@ def test_get_calcium_peaks_events_from_rois_extra_cases(
     # Setup data
     roi1 = ROI(id=1, fov_id=1, label_value=1, active=True)
     traces1 = Traces(corrected_trace=[0.0] * 5)
-    da1 = DataAnalysis(peaks_dec_dff=[1])
+    da1 = DataAnalysis(peaks_den_dff=[1])
 
     roi2 = ROI(id=2, fov_id=1, label_value=2, active=True)
     traces2 = Traces(corrected_trace=[0.0] * 5)
-    da2 = DataAnalysis(peaks_dec_dff=[2])
+    da2 = DataAnalysis(peaks_den_dff=[2])
 
     results = [(roi1, traces1, da1), (roi2, traces2, da2)]
 
