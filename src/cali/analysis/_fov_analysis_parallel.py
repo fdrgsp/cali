@@ -114,12 +114,12 @@ def _extract_fov_data(
     Returns
     -------
     tuple
-        (roi_labels, dff_traces, dec_dff_traces, spike_trains,
+        (roi_labels, dff_traces, den_dff_traces, spike_trains,
          calcium_peak_events, spike_data_dict, spike_data_dict_rising_edges)
     """
     roi_labels: list[int] = []
     dff_traces: list[np.ndarray] = []
-    dec_dff_traces: list[np.ndarray] = []
+    den_dff_traces: list[np.ndarray] = []
     spike_trains: list[np.ndarray] = []
     calcium_peak_events: list[np.ndarray] = []
     spike_data_dict: dict[str, list[float]] = {}
@@ -136,7 +136,7 @@ def _extract_fov_data(
         elif roi.traces_history:
             traces = roi.traces_history[-1]
 
-        if traces is None or traces.dec_dff is None:
+        if traces is None or traces.den_dff is None:
             continue
 
         # Get analysis data
@@ -150,18 +150,18 @@ def _extract_fov_data(
         if dff.ndim != 1 or dff.size == 0:
             continue
 
-        dec_dff = np.asarray(traces.dec_dff, dtype=float)
-        if dec_dff.ndim != 1 or dec_dff.size == 0:
+        den_dff = np.asarray(traces.den_dff, dtype=float)
+        if den_dff.ndim != 1 or den_dff.size == 0:
             continue
 
         roi_labels.append(int(roi.label_value))
         dff_traces.append(dff)
-        dec_dff_traces.append(dec_dff)
+        den_dff_traces.append(den_dff)
 
         # Build peak event binary arrays for calcium burst detection
-        if data_analysis is not None and data_analysis.peaks_dec_dff is not None:
-            peak_indices = [int(p) for p in data_analysis.peaks_dec_dff]
-            peak_array = np.zeros(len(dec_dff), dtype=float)
+        if data_analysis is not None and data_analysis.peaks_den_dff is not None:
+            peak_indices = [int(p) for p in data_analysis.peaks_den_dff]
+            peak_array = np.zeros(len(den_dff), dtype=float)
             for idx in peak_indices:
                 if 0 <= idx < len(peak_array):
                     peak_array[idx] = 1.0
@@ -190,7 +190,7 @@ def _extract_fov_data(
     return (
         roi_labels,
         dff_traces,
-        dec_dff_traces,
+        den_dff_traces,
         spike_trains,
         calcium_peak_events,
         spike_data_dict,
@@ -223,7 +223,7 @@ def compute_fov_analysis_parallel(
     (
         roi_labels,
         dff_traces,
-        dec_dff_traces,
+        den_dff_traces,
         spike_trains,
         calcium_peak_events,
         spike_data_dict,
@@ -248,7 +248,7 @@ def compute_fov_analysis_parallel(
 
     # Calcium trace correlations (fast, no parallelization needed)
     calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
-    calcium_dec_dff_corr_matrix = _compute_zero_lag_corr_matrix(dec_dff_traces)
+    calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
 
     # Convert ms to frames
     frame_rate = analysis_settings.frame_rate
@@ -473,9 +473,9 @@ def compute_fov_analysis_parallel(
             if calcium_dff_corr_matrix is not None
             else None
         ),
-        calcium_dec_dff_corr_matrix=(
-            calcium_dec_dff_corr_matrix.tolist()
-            if calcium_dec_dff_corr_matrix is not None
+        calcium_den_dff_corr_matrix=(
+            calcium_den_dff_corr_matrix.tolist()
+            if calcium_den_dff_corr_matrix is not None
             else None
         ),
         spike_max_lag_correlation_matrix=(

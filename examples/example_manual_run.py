@@ -31,7 +31,7 @@ from cali.sqlmodel import (
 from cali.util import load_fovs_from_database, update_fovs_in_database
 from cali.util._util import load_data_from_path
 
-dataset_path = "tests/test_data/evoked/evk.tensorstore.zarr"
+dataset_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 db_path = Path("manual_run.cali")
 
 # Clean up previous run for this example

@@ -8,10 +8,10 @@ import pytest
 from sqlmodel import Session, create_engine
 
 from cali.util import (
-    export_calcium_dec_dff_correlation_to_csv,
+    export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
     export_correlation_matrices_to_csv,
-    export_deconvolved_dff_traces_to_csv,
+    export_denoised_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_cross_correlation_lags_to_csv,
     export_inferred_spikes_cross_correlation_to_csv,
@@ -58,10 +58,10 @@ def test_export_dff_traces(test_engine: Engine, tmp_path: Path) -> None:
     assert output_file.stat().st_size > 0
 
 
-def test_export_deconvolved_dff_traces(test_engine: Engine, tmp_path: Path) -> None:
-    """Test exporting deconvolved ΔF/F traces to CSV."""
-    output_file = tmp_path / "dec_dff_traces.csv"
-    export_deconvolved_dff_traces_to_csv(test_engine, output_file, run_id=1)
+def test_export_denoised_dff_traces(test_engine: Engine, tmp_path: Path) -> None:
+    """Test exporting denoised ΔF/F traces to CSV."""
+    output_file = tmp_path / "den_dff_traces.csv"
+    export_denoised_dff_traces_to_csv(test_engine, output_file, run_id=1)
 
     assert output_file.exists()
     assert output_file.stat().st_size > 0
@@ -162,18 +162,18 @@ def test_export_calcium_dff_correlation(test_engine: Engine, tmp_path: Path) -> 
     assert csv_files[0].stat().st_size > 0
 
 
-def test_export_calcium_dec_dff_correlation(
+def test_export_calcium_den_dff_correlation(
     test_engine: Engine, tmp_path: Path
 ) -> None:
-    """Test exporting deconvolved ΔF/F correlation matrix to CSV."""
-    output_file = tmp_path / "calcium_dec_dff_correlation.csv"
+    """Test exporting denoised ΔF/F correlation matrix to CSV."""
+    output_file = tmp_path / "calcium_den_dff_correlation.csv"
     try:
-        export_calcium_dec_dff_correlation_to_csv(test_engine, output_file, run_id=1)
+        export_calcium_den_dff_correlation_to_csv(test_engine, output_file, run_id=1)
     except ValueError:
         pytest.skip("No FOV analysis data found in test database")
 
     # Check that at least one file was created (may have FOV prefix if multiple FOVs)
-    csv_files = list(tmp_path.glob("*calcium_dec_dff_correlation.csv"))
+    csv_files = list(tmp_path.glob("*calcium_den_dff_correlation.csv"))
     assert len(csv_files) > 0
     assert csv_files[0].stat().st_size > 0
 

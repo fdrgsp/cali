@@ -36,10 +36,10 @@ def test_db(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def test_experiment(test_db: Path) -> Experiment:
-    """Create a test experiment from spontaneous data."""
+    """Create a test experiment from test data."""
     exp = Experiment.create_from_data(
         name="Test Versioned Analysis",
-        data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+        data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
         plate_maps={
             "genotype": {"B5": "WT"},
             "treatment": {"B5": "Vehicle"},
@@ -810,13 +810,13 @@ def test_multiple_experiments_same_settings(test_db: Path) -> None:
         # Create two experiments
         exp1 = Experiment.create_from_data(
             name="Experiment 1",
-            data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+            data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
             plate_maps={"genotype": {"B5": "WT"}},
         )
 
         exp2 = Experiment.create_from_data(
             name="Experiment 2",
-            data_path="tests/test_data/spontaneous/spont.tensorstore.zarr",
+            data_path="tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
             plate_maps={"genotype": {"B5": "KO"}},
         )
 

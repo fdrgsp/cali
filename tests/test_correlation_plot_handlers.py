@@ -207,8 +207,8 @@ def test_handlers_cleanup_on_reattach(
     "plot_function",
     [
         "_plot_dff_correlation_data",
-        # Skip dec_dff test due to SQLAlchemy transaction warning
-        # "_plot_dec_dff_correlation_data",
+        # Skip den_dff test due to SQLAlchemy transaction warning
+        # "_plot_den_dff_correlation_data",
     ],
 )
 def test_both_correlation_plots_have_handlers(
@@ -230,7 +230,7 @@ def test_both_correlation_plots_have_handlers(
         _plot_calcium_traces_correlation,
         "_get_dff_correlation_matrix_from_db"
         if "dff" in plot_function and "dec" not in plot_function
-        else "_get_dec_dff_correlation_matrix_from_db",
+        else "_get_den_dff_correlation_matrix_from_db",
     ) as mock_get_matrix:
         # Return small test matrix
         mock_get_matrix.return_value = (

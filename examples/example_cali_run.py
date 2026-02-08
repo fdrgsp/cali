@@ -17,7 +17,7 @@ runner = CaliRunner()
 
 database_name = "results.cali"
 database_path = f"{database_name}"
-dataset = "tests/test_data/evoked/evk.tensorstore.zarr"
+dataset = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 
 # None to process all positions or list of global indices e.g. [0, 2, 5]
 positions_to_process = None

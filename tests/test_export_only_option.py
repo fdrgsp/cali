@@ -8,9 +8,9 @@ from pytestqt.qtbot import QtBot
 from sqlmodel import Session, create_engine
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
-    DEC_DFF_TRACES,
+    DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_SYNCHRONY,
     RAW_CALCIUM_TRACES,
@@ -230,9 +230,9 @@ def test_export_only_integration(
     # Now export data retroactively using the export functionality
     # This simulates what would happen when "Export Only" is selected
     from cali.util import (
-        export_calcium_dec_dff_correlation_to_csv,
+        export_calcium_den_dff_correlation_to_csv,
         export_calcium_dff_correlation_to_csv,
-        export_deconvolved_dff_traces_to_csv,
+        export_denoised_dff_traces_to_csv,
         export_dff_traces_to_csv,
         export_inferred_spikes_synchrony_to_csv,
         export_raw_traces_to_csv,
@@ -245,15 +245,15 @@ def test_export_only_integration(
     export_traces = {
         RAW_CALCIUM_TRACES: True,
         DFF_TRACES: True,
-        DEC_DFF_TRACES: True,
+        DEN_DFF_TRACES: True,
     }
 
     trace_export_map = {
         RAW_CALCIUM_TRACES: (export_raw_traces_to_csv, "raw_traces.csv"),
         DFF_TRACES: (export_dff_traces_to_csv, "dff_traces.csv"),
-        DEC_DFF_TRACES: (
-            export_deconvolved_dff_traces_to_csv,
-            "deconvolved_dff_traces.csv",
+        DEN_DFF_TRACES: (
+            export_denoised_dff_traces_to_csv,
+            "denoised_dff_traces.csv",
         ),
     }
 
@@ -268,7 +268,7 @@ def test_export_only_integration(
         # Export correlations
         export_correlations = {
             CALCIUM_DFF_CORRELATION: True,
-            CALCIUM_DEC_DFF_CORRELATION: True,
+            CALCIUM_DEN_DFF_CORRELATION: True,
             INFERRED_SPIKES_SYNCHRONY: True,
         }
 
@@ -277,9 +277,9 @@ def test_export_only_integration(
                 export_calcium_dff_correlation_to_csv,
                 "calcium_dff_correlation_matrix.csv",
             ),
-            CALCIUM_DEC_DFF_CORRELATION: (
-                export_calcium_dec_dff_correlation_to_csv,
-                "calcium_dec_dff_correlation_matrix.csv",
+            CALCIUM_DEN_DFF_CORRELATION: (
+                export_calcium_den_dff_correlation_to_csv,
+                "calcium_den_dff_correlation_matrix.csv",
             ),
             INFERRED_SPIKES_SYNCHRONY: (
                 export_inferred_spikes_synchrony_to_csv,
@@ -304,13 +304,13 @@ def test_export_only_integration(
     # Verify all expected files were created
     assert (export_dir / "raw_traces.csv").exists()
     assert (export_dir / "dff_traces.csv").exists()
-    assert (export_dir / "deconvolved_dff_traces.csv").exists()
+    assert (export_dir / "denoised_dff_traces.csv").exists()
 
     # Correlation files may have FOV prefixes
     # Only check if correlation export succeeded (mock data may not be valid)
     if correlation_export_succeeded:
         assert len(list(export_dir.glob("*calcium_dff_correlation_matrix.csv"))) > 0
-        assert len(list(export_dir.glob("*calcium_dec_dff_correlation_matrix.csv"))) > 0
+        assert len(list(export_dir.glob("*calcium_den_dff_correlation_matrix.csv"))) > 0
         assert len(list(export_dir.glob("*inferred_spikes_synchrony_matrix.csv"))) > 0
 
     # Verify content
@@ -425,12 +425,12 @@ def test_export_only_with_runner_integration(
     export_traces = {
         RAW_CALCIUM_TRACES: True,
         DFF_TRACES: True,
-        DEC_DFF_TRACES: True,
+        DEN_DFF_TRACES: True,
     }
 
     export_correlations = {
         CALCIUM_DFF_CORRELATION: True,
-        CALCIUM_DEC_DFF_CORRELATION: True,
+        CALCIUM_DEN_DFF_CORRELATION: True,
         INFERRED_SPIKES_SYNCHRONY: True,
     }
 
@@ -453,7 +453,7 @@ def test_export_only_with_runner_integration(
     # Check trace files
     assert (export_dir / "raw_traces.csv").exists()
     assert (export_dir / "dff_traces.csv").exists()
-    assert (export_dir / "deconvolved_dff_traces.csv").exists()
+    assert (export_dir / "denoised_dff_traces.csv").exists()
 
     # Check correlation files (may have FOV prefixes)
     # These may not exist if mock data doesn't produce valid FOV analysis

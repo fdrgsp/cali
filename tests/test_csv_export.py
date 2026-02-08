@@ -7,7 +7,7 @@ import pandas as pd
 from sqlmodel import Session, create_engine
 
 from cali._constants import (
-    DEC_DFF_TRACES,
+    DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
@@ -46,7 +46,7 @@ def test_csv_export_full_pipeline(
     export_traces = {
         RAW_CALCIUM_TRACES: True,
         DFF_TRACES: True,
-        DEC_DFF_TRACES: True,
+        DEN_DFF_TRACES: True,
         INFERRED_SPIKES_TRACES: True,
         INFERRED_SPIKES_THRESHOLDED_BINARY: True,
     }
@@ -91,7 +91,7 @@ def test_csv_export_full_pipeline(
     expected_files = {
         RAW_CALCIUM_TRACES: "raw_traces.csv",
         DFF_TRACES: "dff_traces.csv",
-        DEC_DFF_TRACES: "deconvolved_dff_traces.csv",
+        DEN_DFF_TRACES: "denoised_dff_traces.csv",
         INFERRED_SPIKES_TRACES: "inferred_spikes_raw.csv",
         INFERRED_SPIKES_THRESHOLDED_BINARY: "inferred_spikes_thresholded.csv",
     }
@@ -159,7 +159,7 @@ def test_csv_export_selective(
     assert (export_dir / "dff_traces.csv").exists()
 
     # These should NOT exist
-    assert not (export_dir / "deconvolved_dff_traces.csv").exists()
+    assert not (export_dir / "denoised_dff_traces.csv").exists()
     assert not (export_dir / "inferred_spikes_raw.csv").exists()
     assert not (export_dir / "inferred_spikes_thresholded.csv").exists()
 

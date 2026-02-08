@@ -112,7 +112,7 @@ TraceDataType = Literal[
     "Neuropil Traces",  # NEUROPIL_TRACES
     "Neuropil Corrected Traces",  # NEUROPIL_CORRECTED_TRACES
     "ΔF/F Traces",  # DFF_TRACES
-    "OASIS Deconvolved ΔF/F Traces",  # DEC_DFF_TRACES
+    "OASIS Denoised ΔF/F Traces",  # DEN_DFF_TRACES
     "OASIS Inferred Spikes Traces",  # INFERRED_SPIKES_TRACES
     "OASIS Thresholded Inferred Spikes (Binary)",  # INFERRED_SPIKES_THRESHOLDED_BINARY
 ]
@@ -120,7 +120,7 @@ TraceDataType = Literal[
 CorrelationDataType = Literal[
     # Calcium correlations
     "ΔF/F Correlation Matrix",  # CALCIUM_DFF_CORRELATION
-    "Deconvolved ΔF/F Correlation Matrix",  # CALCIUM_DEC_DFF_CORRELATION
+    "Denoised ΔF/F Correlation Matrix",  # CALCIUM_DEN_DFF_CORRELATION
     # Inferred Spikes - Thresholded Binary
     "Inferred Spikes Synchrony Matrix",  # INFERRED_SPIKES_SYNCHRONY
     "Inferred Spikes Cross-Correlation Matrix",  # INFERRED_SPIKES_CROSS_CORRELATION
@@ -138,14 +138,14 @@ RAW_CALCIUM_TRACES: TraceDataType = "Raw Calcium Traces"
 NEUROPIL_TRACES: TraceDataType = "Neuropil Traces"
 NEUROPIL_CORRECTED_TRACES: TraceDataType = "Neuropil Corrected Traces"
 DFF_TRACES: TraceDataType = "ΔF/F Traces"
-DEC_DFF_TRACES: TraceDataType = "OASIS Deconvolved ΔF/F Traces"
+DEN_DFF_TRACES: TraceDataType = "OASIS Denoised ΔF/F Traces"
 INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes Traces"
 INFERRED_SPIKES_THRESHOLDED_BINARY: TraceDataType = "OASIS Thresholded Inferred Spikes (Binary)"  # noqa: E501
 # CALCIUM_PEAKS = "Calcium Peaks"
 
 # Calcium correlations
 CALCIUM_DFF_CORRELATION: CorrelationDataType = "ΔF/F Correlation Matrix"
-CALCIUM_DEC_DFF_CORRELATION: CorrelationDataType = "Deconvolved ΔF/F Correlation Matrix"
+CALCIUM_DEN_DFF_CORRELATION: CorrelationDataType = "Denoised ΔF/F Correlation Matrix"
 # Inferred Spikes - Thresholded Binary
 INFERRED_SPIKES_SYNCHRONY: CorrelationDataType = "Inferred Spikes Synchrony Matrix"
 INFERRED_SPIKES_CROSS_CORRELATION: CorrelationDataType = "Inferred Spikes Cross-Correlation Matrix"  # noqa: E501

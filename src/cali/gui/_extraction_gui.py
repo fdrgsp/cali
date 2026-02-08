@@ -21,13 +21,13 @@ from qtpy.QtWidgets import (
 from superqt import QCollapsible, QIconifyIcon
 
 from cali._constants import (
-    DEC_DFF_TRACES,
     DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
     DEFAULT_NEUROPIL_CORRECTION_FACTOR,
     DEFAULT_NEUROPIL_INNER_RADIUS,
     DEFAULT_NEUROPIL_MIN_PIXELS,
+    DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
@@ -136,7 +136,7 @@ class _ExtractionGUI(QWidget):
         self._export_group.add_option(NEUROPIL_TRACES, 1, 0, checked=False)
         self._export_group.add_option(NEUROPIL_CORRECTED_TRACES, 2, 0, checked=False)
         self._export_group.add_option(DFF_TRACES, 3, 0)
-        self._export_group.add_option(DEC_DFF_TRACES, 4, 0)
+        self._export_group.add_option(DEN_DFF_TRACES, 4, 0)
         self._export_group.add_option(INFERRED_SPIKES_TRACES, 5, 0)
         self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_BINARY, 6, 0)
         self._export_group.add_stretch("horizontal")

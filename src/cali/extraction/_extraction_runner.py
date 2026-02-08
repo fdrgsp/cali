@@ -663,7 +663,7 @@ class ExtractionRunner:
 
         # Deconvolve with error handling for invalid AR coefficients
         try:
-            dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
+            den_dff, spikes, _b, _g_fit, _lam = deconvolve(
                 dff,
                 g=g,
                 sn=sn,
@@ -677,7 +677,7 @@ class ExtractionRunner:
                 f"{e}. Retrying with stable default AR1 coefficient (0.95,)."
             )
             optimize_g = 0
-            dec_dff, spikes, _b, _g_fit, _lam = deconvolve(
+            den_dff, spikes, _b, _g_fit, _lam = deconvolve(
                 dff,
                 g=(0.95,),  # fallback stable AR(1) coefficient
                 sn=sn,
@@ -688,7 +688,7 @@ class ExtractionRunner:
         cali_logger.debug(f"OASIS params ROI {label_value}: g={g}, sn={sn}")
 
         # Convert to float
-        dec_dff = dec_dff.astype(float)
+        den_dff = den_dff.astype(float)
         spikes = spikes.astype(float)
 
         # Check for cancellation after deconvolution
@@ -710,7 +710,7 @@ class ExtractionRunner:
                 else None
             ),
             dff=cast("list[float]", dff.tolist()),
-            dec_dff=dec_dff.tolist(),
+            den_dff=den_dff.tolist(),
             inferred_spikes=spikes.tolist(),
             x_axis=elapsed_time_list,
             x_axis_units=x_unit,
@@ -744,7 +744,7 @@ class ExtractionRunner:
             # Compute thresholds
             # fmt: off
             spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-            peaks_height_dec_dff, peaks_prominence_dec_dff = compute_calcium_peak_detection_thresholds(dec_dff, sn, analysis_settings)  # noqa E501
+            peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff, sn, analysis_settings)  # noqa E501
             # fmt: on
 
             if self._check_for_abort_requested():
@@ -755,10 +755,10 @@ class ExtractionRunner:
             min_distance_frames = max(
                 1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
             )
-            peaks_dec_dff, peaks_amplitudes_dec_dff = detect_peaks_in_trace(
-                dec_dff,
-                peaks_height_dec_dff,
-                peaks_prominence_dec_dff,
+            peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
+                den_dff,
+                peaks_height_den_dff,
+                peaks_prominence_den_dff,
                 min_distance_frames,
             )
 
@@ -766,10 +766,10 @@ class ExtractionRunner:
                 return None
 
             # Calculate calcium event frequency
-            frequency = calculate_frequency(len(peaks_dec_dff), tot_time_sec)
+            frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
 
             # Calculate calcium event inter-event intervals (IEI)
-            iei_ms = calculate_inter_event_intervals(peaks_dec_dff, elapsed_time_list)
+            iei_ms = calculate_inter_event_intervals(peaks_den_dff, elapsed_time_list)
             iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
 
             # Calculate inferred spike frequency
@@ -789,18 +789,18 @@ class ExtractionRunner:
             # Create DataAnalysis object (analysis product)
             data_analysis = DataAnalysis(
                 total_recording_time_sec=tot_time_sec,
-                dec_dff_frequency=frequency,
-                peaks_dec_dff=peaks_dec_dff.tolist(),
-                peaks_amplitudes_dec_dff=peaks_amplitudes_dec_dff,
+                den_dff_frequency=frequency,
+                peaks_den_dff=peaks_den_dff.tolist(),
+                peaks_amplitudes_den_dff=peaks_amplitudes_den_dff,
                 iei=iei,
-                peaks_prominence_dec_dff=peaks_prominence_dec_dff,
-                peaks_height_dec_dff=peaks_height_dec_dff,
+                peaks_prominence_den_dff=peaks_prominence_den_dff,
+                peaks_height_den_dff=peaks_height_den_dff,
                 inferred_spikes_threshold=spike_detection_threshold,
                 inferred_spikes_frequency=inferred_spikes_freq,
                 inferred_spikes_rising_edge_frequency=inferred_spikes_rising_edge_freq,
             )
 
-            active = len(peaks_dec_dff) > 0
+            active = len(peaks_den_dff) > 0
 
         return (traces, data_analysis, active, stimulated, roi_size, roi_size_units)
 

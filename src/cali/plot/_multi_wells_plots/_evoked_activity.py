@@ -104,10 +104,10 @@ def _query_evoked_amplitudes_by_condition(
 
             # Get stimulated/non-stimulated amplitudes
             amps_stim, amps_non_stim = separate_stimulated_vs_non_stimulated_peaks(
-                dec_dff=np.array(traces.dec_dff),
-                peaks_dec_dff=(
-                    np.array(analysis.peaks_dec_dff)
-                    if analysis.peaks_dec_dff
+                den_dff=np.array(traces.den_dff),
+                peaks_den_dff=(
+                    np.array(analysis.peaks_den_dff)
+                    if analysis.peaks_den_dff
                     else np.array([])
                 ),
                 pulse_on_frames_and_powers=stimulations_frames_and_powers,

@@ -1446,7 +1446,7 @@ class CaliRunner:
                         corrected_trace=source_trace.corrected_trace,
                         neuropil_trace=source_trace.neuropil_trace,
                         dff=source_trace.dff,
-                        dec_dff=source_trace.dec_dff,
+                        den_dff=source_trace.den_dff,
                         inferred_spikes=source_trace.inferred_spikes,
                         x_axis=source_trace.x_axis,
                         x_axis_units=source_trace.x_axis_units,

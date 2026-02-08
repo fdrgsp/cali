@@ -86,12 +86,12 @@ def test_sorted_spike_synchrony_click_emits_correct_roi_labels(
     assert emitted[0] == ["12", "5"], f"Expected ['12', '5'], got {emitted[0]}"
 
 
-def test_sorted_dec_dff_correlation_windowed_click(
+def test_sorted_den_dff_correlation_windowed_click(
     qtbot: QtBot,
 ) -> None:
-    """Test windowed dec_dff correlation click handler."""
+    """Test windowed den_dff correlation click handler."""
     from cali.plot._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (  # noqa: E501
-        _plot_sorted_dec_dff_correlation_windowed_by_stim,
+        _plot_sorted_den_dff_correlation_windowed_by_stim,
     )
 
     widget = _SingleWellGraphWidget(None)  # type: ignore
@@ -139,7 +139,7 @@ def test_sorted_dec_dff_correlation_windowed_click(
 
             # Mock trace with data
             mock_trace = MagicMock()
-            mock_trace.dec_dff = np.random.rand(100).tolist()
+            mock_trace.den_dff = np.random.rand(100).tolist()
             mock_trace.roi_id = label
 
             # Bind to roi for later lookup
@@ -167,7 +167,7 @@ def test_sorted_dec_dff_correlation_windowed_click(
         mock_session.exec.side_effect = side_effect_func
 
         # Call the plot function
-        _plot_sorted_dec_dff_correlation_windowed_by_stim(
+        _plot_sorted_den_dff_correlation_windowed_by_stim(
             widget=widget,
             engine=mock_engine,
             fov_name="test_fov",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     DFF_TRACES,
     INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
@@ -87,7 +87,7 @@ def test_analysis_gui_get_export_options_filters_unchecked(qtbot: QtBot) -> None
     assert CALCIUM_DFF_CORRELATION not in export_options
 
     # Checked options should be in export_options
-    assert CALCIUM_DEC_DFF_CORRELATION in export_options
+    assert CALCIUM_DEN_DFF_CORRELATION in export_options
     assert INFERRED_SPIKES_SYNCHRONY in export_options
     assert INFERRED_SPIKES_CROSS_CORRELATION in export_options
     assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS in export_options

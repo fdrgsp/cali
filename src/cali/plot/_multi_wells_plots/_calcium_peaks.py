@@ -32,7 +32,7 @@ def plot_calcium_peaks_amplitude_bar_plot(
         text,
         engine,
         run_id,
-        parameter="peaks_amplitudes_dec_dff",
+        parameter="peaks_amplitudes_den_dff",
         units="ΔF/F0",
     )
 
@@ -45,7 +45,7 @@ def plot_calcium_peaks_frequency_bar_plot(
 ) -> None:
     """Plot calcium peaks frequency across conditions."""
     plot_parameter_bar_plot(
-        widget, text, engine, run_id, parameter="dec_dff_frequency", units="Hz"
+        widget, text, engine, run_id, parameter="den_dff_frequency", units="Hz"
     )
 
 

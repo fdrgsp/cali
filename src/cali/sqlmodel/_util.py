@@ -81,7 +81,7 @@ def save_experiment_to_database(
     Parameters
     ----------
     experiment : Experiment
-        Experiment object (e.g., from load_analysis_from_json)
+        Experiment object
     output_path : Path | str
         Output directory to save the database file.
     database_name : str, optional
@@ -94,7 +94,6 @@ def save_experiment_to_database(
     Example
     -------
     >>> from pathlib import Path
-    >>> exp = load_analysis_from_json(Path("tests/test_data/..."))
     >>> save_experiment_to_database(exp, overwrite=True)
     >>> # Later, load fresh from DB when needed:
     >>> db_path = Path(exp.output_path) / exp.database_name
@@ -417,6 +416,86 @@ def has_experiment_analysis(db_path: str | Path) -> bool:
         engine.dispose(close=True)
 
 
+def _parse_well_name(well_name: str) -> tuple[int, int]:
+    """Parse well name like 'B5' or 'AE19' into (row, column) indices.
+
+    Supports both single-letter (A-Z) and multi-letter (AA, AB, ...) row names
+    for plates with more than 26 rows.
+
+    Parameters
+    ----------
+    well_name : str
+        Well name (e.g., 'B5', 'A1', 'AE19')
+
+    Returns
+    -------
+    tuple[int, int]
+        (row, column) - Zero-indexed row and column
+
+    Raises
+    ------
+    ValueError
+        If well_name is not in the expected format
+    """
+    if not well_name or len(well_name) < 2:
+        raise ValueError(
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'AE19'"
+        )
+
+    # Split into letter prefix and number suffix
+    i = 0
+    while i < len(well_name) and well_name[i].isalpha():
+        i += 1
+
+    if i == 0:
+        raise ValueError(f"Invalid well name: '{well_name}'. Must start with letter(s)")
+
+    if i == len(well_name) or not well_name[i:].isdigit():
+        raise ValueError(
+            f"Invalid well name: '{well_name}'. Expected format like 'B5', 'AE19' "
+            f"(letter(s) followed by number)"
+        )
+
+    row_label = well_name[:i]
+    row = _label_to_row_index(row_label)
+    col = int(well_name[i:]) - 1
+    return row, col
+
+
+def _label_to_row_index(label: str) -> int:
+    """Convert well row label to zero-indexed row number.
+
+    Supports single and multi-letter labels using base-26 alphabet.
+    A=0, B=1, ..., Z=25, AA=26, AB=27, ..., AZ=51, etc.
+
+    Parameters
+    ----------
+    label : str
+        Row label (e.g., 'A', 'Z', 'AA', 'AE')
+
+    Returns
+    -------
+    int
+        Zero-indexed row number
+
+    Examples
+    --------
+    >>> _label_to_row_index("A")
+    0
+    >>> _label_to_row_index("Z")
+    25
+    >>> _label_to_row_index("AA")
+    26
+    >>> _label_to_row_index("AE")
+    30
+    """
+    label = label.upper()
+    result = 0
+    for char in label:
+        result = result * 26 + (ord(char) - ord("A") + 1)
+    return result - 1
+
+
 # OLD WAY TO STORE DATA --------------------------------------------------------------
 
 # Define a type variable for the BaseClass
@@ -438,7 +517,7 @@ class ROIData(BaseClass):
     """Data container for ROI (Region of Interest) analysis results.
 
     This dataclass stores comprehensive analysis data for a single ROI including
-    raw fluorescence traces, neuropil correction, calcium dynamics (dff, deconvolved),
+    raw fluorescence traces, neuropil correction, calcium dynamics (dff, denoised),
     peak detection, inferred spikes, and experimental metadata.
 
     Parameters
@@ -457,21 +536,21 @@ class ROIData(BaseClass):
         Correction factor used for neuropil subtraction
     dff : list[float] | None
         ΔF/F (delta F over F) - normalized fluorescence change
-    dec_dff : list[float] | None
-        Deconvolved ΔF/F trace (using OASIS algorithm) for calcium event detection
-    peaks_dec_dff : list[float] | None
-        Indices of detected peaks in the deconvolved trace
-    peaks_amplitudes_dec_dff : list[float] | None
-        Amplitude values of detected peaks in deconvolved trace
-    peaks_prominence_dec_dff : float | None
+    den_dff : list[float] | None
+        Denoised ΔF/F trace (using OASIS algorithm) for calcium event detection
+    peaks_den_dff : list[float] | None
+        Indices of detected peaks in the denoised trace
+    peaks_amplitudes_den_dff : list[float] | None
+        Amplitude values of detected peaks in denoised trace
+    peaks_prominence_den_dff : float | None
         Prominence threshold used for peak detection
-    peaks_height_dec_dff : float | None
+    peaks_height_den_dff : float | None
         Height threshold used for peak detection
     inferred_spikes : list[float] | None
         Inferred spike probabilities from deconvolution
     inferred_spikes_threshold : float | None
         Threshold for spike detection
-    dec_dff_frequency : float | None
+    den_dff_frequency : float | None
         Frequency of calcium events in Hz
     condition_1 : str | None
         First experimental condition (e.g., genotype)
@@ -523,14 +602,14 @@ class ROIData(BaseClass):
     neuropil_trace: list[float] | None = None
     neuropil_correction_factor: float | None = None
     dff: list[float] | None = None
-    dec_dff: list[float] | None = None  # deconvolved dff with oasis package
-    peaks_dec_dff: list[float] | None = None
-    peaks_amplitudes_dec_dff: list[float] | None = None
-    peaks_prominence_dec_dff: float | None = None
-    peaks_height_dec_dff: float | None = None
+    den_dff: list[float] | None = None  # denoised dff with oasis package
+    peaks_den_dff: list[float] | None = None
+    peaks_amplitudes_den_dff: list[float] | None = None
+    peaks_prominence_den_dff: float | None = None
+    peaks_height_den_dff: float | None = None
     inferred_spikes: list[float] | None = None
     inferred_spikes_threshold: float | None = None
-    dec_dff_frequency: float | None = None  # Hz
+    den_dff_frequency: float | None = None  # Hz
     condition_1: str | None = None
     condition_2: str | None = None
     cell_size: float | None = None

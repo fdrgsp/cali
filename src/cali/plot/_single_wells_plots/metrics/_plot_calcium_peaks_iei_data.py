@@ -221,7 +221,7 @@ def _plot_iei_data(
 
 def _set_graph_title_and_labels_pg(plot: pg.PlotItem) -> None:
     """Set axis labels based on the plotted data (pyqtgraph version)."""
-    title = "Calcium Peaks Inter-Event Intervals (Mean ± SEM - Deconvolved ΔF/F)"
+    title = "Calcium Peaks Inter-Event Intervals (Mean ± SEM - Denoised ΔF/F)"
     plot.setTitle(title)
     plot.setLabel("left", "Inter-Event Interval (s)")
     plot.setLabel("bottom", "ROI")

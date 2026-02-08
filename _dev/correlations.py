@@ -78,8 +78,8 @@ def query_traces(
         for data_analysis in data_analysis_list:
             roi_label = str(data_analysis.roi.label_value)
             roi_to_data_analysis[roi_label] = data_analysis
-            if data_analysis.peaks_dec_dff is not None:
-                roi_dict_calcium_peaks[roi_label] = data_analysis.peaks_dec_dff
+            if data_analysis.peaks_den_dff is not None:
+                roi_dict_calcium_peaks[roi_label] = data_analysis.peaks_den_dff
 
         # Plot all inferred spikes traces
         if plot:
@@ -94,9 +94,9 @@ def query_traces(
             elif trace_type == "dff" and trace.dff is not None:
                 traces_arrays.append(np.array(trace.dff))
                 tr = trace.dff
-            elif trace_type == "dec_dff" and trace.dec_dff is not None:
-                traces_arrays.append(np.array(trace.dec_dff))
-                tr = trace.dec_dff
+            elif trace_type == "dec_dff" and trace.den_dff is not None:
+                traces_arrays.append(np.array(trace.den_dff))
+                tr = trace.den_dff
             elif trace_type == "inferred_spikes" and trace.inferred_spikes is not None:
                 traces_arrays.append(np.array(trace.inferred_spikes))
                 tr = trace.inferred_spikes

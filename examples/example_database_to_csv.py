@@ -9,10 +9,10 @@ from pathlib import Path
 from sqlmodel import create_engine
 
 from cali.util import (
-    export_calcium_dec_dff_correlation_to_csv,
+    export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
     export_correlation_matrices_to_csv,
-    export_deconvolved_dff_traces_to_csv,
+    export_denoised_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_ccg_zscore_rising_edges_to_csv,
     export_inferred_spikes_ccg_zscore_to_csv,
@@ -65,7 +65,7 @@ print("Exporting ΔF/F traces...")
 export_dff_traces_to_csv(engine, output_dir / "dff_traces.csv", run_id=run_id)
 
 print("Exporting deconvolved ΔF/F traces...")
-export_deconvolved_dff_traces_to_csv(
+export_denoised_dff_traces_to_csv(
     engine, output_dir / "dec_dff_traces.csv", run_id=run_id
 )
 
@@ -86,9 +86,9 @@ export_calcium_dff_correlation_to_csv(
     engine, output_dir / "calcium_dff_correlation.csv", run_id=run_id
 )
 
-print("Exporting calcium deconvolved ΔF/F correlation...")
-export_calcium_dec_dff_correlation_to_csv(
-    engine, output_dir / "calcium_dec_dff_correlation.csv", run_id=run_id
+print("Exporting calcium denoised ΔF/F correlation...")
+export_calcium_den_dff_correlation_to_csv(
+    engine, output_dir / "calcium_den_dff_correlation.csv", run_id=run_id
 )
 
 print("Exporting inferred spikes synchrony...")

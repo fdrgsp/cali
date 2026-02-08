@@ -108,13 +108,13 @@ def test_fov_analysis_computes_rising_edges() -> None:
 
         traces = Traces(
             dff=[1.0] * 100,
-            dec_dff=[1.0] * 100,
+            den_dff=[1.0] * 100,
             inferred_spikes=spike_train.tolist(),
         )
         roi._new_traces = [traces]
 
         data_analysis = DataAnalysis(
-            peaks_dec_dff=[],
+            peaks_den_dff=[],
             inferred_spikes_threshold=1.0,
         )
         roi._new_data_analysis = [data_analysis]
@@ -164,13 +164,13 @@ def test_rising_edge_vs_thresholded_metrics() -> None:
 
         traces = Traces(
             dff=[1.0] * 50,
-            dec_dff=[1.0] * 50,
+            den_dff=[1.0] * 50,
             inferred_spikes=spike_train.tolist(),
         )
         roi._new_traces = [traces]
 
         data_analysis = DataAnalysis(
-            peaks_dec_dff=[],
+            peaks_den_dff=[],
             inferred_spikes_threshold=1.0,
         )
         roi._new_data_analysis = [data_analysis]

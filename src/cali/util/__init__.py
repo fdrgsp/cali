@@ -1,10 +1,10 @@
 """Initialization code for the cali.util package."""
 
 from ._database_to_csv import (
-    export_calcium_dec_dff_correlation_to_csv,
+    export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
     export_correlation_matrices_to_csv,
-    export_deconvolved_dff_traces_to_csv,
+    export_denoised_dff_traces_to_csv,
     export_dff_traces_to_csv,
     export_inferred_spikes_ccg_zscore_rising_edges_to_csv,
     export_inferred_spikes_ccg_zscore_to_csv,
@@ -34,10 +34,10 @@ from ._util import (
 __all__ = [
     "commit_fov_result",
     "coordinates_to_mask",
-    "export_calcium_dec_dff_correlation_to_csv",
+    "export_calcium_den_dff_correlation_to_csv",
     "export_calcium_dff_correlation_to_csv",
     "export_correlation_matrices_to_csv",
-    "export_deconvolved_dff_traces_to_csv",
+    "export_denoised_dff_traces_to_csv",
     "export_dff_traces_to_csv",
     "export_inferred_spikes_ccg_zscore_rising_edges_to_csv",
     "export_inferred_spikes_ccg_zscore_to_csv",

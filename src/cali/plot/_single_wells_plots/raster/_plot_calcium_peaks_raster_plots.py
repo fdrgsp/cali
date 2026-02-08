@@ -108,8 +108,8 @@ def _generate_raster_plot(
 
     for roi, traces, data_analysis in roi_data:
         if (
-            not data_analysis.peaks_dec_dff
-            or not data_analysis.peaks_amplitudes_dec_dff
+            not data_analysis.peaks_den_dff
+            or not data_analysis.peaks_amplitudes_den_dff
         ):
             continue
 
@@ -127,7 +127,7 @@ def _generate_raster_plot(
             sample_trace = traces.dff
 
         # Peaks indices per ROI (frames)
-        event_data.append(np.asarray(data_analysis.peaks_dec_dff, dtype=float))
+        event_data.append(np.asarray(data_analysis.peaks_den_dff, dtype=float))
 
     if not event_data:
         plot.setTitle("Calcium Peaks Raster Plot\nNo peak data available for this FOV.")
@@ -142,9 +142,9 @@ def _generate_raster_plot(
         # Optimized: Concatenate all amplitudes, compute percentiles once
         all_amps = np.concatenate(
             [
-                np.asarray(da.peaks_amplitudes_dec_dff, dtype=float)
+                np.asarray(da.peaks_amplitudes_den_dff, dtype=float)
                 for _, _, da in filtered_roi_data
-                if da.peaks_amplitudes_dec_dff
+                if da.peaks_amplitudes_den_dff
             ]
         )
 
@@ -161,7 +161,7 @@ def _generate_raster_plot(
             norm = Normalize(vmin=vmin, vmax=vmax)
 
             for _roi, _traces, da in filtered_roi_data:
-                amps = np.asarray(da.peaks_amplitudes_dec_dff, dtype=float)
+                amps = np.asarray(da.peaks_amplitudes_den_dff, dtype=float)
                 if amps.size == 0:
                     colors.append((255, 255, 255, 255))
                     continue
@@ -333,7 +333,7 @@ def _generate_intensity_heatmap(
     # Disconnect any hover handlers from previous plots
     disconnect_hover_handlers(plot)
 
-    plot.setTitle("Calcium Intensity Heatmap (Deconvolved ΔF/F)")
+    plot.setTitle("Calcium Intensity Heatmap (Denoised ΔF/F)")
 
     # ------------------------ Query DB ------------------------ #
     with Session(engine) as session:
@@ -372,10 +372,10 @@ def _generate_intensity_heatmap(
     rois_rec_time: list[float] = []
 
     for roi, traces, data_analysis in roi_data:
-        if traces is None or traces.dec_dff is None:
+        if traces is None or traces.den_dff is None:
             continue
 
-        trace = np.asarray(traces.dec_dff, dtype=float)
+        trace = np.asarray(traces.den_dff, dtype=float)
         if trace.size == 0:
             continue
 

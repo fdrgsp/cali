@@ -227,7 +227,7 @@ def _get_trace(
             # convert to percent ΔF/F
             trace = np.array(trace) * 100.0
     elif dec:
-        trace = trace_obj.dec_dff
+        trace = trace_obj.den_dff
     return trace
 
 
@@ -321,10 +321,10 @@ def _draw_peaks_and_thresholds(
     """Draw peaks markers and (optionally) thresholds."""
     # Peaks markers
     for i, da in enumerate(da_list):
-        if not (da and da.peaks_dec_dff):
+        if not (da and da.peaks_den_dff):
             continue
 
-        peaks_indices = np.asarray(da.peaks_dec_dff, dtype=int)
+        peaks_indices = np.asarray(da.peaks_den_dff, dtype=int)
         # clip to original length
         peaks_indices = peaks_indices[(peaks_indices >= 0) & (peaks_indices < T_orig)]
         if peaks_indices.size == 0:
@@ -358,8 +358,8 @@ def _draw_peaks_and_thresholds(
     offset0 = float(offsets[0])
 
     # Peaks height threshold
-    if da.peaks_height_dec_dff is not None:
-        ph = float(da.peaks_height_dec_dff)
+    if da.peaks_height_den_dff is not None:
+        ph = float(da.peaks_height_den_dff)
         if normalize:
             denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
             ph_norm = np.clip((ph - p1) / denom, 0, 1) + offset0
@@ -380,8 +380,8 @@ def _draw_peaks_and_thresholds(
         plot.addItem(line)
 
     # Prominence threshold bar
-    if da.peaks_prominence_dec_dff is not None:
-        pp = float(da.peaks_prominence_dec_dff)
+    if da.peaks_prominence_den_dff is not None:
+        pp = float(da.peaks_prominence_den_dff)
         if normalize:
             denom = (p2 - p1) if (p2 - p1) != 0 else 1.0
             y0 = np.clip((0.0 - p1) / denom, 0, 1) + offset0
@@ -435,11 +435,11 @@ def _set_graph_title_and_labels_pg(
         y_lbl = "ROI" if normalize else "ΔF/F (%)"
     elif dec:
         title = (
-            "Normalized Calcium Traces (Deconvolved ΔF/F)"
+            "Normalized Calcium Traces (Denoised ΔF/F)"
             if normalize
-            else "Calcium Traces (Deconvolved ΔF/F)"
+            else "Calcium Traces (Denoised ΔF/F)"
         )
-        y_lbl = "ROI" if normalize else "Deconvolved ΔF/F (a.u.)"
+        y_lbl = "ROI" if normalize else "Denoised ΔF/F (a.u.)"
     else:
         title = "Normalized Calcium Traces" if normalize else "Raw Calcium Traces"
         y_lbl = "ROI" if normalize else "Fluorescence (a.u.)"

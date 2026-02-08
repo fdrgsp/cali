@@ -318,7 +318,7 @@ def test_analysis_runner_direct() -> None:
         raw_trace=trace_data.tolist(),
         neuropil_trace=np.zeros(100).tolist(),
         dff=trace_data.tolist(),
-        dec_dff=trace_data.tolist(),
+        den_dff=trace_data.tolist(),
         inferred_spikes=np.zeros(100).tolist(),
         analysis_result_id=1,
         x_axis=np.arange(100, dtype=float).tolist(),
@@ -336,8 +336,8 @@ def test_analysis_runner_direct() -> None:
     assert hasattr(res_roi, "_new_data_analysis")
     assert len(res_roi._new_data_analysis) > 0
     da = res_roi._new_data_analysis[0]  # type: ignore
-    assert da.peaks_dec_dff is not None
-    assert len(da.peaks_dec_dff) > 0
+    assert da.peaks_den_dff is not None
+    assert len(da.peaks_den_dff) > 0
 
 
 def test_cali_runner_cancel() -> None:
@@ -566,7 +566,7 @@ def test_analysis_runner_error() -> None:
         raw_trace=[1, 2, 3],
         neuropil_trace=[0, 0, 0],
         dff=[0.1, 0.2, 0.3],
-        dec_dff=[0.01, 0.02, 0.03],
+        den_dff=[0.01, 0.02, 0.03],
         x_axis=[0, 1, 2],
         x_axis_units="s",
     )
@@ -1144,7 +1144,7 @@ def test_analysis_runner_cancel() -> None:
         roi_id=1,
         raw_trace=np.zeros(100).tolist(),
         neuropil_trace=np.zeros(100).tolist(),
-        dec_dff=np.zeros(100).tolist(),
+        den_dff=np.zeros(100).tolist(),
         dff=np.zeros(100).tolist(),
     )
     roi.traces_history = [traces]

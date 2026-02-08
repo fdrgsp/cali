@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
-    DEC_DFF_TRACES,
+    DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_CROSS_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
@@ -70,7 +70,7 @@ def test_export_group_get_export_options_filters_checked(qtbot: QtBot) -> None:
     export_group.add_option(DFF_TRACES, 1, 0, checked=True)
     export_group.add_option(NEUROPIL_TRACES, 2, 0, checked=False)
     export_group.add_option(NEUROPIL_CORRECTED_TRACES, 3, 0, checked=False)
-    export_group.add_option(DEC_DFF_TRACES, 4, 0, checked=True)
+    export_group.add_option(DEN_DFF_TRACES, 4, 0, checked=True)
 
     # get_export_options() should only return checked items
     export_options = export_group.get_export_options()
@@ -79,7 +79,7 @@ def test_export_group_get_export_options_filters_checked(qtbot: QtBot) -> None:
     assert len(export_options) == 3
     assert RAW_CALCIUM_TRACES in export_options
     assert DFF_TRACES in export_options
-    assert DEC_DFF_TRACES in export_options
+    assert DEN_DFF_TRACES in export_options
 
     # Unchecked ones should not be present
     assert NEUROPIL_TRACES not in export_options
@@ -116,7 +116,7 @@ def test_export_group_correlation_types(qtbot: QtBot) -> None:
 
     # Add correlation options
     export_group.add_option(CALCIUM_DFF_CORRELATION, 0, 0, checked=False)
-    export_group.add_option(CALCIUM_DEC_DFF_CORRELATION, 1, 0, checked=True)
+    export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 1, 0, checked=True)
     export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 2, 0, checked=True)
     export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 3, 0, checked=True)
     export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 4, 0, checked=False)
@@ -127,7 +127,7 @@ def test_export_group_correlation_types(qtbot: QtBot) -> None:
 
     # Should have 3 checked items
     assert len(export_options) == 3
-    assert CALCIUM_DEC_DFF_CORRELATION in export_options
+    assert CALCIUM_DEN_DFF_CORRELATION in export_options
     assert INFERRED_SPIKES_SYNCHRONY in export_options
     assert INFERRED_SPIKES_CROSS_CORRELATION in export_options
 
@@ -144,7 +144,7 @@ def test_export_group_all_unchecked(qtbot: QtBot) -> None:
     # Add all unchecked options
     export_group.add_option(RAW_CALCIUM_TRACES, 0, 0, checked=False)
     export_group.add_option(DFF_TRACES, 1, 0, checked=False)
-    export_group.add_option(DEC_DFF_TRACES, 2, 0, checked=False)
+    export_group.add_option(DEN_DFF_TRACES, 2, 0, checked=False)
 
     # Should return empty dict
     export_options = export_group.get_export_options()

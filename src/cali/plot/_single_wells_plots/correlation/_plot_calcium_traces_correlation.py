@@ -1,4 +1,4 @@
-"""Plot zero-lag Pearson correlation matrices for DF/F and deconvolved DF/F traces."""
+"""Plot zero-lag Pearson correlation matrices for DF/F and denoised DF/F traces."""
 
 from __future__ import annotations
 
@@ -87,12 +87,12 @@ def _get_dff_correlation_matrix_from_db(
         return None, None
 
 
-def _get_dec_dff_correlation_matrix_from_db(
+def _get_den_dff_correlation_matrix_from_db(
     engine: Engine,
     fov_name: str,
     run_id: int | None = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
-    """Get the pre-computed deconvolved DF/F correlation matrix from database.
+    """Get the pre-computed denoised DF/F correlation matrix from database.
 
     Parameters
     ----------
@@ -109,9 +109,7 @@ def _get_dec_dff_correlation_matrix_from_db(
         (correlation_matrix, roi_labels) or (None, None) if not found
     """
     if run_id is None:
-        cali_logger.warning(
-            "No run ID specified for deconvolved DF/F correlation plot."
-        )
+        cali_logger.warning("No run ID specified for denoised DF/F correlation plot.")
         return None, None
 
     try:
@@ -132,17 +130,17 @@ def _get_dec_dff_correlation_matrix_from_db(
                 return None, None
 
             if (
-                fov_analysis.calcium_dec_dff_corr_matrix is None
+                fov_analysis.calcium_den_dff_corr_matrix is None
                 or fov_analysis.active_roi_labels is None
             ):
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} "
-                    f"has no deconvolved DF/F correlation matrix"
+                    f"has no denoised DF/F correlation matrix"
                 )
                 return None, None
 
             corr_matrix = np.asarray(
-                fov_analysis.calcium_dec_dff_corr_matrix, dtype=float
+                fov_analysis.calcium_den_dff_corr_matrix, dtype=float
             )
             roi_labels = list(fov_analysis.active_roi_labels)
 
@@ -282,7 +280,7 @@ def _plot_dff_correlation_data(
     _attach_heatmap_interaction(widget, plot, vb, rois_idxs, corr, title)
 
 
-def _plot_dec_dff_correlation_data(
+def _plot_den_dff_correlation_data(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -290,7 +288,7 @@ def _plot_dec_dff_correlation_data(
     run_id: int | None = None,
     title_suffix: str = "",
 ) -> None:
-    """Plot zero-lag Pearson correlation on deconvolved DF/F traces.
+    """Plot zero-lag Pearson correlation on denoised DF/F traces.
 
     Parameters
     ----------
@@ -320,7 +318,7 @@ def _plot_dec_dff_correlation_data(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    correlation_matrix, roi_labels = _get_dec_dff_correlation_matrix_from_db(
+    correlation_matrix, roi_labels = _get_den_dff_correlation_matrix_from_db(
         engine, fov_name, run_id
     )
 
@@ -354,7 +352,7 @@ def _plot_dec_dff_correlation_data(
 
     title = (
         "Pairwise Pearson Correlation (Zero-Lag - "
-        f"Deconvolved ΔF/F Traces) (median: {median_corr:.3f}){title_suffix}"
+        f"Denoised ΔF/F Traces) (median: {median_corr:.3f}){title_suffix}"
     )
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")

@@ -66,7 +66,7 @@ def _plot_inferred_spikes(
     raw: bool = False,
     normalize: bool = False,
     active_only: bool = False,
-    dec_dff: bool = False,
+    den_dff: bool = False,
     thresholds: bool = False,
     thresholded: bool = False,
     rising_edges: bool = False,
@@ -92,8 +92,8 @@ def _plot_inferred_spikes(
         Normalize spike traces globally using percentiles
     active_only : bool
         Only plot active ROIs
-    dec_dff : bool
-        Optionally overlay deconvolved ΔF/F traces
+    den_dff : bool
+        Optionally overlay denoised ΔF/F traces
     thresholds : bool
         Show spike detection thresholds (only if single ROI selected)
     thresholded : bool
@@ -240,7 +240,7 @@ def _plot_inferred_spikes(
         else:
             # Original continuous trace plotting
             # Main spikes curve
-            # When dec_dff overlay is enabled, force white for spike traces
+            # When den_dff overlay is enabled, force white for spike traces
             curve = _plot_spike_trace(
                 plot=plot,
                 roi_key=str(roi.label_value),
@@ -248,7 +248,7 @@ def _plot_inferred_spikes(
                 trace=spike_data,
                 normalize=normalize,
                 index=count,
-                n_rois=1 if dec_dff else n_rois,  # Force white when dec_dff=True
+                n_rois=1 if den_dff else n_rois,  # Force white when den_dff=True
                 p1=p1,
                 p2=p2,
                 thresholds=thresholds,
@@ -257,9 +257,9 @@ def _plot_inferred_spikes(
             if curve is not None:
                 curves.append(curve)
 
-            # Optional overlay of deconvolved ΔF/F
-            if dec_dff and traces.dec_dff:
-                dec_trace = np.asarray(traces.dec_dff, dtype=float)
+            # Optional overlay of denoised ΔF/F
+            if den_dff and traces.den_dff:
+                dec_trace = np.asarray(traces.den_dff, dtype=float)
                 if dec_trace.size == spike_data.size:
                     _plot_spike_trace(
                         plot=plot,
@@ -280,7 +280,7 @@ def _plot_inferred_spikes(
         count += 1
 
     _set_graph_title_and_labels_pg(
-        plot, normalize, raw, dec_dff, thresholded, rising_edges
+        plot, normalize, raw, den_dff, thresholded, rising_edges
     )
     total_frames = len(last_trace) if last_trace is not None else 1
     _update_time_axis_pg_for_spikes(plot, rois_rec_time, total_frames)
@@ -577,7 +577,7 @@ def _set_graph_title_and_labels_pg(
     plot: pg.PlotItem,
     normalize: bool,
     raw: bool,
-    dec_dff: bool,
+    den_dff: bool,
     thresholded: bool = False,
     rising_edges: bool = False,
 ) -> None:
@@ -599,9 +599,9 @@ def _set_graph_title_and_labels_pg(
             else:
                 title = "Inferred Spikes Thresholded"
             y_lbl = "ROI" if normalize else "Spike Amplitude (a.u.)"
-    elif dec_dff:
-        title = "Deconvolved ΔF/F & Inferred Spikes"
-        y_lbl = "Deconvolved ΔF/F & Inferred Spikes (a.u.)"
+    elif den_dff:
+        title = "Denoised ΔF/F & Inferred Spikes"
+        y_lbl = "Denoised ΔF/F & Inferred Spikes (a.u.)"
     else:
         title = "Normalized Inferred Spikes" if normalize else "Inferred Spikes"
         y_lbl = "ROI" if normalize else "Inferred Spikes (a.u.)"

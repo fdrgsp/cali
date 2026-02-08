@@ -8,7 +8,7 @@ import pytest
 from sqlmodel import Session, create_engine
 
 from cali._constants import (
-    CALCIUM_DEC_DFF_CORRELATION,
+    CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION,
     INFERRED_SPIKES_CROSS_CORRELATION_LAGS,
@@ -45,7 +45,7 @@ def test_correlation_export_full_pipeline(
     # Configure correlation export options
     export_correlations = {
         CALCIUM_DFF_CORRELATION: True,
-        CALCIUM_DEC_DFF_CORRELATION: True,
+        CALCIUM_DEN_DFF_CORRELATION: True,
         INFERRED_SPIKES_SYNCHRONY: True,
         INFERRED_SPIKES_CROSS_CORRELATION: True,
         INFERRED_SPIKES_CROSS_CORRELATION_LAGS: True,
@@ -92,7 +92,7 @@ def test_correlation_export_full_pipeline(
     # that the export mechanism works when valid data is available.
     expected_patterns = {
         CALCIUM_DFF_CORRELATION: "*calcium_dff_correlation_matrix.csv",
-        CALCIUM_DEC_DFF_CORRELATION: "*calcium_dec_dff_correlation_matrix.csv",
+        CALCIUM_DEN_DFF_CORRELATION: "*calcium_den_dff_correlation_matrix.csv",
         INFERRED_SPIKES_SYNCHRONY: "*inferred_spikes_synchrony_matrix.csv",
         INFERRED_SPIKES_CROSS_CORRELATION: "*inferred_spikes_cross_correlation_matrix.csv",  # noqa: E501
         INFERRED_SPIKES_CROSS_CORRELATION_LAGS: "*inferred_spikes_cross_correlation_lags_matrix.csv",  # noqa: E501
@@ -141,7 +141,7 @@ def test_correlation_export_selective(
         CALCIUM_DFF_CORRELATION: True,
         INFERRED_SPIKES_SYNCHRONY: True,
         # Others are False or not included (default False)
-        CALCIUM_DEC_DFF_CORRELATION: False,
+        CALCIUM_DEN_DFF_CORRELATION: False,
         INFERRED_SPIKES_CROSS_CORRELATION: False,
         INFERRED_SPIKES_CROSS_CORRELATION_LAGS: False,
     }
@@ -177,7 +177,7 @@ def test_correlation_export_selective(
     sync_files = list(export_dir.glob("*inferred_spikes_synchrony_matrix.csv"))
 
     # These should NOT exist (not selected for export)
-    assert len(list(export_dir.glob("*calcium_dec_dff_correlation_matrix.csv"))) == 0
+    assert len(list(export_dir.glob("*calcium_den_dff_correlation_matrix.csv"))) == 0
     assert (
         len(list(export_dir.glob("*inferred_spikes_cross_correlation_matrix.csv"))) == 0
     )
@@ -253,7 +253,7 @@ def test_correlation_and_traces_export_together(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test that both traces and correlations can be exported together."""
-    from cali._constants import DEC_DFF_TRACES, RAW_CALCIUM_TRACES
+    from cali._constants import DEN_DFF_TRACES, RAW_CALCIUM_TRACES
 
     test_db_path = tmp_path / "test_both_export.cali"
     exp = Experiment.create_from_data("test_both_export", str(data_path))
@@ -264,7 +264,7 @@ def test_correlation_and_traces_export_together(
 
     export_traces = {
         RAW_CALCIUM_TRACES: True,
-        DEC_DFF_TRACES: True,
+        DEN_DFF_TRACES: True,
     }
 
     export_correlations = {
@@ -303,7 +303,7 @@ def test_correlation_and_traces_export_together(
 
     # Verify trace files exist (these always work)
     assert (export_dir / "raw_traces.csv").exists()
-    assert (export_dir / "deconvolved_dff_traces.csv").exists()
+    assert (export_dir / "denoised_dff_traces.csv").exists()
 
     # Correlation files may not exist if mock data doesn't produce valid correlations
     dff_corr = list(export_dir.glob("*calcium_dff_correlation_matrix.csv"))

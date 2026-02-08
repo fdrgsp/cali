@@ -23,12 +23,12 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
     spike_pattern1[[5, 15, 25, 35, 45]] = 2.0  # Spike amplitude = 2.0
     traces1 = Traces(
         dff=[1.0] * 50,
-        dec_dff=[1.0] * 50,
+        den_dff=[1.0] * 50,
         inferred_spikes=spike_pattern1.tolist(),
     )
     roi1._new_traces = [traces1]
     data_analysis1 = DataAnalysis(
-        peaks_dec_dff=[5, 15, 25],
+        peaks_den_dff=[5, 15, 25],
         inferred_spikes_threshold=1.0,
     )
     roi1._new_data_analysis = [data_analysis1]
@@ -38,12 +38,12 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
     spike_pattern2 = np.zeros(50)  # All zeros
     traces2 = Traces(
         dff=[1.0] * 50,
-        dec_dff=[1.0] * 50,
+        den_dff=[1.0] * 50,
         inferred_spikes=spike_pattern2.tolist(),
     )
     roi2._new_traces = [traces2]
     data_analysis2 = DataAnalysis(
-        peaks_dec_dff=[6, 16, 26],
+        peaks_den_dff=[6, 16, 26],
         inferred_spikes_threshold=1.0,
     )
     roi2._new_data_analysis = [data_analysis2]
@@ -54,12 +54,12 @@ def test_fov_analysis_with_zero_spike_rois() -> None:
     spike_pattern3[[6, 16, 26, 36, 46]] = 2.0
     traces3 = Traces(
         dff=[1.0] * 50,
-        dec_dff=[1.0] * 50,
+        den_dff=[1.0] * 50,
         inferred_spikes=spike_pattern3.tolist(),
     )
     roi3._new_traces = [traces3]
     data_analysis3 = DataAnalysis(
-        peaks_dec_dff=[6, 16, 26],
+        peaks_den_dff=[6, 16, 26],
         inferred_spikes_threshold=1.0,
     )
     roi3._new_data_analysis = [data_analysis3]
@@ -152,12 +152,12 @@ def test_all_zero_spike_rois() -> None:
         spike_pattern = np.zeros(50)  # All zeros
         traces = Traces(
             dff=[1.0] * 50,
-            dec_dff=[1.0] * 50,
+            den_dff=[1.0] * 50,
             inferred_spikes=spike_pattern.tolist(),
         )
         roi._new_traces = [traces]
         data_analysis = DataAnalysis(
-            peaks_dec_dff=[5, 15, 25],
+            peaks_den_dff=[5, 15, 25],
             inferred_spikes_threshold=1.0,
         )
         roi._new_data_analysis = [data_analysis]
@@ -206,12 +206,12 @@ def test_mixed_spike_methods_consistent_dimensions() -> None:
 
         traces = Traces(
             dff=[1.0] * 50,
-            dec_dff=[1.0] * 50,
+            den_dff=[1.0] * 50,
             inferred_spikes=spike_pattern.tolist(),
         )
         roi._new_traces = [traces]
         data_analysis = DataAnalysis(
-            peaks_dec_dff=[5, 15, 25],
+            peaks_den_dff=[5, 15, 25],
             inferred_spikes_threshold=1.0,
         )
         roi._new_data_analysis = [data_analysis]

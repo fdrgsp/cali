@@ -2,7 +2,7 @@
 
 This module provides tools for analyzing extracted trace data:
 - AnalysisRunner: Main class for running analysis on FOVs with existing Traces
-- Peak detection in deconvolved traces
+- Peak detection in denoised traces
 - Inter-event interval (IEI) calculation
 - Event frequency computation
 - Amplitude extraction

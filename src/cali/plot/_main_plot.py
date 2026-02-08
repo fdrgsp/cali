@@ -27,16 +27,16 @@ from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
     _plot_neuropil_traces,
 )
 from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
-    _plot_dec_dff_correlation_data,
+    _plot_den_dff_correlation_data,
     _plot_dff_correlation_data,
 )
 from ._single_wells_plots.correlation._plot_connectivity import (
     _plot_connectivity_network_data,
 )
 from ._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (
-    _plot_sorted_dec_dff_correlation,
-    _plot_sorted_dec_dff_correlation_windowed_by_stim,
-    _plot_sorted_dec_dff_correlation_windowed_non_stim,
+    _plot_sorted_den_dff_correlation,
+    _plot_sorted_den_dff_correlation_windowed_by_stim,
+    _plot_sorted_den_dff_correlation_windowed_non_stim,
     _plot_sorted_spike_ccg_zscore,
     _plot_sorted_spike_max_lag_correlation,
     _plot_sorted_spike_max_lag_values,
@@ -206,42 +206,42 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Traces",
+    name="Calcium Denoised ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Traces with Peaks",
+    name="Calcium Denoised ΔF/F0 Traces with Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
+    name="Calcium Denoised ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, with_peaks=True, thresholds=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Normalized Traces ",
+    name="Calcium Denoised ΔF/F0 Normalized Traces ",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.EXTRACTION,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)",
+    name="Calcium Denoised ΔF/F0 Traces Normalized (Active Only)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, active_only=True),
     category="Calcium Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Normalized Traces with Peaks",
+    name="Calcium Denoised ΔF/F0 Normalized Traces with Peaks",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_traces_data, dec=True, normalize=True, with_peaks=True),
     category="Calcium Traces",
@@ -278,9 +278,9 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Inferred Spikes with Deconvolved ΔF/F0 Traces",
+    name="Inferred Spikes with Denoised ΔF/F0 Traces",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=partial(_plot_inferred_spikes, dec_dff=True),
+    analyzer=partial(_plot_inferred_spikes, den_dff=True),
     category="Inferred Spikes Traces",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -354,28 +354,28 @@ AnalysisProduct(
 
 # Calcium Amplitude and Frequency Group
 AnalysisProduct(
-    name="Calcium Peaks Amplitudes (Deconvolved ΔF/F0)",
+    name="Calcium Peaks Amplitudes (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Peaks Frequencies (Deconvolved ΔF/F0)",
+    name="Calcium Peaks Frequencies (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, freq=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Peaks Amplitudes vs Frequencies (Deconvolved ΔF/F0)",
+    name="Calcium Peaks Amplitudes vs Frequencies (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_amplitude_and_frequency_data, amp=True, freq=True),
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Peaks Inter-event Interval (Deconvolved ΔF/F0)",
+    name="Calcium Peaks Inter-event Interval (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_iei_data,
     category="Calcium Peaks Amplitude, Frequency and Event Interval",
@@ -453,9 +453,9 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Deconvolved ΔF/F0 Correlation",
+    name="Calcium Denoised ΔF/F0 Correlation",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_dec_dff_correlation_data,
+    analyzer=_plot_den_dff_correlation_data,
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
@@ -553,7 +553,7 @@ AnalysisProduct(
 )
 
 AnalysisProduct(
-    name="Stim vs Non-Stim Normalized Calcium Traces (Deconvolved ΔF/F0)",
+    name="Stim vs Non-Stim Normalized Calcium Traces (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_roi_traces,
     category="Evoked Experiment",
@@ -561,7 +561,7 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Stim vs Non-Stim Normalized Calcium Traces with Peaks (Deconvolved ΔF/F0)",
+    name="Stim vs Non-Stim Normalized Calcium Traces with Peaks (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=partial(_plot_stimulated_vs_non_stimulated_roi_traces, with_peaks=True),
     category="Evoked Experiment",
@@ -595,25 +595,25 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Calcium Deconvolved ΔF/F0 Correlation",
+    name="Sorted Calcium Denoised ΔF/F0 Correlation",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_dec_dff_correlation,
+    analyzer=_plot_sorted_den_dff_correlation,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Calcium Deconvolved ΔF/F0 Correlation (Stim Windows ±250ms)",
+    name="Sorted Calcium Denoised ΔF/F0 Correlation (Stim Windows ±250ms)",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_dec_dff_correlation_windowed_by_stim,
+    analyzer=_plot_sorted_den_dff_correlation_windowed_by_stim,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Sorted Calcium Deconvolved ΔF/F0 Correlation (Non-Stim Periods)",
+    name="Sorted Calcium Denoised ΔF/F0 Correlation (Non-Stim Periods)",
     group=AnalysisGroup.SINGLE_WELL,
-    analyzer=_plot_sorted_dec_dff_correlation_windowed_non_stim,
+    analyzer=_plot_sorted_den_dff_correlation_windowed_non_stim,
     category="Evoked Experiment",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
@@ -897,14 +897,14 @@ def get_available_plots(
 # Centralized configuration - easier to maintain than scattered logic
 # Used by _graph_widgets.py to filter random ROI selection
 ACTIVE_ONLY_PLOTS: set[str] = {
-    "Calcium Deconvolved ΔF/F0 Traces with Peaks",
-    "Calcium Deconvolved ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
-    "Calcium Deconvolved ΔF/F0 Normalized Traces with Peaks",
-    "Calcium Deconvolved ΔF/F0 Traces Normalized (Active Only)"
-    "Calcium Peaks Amplitudes (Deconvolved ΔF/F0)",
-    "Calcium Peaks Frequencies (Deconvolved ΔF/F0)",
-    "Calcium Peaks Amplitudes vs Frequencies (Deconvolved ΔF/F0)",
-    "Calcium Peaks Inter-event Interval (Deconvolved ΔF/F0)",
+    "Calcium Denoised ΔF/F0 Traces with Peaks",
+    "Calcium Denoised ΔF/F0 Traces with Peaks and Thresholds (1 ROI)",
+    "Calcium Denoised ΔF/F0 Normalized Traces with Peaks",
+    "Calcium Denoised ΔF/F0 Traces Normalized (Active Only)"
+    "Calcium Peaks Amplitudes (Denoised ΔF/F0)",
+    "Calcium Peaks Frequencies (Denoised ΔF/F0)",
+    "Calcium Peaks Amplitudes vs Frequencies (Denoised ΔF/F0)",
+    "Calcium Peaks Inter-event Interval (Denoised ΔF/F0)",
     "Calcium Peaks Raster plot Colored by ROI",
     "Calcium Peaks Raster plot Colored by Amplitude",
     "Calcium Peaks Raster plot Colored by Amplitude with Colorbar",
@@ -912,7 +912,7 @@ ACTIVE_ONLY_PLOTS: set[str] = {
     "Calcium Functional Connectivity",
     "Inferred Spikes (Thresholded)",
     "Inferred Spikes Raw (with Thresholds - 1 ROI)",
-    "Inferred Spikes (Thresholded) with Deconvolved ΔF/F0 Traces",
+    "Inferred Spikes (Thresholded) with Denoised ΔF/F0 Traces",
     "Inferred Spikes (Thresholded) Normalized",
     "Inferred Spikes (Thresholded) Normalized (Active Only)",
     "Inferred Spikes (Thresholded) Normalized with Network Bursts",

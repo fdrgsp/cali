@@ -17,7 +17,7 @@ from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._model import FOV, ROI
 
 from ._plot_calcium_traces_correlation import (
-    _get_dec_dff_correlation_matrix_from_db,
+    _get_den_dff_correlation_matrix_from_db,
 )
 from ._plot_inferred_spike_synchrony import (
     _get_spike_synchrony_matrix_from_db,
@@ -549,7 +549,7 @@ def _plot_sorted_spike_max_lag_correlation(
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
 
 
-def _plot_sorted_dec_dff_correlation(
+def _plot_sorted_den_dff_correlation(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -584,18 +584,18 @@ def _plot_sorted_dec_dff_correlation(
 
     if len(all_sorted) < 2:
         plot.setTitle(
-            "Pairwise Pearson Correlation (Zero-Lag - Deconvolved DF/F) "
+            "Pairwise Pearson Correlation (Zero-Lag - Denoised DF/F) "
             "(Sorted - Need ≥2 ROIs)"
         )
         return
 
     # Get correlation matrix from database
-    corr_matrix, roi_labels = _get_dec_dff_correlation_matrix_from_db(
+    corr_matrix, roi_labels = _get_den_dff_correlation_matrix_from_db(
         engine, fov_name, run_id
     )
 
     if corr_matrix is None or roi_labels is None:
-        plot.setTitle("Deconvolved DF/F Correlation (Sorted - No data)")
+        plot.setTitle("Denoised DF/F Correlation (Sorted - No data)")
         return
 
     # Reorder matrix according to sorted ROIs
@@ -604,7 +604,7 @@ def _plot_sorted_dec_dff_correlation(
     )
 
     if reordered_matrix is None or len(final_rois) < 2:
-        plot.setTitle("Deconvolved DF/F Correlation (Sorted - Insufficient ROIs)")
+        plot.setTitle("Denoised DF/F Correlation (Sorted - Insufficient ROIs)")
         return
 
     # Plot the heatmap (Pearson correlation ranges from -1 to 1)
@@ -641,7 +641,7 @@ def _plot_sorted_dec_dff_correlation(
         non_stim_median = np.nan
 
     title = (
-        f"Pairwise Pearson Correlation (Zero-Lag - Deconvolved DF/F) "
+        f"Pairwise Pearson Correlation (Zero-Lag - Denoised DF/F) "
         f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     )
 
@@ -685,7 +685,7 @@ def _plot_sorted_dec_dff_correlation(
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
 
 
-def _plot_sorted_dec_dff_correlation_windowed_by_stim(
+def _plot_sorted_den_dff_correlation_windowed_by_stim(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -798,10 +798,10 @@ def _plot_sorted_dec_dff_correlation_windowed_by_stim(
                 )
             ).first()
 
-            if trace is None or trace.dec_dff is None:
+            if trace is None or trace.den_dff is None:
                 continue
 
-            roi_data[roi.label_value] = np.array(trace.dec_dff)
+            roi_data[roi.label_value] = np.array(trace.den_dff)
 
     if len(roi_data) < 2:
         plot.setTitle("Windowed Correlation (Sorted - Insufficient trace data)")
@@ -876,7 +876,7 @@ def _plot_sorted_dec_dff_correlation_windowed_by_stim(
 
     title = (
         f"Pairwise Pearson Correlation (Stim Windows ±{int(window_ms)}ms - "
-        f"Deconvolved DF/F) (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
+        f"Denoised DF/F) (Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     )
 
     # Add medians
@@ -919,7 +919,7 @@ def _plot_sorted_dec_dff_correlation_windowed_by_stim(
     _attach_heatmap_interaction(widget, plot, title, vb, final_rois, reordered_matrix)
 
 
-def _plot_sorted_dec_dff_correlation_windowed_non_stim(
+def _plot_sorted_den_dff_correlation_windowed_non_stim(
     widget: _SingleWellGraphWidget,
     engine: Engine,
     fov_name: str,
@@ -1036,10 +1036,10 @@ def _plot_sorted_dec_dff_correlation_windowed_non_stim(
                 )
             ).first()
 
-            if trace is None or trace.dec_dff is None:
+            if trace is None or trace.den_dff is None:
                 continue
 
-            roi_data[roi.label_value] = np.array(trace.dec_dff)
+            roi_data[roi.label_value] = np.array(trace.den_dff)
 
     if len(roi_data) < 2:
         plot.setTitle(
@@ -1138,7 +1138,7 @@ def _plot_sorted_dec_dff_correlation_windowed_non_stim(
 
     title = (
         f"Pairwise Pearson Correlation (Non-Stim Periods, Excluding "
-        f"±{int(window_ms)}ms - Deconvolved DF/F) (Sorted: {n_stim} Stim, "
+        f"±{int(window_ms)}ms - Denoised DF/F) (Sorted: {n_stim} Stim, "
         f"{n_non_stim} Non-Stim)"
     )
 

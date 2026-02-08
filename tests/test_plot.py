@@ -183,7 +183,7 @@ def test_multiple_runs(
 ) -> None:
     """Test that plots work with different runs."""
     # Test a representative plot with each run
-    plot_name = "Calcium Deconvolved ΔF/F0 Traces with Peaks"
+    plot_name = "Calcium Denoised ΔF/F0 Traces with Peaks"
 
     for run_id in run_ids:
         # Get an FOV that has data for this run

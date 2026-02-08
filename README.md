@@ -159,7 +159,7 @@ The Detection tab allows the user to set the parameters used to segment cells an
 The Extraction tab allows the user to configure fluorescence trace extraction from the segmented ROIs. Parameters include:
 
 - **Neuropil correction**: enable/disable and set neuropil mask parameters
-- **ΔF/F and OASIS deconvolution**:
+- **ΔF/F and OASIS Deconvolution**:
   - window size for ΔF/F calculation
   - percentile for ΔF/F baseline
   - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
@@ -213,7 +213,7 @@ Plots are interactive (zoom/pan). Clicking on a trace or data point highlights t
 
 Available visualizations include:
 
-- **Calcium Traces**: raw, ΔF/F, deconvolved ΔF/F, neuropil traces, and detected calcium peaks per ROI.
+- **Calcium Traces**: raw, ΔF/F, denoised ΔF/F, neuropil traces, and detected calcium peaks per ROI.
 - **Inferred Spikes**: raw and thresholded inferred spike trains from OASIS.
 - **Raster Plots**: raster plots of calcium peaks and inferred spikes across all ROIs.
 - **Calcium Metrics**: amplitude, frequency, and other per-ROI metrics.
@@ -260,14 +260,14 @@ The baseline $F_0(t)$ is computed by taking the 10th percentile of the fluoresce
 - **Window Size** (s): size of the sliding window for baseline calculation.
 - **Percentile**: percentile of fluorescence values used as the baseline F₀ (default: 10).
 
-#### OASIS Deconvolution
+#### OASIS Denoising
 
-**Purpose**: `cali` uses the [OASIS algorithm](https://github.com/j-friedrich/OASIS) (Friedrich et al., 2017) to deconvolve the ΔF/F signal and infer the underlying spike activity.
+**Purpose**: `cali` uses the [OASIS algorithm](https://github.com/j-friedrich/OASIS) (Friedrich et al., 2017) to denoise the ΔF/F signal and infer the underlying spike activity.
 
 For each ROI, `OASIS` is used to:
 
 - estimate the noise level of the ΔF/F trace (later used for calcium peak detection)
-- obtain both a deconvolved (denoised) ΔF/F trace and an inferred spike train.
+- obtain both a denoised ΔF/F trace and an inferred spike train.
 
 **GUI Parameters**  
 Currently, only the following parameter is exposed in the GUI:
@@ -290,7 +290,7 @@ All other `OASIS` parameters are currently kept at default values:
 
 #### Calcium Peak Detection
 
-**Purpose**: Identify significant calcium transients (peaks) in the deconvolved ΔF/F trace.
+**Purpose**: Identify significant calcium transients (peaks) in the denoised ΔF/F trace.
 
 **Calculation**: Peaks are detected using [`scipy.signal.find_peaks`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html).
 
@@ -310,7 +310,7 @@ The **minimum distance** between peaks is specified in milliseconds and determin
 
 After detection, the following metrics are computed per ROI:
 
-- Peak amplitudes (deconvolved ΔF/F values at peak locations; a.u.)
+- Peak amplitudes (denoised ΔF/F values at peak locations; a.u.)
 - Calcium peak event frequency: number of peaks per second
 - Inter-event intervals (IEI): time between consecutive peaks
 
@@ -408,11 +408,11 @@ Two modes are available:
 
 #### Pairwise Pearson Correlation on Calcium Traces
 
-**Purpose**: Measure linear relationships between calcium activity patterns across ROIs using ΔF/F or deconvolved ΔF/F traces.
+**Purpose**: Measure linear relationships between calcium activity patterns across ROIs using ΔF/F or denoised ΔF/F traces.
 
 **Calculation**:
 
-1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or deconvolved (denoised) by OASIS)
+1. **Input**: ΔF/F traces from all ROIs (continuous raw calcium signals or denoised by OASIS)
 2. **Z-score normalization**: Each trace is transformed to have zero mean and unit variance:
 
    $$z_i(t) = \frac{x_i(t) - \bar{x}_i}{\sigma_i}$$
