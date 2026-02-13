@@ -31,6 +31,12 @@ uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+ht
 
 ***NOTE**: swap `cu130` with `cu126` or `cu128` for different CUDA versions and `cp4` with `cp3` to use Cellpose 3.x.*
 
+***NOTE**: [NVIDIA Drivers](https://www.nvidia.com/en-us/drivers/) should be already installed. You can check what version of cuda you need by running:*
+
+```bash
+nvidia-smi
+```
+
 <br>
 
 ## To install
