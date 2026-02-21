@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from cali.analysis._cluster_analysis import compute_cluster_analysis
 from cali.analysis._fov_metrics import (
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
@@ -179,6 +180,27 @@ def compute_fov_analysis(
 
     # 2. Zero-lag correlation on denoised ΔF/F traces
     calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
+
+    # Cluster analysis on denoised ΔF/F correlation matrix
+    cluster_labels = None
+    cluster_method_used = None
+    cluster_n = None
+    cluster_silhouette = None
+    cluster_order = None
+
+    if calcium_den_dff_corr_matrix is not None and len(roi_labels) >= 3:
+        cluster_result = compute_cluster_analysis(
+            corr_matrix=calcium_den_dff_corr_matrix,
+            method=analysis_settings.cluster_method,
+            n_clusters=analysis_settings.cluster_n_clusters,
+            max_k=analysis_settings.cluster_max_k,
+        )
+        if cluster_result is not None:
+            cluster_labels = cluster_result.labels
+            cluster_method_used = analysis_settings.cluster_method
+            cluster_n = cluster_result.n_clusters
+            cluster_silhouette = cluster_result.silhouette_score
+            cluster_order = cluster_result.order
 
     # Convert milliseconds to frames using frame_rate
     frame_rate = analysis_settings.frame_rate  # frames per second
@@ -436,6 +458,12 @@ def compute_fov_analysis(
             if calcium_population_activity_raw is not None
             else None
         ),
+        # Cluster analysis results
+        cluster_labels=cluster_labels,
+        cluster_method=cluster_method_used,
+        cluster_n_clusters=cluster_n,
+        cluster_silhouette_score=cluster_silhouette,
+        cluster_order=cluster_order,
     )
 
     return fov_analysis

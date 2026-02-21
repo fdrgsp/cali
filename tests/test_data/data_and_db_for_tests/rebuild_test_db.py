@@ -125,6 +125,9 @@ def rebuild_test_database() -> None:
                 enable_rising_edge_analysis=as_config.get(
                     "enable_rising_edge_analysis", True
                 ),
+                cluster_method=as_config.get("cluster_method", "hierarchical"),
+                cluster_n_clusters=as_config.get("cluster_n_clusters", 0),
+                cluster_max_k=as_config.get("cluster_max_k", 10),
                 frame_rate=as_config["frame_rate"],
                 experiment_type=as_config["experiment_type"],
                 led_power_equation=as_config.get("led_power_equation"),

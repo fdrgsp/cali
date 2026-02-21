@@ -39,6 +39,9 @@ from cali._constants import (
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
+    DEFAULT_CLUSTER_MAX_K,
+    DEFAULT_CLUSTER_METHOD,
+    DEFAULT_CLUSTER_N_CLUSTERS,
     DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
@@ -1108,6 +1111,12 @@ class AnalysisSettings(SQLModel, table=True):
         Whether to compute CCG on spike rising edges
     frame_rate : float
         Acquisition frame rate (frames per second)
+    cluster_method : str
+        Clustering method for activity patterns (e.g., "kmeans", "hierarchical")
+    cluster_n_clusters : int
+        Number of clusters for clustering method
+    cluster_max_k : int
+        Maximum number of clusters to consider for methods that determine optimal k
     led_power_equation : str | None
         Equation for LED power calculation (evoked experiments)
     led_pulse_duration : float | None
@@ -1154,6 +1163,11 @@ class AnalysisSettings(SQLModel, table=True):
     spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
     ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
     enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
+
+    # Cluster analysis settings
+    cluster_method: str = DEFAULT_CLUSTER_METHOD
+    cluster_n_clusters: int = DEFAULT_CLUSTER_N_CLUSTERS
+    cluster_max_k: int = DEFAULT_CLUSTER_MAX_K
 
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
 
@@ -1205,6 +1219,9 @@ class AnalysisSettings(SQLModel, table=True):
             and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
             and self.ccg_n_shuffles == other.ccg_n_shuffles
             and self.enable_rising_edge_analysis == other.enable_rising_edge_analysis
+            and self.cluster_method == other.cluster_method
+            and self.cluster_n_clusters == other.cluster_n_clusters
+            and self.cluster_max_k == other.cluster_max_k
             and self.frame_rate == other.frame_rate
             and self.led_power_equation == other.led_power_equation
             and self.led_pulse_duration == other.led_pulse_duration
@@ -1235,6 +1252,9 @@ class AnalysisSettings(SQLModel, table=True):
                 self.spikes_sync_jitter_window,
                 self.ccg_n_shuffles,
                 self.enable_rising_edge_analysis,
+                self.cluster_method,
+                self.cluster_n_clusters,
+                self.cluster_max_k,
                 self.frame_rate,
                 self.led_power_equation,
                 self.led_pulse_duration,
@@ -1855,6 +1875,16 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         This is the smoothed trace used for burst detection and plotting.
     calcium_population_activity_raw : list[float] | None
         Raw (unsmoothed) mean calcium population activity (denoised ΔF/F, raw values)
+    cluster_labels : list[int] | None
+        Cluster labels for each active ROI from clustering analysis
+    cluster_method : str | None
+        Clustering method used (e.g., "kmeans", "hierarchical")
+    cluster_n_clusters : int | None
+        Number of clusters identified
+    cluster_silhouette_score : float | None
+        Silhouette score for the clustering result (higher is better)
+    cluster_order : list[int] | None
+        Ordered list of active ROI label_values based on clustering (for plotting)
     fov : FOV
         Parent FOV
     analysis_result : CaliResult
@@ -1950,6 +1980,13 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_population_activity_raw: list[float] | None = Field(
         default=None, sa_column=Column(JSON)
     )
+
+    # Cluster analysis results
+    cluster_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    cluster_method: str | None = Field(default=None)
+    cluster_n_clusters: int | None = Field(default=None)
+    cluster_silhouette_score: float | None = Field(default=None)
+    cluster_order: list[int] | None = Field(default=None, sa_column=Column(JSON))
 
     # Relationships
     fov: "FOV" = Relationship(back_populates="fov_analysis_history")

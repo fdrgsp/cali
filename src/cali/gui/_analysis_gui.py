@@ -30,10 +30,15 @@ from superqt.utils import signals_blocked
 from cali._constants import (
     CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
+    CLUSTER_LABELS,
+    CLUSTER_METHOD_HIERARCHICAL,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_BURST_THRESHOLD,
     DEFAULT_CCG_N_SHUFFLES,
+    DEFAULT_CLUSTER_MAX_K,
+    DEFAULT_CLUSTER_METHOD,
+    DEFAULT_CLUSTER_N_CLUSTERS,
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
@@ -74,6 +79,7 @@ class AnalysisSettingsData:
 
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
+    cluster_data: ClusterData | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
     threads: int = max((os.cpu_count() or 1) - 2, 1)
@@ -120,6 +126,15 @@ class SpikeData:
     synchrony_jitter: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # milliseconds
     ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
     enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
+
+
+@dataclass(frozen=True)
+class ClusterData:
+    """Data structure to hold the cluster analysis settings."""
+
+    cluster_method: str = DEFAULT_CLUSTER_METHOD
+    cluster_n_clusters: int = DEFAULT_CLUSTER_N_CLUSTERS
+    cluster_max_k: int = DEFAULT_CLUSTER_MAX_K
 
 
 class _AnalysisGUI(QWidget):
@@ -193,29 +208,32 @@ class _AnalysisGUI(QWidget):
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
+        # Cluster Analysis
+        self._export_group.add_section_label("Cluster Analysis", 0, 0)
+        self._export_group.add_option(CLUSTER_LABELS, 1, 0)
         # Calcium correlations
-        self._export_group.add_section_label("Calcium Correlations", 0, 0)
-        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 2, 0)
+        self._export_group.add_section_label("Calcium Correlations", 2, 0)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 3, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 4, 0)
         # Inferred Spikes - Thresholded Binary
-        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 3, 0)
-        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 4, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 5, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 6, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 7, 0)
+        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 5, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 6, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 7, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 8, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 9, 0)
         # Inferred Spikes - Thresholded Rising Edges
-        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 8, 0)
+        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 10, 0)
         self._export_group.add_option(
-            INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 9, 0, checked=False
+            INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 11, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 10, 0, checked=False
+            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 12, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 11, 0, checked=False
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 13, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 12, 0, checked=False
+            INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 14, 0, checked=False
         )
         self._export_group.add_stretch("horizontal")
 
@@ -284,6 +302,7 @@ class _AnalysisGUI(QWidget):
         return AnalysisSettingsData(
             calcium_peaks_data=self._calcium_peaks_wdg.value(),
             spikes_data=self._spike_wdg.value(),
+            cluster_data=self._calcium_peaks_wdg.cluster_value(),
             experiment_type_data=self._experiment_type_wdg.value(),
             frame_rate=self._metadata_wdg.value(),
             threads=self._threads.value(),
@@ -298,6 +317,8 @@ class _AnalysisGUI(QWidget):
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
             self._spike_wdg.setValue(value.spikes_data)
+        if value.cluster_data is not None:
+            self._calcium_peaks_wdg.set_cluster_value(value.cluster_data)
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
@@ -340,6 +361,7 @@ class _AnalysisGUI(QWidget):
         # Extract nested data with defaults
         peaks_data = settings.calcium_peaks_data
         spikes_data = settings.spikes_data
+        cluster_data = settings.cluster_data
         experiment_type_data = settings.experiment_type_data
 
         return AnalysisSettings(
@@ -408,6 +430,17 @@ class _AnalysisGUI(QWidget):
                 spikes_data.enable_rising_edge_analysis
                 if spikes_data
                 else DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
+            ),
+            cluster_method=(
+                cluster_data.cluster_method if cluster_data else DEFAULT_CLUSTER_METHOD
+            ),
+            cluster_n_clusters=(
+                cluster_data.cluster_n_clusters
+                if cluster_data
+                else DEFAULT_CLUSTER_N_CLUSTERS
+            ),
+            cluster_max_k=(
+                cluster_data.cluster_max_k if cluster_data else DEFAULT_CLUSTER_MAX_K
             ),
             experiment_type=(
                 experiment_type_data.experiment_type
@@ -827,6 +860,52 @@ class _CalciumPeaksWidget(QWidget):
         # burst widget
         self._burst_wdg = _BurstWidget(self)
 
+        # Cluster analysis - number of clusters
+        self._n_clusters_wdg = QWidget(self)
+        self._n_clusters_wdg.setToolTip(
+            "Number of clusters for Hierarchical (Ward's linkage) clustering on the "
+            "pairwise denoised ΔF/F correlation matrix.\n\n"
+            "• 0 (Auto): Automatically detect the optimal K by scanning K = 2 … Max K\n"
+            "  and selecting the K with the highest average silhouette score.\n"
+            "• Positive integer: Force exactly that many clusters, skipping the "
+            "scan.\n\n"
+            "When a fixed number is set, 'Auto-detect Max K' is disabled."
+        )
+        self._n_clusters_lbl = QLabel("Cluster N Clusters:", self._n_clusters_wdg)
+        self._n_clusters_lbl.setSizePolicy(*FIXED)
+        self._n_clusters_spin = QSpinBox(self._n_clusters_wdg)
+        self._n_clusters_spin.setRange(0, 50)
+        self._n_clusters_spin.setValue(DEFAULT_CLUSTER_N_CLUSTERS)
+        self._n_clusters_spin.setSpecialValueText("Auto")
+        n_clusters_layout = QHBoxLayout(self._n_clusters_wdg)
+        n_clusters_layout.setContentsMargins(0, 0, 0, 0)
+        n_clusters_layout.setSpacing(5)
+        n_clusters_layout.addWidget(self._n_clusters_lbl)
+        n_clusters_layout.addWidget(self._n_clusters_spin)
+
+        # Cluster analysis - auto-detect max k
+        self._max_k_wdg = QWidget(self)
+        self._max_k_wdg.setToolTip(
+            "Upper bound of the silhouette-score scan when 'Cluster N Clusters' is "
+            "0 (Auto).\n\n"
+            "The algorithm evaluates every K from 2 up to this value and picks the one "
+            "with the highest score. Increasing this allows finding more fine-grained "
+            "structure at the cost of longer computation.\n\n"
+            "Has no effect when a fixed cluster count is specified."
+        )
+        self._max_k_lbl = QLabel("Auto-detect Max K:", self._max_k_wdg)
+        self._max_k_lbl.setSizePolicy(*FIXED)
+        self._max_k_spin = QSpinBox(self._max_k_wdg)
+        self._max_k_spin.setRange(2, 50)
+        self._max_k_spin.setValue(DEFAULT_CLUSTER_MAX_K)
+        max_k_layout = QHBoxLayout(self._max_k_wdg)
+        max_k_layout.setContentsMargins(0, 0, 0, 0)
+        max_k_layout.setSpacing(5)
+        max_k_layout.addWidget(self._max_k_lbl)
+        max_k_layout.addWidget(self._max_k_spin)
+
+        self._n_clusters_spin.valueChanged.connect(self._on_n_clusters_changed)
+
         # main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -835,6 +914,8 @@ class _CalciumPeaksWidget(QWidget):
         layout.addWidget(self._peaks_distance_wdg)
         layout.addWidget(self._peaks_prominence_wdg)
         layout.addWidget(self._burst_wdg)
+        layout.addWidget(self._n_clusters_wdg)
+        layout.addWidget(self._max_k_wdg)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -846,6 +927,8 @@ class _CalciumPeaksWidget(QWidget):
         self._burst_wdg._burst_threshold_lbl.setFixedWidth(width)
         self._burst_wdg._burst_min_threshold_label.setFixedWidth(width)
         self._burst_wdg._burst_blur_label.setFixedWidth(width)
+        self._n_clusters_lbl.setFixedWidth(width)
+        self._max_k_lbl.setFixedWidth(width)
 
     def value(self) -> CalciumPeaksData:
         """Get the current values of the widget."""
@@ -882,6 +965,29 @@ class _CalciumPeaksWidget(QWidget):
                 DEFAULT_BURST_GAUSS_SIGMA,
             )
         )
+        self._n_clusters_spin.setValue(DEFAULT_CLUSTER_N_CLUSTERS)
+        self._max_k_spin.setValue(DEFAULT_CLUSTER_MAX_K)
+
+    def cluster_value(self) -> ClusterData:
+        """Get the current cluster settings."""
+        return ClusterData(
+            cluster_method=CLUSTER_METHOD_HIERARCHICAL,
+            cluster_n_clusters=self._n_clusters_spin.value(),
+            cluster_max_k=self._max_k_spin.value(),
+        )
+
+    def set_cluster_value(self, value: ClusterData) -> None:
+        """Set the cluster settings."""
+        self._n_clusters_spin.setValue(value.cluster_n_clusters)
+        self._max_k_spin.setValue(value.cluster_max_k)
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_n_clusters_changed(self, value: int) -> None:
+        """Enable Max K only when auto-detection is active (N Clusters = 0)."""
+        enabled = value == 0
+        self._max_k_spin.setEnabled(enabled)
+        self._max_k_lbl.setEnabled(enabled)
 
 
 class _SpikeThresholdWidget(QWidget):
