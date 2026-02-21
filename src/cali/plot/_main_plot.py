@@ -29,6 +29,7 @@ from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
 from ._single_wells_plots.cluster._plot_cluster_analysis import (
     _plot_cluster_colored_raster,
     _plot_cluster_colored_traces,
+    _plot_cluster_connectivity_graph,
     _plot_cluster_sorted_correlation_heatmap,
 )
 from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
@@ -464,7 +465,7 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Functional Connectivity",
+    name="Calcium Functional Connectivity (Pearson Correlation)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_connectivity_network_data,
     category="Calcium Correlation Analysis",
@@ -472,6 +473,13 @@ AnalysisProduct(
 )
 
 # Cluster Analysis Group
+AnalysisProduct(
+    name="Calcium Functional Connectivity (Clustering)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cluster_connectivity_graph,
+    category="Cluster Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 AnalysisProduct(
     name="Cluster-Sorted Correlation Heatmap (Denoised ΔF/F0)",
     group=AnalysisGroup.SINGLE_WELL,

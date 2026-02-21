@@ -62,7 +62,7 @@ def plot_connectivity_graph(
         roi_positions=roi_positions,
     )
     plot.addItem(graph_item)
-    plot.setTitle("Functional Connectivity")
+    plot.setTitle("Functional Connectivity (Pearson Correlation)")
     plot.setLabel("bottom", "")
     plot.setLabel("left", "")
 
@@ -518,7 +518,7 @@ def _plot_connectivity_network_data(
         plot = widget.plot_item
         assert plot is not None
         plot.clear()
-        plot.setTitle("Functional Connectivity (Need ≥2 ROIs)")
+        plot.setTitle("Functional Connectivity (Pearson Correlation, Need ≥2 ROIs)")
         plot.setLabel("bottom", "")
         plot.setLabel("left", "")
         return

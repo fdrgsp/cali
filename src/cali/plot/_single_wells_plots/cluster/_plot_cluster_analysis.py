@@ -434,7 +434,156 @@ def _plot_cluster_colored_raster(
     plot.setProperty("cluster_raster_click_handler", _on_raster_clicked)
 
 
-# ---- Plot 3: Cluster-Colored Traces ---- #
+# ---- Plot 3: Cluster Connectivity Graph ---- #
+
+
+def _plot_cluster_connectivity_graph(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None = None,
+    *,
+    run_id: int,
+) -> None:
+    """Plot ROIs as a connectivity-style graph colored by cluster assignment.
+
+    An alternative to the Pearson-threshold connectivity graph: instead of
+    drawing edges between correlated ROI pairs, each ROI node is colored by
+    its cluster label. No threshold parameter is needed — cluster membership
+    conveys functional grouping directly. Node positions are spatial (using
+    ROI centroids) when available, otherwise arranged in a circle.
+    """
+    from cali.plot._single_wells_plots.correlation._plot_connectivity import (
+        _compute_circular_layout,
+        _compute_spatial_layout,
+        _get_roi_positions,
+    )
+
+    plot = widget.plot_item
+    assert plot is not None
+
+    plot.clear()
+    disconnect_hover_handlers(plot)
+    vb = plot.getViewBox()
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    vb.setAspectLocked(True)
+    vb.enableAutoRange(x=True, y=True)
+
+    if hasattr(widget, "legend") and widget.legend is not None:
+        widget.legend.clear()
+        widget.legend.setVisible(False)
+
+    (
+        _,
+        roi_labels,
+        cluster_labels,
+        _,
+        _method,
+        n_clusters,
+        sil_score,
+    ) = _get_cluster_data_from_db(engine, fov_name, run_id)
+
+    if cluster_labels is None or roi_labels is None:
+        plot.setTitle("Functional Connectivity (Clustering) - No cluster data")
+        plot.setLabel("bottom", "")
+        plot.setLabel("left", "")
+        return
+
+    # Filter to selected ROIs
+    roi_labels_f: list[int]
+    cluster_labels_f: list[int]
+    if rois is not None:
+        pairs = [
+            (lbl, cl) for lbl, cl in zip(roi_labels, cluster_labels) if lbl in rois
+        ]
+        if len(pairs) >= 2:
+            roi_labels_f = [lbl for lbl, _ in pairs]
+            cluster_labels_f = [cl for _, cl in pairs]
+        else:
+            roi_labels_f, cluster_labels_f = roi_labels, cluster_labels
+    else:
+        roi_labels_f, cluster_labels_f = roi_labels, cluster_labels
+
+    n = len(roi_labels_f)
+    if n < 2:
+        plot.setTitle("Functional Connectivity (Clustering) - Need >=2 ROIs")
+        return
+
+    # Node positions: spatial if centroid data available, else circular
+    roi_positions = _get_roi_positions(engine, fov_name, roi_labels_f)
+    pos = (
+        _compute_spatial_layout(roi_positions)
+        if roi_positions is not None
+        else _compute_circular_layout(n)
+    )
+
+    # Node appearance: each cluster gets a distinct color
+    brushes = [pg.mkBrush(*_get_cluster_color(cl)) for cl in cluster_labels_f]
+    pens = [pg.mkPen(50, 50, 50, 255, width=1.0)] * n
+    text_labels = [str(lbl) for lbl in roi_labels_f]
+
+    graph_item = pg.GraphItem()
+    graph_item.setData(
+        pos=pos,
+        adj=np.empty((0, 2), dtype=int),  # no edges — color conveys grouping
+        size=15,
+        symbol="o",
+        symbolBrush=brushes,
+        symbolPen=pens,
+        pxMode=True,
+        texts=text_labels,
+        textSize="10pt",
+        data=list(roi_labels_f),
+    )
+    plot.addItem(graph_item)
+
+    # Cluster legend
+    unique_clusters = sorted(set(cluster_labels_f))
+    if unique_clusters:
+        widget.legend.clear()
+        for c in unique_clusters:
+            color = _get_cluster_color(c)
+            widget.legend.addItem(
+                pg.ScatterPlotItem(
+                    pen=pg.mkPen(None),
+                    brush=pg.mkBrush(*color),
+                    symbol="o",
+                    size=10,
+                ),
+                f"Cluster {c}",
+            )
+        widget.legend.setVisible(True)
+
+    k_str = n_clusters if n_clusters is not None else "?"
+    sil_str = f"{sil_score:.3f}" if sil_score is not None else "N/A"
+    plot.setTitle(
+        f"Functional Connectivity (Clustering, k={k_str}, silhouette={sil_str})"
+    )
+    plot.setLabel("bottom", "")
+    plot.setLabel("left", "")
+    for axis in ("bottom", "left"):
+        ax = plot.getAxis(axis)
+        ax.setTicks([])
+        ax.setStyle(showValues=False)
+
+    # Click handler: select the clicked ROI
+    scatter = graph_item.scatter
+    old_handler = plot.property("cluster_connectivity_click_handler")
+    if old_handler is not None:
+        with contextlib.suppress(TypeError, RuntimeError):
+            scatter.sigClicked.disconnect(old_handler)
+
+    def on_node_click(scatter_plot: pg.ScatterPlotItem, points: list) -> None:
+        if points:
+            roi_label = points[0].data()
+            if roi_label is not None:
+                widget.roiSelected.emit([str(roi_label)])
+
+    scatter.sigClicked.connect(on_node_click)
+    plot.setProperty("cluster_connectivity_click_handler", on_node_click)
+
+
+# ---- Plot 4: Cluster-Colored Traces ---- #
 
 
 def _plot_cluster_colored_traces(

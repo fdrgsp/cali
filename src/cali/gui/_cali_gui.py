@@ -47,7 +47,6 @@ from cali._constants import (
 from cali.gui._analysis_gui import (
     AnalysisSettingsData,
     CalciumPeaksData,
-    ClusterData,
     ExperimentTypeData,
     SpikeData,
 )
@@ -514,7 +513,15 @@ class CaliGui(QMainWindow):
             analysis = settings.get("analysis", {})
             calcium_peaks_data = analysis.get("calcium_peaks_data", {})
             spikes_data = analysis.get("spikes_data", {})
-            cluster_data = analysis.get("cluster_data", {})
+            # backward compat: cluster fields may be in a legacy "cluster_data" key
+            legacy_cluster = analysis.get("cluster_data", {})
+            if legacy_cluster and calcium_peaks_data is not None:
+                calcium_peaks_data.setdefault(
+                    "cluster_n_clusters", legacy_cluster.get("cluster_n_clusters", 0)
+                )
+                calcium_peaks_data.setdefault(
+                    "cluster_max_k", legacy_cluster.get("cluster_max_k", 10)
+                )
             experiment_type_data = analysis.get("experiment_type_data", {})
             analysis_export_options = analysis.get("export_options")
             analysis_export_enabled = analysis.get("export_enabled", False)
@@ -533,9 +540,6 @@ class CaliGui(QMainWindow):
                         else None
                     ),
                     spikes_data=(SpikeData(**spikes_data) if spikes_data else None),
-                    cluster_data=(
-                        ClusterData(**cluster_data) if cluster_data else None
-                    ),
                     experiment_type_data=(
                         ExperimentTypeData(**experiment_type_data)
                         if experiment_type_data
@@ -2135,7 +2139,6 @@ class CaliGui(QMainWindow):
             if result.analysis_settings_id:
                 from cali.gui._analysis_gui import (
                     CalciumPeaksData,
-                    ClusterData,
                     ExperimentTypeData,
                     SpikeData,
                 )
@@ -2165,6 +2168,8 @@ class CaliGui(QMainWindow):
                             burst_threshold=a_settings.calcium_burst_threshold,
                             burst_min_duration=a_settings.calcium_burst_min_duration,
                             burst_blur_sigma=a_settings.calcium_burst_gaussian_sigma,
+                            cluster_n_clusters=a_settings.cluster_n_clusters,
+                            cluster_max_k=a_settings.cluster_max_k,
                         ),
                         spikes_data=SpikeData(
                             spike_threshold=a_settings.spike_threshold_value,
@@ -2176,11 +2181,6 @@ class CaliGui(QMainWindow):
                             synchrony_jitter=a_settings.spikes_sync_jitter_window,
                             ccg_n_shuffles=a_settings.ccg_n_shuffles,
                             enable_rising_edge_analysis=a_settings.enable_rising_edge_analysis,
-                        ),
-                        cluster_data=ClusterData(
-                            cluster_method=a_settings.cluster_method,
-                            cluster_n_clusters=a_settings.cluster_n_clusters,
-                            cluster_max_k=a_settings.cluster_max_k,
                         ),
                         threads=a_settings.threads,
                     )

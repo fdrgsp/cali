@@ -31,7 +31,6 @@ from cali._constants import (
     CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
     CLUSTER_LABELS,
-    CLUSTER_METHOD_HIERARCHICAL,
     DEFAULT_BURST_GAUSS_SIGMA,
     DEFAULT_BURST_THRESHOLD,
     DEFAULT_CALCIUM_BURST_THRESHOLD,
@@ -79,7 +78,6 @@ class AnalysisSettingsData:
 
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
-    cluster_data: ClusterData | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
     threads: int = max((os.cpu_count() or 1) - 2, 1)
@@ -111,6 +109,8 @@ class CalciumPeaksData:
     burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
     burst_blur_sigma: float = DEFAULT_BURST_GAUSS_SIGMA  # milliseconds
+    cluster_n_clusters: int = DEFAULT_CLUSTER_N_CLUSTERS
+    cluster_max_k: int = DEFAULT_CLUSTER_MAX_K
 
 
 @dataclass(frozen=True)
@@ -126,15 +126,6 @@ class SpikeData:
     synchrony_jitter: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # milliseconds
     ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
     enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
-
-
-@dataclass(frozen=True)
-class ClusterData:
-    """Data structure to hold the cluster analysis settings."""
-
-    cluster_method: str = DEFAULT_CLUSTER_METHOD
-    cluster_n_clusters: int = DEFAULT_CLUSTER_N_CLUSTERS
-    cluster_max_k: int = DEFAULT_CLUSTER_MAX_K
 
 
 class _AnalysisGUI(QWidget):
@@ -208,13 +199,13 @@ class _AnalysisGUI(QWidget):
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
-        # Cluster Analysis
-        self._export_group.add_section_label("Cluster Analysis", 0, 0)
-        self._export_group.add_option(CLUSTER_LABELS, 1, 0)
         # Calcium correlations
-        self._export_group.add_section_label("Calcium Correlations", 2, 0)
-        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 3, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 4, 0)
+        self._export_group.add_section_label("Calcium Correlations", 0, 0)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 2, 0)
+        # Cluster Analysis
+        self._export_group.add_section_label("Cluster Analysis", 3, 0)
+        self._export_group.add_option(CLUSTER_LABELS, 4, 0)
         # Inferred Spikes - Thresholded Binary
         self._export_group.add_section_label("Inferred Spikes (Thresholded)", 5, 0)
         self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 6, 0)
@@ -302,7 +293,6 @@ class _AnalysisGUI(QWidget):
         return AnalysisSettingsData(
             calcium_peaks_data=self._calcium_peaks_wdg.value(),
             spikes_data=self._spike_wdg.value(),
-            cluster_data=self._calcium_peaks_wdg.cluster_value(),
             experiment_type_data=self._experiment_type_wdg.value(),
             frame_rate=self._metadata_wdg.value(),
             threads=self._threads.value(),
@@ -317,8 +307,6 @@ class _AnalysisGUI(QWidget):
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
             self._spike_wdg.setValue(value.spikes_data)
-        if value.cluster_data is not None:
-            self._calcium_peaks_wdg.set_cluster_value(value.cluster_data)
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
@@ -361,7 +349,6 @@ class _AnalysisGUI(QWidget):
         # Extract nested data with defaults
         peaks_data = settings.calcium_peaks_data
         spikes_data = settings.spikes_data
-        cluster_data = settings.cluster_data
         experiment_type_data = settings.experiment_type_data
 
         return AnalysisSettings(
@@ -431,16 +418,14 @@ class _AnalysisGUI(QWidget):
                 if spikes_data
                 else DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
             ),
-            cluster_method=(
-                cluster_data.cluster_method if cluster_data else DEFAULT_CLUSTER_METHOD
-            ),
+            cluster_method=DEFAULT_CLUSTER_METHOD,
             cluster_n_clusters=(
-                cluster_data.cluster_n_clusters
-                if cluster_data
+                peaks_data.cluster_n_clusters
+                if peaks_data
                 else DEFAULT_CLUSTER_N_CLUSTERS
             ),
             cluster_max_k=(
-                cluster_data.cluster_max_k if cluster_data else DEFAULT_CLUSTER_MAX_K
+                peaks_data.cluster_max_k if peaks_data else DEFAULT_CLUSTER_MAX_K
             ),
             experiment_type=(
                 experiment_type_data.experiment_type
@@ -941,6 +926,8 @@ class _CalciumPeaksWidget(QWidget):
             burst_threshold=burst_threshold,
             burst_min_duration=burst_min_duration,
             burst_blur_sigma=burst_blur_sigma,
+            cluster_n_clusters=self._n_clusters_spin.value(),
+            cluster_max_k=self._max_k_spin.value(),
         )
 
     def setValue(self, value: CalciumPeaksData) -> None:
@@ -952,6 +939,8 @@ class _CalciumPeaksWidget(QWidget):
         )
         bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
         self._burst_wdg.setValue(bst)
+        self._n_clusters_spin.setValue(value.cluster_n_clusters)
+        self._max_k_spin.setValue(value.cluster_max_k)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -967,19 +956,6 @@ class _CalciumPeaksWidget(QWidget):
         )
         self._n_clusters_spin.setValue(DEFAULT_CLUSTER_N_CLUSTERS)
         self._max_k_spin.setValue(DEFAULT_CLUSTER_MAX_K)
-
-    def cluster_value(self) -> ClusterData:
-        """Get the current cluster settings."""
-        return ClusterData(
-            cluster_method=CLUSTER_METHOD_HIERARCHICAL,
-            cluster_n_clusters=self._n_clusters_spin.value(),
-            cluster_max_k=self._max_k_spin.value(),
-        )
-
-    def set_cluster_value(self, value: ClusterData) -> None:
-        """Set the cluster settings."""
-        self._n_clusters_spin.setValue(value.cluster_n_clusters)
-        self._max_k_spin.setValue(value.cluster_max_k)
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
