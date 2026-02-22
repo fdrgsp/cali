@@ -193,7 +193,7 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Experiment Type**: since `cali` was designed to work with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), which supports spatio-temporal optogenetic stimulation, the user can select the `Evoked Activity` experiment type. This enables input of stimulation metadata used during acquisition and allows splitting results into stimulated vs non-stimulated ROIs.
 - **Calcium Traces and Peaks Analysis**: parameters for calcium peak detection and analysis of calcium traces.
 - **Inferred Spikes**: parameters for analysis of inferred spikes obtained from OASIS deconvolution. This includes detection thresholds, burst detection parameters, and correlation / synchrony analysis between ROIs.
-- **Cluster Analysis**: groups ROIs into functional clusters based on their pairwise denoised ΔF/F correlation patterns using Hierarchical clustering (Ward's linkage), with automatic or fixed number of clusters (see [Cluster Analysis](#cluster-analysis) for details).
+- **Cluster Analysis**: groups ROIs into functional clusters based on their pairwise denoised ΔF/F correlation patterns using Hierarchical clustering (Ward's linkage), with automatic or fixed number of clusters.
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 - **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
@@ -579,13 +579,13 @@ Global synchrony = median of the mean synchrony per ROI (row means), excluding t
 
 **Purpose**: Group ROIs into functional clusters based on the similarity of their pairwise denoised ΔF/F correlation patterns, revealing co-active cell assemblies within a FOV.
 
-**Input**: The NxN pairwise Pearson correlation matrix computed from denoised ΔF/F traces (see [Pairwise Pearson Correlation on Calcium Traces](#pairwise-pearson-correlation-on-calcium-traces)).
+**Input**: The NxN pairwise Pearson correlation matrix computed from denoised ΔF/F traces.
 
 Each ROI is represented by its row in the correlation matrix (a vector of length N describing how correlated it is with every other ROI). ROIs with similar correlation profiles — i.e., ROIs that are collectively correlated or anti-correlated with the same partners — are placed in the same cluster.
 
 **Method — Hierarchical clustering (Ward's linkage)**:
 
-Builds a cluster hierarchy by iteratively merging the pair of clusters that produces the smallest increase in total within-cluster variance. The distance between ROIs is defined as $d_{ij} = 1 - r_{ij}$, where $r_{ij}$ is the Pearson correlation coefficient, so highly correlated ROIs are close together ($d \approx 0$) and anti-correlated ROIs are far apart ($d \approx 2$). A complete linkage tree (dendrogram) is built and then cut at the level that produces the target number of clusters. This method is deterministic and generally produces compact, evenly-sized clusters. It is well-suited for discovering nested structure and works well with correlation-based distances.
+Builds a cluster hierarchy by iteratively merging the pair of clusters that produces the smallest increase in total within-cluster variance. The distance between ROIs is defined as $d_{ij} = 1 - r_{ij}$, where $r_{ij}$ is the Pearson correlation coefficient, so highly correlated ROIs are close together ($d \approx 0$) and anti-correlated ROIs are far apart ($d \approx 2$). A complete linkage tree (dendrogram) is built and then cut at the level that produces the target number of clusters.
 
 **Automatic cluster count selection**:
 
@@ -599,13 +599,3 @@ where $a_i$ is the mean intra-cluster distance for ROI $i$ and $b_i$ is the mean
 
 - **Number of Clusters**: set to `0` (Auto) to detect the optimal K via silhouette scoring, or enter a positive integer to force a fixed cluster count.
 - **Auto-detect Max K**: upper bound of the silhouette-score scan (only active when Number of Clusters = 0). The scan evaluates every K from 2 up to this value.
-
-**Visualizations** (Single Well tab):
-
-- **Cluster-sorted Correlation Heatmap**: the correlation matrix reordered so that ROIs within the same cluster are adjacent. Cluster boundaries are marked with white lines. Hover over a cell to see the correlation value and the corresponding ROI pair.
-- **Cluster-colored Raster Plot**: calcium peak raster with each ROI colored by its cluster assignment. ROIs are ordered by cluster label. Click on a row to highlight the corresponding ROI in the image viewer.
-- **Cluster-colored Trace Overlay**: denoised ΔF/F traces stacked vertically and colored by cluster. Click on a trace to highlight the corresponding ROI.
-
-**Exported Data** (via Export Options → Cluster Analysis):
-
-A CSV file (`cluster_labels.csv`) with one row per ROI per FOV, containing: FOV name, ROI label, cluster label, clustering method, number of clusters used, and the silhouette score of the selected K (when auto-detection was used).
