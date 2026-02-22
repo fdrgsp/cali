@@ -513,7 +513,7 @@ class _SingleWellGraphWidget(QWidget):
             return
 
         # Show/hide connectivity threshold widget based on plot type
-        is_connectivity_plot = "Connectivity" in text
+        is_connectivity_plot = "Connectivity" in text and "Clustering" not in text
         self._connectivity_threshold_widget.setVisible(is_connectivity_plot)
 
         plot_single_well_data(

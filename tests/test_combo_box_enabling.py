@@ -92,8 +92,9 @@ def test_combo_disabled_without_fov_or_run(
     # Initial state - no FOV or run_id
     _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
-    # All plots should be disabled (added 2 CCG z-score plots + 2 inferred spikes freq)
-    assert _count_combo_items(widget, enabled=False) == 50
+    # All plots should be disabled (added 2 CCG z-score plots + 2 inferred spikes freq
+    # + 4 cluster analysis plots)
+    assert _count_combo_items(widget, enabled=False) == 54
 
 
 def test_combo_disabled_with_only_run_id(
@@ -109,10 +110,11 @@ def test_combo_disabled_with_only_run_id(
     _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
 
     # All items should still be disabled
-    # (70 plots: spontaneous + evoked + sorted rising edges CCG + 2 CCG z-score plots
+    # (74 plots: spontaneous + evoked + sorted rising edges CCG + 2 CCG z-score plots
     #  + 2 sorted max lag values + 2 sorted z-score for evoked
-    #  + sorted spike synchrony rising edges + 2 inferred spikes freq)
-    assert _count_combo_items(widget, enabled=False) == 70
+    #  + sorted spike synchrony rising edges + 2 inferred spikes freq
+    #  + 4 cluster analysis plots)
+    assert _count_combo_items(widget, enabled=False) == 74
 
 
 def test_combo_enabled_with_fov_and_run_id(

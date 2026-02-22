@@ -193,6 +193,7 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Experiment Type**: since `cali` was designed to work with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), which supports spatio-temporal optogenetic stimulation, the user can select the `Evoked Activity` experiment type. This enables input of stimulation metadata used during acquisition and allows splitting results into stimulated vs non-stimulated ROIs.
 - **Calcium Traces and Peaks Analysis**: parameters for calcium peak detection and analysis of calcium traces.
 - **Inferred Spikes**: parameters for analysis of inferred spikes obtained from OASIS deconvolution. This includes detection thresholds, burst detection parameters, and correlation / synchrony analysis between ROIs.
+- **Cluster Analysis**: groups ROIs into functional clusters based on their pairwise denoised ΔF/F correlation patterns using Hierarchical clustering (average/UPGMA linkage), with automatic or fixed number of clusters.
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 - **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
@@ -241,6 +242,7 @@ Available visualizations include:
   - pairwise Pearson correlation on calcium traces
   - jitter synchrony and max-lag cross-correlation on inferred spikes.
 - **Stimulated vs Non-Stimulated Analysis** (for `Evoked Activity`): visualize and compare metrics between stimulated and non-stimulated ROIs.
+- **Cluster Analysis**: cluster-sorted correlation heatmap, cluster-colored raster plot, and cluster-colored trace overlay, showing how ROIs are grouped into functional clusters based on correlated activity.
 
 <img width="927" height="1041" alt="Screenshot 2025-12-17 at 10 20 23 AM" src="https://github.com/user-attachments/assets/2620b629-c718-46d3-9c3a-eb83ca9ed3f4" />
 
@@ -570,5 +572,30 @@ This yields a synchrony score between 0 and 1:
 
 - **Jitter Window** (ms): temporal tolerance for spike coincidence (converted to ± frames).
 
-**Summary Metric**:  
+**Summary Metric**:
 Global synchrony = median of the mean synchrony per ROI (row means), excluding the diagonal.
+
+### Cluster Analysis
+
+**Purpose**: Group ROIs into functional clusters based on the similarity of their pairwise denoised ΔF/F correlation patterns, revealing co-active cell assemblies within a FOV.
+
+**Input**: The NxN pairwise Pearson correlation matrix computed from denoised ΔF/F traces.
+
+Each ROI is represented by its row in the correlation matrix (a vector of length N describing how correlated it is with every other ROI). ROIs with similar correlation profiles — i.e., ROIs that are collectively correlated or anti-correlated with the same partners — are placed in the same cluster.
+
+**Method — Hierarchical clustering (average/UPGMA linkage)**:
+
+Builds a cluster hierarchy by iteratively merging the pair of clusters with the smallest average pairwise distance. The distance between ROIs is defined as $d_{ij} = 1 - r_{ij}$, where $r_{ij}$ is the Pearson correlation coefficient, so highly correlated ROIs are close together ($d \approx 0$) and anti-correlated ROIs are far apart ($d \approx 2$). Average linkage (UPGMA) works correctly with correlation-based distances without requiring the Euclidean assumption of Ward's method, making it the standard choice in calcium imaging and neuroscience. A complete linkage tree (dendrogram) is built and then cut at the level that produces the target number of clusters.
+
+**Automatic cluster count selection**:
+
+When "Number of Clusters" is set to 0 (Auto), the optimal number of clusters K is determined by scanning K = 2, 3, …, Max K and computing the **average silhouette score** for each:
+
+$$s_i = \frac{b_i - a_i}{\max(a_i,\, b_i)}$$
+
+where $a_i$ is the mean intra-cluster distance for ROI $i$ and $b_i$ is the mean distance to the nearest other cluster. The silhouette score ranges from −1 to +1; higher values indicate that ROIs are well-matched to their own cluster and clearly separated from neighboring clusters. The K with the highest average silhouette score is selected.
+
+**GUI Parameters**:
+
+- **Number of Clusters**: set to `0` (Auto) to detect the optimal K via silhouette scoring, or enter a positive integer to force a fixed cluster count.
+- **Auto-detect Max K**: upper bound of the silhouette-score scan (only active when Number of Clusters = 0). The scan evaluates every K from 2 up to this value.

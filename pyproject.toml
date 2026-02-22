@@ -47,6 +47,7 @@ dependencies = [
     "ndv[vispy]==0.0.4",
     "scikit-image",
     "scipy",
+    "scikit-learn",
     "PyQt6",
     "pyqtgraph",
     "tensorstore >=0.1.67,!=0.1.72",

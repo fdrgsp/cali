@@ -756,6 +756,85 @@ def export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
     )
 
 
+def export_cluster_labels_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export cluster labels per ROI to CSV.
+
+    Creates a CSV with one row per ROI containing the FOV name, ROI label,
+    cluster assignment, and cluster metadata (method, k, silhouette score).
+
+    Parameters
+    ----------
+    engine : Engine
+        Database engine
+    output_path : str | Path
+        Output CSV file path
+    fov_name : str | None, optional
+        Specific FOV to export. If None, exports all FOVs
+    run_id : int | None, optional
+        Analysis run ID. If None, uses the first available run
+    position_indices : list[int] | None, optional
+        Position indices to filter exports. If provided, only exports data
+        from these positions.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if run_id is None:
+        run_id = _get_default_run_id(engine)
+
+    with Session(engine) as session:
+        stmt = (
+            select(FOVAnalysis, FOV)
+            .join(FOV, FOVAnalysis.fov_id == FOV.id)
+            .where(FOVAnalysis.analysis_result_id == run_id)
+        )
+        if fov_name is not None:
+            stmt = stmt.where(col(FOV.name) == fov_name)
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
+
+        results = session.exec(stmt).all()
+
+    if not results:
+        msg = "No FOV analysis data found"
+        raise ValueError(msg)
+
+    rows = []
+    for fov_analysis, fov in results:
+        if (
+            fov_analysis.cluster_labels is None
+            or fov_analysis.active_roi_labels is None
+        ):
+            continue
+        for roi_label, cluster_label in zip(
+            fov_analysis.active_roi_labels, fov_analysis.cluster_labels
+        ):
+            rows.append(
+                {
+                    "fov": fov.name,
+                    "roi_label": roi_label,
+                    "cluster_label": cluster_label,
+                    "cluster_method": fov_analysis.cluster_method,
+                    "cluster_n_clusters": fov_analysis.cluster_n_clusters,
+                    "cluster_silhouette_score": fov_analysis.cluster_silhouette_score,
+                }
+            )
+
+    if not rows:
+        msg = "No cluster label data found"
+        raise ValueError(msg)
+
+    df = pd.DataFrame(rows)
+    df.to_csv(output_path, index=False)
+
+
 # ==================== Helper Functions ====================
 
 
@@ -1175,6 +1254,7 @@ def export_correlations_to_csv(
     from cali._constants import (
         CALCIUM_DEN_DFF_CORRELATION,
         CALCIUM_DFF_CORRELATION,
+        CLUSTER_LABELS,
         INFERRED_SPIKES_CCG_ZSCORE,
         INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
         INFERRED_SPIKES_CROSS_CORRELATION,
@@ -1229,6 +1309,11 @@ def export_correlations_to_csv(
         INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: (
             export_inferred_spikes_ccg_zscore_rising_edges_to_csv,
             "inferred_spikes_ccg_zscore_matrix_rising_edges.csv",
+        ),
+        # Cluster Analysis
+        CLUSTER_LABELS: (
+            export_cluster_labels_to_csv,
+            "cluster_labels.csv",
         ),
     }
 

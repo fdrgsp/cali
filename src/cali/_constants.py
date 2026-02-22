@@ -98,6 +98,12 @@ DEFAULT_SPIKE_SYNC_JITTER_WINDOW = 200.0  # milliseconds
 DEFAULT_CCG_N_SHUFFLES = 20  # number of shuffles for CCG baseline correction
 DEFAULT_ENABLE_RISING_EDGE_ANALYSIS = False  # whether to compute CCG on rising edges
 DEFAULT_NEUROPIL_INNER_RADIUS = 0
+
+# Cluster analysis defaults
+DEFAULT_CLUSTER_METHOD = "hierarchical"
+DEFAULT_CLUSTER_N_CLUSTERS = 0  # 0 = auto-detect via silhouette score
+DEFAULT_CLUSTER_MAX_K = 10  # max k to scan during auto-detection
+CLUSTER_METHOD_HIERARCHICAL = "hierarchical"
 DEFAULT_NEUROPIL_MIN_PIXELS = 0
 DEFAULT_NEUROPIL_CORRECTION_FACTOR = 0.7
 DEFAULT_DFF_PERCENTILE = 10  # percentile for ΔF/F baseline calculation
@@ -131,6 +137,8 @@ CorrelationDataType = Literal[
     "Inferred Spikes Cross-Correlation Matrix (Rising Edges)",  # INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES  # noqa: E501
     "Inferred Spikes Cross-Correlation Lags Matrix (Rising Edges)",  # INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES  # noqa: E501
     "Inferred Spikes CCG Z-Score Matrix (Rising Edges)",  # INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES  # noqa: E501
+    # Cluster Analysis
+    "Cluster Labels",  # CLUSTER_LABELS
 ]
 
 # fmt: off
@@ -156,4 +164,6 @@ INFERRED_SPIKES_SYNCHRONY_RISING_EDGES: CorrelationDataType = "Inferred Spikes S
 INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES: CorrelationDataType = "Inferred Spikes Cross-Correlation Matrix (Rising Edges)"  # noqa: E501
 INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES: CorrelationDataType = "Inferred Spikes Cross-Correlation Lags Matrix (Rising Edges)"  # noqa: E501
 INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: CorrelationDataType = "Inferred Spikes CCG Z-Score Matrix (Rising Edges)"  # noqa: E501
+# Cluster Analysis
+CLUSTER_LABELS: CorrelationDataType = "Cluster Labels"
 # fmt: on

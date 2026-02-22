@@ -26,6 +26,12 @@ from ._single_wells_plots.calcium_traces._plot_calcium_traces_data import (
 from ._single_wells_plots.calcium_traces._plot_neuropil_traces import (
     _plot_neuropil_traces,
 )
+from ._single_wells_plots.cluster._plot_cluster_analysis import (
+    _plot_cluster_colored_raster,
+    _plot_cluster_colored_traces,
+    _plot_cluster_connectivity_graph,
+    _plot_cluster_sorted_correlation_heatmap,
+)
 from ._single_wells_plots.correlation._plot_calcium_traces_correlation import (
     _plot_den_dff_correlation_data,
     _plot_dff_correlation_data,
@@ -443,7 +449,6 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-
 # Correlation Analysis Group
 AnalysisProduct(
     name="Calcium ΔF/F0 Correlation",
@@ -460,13 +465,42 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Calcium Functional Connectivity",
+    name="Calcium Functional Connectivity (Pearson Correlation)",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_connectivity_network_data,
     category="Calcium Correlation Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
+# Cluster Analysis Group
+AnalysisProduct(
+    name="Calcium Functional Connectivity (Clustering)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cluster_connectivity_graph,
+    category="Cluster Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Cluster-Sorted Correlation Heatmap (Denoised ΔF/F0)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cluster_sorted_correlation_heatmap,
+    category="Cluster Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Cluster-Colored Calcium Peaks Raster (Denoised ΔF/F0)",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cluster_colored_raster,
+    category="Cluster Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
+AnalysisProduct(
+    name="Cluster-Colored Denoised ΔF/F0 Traces",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=_plot_cluster_colored_traces,
+    category="Cluster Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+)
 
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(

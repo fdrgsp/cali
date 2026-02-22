@@ -84,6 +84,9 @@ def test_save_settings_creates_valid_json(
     assert "calcium_peaks_data" in analysis
     assert "spikes_data" in analysis
     assert "experiment_type_data" in analysis
+    calcium_peaks = analysis["calcium_peaks_data"]
+    assert "cluster_n_clusters" in calcium_peaks
+    assert "cluster_max_k" in calcium_peaks
 
     # Verify analysis export options are saved
     assert "export_options" in analysis
@@ -133,6 +136,8 @@ def test_load_settings_restores_gui_state(
                 "burst_threshold": 65.0,
                 "burst_min_duration": 600.0,
                 "burst_blur_sigma": 0.06,
+                "cluster_n_clusters": 3,
+                "cluster_max_k": 8,
             },
             "spikes_data": {
                 "spike_threshold": 5.0,
@@ -195,6 +200,8 @@ def test_load_settings_restores_gui_state(
     assert analysis_value.calcium_peaks_data.peaks_height == 4.0
     assert analysis_value.calcium_peaks_data.peaks_distance == 300.0
     assert analysis_value.calcium_peaks_data.burst_threshold == 65.0
+    assert analysis_value.calcium_peaks_data.cluster_n_clusters == 3
+    assert analysis_value.calcium_peaks_data.cluster_max_k == 8
     assert analysis_value.spikes_data is not None
     assert analysis_value.spikes_data.spike_threshold == 5.0
     assert analysis_value.spikes_data.burst_threshold == 75.0
@@ -281,6 +288,14 @@ def test_save_and_load_roundtrip(
     assert (
         loaded_analysis.calcium_peaks_data.peaks_height
         == original_analysis.calcium_peaks_data.peaks_height
+    )
+    assert (
+        loaded_analysis.calcium_peaks_data.cluster_n_clusters
+        == original_analysis.calcium_peaks_data.cluster_n_clusters
+    )
+    assert (
+        loaded_analysis.calcium_peaks_data.cluster_max_k
+        == original_analysis.calcium_peaks_data.cluster_max_k
     )
     assert loaded_analysis.spikes_data is not None
     assert original_analysis.spikes_data is not None
@@ -573,6 +588,8 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
     assert analysis_value.calcium_peaks_data.burst_threshold == 50.0
     assert analysis_value.calcium_peaks_data.burst_min_duration == 100.0
     assert analysis_value.calcium_peaks_data.burst_blur_sigma == 0.01
+    assert analysis_value.calcium_peaks_data.cluster_n_clusters == 0
+    assert analysis_value.calcium_peaks_data.cluster_max_k == 10
     assert analysis_value.spikes_data is not None
     assert analysis_value.spikes_data.spike_threshold == 1.0
     assert analysis_value.spikes_data.spike_threshold_mode == "multiplier"
@@ -598,3 +615,54 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
         == expected_path
     )
     assert analysis_value.threads == 3
+
+
+def test_load_settings_legacy_cluster_data_key(
+    cali_gui: Any, settings_file: Path, qtbot: QtBot
+) -> None:
+    """Loading settings with a legacy 'cluster_data' key migrates values into
+    calcium_peaks_data.
+
+    Legacy settings files stored cluster_n_clusters/cluster_max_k under a
+    separate 'cluster_data' dict in analysis.  The loader must copy those values
+    into calcium_peaks_data when the modern key is missing.
+    """
+    # Build a settings dict that uses the OLD 'cluster_data' layout
+    legacy_settings = {
+        "detection": {},
+        "extraction": {},
+        "analysis": {
+            "calcium_peaks_data": {
+                "peaks_height": 3.0,
+                "peaks_height_mode": "global",
+                "peaks_distance": 200.0,
+                "peaks_prominence_multiplier": 0.3,
+                "burst_threshold": 60.0,
+                "burst_min_duration": 500.0,
+                "burst_blur_sigma": 0.05,
+                # NOTE: no 'cluster_n_clusters' / 'cluster_max_k' here
+            },
+            # Legacy key that pre-dates the inline cluster fields
+            "cluster_data": {
+                "cluster_n_clusters": 4,
+                "cluster_max_k": 12,
+            },
+        },
+    }
+
+    with open(settings_file, "w") as f:
+        json.dump(legacy_settings, f)
+
+    from unittest.mock import patch
+
+    with patch(
+        "cali.gui._cali_gui.QFileDialog.getOpenFileName",
+        return_value=(str(settings_file), ""),
+    ):
+        cali_gui._on_load_settings()
+
+    analysis_value = cali_gui._analysis_wdg.value()
+    assert analysis_value.calcium_peaks_data is not None
+    # Values should have been migrated from the legacy 'cluster_data' key
+    assert analysis_value.calcium_peaks_data.cluster_n_clusters == 4
+    assert analysis_value.calcium_peaks_data.cluster_max_k == 12
