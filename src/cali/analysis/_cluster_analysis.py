@@ -1,6 +1,6 @@
 """Cluster analysis for grouping ROIs by functional similarity.
 
-Provides hierarchical (Ward's linkage) clustering on correlation matrices,
+Provides hierarchical (average/UPGMA linkage) clustering on correlation matrices,
 with automatic optimal-k selection via silhouette score.
 """
 
@@ -40,7 +40,7 @@ def compute_cluster_analysis(
         NxN symmetric correlation matrix (values in [-1, 1]).
         Matrix[i,j] = Pearson correlation between ROI i and ROI j.
     method : str
-        Clustering method. Only "hierarchical" (Ward's linkage) is supported.
+        Clustering method. Only "hierarchical" (average/UPGMA linkage) is supported.
     n_clusters : int
         Number of clusters. 0 = auto-detect via silhouette score.
     max_k : int
@@ -149,7 +149,7 @@ def _find_optimal_k(dist_matrix: np.ndarray, max_k: int) -> int:
 
 
 def _run_clustering(dist_matrix: np.ndarray, k: int) -> np.ndarray:
-    """Run hierarchical (Ward's linkage) clustering and return labels.
+    """Run hierarchical (average/UPGMA linkage) clustering and return labels.
 
     Parameters
     ----------
@@ -164,6 +164,6 @@ def _run_clustering(dist_matrix: np.ndarray, k: int) -> np.ndarray:
         Array of cluster labels (0-indexed), length N.
     """
     condensed = squareform(dist_matrix, checks=False)
-    Z = linkage(condensed, method="ward")
+    Z = linkage(condensed, method="average")
     # fcluster returns 1-indexed labels; convert to 0-indexed
     return fcluster(Z, t=k, criterion="maxclust") - 1

@@ -848,8 +848,8 @@ class _CalciumPeaksWidget(QWidget):
         # Cluster analysis - number of clusters
         self._n_clusters_wdg = QWidget(self)
         self._n_clusters_wdg.setToolTip(
-            "Number of clusters for Hierarchical (Ward's linkage) clustering on the "
-            "pairwise denoised ΔF/F correlation matrix.\n\n"
+            "Number of clusters for Hierarchical (average/UPGMA linkage) clustering on "
+            "the pairwise denoised ΔF/F correlation matrix.\n\n"
             "• 0 (Auto): Automatically detect the optimal K by scanning K = 2 … Max K\n"
             "  and selecting the K with the highest average silhouette score.\n"
             "• Positive integer: Force exactly that many clusters, skipping the "
