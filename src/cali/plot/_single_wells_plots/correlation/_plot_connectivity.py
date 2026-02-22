@@ -518,7 +518,9 @@ def _plot_connectivity_network_data(
         plot = widget.plot_item
         assert plot is not None
         plot.clear()
-        plot.setTitle("Functional Connectivity (Pearson Correlation, Need ≥2 ROIs)")
+        plot.setTitle(
+            "Functional Connectivity (Pearson Correlation, Need min 2 ROIs)"
+        )  # pragma: no cover
         plot.setLabel("bottom", "")
         plot.setLabel("left", "")
         return

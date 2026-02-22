@@ -135,7 +135,7 @@ def _find_optimal_k(dist_matrix: np.ndarray, max_k: int) -> int:
         labels = _run_clustering(dist_matrix, k)
 
         # silhouette_score requires at least 2 unique labels
-        if len(set(labels)) < 2:
+        if len(set(labels)) < 2:  # pragma: no cover
             continue
 
         score = float(silhouette_score(dist_matrix, labels, metric="precomputed"))

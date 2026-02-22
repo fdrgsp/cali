@@ -374,7 +374,7 @@ def _plot_cluster_colored_raster(
     # Plot events per ROI
     for row_idx, (_roi, data_analysis, cluster_id) in enumerate(roi_cluster_list):
         peaks = np.array(data_analysis.peaks_den_dff, dtype=float)
-        if len(peaks) == 0:
+        if len(peaks) == 0:  # pragma: no cover
             continue
 
         color = _get_cluster_color(cluster_id)

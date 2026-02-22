@@ -324,3 +324,79 @@ def test_export_inferred_spikes_ccg_zscore_rising_edges(
 
     csv_files = list(tmp_path.glob("*inferred_spikes_ccg_zscore_rising_edges.csv"))
     assert isinstance(csv_files, list)
+
+
+def test_export_cluster_labels(test_engine: Engine, tmp_path: Path) -> None:
+    """Test exporting cluster labels to CSV."""
+    from cali.util._database_to_csv import export_cluster_labels_to_csv
+
+    output_file = tmp_path / "cluster_labels.csv"
+    try:
+        export_cluster_labels_to_csv(test_engine, output_file, run_id=1)
+    except ValueError:
+        pytest.skip("No cluster label data found in test database")
+
+    import pandas as pd
+
+    assert output_file.exists()
+    df = pd.read_csv(output_file)
+    expected_cols = {
+        "fov",
+        "roi_label",
+        "cluster_label",
+        "cluster_method",
+        "cluster_n_clusters",
+        "cluster_silhouette_score",
+    }
+    assert expected_cols.issubset(df.columns)
+    assert len(df) > 0
+
+
+def test_export_cluster_labels_raises_when_run_id_missing(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """Raises ValueError when run_id does not match any FOVAnalysis records."""
+    from cali.util._database_to_csv import export_cluster_labels_to_csv
+
+    with pytest.raises(ValueError, match="No FOV analysis data found"):
+        export_cluster_labels_to_csv(test_engine, tmp_path / "out.csv", run_id=9999)
+
+
+def test_export_cluster_labels_via_export_correlations(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """CLUSTER_LABELS key in export_correlations_to_csv triggers cluster export."""
+    from cali._constants import CLUSTER_LABELS
+    from cali.util._database_to_csv import export_correlations_to_csv
+
+    fake_db = tmp_path / "fake.cali"
+    try:
+        export_correlations_to_csv(
+            test_engine,
+            {CLUSTER_LABELS: True},
+            run_id=1,
+            db_path=fake_db,
+        )
+    except ValueError:
+        pytest.skip("No cluster label data found in test database")
+
+    export_dir = tmp_path / "fake_exports" / "run_1"
+    csv_files = list(export_dir.rglob("cluster_labels.csv"))
+    assert len(csv_files) == 1
+    assert csv_files[0].stat().st_size > 0
+
+
+def test_export_cluster_labels_run_id_none_uses_default(
+    test_engine: Engine, tmp_path: Path
+) -> None:
+    """When run_id is None, the function resolves it via _get_default_run_id."""
+    from cali.util._database_to_csv import export_cluster_labels_to_csv
+
+    output_file = tmp_path / "cluster_labels_default_run.csv"
+    try:
+        export_cluster_labels_to_csv(test_engine, output_file)  # no run_id
+    except ValueError:
+        pytest.skip("No cluster label data found in test database")
+
+    assert output_file.exists()
+    assert output_file.stat().st_size > 0

@@ -402,3 +402,73 @@ def test_spike_max_lag_values_matrix() -> None:
     # Correlation should be high since the spike patterns match well
     corr_matrix = fov_analysis.spike_max_lag_correlation_matrix
     assert corr_matrix[0][1] > 0.9  # High correlation after time shift
+
+
+def _make_roi_with_traces(
+    label: int,
+    den_dff: list[float],
+) -> ROI:
+    """Helper: create an ROI with the given den_dff trace."""
+    roi = ROI(label_value=label, active=True)
+    traces = Traces(
+        dff=den_dff,
+        den_dff=den_dff,
+        inferred_spikes=[0.0] * len(den_dff),
+    )
+    roi._new_traces = [traces]
+    roi._new_data_analysis = [DataAnalysis(peaks_den_dff=[10, 30, 50])]
+    return roi
+
+
+def test_compute_fov_analysis_cluster_labels_populated() -> None:
+    """cluster_labels are computed and stored when there are >= 3 ROIs."""
+    rng = np.random.default_rng(0)
+    n = 60
+
+    # Two groups of highly correlated traces + one more (3 ROIs total)
+    base_a = rng.standard_normal(n).tolist()
+    base_b = (rng.standard_normal(n) * 0.1 + np.arange(n, dtype=float) * 0.02).tolist()
+    slight_noise = (rng.standard_normal(n) * 0.05).tolist()
+    trace_c = [base_a[i] + slight_noise[i] for i in range(n)]
+
+    fov = FOV(name="cluster_fov", position_index=0)
+    fov.rois = [
+        _make_roi_with_traces(1, base_a),
+        _make_roi_with_traces(2, base_b),
+        _make_roi_with_traces(3, trace_c),
+    ]
+
+    settings = AnalysisSettings(
+        cluster_n_clusters=2,  # force k=2 for determinism
+        cluster_max_k=5,
+    )
+
+    fov_analysis = compute_fov_analysis(fov, settings)
+
+    assert fov_analysis is not None
+    assert fov_analysis.cluster_labels is not None
+    assert len(fov_analysis.cluster_labels) == 3
+    assert fov_analysis.cluster_method == "hierarchical"
+    assert fov_analysis.cluster_n_clusters == 2
+    assert fov_analysis.cluster_silhouette_score is not None
+    assert -1.0 <= fov_analysis.cluster_silhouette_score <= 1.0
+    assert fov_analysis.cluster_order is not None
+    assert len(fov_analysis.cluster_order) == 3
+
+
+def test_compute_fov_analysis_no_cluster_labels_for_two_rois() -> None:
+    """cluster_labels remain None when there are only 2 ROIs (< 3 needed)."""
+    rng = np.random.default_rng(1)
+    n = 40
+    fov = FOV(name="small_fov", position_index=0)
+    fov.rois = [
+        _make_roi_with_traces(1, rng.standard_normal(n).tolist()),
+        _make_roi_with_traces(2, rng.standard_normal(n).tolist()),
+    ]
+
+    fov_analysis = compute_fov_analysis(fov, AnalysisSettings())
+
+    assert fov_analysis is not None
+    assert fov_analysis.cluster_labels is None
+    assert fov_analysis.cluster_method is None
+    assert fov_analysis.cluster_n_clusters is None

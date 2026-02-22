@@ -615,3 +615,54 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
         == expected_path
     )
     assert analysis_value.threads == 3
+
+
+def test_load_settings_legacy_cluster_data_key(
+    cali_gui: Any, settings_file: Path, qtbot: QtBot
+) -> None:
+    """Loading settings with a legacy 'cluster_data' key migrates values into
+    calcium_peaks_data.
+
+    Legacy settings files stored cluster_n_clusters/cluster_max_k under a
+    separate 'cluster_data' dict in analysis.  The loader must copy those values
+    into calcium_peaks_data when the modern key is missing.
+    """
+    # Build a settings dict that uses the OLD 'cluster_data' layout
+    legacy_settings = {
+        "detection": {},
+        "extraction": {},
+        "analysis": {
+            "calcium_peaks_data": {
+                "peaks_height": 3.0,
+                "peaks_height_mode": "global",
+                "peaks_distance": 200.0,
+                "peaks_prominence_multiplier": 0.3,
+                "burst_threshold": 60.0,
+                "burst_min_duration": 500.0,
+                "burst_blur_sigma": 0.05,
+                # NOTE: no 'cluster_n_clusters' / 'cluster_max_k' here
+            },
+            # Legacy key that pre-dates the inline cluster fields
+            "cluster_data": {
+                "cluster_n_clusters": 4,
+                "cluster_max_k": 12,
+            },
+        },
+    }
+
+    with open(settings_file, "w") as f:
+        json.dump(legacy_settings, f)
+
+    from unittest.mock import patch
+
+    with patch(
+        "cali.gui._cali_gui.QFileDialog.getOpenFileName",
+        return_value=(str(settings_file), ""),
+    ):
+        cali_gui._on_load_settings()
+
+    analysis_value = cali_gui._analysis_wdg.value()
+    assert analysis_value.calcium_peaks_data is not None
+    # Values should have been migrated from the legacy 'cluster_data' key
+    assert analysis_value.calcium_peaks_data.cluster_n_clusters == 4
+    assert analysis_value.calcium_peaks_data.cluster_max_k == 12
