@@ -635,6 +635,27 @@ class CaliGui(QMainWindow):
 
         return True
 
+    def _get_total_positions(self) -> int:
+        """Get total number of positions from data or database."""
+        if self._data is not None and self._data.sequence is not None:
+            return len(self._data.sequence.stage_positions)
+        if self._database_path is not None:
+            from cali.sqlmodel._model import FOV
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+            )
+            try:
+                from sqlmodel import func
+
+                with Session(engine) as session:
+                    count = session.exec(select(func.count(FOV.id))).one()
+                    return int(count)
+            finally:
+                engine.dispose(close=True)
+        return 0
+
     def _finalize_initialization(self, experiment: Experiment) -> None:
         """Finalize GUI initialization with experiment data."""
         # UPDATE GUI-------------------------------------------------------------------
@@ -694,6 +715,81 @@ class CaliGui(QMainWindow):
 
         # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
         self._update_graph_properties(self._database_path)
+
+        # ENSURE RUN WIDGET KNOWS DATA IS AVAILABLE -----------------------------------
+        self._run_cali_wdg.set_has_data(True)
+
+        # FINALIZE---------------------------------------------------------------------
+        self._finalize_initialization(experiment)
+
+    def _initialize_from_database_only(self, database_path: str | Path) -> None:
+        """Initialize the widget from a database without raw data.
+
+        This mode allows reviewing results and running analysis when the original
+        imaging data is not available but the database contains extraction results.
+        """
+        from cali.sqlmodel._model import ExtractionSettings
+
+        # SHOW LOADING BAR ------------------------------------------------------------
+        self._init_loading_bar("📚 Initializing cali from database (no data)...", False)
+
+        # CLEARING---------------------------------------------------------------------
+        self._clear_widget_before_initialization()
+
+        # CHECK IF DATABASE ACTUALLY EXISTS --------------------------------------------
+        if not Path(database_path).exists():
+            msg = f"❌ Database file not found at:\n{database_path}"
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return
+
+        # OPEN THE DATABASE -----------------------------------------------------------
+        cali_logger.info(
+            f"💿 Loading experiment from database (no data) at {database_path}"
+        )
+        experiment = Experiment.load_from_database(database_path, load_data=False)
+
+        # VALIDATE BOTH DETECTION AND EXTRACTION EXIST --------------------------------
+        from cali.sqlmodel._model import DetectionSettings
+
+        engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+        )
+        try:
+            with Session(engine) as session:
+                has_detection = session.exec(
+                    select(DetectionSettings.id).limit(1)
+                ).first()
+                has_extraction = session.exec(
+                    select(ExtractionSettings.id).limit(1)
+                ).first()
+        finally:
+            engine.dispose(close=True)
+
+        if has_detection is None or has_extraction is None:
+            msg = (
+                "❌ Database must have both detection and extraction results.\n"
+                "A data path is required when the database does not contain "
+                "both detection and extraction results."
+            )
+            show_error_dialog(self, msg)
+            cali_logger.error(msg)
+            self._loading_bar.hide()
+            return
+
+        # ASSIGN VARIABLES (no data, no data_path) ------------------------------------
+        self._database_path = str(database_path)
+        self._data_path = None
+        self._data = None
+        self._output_path = str(Path(database_path).parent)
+
+        # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
+        self._update_graph_properties(self._database_path)
+
+        # NOTIFY RUN WIDGET THAT THERE IS NO DATA ------------------------------------
+        self._run_cali_wdg.set_has_data(False)
 
         # FINALIZE---------------------------------------------------------------------
         self._finalize_initialization(experiment)
@@ -819,6 +915,9 @@ class CaliGui(QMainWindow):
 
         if not self._validate_data(self._data):
             return
+
+        # ENSURE RUN WIDGET KNOWS DATA IS AVAILABLE -----------------------------------
+        self._run_cali_wdg.set_has_data(True)
 
         # FINALIZE---------------------------------------------------------------------
         self._finalize_initialization(experiment)
@@ -1101,11 +1200,7 @@ class CaliGui(QMainWindow):
 
     def _on_cali_run(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
-        if (
-            self._data is None
-            or self._database_path is None
-            or self._data.sequence is None
-        ):
+        if self._database_path is None:
             return
 
         try:
@@ -1134,10 +1229,17 @@ class CaliGui(QMainWindow):
                 self._handle_export_only(value.run_id)
                 return
 
+            # Block detection/extraction if no data is available
+            if self._data is None and (value.run_detection or value.run_extraction):
+                show_error_dialog(
+                    self,
+                    "❌ Detection and extraction require raw imaging data.\n"
+                    "Please load a data path or use 'Analysis Only' / 'Export Only'.",
+                )
+                return
+
             # Get positions list early since we need it for validation
-            pos = value.positions or list(
-                range(len(self._data.sequence.stage_positions))
-            )
+            pos = value.positions or list(range(self._get_total_positions()))
 
             # Track if we've already assigned settings (to prevent overwriting)
             detection_settings = None
@@ -1262,9 +1364,7 @@ class CaliGui(QMainWindow):
                 # (only if not already set from dialog above)
                 detection_settings = self._detection_wdg.to_model_settings()
 
-            pos = value.positions or list(
-                range(len(self._data.sequence.stage_positions))
-            )
+            pos = value.positions or list(range(self._get_total_positions()))
 
             # Check for ambiguous runs BEFORE starting detection
             # This prevents wasted work if user needs to disambiguate
@@ -1361,7 +1461,6 @@ class CaliGui(QMainWindow):
             try:
                 # Create a generator function wrapper for create_worker
                 def _run_generator() -> Generator[str, None, None]:
-                    assert self._data is not None
                     assert self._database_path is not None
                     assert detection_settings is not None  # Ensured by pre-flight check
 
@@ -1375,7 +1474,7 @@ class CaliGui(QMainWindow):
 
                     result = self._runner.run(
                         experiment,
-                        self._data.path,
+                        self._data.path if self._data is not None else None,
                         detection_settings,
                         extraction_settings=extraction_settings,
                         analysis_settings=analysis_settings,
@@ -1559,7 +1658,7 @@ class CaliGui(QMainWindow):
 
             result = self._runner.run(
                 experiment,
-                self._data.path,
+                self._data.path if self._data is not None else None,
                 detection_settings=selected_run.detection_settings_id,
                 extraction_settings=selected_run.extraction_settings_id,
                 analysis_settings=selected_run.analysis_settings_id,
@@ -1941,10 +2040,21 @@ class CaliGui(QMainWindow):
         init_dialog.resize(700, init_dialog.sizeHint().height())
         if init_dialog.exec():
             value = init_dialog.value()
-            # input from database
+            # input from database (with data path)
             if value.database_path is not None and value.data_path is not None:
                 try:
                     self._initialize_from_database(value.database_path, value.data_path)
+                except Exception as e:
+                    msg = f"❌ Failed to initialize from database:\n{e}"
+                    show_error_dialog(self, msg)
+                    cali_logger.error(msg)
+                    self._loading_bar.hide()
+                    return
+
+            # input from database only (no data path)
+            elif value.database_path is not None and value.data_path is None:
+                try:
+                    self._initialize_from_database_only(value.database_path)
                 except Exception as e:
                     msg = f"❌ Failed to initialize from database:\n{e}"
                     show_error_dialog(self, msg)
@@ -2424,7 +2534,39 @@ class CaliGui(QMainWindow):
             sw_graph.clear_plot()
             sw_graph.fov = ""
 
+        well_dict: set[QAbstractGraphicsShapeItem] = self._plate_view._selected_items
+        if not well_dict or len(well_dict) != 1:
+            return
+        well_name = next(iter(well_dict)).data(DATA_POSITION).name
+
+        # Database-only mode: populate FOV table entirely from database
         if self._data is None:
+            if self._database_path is None:
+                return
+            from cali.sqlmodel._model import FOV, Well
+
+            engine = create_engine(
+                f"sqlite:///{self._database_path}",
+                connect_args={"timeout": 30.0, "check_same_thread": False},
+            )
+            try:
+                with Session(engine) as session:
+                    stmt = (
+                        select(FOV.name, FOV.position_index)
+                        .join(Well)
+                        .where(Well.name == well_name)
+                        .order_by(FOV.position_index)
+                    )
+                    results = session.exec(stmt).all()
+                    for fov_name, pos_idx in results:
+                        self._fov_table.add_position(
+                            WellInfo(pos_idx, useq.Position(name=fov_name))
+                        )
+            finally:
+                engine.dispose(close=True)
+
+            if self._fov_table.rowCount() > 0:
+                self._fov_table.selectRow(0)
             return
 
         if self._data.sequence is None:
@@ -2435,17 +2577,10 @@ class CaliGui(QMainWindow):
             )
             return
 
-        well_dict: set[QAbstractGraphicsShapeItem] = self._plate_view._selected_items
-        if not well_dict or len(well_dict) != 1:
-            return
-        well_name = next(iter(well_dict)).data(DATA_POSITION).name
-
         # Get FOVs from database for this well to handle wizard-created mappings
         # where original position names don't match the well name
         well_fov_positions: set[int] = set()
         if self._database_path:
-            from sqlmodel import Session, create_engine, select
-
             from cali.sqlmodel._model import FOV, Well
 
             engine = create_engine(
@@ -2489,10 +2624,21 @@ class CaliGui(QMainWindow):
                 self._update_single_wells_graphs_combo(clear=True)
                 return
 
-            if self._data is None:
-                return
-
-            if not self._data.sequence:
+            # Database-only mode: no image data, but still show labels and graphs
+            if self._data is None or not self._data.sequence:
+                roi_labels, neuropil_labels = self._get_labels(value)
+                roi_labels = (
+                    np.flip(roi_labels, axis=0) if roi_labels is not None else None
+                )
+                neuropil_labels = (
+                    np.flip(neuropil_labels, axis=0)
+                    if neuropil_labels is not None
+                    else None
+                )
+                self._image_viewer.setData(None, roi_labels, neuropil_labels)
+                title = value.fov.name or f"Position {value.pos_idx}"
+                self._update_single_wells_graphs_combo(set_fov=title)
+                self._loading_bar.hide()
                 return
 
             # get a single frame for the selected FOV (at 2/3 of the time points)

@@ -224,10 +224,29 @@ class _RunCaliWidget(QWidget):
         run_control_layout.addWidget(self._elapsed_time_label)
         main_layout.addLayout(run_control_layout)
 
+        # Track whether raw imaging data is available
+        self._has_data = True
+
         # Initially disable "Extraction Only" and "Analysis Only" options
         self._update_options_availability(has_detections=False, has_extractions=False)
 
     # PUBLIC METHODS --------------------------------------------------------------
+
+    def set_has_data(self, has_data: bool) -> None:
+        """Set whether raw imaging data is available.
+
+        When False, run options requiring detection/extraction are disabled.
+        """
+        self._has_data = has_data
+        # Re-evaluate option availability with the current settings state
+        has_detections = self._detection_settings_combo.count() > 1
+        has_extractions = self._extraction_settings_combo.count() > 1
+        has_runs = self._run_ids_combo.count() > 1
+        self._update_options_availability(
+            has_detections=has_detections,
+            has_extractions=has_extractions,
+            has_runs=has_runs,
+        )
 
     def enable(self, state: bool) -> None:
         """Enable or disable the widget but the cancel button."""
@@ -448,6 +467,8 @@ class _RunCaliWidget(QWidget):
         """
         model = cast("QStandardItemModel", self._run_options_combo.model())
 
+        enabled_flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+
         # Index mapping:
         # 0: "Detection, Extraction and Analysis"
         # 1: "Detection and Extraction"
@@ -459,36 +480,42 @@ class _RunCaliWidget(QWidget):
 
         current_index = self._run_options_combo.currentIndex()
 
-        # "Extraction Only" and "Extraction and Analysis" require detections
-        extraction_only_item = model.item(4)
-        if extraction_only_item:
-            if has_detections:
-                extraction_only_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                )
+        # Options 0-4 require raw imaging data for detection/extraction
+        # When no data is available, disable all of them
+        for idx in (0, 1, 2, 3, 4):
+            item = model.item(idx)
+            if item is None:
+                continue
+            if not self._has_data:
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                if current_index == idx:
+                    # Auto-switch to "Analysis Only" if available
+                    self._run_options_combo.setCurrentIndex(5)
+                    current_index = 5
+            elif idx == 4:
+                # "Extraction Only" requires detections
+                if has_detections:
+                    item.setFlags(enabled_flags)
+                else:
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    if current_index == 4:
+                        self._run_options_combo.setCurrentIndex(0)
+            elif idx == 2:
+                # "Extraction and Analysis" requires detections
+                if has_detections:
+                    item.setFlags(enabled_flags)
+                else:
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    if current_index == 2:
+                        self._run_options_combo.setCurrentIndex(0)
             else:
-                extraction_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                if current_index == 4:
-                    self._run_options_combo.setCurrentIndex(0)
-
-        extraction_and_analysis_item = model.item(2)
-        if extraction_and_analysis_item:
-            if has_detections:
-                extraction_and_analysis_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                )
-            else:
-                extraction_and_analysis_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                if current_index == 2:
-                    self._run_options_combo.setCurrentIndex(0)
+                item.setFlags(enabled_flags)
 
         # "Analysis Only" requires both detections and extractions
         analysis_only_item = model.item(5)
         if analysis_only_item:
             if has_detections and has_extractions:
-                analysis_only_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                )
+                analysis_only_item.setFlags(enabled_flags)
             else:
                 analysis_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if current_index == 5:
@@ -498,9 +525,7 @@ class _RunCaliWidget(QWidget):
         export_only_item = model.item(6)
         if export_only_item:
             if has_runs:
-                export_only_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                )
+                export_only_item.setFlags(enabled_flags)
             else:
                 export_only_item.setFlags(Qt.ItemFlag.NoItemFlags)
                 if current_index == 6:
