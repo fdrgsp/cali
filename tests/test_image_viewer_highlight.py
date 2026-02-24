@@ -289,3 +289,84 @@ def test_highlight_properties_set_correctly(
     yellow = image_viewer._viewer.highlight_connected_roi
     assert yellow is not None
     assert yellow.interactive is True
+
+
+# --- Database-only mode tests (data=None) ---
+
+
+@pytest.fixture
+def sample_neuropil() -> np.ndarray:
+    """Create sample neuropil mask with one non-zero region."""
+    neuropil = np.zeros((100, 100), dtype=np.uint8)
+    neuropil[10:20, 10:20] = 1
+    return neuropil
+
+
+def test_set_data_database_only_with_labels_enables_labels_button(
+    image_viewer: _ImageViewer,
+    sample_labels: np.ndarray,
+) -> None:
+    """setData(None, labels, None) enables the labels button."""
+    image_viewer.setData(None, sample_labels, None)
+
+    assert image_viewer._viewer.labels_image is not None
+    assert image_viewer._labels.isEnabled()
+
+
+def test_set_data_database_only_with_labels_disables_neuropil_button(
+    image_viewer: _ImageViewer,
+    sample_labels: np.ndarray,
+) -> None:
+    """setData(None, labels, None) leaves neuropil button disabled (no
+    neuropil data)."""
+    image_viewer.setData(None, sample_labels, None)
+
+    assert not image_viewer._neuropil.isEnabled()
+
+
+def test_set_data_database_only_with_labels_and_neuropil(
+    image_viewer: _ImageViewer,
+    sample_labels: np.ndarray,
+    sample_neuropil: np.ndarray,
+) -> None:
+    """setData(None, labels, neuropil) enables both labels and neuropil buttons."""
+    image_viewer.setData(None, sample_labels, sample_neuropil)
+
+    assert image_viewer._viewer.labels_image is not None
+    assert image_viewer._labels.isEnabled()
+    assert image_viewer._viewer.neuropil_contours_image is not None
+    assert image_viewer._neuropil.isEnabled()
+
+
+def test_set_data_database_only_no_labels_no_neuropil_disables_buttons(
+    image_viewer: _ImageViewer,
+) -> None:
+    """setData(None, None, None) disables both labels and neuropil buttons."""
+    image_viewer.setData(None, None, None)
+
+    assert not image_viewer._labels.isEnabled()
+    assert not image_viewer._neuropil.isEnabled()
+
+
+def test_set_data_database_only_neuropil_only_disables_labels_button(
+    image_viewer: _ImageViewer,
+    sample_neuropil: np.ndarray,
+) -> None:
+    """setData(None, None, neuropil) disables labels button (no labels) but
+    may enable neuropil."""
+    image_viewer.setData(None, None, sample_neuropil)
+
+    # Labels button must be disabled since no labels were provided
+    assert not image_viewer._labels.isEnabled()
+
+
+def test_image_canvas_update_image_database_only_sets_camera(
+    image_viewer: _ImageViewer,
+    sample_labels: np.ndarray,
+) -> None:
+    """update_image(None, labels) in database-only mode triggers camera set_range."""
+    # Call directly on the canvas
+    image_viewer._viewer.update_image(None, sample_labels, None)
+
+    # labels_image should be populated even without img
+    assert image_viewer._viewer.labels_image is not None

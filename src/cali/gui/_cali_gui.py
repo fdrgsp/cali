@@ -2225,6 +2225,7 @@ class CaliGui(QMainWindow):
                 )
                 assert isinstance(e_settings, ExtractionSettings)
 
+                _cur_ext = self._extraction_wdg.value()
                 self._extraction_wdg.setValue(
                     ExtractionSettingsData(
                         trace_extraction_data=TraceExtractionData(
@@ -2242,6 +2243,8 @@ class CaliGui(QMainWindow):
                             frame_rate=e_settings.frame_rate,
                         ),
                         threads=e_settings.threads,
+                        export_options=_cur_ext.export_options,
+                        export_enabled=_cur_ext.export_enabled,
                     )
                 )
 
@@ -2258,6 +2261,7 @@ class CaliGui(QMainWindow):
                 )
                 assert isinstance(a_settings, AnalysisSettings)
 
+                _cur_ana = self._analysis_wdg.value()
                 self._analysis_wdg.setValue(
                     AnalysisSettingsData(
                         experiment_type_data=ExperimentTypeData(
@@ -2293,6 +2297,8 @@ class CaliGui(QMainWindow):
                             enable_rising_edge_analysis=a_settings.enable_rising_edge_analysis,
                         ),
                         threads=a_settings.threads,
+                        export_options=_cur_ana.export_options,
+                        export_enabled=_cur_ana.export_enabled,
                     )
                 )
 

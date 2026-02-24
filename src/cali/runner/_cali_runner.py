@@ -336,7 +336,7 @@ class CaliRunner:
                     )
                     extraction_settings_id = extraction_settings_obj.id
                     extraction_threads = extraction_settings_obj.threads
-                    if extraction_settings_id is None:
+                    if extraction_settings_id is None:  # pragma: no cover
                         msg = "ExtractionSettings must have an ID after persistence."
                         cali_logger.error(msg)
                         raise ValueError(msg)
@@ -349,7 +349,7 @@ class CaliRunner:
                         session, analysis_settings
                     )
                     analysis_settings_id = analysis_settings_obj.id
-                    if analysis_settings_id is None:
+                    if analysis_settings_id is None:  # pragma: no cover
                         msg = "AnalysisSettings must have an ID after persistence."
                         cali_logger.error(msg)
                         raise ValueError(msg)
@@ -357,7 +357,7 @@ class CaliRunner:
                     analysis_settings_id = None
 
                 det_id = detection_settings.id
-                if det_id is None:
+                if det_id is None:  # pragma: no cover
                     msg = "DetectionSettings must have an ID after persistence."
                     cali_logger.error(msg)
                     raise ValueError(msg)
@@ -608,7 +608,7 @@ class CaliRunner:
                     # Use a batch size that matches the number of threads to
                     # ensure good utilization without consuming too much memory.
                     # Loading too many FOVs at once can cause OOM errors.
-                    if extraction_threads is None:
+                    if extraction_threads is None:  # pragma: no cover
                         msg = "extraction_threads must be set when running extraction."
                         cali_logger.error(msg)
                         raise ValueError(msg)

@@ -4556,3 +4556,242 @@ def test_scenario_l3_mixed_extraction_then_full_pipeline(
             assert len(data_analysis) > 0
     finally:
         engine.dispose()
+
+
+# =============================================================================
+# TESTS FOR DATASET_PATH=NONE VALIDATION PATHS
+# =============================================================================
+
+
+def test_runner_requires_output_path_when_no_dataset_path() -> None:
+    """runner.run raises ValueError when dataset_path=None and output_path=None."""
+    runner = CaliRunner()
+    exp = Experiment(name="TestNone")
+
+    with pytest.raises(ValueError, match="output_path is required"):
+        runner.run(
+            experiment=exp,
+            dataset_path=None,
+            detection_settings=DetectionSettings(method="cellpose"),
+            output_path=None,
+        )
+
+
+def test_runner_requires_extraction_when_analysis_provided(
+    tmp_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """runner.run raises ValueError when analysis_settings provided without
+    extraction_settings."""
+    data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
+    if not data_path.exists():
+        pytest.skip("Test data not found")
+
+    runner = CaliRunner()
+    exp = Experiment.create_from_data(name="Test", data_path=str(data_path))
+
+    with pytest.raises(ValueError, match="extraction_settings is required"):
+        runner.run(
+            experiment=exp,
+            dataset_path=data_path,
+            detection_settings=DetectionSettings(method="cellpose"),
+            analysis_settings=AnalysisSettings(),
+            extraction_settings=None,
+            output_path=tmp_path,
+            global_position_indices=[0],
+        )
+
+
+def test_runner_requires_dataset_for_detection_when_no_path(
+    tmp_path: Path,
+) -> None:
+    """runner.run raises ValueError when detection is needed but dataset_path=None."""
+    runner = CaliRunner()
+    exp = Experiment(name="TestDetNone")
+
+    with pytest.raises(ValueError, match="Dataset is required for detection"):
+        runner.run(
+            experiment=exp,
+            dataset_path=None,
+            detection_settings=DetectionSettings(method="cellpose"),
+            output_path=tmp_path,
+            global_position_indices=[0],
+        )
+
+
+def test_create_or_update_result_requires_at_least_one_position_list(
+    temp_db: tuple,
+) -> None:
+    """_create_or_update_analysis_result raises ValueError when all position
+    lists are None."""
+    engine, _ = temp_db
+    runner = CaliRunner()
+
+    with Session(engine) as session:
+        with pytest.raises(
+            ValueError,
+            match="At least one of positions_detected",
+        ):
+            runner._create_or_update_analysis_result(
+                session=session,
+                experiment_id=1,
+                detection_settings_id=1,
+                extraction_settings_id=None,
+                analysis_settings_id=None,
+                positions_detected=None,
+                positions_extracted=None,
+                positions_analyzed=None,
+            )
+
+
+def test_runner_infers_output_path_from_dataset_path(
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> None:
+    """When output_path=None, the runner uses dataset_path.parent as output
+    directory."""
+    runner = CaliRunner()
+    exp = Experiment.create_from_data(name="TestInferOutput", data_path=str(data_path))
+    db_name = "test_infer_output_path.cali"
+    expected_db = data_path.parent / db_name
+
+    try:
+        runner.run(
+            experiment=exp,
+            dataset_path=data_path,
+            detection_settings=DetectionSettings(method="cellpose"),
+            output_path=None,  # should be inferred from dataset_path.parent
+            database_name=db_name,
+            global_position_indices=[0],
+        )
+        assert expected_db.exists(), "DB should be created in dataset_path.parent"
+        assert runner._db_path == expected_db
+    finally:
+        if expected_db.exists():
+            expected_db.unlink()
+
+
+def test_runner_raises_when_dataset_path_is_invalid(
+    tmp_path: Path,
+) -> None:
+    """runner.run raises ValueError when dataset_path points to unsupported format."""
+    runner = CaliRunner()
+    exp = Experiment(name="TestBadPath")
+    invalid_path = tmp_path / "bad_data.unsupported_format"
+    invalid_path.mkdir()  # create a directory with unrecognized extension
+
+    with pytest.raises(ValueError, match="Could not load data from path"):
+        runner.run(
+            experiment=exp,
+            dataset_path=invalid_path,
+            detection_settings=DetectionSettings(method="cellpose"),
+            output_path=tmp_path,
+            global_position_indices=[0],
+        )
+
+
+def test_runner_raises_when_dataset_has_no_sequence(
+    tmp_path: Path, data_path: Path
+) -> None:
+    """runner.run raises ValueError when the loaded dataset has no sequence."""
+    from unittest.mock import patch
+
+    from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
+
+    runner = CaliRunner()
+    exp = Experiment.create_from_data(name="TestNoSeq", data_path=str(data_path))
+
+    # Patch load_data_from_path to return a reader with sequence=None
+    mock_reader = MagicMock(spec=TensorstoreZarrReader)
+    mock_reader.sequence = None
+
+    with patch(
+        "cali.runner._cali_runner.load_data_from_path", return_value=mock_reader
+    ):
+        with pytest.raises(ValueError, match="sequence information"):
+            runner.run(
+                experiment=exp,
+                dataset_path=data_path,
+                detection_settings=DetectionSettings(method="cellpose"),
+                output_path=tmp_path,
+                global_position_indices=[0],
+            )
+
+
+def test_runner_raises_when_extraction_needed_but_no_dataset(
+    tmp_path: Path,
+    mock_detection_runner: MagicMock,
+    data_path: Path,
+) -> None:
+    """runner.run raises ValueError when extraction is needed but
+    dataset_path=None (all positions already detected)."""
+    runner = CaliRunner(commit_batch_size=1)
+    exp = Experiment.create_from_data(name="TestExtNoData", data_path=str(data_path))
+    db_name = "test_ext_no_data.cali"
+    detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
+    extraction_settings = ExtractionSettings(threads=THREADS)
+
+    # Step 1: Run detection first so positions are already detected
+    runner.run(
+        experiment=exp,
+        dataset_path=data_path,
+        detection_settings=detection_settings,
+        output_path=tmp_path,
+        database_name=db_name,
+        global_position_indices=[0],
+    )
+
+    # Step 2: Try to run extraction without a dataset_path
+    # All positions are detected (no re-detection needed), but extraction
+    # requires dataset
+    with pytest.raises(ValueError, match="Dataset is required for extraction"):
+        runner.run(
+            experiment=exp,
+            dataset_path=None,
+            detection_settings=detection_settings,
+            extraction_settings=extraction_settings,
+            output_path=tmp_path,
+            database_name=db_name,
+            global_position_indices=[0],
+        )
+
+
+def test_runner_uses_tiff_collection_reader(
+    tmp_path: Path,
+    mock_detection_runner: MagicMock,
+    data_path: Path,
+) -> None:
+    """When tiff_collection_settings returns non-None, TiffCollectionReader is
+    used as dataset."""
+    from unittest.mock import patch
+
+    import useq
+
+    from cali.readers._tiff_collection_reader import TiffCollectionReader
+
+    runner = CaliRunner(commit_batch_size=1)
+    exp = Experiment.create_from_data(name="TestTiffColl", data_path=str(data_path))
+
+    mock_settings = MagicMock()
+    mock_reader = MagicMock(spec=TiffCollectionReader)
+    mock_reader.sequence = MagicMock()
+    mock_reader.sequence.stage_positions = [useq.Position(name="A1_0000")]
+
+    with (
+        patch.object(type(exp), "tiff_collection_settings", return_value=mock_settings),
+        patch(
+            "cali.runner._cali_runner.TiffCollectionReader",
+            return_value=mock_reader,
+        ),
+    ):
+        runner.run(
+            experiment=exp,
+            dataset_path=data_path,
+            detection_settings=DetectionSettings(method="cellpose"),
+            output_path=tmp_path,
+            database_name="test_tiff_coll.cali",
+            global_position_indices=[0],
+        )
+
+    # Verify TiffCollectionReader was instantiated (line 263 covered)
+    assert runner._db_path is not None

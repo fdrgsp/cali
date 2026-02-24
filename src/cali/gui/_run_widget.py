@@ -484,7 +484,7 @@ class _RunCaliWidget(QWidget):
         # When no data is available, disable all of them
         for idx in (0, 1, 2, 3, 4):
             item = model.item(idx)
-            if item is None:
+            if item is None:  # pragma: no cover
                 continue
             if not self._has_data:
                 item.setFlags(Qt.ItemFlag.NoItemFlags)

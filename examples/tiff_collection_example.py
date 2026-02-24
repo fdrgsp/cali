@@ -16,7 +16,7 @@ from cali.readers._tiff_collection_reader import (
 # Example 1: Multi-well plate
 # ============================
 
-tiff_folder = Path("/Users/fdrgsp/Desktop/cali_test/tiffs")
+tiff_folder = Path("/Users/fdrgsp/Desktop/cali/tiffs")
 custom_files = sorted(
     list(tiff_folder.glob("*.tif")) + list(tiff_folder.glob("*.tiff"))
 )
