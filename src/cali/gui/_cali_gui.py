@@ -658,7 +658,11 @@ class CaliGui(QMainWindow):
 
     def _finalize_initialization(self, experiment: Experiment) -> None:
         """Finalize GUI initialization with experiment data."""
-        # UPDATE GUI-------------------------------------------------------------------
+        # UPDATE GUI SETTINGS  --------------------------------------------------------
+        if self._database_path is not None:
+            self._update_gui_settings(self._database_path, experiment=experiment)
+
+        # UPDATE GUI ------------------------------------------------------------------
         if experiment.plate is not None:
             plate_plan = experiment.plate.plate_plan
             if plate_plan is not None:
@@ -667,10 +671,6 @@ class CaliGui(QMainWindow):
                 cali_logger.warning("❌ Plate plan not found in experiment.")
         else:
             cali_logger.warning("❌ Experiment has no plate.")
-
-        # UPDATE GUI SETTINGS ---------------------------------------------------------
-        if self._database_path is not None:
-            self._update_gui_settings(self._database_path, experiment=experiment)
 
         # HIDE LOADING BAR ------------------------------------------------------------
         self._loading_bar.hide()

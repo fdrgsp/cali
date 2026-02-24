@@ -385,8 +385,6 @@ class CaliRunner:
                         session, det_id, list(positions_for_detection)
                     )
 
-                yield "🔍 Running Detection..."
-
                 # 5. Run detection if needed
                 analysis_result_id: int | None = None
                 if positions_for_detection and dataset is None:
@@ -396,11 +394,12 @@ class CaliRunner:
                     )
                     cali_logger.error(msg)
                     raise ValueError(msg)
-                if dataset is not None:
+                if positions_for_detection:
+                    yield "🔍 Running Detection..."
                     cancelled = yield from self._run_detection_phase(
                         session=session,
                         experiment=experiment,
-                        dataset=dataset,
+                        dataset=dataset,  # type: ignore
                         detection_settings=detection_settings,
                         det_id=det_id,
                         positions_for_detection=positions_for_detection,
@@ -496,10 +495,6 @@ class CaliRunner:
                         # Detach for thread safety
                         session.expunge(analysis_settings_obj)
 
-                    yield "📈 Running Extraction" + (
-                        " and 📊 Analysis..." if analysis_settings_obj else "..."
-                    )
-
                     # Determine which positions need extraction/analysis
                     positions_need_extraction = set(
                         self._get_positions_for_extraction(
@@ -537,18 +532,29 @@ class CaliRunner:
                     positions_only_analysis = (
                         positions_need_analysis - positions_need_extraction
                     )
-                    if positions_only_analysis:
-                        positions_list = sorted(positions_only_analysis)
-                        if positions_only_analysis == positions_need_analysis:
-                            # ALL positions are analysis-only
-                            cali_logger.info(
-                                f"⚠️ Extraction already exists for all positions "
-                                f"with DetectionSettings ID {det_id} and "
-                                f"ExtractionSettings ID {extraction_settings_id}. "
-                                "Running analysis only on these positions."
-                            )
-                        else:
-                            # SOME positions are analysis-only
+
+                    # Determine what type of run this is and display appropriate message
+                    is_analysis_only = (
+                        analysis_settings_obj is not None
+                        and len(positions_need_analysis) > 0
+                        and positions_only_analysis == positions_need_analysis
+                    )
+
+                    if is_analysis_only:
+                        yield "📊 Running Analysis only..."
+                        cali_logger.info(
+                            f"⚠️ Extraction already exists for all positions "
+                            f"with DetectionSettings ID {det_id} and "
+                            f"ExtractionSettings ID {extraction_settings_id}. "
+                            "Running analysis only on these positions."
+                        )
+                    else:
+                        yield "📈 Running Extraction" + (
+                            " and 📊 Analysis..." if analysis_settings_obj else "..."
+                        )
+                        # Log if some positions are analysis-only
+                        if positions_only_analysis:
+                            positions_list = sorted(positions_only_analysis)
                             cali_logger.info(
                                 f"⚠️ Extraction already exists for positions "
                                 f"{positions_list}. "
