@@ -8,7 +8,6 @@
 
 
 
-
 - ‼ Multi-Plot ‼
 
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
@@ -19,8 +18,6 @@
 
 - is good to have a button with a lock symbol in the _SingleWellGraphWidget that will apply the same roi to all the widgets.
 
-- add the ability to open a database without the actual data so that analysis can be anyway run using database ifo from extraction. basically we need to skip the loading of the actual data and view images and just enable the rest (obviuously we cannot run full analysis or extraction, but analysis only).
-
 - have a new gui that allows to only open a list of databases and plot the same metrics/results for all of them...like for instance if I have 10 databases form 10 different recordings on the same plate but done in different day we can see the variation over time.
 
 - link image viewer with plots
@@ -30,6 +27,7 @@
 - add stim vs non-stim calcium peaks raster
 - add sotrted stim vs non-stim calcium and spikes heatmap to plots
 
-- add clustering
-
 - test more gui stuff
+
+- create a general CaliReader object to handle different data types that can be used with the micromanager-gui tensorstore/ome zarr, with ome-zarr using yaozarrs and from tifffile for ome-tiff. even better would be to use bffile.
+
