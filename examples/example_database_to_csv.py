@@ -11,6 +11,7 @@ from sqlmodel import create_engine
 from cali.util import (
     export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
+    export_cluster_labels_to_csv,
     export_correlation_matrices_to_csv,
     export_denoised_dff_traces_to_csv,
     export_dff_traces_to_csv,
@@ -34,7 +35,7 @@ db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 engine = create_engine(f"sqlite:///{db_path}")
 
 # Output directory
-output_dir = Path("/Users/fdrgsp/Desktop/cali_test/exported_csv")
+output_dir = Path("/Users/fdrgsp/Desktop/cali/exported_csv")
 output_dir.mkdir(exist_ok=True)
 
 # Export all trace types
@@ -90,6 +91,9 @@ print("Exporting calcium denoised ΔF/F correlation...")
 export_calcium_den_dff_correlation_to_csv(
     engine, output_dir / "calcium_den_dff_correlation.csv", run_id=run_id
 )
+
+print("Exporting cluster labels...")
+export_cluster_labels_to_csv(engine, output_dir / "cluster_labels.csv", run_id=run_id)
 
 print("Exporting inferred spikes synchrony...")
 export_inferred_spikes_synchrony_to_csv(

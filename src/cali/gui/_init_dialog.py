@@ -49,14 +49,6 @@ class _InputDialog(QDialog):
         database_layout.setContentsMargins(5, 5, 5, 5)
         database_layout.setSpacing(5)
 
-        # data_path for database tab
-        self._browse_data_db = _BrowseWidget(
-            database_tab,
-            "Data Path",
-            data_path,
-            "The path to the data associated with the database.",
-        )
-
         # database_path
         self._browse_database = _BrowseWidget(
             database_tab,
@@ -66,13 +58,29 @@ class _InputDialog(QDialog):
             is_dir=False,
         )
 
+        # data_path for database tab (optional)
+        self._browse_data_db = _BrowseWidget(
+            database_tab,
+            "Data Path*",
+            data_path,
+            "The path to the data associated with the database.",
+        )
+
         # styling for database tab
         fix_width_db = self._browse_database._label.minimumSizeHint().width()
         self._browse_data_db._label.setFixedWidth(fix_width_db)
 
-        database_layout.addWidget(self._browse_data_db, 0, 0)
-        database_layout.addWidget(self._browse_database, 1, 0)
-        database_layout.setRowStretch(2, 1)
+        # optional legend
+        optional_label = QLabel(
+            "*Optional: can be omitted if the database already contains "
+            "detection and extraction results."
+        )
+        optional_label.setWordWrap(True)
+
+        database_layout.addWidget(self._browse_database, 0, 0)
+        database_layout.addWidget(self._browse_data_db, 1, 0)
+        database_layout.addWidget(optional_label, 2, 0)
+        database_layout.setRowStretch(3, 1)
 
         # ===== Second Tab: From Directories =====
         directories_tab = QWidget()
@@ -141,6 +149,8 @@ class _InputDialog(QDialog):
         layout.setSpacing(10)
         layout.addWidget(self._tab_widget)
         layout.addWidget(self.buttonBox)
+
+        self._browse_database._path.setFocus()
 
     def value(self) -> InputDialogData:
         """Return paths based on selected tab.

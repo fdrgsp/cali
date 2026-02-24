@@ -3,6 +3,7 @@
 from ._database_to_csv import (
     export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
+    export_cluster_labels_to_csv,
     export_correlation_matrices_to_csv,
     export_denoised_dff_traces_to_csv,
     export_dff_traces_to_csv,
@@ -36,6 +37,7 @@ __all__ = [
     "coordinates_to_mask",
     "export_calcium_den_dff_correlation_to_csv",
     "export_calcium_dff_correlation_to_csv",
+    "export_cluster_labels_to_csv",
     "export_correlation_matrices_to_csv",
     "export_denoised_dff_traces_to_csv",
     "export_dff_traces_to_csv",

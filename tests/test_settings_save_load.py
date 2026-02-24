@@ -617,6 +617,32 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
     assert analysis_value.threads == 3
 
 
+def test_run_selection_preserves_export_options_and_enabled(
+    cali_gui: Any, qtbot: QtBot
+) -> None:
+    """Selecting a run preserves extraction/analysis export state.
+
+    Loading a run's settings must not reset the export_options or
+    export_enabled values the user had configured.
+    """
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+
+    cali_gui._initialize_from_database(db_path, data_path)
+
+    # Set export-enabled to the non-default state for each widget:
+    # extraction defaults True → set False
+    # analysis defaults False → set True
+    cali_gui._extraction_wdg._export_group.setChecked(False)
+    cali_gui._analysis_wdg._export_group.setChecked(True)
+
+    cali_gui._on_run_item_selected(1)
+
+    # Both export states must survive the settings reload
+    assert cali_gui._extraction_wdg.value().export_enabled is False
+    assert cali_gui._analysis_wdg.value().export_enabled is True
+
+
 def test_load_settings_legacy_cluster_data_key(
     cali_gui: Any, settings_file: Path, qtbot: QtBot
 ) -> None:
