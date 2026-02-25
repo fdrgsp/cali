@@ -164,16 +164,38 @@ class _ImageViewer(QGroupBox):
         Parameters
         ----------
         data : np.ndarray | None
-            The image data to display
+            The image data to display (None in database-only mode)
         labels : np.ndarray | None
             ROI mask labels
         neuropil : np.ndarray | None
             Neuropil mask labels (optional)
         """
         self._clear()
+
+        # Database-only mode: no image data, but may have labels/neuropil
         if data is None:
-            self._update_button_state("labels", False)
-            self._update_button_state("neuropil", False)
+            # Still process labels and neuropil if available
+            if labels is not None or neuropil is not None:
+                self._viewer.update_image(None, labels, neuropil)
+
+                # Enable/disable labels button based on whether labels were loaded
+                if labels is not None and self._viewer.labels_image is not None:
+                    self._update_button_state("labels", True)
+                else:
+                    self._update_button_state("labels", False)
+
+                # Enable/disable neuropil button based on whether neuropil was loaded
+                if (
+                    neuropil is not None
+                    and self._viewer.neuropil_contours_image is not None
+                ):
+                    self._update_button_state("neuropil", True)
+                else:
+                    self._update_button_state("neuropil", False)
+            else:
+                # No data and no labels - disable everything
+                self._update_button_state("labels", False)
+                self._update_button_state("neuropil", False)
             return
 
         if len(data.shape) > 2:
@@ -487,22 +509,45 @@ class _ImageCanvas(QWidget):
 
     def update_image(
         self,
-        img: np.ndarray,
+        img: np.ndarray | None,
         labels: np.ndarray | None = None,
         neuropil: np.ndarray | None = None,
     ) -> None:
-        """Update the images data."""
-        clim = (img.min(), img.max())
-        self.image = self._imcls(
-            img, cmap=self._cmap, clim=clim, parent=self.view.scene
-        )
-        self.image.set_gl_state("additive", depth_test=False)
-        self.image.interactive = True
-        self.view.camera.set_range(margin=0)
+        """Update the images data.
 
-        if labels is None:
-            return
+        Parameters
+        ----------
+        img : np.ndarray | None
+            Image data (None in database-only mode)
+        labels : np.ndarray | None
+            ROI mask labels
+        neuropil : np.ndarray | None
+            Neuropil mask labels
+        """
+        # Process main image data if provided
+        if img is not None:
+            clim = (img.min(), img.max())
+            self.image = self._imcls(
+                img, cmap=self._cmap, clim=clim, parent=self.view.scene
+            )
+            self.image.set_gl_state("additive", depth_test=False)
+            self.image.interactive = True
+            self.view.camera.set_range(margin=0)
 
+        # Process labels if provided (works for both normal and database-only mode)
+        if labels is not None:
+            self._add_labels(labels)
+
+        # Process neuropil masks if provided
+        if neuropil is not None and neuropil.max() > 0:
+            self._add_neuropil(neuropil)
+
+        # In database-only mode (no img), set camera range based on labels/neuropil
+        if img is None and (labels is not None or neuropil is not None):
+            self.view.camera.set_range(margin=0)
+
+    def _add_labels(self, labels: np.ndarray) -> None:
+        """Add ROI label masks to the viewer."""
         self.labels_image = self._imcls(
             labels,
             cmap=self._labels_custom_cmap(labels.max()),
@@ -527,33 +572,33 @@ class _ImageCanvas(QWidget):
         self.contours_image.interactive = True
         self.contours_image.visible = False
 
-        # Add neuropil masks if provided
-        if neuropil is not None and neuropil.max() > 0:
-            self.neuropil_image = self._imcls(
-                neuropil,
-                cmap=self._neuropil_custom_cmap(neuropil.max()),
-                clim=(neuropil.min(), neuropil.max()),
-                parent=self.view.scene,
-            )
-            self.neuropil_image.set_gl_state("additive", depth_test=False)
-            self.neuropil_image.interactive = True
-            self.neuropil_image.visible = False
+    def _add_neuropil(self, neuropil: np.ndarray) -> None:
+        """Add neuropil masks to the viewer."""
+        self.neuropil_image = self._imcls(
+            neuropil,
+            cmap=self._neuropil_custom_cmap(neuropil.max()),
+            clim=(neuropil.min(), neuropil.max()),
+            parent=self.view.scene,
+        )
+        self.neuropil_image.set_gl_state("additive", depth_test=False)
+        self.neuropil_image.interactive = True
+        self.neuropil_image.visible = False
 
-            neuropil_contour_key = self._hash_labels(neuropil)
-            if neuropil_contour_key not in self._contour_cache:
-                self._contour_cache[neuropil_contour_key] = (
-                    self._extract_label_contours(neuropil)
-                )
-
-            self.neuropil_contours_image = self._imcls(
-                self._contour_cache[neuropil_contour_key],
-                cmap=self._neuropil_custom_cmap(neuropil.max()),
-                clim=(neuropil.min(), neuropil.max()),
-                parent=self.view.scene,
+        neuropil_contour_key = self._hash_labels(neuropil)
+        if neuropil_contour_key not in self._contour_cache:
+            self._contour_cache[neuropil_contour_key] = self._extract_label_contours(
+                neuropil
             )
-            self.neuropil_contours_image.set_gl_state("additive", depth_test=False)
-            self.neuropil_contours_image.interactive = True
-            self.neuropil_contours_image.visible = False
+
+        self.neuropil_contours_image = self._imcls(
+            self._contour_cache[neuropil_contour_key],
+            cmap=self._neuropil_custom_cmap(neuropil.max()),
+            clim=(neuropil.min(), neuropil.max()),
+            parent=self.view.scene,
+        )
+        self.neuropil_contours_image.set_gl_state("additive", depth_test=False)
+        self.neuropil_contours_image.interactive = True
+        self.neuropil_contours_image.visible = False
 
     def _hash_labels(self, labels: np.ndarray) -> str:
         """Generate a unique hash for a given labels array."""

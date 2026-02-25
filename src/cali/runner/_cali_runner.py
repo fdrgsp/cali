@@ -114,7 +114,7 @@ class CaliRunner:
     def run(
         self,
         experiment: Experiment,
-        dataset_path: str | Path,
+        dataset_path: str | Path | None,
         detection_settings: DetectionSettings | int,
         *,
         extraction_settings: ExtractionSettings | int | None = None,
@@ -231,7 +231,7 @@ class CaliRunner:
     def _run_generator(
         self,
         experiment: Experiment,
-        dataset_path: str | Path,
+        dataset_path: str | Path | None,
         detection_settings: DetectionSettings | int,
         *,
         extraction_settings: ExtractionSettings | int | None = None,
@@ -253,25 +253,33 @@ class CaliRunner:
         self._detection_runner._cancellation_event.clear()
         self._extraction_runner._cancellation_event.clear()
 
-        # 0. Make sure data are ready
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
-        tiff_settings = experiment.tiff_collection_settings(dataset_path)
-        if tiff_settings is not None:
-            dataset = TiffCollectionReader(tiff_settings)
-        else:
-            dataset = load_data_from_path(dataset_path)
+        # 0. Make sure data are ready (can be None for analysis-only mode)
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None = (
+            None
+        )
+        if dataset_path is not None:
+            tiff_settings = experiment.tiff_collection_settings(dataset_path)
+            if tiff_settings is not None:
+                dataset = TiffCollectionReader(tiff_settings)
+            else:
+                dataset = load_data_from_path(dataset_path)
 
-        if dataset is None:
-            msg = f"❌ Could not load data from path: {dataset_path}"
-            cali_logger.error(msg)
-            raise ValueError(msg)
-        if dataset.sequence is None:
-            msg = "❌  Dataset does not contain sequence information."
-            cali_logger.error(msg)
-            raise ValueError(msg)
+            if dataset is None:
+                msg = f"❌ Could not load data from path: {dataset_path}"
+                cali_logger.error(msg)
+                raise ValueError(msg)
+            if dataset.sequence is None:
+                msg = "❌  Dataset does not contain sequence information."
+                cali_logger.error(msg)
+                raise ValueError(msg)
 
         if output_path is None:
-            output_path = Path(dataset_path).parent
+            if dataset_path is not None:
+                output_path = Path(dataset_path).parent
+            else:
+                msg = "❌ output_path is required when dataset_path is None."
+                cali_logger.error(msg)
+                raise ValueError(msg)
         elif isinstance(output_path, str):
             output_path = Path(output_path)
 
@@ -311,10 +319,12 @@ class CaliRunner:
 
                 # Validate extraction/analysis settings combination
                 if analysis_settings is not None and extraction_settings is None:
-                    raise ValueError(
+                    msg = (
                         "extraction_settings is required when "
                         "analysis_settings is provided"
                     )
+                    cali_logger.error(msg)
+                    raise ValueError(msg)
 
                 # Narrow types to actual settings objects
                 extraction_settings_obj: ExtractionSettings | None = None
@@ -326,10 +336,10 @@ class CaliRunner:
                     )
                     extraction_settings_id = extraction_settings_obj.id
                     extraction_threads = extraction_settings_obj.threads
-                    if extraction_settings_id is None:
-                        raise ValueError(
-                            "ExtractionSettings must have an ID after persistence."
-                        )
+                    if extraction_settings_id is None:  # pragma: no cover
+                        msg = "ExtractionSettings must have an ID after persistence."
+                        cali_logger.error(msg)
+                        raise ValueError(msg)
                 else:
                     extraction_settings_id = None
                     extraction_threads = None
@@ -339,25 +349,25 @@ class CaliRunner:
                         session, analysis_settings
                     )
                     analysis_settings_id = analysis_settings_obj.id
-                    if analysis_settings_id is None:
-                        raise ValueError(
-                            "AnalysisSettings must have an ID after persistence."
-                        )
+                    if analysis_settings_id is None:  # pragma: no cover
+                        msg = "AnalysisSettings must have an ID after persistence."
+                        cali_logger.error(msg)
+                        raise ValueError(msg)
                 else:
                     analysis_settings_id = None
 
                 det_id = detection_settings.id
-                if det_id is None:
-                    raise ValueError(
-                        "DetectionSettings must have an ID after persistence."
-                    )
+                if det_id is None:  # pragma: no cover
+                    msg = "DetectionSettings must have an ID after persistence."
+                    cali_logger.error(msg)
+                    raise ValueError(msg)
 
                 # 4. Determine which positions need detection
                 # Track whether user explicitly provided position indices
                 user_provided_positions = global_position_indices is not None
 
                 if global_position_indices is None:
-                    if dataset.sequence is None:
+                    if dataset is None or dataset.sequence is None:
                         msg = "Dataset sequence metadata is missing."
                         cali_logger.error(msg)
                         raise ValueError(msg)
@@ -375,23 +385,30 @@ class CaliRunner:
                         session, det_id, list(positions_for_detection)
                     )
 
-                yield "🔍 Running Detection..."
-
                 # 5. Run detection if needed
                 analysis_result_id: int | None = None
-                cancelled = yield from self._run_detection_phase(
-                    session=session,
-                    experiment=experiment,
-                    dataset=dataset,
-                    detection_settings=detection_settings,
-                    det_id=det_id,
-                    positions_for_detection=positions_for_detection,
-                    detection_only=(
-                        extraction_settings is None and analysis_settings is None
-                    ),
-                )
-                if cancelled:
-                    return
+                if positions_for_detection and dataset is None:
+                    msg = (
+                        "Dataset is required for detection. "
+                        "Provide a data path or use analysis-only mode."
+                    )
+                    cali_logger.error(msg)
+                    raise ValueError(msg)
+                if positions_for_detection:
+                    yield "🔍 Running Detection..."
+                    cancelled = yield from self._run_detection_phase(
+                        session=session,
+                        experiment=experiment,
+                        dataset=dataset,  # type: ignore
+                        detection_settings=detection_settings,
+                        det_id=det_id,
+                        positions_for_detection=positions_for_detection,
+                        detection_only=(
+                            extraction_settings is None and analysis_settings is None
+                        ),
+                    )
+                    if cancelled:
+                        return
 
                 # 7. Run extraction if settings provided
                 if extraction_settings_obj is not None:
@@ -478,10 +495,6 @@ class CaliRunner:
                         # Detach for thread safety
                         session.expunge(analysis_settings_obj)
 
-                    yield "📈 Running Extraction" + (
-                        " and 📊 Analysis..." if analysis_settings_obj else "..."
-                    )
-
                     # Determine which positions need extraction/analysis
                     positions_need_extraction = set(
                         self._get_positions_for_extraction(
@@ -519,18 +532,29 @@ class CaliRunner:
                     positions_only_analysis = (
                         positions_need_analysis - positions_need_extraction
                     )
-                    if positions_only_analysis:
-                        positions_list = sorted(positions_only_analysis)
-                        if positions_only_analysis == positions_need_analysis:
-                            # ALL positions are analysis-only
-                            cali_logger.info(
-                                f"⚠️ Extraction already exists for all positions "
-                                f"with DetectionSettings ID {det_id} and "
-                                f"ExtractionSettings ID {extraction_settings_id}. "
-                                "Running analysis only on these positions."
-                            )
-                        else:
-                            # SOME positions are analysis-only
+
+                    # Determine what type of run this is and display appropriate message
+                    is_analysis_only = (
+                        analysis_settings_obj is not None
+                        and len(positions_need_analysis) > 0
+                        and positions_only_analysis == positions_need_analysis
+                    )
+
+                    if is_analysis_only:
+                        yield "📊 Running Analysis only..."
+                        cali_logger.info(
+                            f"⚠️ Extraction already exists for all positions "
+                            f"with DetectionSettings ID {det_id} and "
+                            f"ExtractionSettings ID {extraction_settings_id}. "
+                            "Running analysis only on these positions."
+                        )
+                    else:
+                        yield "📈 Running Extraction" + (
+                            " and 📊 Analysis..." if analysis_settings_obj else "..."
+                        )
+                        # Log if some positions are analysis-only
+                        if positions_only_analysis:
+                            positions_list = sorted(positions_only_analysis)
                             cali_logger.info(
                                 f"⚠️ Extraction already exists for positions "
                                 f"{positions_list}. "
@@ -584,10 +608,10 @@ class CaliRunner:
                     # Use a batch size that matches the number of threads to
                     # ensure good utilization without consuming too much memory.
                     # Loading too many FOVs at once can cause OOM errors.
-                    if extraction_threads is None:
-                        raise ValueError(
-                            "extraction_threads must be set when running extraction."
-                        )
+                    if extraction_threads is None:  # pragma: no cover
+                        msg = "extraction_threads must be set when running extraction."
+                        cali_logger.error(msg)
+                        raise ValueError(msg)
                     batch_size = extraction_threads
 
                     positions_processed = []
@@ -647,29 +671,38 @@ class CaliRunner:
                             )
 
                         # Run extraction only on FOVs that need it
-                        for fov in self._run_extraction(
-                            dataset,
-                            extraction_settings_obj,
-                            analysis_settings_obj if fovs_need_extraction else None,
-                            fovs=fovs_need_extraction if fovs_need_extraction else [],
-                        ):
-                            self._process_fov_results(
-                                fov,
-                                session,
-                                analysis_result_id,
-                                include_traces=True,
-                            )
-                            fov_count += 1
-                            batch_fov_count += 1
-                            yield "PROGRESS:UPDATE"
-                            self._commit_fov_batch(
-                                fov,
-                                session,
-                                experiment,
-                                fov_count,
-                                len(positions_to_process),
-                            )
-                            positions_processed.append(fov.position_index)
+                        if fovs_need_extraction:
+                            if dataset is None:
+                                msg = (
+                                    "Dataset is required for extraction. "
+                                    "Provide a data path or use "
+                                    "analysis-only mode."
+                                )
+                                cali_logger.error(msg)
+                                raise ValueError(msg)
+                            for fov in self._run_extraction(
+                                dataset,
+                                extraction_settings_obj,
+                                analysis_settings_obj,
+                                fovs=fovs_need_extraction,
+                            ):
+                                self._process_fov_results(
+                                    fov,
+                                    session,
+                                    analysis_result_id,
+                                    include_traces=True,
+                                )
+                                fov_count += 1
+                                batch_fov_count += 1
+                                yield "PROGRESS:UPDATE"
+                                self._commit_fov_batch(
+                                    fov,
+                                    session,
+                                    experiment,
+                                    fov_count,
+                                    len(positions_to_process),
+                                )
+                                positions_processed.append(fov.position_index)
 
                         # Run analysis-only for FOVs with existing extraction
                         if analysis_settings_obj and fovs_only_analysis:
@@ -1641,10 +1674,12 @@ class CaliRunner:
             and positions_extracted is None
             and positions_analyzed is None
         ):
-            raise ValueError(
+            msg = (
                 "At least one of positions_detected, positions_extracted, "
                 "or positions_analyzed must be provided"
             )
+            cali_logger.error(msg)
+            raise ValueError(msg)
 
         # First, check for exact match with all settings
         query = select(CaliResult).where(

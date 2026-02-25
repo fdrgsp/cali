@@ -92,10 +92,6 @@ def compute_cluster_analysis(
     # Compute display order: sort ROI indices by cluster label
     order = [int(i) for i in np.argsort(labels, kind="stable")]
 
-    cali_logger.info(
-        f"Cluster analysis: method={method}, k={k}, silhouette={sil_score:.3f}"
-    )
-
     return ClusterResult(
         labels=[int(lbl) for lbl in labels],
         n_clusters=k,
@@ -144,7 +140,6 @@ def _find_optimal_k(dist_matrix: np.ndarray, max_k: int) -> int:
             best_score = score
             best_k = k
 
-    cali_logger.info(f"Auto-detected optimal k={best_k} (silhouette={best_score:.3f})")
     return best_k
 
 
