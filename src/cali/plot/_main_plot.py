@@ -18,15 +18,19 @@ from ._multi_wells_plots import (
     plot_calcium_burst_avg_interval_bar_plot,
     plot_calcium_burst_count_bar_plot,
     plot_calcium_peaks_amplitude_bar_plot,
+    plot_calcium_peaks_amplitude_stim_split_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
+    plot_calcium_peaks_frequency_stim_split_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
     plot_inferred_spikes_frequency_bar_plot,
+    plot_inferred_spikes_frequency_stim_split_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_bar_plot,
-    plot_non_stimulated_peaks_amplitude_bar_plot,
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
     plot_pca_scatter,
+    plot_pca_scatter_stim_split,
     plot_percentage_active_bar_plot,
-    plot_stimulated_peaks_amplitude_bar_plot,
+    plot_percentage_active_stim_split_bar_plot,
 )
 from ._single_wells_plots.burst import (
     _plot_calcium_burst_activity,
@@ -828,33 +832,33 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Multi-Well Products — burst metrics
+# Multi-Well Products — inferred spikes burst metrics
 AnalysisProduct(
-    name="Burst Count Bar Plot",
+    name="Inferred Spikes Burst Count Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_burst_count_bar_plot,
-    category="Burst Analysis",
+    category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Burst Average Duration Bar Plot",
+    name="Inferred Spikes Burst Average Duration Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_burst_avg_duration_bar_plot,
-    category="Burst Analysis",
+    category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Burst Average Interval Bar Plot",
+    name="Inferred Spikes Burst Average Interval Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_burst_avg_interval_bar_plot,
-    category="Burst Analysis",
+    category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    name="Burst Rate Bar Plot",
+    name="Inferred Spikes Burst Rate Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_burst_rate_bar_plot,
-    category="Burst Analysis",
+    category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
@@ -866,20 +870,52 @@ AnalysisProduct(
     category="Dimensionality Reduction",
     pipeline_stage=PipelineStage.ANALYSIS,
 )
+AnalysisProduct(
+    name="PCA Scatter (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_pca_scatter_stim_split,
+    category="Dimensionality Reduction",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
 
 # Evoked Multi-Well Products
 AnalysisProduct(
-    name="Stimulated Peaks Amplitude Bar Plot",
+    name="Calcium Peaks Amplitude Bar Plot (Stim vs NonStim)",
     group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_stimulated_peaks_amplitude_bar_plot,
+    analyzer=plot_calcium_peaks_amplitude_stim_split_bar_plot,
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
 )
 AnalysisProduct(
-    name="Non-Stimulated Peaks Amplitude Bar Plot",
+    name="Calcium Peaks Frequency Bar Plot (Stim vs NonStim)",
     group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
+    analyzer=plot_calcium_peaks_frequency_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Percentage of Active Cells Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_percentage_active_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Inferred Spikes Frequency Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_frequency_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+)
+AnalysisProduct(
+    name="Inferred Spikes Rising Edge Frequency Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,

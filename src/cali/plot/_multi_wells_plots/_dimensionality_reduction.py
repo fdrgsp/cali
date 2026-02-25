@@ -30,11 +30,12 @@ References
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 
 if TYPE_CHECKING:
+    import pandas as pd
     from sqlalchemy.engine import Engine
 
 # Feature columns in the matrix (order matters for PCA loadings display)
@@ -55,7 +56,8 @@ FEATURE_COLUMNS = [
 def build_fov_feature_matrix(
     engine: Engine,
     run_id: int | None = None,
-) -> "import pandas as pd; pd.DataFrame":  # type: ignore[return]
+    include_stim_status: bool = False,
+) -> pd.DataFrame:
     """Build a per-FOV feature matrix from the database.
 
     One row per FOV.  Columns are :data:`FEATURE_COLUMNS` plus ``"fov_name"``
@@ -67,11 +69,16 @@ def build_fov_feature_matrix(
         Database engine.
     run_id : int | None
         CaliResult id.  When ``None`` all results in the DB are included.
+    include_stim_status : bool
+        When True, split each FOV into two rows — one for stimulated ROIs and
+        one for non-stimulated ROIs — and append the stim/non-stim suffix to
+        the condition label.  Only meaningful for Evoked Activity runs whose
+        ROIs have a ``stimulated`` attribute set.
 
     Returns
     -------
     pandas.DataFrame
-        Shape ``(n_fovs, len(FEATURE_COLUMNS) + 2)`` with columns
+        Shape ``(n_rows, len(FEATURE_COLUMNS) + 2)`` with columns
         ``["fov_name", "condition"] + FEATURE_COLUMNS``.
     """
     import pandas as pd
@@ -80,8 +87,10 @@ def build_fov_feature_matrix(
     from cali.sqlmodel import (
         FOV,
         ROI,
-        FOVAnalysis,
+        AnalysisSettings,
+        CaliResult,
         DataAnalysis,
+        FOVAnalysis,
         Well,
     )
 
@@ -90,6 +99,21 @@ def build_fov_feature_matrix(
     rows: list[dict] = []
 
     with Session(engine) as session:
+        # ------------------------------------------------------------------
+        # 0.  Optionally look up experiment_type for stim-split labelling
+        # ------------------------------------------------------------------
+        experiment_type: str | None = None
+        if include_stim_status and run_id is not None:
+            stmt_exp_type = (
+                select(AnalysisSettings.experiment_type)
+                .join(
+                    CaliResult,
+                    CaliResult.analysis_settings_id == AnalysisSettings.id,
+                )
+                .where(CaliResult.id == run_id)
+            )
+            experiment_type = session.exec(stmt_exp_type).first()
+
         # ------------------------------------------------------------------
         # 1.  Per-FOV means of ROI-level scalars
         # ------------------------------------------------------------------
@@ -101,22 +125,37 @@ def build_fov_feature_matrix(
             .where(col(ROI.active) == True)  # noqa: E712
         )
         if run_id is not None:
-            roi_stmt = roi_stmt.where(
-                col(DataAnalysis.analysis_result_id) == run_id
-            )
+            roi_stmt = roi_stmt.where(col(DataAnalysis.analysis_result_id) == run_id)
 
         roi_results = session.exec(roi_stmt).all()
 
-        # Aggregate per-ROI scalars → per-FOV accumulators
-        fov_roi_data: dict[int, dict[str, list[float]]] = {}
-        fov_meta: dict[int, tuple[str, str]] = {}  # fov_id → (fov_name, condition)
+        # Aggregate per-ROI scalars → per-FOV (or per-FOV+stim) accumulators.
+        # When include_stim_status=True the key is (fov_id, roi.stimulated)
+        # so that stim and non-stim ROIs within the same FOV end up in
+        # separate rows of the feature matrix.
+        FovKey: TypeAlias = tuple  # (fov_id,) or (fov_id, stim_status)
+        fov_roi_data: dict[FovKey, dict[str, list[float]]] = {}
+        fov_meta: dict[FovKey, tuple[str, str]] = {}  # key → (fov_name, condition)
+
+        def _make_key(fov_id: int, roi: ROI) -> FovKey:
+            if include_stim_status:
+                return (fov_id, roi.stimulated)
+            return (fov_id,)
 
         for analysis, roi, fov, well in roi_results:
-            if fov.id not in fov_roi_data:
-                fov_roi_data[fov.id] = {k: [] for k in FEATURE_COLUMNS}
-                fov_meta[fov.id] = (fov.name, _get_condition_label(well))
+            key = _make_key(fov.id, roi)
+            if key not in fov_roi_data:
+                fov_roi_data[key] = {k: [] for k in FEATURE_COLUMNS}
+                if include_stim_status:
+                    label = _get_condition_label(well, roi, experiment_type)
+                else:
+                    label = _get_condition_label(well)
+                stim_suffix = ""
+                if include_stim_status and roi.stimulated is not None:
+                    stim_suffix = "_stim" if roi.stimulated else "_non_stim"
+                fov_meta[key] = (f"{fov.name}{stim_suffix}", label)
 
-            d = fov_roi_data[fov.id]
+            d = fov_roi_data[key]
 
             # amplitude: mean per ROI
             if analysis.peaks_amplitudes_den_dff:
@@ -134,9 +173,7 @@ def build_fov_feature_matrix(
 
             # spike frequency (thresholded)
             if analysis.inferred_spikes_frequency is not None:
-                d["mean_spike_freq"].append(
-                    float(analysis.inferred_spikes_frequency)
-                )
+                d["mean_spike_freq"].append(float(analysis.inferred_spikes_frequency))
 
             # spike frequency (rising edges)
             if analysis.inferred_spikes_rising_edge_frequency is not None:
@@ -148,22 +185,21 @@ def build_fov_feature_matrix(
             if roi.cell_size is not None:
                 d["mean_cell_size"].append(float(roi.cell_size))
 
-        # Count active/total ROIs per FOV (for pct_active)
-        all_roi_stmt = (
-            select(ROI, FOV)
-            .join(FOV, ROI.fov_id == FOV.id)
-        )
+        # Count active/total ROIs per FOV (for pct_active).
+        # When include_stim_status=True, count separately per (fov_id, stim).
+        all_roi_stmt = select(ROI, FOV).join(FOV, ROI.fov_id == FOV.id)
         if run_id is not None:
             all_roi_stmt = all_roi_stmt.join(
                 DataAnalysis, DataAnalysis.roi_id == ROI.id
             ).where(col(DataAnalysis.analysis_result_id) == run_id)
 
-        fov_total: dict[int, int] = {}
-        fov_active: dict[int, int] = {}
+        fov_total: dict = {}
+        fov_active: dict = {}
         for roi, fov in session.exec(all_roi_stmt).all():
-            fov_total[fov.id] = fov_total.get(fov.id, 0) + 1
+            k = _make_key(fov.id, roi) if include_stim_status else fov.id
+            fov_total[k] = fov_total.get(k, 0) + 1
             if roi.active:
-                fov_active[fov.id] = fov_active.get(fov.id, 0) + 1
+                fov_active[k] = fov_active.get(k, 0) + 1
 
         # ------------------------------------------------------------------
         # 2.  FOVAnalysis burst stats (one scalar per FOV)
@@ -174,27 +210,35 @@ def build_fov_feature_matrix(
             .join(Well, FOV.well_id == Well.id)
         )
         if run_id is not None:
-            fov_stmt = fov_stmt.where(
-                col(FOVAnalysis.analysis_result_id) == run_id
-            )
+            fov_stmt = fov_stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
 
         fov_analysis_map: dict[int, FOVAnalysis] = {}
         for fa, fov, well in session.exec(fov_stmt).all():
             fov_analysis_map[fov.id] = fa
-            if fov.id not in fov_meta:
-                fov_meta[fov.id] = (fov.name, _get_condition_label(well))
+            # Register plain fov.id key for fov_meta when not stim-split
+            if not include_stim_status:
+                plain_key = (fov.id,)
+                if plain_key not in fov_meta:
+                    fov_meta[plain_key] = (fov.name, _get_condition_label(well))
 
         # ------------------------------------------------------------------
-        # 3.  Assemble row per FOV
+        # 3.  Assemble one row per key (fov or fov+stim)
         # ------------------------------------------------------------------
-        all_fov_ids = set(fov_roi_data.keys()) | set(fov_analysis_map.keys())
+        all_keys = set(fov_roi_data.keys())
+        # Also include FOVs that only have burst stats (no active ROIs)
+        if not include_stim_status:
+            for fov_id in fov_analysis_map:
+                all_keys.add((fov_id,))
 
-        for fov_id in sorted(all_fov_ids):
-            fov_name, condition = fov_meta.get(fov_id, (str(fov_id), "unknown"))
+        for key in sorted(
+            all_keys, key=lambda k: (k[0], str(k[1]) if len(k) > 1 else "")
+        ):
+            fov_id = key[0]
+            fov_name, condition = fov_meta.get(key, (str(fov_id), "unknown"))
             row: dict = {"fov_name": fov_name, "condition": condition}
 
-            # ROI-level scalars → FOV mean
-            d = fov_roi_data.get(fov_id, {})
+            # ROI-level scalars → mean
+            d = fov_roi_data.get(key, {})
             for col_name in [
                 "mean_amplitude",
                 "mean_frequency",
@@ -206,12 +250,13 @@ def build_fov_feature_matrix(
                 vals = d.get(col_name, [])
                 row[col_name] = float(np.mean(vals)) if vals else float("nan")
 
-            # % active
-            total = fov_total.get(fov_id, 0)
-            active = fov_active.get(fov_id, 0)
+            # % active — use stim-aware key when splitting
+            pct_key = key if include_stim_status else fov_id
+            total = fov_total.get(pct_key, 0)
+            active = fov_active.get(pct_key, 0)
             row["pct_active"] = (active / total * 100.0) if total > 0 else float("nan")
 
-            # Burst stats from FOVAnalysis
+            # Burst stats from FOVAnalysis (FOV-level, shared across stim groups)
             fa = fov_analysis_map.get(fov_id)
             if fa is not None:
                 row["burst_count"] = (
@@ -240,9 +285,9 @@ def build_fov_feature_matrix(
 
 
 def _prepare_feature_matrix(
-    df: "import pandas as pd; pd.DataFrame",  # type: ignore[type-arg]
+    df: pd.DataFrame,
     feature_cols: list[str] | None = None,
-) -> "import numpy as np; np.ndarray":
+) -> tuple[np.ndarray, list[str]]:
     """Impute NaN (column median) and z-score feature columns.
 
     Parameters
@@ -260,7 +305,6 @@ def _prepare_feature_matrix(
     list[str]
         Column names of the final feature set (all-NaN columns dropped).
     """
-    import pandas as pd
     from sklearn.preprocessing import StandardScaler
 
     if feature_cols is None:
@@ -279,10 +323,10 @@ def _prepare_feature_matrix(
 
 
 def compute_pca(
-    df: "import pandas as pd; pd.DataFrame",  # type: ignore[type-arg]
+    df: pd.DataFrame,
     feature_cols: list[str] | None = None,
     n_components: int = 2,
-) -> "tuple[np.ndarray, object, list[str]]":
+) -> tuple[np.ndarray, Any, list[str]]:
     """Run PCA on the FOV feature matrix.
 
     Parameters
@@ -319,9 +363,9 @@ def compute_pca(
 
 
 def _render_scatter(
-    widget: "object",  # _MultilWellGraphWidget
-    coords: "np.ndarray",
-    conditions: "list[str]",
+    widget: object,  # _MultilWellGraphWidget
+    coords: np.ndarray,
+    conditions: list[str],
     x_label: str,
     y_label: str,
     title: str,
@@ -335,7 +379,9 @@ def _render_scatter(
 
     cond_list: dict[str, dict[str, bool | str]] = widget.conditions  # type: ignore[attr-defined]
     if not cond_list or set(cond_list.keys()) != set(unique_conditions):
-        cond_list = _get_default_conditions(unique_conditions)
+        # PCA scatter always uses multicolor so different conditions are
+        # visually distinguishable in the scatter space.
+        cond_list = _get_default_conditions(unique_conditions, multicolor=True)
         widget.conditions = cond_list  # type: ignore[attr-defined]
 
     plot_item = widget.plot_item  # type: ignore[attr-defined]
@@ -369,10 +415,51 @@ def _render_scatter(
     plot_item.showGrid(x=True, y=True, alpha=0.3)
 
 
+def _run_pca_scatter(
+    widget: object,
+    engine: Engine,
+    run_id: int | None,
+    include_stim_status: bool,
+    title: str,
+) -> None:
+    """Shared implementation for PCA scatter plots."""
+    try:
+        df = build_fov_feature_matrix(engine, run_id, include_stim_status)
+    except Exception:
+        widget.clear_plot()  # type: ignore[attr-defined]
+        return
+
+    if df is None or len(df) < 2:
+        widget.clear_plot()  # type: ignore[attr-defined]
+        return
+
+    try:
+        coords, pca, _ = compute_pca(df)
+    except Exception:
+        widget.clear_plot()  # type: ignore[attr-defined]
+        return
+
+    var1 = pca.explained_variance_ratio_[0] * 100
+    var2 = (
+        pca.explained_variance_ratio_[1] * 100
+        if len(pca.explained_variance_ratio_) > 1
+        else 0.0
+    )
+
+    _render_scatter(
+        widget=widget,
+        coords=coords,
+        conditions=df["condition"].tolist(),
+        x_label=f"PC1 ({var1:.1f}% var)",
+        y_label=f"PC2 ({var2:.1f}% var)",
+        title=title,
+    )
+
+
 def plot_pca_scatter(
-    widget: "object",  # _MultilWellGraphWidget
+    widget: object,  # _MultilWellGraphWidget
     text: str,
-    engine: "Engine",
+    engine: Engine,
     run_id: int | None = None,
 ) -> None:
     """Plot a PCA scatter of FOVs coloured by condition.
@@ -394,30 +481,47 @@ def plot_pca_scatter(
     run_id : int | None
         Filter to a single CaliResult; ``None`` uses all runs in the DB.
     """
-    try:
-        df = build_fov_feature_matrix(engine, run_id)
-    except Exception:
-        widget.clear_plot()  # type: ignore[attr-defined]
-        return
-
-    if df is None or len(df) < 2:
-        widget.clear_plot()  # type: ignore[attr-defined]
-        return
-
-    try:
-        coords, pca, _ = compute_pca(df)
-    except Exception:
-        widget.clear_plot()  # type: ignore[attr-defined]
-        return
-
-    var1 = pca.explained_variance_ratio_[0] * 100
-    var2 = pca.explained_variance_ratio_[1] * 100 if len(pca.explained_variance_ratio_) > 1 else 0.0
-
-    _render_scatter(
+    _run_pca_scatter(
         widget=widget,
-        coords=coords,
-        conditions=df["condition"].tolist(),
-        x_label=f"PC1 ({var1:.1f}% var)",
-        y_label=f"PC2 ({var2:.1f}% var)",
+        engine=engine,
+        run_id=run_id,
+        include_stim_status=False,
         title="PCA — FOV Feature Space",
+    )
+
+
+def plot_pca_scatter_stim_split(
+    widget: object,  # _MultilWellGraphWidget
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot a PCA scatter of FOVs coloured by condition + stimulation status.
+
+    Like :func:`plot_pca_scatter` but each FOV is split into two points —
+    one for its stimulated ROIs and one for its non-stimulated ROIs — so that
+    the stim/non-stim separation is visible directly in the PCA space.
+    Stimulated points are coloured green, non-stimulated points are coloured
+    magenta (matching the stim-split bar plots).
+
+    Only meaningful for ``Evoked Activity`` runs whose ROIs have a
+    ``stimulated`` attribute set.
+
+    Parameters
+    ----------
+    widget : _MultilWellGraphWidget
+        Target plot widget.
+    text : str
+        Plot name (used in the title).
+    engine : Engine
+        Database engine.
+    run_id : int | None
+        Filter to a single CaliResult; ``None`` uses all runs in the DB.
+    """
+    _run_pca_scatter(
+        widget=widget,
+        engine=engine,
+        run_id=run_id,
+        include_stim_status=True,
+        title="PCA — FOV Feature Space (Stim vs NonStim)",
     )

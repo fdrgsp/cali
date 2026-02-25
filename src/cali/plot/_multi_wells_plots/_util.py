@@ -5,6 +5,7 @@ Common functions used across multiple plot types.
 
 from __future__ import annotations
 
+import colorsys
 from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
@@ -42,25 +43,107 @@ def _get_default_color(condition: str) -> str:
         return "gray"
 
 
+# Palette of visually distinct colors used when no specific color is assigned.
+_CONDITION_PALETTE = [
+    "#1f77b4",  # muted blue
+    "#ff7f0e",  # safety orange
+    "#2ca02c",  # cooked asparagus green
+    "#d62728",  # brick red
+    "#9467bd",  # muted purple
+    "#8c564b",  # chestnut brown
+    "#e377c2",  # raspberry yogurt pink
+    "#7f7f7f",  # middle gray
+    "#bcbd22",  # curry yellow-green
+    "#17becf",  # blue-teal
+]
+
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def _make_n_colors(n: int) -> list[str]:
+    """Return n visually distinct hex color strings.
+
+    Uses the qualitative palette for the first entries; generates additional
+    evenly-spaced HSV colors (golden-ratio hue steps) beyond that so that no
+    two conditions ever share the same color regardless of how many there are.
+    """
+    if n <= 0:
+        return []
+    if n <= len(_CONDITION_PALETTE):
+        return list(_CONDITION_PALETTE[:n])
+
+    colors = list(_CONDITION_PALETTE)
+    for i in range(n - len(_CONDITION_PALETTE)):
+        h = (i * _GOLDEN_RATIO) % 1.0
+        s = 0.75 if i % 2 == 0 else 0.55
+        v = 0.85 if i % 3 != 2 else 0.65
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        colors.append(f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}")
+    return colors
+
+
 def _get_default_conditions(
     conditions: list[str],
+    multicolor: bool = False,
+    override_color: str | None = None,
 ) -> dict[str, dict[str, bool | str]]:
     """Create default conditions dict with colors based on condition names.
+
+    EVK_STIM conditions always get green, EVK_NON_STIM always get magenta.
+
+    For all other conditions:
+    - When ``override_color`` is set, all conditions use that fixed color (e.g.
+      ``"green"`` for the stim-only bar plot, ``"magenta"`` for non-stim).
+    - When ``multicolor=False`` (default, used by bar plots): every
+      non-EVK condition gets "gray".  This keeps bar plots visually neutral
+      so that only the stimulation-split variants use colour.
+    - When ``multicolor=True`` (used by scatter / PCA plots): each non-EVK
+      condition is assigned a distinct colour from the palette so that
+      different conditions are visually distinguishable in the scatter space.
 
     Parameters
     ----------
     conditions : list[str]
         List of condition names
+    multicolor : bool
+        When True, assign distinct palette colours to non-EVK conditions.
+        When False (default), assign "gray" to all non-EVK conditions.
+    override_color : str | None
+        When set, every condition receives this color regardless of its name.
+        Takes precedence over both ``multicolor`` and the EVK special colors.
 
     Returns
     -------
     dict[str, dict[str, bool | str]]
         Dictionary mapping condition name to dict with 'visible' and 'color' keys
     """
-    return {
-        cond: {"visible": True, "color": _get_default_color(cond)}
-        for cond in conditions
-    }
+    result: dict[str, dict[str, bool | str]] = {}
+
+    if override_color is not None:
+        for cond in conditions:
+            result[cond] = {"visible": True, "color": override_color}
+        return result
+
+    if multicolor:
+        # Pre-compute enough distinct colors for all non-EVK conditions so
+        # that no two conditions ever share a color, even beyond 10.
+        non_evk_count = sum(1 for c in conditions if _get_default_color(c) == "gray")
+        extra_colors = _make_n_colors(non_evk_count)
+        palette_idx = 0
+        for cond in conditions:
+            color = _get_default_color(cond)
+            if color == "gray":
+                color = extra_colors[palette_idx]
+                palette_idx += 1
+            result[cond] = {"visible": True, "color": color}
+    else:
+        # Bar-plot mode: non-EVK conditions are always gray; only
+        # stim/non-stim labels carry the green/magenta signal.
+        for cond in conditions:
+            color = _get_default_color(cond)
+            result[cond] = {"visible": True, "color": color}
+
+    return result
 
 
 class BarPlotData(TypedDict):
@@ -508,6 +591,7 @@ def _create_pyqtgraph_bar_plot(
     units: str = "",
     title_suffix: str = "",
     bar_label: str = "Weighted Mean ± Pooled SEM",
+    override_color: str | None = None,
 ) -> None:
     """Create a bar plot with pyqtgraph.
 
@@ -525,10 +609,20 @@ def _create_pyqtgraph_bar_plot(
         Additional text to append to title
     bar_label : str
         Label for the bar in the legend
+    override_color : str | None
+        When set, all bars are painted this color regardless of condition names.
+        Use ``"green"`` for stim-only plots and ``"magenta"`` for non-stim plots.
     """
     # Filter based on condition toggles and respect user-defined order
     cond_list: dict[str, dict[str, bool | str]] = widget.conditions
-    if not cond_list or len(cond_list) != len(data["conditions"]):
+    if override_color is not None:
+        # Always re-initialize with the fixed override color so the bars
+        # are always the right color regardless of cached state.
+        cond_list = _get_default_conditions(
+            data["conditions"], override_color=override_color
+        )
+        widget.conditions = cond_list
+    elif not cond_list or len(cond_list) != len(data["conditions"]):
         # Initialize all conditions as enabled with default colors
         cond_list = _get_default_conditions(data["conditions"])
         widget.conditions = cond_list
@@ -627,7 +721,8 @@ def _create_pyqtgraph_bar_plot(
     plot_item.setLabel("left", f"{parameter}{units_text}")
 
     # Set title
-    title = f"{parameter} per Condition{title_suffix}"
+    title_error = f" — {bar_label}" if bar_label else ""
+    title = f"{parameter} per Condition{title_suffix}{title_error}"
     plot_item.setTitle(title)
 
     # Add grid
@@ -642,6 +737,7 @@ def plot_parameter_bar_plot(
     parameter: str = "",
     units: str = "",
     title_suffix: str = "",
+    include_stim_status: bool = False,
 ) -> None:
     """Plot a bar plot for a given parameter across conditions.
 
@@ -661,13 +757,17 @@ def plot_parameter_bar_plot(
         Units for Y-axis label
     title_suffix : str
         Suffix to append to plot title (e.g., "(Median)")
+    include_stim_status : bool
+        If True, condition labels include stim/non-stim split (evoked plots only).
     """
     if not parameter:
         widget.clear_plot()
         return
 
     # Query data grouped by condition
-    data_by_condition = _query_roi_parameter_by_condition(engine, parameter, run_id)
+    data_by_condition = _query_roi_parameter_by_condition(
+        engine, parameter, run_id, include_stim_status=include_stim_status
+    )
 
     if not data_by_condition:
         widget.clear_plot()

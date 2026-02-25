@@ -10,7 +10,8 @@ Covers:
 from __future__ import annotations
 
 import gc
-from collections.abc import Generator
+import importlib.util
+from typing import TYPE_CHECKING
 
 import pytest
 from qtpy.QtWidgets import QWidget
@@ -22,6 +23,7 @@ from cali.plot._multi_wells_plots._dimensionality_reduction import (
     build_fov_feature_matrix,
     compute_pca,
     plot_pca_scatter,
+    plot_pca_scatter_stim_split,
 )
 from cali.sqlmodel import (
     FOV,
@@ -34,20 +36,13 @@ from cali.sqlmodel import (
 from cali.sqlmodel._model import AnalysisSettings, CaliResult
 from cali.sqlmodel._util import create_database_and_tables
 
-try:
-    import pyqtgraph as pg
-    from pyqtgraph import ScatterPlotItem
-
-    HAS_PG = True
-except ImportError:
-    HAS_PG = False
-
-from typing import TYPE_CHECKING
+HAS_PG = importlib.util.find_spec("pyqtgraph") is not None
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+    from collections.abc import Generator
 
     from pytestqt.qtbot import QtBot
+    from sqlalchemy.engine import Engine
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +200,7 @@ def test_compute_pca_shape(dim_red_db: tuple[Engine, int]) -> None:
     """PCA coords have shape (n_fovs, 2)."""
     engine, run_id = dim_red_db
     df = build_fov_feature_matrix(engine, run_id)
-    coords, pca, features = compute_pca(df)
+    coords, _pca, _features = compute_pca(df)
     assert coords.shape == (len(df), 2)
 
 
@@ -311,3 +306,159 @@ def test_plot_pca_scatter_legend_cleared_on_replot(
     )
     assert n_scatter == 2  # still one per condition, not doubled
 
+
+# ---------------------------------------------------------------------------
+# plot_pca_scatter_stim_split
+# ---------------------------------------------------------------------------
+
+
+def test_plot_pca_scatter_stim_split_no_crash(
+    pca_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """plot_pca_scatter_stim_split runs without error (graceful on non-evoked DB)."""
+    widget, engine, run_id = pca_widget
+    # Should not raise — fixture is non-evoked so ROIs have no stimulated attr;
+    # the function should still complete (possibly clearing the plot).
+    plot_pca_scatter_stim_split(widget, "PCA stim", engine, run_id)
+
+
+def test_plot_pca_scatter_stim_split_empty_db(
+    empty_pca_widget: _MultilWellGraphWidget,
+) -> None:
+    """Empty DB → no crash for stim-split PCA scatter."""
+    plot_pca_scatter_stim_split(
+        empty_pca_widget,
+        "PCA stim",
+        empty_pca_widget.engine,
+        empty_pca_widget.run_id,
+    )
+
+
+def test_build_fov_feature_matrix_include_stim_status_no_crash(
+    dim_red_db: tuple[Engine, int],
+) -> None:
+    """build_fov_feature_matrix with include_stim_status=True does not crash."""
+    import pandas as pd
+
+    engine, run_id = dim_red_db
+    df = build_fov_feature_matrix(engine, run_id, include_stim_status=True)
+    # The fixture has no ROI/DataAnalysis records (only FOVAnalysis burst stats),
+    # so the stim-split matrix is empty — that is a valid result, just must
+    # not raise an exception.
+    assert isinstance(df, pd.DataFrame)
+
+
+def test_pca_stim_split_registered_in_analysis_products() -> None:
+    """plot_pca_scatter_stim_split is registered as an AnalysisProduct."""
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    names = [p.name for p in ANALYSIS_PRODUCTS]
+    assert "PCA Scatter (Stim vs NonStim)" in names
+
+
+def test_inferred_spike_burst_combo_names_renamed() -> None:
+    """Inferred spike burst AnalysisProducts include 'Inferred Spikes' in
+    their names.
+    """
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    names = [p.name for p in ANALYSIS_PRODUCTS]
+    assert "Inferred Spikes Burst Count Bar Plot" in names
+    assert "Inferred Spikes Burst Average Duration Bar Plot" in names
+    assert "Inferred Spikes Burst Average Interval Bar Plot" in names
+    assert "Inferred Spikes Burst Rate Bar Plot" in names
+    # Old bare names must no longer exist
+    assert "Burst Count Bar Plot" not in names
+    assert "Burst Rate Bar Plot" not in names
+
+
+def test_build_fov_feature_matrix_with_roi_data_populates_metrics() -> None:
+    """build_fov_feature_matrix accumulates ROI-level metrics correctly.
+
+    Regression test for the bug where d = fov_roi_data[fov.id] was used
+    instead of d = fov_roi_data[key] — which caused a KeyError (keys are
+    tuples, not bare ints) and silently produced an empty feature matrix.
+    """
+    import gc
+
+    import pandas as pd
+    from sqlmodel import Session, create_engine
+
+    from cali.sqlmodel import FOV, Condition, Experiment, FOVAnalysis, Plate, Well
+    from cali.sqlmodel._model import (
+        ROI,
+        AnalysisSettings,
+        CaliResult,
+        DataAnalysis,
+    )
+    from cali.sqlmodel._util import create_database_and_tables
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    try:
+        with Session(engine) as session:
+            exp = Experiment(name="roi_test_exp")
+            session.add(exp)
+            session.flush()
+
+            settings = AnalysisSettings(frame_rate=10.0)
+            session.add(settings)
+            session.flush()
+
+            run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+            session.add(run)
+            session.flush()
+            run_id: int = run.id  # type: ignore[assignment]
+
+            plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+            session.add(plate)
+            session.flush()
+
+            cond = Condition(name="ctrl", condition_type="genotype")
+            well = Well(
+                plate=plate,
+                name="W1",
+                row=0,
+                column=0,
+                conditions=[cond],
+            )
+            session.add(well)
+            session.flush()
+
+            fov = FOV(name="fov_ctrl_0", position_index=0, well_id=well.id)
+            session.add(fov)
+            session.flush()
+
+            # Two active ROIs with amplitude and frequency data
+            for i in range(2):
+                roi = ROI(label_value=i + 1, active=True, fov_id=fov.id)
+                session.add(roi)
+                session.flush()
+
+                da = DataAnalysis(
+                    roi_id=roi.id,
+                    analysis_result_id=run.id,
+                    peaks_amplitudes_den_dff=[1.0 + i, 2.0 + i],
+                    den_dff_frequency=0.5 + 0.1 * i,
+                )
+                session.add(da)
+
+            fa = FOVAnalysis(fov_id=fov.id, analysis_result_id=run.id)
+            session.add(fa)
+            session.commit()
+
+        df = build_fov_feature_matrix(engine, run_id)
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) >= 1, "Expected at least one row in the feature matrix"
+        # ROI-level metrics must be populated (not all-NaN)
+        assert not df["mean_amplitude"].isna().all(), (
+            "mean_amplitude is all-NaN — ROI metric accumulation is broken"
+        )
+        assert not df["mean_frequency"].isna().all(), (
+            "mean_frequency is all-NaN — ROI metric accumulation is broken"
+        )
+    finally:
+        engine.dispose(close=True)
+        gc.collect()

@@ -11,7 +11,7 @@ Covers:
 from __future__ import annotations
 
 import gc
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
 from pyqtgraph import BarGraphItem
@@ -36,11 +36,11 @@ from cali.sqlmodel import (
 from cali.sqlmodel._model import AnalysisSettings, CaliResult
 from cali.sqlmodel._util import create_database_and_tables
 
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+    from collections.abc import Generator
+
     from pytestqt.qtbot import QtBot
+    from sqlalchemy.engine import Engine
 
 
 # ---------------------------------------------------------------------------
@@ -184,9 +184,57 @@ def test_query_returns_empty_for_empty_db() -> None:
     engine.dispose(close=True)
 
 
-# ---------------------------------------------------------------------------
-# plot_calcium_burst_count_bar_plot
-# ---------------------------------------------------------------------------
+def test_query_excludes_zero_count_fovs() -> None:
+    """FOVs with calcium_burst_count=0 must NOT appear in the query output.
+
+    Regression test: previously only None was filtered out, so FOVs with
+    count=0 (no bursts detected) produced bars at height 0 in the plots.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="zero_burst_exp")
+        session.add(exp)
+        session.flush()
+
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        run_id: int = run.id  # type: ignore[assignment]
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W0", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+
+        fov_zero = FOV(name="fov_zero", position_index=0, well_id=well.id)
+        session.add(fov_zero)
+        session.flush()
+
+        # burst_count = 0 — no bursts at all
+        fa_zero = FOVAnalysis(
+            fov_id=fov_zero.id,
+            analysis_result_id=run.id,
+            calcium_burst_count=0,
+            calcium_burst_avg_duration=None,
+            calcium_burst_avg_interval=None,
+        )
+        session.add(fa_zero)
+        session.commit()
+
+    data = _query_calcium_burst_metrics_by_condition(engine, run_id)
+    # The FOV with count=0 must be completely absent
+    assert data == {}, f"Expected empty dict, got {data}"
+    engine.dispose(close=True)
 
 
 def test_plot_calcium_burst_count_renders_bars(

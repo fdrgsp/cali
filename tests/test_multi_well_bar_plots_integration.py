@@ -17,17 +17,23 @@ if TYPE_CHECKING:
 from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 from cali.plot._multi_wells_plots._calcium_peaks import (
     plot_calcium_peaks_amplitude_bar_plot,
+    plot_calcium_peaks_amplitude_stim_split_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
+    plot_calcium_peaks_frequency_stim_split_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
 )
 from cali.plot._multi_wells_plots._cell_properties import (
+    _query_fov_percentage_active,
     plot_cell_size_bar_plot,
     plot_percentage_active_bar_plot,
+    plot_percentage_active_stim_split_bar_plot,
 )
 from cali.plot._multi_wells_plots._inferred_spikes import (
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
     plot_burst_count_bar_plot,
+    plot_inferred_spikes_frequency_stim_split_bar_plot,
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
 )
 from cali.sqlmodel import CaliResult
 
@@ -343,6 +349,29 @@ def test_plot_percentage_active_has_data(
     _verify_plot_has_data(widget, "Percentage Active ROIs")
 
 
+def test_percentage_active_condition_labels_are_condition_only(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Verify _query_fov_percentage_active groups by condition only.
+
+    For evoked experiments the label must NOT include stim/non-stim suffixes
+    such as ' (Stim)' or ' (NonStim)'. The current plots are condition-only;
+    separate evoked-specific plots handle the stim/non-stim split.
+    """
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    data = _query_fov_percentage_active(widget.engine, run_id=run_id)
+
+    stim_keywords = ("stim", "nonstim", "non-stim", "stimulated")
+    for cond_label in data:
+        label_lower = cond_label.lower()
+        assert not any(kw in label_lower for kw in stim_keywords), (
+            f"Condition label '{cond_label}' contains a stim/non-stim indicator. "
+            "Percentage active plot must group by condition only."
+        )
+
+
 def test_plot_cell_size_has_data(
     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
 ) -> None:
@@ -353,3 +382,89 @@ def test_plot_cell_size_has_data(
     plot_cell_size_bar_plot(widget, "Cell Size", widget.engine, run_id)
 
     _verify_plot_has_data(widget, "Cell Size")
+
+
+# ---------------------------------------------------------------------------
+# Stim-split evoked multi-well plots
+# The test DB is NOT evoked, so all stim-split plots produce no data and
+# must clear the widget without raising an exception.
+# ---------------------------------------------------------------------------
+
+
+def test_stim_split_calcium_amplitude_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split amplitude plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    # Should run cleanly (returns no data on non-evoked DB)
+    plot_calcium_peaks_amplitude_stim_split_bar_plot(
+        widget, "Calcium Peaks Amplitude (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_calcium_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split frequency plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_calcium_peaks_frequency_stim_split_bar_plot(
+        widget, "Calcium Peaks Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_percentage_active_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split percentage active plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_percentage_active_stim_split_bar_plot(
+        widget, "Percentage Active (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_inferred_spikes_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split spike frequency plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_inferred_spikes_frequency_stim_split_bar_plot(
+        widget, "Inferred Spikes Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_inferred_spikes_rising_edge_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split rising edge frequency plot must not raise on a non-evoked DB."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot(
+        widget, "Inferred Spikes RE Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_plots_registered_in_analysis_products() -> None:
+    """Verify all new stim-split evoked plots are registered in ANALYSIS_PRODUCTS."""
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    product_names = {p.name for p in ANALYSIS_PRODUCTS}
+    expected = {
+        "Calcium Peaks Amplitude Bar Plot (Stim vs NonStim)",
+        "Calcium Peaks Frequency Bar Plot (Stim vs NonStim)",
+        "Percentage of Active Cells Bar Plot (Stim vs NonStim)",
+        "Inferred Spikes Frequency Bar Plot (Stim vs NonStim)",
+        "Inferred Spikes Rising Edge Frequency Bar Plot (Stim vs NonStim)",
+    }
+    missing = expected - product_names
+    assert not missing, (
+        f"These evoked stim-split products are not registered: {missing}"
+    )

@@ -3,9 +3,9 @@
 [![CI](https://github.com/fdrgsp/cali/actions/workflows/ci.yml/badge.svg)](https://github.com/fdrgsp/cali/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/fdrgsp/cali/branch/main/graph/badge.svg)](https://codecov.io/gh/fdrgsp/cali)
 
-A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WIP 🚧)
+A GUI for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WIP 🚧)
 
-`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
+`cali` is package that provides a GUI to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
 <img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
@@ -599,3 +599,67 @@ where $a_i$ is the mean intra-cluster distance for ROI $i$ and $b_i$ is the mean
 
 - **Number of Clusters**: set to `0` (Auto) to detect the optimal K via silhouette scoring, or enter a positive integer to force a fixed cluster count.
 - **Auto-detect Max K**: upper bound of the silhouette-score scan (only active when Number of Clusters = 0). The scan evaluates every K from 2 up to this value.
+
+---
+
+### Multi-Well Condition Analysis
+
+The **Multi Well** tab displays condition-level summaries of analysis metrics, aggregating data from all wells and FOVs that share the same condition assignment. The aggregation follows a two-level hierarchical approach to correctly account for the nested structure of the data (ROIs within FOVs, FOVs within conditions).
+
+#### Condition Labels
+
+Conditions labels are defined via the plate map editor in the GUI. For `Evoked Activity` experiments, condition labels can optionally include the stimulation status of each ROI (e.g., `ctrl_stim` vs `ctrl_non_stim`), enabling a direct comparison between stimulated and non-stimulated populations within the same condition.
+
+#### Two-Level Aggregation
+
+For each metric, data are aggregated in two steps:
+
+**Step 1 — ROI → FOV**
+
+For each FOV, the values of all active ROIs are collected and averaged to produce a single FOV mean. The FOV-level standard error of the mean (SEM) is computed from the unbiased standard deviation of those ROI values divided by the square root of the number of active ROIs.
+
+**Step 2 — FOV → Condition**
+
+FOV-level means are then combined into a single condition-level estimate. The condition mean is computed as a weighted average of FOV means, where each FOV is weighted by its number of active ROIs — so FOVs with more cells contribute more to the overall estimate. The condition-level SEM is computed as a pooled SEM: the squared FOV SEMs are each weighted by their respective ROI counts, summed, and the square root of the weighted average is taken. This propagates the per-FOV uncertainty into the condition-level error bar.
+
+The individual FOV means are overlaid on each bar as scatter points, providing direct visibility into within-condition variability.
+
+#### Percentage Metrics
+
+For the **% Active Cells** metric, a binomial error model is used in place of the standard SEM, because the quantity is a proportion (number of active ROIs out of total ROIs per FOV).
+
+**Step 1 — ROI → FOV**: for each FOV, the percentage of active ROIs is computed as the number of active ROIs divided by the total number of ROIs, multiplied by 100.
+
+**Step 2 — FOV → Condition**: FOV percentages are combined into a weighted mean proportion, where each FOV is weighted by its total ROI count. The error bar is the binomial SEM: the square root of the weighted proportion times one minus that proportion, divided by the total number of ROIs across all FOVs in the condition. This captures the uncertainty in estimating the underlying proportion of active cells, and automatically scales with both the estimated proportion and the total number of observations.
+
+#### PCA Scatter
+
+The PCA Scatter plots reduce the high-dimensional per-FOV activity profile to two dimensions (PC1 and PC2) so that FOVs with similar overall activity patterns cluster together visually.
+
+**Feature matrix**
+
+One row is built per FOV. The columns are:
+
+- Per-ROI scalars averaged to FOV level: calcium peak amplitude, calcium peak frequency, inter-event interval (IEI), inferred spike frequency (thresholded), inferred spike frequency (rising edges), and mean cell size.
+- Percentage of active ROIs (% active cells).
+- FOV-level burst statistics from inferred spikes: burst count, average burst duration, and average inter-burst interval.
+
+**Preprocessing**
+
+Before PCA is applied, the feature matrix is cleaned and normalised in two steps:
+
+1. Any column where every row is missing (all-NaN) is dropped entirely — this typically removes features that were not computed for the current run (e.g. burst metrics when no bursts were detected).
+2. Remaining missing values are imputed with the column median, so that FOVs that individually lack a metric (e.g. no peaks detected) still contribute to the scatter.
+3. All remaining columns are z-scored (zero mean, unit variance) so that features on very different numerical scales contribute equally to the PCA.
+
+**PCA**
+
+A two-component PCA is fitted to the z-scored feature matrix. Each FOV is projected onto the first two principal components (PC1 and PC2). The axis labels in the scatter plot show the percentage of total variance explained by each component.
+
+**Visualization**
+
+Each FOV appears as one dot in the scatter plot, coloured by its condition assignment. The legend identifies each condition.
+
+**Stim vs NonStim variant**
+
+The **PCA Scatter (Stim vs NonStim)** plot is available for `Evoked Activity` runs. In this variant, each FOV is split into two rows before PCA: one computed from its stimulated ROIs only, and one from its non-stimulated ROIs only. This produces two scatter points per FOV, and the colour encodes the condition plus stimulation status — allowing a direct visual comparison of how the overall activity profile of stimulated and non-stimulated sub-populations differs across the FOV population.

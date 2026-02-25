@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 def _query_fov_percentage_active(
     engine: Engine,
     run_id: int | None = None,
+    include_stim_status: bool = False,
 ) -> dict[str, dict[str, tuple[float, int]]]:
     """Query percentage of active ROIs per FOV, grouped by condition.
 
@@ -39,6 +40,8 @@ def _query_fov_percentage_active(
         Database engine
     run_id : int | None
         Filter by specific analysis run
+    include_stim_status : bool
+        If True, condition labels include stim/non-stim split for evoked experiments.
 
     Returns
     -------
@@ -46,15 +49,16 @@ def _query_fov_percentage_active(
         Nested dict: {condition_label: {fov_name: (percentage, n_total)}}
     """
     with Session(engine) as session:
-        # Get experiment type if run_id is provided
+        # Get experiment type when stim split is requested
         experiment_type = None
-        if run_id is not None:
+        if include_stim_status and run_id is not None:
             from cali.sqlmodel import CaliResult
 
             stmt_exp_type = (
                 select(AnalysisSettings.experiment_type)
                 .join(
-                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
+                    CaliResult,
+                    CaliResult.analysis_settings_id == AnalysisSettings.id,
                 )
                 .where(CaliResult.id == run_id)
             )
@@ -79,8 +83,12 @@ def _query_fov_percentage_active(
         # Group by condition and FOV, count active vs total
         data: dict[str, dict[str, tuple[int, int]]] = {}
         for roi, fov, well in results:
-            # Get condition label (including stimulation status for evoked exps)
-            cond_label = _get_condition_label(well, roi, experiment_type)
+            # Group by condition only (no stim/non-stim split)
+            cond_label = (
+                _get_condition_label(well, roi, experiment_type)
+                if include_stim_status
+                else _get_condition_label(well)
+            )
 
             if cond_label not in data:
                 data[cond_label] = {}
@@ -136,7 +144,7 @@ def plot_cell_size_bar_plot(
         data=plot_data,
         parameter=text,
         units="μm²",
-        title_suffix=" (Weighted Mean ± Pooled SEM)",
+        title_suffix="",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 
@@ -163,6 +171,40 @@ def plot_percentage_active_bar_plot(
         return
 
     # Create the plot
+    _create_pyqtgraph_bar_plot(
+        widget=widget,
+        data=plot_data,
+        parameter="Percentage Active ROIs",
+        units="%",
+        title_suffix="",
+        bar_label="Weighted Mean ± Binomial SEM",
+    )
+
+
+def plot_percentage_active_stim_split_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot percentage of active ROIs split by stim/non-stim within each condition.
+
+    Evoked-only: condition labels are suffixed with '(Stim)' or '(NonStim)'.
+    """
+    data_by_condition = _query_fov_percentage_active(
+        engine, run_id, include_stim_status=True
+    )
+
+    if not data_by_condition:
+        widget.clear_plot()
+        return
+
+    plot_data = _aggregate_percentage_data_to_condition_stats(data_by_condition)
+
+    if not plot_data["conditions"]:
+        widget.clear_plot()
+        return
+
     _create_pyqtgraph_bar_plot(
         widget=widget,
         data=plot_data,

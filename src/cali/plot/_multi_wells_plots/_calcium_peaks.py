@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ._util import (
+    BarPlotData,
     _aggregate_fov_data_to_condition_stats,
     _create_pyqtgraph_bar_plot,
     _get_condition_label,
@@ -19,6 +20,7 @@ from ._util import (
 )
 
 if TYPE_CHECKING:
+    import numpy as np
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
@@ -63,6 +65,152 @@ def plot_calcium_peaks_iei_bar_plot(
     plot_parameter_bar_plot(widget, text, engine, run_id, parameter="iei", units="s")
 
 
+def plot_calcium_peaks_amplitude_stim_split_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot calcium peaks amplitude split by stim/non-stim with LED power labels.
+
+    For evoked experiments.  Stim bars are green and labelled with the LED power
+    percentage (e.g. ``"ctrl (25%)"``); non-stim bars are magenta with the same
+    power labels.  Both sets are shown in a single combined plot.
+    """
+    from cali._constants import EVK_NON_STIM, EVK_STIM
+
+    from ._evoked_activity import (
+        _aggregate_evoked_data_to_condition_stats,
+        _query_evoked_amplitudes_by_condition,
+    )
+
+    # Query stim and non-stim amplitudes
+    stim_data = _query_evoked_amplitudes_by_condition(
+        engine, stimulated=True, run_id=run_id
+    )
+    non_stim_data = _query_evoked_amplitudes_by_condition(
+        engine, stimulated=False, run_id=run_id
+    )
+
+    if not stim_data and not non_stim_data:
+        widget.clear_plot()
+        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
+        return
+
+    # Aggregate each side; produces conditions like "ctrl (25%)"
+    stim_plot_data = (
+        _aggregate_evoked_data_to_condition_stats(stim_data) if stim_data else None
+    )
+    non_stim_plot_data = (
+        _aggregate_evoked_data_to_condition_stats(non_stim_data)
+        if non_stim_data
+        else None
+    )
+
+    # Build per-condition lookups keyed by the base condition name (e.g. "ctrl (25%)")
+    import re
+
+    stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    if stim_plot_data:
+        for cond, mean, sem, fov_vals in zip(
+            stim_plot_data["conditions"],
+            stim_plot_data["means"],
+            stim_plot_data["sems"],
+            stim_plot_data["fov_values_list"],
+        ):
+            stim_lookup[cond] = (mean, sem, fov_vals)
+
+    non_stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    if non_stim_plot_data:
+        for cond, mean, sem, fov_vals in zip(
+            non_stim_plot_data["conditions"],
+            non_stim_plot_data["means"],
+            non_stim_plot_data["sems"],
+            non_stim_plot_data["fov_values_list"],
+        ):
+            non_stim_lookup[cond] = (mean, sem, fov_vals)
+
+    # Collect all unique base conditions and sort by (base_name, numeric_power)
+    # so that the x-axis order is: ctrl (25%) stim, ctrl (25%) non-stim,
+    # ctrl (50%) stim, ctrl (50%) non-stim, trt (25%) stim, trt (25%) non-stim, …
+    seen: set[str] = set()
+    all_base_conditions: list[str] = []
+    for cond in list(stim_lookup) + list(non_stim_lookup):
+        if cond not in seen:
+            seen.add(cond)
+            all_base_conditions.append(cond)
+
+    def _sort_key(c: str) -> tuple[str, float]:
+        base = c.rsplit(" (", 1)[0]
+        tail = c.rsplit(" (", 1)[-1] if " (" in c else ""
+        m = re.search(r"(\d+\.?\d*)", tail)
+        return (base, float(m.group(1)) if m else 0.0)
+
+    all_base_conditions.sort(key=_sort_key)
+
+    # Interleave: for each condition+power, stim bar then non-stim bar
+    combined_conditions: list[str] = []
+    combined_means: list[float] = []
+    combined_sems: list[float] = []
+    combined_fov_values: list[np.ndarray] = []
+
+    for base_cond in all_base_conditions:
+        if base_cond in stim_lookup:
+            mean, sem, fov_vals = stim_lookup[base_cond]
+            combined_conditions.append(f"{base_cond}_{EVK_STIM}")
+            combined_means.append(mean)
+            combined_sems.append(sem)
+            combined_fov_values.append(fov_vals)
+        if base_cond in non_stim_lookup:
+            mean, sem, fov_vals = non_stim_lookup[base_cond]
+            combined_conditions.append(f"{base_cond}_{EVK_NON_STIM}")
+            combined_means.append(mean)
+            combined_sems.append(sem)
+            combined_fov_values.append(fov_vals)
+
+    if not combined_conditions:
+        widget.clear_plot()
+        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
+        return
+
+    combined_plot_data: BarPlotData = {
+        "conditions": combined_conditions,
+        "means": combined_means,
+        "sems": combined_sems,
+        "fov_values_list": combined_fov_values,
+    }
+
+    _create_pyqtgraph_bar_plot(
+        widget=widget,
+        data=combined_plot_data,
+        parameter=text,
+        units="ΔF/F0",
+        title_suffix="",
+        bar_label="Weighted Mean ± Pooled SEM",
+    )
+
+
+def plot_calcium_peaks_frequency_stim_split_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot calcium peaks frequency split by stim/non-stim within each condition.
+
+    Evoked-only: condition labels are suffixed with '(Stim)' or '(NonStim)'.
+    """
+    plot_parameter_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        parameter="den_dff_frequency",
+        units="Hz",
+        include_stim_status=True,
+    )
+
+
 def _query_calcium_burst_metrics_by_condition(
     engine: Engine,
     run_id: int | None = None,
@@ -101,7 +249,7 @@ def _query_calcium_burst_metrics_by_condition(
 
             data: dict[str, dict[str, dict[str, float]]] = {}
             for fa, fov, well in results:
-                if fa.calcium_burst_count is None:
+                if not fa.calcium_burst_count:  # skip None and 0 (no bursts detected)
                     continue
                 cond_label = _get_condition_label(well)
                 data.setdefault(cond_label, {})[fov.name] = {
@@ -151,7 +299,7 @@ def plot_calcium_burst_count_bar_plot(
         data=plot_data,
         parameter=text,
         units="Count",
-        title_suffix="(Calcium Peaks)",
+        title_suffix=" (Calcium Peaks)",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 
@@ -184,7 +332,7 @@ def plot_calcium_burst_avg_duration_bar_plot(
         data=plot_data,
         parameter=text,
         units="s",
-        title_suffix="(Calcium Peaks)",
+        title_suffix=" (Calcium Peaks)",
         bar_label="Weighted Mean ± Pooled SEM",
     )
 
@@ -217,6 +365,6 @@ def plot_calcium_burst_avg_interval_bar_plot(
         data=plot_data,
         parameter=text,
         units="s",
-        title_suffix="(Calcium Peaks)",
+        title_suffix=" (Calcium Peaks)",
         bar_label="Weighted Mean ± Pooled SEM",
     )

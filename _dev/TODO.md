@@ -31,3 +31,4 @@
 
 - create a general CaliReader object to handle different data types that can be used with the micromanager-gui tensorstore/ome zarr, with ome-zarr using yaozarrs and from tifffile for ome-tiff. even better would be to use bffile.
 
+- group tests
