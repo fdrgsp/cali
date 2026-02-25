@@ -24,11 +24,10 @@ from cali.plot._multi_wells_plots._cell_properties import (
     plot_cell_size_bar_plot,
     plot_percentage_active_bar_plot,
 )
-from cali.plot._multi_wells_plots._spike_analysis import (
+from cali.plot._multi_wells_plots._inferred_spikes import (
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
     plot_burst_count_bar_plot,
-    plot_spike_synchrony_bar_plot,
 )
 from cali.sqlmodel import CaliResult
 
@@ -270,21 +269,6 @@ def _has_fov_analysis_data(engine: Engine) -> bool:
             return result is not None
         except Exception:
             return False
-
-
-def test_plot_spike_synchrony_has_data(
-    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-) -> None:
-    """Test that spike synchrony plot displays actual data."""
-    widget, run_id = multi_well_widget_with_data
-    assert widget.engine is not None
-
-    if not _has_fov_analysis_data(widget.engine):
-        pytest.skip("No FOVAnalysis data in database")
-
-    plot_spike_synchrony_bar_plot(widget, "Spike Synchrony", widget.engine, run_id)
-
-    _verify_plot_has_data(widget, "Spike Synchrony")
 
 
 def test_plot_burst_count_has_data(

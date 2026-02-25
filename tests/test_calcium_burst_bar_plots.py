@@ -1,0 +1,268 @@
+"""Tests for calcium burst bar plot functions.
+
+Covers:
+- plot_calcium_burst_count_bar_plot
+- plot_calcium_burst_avg_duration_bar_plot
+- plot_calcium_burst_avg_interval_bar_plot
+- Empty database / missing data → no crash
+- _query_calcium_burst_metrics_by_condition returns correct structure
+"""
+
+from __future__ import annotations
+
+import gc
+from collections.abc import Generator
+
+import pytest
+from pyqtgraph import BarGraphItem
+from qtpy.QtWidgets import QWidget
+from sqlmodel import Session, create_engine
+
+from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+from cali.plot._multi_wells_plots._calcium_peaks import (
+    _query_calcium_burst_metrics_by_condition,
+    plot_calcium_burst_avg_duration_bar_plot,
+    plot_calcium_burst_avg_interval_bar_plot,
+    plot_calcium_burst_count_bar_plot,
+)
+from cali.sqlmodel import (
+    FOV,
+    Condition,
+    Experiment,
+    FOVAnalysis,
+    Plate,
+    Well,
+)
+from cali.sqlmodel._model import AnalysisSettings, CaliResult
+from cali.sqlmodel._util import create_database_and_tables
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+    from pytestqt.qtbot import QtBot
+
+
+# ---------------------------------------------------------------------------
+# DB fixture: 2 conditions, 2 FOVs each, with calcium burst data
+# ---------------------------------------------------------------------------
+
+
+def _build_calcium_burst_db() -> tuple[Engine, int]:
+    """Return (engine, run_id) with 4 FOVs across 2 conditions with burst data."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="calcium_burst_exp")
+        session.add(exp)
+        session.flush()
+
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        run_id: int = run.id  # type: ignore[assignment]
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+
+        for cond_name, row_idx in [("WT", 0), ("KO", 1)]:
+            cond = Condition(name=cond_name, condition_type="genotype")
+            for fov_idx in range(2):
+                well = Well(
+                    plate=plate,
+                    name=f"{cond_name}_W{fov_idx}",
+                    row=row_idx,
+                    column=fov_idx,
+                    conditions=[cond],
+                )
+                session.add(well)
+                session.flush()
+
+                fov = FOV(
+                    name=f"fov_{cond_name.lower()}_{fov_idx}",
+                    position_index=fov_idx,
+                    well_id=well.id,
+                )
+                session.add(fov)
+                session.flush()
+
+                fa = FOVAnalysis(
+                    fov_id=fov.id,
+                    analysis_result_id=run.id,
+                    calcium_burst_count=3 + fov_idx,
+                    calcium_burst_avg_duration=0.8 + 0.1 * fov_idx,
+                    calcium_burst_avg_interval=3.0 + 0.5 * fov_idx,
+                )
+                session.add(fa)
+
+        session.commit()
+
+    return engine, run_id
+
+
+@pytest.fixture
+def calcium_burst_db() -> Generator[tuple[Engine, int], None, None]:
+    engine, run_id = _build_calcium_burst_db()
+    yield engine, run_id
+    engine.dispose(close=True)
+    gc.collect()
+
+
+@pytest.fixture
+def calcium_burst_widget(
+    qtbot: QtBot,
+    calcium_burst_db: tuple[Engine, int],
+) -> Generator[tuple[_MultilWellGraphWidget, Engine, int], None, None]:
+    engine, run_id = calcium_burst_db
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    qtbot.addWidget(widget)
+    widget.engine = engine
+    widget.run_id = run_id
+    yield widget, engine, run_id
+    engine.dispose(close=True)
+    gc.collect()
+
+
+@pytest.fixture
+def empty_widget(qtbot: QtBot) -> Generator[_MultilWellGraphWidget, None, None]:
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    qtbot.addWidget(widget)
+    widget.engine = engine
+    widget.run_id = 1
+    yield widget
+    engine.dispose(close=True)
+    gc.collect()
+
+
+# ---------------------------------------------------------------------------
+# _query_calcium_burst_metrics_by_condition
+# ---------------------------------------------------------------------------
+
+
+def test_query_returns_two_conditions(calcium_burst_db: tuple[Engine, int]) -> None:
+    engine, run_id = calcium_burst_db
+    data = _query_calcium_burst_metrics_by_condition(engine, run_id)
+    assert set(data.keys()) == {"WT", "KO"}
+
+
+def test_query_returns_two_fovs_per_condition(
+    calcium_burst_db: tuple[Engine, int],
+) -> None:
+    engine, run_id = calcium_burst_db
+    data = _query_calcium_burst_metrics_by_condition(engine, run_id)
+    for cond, fov_dict in data.items():
+        assert len(fov_dict) == 2, f"Expected 2 FOVs for {cond}, got {len(fov_dict)}"
+
+
+def test_query_metrics_keys(calcium_burst_db: tuple[Engine, int]) -> None:
+    engine, run_id = calcium_burst_db
+    data = _query_calcium_burst_metrics_by_condition(engine, run_id)
+    for cond, fov_dict in data.items():
+        for fov_name, metrics in fov_dict.items():
+            assert "count" in metrics, f"Missing 'count' for {cond}/{fov_name}"
+            assert "avg_duration_s" in metrics
+            assert "avg_interval_s" in metrics
+
+
+def test_query_returns_empty_for_empty_db() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    data = _query_calcium_burst_metrics_by_condition(engine)
+    assert data == {}
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# plot_calcium_burst_count_bar_plot
+# ---------------------------------------------------------------------------
+
+
+def test_plot_calcium_burst_count_renders_bars(
+    calcium_burst_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    widget, engine, run_id = calcium_burst_widget
+    plot_calcium_burst_count_bar_plot(widget, "Calcium Burst Count", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_calcium_burst_count_two_bars(
+    calcium_burst_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """One bar per condition (2 conditions in fixture)."""
+    widget, engine, run_id = calcium_burst_widget
+    plot_calcium_burst_count_bar_plot(widget, "Calcium Burst Count", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    total_bars = sum(len(b.opts.get("height", [])) for b in bar_items)
+    assert total_bars == 2
+
+
+def test_plot_calcium_burst_count_no_crash_empty_db(
+    empty_widget: _MultilWellGraphWidget,
+) -> None:
+    plot_calcium_burst_count_bar_plot(
+        empty_widget, "Calcium Burst Count", empty_widget.engine, empty_widget.run_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# plot_calcium_burst_avg_duration_bar_plot
+# ---------------------------------------------------------------------------
+
+
+def test_plot_calcium_burst_avg_duration_renders_bars(
+    calcium_burst_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    widget, engine, run_id = calcium_burst_widget
+    plot_calcium_burst_avg_duration_bar_plot(
+        widget, "Calcium Burst Duration", engine, run_id
+    )
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_calcium_burst_avg_duration_no_crash_empty_db(
+    empty_widget: _MultilWellGraphWidget,
+) -> None:
+    plot_calcium_burst_avg_duration_bar_plot(
+        empty_widget, "Calcium Burst Duration", empty_widget.engine, empty_widget.run_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# plot_calcium_burst_avg_interval_bar_plot
+# ---------------------------------------------------------------------------
+
+
+def test_plot_calcium_burst_avg_interval_renders_bars(
+    calcium_burst_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    widget, engine, run_id = calcium_burst_widget
+    plot_calcium_burst_avg_interval_bar_plot(
+        widget, "Calcium Burst Interval", engine, run_id
+    )
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_calcium_burst_avg_interval_no_crash_empty_db(
+    empty_widget: _MultilWellGraphWidget,
+) -> None:
+    plot_calcium_burst_avg_interval_bar_plot(
+        empty_widget,
+        "Calcium Burst Interval",
+        empty_widget.engine,
+        empty_widget.run_id,
+    )

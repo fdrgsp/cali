@@ -726,6 +726,10 @@ class _MultilWellGraphWidget(QWidget):
         # Clear all items
         plot.clear()
 
+        # Clear legend items (created by scatter/PCA plots via addLegend)
+        if getattr(plot, "legend", None) is not None:
+            plot.legend.clear()
+
         # Reset ViewBox transforms and ranges
         vb = plot.getViewBox()
         vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
