@@ -38,6 +38,7 @@ def _str_to_bool(value: str) -> bool:
 def _tree_command(parsed_args: argparse.Namespace) -> None:
     """Execute the ``tree`` sub-command."""
     from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
 
     from cali.sqlmodel import print_cali_results
 
@@ -46,12 +47,16 @@ def _tree_command(parsed_args: argparse.Namespace) -> None:
         print(f"❌ Database not found: {db_path}")
         sys.exit(1)
 
-    engine = create_engine(f"sqlite:///{db_path}")
-    print_cali_results(
-        engine,
-        max_experiment_level=parsed_args.level,
-        show_settings=parsed_args.show_settings,
-    )
+    # NullPool ensures connections are closed immediately (not kept in a pool).
+    engine = create_engine(f"sqlite:///{db_path}", poolclass=NullPool)
+    try:
+        print_cali_results(
+            engine,
+            max_experiment_level=parsed_args.level,
+            show_settings=parsed_args.show_settings,
+        )
+    finally:
+        engine.dispose()
 
 
 def main(args: Sequence[str] | None = None) -> None:
