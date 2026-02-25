@@ -29,7 +29,6 @@ from cali._constants import (
     DEFAULT_NEUROPIL_MIN_PIXELS,
     DEN_DFF_TRACES,
     DFF_TRACES,
-    INFERRED_SPIKES_THRESHOLDED_BINARY,
     INFERRED_SPIKES_TRACES,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
@@ -138,7 +137,6 @@ class _ExtractionGUI(QWidget):
         self._export_group.add_option(DFF_TRACES, 3, 0)
         self._export_group.add_option(DEN_DFF_TRACES, 4, 0)
         self._export_group.add_option(INFERRED_SPIKES_TRACES, 5, 0)
-        self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_BINARY, 6, 0)
         self._export_group.add_stretch("horizontal")
 
         # SCROLL AREA WIDGET ---------------------------------------------------------

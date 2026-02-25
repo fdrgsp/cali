@@ -65,6 +65,18 @@ def experiment_to_plate_map_data(
     if not experiment.plate or not experiment.plate.wells:
         return genotype_data, treatment_data
 
+    # Build a stable color mapping per (condition_type, condition_name) so that
+    # all wells sharing the same condition get the same color.  A condition row
+    # in the DB may have no color stored (color is None), so we generate one
+    # lazily and reuse it for every well that references the same condition.
+    color_map: dict[tuple[str, str], str] = {}
+
+    def _get_color(cond_type: str, cond_name: str, stored_color: str | None) -> str:
+        key = (cond_type, cond_name)
+        if key not in color_map:
+            color_map[key] = stored_color or _generate_random_color()
+        return color_map[key]
+
     # Iterate through all wells in the plate
     for well in experiment.plate.wells:
         # Look for genotype and treatment conditions explicitly by type
@@ -75,7 +87,7 @@ def experiment_to_plate_map_data(
                     row_col=(well.row, well.column),
                     condition=(
                         condition.name,
-                        condition.color or _generate_random_color(),
+                        _get_color("genotype", condition.name, condition.color),
                     ),
                 )
                 genotype_data.append(plate_map_entry)
@@ -85,7 +97,7 @@ def experiment_to_plate_map_data(
                     row_col=(well.row, well.column),
                     condition=(
                         condition.name,
-                        condition.color or _generate_random_color(),
+                        _get_color("treatment", condition.name, condition.color),
                     ),
                 )
                 treatment_data.append(plate_map_entry)
