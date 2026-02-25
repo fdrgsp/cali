@@ -1752,6 +1752,66 @@ def test_experiment_to_plate_map_data_returns_by_type_not_position(
         # This would fail with the old position-based implementation
 
 
+def test_experiment_to_plate_map_data_consistent_colors_when_no_color_stored(
+    temp_db: TempDB,
+) -> None:
+    """Test that wells sharing the same condition name get the same color.
+
+    Regression test: when condition.color is None (not stored in the DB),
+    experiment_to_plate_map_data used to call _generate_random_color() for
+    every well individually, giving each 'g1' well a different color.  The
+    plate map widget deduplicates conditions by (name, color) tuple, so
+    those different-colored entries all survived as separate rows in the
+    conditions table, making 'g1' appear twice.
+    """
+    engine, _ = temp_db
+
+    with Session(engine) as session:
+        exp = Experiment(name="color_consistency_test")
+        plate = Plate(experiment=exp, name="96-well")
+
+        # Conditions with NO color stored (mirrors what rebuild_test_db produces)
+        g1 = Condition(name="g1", condition_type="genotype", color=None)
+        g2 = Condition(name="g2", condition_type="genotype", color=None)
+        t1 = Condition(name="t1", condition_type="treatment", color=None)
+        t2 = Condition(name="t2", condition_type="treatment", color=None)
+
+        Well(plate=plate, name="B5", row=1, column=4, conditions=[g1, t1])
+        Well(plate=plate, name="B6", row=1, column=5, conditions=[g1, t2])
+        Well(plate=plate, name="B7", row=1, column=6, conditions=[g2, t1])
+        Well(plate=plate, name="B8", row=1, column=7, conditions=[g2, t2])
+
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        genotype_data, treatment_data = experiment_to_plate_map_data(exp)
+
+        # Each well should have an entry
+        assert len(genotype_data) == 4
+        assert len(treatment_data) == 4
+
+        # All wells mapped to "g1" must share exactly one color
+        g1_colors = {d.condition[1] for d in genotype_data if d.condition[0] == "g1"}
+        assert len(g1_colors) == 1, f"'g1' wells have inconsistent colors: {g1_colors}"
+
+        # All wells mapped to "g2" must share exactly one color
+        g2_colors = {d.condition[1] for d in genotype_data if d.condition[0] == "g2"}
+        assert len(g2_colors) == 1, f"'g2' wells have inconsistent colors: {g2_colors}"
+
+        # "g1" and "g2" should have different colors from each other
+        assert g1_colors != g2_colors
+
+        # Same checks for treatment
+        t1_colors = {d.condition[1] for d in treatment_data if d.condition[0] == "t1"}
+        assert len(t1_colors) == 1, f"'t1' wells have inconsistent colors: {t1_colors}"
+
+        t2_colors = {d.condition[1] for d in treatment_data if d.condition[0] == "t2"}
+        assert len(t2_colors) == 1, f"'t2' wells have inconsistent colors: {t2_colors}"
+
+        assert t1_colors != t2_colors
+
+
 def test_experiment_create_from_tiff_data(tmp_path: Path) -> None:
     """Test Experiment.create_from_data with TIFF collection."""
     import numpy as np

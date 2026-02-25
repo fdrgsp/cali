@@ -15,6 +15,7 @@ from cali._constants import (
     INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES,
     INFERRED_SPIKES_SYNCHRONY,
     INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
+    INFERRED_SPIKES_THRESHOLDED_BINARY,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
@@ -88,6 +89,7 @@ def test_analysis_gui_get_export_options_filters_unchecked(qtbot: QtBot) -> None
 
     # Checked options should be in export_options
     assert CALCIUM_DEN_DFF_CORRELATION in export_options
+    assert INFERRED_SPIKES_THRESHOLDED_BINARY in export_options
     assert INFERRED_SPIKES_SYNCHRONY in export_options
     assert INFERRED_SPIKES_CROSS_CORRELATION in export_options
     assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS in export_options
