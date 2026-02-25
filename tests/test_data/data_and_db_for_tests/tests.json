@@ -96,7 +96,7 @@
       "burst_min_duration": 150.0,
       "burst_gaussian_sigma": 0.02,
       "calcium_burst_threshold": 60.0,
-      "calcium_burst_min_duration": 150.0,
+      "calcium_burst_min_duration": 300.0,
       "calcium_burst_gaussian_sigma": 0.02,
       "spikes_sync_cross_corr_lag": 500.0,
       "ccg_n_shuffles": 30,
@@ -127,7 +127,7 @@
       "description": "Full analysis on all positions without neuropil correction",
       "detection_settings_index": 0,
       "extraction_settings_index": 1,
-      "analysis_settings_index": 0,
+      "analysis_settings_index": 1,
       "positions_to_analyze": null
     }
   ],
