@@ -115,6 +115,48 @@ Then run your installation command.
 
 <br>
 
+
+---
+
+## CLI
+
+`cali` exposes a small command-line interface for common non-GUI tasks.
+
+### `cali tree` — inspect a database
+
+Print a tree view of the contents of a `.cali` database file without opening the GUI:
+
+```bash
+cali tree <path/to/database.cali> [-l LEVEL] [-s {True,False}]
+```
+
+**Arguments:**
+
+| Argument | Short | Default | Description |
+|---|---|---|---|
+| `db` | — | *(required)* | Path to the `.cali` database file |
+| `--level` | `-l` | `roi` | Maximum tree depth: `experiment`, `plate`, `well`, `fov`, or `roi` |
+| `--show-settings` | `-s` | `True` | Show detailed analysis settings (`True` or `False`) |
+
+**Examples:**
+
+```bash
+# Full tree including ROI details
+cali tree my_experiment.cali
+
+# Show only up to FOV level, without settings details
+cali tree my_experiment.cali -l fov -s False
+
+# Full level names also work
+cali tree my_experiment.cali --level well --show-settings False
+```
+
+### Global options
+
+| Option | Short | Default | Description |
+|---|---|---|---|
+| `--logger` | `-lg` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
+
 ---
 
 ## Overview
