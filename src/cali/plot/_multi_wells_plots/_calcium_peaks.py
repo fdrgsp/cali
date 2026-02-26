@@ -9,6 +9,7 @@ This module provides bar plot visualizations for calcium peak metrics:
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from ._util import (
@@ -108,8 +109,6 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
     )
 
     # Build per-condition lookups keyed by the base condition name (e.g. "ctrl (25%)")
-    import re
-
     stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
     if stim_plot_data:
         for cond, mean, sem, fov_vals in zip(
@@ -186,7 +185,7 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
         parameter=text,
         units="ΔF/F0",
         title_suffix="",
-        bar_label="Weighted Mean ± Pooled SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )
 
 
@@ -271,25 +270,32 @@ def _query_calcium_burst_metrics_by_condition(
         return {}
 
 
-def plot_calcium_burst_count_bar_plot(
+def _plot_calcium_burst_metric(
     widget: _MultilWellGraphWidget,
     text: str,
     engine: Engine,
-    run_id: int | None = None,
+    run_id: int | None,
+    metric_key: str,
+    units: str,
 ) -> None:
-    """Plot calcium population burst count across conditions."""
+    """Plot a single calcium burst metric across conditions.
+
+    Note:
+    metric_key : Key in the burst metrics dict (e.g. ``"count"``, ``"avg_duration_s"``).
+    units : Y-axis units label.
+    """
     data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)
 
     if not data_by_condition:
         widget.clear_plot()
         return
 
-    count_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m["count"]] for fov, m in fov_dict.items()}
+    metric_data: dict[str, dict[str, list[float]]] = {
+        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
         for cond, fov_dict in data_by_condition.items()
     }
 
-    plot_data = _aggregate_fov_data_to_condition_stats(count_data)
+    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
     if not plot_data["conditions"]:
         widget.clear_plot()
         return
@@ -298,10 +304,20 @@ def plot_calcium_burst_count_bar_plot(
         widget=widget,
         data=plot_data,
         parameter=text,
-        units="Count",
+        units=units,
         title_suffix=" (Calcium Peaks)",
-        bar_label="Weighted Mean ± Pooled SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )
+
+
+def plot_calcium_burst_count_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot calcium population burst count across conditions."""
+    _plot_calcium_burst_metric(widget, text, engine, run_id, "count", "Count")
 
 
 def plot_calcium_burst_avg_duration_bar_plot(
@@ -311,30 +327,7 @@ def plot_calcium_burst_avg_duration_bar_plot(
     run_id: int | None = None,
 ) -> None:
     """Plot calcium population burst average duration across conditions."""
-    data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)
-
-    if not data_by_condition:
-        widget.clear_plot()
-        return
-
-    duration_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m["avg_duration_s"]] for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
-    }
-
-    plot_data = _aggregate_fov_data_to_condition_stats(duration_data)
-    if not plot_data["conditions"]:
-        widget.clear_plot()
-        return
-
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="s",
-        title_suffix=" (Calcium Peaks)",
-        bar_label="Weighted Mean ± Pooled SEM",
-    )
+    _plot_calcium_burst_metric(widget, text, engine, run_id, "avg_duration_s", "s")
 
 
 def plot_calcium_burst_avg_interval_bar_plot(
@@ -344,27 +337,4 @@ def plot_calcium_burst_avg_interval_bar_plot(
     run_id: int | None = None,
 ) -> None:
     """Plot calcium population burst average interval across conditions."""
-    data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)
-
-    if not data_by_condition:
-        widget.clear_plot()
-        return
-
-    interval_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m["avg_interval_s"]] for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
-    }
-
-    plot_data = _aggregate_fov_data_to_condition_stats(interval_data)
-    if not plot_data["conditions"]:
-        widget.clear_plot()
-        return
-
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="s",
-        title_suffix=" (Calcium Peaks)",
-        bar_label="Weighted Mean ± Pooled SEM",
-    )
+    _plot_calcium_burst_metric(widget, text, engine, run_id, "avg_interval_s", "s")

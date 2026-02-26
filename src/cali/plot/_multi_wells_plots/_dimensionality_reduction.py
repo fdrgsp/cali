@@ -256,28 +256,36 @@ def build_fov_feature_matrix(
             active = fov_active.get(pct_key, 0)
             row["pct_active"] = (active / total * 100.0) if total > 0 else float("nan")
 
-            # Burst stats from FOVAnalysis (FOV-level, shared across stim groups)
-            fa = fov_analysis_map.get(fov_id)
-            if fa is not None:
-                row["burst_count"] = (
-                    float(fa.spike_burst_count)
-                    if fa.spike_burst_count is not None
-                    else float("nan")
-                )
-                row["burst_avg_duration_s"] = (
-                    float(fa.spike_burst_avg_duration)
-                    if fa.spike_burst_avg_duration is not None
-                    else float("nan")
-                )
-                row["burst_avg_interval_s"] = (
-                    float(fa.spike_burst_avg_interval)
-                    if fa.spike_burst_avg_interval is not None
-                    else float("nan")
-                )
-            else:
+            # Burst stats from FOVAnalysis (FOV-level).
+            # When stim-splitting, burst stats are shared across stim/non-stim
+            # rows for the same FOV, which would create artificial correlation
+            # in PCA.  Exclude them from stim-split matrices by setting to NaN.
+            if include_stim_status:
                 row["burst_count"] = float("nan")
                 row["burst_avg_duration_s"] = float("nan")
                 row["burst_avg_interval_s"] = float("nan")
+            else:
+                fa = fov_analysis_map.get(fov_id)
+                if fa is not None:
+                    row["burst_count"] = (
+                        float(fa.spike_burst_count)
+                        if fa.spike_burst_count is not None
+                        else float("nan")
+                    )
+                    row["burst_avg_duration_s"] = (
+                        float(fa.spike_burst_avg_duration)
+                        if fa.spike_burst_avg_duration is not None
+                        else float("nan")
+                    )
+                    row["burst_avg_interval_s"] = (
+                        float(fa.spike_burst_avg_interval)
+                        if fa.spike_burst_avg_interval is not None
+                        else float("nan")
+                    )
+                else:
+                    row["burst_count"] = float("nan")
+                    row["burst_avg_duration_s"] = float("nan")
+                    row["burst_avg_interval_s"] = float("nan")
 
             rows.append(row)
 
@@ -434,7 +442,7 @@ def _run_pca_scatter(
         return
 
     try:
-        coords, pca, _ = compute_pca(df)
+        coords, pca, used_features = compute_pca(df)
     except Exception:
         widget.clear_plot()  # type: ignore[attr-defined]
         return
@@ -446,13 +454,22 @@ def _run_pca_scatter(
         else 0.0
     )
 
+    # Warn when there are fewer samples than features (PCA may be unreliable)
+    display_title = title
+    n_samples = len(df)
+    n_features = len(used_features)
+    if n_samples < n_features:
+        display_title += "<br><span style='color:magenta; font-size:9pt'>"
+        display_title += f"Warning: {n_samples} FOVs < {n_features} features"
+        display_title += "</span>"
+
     _render_scatter(
         widget=widget,
         coords=coords,
         conditions=df["condition"].tolist(),
         x_label=f"PC1 ({var1:.1f}% var)",
         y_label=f"PC2 ({var2:.1f}% var)",
-        title=title,
+        title=display_title,
     )
 
 

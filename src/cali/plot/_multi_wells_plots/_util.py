@@ -372,79 +372,64 @@ def _query_roi_attribute_by_condition(
     return data
 
 
-def _compute_weighted_mean_and_pooled_sem(
+def _compute_condition_mean_and_sem(
     fov_means: np.ndarray,
-    fov_sems: np.ndarray,
-    fov_ns: np.ndarray,
 ) -> tuple[float, float]:
-    """Compute weighted mean and pooled SEM from FOV-level statistics.
+    """Compute condition mean and SEM treating each FOV as an independent replicate.
+
+    This is the standard approach in calcium imaging: each FOV (field of view)
+    is treated as a single independent observation, regardless of how many ROIs
+    it contains.  The condition mean is the unweighted mean of FOV means, and
+    the SEM is the standard error across FOV means.
 
     Parameters
     ----------
     fov_means : np.ndarray
-        Array of means per FOV
-    fov_sems : np.ndarray
-        Array of SEMs per FOV
-    fov_ns : np.ndarray
-        Array of sample sizes per FOV
+        Array of means per FOV (one value per FOV).
 
     Returns
     -------
     tuple[float, float]
-        (weighted_mean, pooled_sem)
+        (condition_mean, condition_sem)
     """
-    total_n = fov_ns.sum()
+    n_fovs = len(fov_means)
+    if n_fovs == 0:
+        return 0.0, 0.0
+    if n_fovs == 1:
+        return float(fov_means[0]), 0.0
 
-    if total_n <= 1:
-        weighted_mean = float(fov_means.mean()) if len(fov_means) > 0 else 0.0
-        pooled_sem = 0.0
-    else:
-        # Weighted mean
-        weighted_mean = float(np.sum(fov_means * fov_ns) / total_n)
-
-        # Pooled SEM: sqrt(sum(SEM^2 * N) / total_N)
-        pooled_sem = float(np.sqrt(np.sum((fov_sems**2) * fov_ns) / total_n))
-
-    return weighted_mean, pooled_sem
+    condition_mean = float(np.mean(fov_means))
+    condition_sem = float(np.std(fov_means, ddof=1) / np.sqrt(n_fovs))
+    return condition_mean, condition_sem
 
 
-def _compute_binomial_sem(
+def _compute_percentage_mean_and_sem(
     fov_percentages: np.ndarray,
-    fov_ns: np.ndarray,
 ) -> tuple[float, float]:
-    """Compute weighted mean and binomial SEM for percentage data.
+    """Compute mean and SEM for percentage data treating each FOV as a replicate.
+
+    Each FOV percentage is treated as an independent observation, consistent
+    with the FOV-as-replicate approach used for other metrics.
 
     Parameters
     ----------
     fov_percentages : np.ndarray
-        Array of percentages per FOV (0-100 scale)
-    fov_ns : np.ndarray
-        Array of sample sizes per FOV
+        Array of percentages per FOV (0-100 scale).
 
     Returns
     -------
     tuple[float, float]
-        (weighted_mean_percentage, binomial_sem_percentage)
+        (mean_percentage, sem_percentage)
     """
-    total_n = fov_ns.sum()
+    n_fovs = len(fov_percentages)
+    if n_fovs == 0:
+        return 0.0, 0.0
+    if n_fovs == 1:
+        return float(fov_percentages[0]), 0.0
 
-    if total_n <= 1:
-        weighted_mean = (
-            float(fov_percentages.mean()) if len(fov_percentages) > 0 else 0.0
-        )
-        binomial_sem = 0.0
-    else:
-        # Convert percentages to proportions for calculation
-        fov_proportions = fov_percentages / 100.0
-
-        # Weighted mean proportion
-        weighted_p = float(np.sum(fov_proportions * fov_ns) / total_n)
-
-        # Binomial SEM: sqrt(p(1-p)/n)
-        binomial_sem = float(np.sqrt(weighted_p * (1 - weighted_p) / total_n) * 100)
-        weighted_mean = weighted_p * 100
-
-    return weighted_mean, binomial_sem
+    mean_pct = float(np.mean(fov_percentages))
+    sem_pct = float(np.std(fov_percentages, ddof=1) / np.sqrt(n_fovs))
+    return mean_pct, sem_pct
 
 
 def _aggregate_fov_data_to_condition_stats(
@@ -474,10 +459,8 @@ def _aggregate_fov_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        # Compute mean and SEM for each FOV
+        # Compute mean for each FOV (one value per FOV)
         fov_means_list = []
-        fov_sems_list = []
-        fov_ns_list = []
 
         for _fov_name, roi_values in fov_dict.items():
             if not roi_values:
@@ -495,30 +478,19 @@ def _aggregate_fov_data_to_condition_stats(
             if not flat_values:
                 continue
 
-            values_arr = np.array(flat_values)
-            n = len(values_arr)
-            fov_mean = float(values_arr.mean())
-            fov_sem = float(values_arr.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
-
-            fov_means_list.append(fov_mean)
-            fov_sems_list.append(fov_sem)
-            fov_ns_list.append(n)
+            fov_means_list.append(float(np.mean(flat_values)))
 
         if not fov_means_list:
             continue
 
         fov_means = np.array(fov_means_list)
-        fov_sems = np.array(fov_sems_list)
-        fov_ns = np.array(fov_ns_list)
 
-        # Compute weighted mean and pooled SEM
-        weighted_mean, pooled_sem = _compute_weighted_mean_and_pooled_sem(
-            fov_means, fov_sems, fov_ns
-        )
+        # Compute condition mean and SEM treating each FOV as a replicate
+        condition_mean, condition_sem = _compute_condition_mean_and_sem(fov_means)
 
         conditions.append(cond_label)
-        means.append(weighted_mean)
-        sems.append(pooled_sem)
+        means.append(condition_mean)
+        sems.append(condition_sem)
         fov_values_list.append(fov_means)
 
     return BarPlotData(
@@ -556,24 +528,21 @@ def _aggregate_percentage_data_to_condition_stats(
             continue
 
         fov_percentages_list = []
-        fov_ns_list = []
 
-        for _fov_name, (percentage, n) in fov_dict.items():
+        for _fov_name, (percentage, _n) in fov_dict.items():
             fov_percentages_list.append(percentage)
-            fov_ns_list.append(n)
 
         if not fov_percentages_list:
             continue
 
         fov_percentages = np.array(fov_percentages_list)
-        fov_ns = np.array(fov_ns_list)
 
-        # Compute weighted mean and binomial SEM
-        weighted_mean, binomial_sem = _compute_binomial_sem(fov_percentages, fov_ns)
+        # Compute mean and SEM treating each FOV percentage as a replicate
+        mean_pct, sem_pct = _compute_percentage_mean_and_sem(fov_percentages)
 
         conditions.append(cond_label)
-        means.append(weighted_mean)
-        sems.append(binomial_sem)
+        means.append(mean_pct)
+        sems.append(sem_pct)
         fov_values_list.append(fov_percentages)
 
     return BarPlotData(
@@ -590,7 +559,7 @@ def _create_pyqtgraph_bar_plot(
     parameter: str,
     units: str = "",
     title_suffix: str = "",
-    bar_label: str = "Weighted Mean ± Pooled SEM",
+    bar_label: str = "Mean ± SEM (per FOV)",
     override_color: str | None = None,
 ) -> None:
     """Create a bar plot with pyqtgraph.
@@ -681,9 +650,10 @@ def _create_pyqtgraph_bar_plot(
     plot_item.addItem(error_bars)
 
     # Add scatter points for individual FOV values
+    rng = np.random.default_rng(42)
     for idx, fov_vals in enumerate(filtered_fov_values):
         # Add some jitter to x positions for visibility
-        x_positions = np.random.normal(idx, 0.05, size=len(fov_vals))
+        x_positions = rng.normal(idx, 0.05, size=len(fov_vals))
         scatter = pg.ScatterPlotItem(
             x=x_positions,
             y=fov_vals,
@@ -787,5 +757,5 @@ def plot_parameter_bar_plot(
         parameter=text,
         units=units,
         title_suffix=title_suffix,
-        bar_label="Weighted Mean ± Pooled SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )

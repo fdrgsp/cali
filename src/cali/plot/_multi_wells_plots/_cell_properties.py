@@ -145,7 +145,7 @@ def plot_cell_size_bar_plot(
         parameter=text,
         units="μm²",
         title_suffix="",
-        bar_label="Weighted Mean ± Pooled SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )
 
 
@@ -177,7 +177,7 @@ def plot_percentage_active_bar_plot(
         parameter="Percentage Active ROIs",
         units="%",
         title_suffix="",
-        bar_label="Weighted Mean ± Binomial SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )
 
 
@@ -211,5 +211,5 @@ def plot_percentage_active_stim_split_bar_plot(
         parameter="Percentage Active ROIs",
         units="%",
         title_suffix="",
-        bar_label="Weighted Mean ± Binomial SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )

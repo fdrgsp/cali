@@ -7,6 +7,7 @@ This module provides query helpers for evoked experiments:
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -165,8 +166,6 @@ def _aggregate_evoked_data_to_condition_stats(
 
                 # Extract numeric value for sorting
                 # Handle both "5.0%" and "5.000mW/cm²" formats
-                import re
-
                 numeric_match = re.search(r"(\d+\.?\d*)", power_str)
                 numeric_power = float(numeric_match.group(1)) if numeric_match else 0.0
 

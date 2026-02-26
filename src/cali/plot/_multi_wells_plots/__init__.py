@@ -25,6 +25,8 @@ from ._inferred_spikes import (
     plot_inferred_spikes_frequency_stim_split_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
+    plot_spike_correlation_bar_plot,
+    plot_spike_synchrony_bar_plot,
 )
 from ._util import plot_parameter_bar_plot
 
@@ -51,4 +53,6 @@ __all__ = [
     "plot_pca_scatter_stim_split",
     "plot_percentage_active_bar_plot",
     "plot_percentage_active_stim_split_bar_plot",
+    "plot_spike_correlation_bar_plot",
+    "plot_spike_synchrony_bar_plot",
 ]
