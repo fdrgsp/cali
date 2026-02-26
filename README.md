@@ -120,9 +120,7 @@ Then run your installation command.
 
 ## CLI
 
-`cali` exposes a small command-line interface for common non-GUI tasks.
-
-### `cali tree` — inspect a database
+### `cali tree` to inspect a database
 
 Print a tree view of the contents of a `.cali` database file without opening the GUI:
 
@@ -151,11 +149,18 @@ cali tree my_experiment.cali -l fov -s False
 cali tree my_experiment.cali --level well --show-settings False
 ```
 
-### Global options
+### Logger
 
 | Option | Short | Default | Description |
 |---|---|---|---|
 | `--logger` | `-lg` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
+
+**Examples:**
+
+```bash
+# set the logging level to DEBUG
+cali --logger DEBUG
+```
 
 ---
 
