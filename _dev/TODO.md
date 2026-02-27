@@ -32,3 +32,7 @@
 - create a general CaliReader object to handle different data types that can be used with the micromanager-gui tensorstore/ome zarr, with ome-zarr using yaozarrs and from tifffile for ome-tiff. even better would be to use bffile.
 
 - group tests
+
+- group in tabs the export options in analysis gui
+
+- we should also be able to export the data of the plots...so I think we need to add to the _SingleWellGraphWidget and _MultiWellGraphWidget a button to export the data of the plot as csv.

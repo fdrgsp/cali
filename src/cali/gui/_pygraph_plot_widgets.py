@@ -557,6 +557,7 @@ class _MultilWellGraphWidget(QWidget):
         self._run_id: int | None = None
         self._experiment_type: str | None = None
         self._conditions: dict[str, dict[str, bool | str]] = {}
+        self._pca_features: list[str] | None = None
 
         # ------------------------------------------------------------------ #
         # Top combo + conditions button + save button
@@ -571,6 +572,13 @@ class _MultilWellGraphWidget(QWidget):
             "Use the Conditions dialog to reorder and toggle visibility of conditions."
         )
 
+        self._pca_features_btn = QPushButton("PCA Features...", self)
+        self._pca_features_btn.setToolTip(
+            "Select which features to include in the PCA computation."
+        )
+        self._pca_features_btn.clicked.connect(self._show_pca_features_dialog)
+        self._pca_features_btn.hide()
+
         self._save_btn = QPushButton("Save Image", self)
         self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
@@ -580,6 +588,7 @@ class _MultilWellGraphWidget(QWidget):
         top.setSpacing(5)
         top.addWidget(self._combo, 1)
         top.addWidget(self._conditions_btn, 0)
+        top.addWidget(self._pca_features_btn, 0)
         top.addWidget(self._save_btn, 0)
 
         # ------------------------------------------------------------------ #
@@ -755,6 +764,13 @@ class _MultilWellGraphWidget(QWidget):
         """Update the graph when the combo box is changed."""
         self.clear_plot()
         self._conditions_btn.setEnabled(text != "None")
+
+        # Show PCA Features button only for PCA plots
+        if text.startswith("PCA"):
+            self._pca_features_btn.show()
+        else:
+            self._pca_features_btn.hide()
+
         if text == "None" or not self._engine:
             return
 
@@ -786,6 +802,31 @@ class _MultilWellGraphWidget(QWidget):
             new_conditions = dialog.get_conditions()
             self._conditions = new_conditions
             # Redraw the plot with the new order
+            self._on_combo_changed(self._combo.currentText())
+
+    def _show_pca_features_dialog(self) -> None:
+        """Show a dialog for selecting PCA features, then refresh the plot."""
+        # Query whether rising edge analysis is enabled for this run
+        enable_rising_edge = False
+        if self._engine is not None and self._run_id is not None:
+            with Session(self._engine) as session:
+                stmt = (
+                    select(AnalysisSettings.enable_rising_edge_analysis)
+                    .join(CaliResult)
+                    .where(col(CaliResult.id) == self._run_id)
+                )
+                result = session.exec(stmt).first()
+                if result is not None:
+                    enable_rising_edge = bool(result)
+
+        dialog = _PCAFeaturesDialog(
+            current_features=self._pca_features,
+            experiment_type=self._experiment_type,
+            enable_rising_edge=enable_rising_edge,
+            parent=self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._pca_features = dialog.get_features()
             self._on_combo_changed(self._combo.currentText())
 
 
@@ -1187,3 +1228,107 @@ class _ConditionsDialog(QDialog):
                         "color": color,
                     }
         return conditions  # type: ignore
+
+
+# Human-readable labels for PCA feature columns.
+_PCA_FEATURE_LABELS: dict[str, str] = {
+    "mean_amplitude": "Mean Amplitude (\u0394F/F\u2080)",
+    "mean_frequency": "Mean Frequency (Hz)",
+    "mean_iei": "Mean IEI (s)",
+    "mean_spike_freq": "Mean Spike Frequency (Hz)",
+    "mean_spike_freq_edges": "Mean Spike Freq \u2013 Rising Edges (Hz)",
+    "mean_cell_size": "Mean Cell Size (\u00b5m\u00b2)",
+    "pct_active": "% Active ROIs",
+    "burst_count": "Burst Count",
+    "burst_avg_duration_s": "Burst Avg Duration (s)",
+    "burst_avg_interval_s": "Burst Avg Interval (s)",
+}
+
+# Features that are FOV-level burst stats (excluded for stim-split / evoked).
+_BURST_FEATURES = {"burst_count", "burst_avg_duration_s", "burst_avg_interval_s"}
+
+
+class _PCAFeaturesDialog(QDialog):
+    """Dialog for selecting which features to include in PCA."""
+
+    def __init__(
+        self,
+        current_features: list[str] | None,
+        experiment_type: str | None,
+        enable_rising_edge: bool,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("PCA Feature Selection")
+        self.setModal(True)
+
+        from cali._constants import EVOKED
+        from cali.plot._multi_wells_plots._dimensionality_reduction import (
+            FEATURE_COLUMNS,
+        )
+
+        self._feature_columns = list(FEATURE_COLUMNS)
+        self._checkboxes: dict[str, QCheckBox] = {}
+
+        # Instructions
+        instructions = QLabel(
+            "Select the features to include in PCA. "
+            "Disabled features are not available for the current experiment.",
+            self,
+        )
+        instructions.setWordWrap(True)
+
+        # Build checkboxes
+        cb_layout = QVBoxLayout()
+        cb_layout.setSpacing(4)
+
+        is_evoked = experiment_type == EVOKED
+
+        for feat in self._feature_columns:
+            label = _PCA_FEATURE_LABELS.get(feat, feat)
+            cb = QCheckBox(label, self)
+
+            # Default state: checked if in current_features (or all if None)
+            if current_features is None:
+                cb.setChecked(True)
+            else:
+                cb.setChecked(feat in current_features)
+
+            # Disable burst features for evoked experiments
+            if feat in _BURST_FEATURES and is_evoked:
+                cb.setChecked(False)
+                cb.setEnabled(False)
+                cb.setToolTip("Burst stats are not available for evoked experiments")
+
+            # Disable rising-edge feature when rising edge analysis is off
+            if feat == "mean_spike_freq_edges" and not enable_rising_edge:
+                cb.setChecked(False)
+                cb.setEnabled(False)
+                cb.setToolTip("Enable Rising Edge Analysis to use this feature")
+
+            self._checkboxes[feat] = cb
+            cb_layout.addWidget(cb)
+
+        # OK / Cancel
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(instructions)
+        layout.addLayout(cb_layout)
+        layout.addWidget(button_box)
+
+    # ------------------------------------------------------------------
+
+    def get_features(self) -> list[str] | None:
+        """Return list of selected feature names, or None if all are checked."""
+        selected = [f for f, cb in self._checkboxes.items() if cb.isChecked()]
+        all_enabled = [f for f, cb in self._checkboxes.items() if cb.isEnabled()]
+        if set(selected) == set(all_enabled):
+            return None  # all enabled features are checked
+        return selected

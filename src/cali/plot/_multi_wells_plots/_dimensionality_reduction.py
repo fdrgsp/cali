@@ -84,17 +84,9 @@ def build_fov_feature_matrix(
     import pandas as pd
     from sqlmodel import Session, col, select
 
-    from cali.sqlmodel import (
-        FOV,
-        ROI,
-        AnalysisSettings,
-        CaliResult,
-        DataAnalysis,
-        FOVAnalysis,
-        Well,
-    )
+    from cali.sqlmodel import FOV, ROI, DataAnalysis, FOVAnalysis, Well
 
-    from ._util import _get_condition_label
+    from ._util import _get_condition_label, _get_experiment_type
 
     rows: list[dict] = []
 
@@ -104,15 +96,7 @@ def build_fov_feature_matrix(
         # ------------------------------------------------------------------
         experiment_type: str | None = None
         if include_stim_status and run_id is not None:
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult,
-                    CaliResult.analysis_settings_id == AnalysisSettings.id,
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # ------------------------------------------------------------------
         # 1.  Per-FOV means of ROI-level scalars
@@ -431,20 +415,42 @@ def _run_pca_scatter(
     title: str,
 ) -> None:
     """Shared implementation for PCA scatter plots."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     try:
         df = build_fov_feature_matrix(engine, run_id, include_stim_status)
     except Exception:
+        logger.debug("Failed to build FOV feature matrix for PCA", exc_info=True)
         widget.clear_plot()  # type: ignore[attr-defined]
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            f"{title}<br><span style='color:red; font-size:9pt'>"
+            "Error building feature matrix</span>"
+        )
         return
 
     if df is None or len(df) < 2:
         widget.clear_plot()  # type: ignore[attr-defined]
+        n = 0 if df is None else len(df)
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            f"{title}<br><span style='color:orange; font-size:9pt'>"
+            f"Need ≥ 2 FOVs for PCA (found {n})</span>"
+        )
         return
 
+    # Read user-selected PCA features from the widget (if any)
+    pca_features: list[str] | None = getattr(widget, "_pca_features", None)
+
     try:
-        coords, pca, used_features = compute_pca(df)
+        coords, pca, used_features = compute_pca(df, feature_cols=pca_features)
     except Exception:
+        logger.debug("PCA computation failed", exc_info=True)
         widget.clear_plot()  # type: ignore[attr-defined]
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            f"{title}<br><span style='color:red; font-size:9pt'>"
+            "Error computing PCA</span>"
+        )
         return
 
     var1 = pca.explained_variance_ratio_[0] * 100
@@ -471,6 +477,206 @@ def _run_pca_scatter(
         y_label=f"PC2 ({var2:.1f}% var)",
         title=display_title,
     )
+
+
+# Human-readable short labels for loadings plots (kept brief for axis ticks).
+_FEATURE_SHORT_LABELS: dict[str, str] = {
+    "mean_amplitude": "Amplitude",
+    "mean_frequency": "Frequency",
+    "mean_iei": "IEI",
+    "mean_spike_freq": "Spike Freq",
+    "mean_spike_freq_edges": "Spike Freq (edges)",
+    "mean_cell_size": "Cell Size",
+    "pct_active": "% Active",
+    "burst_count": "Burst Count",
+    "burst_avg_duration_s": "Burst Dur.",
+    "burst_avg_interval_s": "Burst Int.",
+}
+
+
+def _run_pca_full(
+    widget: object,
+    engine: Engine,
+    run_id: int | None,
+    include_stim_status: bool,
+) -> tuple[Any, list[str]] | None:
+    """Build feature matrix and run PCA, returning (pca, used_features).
+
+    Fits PCA with *all* possible components (not just 2) so that scree and
+    loadings plots can show every component.  Returns ``None`` when PCA
+    cannot be computed (too few FOVs, missing data, etc.).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        df = build_fov_feature_matrix(engine, run_id, include_stim_status)
+    except Exception:
+        logger.debug("Failed to build FOV feature matrix for PCA", exc_info=True)
+        return None
+
+    if df is None or len(df) < 2:
+        return None
+
+    pca_features: list[str] | None = getattr(widget, "_pca_features", None)
+
+    try:
+        from sklearn.decomposition import PCA
+
+        X, used_features = _prepare_feature_matrix(df, pca_features)
+        n_comp = min(X.shape[0], X.shape[1])
+        pca = PCA(n_components=n_comp)
+        pca.fit(X)
+        return pca, used_features
+    except Exception:
+        logger.debug("PCA computation failed", exc_info=True)
+        return None
+
+
+def _render_loadings_bar(
+    widget: object,
+    pca: Any,
+    used_features: list[str],
+    pc_index: int,
+    title: str,
+) -> None:
+    """Render a horizontal bar chart of PCA loadings for one component."""
+    import pyqtgraph as pg
+
+    plot_item = widget.plot_item  # type: ignore[attr-defined]
+
+    loadings = pca.components_[pc_index]
+    var_pct = pca.explained_variance_ratio_[pc_index] * 100
+
+    labels = [_FEATURE_SHORT_LABELS.get(f, f) for f in used_features]
+    n = len(labels)
+    y_positions = np.arange(n)
+
+    # Colour positive loadings blue, negative red
+    colors = [
+        pg.mkBrush("cornflowerblue") if v >= 0 else pg.mkBrush("tomato")
+        for v in loadings
+    ]
+
+    bar = pg.BarGraphItem(
+        x0=np.zeros(n),
+        x1=loadings,
+        y=y_positions,
+        height=0.6,
+        brushes=colors,
+        pens=[pg.mkPen("k", width=0.5)] * n,
+    )
+    plot_item.addItem(bar)
+
+    # Y-axis tick labels
+    left_axis = plot_item.getAxis("left")
+    left_axis.setTicks([list(zip(y_positions, labels))])
+
+    plot_item.setLabel("bottom", "Loading")
+    plot_item.setTitle(f"{title}<br>PC{pc_index + 1} ({var_pct:.1f}% var)")
+    plot_item.showGrid(x=True, y=False, alpha=0.3)
+
+    # Add zero line
+    zero_line = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen("gray", style=2))
+    plot_item.addItem(zero_line)
+
+
+def _render_scree(
+    widget: object,
+    pca: Any,
+    title: str,
+) -> None:
+    """Render a scree plot (explained variance per component)."""
+    import pyqtgraph as pg
+
+    plot_item = widget.plot_item  # type: ignore[attr-defined]
+
+    var_ratios = pca.explained_variance_ratio_ * 100
+    cum_var = np.cumsum(var_ratios)
+    n = len(var_ratios)
+    x = np.arange(1, n + 1)
+
+    # Bar chart for individual variance
+    bar = pg.BarGraphItem(
+        x=x,
+        height=var_ratios,
+        width=0.6,
+        brush=pg.mkBrush("cornflowerblue"),
+        pen=pg.mkPen("k", width=0.5),
+    )
+    plot_item.addItem(bar)
+
+    # Cumulative line
+    cum_line = pg.PlotDataItem(
+        x=x,
+        y=cum_var,
+        pen=pg.mkPen("tomato", width=2),
+        symbol="o",
+        symbolSize=7,
+        symbolBrush=pg.mkBrush("tomato"),
+    )
+    plot_item.addItem(cum_line)
+
+    # Legend
+    legend = plot_item.addLegend(offset=(-10, 5))
+    legend.clear()
+    legend.addItem(bar, "Individual")
+    legend.addItem(cum_line, "Cumulative")
+
+    # X-axis tick labels: PC1, PC2, ...
+    bottom_axis = plot_item.getAxis("bottom")
+    bottom_axis.setTicks([[(i, f"PC{i}") for i in range(1, n + 1)]])
+
+    plot_item.setLabel("bottom", "Component")
+    plot_item.setLabel("left", "Explained Variance (%)")
+    plot_item.setTitle(title)
+    plot_item.showGrid(x=True, y=True, alpha=0.3)
+
+
+def plot_pca_loadings(
+    widget: object,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot PC1 loadings as a horizontal bar chart.
+
+    Each bar represents one feature; length is the PC1 loading coefficient.
+    Positive loadings are blue, negative loadings are red.
+    """
+    widget.clear_plot()  # type: ignore[attr-defined]
+    result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
+    if result is None:
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            "PCA Loadings<br><span style='color:orange; font-size:9pt'>"
+            "Need ≥ 2 FOVs for PCA</span>"
+        )
+        return
+    pca, used_features = result
+    _render_loadings_bar(widget, pca, used_features, pc_index=0, title="PCA Loadings")
+
+
+def plot_pca_scree(
+    widget: object,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot a scree chart showing explained variance per principal component.
+
+    Bars show individual variance; the red line shows cumulative variance.
+    """
+    widget.clear_plot()  # type: ignore[attr-defined]
+    result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
+    if result is None:
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            "PCA Scree Plot<br><span style='color:orange; font-size:9pt'>"
+            "Need ≥ 2 FOVs for PCA</span>"
+        )
+        return
+    pca, _ = result
+    _render_scree(widget, pca, title="PCA Scree Plot")
 
 
 def plot_pca_scatter(

@@ -8,6 +8,7 @@ This module provides bar plot visualizations for inferred spike and burst metric
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -104,6 +105,10 @@ def _query_burst_metrics_by_condition(
 
         return data
     except OperationalError:
+        logging.getLogger(__name__).debug(
+            "Failed to query spike burst metrics (table may not exist yet)",
+            exc_info=True,
+        )
         return {}
 
 
@@ -334,6 +339,10 @@ def _query_spike_synchrony_by_condition(
 
         return data
     except OperationalError:
+        logging.getLogger(__name__).debug(
+            "Failed to query spike synchrony (table may not exist yet)",
+            exc_info=True,
+        )
         return {}
 
 
@@ -400,6 +409,10 @@ def _query_spike_correlation_by_condition(
 
         return data
     except OperationalError:
+        logging.getLogger(__name__).debug(
+            "Failed to query spike correlation (table may not exist yet)",
+            exc_info=True,
+        )
         return {}
 
 

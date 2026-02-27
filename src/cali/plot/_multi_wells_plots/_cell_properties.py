@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Session, col, select
 
-from cali.sqlmodel import FOV, ROI, AnalysisSettings, DataAnalysis, Well
+from cali.sqlmodel import FOV, ROI, DataAnalysis, Well
 
 from ._util import (
     _aggregate_fov_data_to_condition_stats,
     _aggregate_percentage_data_to_condition_stats,
     _create_pyqtgraph_bar_plot,
     _get_condition_label,
+    _get_experiment_type,
     _query_roi_attribute_by_condition,
 )
 
@@ -52,17 +53,7 @@ def _query_fov_percentage_active(
         # Get experiment type when stim split is requested
         experiment_type = None
         if include_stim_status and run_id is not None:
-            from cali.sqlmodel import CaliResult
-
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult,
-                    CaliResult.analysis_settings_id == AnalysisSettings.id,
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # Get all ROIs grouped by FOV - start from ROI and join backwards
         stmt = (

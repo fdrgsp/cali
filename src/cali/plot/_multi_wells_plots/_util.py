@@ -210,6 +210,32 @@ def _get_condition_label(
     return base_label
 
 
+def _get_experiment_type(session: Session, run_id: int) -> str | None:
+    """Look up experiment_type for a given CaliResult run_id.
+
+    Parameters
+    ----------
+    session : Session
+        Active database session.
+    run_id : int
+        CaliResult id.
+
+    Returns
+    -------
+    str | None
+        The experiment type (e.g., "Spontaneous Activity", "Evoked Activity"),
+        or None if not found.
+    """
+    from cali.sqlmodel import CaliResult
+
+    stmt = (
+        select(AnalysisSettings.experiment_type)
+        .join(CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id)
+        .where(CaliResult.id == run_id)
+    )
+    return session.exec(stmt).first()
+
+
 def _query_roi_parameter_by_condition(
     engine: Engine,
     parameter: str,
@@ -239,16 +265,7 @@ def _query_roi_parameter_by_condition(
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
         if include_stim_status and run_id is not None:
-            from cali.sqlmodel import CaliResult
-
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # Build query - start from DataAnalysis and join backwards
         stmt = (
@@ -319,16 +336,7 @@ def _query_roi_attribute_by_condition(
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
         if include_stim_status and run_id is not None:
-            from cali.sqlmodel import CaliResult
-
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # Build query from ROI table
         stmt = (
@@ -402,34 +410,6 @@ def _compute_condition_mean_and_sem(
     condition_sem = float(np.std(fov_means, ddof=1) / np.sqrt(n_fovs))
     return condition_mean, condition_sem
 
-
-def _compute_percentage_mean_and_sem(
-    fov_percentages: np.ndarray,
-) -> tuple[float, float]:
-    """Compute mean and SEM for percentage data treating each FOV as a replicate.
-
-    Each FOV percentage is treated as an independent observation, consistent
-    with the FOV-as-replicate approach used for other metrics.
-
-    Parameters
-    ----------
-    fov_percentages : np.ndarray
-        Array of percentages per FOV (0-100 scale).
-
-    Returns
-    -------
-    tuple[float, float]
-        (mean_percentage, sem_percentage)
-    """
-    n_fovs = len(fov_percentages)
-    if n_fovs == 0:
-        return 0.0, 0.0
-    if n_fovs == 1:
-        return float(fov_percentages[0]), 0.0
-
-    mean_pct = float(np.mean(fov_percentages))
-    sem_pct = float(np.std(fov_percentages, ddof=1) / np.sqrt(n_fovs))
-    return mean_pct, sem_pct
 
 
 def _aggregate_fov_data_to_condition_stats(
@@ -538,7 +518,7 @@ def _aggregate_percentage_data_to_condition_stats(
         fov_percentages = np.array(fov_percentages_list)
 
         # Compute mean and SEM treating each FOV percentage as a replicate
-        mean_pct, sem_pct = _compute_percentage_mean_and_sem(fov_percentages)
+        mean_pct, sem_pct = _compute_condition_mean_and_sem(fov_percentages)
 
         conditions.append(cond_label)
         means.append(mean_pct)

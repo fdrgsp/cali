@@ -9,6 +9,7 @@ This module provides bar plot visualizations for calcium peak metrics:
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
@@ -267,6 +268,10 @@ def _query_calcium_burst_metrics_by_condition(
 
         return data
     except OperationalError:
+        logging.getLogger(__name__).debug(
+            "Failed to query calcium burst metrics (table may not exist yet)",
+            exc_info=True,
+        )
         return {}
 
 
@@ -280,7 +285,7 @@ def _plot_calcium_burst_metric(
 ) -> None:
     """Plot a single calcium burst metric across conditions.
 
-    Note:
+    NOTE:
     metric_key : Key in the burst metrics dict (e.g. ``"count"``, ``"avg_duration_s"``).
     units : Y-axis units label.
     """
