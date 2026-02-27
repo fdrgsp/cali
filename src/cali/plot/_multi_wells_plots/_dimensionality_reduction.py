@@ -311,6 +311,15 @@ def _prepare_feature_matrix(
         median = X[col].median()
         X[col] = X[col].fillna(median)
 
+    # Drop zero-variance columns (constant after imputation) to avoid
+    # division-by-zero in StandardScaler and PCA explained_variance_ratio_.
+    keep = [i for i, c in enumerate(feature_cols) if X[c].nunique() > 1]
+    feature_cols = [feature_cols[i] for i in keep]
+    X = X[feature_cols]
+
+    if not feature_cols:
+        raise ValueError("No features with non-zero variance remain after filtering.")
+
     return StandardScaler().fit_transform(X.values), feature_cols
 
 
@@ -434,7 +443,7 @@ def _run_pca_scatter(
         widget.clear_plot()  # type: ignore[attr-defined]
         n = 0 if df is None else len(df)
         widget.plot_item.setTitle(  # type: ignore[attr-defined]
-            f"{title}<br><span style='color:orange; font-size:9pt'>"
+            f"{title}<br><span style='color:magenta; font-size:9pt'>"
             f"Need ≥ 2 FOVs for PCA (found {n})</span>"
         )
         return
@@ -444,6 +453,13 @@ def _run_pca_scatter(
 
     try:
         coords, pca, used_features = compute_pca(df, feature_cols=pca_features)
+    except ValueError as exc:
+        logger.debug("PCA computation failed: %s", exc)
+        widget.clear_plot()  # type: ignore[attr-defined]
+        widget.plot_item.setTitle(  # type: ignore[attr-defined]
+            f"{title}<br><span style='color:magenta; font-size:9pt'>{exc}</span>"
+        )
+        return
     except Exception:
         logger.debug("PCA computation failed", exc_info=True)
         widget.clear_plot()  # type: ignore[attr-defined]
@@ -578,7 +594,11 @@ def _render_loadings_bar(
     plot_item.showGrid(x=True, y=False, alpha=0.3)
 
     # Add zero line
-    zero_line = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen("gray", style=2))
+    from qtpy.QtCore import Qt
+
+    zero_line = pg.InfiniteLine(
+        pos=0, angle=90, pen=pg.mkPen("gray", style=Qt.PenStyle.DashLine)
+    )
     plot_item.addItem(zero_line)
 
 
@@ -649,7 +669,7 @@ def plot_pca_loadings(
     result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
     if result is None:
         widget.plot_item.setTitle(  # type: ignore[attr-defined]
-            "PCA Loadings<br><span style='color:orange; font-size:9pt'>"
+            "PCA Loadings<br><span style='color:magenta; font-size:9pt'>"
             "Need ≥ 2 FOVs for PCA</span>"
         )
         return
@@ -671,7 +691,7 @@ def plot_pca_scree(
     result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
     if result is None:
         widget.plot_item.setTitle(  # type: ignore[attr-defined]
-            "PCA Scree Plot<br><span style='color:orange; font-size:9pt'>"
+            "PCA Scree Plot<br><span style='color:magenta; font-size:9pt'>"
             "Need ≥ 2 FOVs for PCA</span>"
         )
         return

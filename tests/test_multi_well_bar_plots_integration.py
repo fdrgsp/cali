@@ -83,9 +83,13 @@ def multi_well_widget_with_data(
             except OperationalError:
                 conn.rollback()
 
-    # Get a valid run_id from the database
+    # Get the run_id with the most positions analysed so all wells/conditions
+    # are represented.  Run 1 in the test DB only covers well B5 (1 condition),
+    # while Run 2 covers all 4 wells (4 conditions).
     with Session(engine) as session:
-        run_id = session.exec(select(CaliResult.id).limit(1)).first()
+        runs = session.exec(select(CaliResult)).all()
+        best = max(runs, key=lambda r: len(r.positions_analyzed or []))
+        run_id = best.id
 
     assert run_id is not None, "Test database should have at least one CaliResult"
 
@@ -265,18 +269,6 @@ def _has_fov_analysis_data(engine: Engine) -> bool:
         return False
 
 
-def _has_fov_analysis_data(engine: Engine) -> bool:
-    """Check if database has FOVAnalysis data."""
-    with Session(engine) as session:
-        try:
-            from cali.sqlmodel import FOVAnalysis
-
-            result = session.exec(select(FOVAnalysis)).first()
-            return result is not None
-        except Exception:
-            return False
-
-
 def test_plot_burst_count_has_data(
     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
 ) -> None:
@@ -386,8 +378,9 @@ def test_plot_cell_size_has_data(
 
 # ---------------------------------------------------------------------------
 # Stim-split evoked multi-well plots
-# The test DB is NOT evoked, so all stim-split plots produce no data and
-# must clear the widget without raising an exception.
+# The test DB IS evoked but ROIs may not all have the stimulated attribute
+# set, so stim-split plots may produce limited data.  These tests verify
+# they run without raising an exception.
 # ---------------------------------------------------------------------------
 
 
@@ -468,3 +461,128 @@ def test_stim_split_plots_registered_in_analysis_products() -> None:
     assert not missing, (
         f"These evoked stim-split products are not registered: {missing}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Condition count assertions — test_db.cali run 2 has 4 wells / 4 conditions
+# ---------------------------------------------------------------------------
+
+EXPECTED_CONDITIONS = {"t1_g1", "t2_g1", "t1_g2", "t2_g2"}
+
+
+def test_calcium_amplitude_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for calcium amplitude must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_calcium_peaks_amplitude_bar_plot(
+        widget, "Calcium Peaks Amplitude", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_percentage_active_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for percentage active must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_percentage_active_bar_plot(
+        widget, "Percentage Active ROIs", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_cell_size_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for cell size must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_cell_size_bar_plot(widget, "Cell Size", widget.engine, run_id)
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_calcium_frequency_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for calcium frequency must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_calcium_peaks_frequency_bar_plot(
+        widget, "Calcium Peaks Frequency", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# PCA plot tests
+# ---------------------------------------------------------------------------
+
+
+def test_pca_scatter_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA scatter plot must not crash, even when features have zero variance."""
+    from cali.plot._multi_wells_plots import plot_pca_scatter
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    # Should not raise — the test DB has identical values across FOVs,
+    # so PCA cannot run, but the plot must degrade gracefully.
+    plot_pca_scatter(widget, "PCA Scatter (FOV Feature Space)", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+def test_pca_loadings_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA loadings plot must not crash on zero-variance data."""
+    from cali.plot._multi_wells_plots import plot_pca_loadings
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_pca_loadings(widget, "PCA Loadings (PC1)", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+def test_pca_scree_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA scree plot must not crash on zero-variance data."""
+    from cali.plot._multi_wells_plots import plot_pca_scree
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_pca_scree(widget, "PCA Scree Plot", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+def test_pca_loadings_and_scree_registered_in_analysis_products() -> None:
+    """Verify PCA loadings and scree plots are registered."""
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    product_names = {p.name for p in ANALYSIS_PRODUCTS}
+    expected = {"PCA Loadings (PC1)", "PCA Scree Plot"}
+    missing = expected - product_names
+    assert not missing, f"These PCA products are not registered: {missing}"

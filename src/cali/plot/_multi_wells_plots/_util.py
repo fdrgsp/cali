@@ -233,7 +233,7 @@ def _get_experiment_type(session: Session, run_id: int) -> str | None:
         .join(CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id)
         .where(CaliResult.id == run_id)
     )
-    return session.exec(stmt).first()
+    return session.exec(stmt).first()  # type: ignore
 
 
 def _query_roi_parameter_by_condition(
@@ -409,7 +409,6 @@ def _compute_condition_mean_and_sem(
     condition_mean = float(np.mean(fov_means))
     condition_sem = float(np.std(fov_means, ddof=1) / np.sqrt(n_fovs))
     return condition_mean, condition_sem
-
 
 
 def _aggregate_fov_data_to_condition_stats(
