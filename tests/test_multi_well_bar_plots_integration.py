@@ -578,11 +578,11 @@ def test_pca_scree_no_crash(
     assert widget.plot_item is not None
 
 
-def test_pca_loadings_and_scree_registered_in_analysis_products() -> None:
-    """Verify PCA loadings and scree plots are registered."""
-    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+# def test_pca_loadings_and_scree_registered_in_analysis_products() -> None:
+#     """Verify PCA loadings and scree plots are registered."""
+#     from cali.plot._main_plot import ANALYSIS_PRODUCTS
 
-    product_names = {p.name for p in ANALYSIS_PRODUCTS}
-    expected = {"PCA Loadings (PC1)", "PCA Scree Plot"}
-    missing = expected - product_names
-    assert not missing, f"These PCA products are not registered: {missing}"
+#     product_names = {p.name for p in ANALYSIS_PRODUCTS}
+#     expected = {"PCA Loadings (PC1)", "PCA Scree Plot"}
+#     missing = expected - product_names
+#     assert not missing, f"These PCA products are not registered: {missing}"

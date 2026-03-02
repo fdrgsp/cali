@@ -27,10 +27,10 @@ from ._multi_wells_plots import (
     plot_inferred_spikes_frequency_stim_split_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
-    plot_pca_loadings,
-    plot_pca_scatter,
-    plot_pca_scatter_stim_split,
-    plot_pca_scree,
+    # plot_pca_loadings,
+    # plot_pca_scatter,
+    # plot_pca_scatter_stim_split,
+    # plot_pca_scree,
     plot_percentage_active_bar_plot,
     plot_percentage_active_stim_split_bar_plot,
 )
@@ -864,36 +864,36 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 
-# Multi-Well Products — dimensionality reduction
-AnalysisProduct(
-    name="PCA Scatter (FOV Feature Space)",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_pca_scatter,
-    category="Dimensionality Reduction",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="PCA Scatter (Stim vs NonStim)",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_pca_scatter_stim_split,
-    category="Dimensionality Reduction",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    experiment_type=EVOKED,
-)
-AnalysisProduct(
-    name="PCA Loadings (PC1)",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_pca_loadings,
-    category="Dimensionality Reduction",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
-AnalysisProduct(
-    name="PCA Scree Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_pca_scree,
-    category="Dimensionality Reduction",
-    pipeline_stage=PipelineStage.ANALYSIS,
-)
+# Multi-Well Products — PCA
+# AnalysisProduct(
+#     name="PCA Scatter (FOV Feature Space)",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_pca_scatter,
+#     category="PCA",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="PCA Scatter (Stim vs NonStim)",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_pca_scatter_stim_split,
+#     category="PCA",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name="PCA Loadings (PC1)",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_pca_loadings,
+#     category="PCA",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
+# AnalysisProduct(
+#     name="PCA Scree Plot",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_pca_scree,
+#     category="PCA",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+# )
 
 # Evoked Multi-Well Products
 AnalysisProduct(

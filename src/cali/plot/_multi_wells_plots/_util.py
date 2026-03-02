@@ -642,29 +642,14 @@ def _create_pyqtgraph_bar_plot(
         )
         plot_item.addItem(scatter)
 
-    # Set up axes with abbreviated labels if needed
+    # Hide default axis tick labels and add rotated TextItem labels instead
     bottom_axis = plot_item.getAxis("bottom")
-
-    # Create abbreviated condition labels to prevent overlap
-    # Use newlines to wrap long labels instead of rotation
-    abbreviated_conditions = []
-    for cond in filtered_conditions:
-        # Split on underscores and create multi-line labels
-        parts = cond.split("_")
-        if len(parts) > 2:
-            # Create label with line breaks for readability
-            abbreviated = "_".join(parts[:2]) + "\n" + "_".join(parts[2:])
-        else:
-            abbreviated = cond
-        abbreviated_conditions.append(abbreviated)
-
-    bottom_axis.setTicks(
-        [[(i, label) for i, label in enumerate(abbreviated_conditions)]]
-    )
-    # Increase tick text height to accommodate multi-line labels
-    # Also increase bottom spacing to prevent clipping at canvas edge
-    bottom_axis.setStyle(tickTextHeight=65)
-    bottom_axis.setHeight(80)  # Reserve more space for the bottom axis
+    bottom_axis.setTicks([[(i, "") for i in range(len(filtered_conditions))]])
+    bottom_axis.setStyle(showValues=False)
+    for i, cond in enumerate(filtered_conditions):
+        label = pg.TextItem(text=cond, angle=45, anchor=(1, 0), color="k")
+        label.setPos(i, 0)
+        plot_item.addItem(label)
 
     units_text = f" ({units})" if units else ""
     plot_item.setLabel("left", f"{parameter}{units_text}")

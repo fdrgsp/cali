@@ -348,12 +348,12 @@ def test_build_fov_feature_matrix_include_stim_status_no_crash(
     assert isinstance(df, pd.DataFrame)
 
 
-def test_pca_stim_split_registered_in_analysis_products() -> None:
-    """plot_pca_scatter_stim_split is registered as an AnalysisProduct."""
-    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+# def test_pca_stim_split_registered_in_analysis_products() -> None:
+#     """plot_pca_scatter_stim_split is registered as an AnalysisProduct."""
+#     from cali.plot._main_plot import ANALYSIS_PRODUCTS
 
-    names = [p.name for p in ANALYSIS_PRODUCTS]
-    assert "PCA Scatter (Stim vs NonStim)" in names
+#     names = [p.name for p in ANALYSIS_PRODUCTS]
+#     assert "PCA Scatter (Stim vs NonStim)" in names
 
 
 def test_inferred_spike_burst_combo_names_renamed() -> None:

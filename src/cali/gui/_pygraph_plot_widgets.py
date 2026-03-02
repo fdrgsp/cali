@@ -1158,7 +1158,7 @@ class _ConditionsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Condition Order, Visibility, and Color")
         self.setModal(True)
-        # self.resize(500, 500)
+        self.resize(500, 500)
 
         # Store original conditions
         self._original_conditions = conditions.copy()
@@ -1311,8 +1311,7 @@ class _PCAFeaturesDialog(QDialog):
 
         # OK / Cancel
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
         button_box.accepted.connect(self.accept)
