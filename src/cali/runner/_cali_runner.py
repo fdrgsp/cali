@@ -541,7 +541,7 @@ class CaliRunner:
                     )
 
                     if is_analysis_only:
-                        yield "📊 Running Analysis only..."
+                        yield "📊 Running Analysis..."
                         cali_logger.info(
                             f"⚠️ Extraction already exists for all positions "
                             f"with DetectionSettings ID {det_id} and "
