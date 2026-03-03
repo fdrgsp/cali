@@ -532,6 +532,24 @@ def _aggregate_percentage_data_to_condition_stats(
     )
 
 
+class _BarTickLabel(pg.TextItem):
+    """TextItem that reports data bounds so autorange includes label space."""
+
+    def __init__(self, *args: object, y_extent: float = 0, **kw: object) -> None:
+        super().__init__(*args, **kw)
+        self._y_extent = y_extent
+
+    def dataBounds(
+        self, ax: int, frac: float = 1.0, orthoRange: object = None
+    ) -> tuple[float, float] | None:
+        if ax == 0:
+            x = self.pos().x()
+            return (x, x)
+        if ax == 1:
+            return (self._y_extent, 0.0)
+        return None
+
+
 def _create_pyqtgraph_bar_plot(
     widget: _MultilWellGraphWidget,
     data: BarPlotData,
@@ -646,8 +664,17 @@ def _create_pyqtgraph_bar_plot(
     bottom_axis = plot_item.getAxis("bottom")
     bottom_axis.setTicks([[(i, "") for i in range(len(filtered_conditions))]])
     bottom_axis.setStyle(showValues=False)
+    # Estimate label extent in data coords so autorange includes them
+    y_max = max((m + s for m, s in zip(filtered_means, filtered_sems)), default=1.0)
+    label_y_extent = -y_max * 0.35
     for i, cond in enumerate(filtered_conditions):
-        label = pg.TextItem(text=cond, angle=45, anchor=(1, 0), color="k")
+        label = _BarTickLabel(
+            text=cond,
+            angle=45,
+            anchor=(1, 0),
+            color="k",
+            y_extent=label_y_extent,
+        )
         label.setPos(i, 0)
         plot_item.addItem(label)
 
