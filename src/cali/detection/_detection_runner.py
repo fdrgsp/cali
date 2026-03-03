@@ -106,10 +106,17 @@ class DetectionRunner:
                 detection_settings=detection_settings,
                 position_indices=global_position_indices,
             )
+        elif detection_settings.method == "imported":
+            # Imported labels are already in the database; nothing to run.
+            cali_logger.info(
+                "Imported labels detected - skipping detection "
+                "(labels already in database)."
+            )
+            return
         else:
             msg = (
                 f"❌ Unknown detection method: {detection_settings.method}. "
-                "Supported methods: 'cellpose'"
+                "Supported methods: 'cellpose', 'imported'"
             )
             cali_logger.error(msg)
             raise ValueError(msg)

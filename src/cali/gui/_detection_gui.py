@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -24,6 +25,7 @@ from superqt.utils import signals_blocked
 from cali.gui._util import (
     _BrowseWidget,
     create_divider_line,
+    show_error_dialog,
 )
 
 if TYPE_CHECKING:
@@ -76,6 +78,15 @@ class _DetectionGUI(QWidget):
 
         # CELLPOSE WIDGET -------------------------------------------------------------
         self._cellpose_wdg = _CellposeDetectionWidget(self)
+        self._cellpose_wdg.setCheckable(True)
+        self._cellpose_wdg.setChecked(True)
+
+        # IMPORTED LABELS WIDGET ------------------------------------------------------
+        self._imported_labels_wdg = _ImportedLabelsWidget(self)
+
+        # MUTUAL EXCLUSION ------------------------------------------------------------
+        self._cellpose_wdg.toggled.connect(self._on_cellpose_toggled)
+        self._imported_labels_wdg.toggled.connect(self._on_imported_toggled)
 
         # SCROLL AREA WIDGET ---------------------------------------------------------
         detection_scroll_area = QScrollArea()
@@ -86,8 +97,9 @@ class _DetectionGUI(QWidget):
         detection_scroll_area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
-        # add cellpose widgets to scroll area
+        # add detection widgets to scroll area
         group_layout.addWidget(self._cellpose_wdg)
+        group_layout.addWidget(self._imported_labels_wdg)
         group_layout.addStretch(1)
         detection_scroll_area.setWidget(group_wdg)
 
@@ -112,38 +124,67 @@ class _DetectionGUI(QWidget):
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
+    def active_method(self) -> Literal["cellpose", "imported"]:
+        """Return which detection method is currently active."""
+        if self._cellpose_wdg.isChecked():
+            return "cellpose"
+        return "imported"
+
     def value(self) -> CellposeSettingsData:
         """Return the detection parameters of the selected method."""
         return self._cellpose_wdg.value()
 
-    def setValue(self, value: CellposeSettingsData) -> None:
+    def setValue(
+        self,
+        value: CellposeSettingsData | None = None,
+        *,
+        method: str = "cellpose",
+    ) -> None:
         """Set the detection parameters of the selected method."""
-        self._cellpose_wdg.setValue(value)
-        with signals_blocked(self._cellpose_wdg):
-            self._cellpose_wdg.setChecked(True)
+        if method == "imported":
+            with signals_blocked(self._imported_labels_wdg):
+                self._imported_labels_wdg.setChecked(True)
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(False)
+        else:
+            if value is not None:
+                self._cellpose_wdg.setValue(value)
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(True)
+            with signals_blocked(self._imported_labels_wdg):
+                self._imported_labels_wdg.setChecked(False)
 
     def enable(self, enabled: bool) -> None:
         """Enable or disable the detection GUI."""
         self._cellpose_wdg.setEnabled(enabled)
+        self._imported_labels_wdg.setEnabled(enabled)
 
     def reset(self) -> None:
         """Reset the detection GUI to default values."""
         self._cellpose_wdg.setValue(CellposeSettingsData())
+        self._imported_labels_wdg.reset()
         with signals_blocked(self._cellpose_wdg):
             self._cellpose_wdg.setChecked(True)
+        with signals_blocked(self._imported_labels_wdg):
+            self._imported_labels_wdg.setChecked(False)
 
     def to_model_settings(self) -> DetectionSettings:
-        """Convert current GUI settings to AnalysisSettings model.
+        """Convert current GUI settings to DetectionSettings model.
 
         Returns
         -------
-        tuple[list[int], AnalysisSettings]
-            A tuple containing the list of positions to analyze and the
-            AnalysisSettings model instance.
+        DetectionSettings
+            The detection settings model instance.
         """
         from datetime import datetime
 
         from cali.sqlmodel import DetectionSettings
+
+        if self.active_method() == "imported":
+            return DetectionSettings(
+                created_at=datetime.now(),
+                method="imported",
+            )
 
         settings = self.value()
         return DetectionSettings(
@@ -161,6 +202,28 @@ class _DetectionGUI(QWidget):
             batch_size=settings.batch_size,
             use_gpu=settings.use_gpu,
         )
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_cellpose_toggled(self, checked: bool) -> None:
+        """When cellpose is checked, uncheck imported labels."""
+        if checked:
+            with signals_blocked(self._imported_labels_wdg):
+                self._imported_labels_wdg.setChecked(False)
+        elif not self._imported_labels_wdg.isChecked():
+            # Don't allow both unchecked - re-check cellpose
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(True)
+
+    def _on_imported_toggled(self, checked: bool) -> None:
+        """When imported labels is checked, uncheck cellpose."""
+        if checked:
+            with signals_blocked(self._cellpose_wdg):
+                self._cellpose_wdg.setChecked(False)
+        elif not self._cellpose_wdg.isChecked():
+            # Don't allow both unchecked - re-check imported
+            with signals_blocked(self._imported_labels_wdg):
+                self._imported_labels_wdg.setChecked(True)
 
 
 class _SelectModelPath(_BrowseWidget):
@@ -454,3 +517,77 @@ class _CellposeDetectionWidget(QGroupBox):
             self._browse_custom_model.show()
         else:
             self._browse_custom_model.hide()
+
+
+class _ImportedLabelsWidget(QGroupBox):
+    """Widget for importing pre-existing label TIFFs."""
+
+    labelsImported = Signal(int)  # emits detection_settings_id
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self.setTitle("Imported Labels")
+        self.setCheckable(True)
+        self.setChecked(False)
+
+        self._database_path: str | None = None
+        self._detection_settings_id: int | None = None
+        self._n_imported_fovs: int = 0
+
+        self._status_label = QLabel("No labels imported yet.")
+        self._import_btn = QPushButton("Import Labels...")
+        self._import_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._import_btn.clicked.connect(self._on_import_clicked)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(5)
+        layout.addWidget(create_divider_line("Import Label TIFFs (bypass Cellpose)"))
+        layout.addWidget(self._status_label)
+        layout.addWidget(self._import_btn)
+
+    # PUBLIC METHODS ------------------------------------------------------------------
+
+    def set_database_path(self, path: str | None) -> None:
+        """Set the active database path for the import dialog."""
+        self._database_path = path
+
+    def detection_settings_id(self) -> int | None:
+        """Return the detection_settings_id from the last import."""
+        return self._detection_settings_id
+
+    def set_detection_settings_id(self, det_id: int | None) -> None:
+        """Set the detection_settings_id (e.g. when restoring from a run)."""
+        self._detection_settings_id = det_id
+        if det_id is not None:
+            self._status_label.setText(f"Previously imported (Detection ID: {det_id})")
+        else:
+            self._status_label.setText("No labels imported yet.")
+
+    def reset(self) -> None:
+        """Reset the imported labels widget."""
+        self._detection_settings_id = None
+        self._n_imported_fovs = 0
+        self._status_label.setText("No labels imported yet.")
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_import_clicked(self) -> None:
+        """Open the import labels dialog."""
+        if not self._database_path:
+            show_error_dialog(self, "Please load a database first.")
+            return
+
+        from cali.gui._import_labels_dialog import _ImportLabelsDialog
+
+        dialog = _ImportLabelsDialog(self._database_path, parent=self)
+        if dialog.exec():
+            self._detection_settings_id = dialog.value()
+            self._n_imported_fovs = len(dialog._label_map)
+            self._status_label.setText(
+                f"{self._n_imported_fovs} FOV(s) imported "
+                f"(Detection ID: {self._detection_settings_id})"
+            )
+            if self._detection_settings_id is not None:
+                self.labelsImported.emit(self._detection_settings_id)
