@@ -46,7 +46,7 @@ dependencies = [
     "rich",
     "ndv[vispy]==0.0.4",
     "scikit-image",
-    "scipy",
+    "scipy<1.17",  # oasis incompatible with scipy>=1.17 (toeplitz batch change)
     "scikit-learn",
     "PyQt6",
     "pyqtgraph",
