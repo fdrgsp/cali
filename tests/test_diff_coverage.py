@@ -809,6 +809,101 @@ def test_aggregate_percentage_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _store_bar_plot_data / CSV export tests
+# ---------------------------------------------------------------------------
+
+
+def test_store_bar_plot_data(qtbot: QtBot) -> None:
+    """_create_pyqtgraph_bar_plot stores a dict on the widget."""
+    from qtpy.QtWidgets import QWidget
+
+    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+    from cali.plot._multi_wells_plots._util import _create_pyqtgraph_bar_plot
+
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+
+    data = {
+        "conditions": ["A", "B"],
+        "means": [1.0, 2.0],
+        "sems": [0.1, 0.2],
+        "fov_values_list": [np.array([0.9, 1.1]), np.array([1.8, 2.2, 2.0])],
+    }
+
+    _create_pyqtgraph_bar_plot(widget, data, parameter="Amplitude", units="dF/F")
+
+    stored = widget._last_plot_data
+    assert isinstance(stored, dict)
+    assert stored["conditions"] == ["A", "B"]
+    assert stored["means"] == [1.0, 2.0]
+    assert stored["sems"] == [0.1, 0.2]
+    assert stored["fov_values"] == [[0.9, 1.1], [1.8, 2.2, 2.0]]
+    assert stored["parameter"] == "Amplitude (dF/F)"
+
+
+def test_clear_plot_resets_data(qtbot: QtBot) -> None:
+    """clear_plot resets _last_plot_data to None."""
+    from qtpy.QtWidgets import QWidget
+
+    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+
+    widget._last_plot_data = {"conditions": ["A"]}
+    widget.clear_plot()
+    assert widget._last_plot_data is None
+
+
+def test_save_csv_writes_file(qtbot: QtBot, tmp_path: object) -> None:
+    """Bar plot dict data can be exported to CSV via DataFrame."""
+    import pandas as pd
+    from qtpy.QtWidgets import QWidget
+
+    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+    from cali.plot._multi_wells_plots._util import _create_pyqtgraph_bar_plot
+
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+
+    data = {
+        "conditions": ["X"],
+        "means": [3.0],
+        "sems": [0.5],
+        "fov_values_list": [np.array([2.5, 3.5])],
+    }
+    _create_pyqtgraph_bar_plot(widget, data, parameter="Freq", units="Hz")
+
+    # Build DataFrame from stored dict (same logic as _on_save_csv)
+    stored = widget._last_plot_data
+    assert isinstance(stored, dict)
+    assert "fov_values" in stored
+
+    csv_path = str(tmp_path / "test_export.csv")  # type: ignore[operator]
+    max_fovs = max((len(fv) for fv in stored["fov_values"]), default=0)
+    rows = []
+    for cond, mean, sem, fv in zip(
+        stored["conditions"], stored["means"], stored["sems"], stored["fov_values"]
+    ):
+        row: dict[str, object] = {"condition": cond, "mean": mean, "sem": sem}
+        for i, val in enumerate(fv):
+            row[f"fov_{i + 1}"] = val
+        for i in range(len(fv), max_fovs):
+            row[f"fov_{i + 1}"] = float("nan")
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    df.to_csv(csv_path, index=False)
+
+    # Read back and verify
+    result = pd.read_csv(csv_path)
+    assert list(result["condition"]) == ["X"]
+    assert result["mean"].iloc[0] == 3.0
+
+
+# ---------------------------------------------------------------------------
 # _run_pca_scatter error handling paths
 # ---------------------------------------------------------------------------
 

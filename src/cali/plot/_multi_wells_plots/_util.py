@@ -696,6 +696,37 @@ def _create_pyqtgraph_bar_plot(
     # Add grid
     plot_item.showGrid(x=False, y=True, alpha=0.3)
 
+    # Store plot data as a DataFrame for CSV export
+    _store_bar_plot_data(
+        widget,
+        filtered_conditions,
+        filtered_means,
+        filtered_sems,
+        filtered_fov_values,
+        parameter,
+        units,
+    )
+
+
+def _store_bar_plot_data(
+    widget: _MultilWellGraphWidget,
+    conditions: list[str],
+    means: list[float],
+    sems: list[float],
+    fov_values: list[np.ndarray],
+    parameter: str,
+    units: str,
+) -> None:
+    """Store bar plot data as a plain dict on the widget for later CSV export."""
+    units_label = f" ({units})" if units else ""
+    widget._last_plot_data = {
+        "parameter": f"{parameter}{units_label}",
+        "conditions": conditions,
+        "means": means,
+        "sems": sems,
+        "fov_values": [fv.tolist() for fv in fov_values],
+    }
+
 
 def plot_parameter_bar_plot(
     widget: _MultilWellGraphWidget,

@@ -494,6 +494,17 @@ def _run_pca_scatter(
         title=display_title,
     )
 
+    # Store PCA scatter data for CSV export
+    widget._last_plot_data = {  # type: ignore[attr-defined]
+        "parameter": "PCA Scatter",
+        "fov_name": df["fov_name"].tolist(),
+        "condition": df["condition"].tolist(),
+        f"PC1 ({var1:.1f}% var)": coords[:, 0].tolist(),
+        f"PC2 ({var2:.1f}% var)": (
+            coords[:, 1].tolist() if coords.shape[1] > 1 else [0.0] * len(coords)
+        ),
+    }
+
 
 # Human-readable short labels for loadings plots (kept brief for axis ticks).
 _FEATURE_SHORT_LABELS: dict[str, str] = {
@@ -676,6 +687,15 @@ def plot_pca_loadings(
     pca, used_features = result
     _render_loadings_bar(widget, pca, used_features, pc_index=0, title="PCA Loadings")
 
+    # Store loadings data for CSV export
+    loadings = pca.components_[0]
+    labels = [_FEATURE_SHORT_LABELS.get(f, f) for f in used_features]
+    widget._last_plot_data = {  # type: ignore[attr-defined]
+        "parameter": "PCA Loadings (PC1)",
+        "feature": labels,
+        "PC1_loading": loadings.tolist(),
+    }
+
 
 def plot_pca_scree(
     widget: object,
@@ -697,6 +717,15 @@ def plot_pca_scree(
         return
     pca, _ = result
     _render_scree(widget, pca, title="PCA Scree Plot")
+
+    # Store scree data for CSV export
+    var_ratios = pca.explained_variance_ratio_ * 100
+    widget._last_plot_data = {  # type: ignore[attr-defined]
+        "parameter": "PCA Scree",
+        "component": [f"PC{i + 1}" for i in range(len(var_ratios))],
+        "explained_variance_pct": var_ratios.tolist(),
+        "cumulative_variance_pct": np.cumsum(var_ratios).tolist(),
+    }
 
 
 def plot_pca_scatter(
