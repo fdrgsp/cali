@@ -60,26 +60,26 @@ def build_fov_feature_matrix(
 ) -> pd.DataFrame:
     """Build a per-FOV feature matrix from the database.
 
-    One row per FOV.  Columns are :data:`FEATURE_COLUMNS` plus ``"fov_name"``
-    and ``"condition"`` (used for colouring downstream visualisations).
+    One row per FOV.  Columns are :data:`FEATURE_COLUMNS` plus `"fov_name"`
+    and `"condition"` (used for colouring downstream visualisations).
 
     Parameters
     ----------
     engine : Engine
         Database engine.
     run_id : int | None
-        CaliResult id.  When ``None`` all results in the DB are included.
+        CaliResult id.  When `None` all results in the DB are included.
     include_stim_status : bool
         When True, split each FOV into two rows — one for stimulated ROIs and
         one for non-stimulated ROIs — and append the stim/non-stim suffix to
         the condition label.  Only meaningful for Evoked Activity runs whose
-        ROIs have a ``stimulated`` attribute set.
+        ROIs have a `stimulated` attribute set.
 
     Returns
     -------
     pandas.DataFrame
-        Shape ``(n_rows, len(FEATURE_COLUMNS) + 2)`` with columns
-        ``["fov_name", "condition"] + FEATURE_COLUMNS``.
+        Shape `(n_rows, len(FEATURE_COLUMNS) + 2)` with columns
+        `["fov_name", "condition"] + FEATURE_COLUMNS`.
     """
     import pandas as pd
     from sqlmodel import Session, col, select
@@ -293,7 +293,7 @@ def _prepare_feature_matrix(
     Returns
     -------
     np.ndarray
-        Scaled feature matrix of shape ``(n_fovs, n_features)``.
+        Scaled feature matrix of shape `(n_fovs, n_features)`.
     list[str]
         Column names of the final feature set (all-NaN columns dropped).
     """
@@ -342,10 +342,10 @@ def compute_pca(
     Returns
     -------
     coords : np.ndarray
-        Shape ``(n_fovs, n_components)``.  Row order matches ``df``.
+        Shape `(n_fovs, n_components)`.  Row order matches `df`.
     pca : sklearn.decomposition.PCA
-        Fitted PCA object.  Access ``pca.explained_variance_ratio_`` and
-        ``pca.components_`` for scree / loading plots.
+        Fitted PCA object.  Access `pca.explained_variance_ratio_` and
+        `pca.components_` for scree / loading plots.
     used_features : list[str]
         Feature columns that were actually used (all-NaN columns excluded).
     """
@@ -519,7 +519,7 @@ def _run_pca_full(
     """Build feature matrix and run PCA, returning (pca, used_features).
 
     Fits PCA with *all* possible components (not just 2) so that scree and
-    loadings plots can show every component.  Returns ``None`` when PCA
+    loadings plots can show every component.  Returns `None` when PCA
     cannot be computed (too few FOVs, missing data, etc.).
     """
     import logging
@@ -722,7 +722,7 @@ def plot_pca_scatter(
     engine : Engine
         Database engine.
     run_id : int | None
-        Filter to a single CaliResult; ``None`` uses all runs in the DB.
+        Filter to a single CaliResult; `None` uses all runs in the DB.
     """
     _run_pca_scatter(
         widget=widget,
@@ -747,8 +747,8 @@ def plot_pca_scatter_stim_split(
     Stimulated points are coloured green, non-stimulated points are coloured
     magenta (matching the stim-split bar plots).
 
-    Only meaningful for ``Evoked Activity`` runs whose ROIs have a
-    ``stimulated`` attribute set.
+    Only meaningful for `Evoked Activity` runs whose ROIs have a
+    `stimulated` attribute set.
 
     Parameters
     ----------
@@ -759,7 +759,7 @@ def plot_pca_scatter_stim_split(
     engine : Engine
         Database engine.
     run_id : int | None
-        Filter to a single CaliResult; ``None`` uses all runs in the DB.
+        Filter to a single CaliResult; `None` uses all runs in the DB.
     """
     _run_pca_scatter(
         widget=widget,

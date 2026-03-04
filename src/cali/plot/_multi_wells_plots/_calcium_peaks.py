@@ -76,7 +76,7 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
     """Plot calcium peaks amplitude split by stim/non-stim with LED power labels.
 
     For evoked experiments.  Stim bars are green and labelled with the LED power
-    percentage (e.g. ``"ctrl (25%)"``); non-stim bars are magenta with the same
+    percentage (e.g. `"ctrl (25%)"`); non-stim bars are magenta with the same
     power labels.  Both sets are shown in a single combined plot.
     """
     from cali._constants import EVK_NON_STIM, EVK_STIM
@@ -286,7 +286,7 @@ def _plot_calcium_burst_metric(
     """Plot a single calcium burst metric across conditions.
 
     NOTE:
-    metric_key : Key in the burst metrics dict (e.g. ``"count"``, ``"avg_duration_s"``).
+    metric_key : Key in the burst metrics dict (e.g. `"count"`, `"avg_duration_s"`).
     units : Y-axis units label.
     """
     data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)

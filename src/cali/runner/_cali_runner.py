@@ -1054,7 +1054,7 @@ class CaliRunner:
         session : Session
             Database session.
         query : Select
-            Query that returns ``FOV.position_index`` for already-processed
+            Query that returns `FOV.position_index` for already-processed
             positions.
         global_position_indices : Sequence[int]
             Full set of requested positions.
@@ -1269,7 +1269,7 @@ class CaliRunner:
         label : str
             Human-readable name for log messages.
         use_merge : bool
-            If True, use ``session.merge()`` instead of ``session.add()`` when
+            If True, use `session.merge()` instead of `session.add()` when
             persisting. Required for AnalysisSettings which may reference
             objects from other sessions.
         """
@@ -2023,7 +2023,7 @@ class CaliRunner:
     ) -> bool:
         """Commit a single FOV result with batch logging.
 
-        Commits to the database every ``self.commit_batch_size`` FOVs.
+        Commits to the database every `self.commit_batch_size` FOVs.
 
         Returns
         -------

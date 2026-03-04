@@ -36,7 +36,7 @@ def _str_to_bool(value: str) -> bool:
 
 
 def _tree_command(parsed_args: argparse.Namespace) -> None:
-    """Execute the ``tree`` sub-command."""
+    """Execute the `tree` sub-command."""
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 

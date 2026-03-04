@@ -92,12 +92,12 @@ def _get_default_conditions(
     EVK_STIM conditions always get green, EVK_NON_STIM always get magenta.
 
     For all other conditions:
-    - When ``override_color`` is set, all conditions use that fixed color (e.g.
-      ``"green"`` for the stim-only bar plot, ``"magenta"`` for non-stim).
-    - When ``multicolor=False`` (default, used by bar plots): every
+    - When `override_color` is set, all conditions use that fixed color (e.g.
+      `"green"` for the stim-only bar plot, `"magenta"` for non-stim).
+    - When `multicolor=False` (default, used by bar plots): every
       non-EVK condition gets "gray".  This keeps bar plots visually neutral
       so that only the stimulation-split variants use colour.
-    - When ``multicolor=True`` (used by scatter / PCA plots): each non-EVK
+    - When `multicolor=True` (used by scatter / PCA plots): each non-EVK
       condition is assigned a distinct colour from the palette so that
       different conditions are visually distinguishable in the scatter space.
 
@@ -110,7 +110,7 @@ def _get_default_conditions(
         When False (default), assign "gray" to all non-EVK conditions.
     override_color : str | None
         When set, every condition receives this color regardless of its name.
-        Takes precedence over both ``multicolor`` and the EVK special colors.
+        Takes precedence over both `multicolor` and the EVK special colors.
 
     Returns
     -------
@@ -380,44 +380,21 @@ def _query_roi_attribute_by_condition(
     return data
 
 
-def _compute_condition_mean_and_sem(
-    fov_means: np.ndarray,
-) -> tuple[float, float]:
-    """Compute condition mean and SEM treating each FOV as an independent replicate.
-
-    This is the standard approach in calcium imaging: each FOV (field of view)
-    is treated as a single independent observation, regardless of how many ROIs
-    it contains.  The condition mean is the unweighted mean of FOV means, and
-    the SEM is the standard error across FOV means.
-
-    Parameters
-    ----------
-    fov_means : np.ndarray
-        Array of means per FOV (one value per FOV).
-
-    Returns
-    -------
-    tuple[float, float]
-        (condition_mean, condition_sem)
-    """
-    n_fovs = len(fov_means)
-    if n_fovs == 0:
-        return 0.0, 0.0
-    if n_fovs == 1:
-        return float(fov_means[0]), 0.0
-
-    condition_mean = float(np.mean(fov_means))
-    condition_sem = float(np.std(fov_means, ddof=1) / np.sqrt(n_fovs))
-    return condition_mean, condition_sem
-
-
 def _aggregate_fov_data_to_condition_stats(
     data_by_condition: dict[str, dict[str, list[float]]],
 ) -> BarPlotData:
-    """Aggregate FOV-level data to condition-level statistics.
+    """Aggregate ROI-level data to condition-level statistics.
 
-    Computes mean and SEM for each FOV, then computes weighted mean
-    and pooled SEM across FOVs within each condition.
+    Two-level hierarchical aggregation:
+
+    **Step 1 — ROI → FOV**: For each FOV, all ROI values are averaged to produce
+    a single FOV mean.  The FOV-level SEM is `std(roi_values, ddof=1) / sqrt(n)`.
+
+    **Step 2 — FOV → Condition**: FOV means are combined into a weighted average
+    where each FOV is weighted by its number of ROIs (so FOVs with more cells
+    contribute proportionally more).  The condition-level SEM is a pooled SEM:
+    the squared FOV SEMs are weighted by their ROI counts, summed, and the
+    square root of the weighted average is taken.
 
     Parameters
     ----------
@@ -438,16 +415,17 @@ def _aggregate_fov_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        # Compute mean for each FOV (one value per FOV)
-        fov_means_list = []
+        # Step 1: ROI → FOV (compute per-FOV mean, SEM, and ROI count)
+        fov_means_list: list[float] = []
+        fov_sems_list: list[float] = []
+        fov_n_list: list[int] = []
 
         for _fov_name, roi_values in fov_dict.items():
             if not roi_values:
                 continue
 
             # Flatten if values are lists (e.g., peaks_amplitudes_den_dff, iei)
-            # Some parameters return lists per ROI, we need to flatten them
-            flat_values = []
+            flat_values: list[float] = []
             for val in roi_values:
                 if isinstance(val, (list, np.ndarray)):
                     flat_values.extend(val)
@@ -457,15 +435,26 @@ def _aggregate_fov_data_to_condition_stats(
             if not flat_values:
                 continue
 
-            fov_means_list.append(float(np.mean(flat_values)))
+            arr = np.asarray(flat_values, dtype=float)
+            n = len(arr)
+            fov_mean = float(np.mean(arr))
+            fov_sem = float(np.std(arr, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+
+            fov_means_list.append(fov_mean)
+            fov_sems_list.append(fov_sem)
+            fov_n_list.append(n)
 
         if not fov_means_list:
             continue
 
         fov_means = np.array(fov_means_list)
+        fov_sems = np.array(fov_sems_list)
+        fov_n = np.array(fov_n_list, dtype=float)
 
-        # Compute condition mean and SEM treating each FOV as a replicate
-        condition_mean, condition_sem = _compute_condition_mean_and_sem(fov_means)
+        # Step 2: FOV → Condition (weighted mean + pooled SEM)
+        total_n = fov_n.sum()
+        condition_mean = float(np.dot(fov_n, fov_means) / total_n)
+        condition_sem = float(np.sqrt(np.dot(fov_n, fov_sems**2) / total_n))
 
         conditions.append(cond_label)
         means.append(condition_mean)
@@ -485,12 +474,20 @@ def _aggregate_percentage_data_to_condition_stats(
 ) -> BarPlotData:
     """Aggregate FOV-level percentage data to condition-level statistics.
 
-    Uses binomial statistics for percentage data.
+    Uses a binomial error model because the quantity is a proportion.
+
+    **Step 1 — ROI → FOV**: percentage = active / total * 100.
+
+    **Step 2 — FOV → Condition**: FOV percentages are combined into a weighted
+    mean proportion (weighted by total ROI count per FOV).  The error bar is
+    the binomial SEM: `sqrt(p * (1 - p) / N) * 100` where *p* is the
+    weighted proportion (0-1) and *N* is the total number of ROIs across all
+    FOVs in the condition.
 
     Parameters
     ----------
     data_by_condition : dict[str, dict[str, tuple[float, int]]]
-        Nested dict: {condition: {fov: (percentage, n)}}
+        Nested dict: {condition: {fov: (percentage, n_total_rois)}}
 
     Returns
     -------
@@ -506,18 +503,28 @@ def _aggregate_percentage_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        fov_percentages_list = []
+        fov_percentages_list: list[float] = []
+        fov_n_list: list[int] = []
 
-        for _fov_name, (percentage, _n) in fov_dict.items():
+        for _fov_name, (percentage, n) in fov_dict.items():
             fov_percentages_list.append(percentage)
+            fov_n_list.append(n)
 
         if not fov_percentages_list:
             continue
 
         fov_percentages = np.array(fov_percentages_list)
+        fov_n = np.array(fov_n_list, dtype=float)
+        total_n = fov_n.sum()
 
-        # Compute mean and SEM treating each FOV percentage as a replicate
-        mean_pct, sem_pct = _compute_condition_mean_and_sem(fov_percentages)
+        # Weighted mean proportion (in %)
+        mean_pct = float(np.dot(fov_n, fov_percentages) / total_n)
+
+        # Binomial SEM (convert to 0-1 proportion for the formula)
+        p = mean_pct / 100.0
+        sem_pct = (
+            float(np.sqrt(p * (1.0 - p) / total_n) * 100.0) if total_n > 0 else 0.0
+        )
 
         conditions.append(cond_label)
         means.append(mean_pct)
@@ -577,7 +584,7 @@ def _create_pyqtgraph_bar_plot(
         Label for the bar in the legend
     override_color : str | None
         When set, all bars are painted this color regardless of condition names.
-        Use ``"green"`` for stim-only plots and ``"magenta"`` for non-stim plots.
+        Use `"green"` for stim-only plots and `"magenta"` for non-stim plots.
     """
     # Filter based on condition toggles and respect user-defined order
     cond_list: dict[str, dict[str, bool | str]] = widget.conditions

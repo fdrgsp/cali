@@ -945,8 +945,8 @@ def _get_condition_groups(
     Returns
     -------
     dict[str, list[int]]
-        Dict like ``{"WT_Drug": [0, 1], "KO_Vehicle": [2, 3], "": [4]}``
-        where the ``""`` key collects FOVs whose well has no conditions (or no well).
+        Dict like `{"WT_Drug": [0, 1], "KO_Vehicle": [2, 3], "": [4]}`
+        where the `""` key collects FOVs whose well has no conditions (or no well).
     """
     from cali.plot._multi_wells_plots._util import _get_condition_label
 
