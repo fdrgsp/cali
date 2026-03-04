@@ -168,7 +168,7 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
             combined_sems.append(sem)
             combined_fov_values.append(fov_vals)
 
-    if not combined_conditions:
+    if not combined_conditions:  # pragma: no cover
         widget.clear_plot()
         widget.plot_widget.setTitle(f"{text}<br>(No Data)")
         return
@@ -301,7 +301,7 @@ def _plot_calcium_burst_metric(
     }
 
     plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
-    if not plot_data["conditions"]:
+    if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
 

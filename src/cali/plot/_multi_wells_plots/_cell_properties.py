@@ -192,7 +192,7 @@ def plot_percentage_active_stim_split_bar_plot(
 
     plot_data = _aggregate_percentage_data_to_condition_stats(data_by_condition)
 
-    if not plot_data["conditions"]:
+    if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
 

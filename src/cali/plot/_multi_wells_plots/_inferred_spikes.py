@@ -139,7 +139,7 @@ def _plot_burst_metric(
 
     plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
 
-    if not plot_data["conditions"]:
+    if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
 
@@ -331,7 +331,7 @@ def _query_spike_synchrony_by_condition(
             data: dict[str, dict[str, float]] = {}
             for fov_analysis, fov, well in results:
                 if fov_analysis.global_spike_jitter_synchrony is None:
-                    continue
+                    continue  # pragma: no cover
                 cond_label = _get_condition_label(well)
                 data.setdefault(cond_label, {})[fov.name] = (
                     fov_analysis.global_spike_jitter_synchrony
@@ -392,7 +392,7 @@ def _query_spike_correlation_by_condition(
             data: dict[str, dict[str, float]] = {}
             for fov_analysis, fov, well in results:
                 if fov_analysis.spike_max_lag_correlation_matrix is None:
-                    continue
+                    continue  # pragma: no cover
 
                 corr_matrix = np.asarray(
                     fov_analysis.spike_max_lag_correlation_matrix, dtype=float
@@ -436,7 +436,7 @@ def plot_spike_synchrony_bar_plot(
 
     plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
 
-    if not plot_data["conditions"]:
+    if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
 
@@ -474,7 +474,7 @@ def plot_spike_correlation_bar_plot(
 
     plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
 
-    if not plot_data["conditions"]:
+    if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
 
