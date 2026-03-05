@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ._util import (
+    BarPlotData,
     _aggregate_fov_data_to_condition_stats,
     _create_pyqtgraph_bar_plot,
     _get_condition_label,
@@ -278,6 +279,66 @@ def plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot(
         units="Hz",
         title_suffix=" (rising edges)",
         include_stim_status=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Headless compute functions for CSV export
+# ---------------------------------------------------------------------------
+
+
+def _compute_burst_metric(
+    engine: Engine,
+    run_id: int | None,
+    metric_key: str,
+    name: str,
+    units: str,
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute a single burst metric without rendering."""
+    data_by_condition = _query_burst_metrics_by_condition(engine, run_id)
+    if not data_by_condition:
+        return None
+    metric_data: dict[str, dict[str, list[float]]] = {
+        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
+        for cond, fov_dict in data_by_condition.items()
+    }
+    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
+    if not plot_data["conditions"]:
+        return None
+    return plot_data, name, units
+
+
+def compute_burst_count_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute burst count data without rendering."""
+    return _compute_burst_metric(engine, run_id, "count", "Burst Count", "Count")
+
+
+def compute_burst_avg_duration_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute burst average duration data without rendering."""
+    return _compute_burst_metric(
+        engine, run_id, "avg_duration_sec", "Burst Average Duration", "s"
+    )
+
+
+def compute_burst_avg_interval_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute burst average interval data without rendering."""
+    return _compute_burst_metric(
+        engine, run_id, "avg_interval_sec", "Burst Average Interval", "s"
+    )
+
+
+def compute_burst_rate_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute burst rate data without rendering."""
+    return _compute_burst_metric(
+        engine, run_id, "rate_per_min", "Burst Rate", "bursts/min"
     )
 
 

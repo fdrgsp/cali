@@ -14,6 +14,7 @@ from sqlmodel import Session, col, select
 from cali.sqlmodel import FOV, ROI, DataAnalysis, Well
 
 from ._util import (
+    BarPlotData,
     _aggregate_fov_data_to_condition_stats,
     _aggregate_percentage_data_to_condition_stats,
     _create_pyqtgraph_bar_plot,
@@ -204,3 +205,51 @@ def plot_percentage_active_stim_split_bar_plot(
         title_suffix="",
         bar_label="Mean ± SEM (per FOV)",
     )
+
+
+# ---------------------------------------------------------------------------
+# Headless compute functions for CSV export
+# ---------------------------------------------------------------------------
+
+
+def compute_cell_size_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute cell size bar plot data without rendering."""
+    data_by_condition = _query_roi_attribute_by_condition(
+        engine, attribute="cell_size", run_id=run_id
+    )
+    if not data_by_condition:
+        return None
+    plot_data = _aggregate_fov_data_to_condition_stats(data_by_condition)
+    if not plot_data["conditions"]:
+        return None
+    return plot_data, "Cell Size", "μm²"
+
+
+def compute_percentage_active_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute percentage active bar plot data without rendering."""
+    data_by_condition = _query_fov_percentage_active(engine, run_id)
+    if not data_by_condition:
+        return None
+    plot_data = _aggregate_percentage_data_to_condition_stats(data_by_condition)
+    if not plot_data["conditions"]:
+        return None
+    return plot_data, "Percentage Active ROIs", "%"
+
+
+def compute_percentage_active_stim_split_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute percentage active stim-split bar plot data without rendering."""
+    data_by_condition = _query_fov_percentage_active(
+        engine, run_id, include_stim_status=True
+    )
+    if not data_by_condition:
+        return None
+    plot_data = _aggregate_percentage_data_to_condition_stats(data_by_condition)
+    if not plot_data["conditions"]:
+        return None
+    return plot_data, "Percentage Active ROIs (Stim vs NonStim)", "%"

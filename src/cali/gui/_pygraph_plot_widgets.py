@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import random
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar
 
 import pyqtgraph as pg
 from qtpy.QtCore import Qt, Signal
@@ -558,7 +558,6 @@ class _MultilWellGraphWidget(QWidget):
         self._experiment_type: str | None = None
         self._conditions: dict[str, dict[str, bool | str]] = {}
         self._pca_features: list[str] | None = None
-        self._last_plot_data: dict[str, object] | None = None
 
         # ------------------------------------------------------------------ #
         # Top combo + conditions button + save button
@@ -584,11 +583,6 @@ class _MultilWellGraphWidget(QWidget):
         self._save_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-outline")))
         self._save_btn.clicked.connect(self._on_save)
 
-        self._save_csv_btn = QPushButton("Save as CSV", self)
-        self._save_csv_btn.setIcon(QIcon(QIconifyIcon("mdi:file-delimited-outline")))
-        self._save_csv_btn.setToolTip("Export the current plot data as a CSV file.")
-        self._save_csv_btn.clicked.connect(self._on_save_csv)
-
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(5)
@@ -596,7 +590,6 @@ class _MultilWellGraphWidget(QWidget):
         top.addWidget(self._conditions_btn, 0)
         top.addWidget(self._pca_features_btn, 0)
         top.addWidget(self._save_btn, 0)
-        top.addWidget(self._save_csv_btn, 0)
 
         # ------------------------------------------------------------------ #
         # pyqtgraph canvas for bar plots
@@ -730,8 +723,6 @@ class _MultilWellGraphWidget(QWidget):
     # ------------------------------------------------------------------ #
     def clear_plot(self) -> None:
         """Completely reset the plot before drawing a new one."""
-        self._last_plot_data = None
-
         plot = self.plot_item
         if plot is None:
             return
@@ -799,47 +790,6 @@ class _MultilWellGraphWidget(QWidget):
 
         pixmap = self.plot_widget.grab()
         pixmap.save(filename)
-
-    def _on_save_csv(self) -> None:
-        """Export the current plot data as a CSV file."""
-        if self._last_plot_data is None:
-            return
-
-        name = self._combo.currentText().replace(" ", "_")
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save CSV",
-            name,
-            "CSV Files (*.csv)",
-        )
-        if not filename:
-            return
-
-        import pandas as pd
-
-        data: dict[str, object] = self._last_plot_data
-        if "fov_values" in data:
-            # Bar plot data — build rows with fov columns
-            fov_vals = cast("list[list[float]]", data["fov_values"])
-            conditions = cast("list[str]", data["conditions"])
-            means = cast("list[float]", data["means"])
-            sems = cast("list[float]", data["sems"])
-            max_fovs = max((len(fv) for fv in fov_vals), default=0)
-            rows: list[dict[str, object]] = []
-            for cond, mean, sem, fv in zip(conditions, means, sems, fov_vals):
-                row: dict[str, object] = {"condition": cond, "mean": mean, "sem": sem}
-                for i, val in enumerate(fv):
-                    row[f"fov_{i + 1}"] = val
-                for i in range(len(fv), max_fovs):
-                    row[f"fov_{i + 1}"] = float("nan")
-                rows.append(row)
-            df = pd.DataFrame(rows)
-        else:
-            # PCA or other dict-based data — just pass columns directly
-            cols = {k: v for k, v in data.items() if k != "parameter"}
-            df = pd.DataFrame(cols)
-
-        df.to_csv(filename, index=False)
 
     def _show_conditions_menu(self) -> None:
         """Show a dialog for reordering and toggling conditions."""

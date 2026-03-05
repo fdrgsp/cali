@@ -44,11 +44,14 @@ from cali.sqlmodel._util import create_database_and_tables
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from pathlib import Path
 
     from pytestqt.qtbot import QtBot
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+
+    TempDB = tuple[Engine, Path]
 
 
 # ---------------------------------------------------------------------------
@@ -809,101 +812,6 @@ def test_aggregate_percentage_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _store_bar_plot_data / CSV export tests
-# ---------------------------------------------------------------------------
-
-
-def test_store_bar_plot_data(qtbot: QtBot) -> None:
-    """_create_pyqtgraph_bar_plot stores a dict on the widget."""
-    from qtpy.QtWidgets import QWidget
-
-    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
-    from cali.plot._multi_wells_plots._util import _create_pyqtgraph_bar_plot
-
-    parent = QWidget()
-    widget = _MultilWellGraphWidget(parent)
-    qtbot.addWidget(parent)
-
-    data = {
-        "conditions": ["A", "B"],
-        "means": [1.0, 2.0],
-        "sems": [0.1, 0.2],
-        "fov_values_list": [np.array([0.9, 1.1]), np.array([1.8, 2.2, 2.0])],
-    }
-
-    _create_pyqtgraph_bar_plot(widget, data, parameter="Amplitude", units="dF/F")
-
-    stored = widget._last_plot_data
-    assert isinstance(stored, dict)
-    assert stored["conditions"] == ["A", "B"]
-    assert stored["means"] == [1.0, 2.0]
-    assert stored["sems"] == [0.1, 0.2]
-    assert stored["fov_values"] == [[0.9, 1.1], [1.8, 2.2, 2.0]]
-    assert stored["parameter"] == "Amplitude (dF/F)"
-
-
-def test_clear_plot_resets_data(qtbot: QtBot) -> None:
-    """clear_plot resets _last_plot_data to None."""
-    from qtpy.QtWidgets import QWidget
-
-    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
-
-    parent = QWidget()
-    widget = _MultilWellGraphWidget(parent)
-    qtbot.addWidget(parent)
-
-    widget._last_plot_data = {"conditions": ["A"]}
-    widget.clear_plot()
-    assert widget._last_plot_data is None
-
-
-def test_save_csv_writes_file(qtbot: QtBot, tmp_path: object) -> None:
-    """Bar plot dict data can be exported to CSV via DataFrame."""
-    import pandas as pd
-    from qtpy.QtWidgets import QWidget
-
-    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
-    from cali.plot._multi_wells_plots._util import _create_pyqtgraph_bar_plot
-
-    parent = QWidget()
-    widget = _MultilWellGraphWidget(parent)
-    qtbot.addWidget(parent)
-
-    data = {
-        "conditions": ["X"],
-        "means": [3.0],
-        "sems": [0.5],
-        "fov_values_list": [np.array([2.5, 3.5])],
-    }
-    _create_pyqtgraph_bar_plot(widget, data, parameter="Freq", units="Hz")
-
-    # Build DataFrame from stored dict (same logic as _on_save_csv)
-    stored = widget._last_plot_data
-    assert isinstance(stored, dict)
-    assert "fov_values" in stored
-
-    csv_path = str(tmp_path / "test_export.csv")  # type: ignore[operator]
-    max_fovs = max((len(fv) for fv in stored["fov_values"]), default=0)
-    rows = []
-    for cond, mean, sem, fv in zip(
-        stored["conditions"], stored["means"], stored["sems"], stored["fov_values"]
-    ):
-        row: dict[str, object] = {"condition": cond, "mean": mean, "sem": sem}
-        for i, val in enumerate(fv):
-            row[f"fov_{i + 1}"] = val
-        for i in range(len(fv), max_fovs):
-            row[f"fov_{i + 1}"] = float("nan")
-        rows.append(row)
-    df = pd.DataFrame(rows)
-    df.to_csv(csv_path, index=False)
-
-    # Read back and verify
-    result = pd.read_csv(csv_path)
-    assert list(result["condition"]) == ["X"]
-    assert result["mean"].iloc[0] == 3.0
-
-
-# ---------------------------------------------------------------------------
 # _run_pca_scatter error handling paths
 # ---------------------------------------------------------------------------
 
@@ -1501,3 +1409,327 @@ def test_show_pca_features_dialog(
 
         MockDialog.assert_called_once()
         assert widget._pca_features == ["mean_amplitude", "mean_frequency"]
+
+
+# ---------------------------------------------------------------------------
+# export_multi_well_to_csv tests
+# ---------------------------------------------------------------------------
+
+
+def test_export_multi_well_to_csv_creates_files(
+    temp_db: TempDB,
+    tmp_path: object,
+) -> None:
+    """export_multi_well_to_csv creates CSV files in multi_well/ subfolder."""
+
+    from sqlmodel import Session
+
+    from cali.sqlmodel import (
+        AnalysisSettings,
+        CaliResult,
+        Condition,
+        DataAnalysis,
+        Experiment,
+        Plate,
+        Well,
+    )
+    from cali.util._database_to_csv import export_multi_well_to_csv
+
+    engine, db_path = temp_db
+
+    # Set up a minimal database with conditions, wells, FOVs, ROIs, and analysis
+    with Session(engine) as session:
+        exp = Experiment(name="TestExp")
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        plate = Plate(experiment=exp, name="Plate1", plate_type="96-well")
+        cond = Condition(name="WT", condition_type="genotype", color="blue")
+        well = Well(plate=plate, name="A1", row=0, column=0, conditions=[cond])
+        from cali.sqlmodel._model import FOV, ROI
+
+        fov = FOV(well=well, name="fov_0", position_index=0)
+        roi = ROI(label_value=1, fov=fov, active=True, cell_size=100.0)
+        session.add(roi)
+        session.commit()
+        session.refresh(roi)
+
+        analysis_settings = AnalysisSettings(experiment_type="spontaneous")
+        session.add(analysis_settings)
+        session.commit()
+        session.refresh(analysis_settings)
+
+        result = CaliResult(
+            experiment=exp.id,
+            analysis_settings_id=analysis_settings.id,
+        )
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+        da = DataAnalysis(
+            roi_id=roi.id,
+            analysis_result_id=result.id,
+            peaks_amplitudes_den_dff=1.5,
+            den_dff_frequency=0.3,
+            iei=2.0,
+            inferred_spikes_frequency=0.5,
+        )
+        session.add(da)
+        session.commit()
+
+        run_id = result.id
+
+    export_multi_well_to_csv(engine, run_id, db_path, experiment_type="spontaneous")
+
+    output_dir = (
+        db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}" / "multi_well"
+    )
+    assert output_dir.exists()
+
+    # Should have created at least the cell size, amplitude, frequency, IEI CSVs
+    csv_files = list(output_dir.glob("*.csv"))
+    assert len(csv_files) > 0
+
+    # Verify one CSV has expected structure
+    import pandas as pd
+
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        assert "condition" in df.columns
+        assert "mean" in df.columns
+        assert "sem" in df.columns
+
+
+def test_export_multi_well_skips_evoked_for_spontaneous(
+    temp_db: TempDB,
+) -> None:
+    """Evoked products are skipped when experiment_type is spontaneous."""
+    from sqlmodel import Session
+
+    from cali.sqlmodel import (
+        AnalysisSettings,
+        CaliResult,
+        Condition,
+        DataAnalysis,
+        Experiment,
+        Plate,
+        Well,
+    )
+    from cali.util._database_to_csv import export_multi_well_to_csv
+
+    engine, db_path = temp_db
+
+    with Session(engine) as session:
+        exp = Experiment(name="TestExp")
+        session.add(exp)
+        session.commit()
+        session.refresh(exp)
+
+        plate = Plate(experiment=exp, name="Plate1", plate_type="96-well")
+        cond = Condition(name="WT", condition_type="genotype", color="blue")
+        well = Well(plate=plate, name="A1", row=0, column=0, conditions=[cond])
+        from cali.sqlmodel._model import FOV, ROI
+
+        fov = FOV(well=well, name="fov_0", position_index=0)
+        roi = ROI(label_value=1, fov=fov, active=True)
+        session.add(roi)
+        session.commit()
+        session.refresh(roi)
+
+        analysis_settings = AnalysisSettings(experiment_type="spontaneous")
+        session.add(analysis_settings)
+        session.commit()
+        session.refresh(analysis_settings)
+
+        result = CaliResult(
+            experiment=exp.id,
+            analysis_settings_id=analysis_settings.id,
+        )
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+        da = DataAnalysis(
+            roi_id=roi.id,
+            analysis_result_id=result.id,
+            peaks_amplitudes_den_dff=1.5,
+        )
+        session.add(da)
+        session.commit()
+        run_id = result.id
+
+    export_multi_well_to_csv(engine, run_id, db_path, experiment_type="spontaneous")
+
+    output_dir = (
+        db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}" / "multi_well"
+    )
+    csv_files = [f.name for f in output_dir.glob("*.csv")]
+
+    # None of the CSVs should be evoked-only (stim_vs_nonstim)
+    for name in csv_files:
+        assert "stim_vs_nonstim" not in name
+
+
+def test_make_parameter_compute_fn() -> None:
+    """make_parameter_compute_fn returns a callable."""
+    from cali.plot._multi_wells_plots._util import make_parameter_compute_fn
+
+    fn = make_parameter_compute_fn("amplitude", "dF/F", "Amplitude")
+    assert callable(fn)
+
+
+def test_settings_save_load_round_trip(tmp_path: Path) -> None:
+    """Save/load settings round-trip preserves all fields."""
+    import json
+    from dataclasses import asdict
+
+    from cali.gui._analysis_gui import (
+        AnalysisSettingsData,
+        CalciumPeaksData,
+        ExperimentTypeData,
+        SpikeData,
+    )
+    from cali.gui._detection_gui import CellposeSettingsData
+    from cali.gui._extraction_gui import (
+        ExtractionSettingsData,
+        MetadataData,
+        TraceExtractionData,
+    )
+
+    # Build representative settings
+    detection = CellposeSettingsData(
+        model_type="cyto3", diameter=30.0, cellprob_threshold=0.5, use_gpu=False
+    )
+    extraction = ExtractionSettingsData(
+        trace_extraction_data=TraceExtractionData(dff_window_size=5.0, frame_rate=20.0),
+        metadata_data=MetadataData(pixel_size=0.5, frame_rate=20.0),
+        threads=2,
+    )
+    analysis = AnalysisSettingsData(
+        calcium_peaks_data=CalciumPeaksData(peaks_height=5.0),
+        spikes_data=SpikeData(spike_threshold=2.0),
+        experiment_type_data=ExperimentTypeData(
+            experiment_type="Evoked Activity",
+            led_pulse_powers=[1.0, 2.0],
+            led_pulse_on_frames=[5, 10],
+        ),
+        frame_rate=20.0,
+        threads=2,
+        n_processes=4,
+    )
+
+    # Save (same as _on_save_settings)
+    full_settings = {
+        "detection": asdict(detection),
+        "extraction": asdict(extraction),
+        "analysis": asdict(analysis),
+    }
+    json_path = tmp_path / "settings.json"
+    with open(json_path, "w") as f:
+        json.dump(full_settings, f)
+
+    # Load (same as _on_load_settings)
+    import os
+
+    from cali._constants import DEFAULT_FRAME_RATE
+
+    with open(json_path) as f:
+        settings = json.load(f)
+
+    # detection
+    det_loaded = CellposeSettingsData(**settings["detection"])
+    assert det_loaded == detection
+
+    # extraction
+    ext = settings["extraction"]
+    ext_export_options = ext.get("export_options")
+    if ext_export_options is not None:
+        ext_export_options = {k: tuple(v) for k, v in ext_export_options.items()}
+    ext_loaded = ExtractionSettingsData(
+        trace_extraction_data=(
+            TraceExtractionData(**ext["trace_extraction_data"])
+            if ext.get("trace_extraction_data")
+            else None
+        ),
+        metadata_data=(
+            MetadataData(**ext["metadata_data"]) if ext.get("metadata_data") else None
+        ),
+        threads=ext.get("threads", max((os.cpu_count() or 1) - 2, 1)),
+        export_options=ext_export_options,
+        export_enabled=ext.get("export_enabled", True),
+    )
+    assert ext_loaded.threads == extraction.threads
+    assert ext_loaded.trace_extraction_data == extraction.trace_extraction_data
+    assert ext_loaded.metadata_data == extraction.metadata_data
+
+    # analysis
+    ana = settings["analysis"]
+    ana_export_options = ana.get("export_options")
+    if ana_export_options is not None:
+        ana_export_options = {k: tuple(v) for k, v in ana_export_options.items()}
+    _default_threads = max((os.cpu_count() or 1) - 2, 1)
+    ana_loaded = AnalysisSettingsData(
+        calcium_peaks_data=(
+            CalciumPeaksData(**ana["calcium_peaks_data"])
+            if ana.get("calcium_peaks_data")
+            else None
+        ),
+        spikes_data=(
+            SpikeData(**ana["spikes_data"]) if ana.get("spikes_data") else None
+        ),
+        experiment_type_data=(
+            ExperimentTypeData(**ana["experiment_type_data"])
+            if ana.get("experiment_type_data")
+            else None
+        ),
+        frame_rate=ana.get("frame_rate", DEFAULT_FRAME_RATE),
+        threads=ana.get("threads", _default_threads),
+        n_processes=ana.get("n_processes", _default_threads),
+        export_options=ana_export_options,
+        export_enabled=ana.get("export_enabled", False),
+    )
+    assert ana_loaded.frame_rate == analysis.frame_rate
+    assert ana_loaded.threads == analysis.threads
+    assert ana_loaded.n_processes == analysis.n_processes
+    assert ana_loaded.calcium_peaks_data == analysis.calcium_peaks_data
+    assert ana_loaded.spikes_data == analysis.spikes_data
+    assert ana_loaded.experiment_type_data == analysis.experiment_type_data
+
+
+def test_export_multi_well_pca_to_csv(
+    full_db: tuple[Engine, int], tmp_path: Path
+) -> None:
+    """export_multi_well_pca_to_csv creates 3 CSV files with expected columns."""
+    import pandas as pd
+
+    from cali.util._database_to_csv import export_multi_well_pca_to_csv
+
+    engine, run_id = full_db
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+
+    export_multi_well_pca_to_csv(engine, run_id, db_path)
+
+    out_dir = tmp_path / "test_exports" / f"run_{run_id}" / "multi_well"
+
+    # Feature matrix
+    fm = pd.read_csv(out_dir / "pca_feature_matrix.csv")
+    assert "fov_name" in fm.columns
+    assert "condition" in fm.columns
+    assert len(fm) >= 2
+
+    # Coordinates
+    coords = pd.read_csv(out_dir / "pca_coordinates.csv")
+    assert "fov_name" in coords.columns
+    assert "condition" in coords.columns
+    assert "PC1" in coords.columns
+    assert len(coords) == len(fm)
+
+    # Loadings and scree
+    loadings = pd.read_csv(out_dir / "pca_loadings_and_scree.csv")
+    assert "component" in loadings.columns
+    assert "explained_variance_pct" in loadings.columns
+    assert "cumulative_variance_pct" in loadings.columns
+    assert loadings["component"].iloc[0] == "PC1"

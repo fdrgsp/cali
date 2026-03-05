@@ -6,7 +6,7 @@ Common functions used across multiple plot types.
 from __future__ import annotations
 
 import colorsys
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Callable, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
@@ -696,36 +696,32 @@ def _create_pyqtgraph_bar_plot(
     # Add grid
     plot_item.showGrid(x=False, y=True, alpha=0.3)
 
-    # Store plot data as a DataFrame for CSV export
-    _store_bar_plot_data(
-        widget,
-        filtered_conditions,
-        filtered_means,
-        filtered_sems,
-        filtered_fov_values,
-        parameter,
-        units,
-    )
 
-
-def _store_bar_plot_data(
-    widget: _MultilWellGraphWidget,
-    conditions: list[str],
-    means: list[float],
-    sems: list[float],
-    fov_values: list[np.ndarray],
+def make_parameter_compute_fn(
     parameter: str,
     units: str,
-) -> None:
-    """Store bar plot data as a plain dict on the widget for later CSV export."""
-    units_label = f" ({units})" if units else ""
-    widget._last_plot_data = {
-        "parameter": f"{parameter}{units_label}",
-        "conditions": conditions,
-        "means": means,
-        "sems": sems,
-        "fov_values": [fv.tolist() for fv in fov_values],
-    }
+    name: str,
+    include_stim_status: bool = False,
+) -> Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]:
+    """Create a headless compute function for a standard parameter bar plot.
+
+    Returns a callable (engine, run_id) -> (BarPlotData, name, units) | None.
+    """
+
+    def _compute(
+        engine: Engine, run_id: int | None
+    ) -> tuple[BarPlotData, str, str] | None:
+        data_by_condition = _query_roi_parameter_by_condition(
+            engine, parameter, run_id, include_stim_status=include_stim_status
+        )
+        if not data_by_condition:
+            return None
+        plot_data = _aggregate_fov_data_to_condition_stats(data_by_condition)
+        if not plot_data["conditions"]:
+            return None
+        return plot_data, name, units
+
+    return _compute
 
 
 def plot_parameter_bar_plot(

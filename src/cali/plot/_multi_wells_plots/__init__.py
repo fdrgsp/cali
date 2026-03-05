@@ -1,6 +1,10 @@
 """Multi-well plotting functions."""
 
 from ._calcium_peaks import (
+    compute_calcium_amplitude_stim_split_data,
+    compute_calcium_burst_avg_duration_data,
+    compute_calcium_burst_avg_interval_data,
+    compute_calcium_burst_count_data,
     plot_calcium_burst_avg_duration_bar_plot,
     plot_calcium_burst_avg_interval_bar_plot,
     plot_calcium_burst_count_bar_plot,
@@ -11,6 +15,9 @@ from ._calcium_peaks import (
     plot_calcium_peaks_iei_bar_plot,
 )
 from ._cell_properties import (
+    compute_cell_size_data,
+    compute_percentage_active_data,
+    compute_percentage_active_stim_split_data,
     plot_cell_size_bar_plot,
     plot_percentage_active_bar_plot,
     plot_percentage_active_stim_split_bar_plot,
@@ -22,6 +29,10 @@ from ._dimensionality_reduction import (
     plot_pca_scree,
 )
 from ._inferred_spikes import (
+    compute_burst_avg_duration_data,
+    compute_burst_avg_interval_data,
+    compute_burst_count_data,
+    compute_burst_rate_data,
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
     plot_burst_count_bar_plot,
@@ -33,9 +44,22 @@ from ._inferred_spikes import (
     plot_spike_correlation_bar_plot,
     plot_spike_synchrony_bar_plot,
 )
-from ._util import plot_parameter_bar_plot
+from ._util import make_parameter_compute_fn, plot_parameter_bar_plot
 
 __all__ = [
+    "compute_burst_avg_duration_data",
+    "compute_burst_avg_interval_data",
+    "compute_burst_count_data",
+    "compute_burst_rate_data",
+    "compute_calcium_amplitude_stim_split_data",
+    "compute_calcium_burst_avg_duration_data",
+    "compute_calcium_burst_avg_interval_data",
+    "compute_calcium_burst_count_data",
+    "compute_cell_size_data",
+    "compute_percentage_active_data",
+    "compute_percentage_active_stim_split_data",
+    "make_parameter_compute_fn",
+    "make_parameter_compute_fn",
     "plot_burst_avg_duration_bar_plot",
     "plot_burst_avg_interval_bar_plot",
     "plot_burst_count_bar_plot",

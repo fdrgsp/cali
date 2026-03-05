@@ -139,6 +139,7 @@ CorrelationDataType = Literal[
     "Inferred Spikes CCG Z-Score Matrix (Rising Edges)",  # INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES  # noqa: E501
     # Cluster Analysis
     "Cluster Labels",  # CLUSTER_LABELS
+    "Multi-Well Aggregated Data",  # MULTI_WELL_AGGREGATED_DATA
 ]
 
 # fmt: off
@@ -166,4 +167,6 @@ INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES: CorrelationDataType = "Infe
 INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: CorrelationDataType = "Inferred Spikes CCG Z-Score Matrix (Rising Edges)"  # noqa: E501
 # Cluster Analysis
 CLUSTER_LABELS: CorrelationDataType = "Cluster Labels"
+# Multi-Well Aggregated Data
+MULTI_WELL_AGGREGATED_DATA: CorrelationDataType = "Multi-Well Aggregated Data"
 # fmt: on

@@ -10,6 +10,18 @@ from typing_extensions import TypeAlias
 from cali._constants import EVOKED
 
 from ._multi_wells_plots import (
+    compute_burst_avg_duration_data,
+    compute_burst_avg_interval_data,
+    compute_burst_count_data,
+    compute_burst_rate_data,
+    compute_calcium_amplitude_stim_split_data,
+    compute_calcium_burst_avg_duration_data,
+    compute_calcium_burst_avg_interval_data,
+    compute_calcium_burst_count_data,
+    compute_cell_size_data,
+    compute_percentage_active_data,
+    compute_percentage_active_stim_split_data,
+    make_parameter_compute_fn,
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
     plot_burst_count_bar_plot,
@@ -115,6 +127,8 @@ if TYPE_CHECKING:
         _SingleWellGraphWidget,
     )
 
+    from ._multi_wells_plots._util import BarPlotData
+
 
 from cali.logger import cali_logger
 
@@ -147,6 +161,10 @@ MultiWellAnalyzer: TypeAlias = (
     "Callable[..., None]"  # Flexible signature for partial functions
 )
 AnyAnalyzer: TypeAlias = "SingleWellAnalyzer | MultiWellAnalyzer"
+# Headless compute function: (engine, run_id) -> (BarPlotData, name, units) | None
+ComputeFn: TypeAlias = (
+    "Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]"
+)
 
 
 @dataclass
@@ -167,6 +185,10 @@ class AnalysisProduct:
         Minimum pipeline stage required to generate this plot
     experiment_type : str | None
         Required experiment type ("evoked" or "spontaneous"), None for all types
+    compute_fn : ComputeFn | None
+        Headless function that computes bar plot data without rendering.
+        Signature: (engine, run_id) -> (BarPlotData, name, units) | None.
+        Used for batch CSV export of multi-well aggregated data.
     """
 
     name: str
@@ -175,6 +197,7 @@ class AnalysisProduct:
     category: str = "General"
     pipeline_stage: PipelineStage = PipelineStage.ANALYSIS
     experiment_type: str | None = None  # "evoked", "spontaneous", or None for all
+    compute_fn: ComputeFn | None = None
 
     def __post_init__(self) -> None:
         """Register this product in the global registry."""
@@ -766,6 +789,7 @@ AnalysisProduct(
     analyzer=plot_cell_size_bar_plot,
     category="General",
     pipeline_stage=PipelineStage.DETECTION,
+    compute_fn=compute_cell_size_data,
 )
 AnalysisProduct(
     name="Percentage of Active Cells Bar Plot",
@@ -773,6 +797,7 @@ AnalysisProduct(
     analyzer=plot_percentage_active_bar_plot,
     category="General",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_percentage_active_data,
 )
 AnalysisProduct(
     name="Calcium Peaks Amplitude Bar Plot",
@@ -780,6 +805,9 @@ AnalysisProduct(
     analyzer=plot_calcium_peaks_amplitude_bar_plot,
     category="Calcium Peaks",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "peaks_amplitudes_den_dff", "ΔF/F0", "Calcium Peaks Amplitude"
+    ),
 )
 AnalysisProduct(
     name="Calcium Peaks Frequency Bar Plot",
@@ -787,6 +815,9 @@ AnalysisProduct(
     analyzer=plot_calcium_peaks_frequency_bar_plot,
     category="Calcium Peaks",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "den_dff_frequency", "Hz", "Calcium Peaks Frequency"
+    ),
 )
 AnalysisProduct(
     name="Calcium Peaks Inter-Event Interval Bar Plot",
@@ -794,6 +825,7 @@ AnalysisProduct(
     analyzer=plot_calcium_peaks_iei_bar_plot,
     category="Calcium Peaks",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn("iei", "s", "Calcium Peaks IEI"),
 )
 
 # Multi-Well Products — calcium burst metrics
@@ -803,6 +835,7 @@ AnalysisProduct(
     analyzer=plot_calcium_burst_count_bar_plot,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_count_data,
 )
 AnalysisProduct(
     name="Calcium Burst Average Duration Bar Plot",
@@ -810,6 +843,7 @@ AnalysisProduct(
     analyzer=plot_calcium_burst_avg_duration_bar_plot,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_avg_duration_data,
 )
 AnalysisProduct(
     name="Calcium Burst Average Interval Bar Plot",
@@ -817,6 +851,7 @@ AnalysisProduct(
     analyzer=plot_calcium_burst_avg_interval_bar_plot,
     category="Calcium Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_avg_interval_data,
 )
 
 AnalysisProduct(
@@ -825,6 +860,9 @@ AnalysisProduct(
     analyzer=plot_inferred_spikes_frequency_bar_plot,
     category="Inferred Spikes",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_frequency", "Hz", "Inferred Spikes Frequency"
+    ),
 )
 AnalysisProduct(
     name="Inferred Spikes Rising Edge Frequency Bar Plot",
@@ -832,6 +870,11 @@ AnalysisProduct(
     analyzer=plot_inferred_spikes_rising_edge_frequency_bar_plot,
     category="Inferred Spikes",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_rising_edge_frequency",
+        "Hz",
+        "Inferred Spikes Rising Edge Frequency",
+    ),
 )
 
 # Multi-Well Products — inferred spikes burst metrics
@@ -841,6 +884,7 @@ AnalysisProduct(
     analyzer=plot_burst_count_bar_plot,
     category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_count_data,
 )
 AnalysisProduct(
     name="Inferred Spikes Burst Average Duration Bar Plot",
@@ -848,6 +892,7 @@ AnalysisProduct(
     analyzer=plot_burst_avg_duration_bar_plot,
     category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_avg_duration_data,
 )
 AnalysisProduct(
     name="Inferred Spikes Burst Average Interval Bar Plot",
@@ -855,6 +900,7 @@ AnalysisProduct(
     analyzer=plot_burst_avg_interval_bar_plot,
     category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_avg_interval_data,
 )
 AnalysisProduct(
     name="Inferred Spikes Burst Rate Bar Plot",
@@ -862,6 +908,7 @@ AnalysisProduct(
     analyzer=plot_burst_rate_bar_plot,
     category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_rate_data,
 )
 
 # Multi-Well Products — PCA
@@ -903,6 +950,7 @@ AnalysisProduct(
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
+    compute_fn=compute_calcium_amplitude_stim_split_data,
 )
 AnalysisProduct(
     name="Calcium Peaks Frequency Bar Plot (Stim vs NonStim)",
@@ -911,6 +959,12 @@ AnalysisProduct(
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "den_dff_frequency",
+        "Hz",
+        "Calcium Peaks Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
 )
 AnalysisProduct(
     name="Percentage of Active Cells Bar Plot (Stim vs NonStim)",
@@ -919,6 +973,7 @@ AnalysisProduct(
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
+    compute_fn=compute_percentage_active_stim_split_data,
 )
 AnalysisProduct(
     name="Inferred Spikes Frequency Bar Plot (Stim vs NonStim)",
@@ -927,6 +982,12 @@ AnalysisProduct(
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_frequency",
+        "Hz",
+        "Inferred Spikes Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
 )
 AnalysisProduct(
     name="Inferred Spikes Rising Edge Frequency Bar Plot (Stim vs NonStim)",
@@ -935,6 +996,12 @@ AnalysisProduct(
     category="Evoked",
     pipeline_stage=PipelineStage.ANALYSIS,
     experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_rising_edge_frequency",
+        "Hz",
+        "Inferred Spikes Rising Edge Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
 )
 
 # DATABASE HELPERS ====================================================================

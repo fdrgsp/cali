@@ -808,6 +808,36 @@ class CaliRunner:
                         )
                         yield "🗂️ Exported correlations to CSV"
 
+                        # Export multi-well aggregated data if requested
+                        if export_correlations.get("Multi-Well Aggregated Data", False):
+                            from cali.util._database_to_csv import (
+                                export_multi_well_to_csv,
+                            )
+
+                            experiment_type = (
+                                analysis_settings_obj.experiment_type
+                                if analysis_settings_obj is not None
+                                else None
+                            )
+                            yield "🗂️ Exporting multi-well aggregated data..."
+                            export_multi_well_to_csv(
+                                engine,
+                                analysis_result_id,
+                                self._db_path,
+                                experiment_type=experiment_type,
+                            )
+                            # Also export PCA data
+                            # from cali.util._database_to_csv import (
+                            #     export_multi_well_pca_to_csv,
+                            # )
+
+                            # export_multi_well_pca_to_csv(
+                            #     engine,
+                            #     analysis_result_id,
+                            #     self._db_path,
+                            # )
+                            yield "🗂️ Exported multi-well aggregated data"
+
         finally:
             cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)

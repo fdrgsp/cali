@@ -25,6 +25,7 @@ from cali.util import (
     export_inferred_spikes_synchrony_rising_edges_to_csv,
     export_inferred_spikes_synchrony_to_csv,
     export_inferred_spikes_thresholded_to_csv,
+    export_multi_well_to_csv,
     export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
@@ -134,6 +135,9 @@ print("Exporting inferred spikes CCG z-score rising edges...")
 export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
     engine, output_dir / "spikes_ccg_zscore_rising_edges.csv", run_id=run_id
 )
+
+print("Exporting multi-well aggregated data...")
+export_multi_well_to_csv(engine, run_id, Path(db_path))
 
 # Export data for a specific FOV
 print("Exporting data for specific FOV...")

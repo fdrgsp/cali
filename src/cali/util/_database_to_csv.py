@@ -1374,3 +1374,170 @@ def _export_matrix_to_csv(
 
     df = pd.DataFrame(matrix, index=labels, columns=labels)
     df.to_csv(output_path, index=True)
+
+
+def export_multi_well_to_csv(
+    engine: Engine,
+    run_id: int,
+    db_path: Path,
+    experiment_type: str | None = None,
+) -> None:
+    """Export all multi-well aggregated bar plot data to CSV files.
+
+    Iterates over registered multi-well AnalysisProducts that have a
+    `compute_fn`, calls each to compute aggregated condition-level
+    statistics, and writes one CSV per analysis into a `multi_well/`
+    subfolder.
+
+    Parameters
+    ----------
+    engine : Engine
+        SQLAlchemy engine connected to the database.
+    run_id : int
+        The CaliResult.id to export data for.
+    db_path : Path
+        Path to the database file (used to determine export directory).
+    experiment_type : str | None
+        Experiment type (`"evoked"` or `"spontaneous"`).  Products
+        whose `experiment_type` doesn't match are skipped.
+    """
+    from cali.logger import cali_logger
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS, AnalysisGroup
+
+    output_dir = (
+        db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}" / "multi_well"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for product in ANALYSIS_PRODUCTS:
+        if product.group != AnalysisGroup.MULTI_WELL:
+            continue
+        if product.compute_fn is None:
+            continue
+        # Filter by experiment type
+        if (
+            product.experiment_type is not None
+            and product.experiment_type != experiment_type
+        ):
+            continue
+
+        try:
+            result = product.compute_fn(engine, run_id)
+        except Exception as e:
+            cali_logger.debug(f"Skipping multi-well export for '{product.name}': {e}")
+            continue
+
+        if result is None:
+            continue
+
+        bar_data, _name, _units = result
+        # Build DataFrame from BarPlotData
+        fov_values = bar_data["fov_values_list"]
+        max_fovs = max((len(fv) for fv in fov_values), default=0)
+        rows: list[dict[str, object]] = []
+        for cond, mean, sem, fv in zip(
+            bar_data["conditions"],
+            bar_data["means"],
+            bar_data["sems"],
+            fov_values,
+        ):
+            row: dict[str, object] = {"condition": cond, "mean": mean, "sem": sem}
+            for i, val in enumerate(fv):
+                row[f"fov_{i + 1}"] = float(val)
+            for i in range(len(fv), max_fovs):
+                row[f"fov_{i + 1}"] = float("nan")
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+        # Sanitize filename from product name
+        safe_name = product.name.replace(" ", "_").replace("/", "_").lower()
+        csv_path = output_dir / f"{safe_name}.csv"
+        df.to_csv(csv_path, index=False)
+        cali_logger.debug(f"Exported multi-well data: {csv_path}")
+
+
+def export_multi_well_pca_to_csv(
+    engine: Engine,
+    run_id: int,
+    db_path: Path,
+) -> None:
+    """Export PCA analysis data (feature matrix, coordinates, loadings) to CSV.
+
+    Builds the FOV feature matrix, runs PCA, and exports three CSV files:
+    - `pca_feature_matrix.csv`: raw per-FOV feature values
+    - `pca_coordinates.csv`: PCA-transformed coordinates per FOV
+    - `pca_loadings_and_scree.csv`: loadings and explained variance per component
+
+    Parameters
+    ----------
+    engine : Engine
+        SQLAlchemy engine connected to the database.
+    run_id : int
+        The CaliResult.id to export data for.
+    db_path : Path
+        Path to the database file (used to determine export directory).
+    """
+    from cali.logger import cali_logger
+
+    try:
+        from cali.plot._multi_wells_plots._dimensionality_reduction import (
+            build_fov_feature_matrix,
+            compute_pca,
+        )
+    except ImportError:
+        cali_logger.debug("sklearn not available, skipping PCA export")
+        return
+
+    try:
+        df = build_fov_feature_matrix(engine, run_id)
+    except Exception as e:
+        cali_logger.debug(f"Skipping PCA export: {e}")
+        return
+
+    if len(df) < 2:
+        cali_logger.debug("Skipping PCA export: fewer than 2 FOVs")
+        return
+
+    try:
+        coords, pca, used_features = compute_pca(df, n_components=min(len(df), 10))
+    except Exception as e:
+        cali_logger.debug(f"Skipping PCA export (compute failed): {e}")
+        return
+
+    output_dir = (
+        db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}" / "multi_well"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Feature matrix CSV
+    df.to_csv(output_dir / "pca_feature_matrix.csv", index=False)
+    cali_logger.debug(f"Exported PCA feature matrix: {output_dir}")
+
+    # 2. Coordinates CSV
+    n_components = coords.shape[1]
+    coord_df = pd.DataFrame(
+        coords,
+        columns=[f"PC{i + 1}" for i in range(n_components)],
+    )
+    coord_df.insert(0, "fov_name", df["fov_name"].values)
+    coord_df.insert(1, "condition", df["condition"].values)
+    coord_df.to_csv(output_dir / "pca_coordinates.csv", index=False)
+    cali_logger.debug(f"Exported PCA coordinates: {output_dir}")
+
+    # 3. Loadings and scree CSV
+    variance = pca.explained_variance_ratio_ * 100.0
+    cumulative = np.cumsum(variance)
+    rows: list[dict[str, object]] = []
+    for i in range(n_components):
+        row: dict[str, object] = {
+            "component": f"PC{i + 1}",
+            "explained_variance_pct": float(variance[i]),
+            "cumulative_variance_pct": float(cumulative[i]),
+        }
+        for j, feat in enumerate(used_features):
+            row[feat] = float(pca.components_[i, j])
+        rows.append(row)
+
+    loadings_df = pd.DataFrame(rows)
+    loadings_df.to_csv(output_dir / "pca_loadings_and_scree.csv", index=False)
+    cali_logger.debug(f"Exported PCA loadings and scree: {output_dir}")
