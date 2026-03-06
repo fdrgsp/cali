@@ -5,9 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from pymmcore_widgets.useq_widgets import WellPlateWidget
+from pymmcore_widgets.useq_widgets._well_plate_widget import (
+    DATA_POSITION,
+    WellPlateView,
+)
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -18,8 +24,9 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from superqt import QIconifyIcon
 
-from cali.gui._util import _BrowseWidget, show_error_dialog
+from cali.gui._util import _BrowseWidget, auto_match_files, show_error_dialog
 from cali.logger import cali_logger
 
 # Role for storing FOV data in tree items
@@ -32,9 +39,9 @@ class _ImportLabelsDialog(QDialog):
     """Dialog for importing label TIFFs and assigning them to specific FOVs.
 
     The dialog queries the database for the existing well/FOV structure and
-    allows the user to browse for label TIFF files, then assign each label
-    file to a specific FOV. On acceptance, label arrays are read, converted
-    to ROI/Mask objects, and committed to the database immediately.
+    displays a plate map on the left. Users can browse for label TIFF files,
+    then assign each label file to a specific FOV. On acceptance, label arrays
+    are read, converted to ROI/Mask objects, and committed to the database.
     """
 
     def __init__(
@@ -51,6 +58,8 @@ class _ImportLabelsDialog(QDialog):
         # Maps fov_id -> label TIFF path
         self._label_map: dict[int, Path] = {}
         self._imported_detection_settings_id: int | None = None
+        # Maps well_name -> list of (fov_id, fov_name, pos_idx)
+        self._well_fovs: dict[str, list[tuple[int, str, int]]] = {}
 
         # --- Browse widget for labels folder ---
         self._browse_wdg = _BrowseWidget(
@@ -60,40 +69,80 @@ class _ImportLabelsDialog(QDialog):
         )
         self._browse_wdg.pathSet.connect(self._on_folder_selected)
 
-        # --- Left panel: available label files ---
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(5)
-        left_layout.addWidget(QLabel("Available Label Files:"))
+        # --- LEFT: Well plate widget (read-only plate type) ---
+        plate_group = QGroupBox("Plate")
+        plate_layout = QVBoxLayout(plate_group)
+        plate_layout.setContentsMargins(0, 0, 0, 0)
+        self._plate_widget = WellPlateWidget()
+        self._plate_widget.plate_name.setEnabled(False)
+        plate_layout.addWidget(self._plate_widget)
+
+        # Make plate view only select a single well at a time
+        self._plate_view: WellPlateView | None = None
+        for child in self._plate_widget.findChildren(WellPlateView):
+            self._plate_view = child
+            break
+        if self._plate_view:
+            self._plate_view.setDragMode(WellPlateView.DragMode.NoDrag)
+            self._plate_view.setSelectionMode(
+                WellPlateView.SelectionMode.SingleSelection
+            )
+            self._plate_view.selectionChanged.connect(self._on_well_selection_changed)
+
+        # --- RIGHT TOP: Available label files ---
+        avail_label = QLabel("Available Label Files:")
         self._available_list = QListWidget()
         self._available_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        left_layout.addWidget(self._available_list)
 
-        # --- Right panel: FOV tree from database ---
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(5)
-        right_layout.addWidget(QLabel("Experiment FOVs:"))
-        self._fov_tree = QTreeWidget()
-        self._fov_tree.setHeaderLabels(["Well / FOV", "Assigned Label"])
-        self._fov_tree.setColumnCount(2)
-        self._fov_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
-        right_layout.addWidget(self._fov_tree)
+        available_widget = QWidget()
+        available_layout = QVBoxLayout(available_widget)
+        available_layout.setContentsMargins(5, 5, 5, 5)
+        available_layout.addWidget(avail_label)
+        available_layout.addWidget(self._available_list)
 
-        # --- Assign / Unassign buttons ---
+        # --- Assign / Unassign / Reset buttons ---
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setSpacing(5)
-        self._assign_btn = QPushButton("Assign to FOV →")
+        self._assign_btn = QPushButton(QIconifyIcon("mdi:arrow-down"), "Assign")
         self._assign_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._assign_btn.clicked.connect(self._on_assign)
-        self._unassign_btn = QPushButton("← Unassign")
+        self._unassign_btn = QPushButton(QIconifyIcon("mdi:arrow-up"), "Unassign")
         self._unassign_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._unassign_btn.clicked.connect(self._on_unassign)
+        self._reset_btn = QPushButton(QIconifyIcon("mdi:restart"), "Reset")
+        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._reset_btn.clicked.connect(self._on_reset)
         btn_layout.addWidget(self._assign_btn)
         btn_layout.addWidget(self._unassign_btn)
+        btn_layout.addWidget(self._reset_btn)
+
+        # --- RIGHT BOTTOM: FOV list for selected well ---
+        fov_label = QLabel("Label File assigned the FOVs in Selected Well:")
+        self._fov_list = QTreeWidget()
+        self._fov_list.setHeaderLabels(["FOV", "Assigned Label"])
+        self._fov_list.setColumnCount(2)
+        self._fov_list.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self._fov_list.setRootIsDecorated(False)
+
+        assigned_widget = QWidget()
+        assigned_layout = QVBoxLayout(assigned_widget)
+        assigned_layout.setContentsMargins(5, 5, 5, 5)
+        assigned_layout.addWidget(fov_label)
+        assigned_layout.addLayout(btn_layout)
+        assigned_layout.addWidget(self._fov_list)
+
+        # --- Right side: vertical splitter for available files / FOV list ---
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_splitter.addWidget(available_widget)
+        right_splitter.addWidget(assigned_widget)
+
+        # --- Horizontal splitter: plate | files ---
+        top_splitter = QSplitter(Qt.Orientation.Horizontal)
+        top_splitter.addWidget(plate_group)
+        top_splitter.addWidget(right_splitter)
+        top_splitter.setStretchFactor(0, 3)
+        top_splitter.setStretchFactor(1, 2)
 
         # --- OK / Cancel ---
         bottom_layout = QHBoxLayout()
@@ -109,26 +158,18 @@ class _ImportLabelsDialog(QDialog):
         bottom_layout.addWidget(ok_btn)
         bottom_layout.addWidget(cancel_btn)
 
-        # --- Splitter for left/right panels ---
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_widget)
-        splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-
         # --- Main layout ---
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(5)
         main_layout.addWidget(self._browse_wdg)
-        main_layout.addLayout(btn_layout)
-        main_layout.addWidget(splitter, 1)
+        main_layout.addWidget(top_splitter, 1)
         main_layout.addLayout(bottom_layout)
 
-        self.resize(800, 500)
+        self.resize(1000, 600)
 
-        # Populate the FOV tree from the database
-        self._populate_fov_tree()
+        # Load plate and FOV data from the database
+        self._load_fovs_from_db()
 
     # --- Public ---
 
@@ -156,10 +197,42 @@ class _ImportLabelsDialog(QDialog):
             self._available_list.addItem(f.name)
 
         self._update_available_list_states()
+        self._auto_assign_labels()
+
+    def _on_well_selection_changed(self) -> None:
+        """Update the FOV list when a well is selected in the plate map."""
+        if not self._plate_view:
+            return
+
+        self._fov_list.clear()
+
+        selected = self._plate_view._selected_items
+        if not selected or len(selected) != 1:
+            return
+
+        well_item = next(iter(selected))
+        position = well_item.data(DATA_POSITION)
+        if not position or not hasattr(position, "name") or not position.name:
+            return
+
+        well_name = position.name
+        if well_name not in self._well_fovs:
+            return
+
+        for fov_id, fov_name, pos_idx in self._well_fovs[well_name]:
+            assigned = self._label_map.get(fov_id)
+            item = QTreeWidgetItem(
+                [f"{fov_name} (pos {pos_idx})", assigned.name if assigned else ""]
+            )
+            item.setData(0, _FOV_ID_ROLE, fov_id)
+            item.setData(0, _FOV_NAME_ROLE, fov_name)
+            item.setData(0, _FOV_POS_IDX_ROLE, pos_idx)
+            self._fov_list.addTopLevelItem(item)
+
+        self._fov_list.resizeColumnToContents(0)
 
     def _on_assign(self) -> None:
         """Assign the selected label file to the selected FOV."""
-        # Get selected file
         selected_file_items = self._available_list.selectedItems()
         if not selected_file_items:
             return
@@ -174,35 +247,40 @@ class _ImportLabelsDialog(QDialog):
         if label_path is None:
             return
 
-        # Get selected FOV in tree (must be a child item, not a well group)
-        selected_tree_items = self._fov_tree.selectedItems()
-        if not selected_tree_items:
+        # Get selected FOV
+        selected_fov_items = self._fov_list.selectedItems()
+        if not selected_fov_items:
             return
-        tree_item = selected_tree_items[0]
-        fov_id = tree_item.data(0, _FOV_ID_ROLE)
+        fov_item = selected_fov_items[0]
+        fov_id = fov_item.data(0, _FOV_ID_ROLE)
         if fov_id is None:
-            # User selected a well group header, not a FOV
             return
 
-        # Assign
         self._label_map[fov_id] = label_path
-        tree_item.setText(1, label_path.name)
+        fov_item.setText(1, label_path.name)
         self._update_available_list_states()
 
     def _on_unassign(self) -> None:
         """Remove the label assignment from the selected FOV."""
-        selected_tree_items = self._fov_tree.selectedItems()
-        if not selected_tree_items:
+        selected_fov_items = self._fov_list.selectedItems()
+        if not selected_fov_items:
             return
-        tree_item = selected_tree_items[0]
-        fov_id = tree_item.data(0, _FOV_ID_ROLE)
+        fov_item = selected_fov_items[0]
+        fov_id = fov_item.data(0, _FOV_ID_ROLE)
         if fov_id is None:
             return
 
         if fov_id in self._label_map:
             del self._label_map[fov_id]
-            tree_item.setText(1, "")
+            fov_item.setText(1, "")
             self._update_available_list_states()
+
+    def _on_reset(self) -> None:
+        """Clear all label-to-FOV assignments."""
+        self._label_map.clear()
+        # Refresh FOV list for currently selected well
+        self._on_well_selection_changed()
+        self._update_available_list_states()
 
     def _on_ok(self) -> None:
         """Validate and import labels to the database."""
@@ -222,16 +300,39 @@ class _ImportLabelsDialog(QDialog):
             show_error_dialog(self, f"Failed to import labels:\n{e}")
             cali_logger.error(f"Failed to import labels: {e}")
 
+    # --- Private: auto-assignment ---
+
+    def _auto_assign_labels(self) -> None:
+        """Attempt to auto-match label files to FOVs by filename."""
+        if not self._label_files:
+            return
+
+        # Collect all FOV names -> fov_id from _well_fovs
+        fov_info: dict[str, int] = {}
+        for fovs in self._well_fovs.values():
+            for fov_id, fov_name, _pos_idx in fovs:
+                fov_info[fov_name] = fov_id
+
+        matches = auto_match_files(self._label_files, list(fov_info.keys()))
+
+        for fov_name, matched_path in matches.items():
+            fov_id = fov_info[fov_name]
+            self._label_map[fov_id] = matched_path
+
+        # Refresh FOV list display if a well is selected
+        self._on_well_selection_changed()
+        self._update_available_list_states()
+
     # --- Private: data ---
 
-    def _populate_fov_tree(self) -> None:
-        """Query the database for wells/FOVs and populate the tree widget."""
-        self._fov_tree.clear()
+    def _load_fovs_from_db(self) -> None:
+        """Query the database for plate info and wells/FOVs."""
+        self._well_fovs.clear()
 
         try:
             from sqlmodel import Session, create_engine, select
 
-            from cali.sqlmodel._model import FOV, Well
+            from cali.sqlmodel._model import FOV, Plate, Well
 
             engine = create_engine(
                 f"sqlite:///{self._database_path}",
@@ -241,6 +342,15 @@ class _ImportLabelsDialog(QDialog):
             )
             try:
                 with Session(engine) as session:
+                    # Load plate type and set on widget
+                    plate_type = session.exec(select(Plate.plate_type)).first()
+                    if plate_type:
+                        # Set combo box text directly (setValue expects WellPlatePlan)
+                        idx = self._plate_widget.plate_name.findText(plate_type)
+                        if idx >= 0:
+                            self._plate_widget.plate_name.setCurrentIndex(idx)
+
+                    # Load FOVs grouped by well
                     stmt = (
                         select(Well.name, FOV.name, FOV.position_index, FOV.id)
                         .join(FOV, FOV.well_id == Well.id)
@@ -250,23 +360,10 @@ class _ImportLabelsDialog(QDialog):
             finally:
                 engine.dispose(close=True)
 
-            # Group by well name
-            well_items: dict[str, QTreeWidgetItem] = {}
             for well_name, fov_name, pos_idx, fov_id in rows:
-                if well_name not in well_items:
-                    well_item = QTreeWidgetItem(self._fov_tree, [f"Well {well_name}"])
-                    well_item.setExpanded(True)
-                    well_items[well_name] = well_item
-
-                fov_item = QTreeWidgetItem(
-                    well_items[well_name],
-                    [f"{fov_name} (pos {pos_idx})", ""],
-                )
-                fov_item.setData(0, _FOV_ID_ROLE, fov_id)
-                fov_item.setData(0, _FOV_NAME_ROLE, fov_name)
-                fov_item.setData(0, _FOV_POS_IDX_ROLE, pos_idx)
-
-            self._fov_tree.resizeColumnToContents(0)
+                if well_name not in self._well_fovs:
+                    self._well_fovs[well_name] = []
+                self._well_fovs[well_name].append((fov_id, fov_name, pos_idx))
 
         except Exception as e:
             cali_logger.error(f"Failed to query FOVs from database: {e}")

@@ -531,21 +531,33 @@ class _ImportedLabelsWidget(QGroupBox):
         self.setCheckable(True)
         self.setChecked(False)
 
+        self.setToolTip(
+            "Import pre-existing label TIFFs files and associate them to each Well and "
+            "FOV in the plate."
+        )
+
         self._database_path: str | None = None
         self._detection_settings_id: int | None = None
         self._n_imported_fovs: int = 0
 
         self._status_label = QLabel("No labels imported yet.")
+        self._status_label.setSizePolicy(*FIXED)
         self._import_btn = QPushButton("Import Labels...")
         self._import_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._import_btn.clicked.connect(self._on_import_clicked)
 
+        btn_status_layout = QHBoxLayout()
+        btn_status_layout.setContentsMargins(0, 0, 0, 0)
+        btn_status_layout.setSpacing(5)
+        btn_status_layout.addWidget(self._import_btn)
+        btn_status_layout.addWidget(self._status_label)
+        btn_status_layout.addStretch(1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)
-        layout.addWidget(create_divider_line("Import Label TIFFs (bypass Cellpose)"))
-        layout.addWidget(self._status_label)
-        layout.addWidget(self._import_btn)
+        layout.addWidget(create_divider_line("Import Label TIFFs"))
+        layout.addLayout(btn_status_layout)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
