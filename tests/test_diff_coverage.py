@@ -111,15 +111,29 @@ def _build_full_db() -> tuple[Engine, int]:
                 np.fill_diagonal(corr, 1.0)
                 corr = ((corr + corr.T) / 2).tolist()
 
+                # Compute global scalar from off-diagonal of corr matrix
+                corr_arr = np.array(corr)
+                n = corr_arr.shape[0]
+                mask = ~np.eye(n, dtype=bool)
+                global_corr = float(np.mean(corr_arr[mask]))
+
                 fa = FOVAnalysis(
                     fov_id=fov.id,
                     analysis_result_id=run.id,
+                    active_roi_labels=[1, 2, 3],
                     spike_burst_count=3 + fov_idx,
                     spike_burst_avg_duration=0.5 + 0.1 * fov_idx,
                     spike_burst_avg_interval=2.0 + 0.2 * fov_idx,
                     spike_population_activity=[0.0] * 600,
                     global_spike_jitter_synchrony=0.3 + 0.1 * fov_idx,
+                    global_spike_max_lag_correlation=global_corr,
                     spike_max_lag_correlation_matrix=corr,
+                    global_calcium_dff_correlation=0.4 + 0.05 * fov_idx,
+                    global_calcium_den_dff_correlation=0.5 + 0.05 * fov_idx,
+                    global_spike_jitter_synchrony_rising_edges=(0.25 + 0.1 * fov_idx),
+                    global_spike_max_lag_correlation_rising_edges=(global_corr * 0.9),
+                    fraction_significant_ccg_pairs=0.6 + 0.05 * fov_idx,
+                    fraction_significant_ccg_pairs_rising_edges=(0.5 + 0.05 * fov_idx),
                 )
                 session.add(fa)
 
@@ -186,27 +200,33 @@ def test_query_spike_synchrony_returns_conditions(
     full_db: tuple[Engine, int],
 ) -> None:
     from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_synchrony_by_condition,
+        _query_fov_scalar_by_condition,
     )
 
     engine, run_id = full_db
-    data = _query_spike_synchrony_by_condition(engine, run_id)
+    data = _query_fov_scalar_by_condition(
+        engine, run_id, "global_spike_jitter_synchrony"
+    )
     assert set(data.keys()) == {"WT", "KO"}
     for _cond, fov_dict in data.items():
         assert len(fov_dict) == 2
-        for val in fov_dict.values():
-            assert isinstance(val, float)
-            assert 0.0 <= val <= 1.0
+        for scalar, weight in fov_dict.values():
+            assert isinstance(scalar, float)
+            assert 0.0 <= scalar <= 1.0
+            assert isinstance(weight, int)
 
 
 def test_query_spike_synchrony_empty_db() -> None:
     from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_synchrony_by_condition,
+        _query_fov_scalar_by_condition,
     )
 
     engine = create_engine("sqlite:///:memory:")
     create_database_and_tables(engine)
-    assert _query_spike_synchrony_by_condition(engine) == {}
+    assert (
+        _query_fov_scalar_by_condition(engine, None, "global_spike_jitter_synchrony")
+        == {}
+    )
     engine.dispose(close=True)
 
 
@@ -219,70 +239,32 @@ def test_query_spike_correlation_returns_conditions(
     full_db: tuple[Engine, int],
 ) -> None:
     from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_correlation_by_condition,
+        _query_fov_scalar_by_condition,
     )
 
     engine, run_id = full_db
-    data = _query_spike_correlation_by_condition(engine, run_id)
+    data = _query_fov_scalar_by_condition(
+        engine, run_id, "global_spike_max_lag_correlation"
+    )
     assert set(data.keys()) == {"WT", "KO"}
     for _cond, fov_dict in data.items():
         assert len(fov_dict) == 2
-        for val in fov_dict.values():
-            assert isinstance(val, float)
+        for scalar, weight in fov_dict.values():
+            assert isinstance(scalar, float)
+            assert isinstance(weight, int)
 
 
 def test_query_spike_correlation_empty_db() -> None:
     from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_correlation_by_condition,
+        _query_fov_scalar_by_condition,
     )
 
     engine = create_engine("sqlite:///:memory:")
     create_database_and_tables(engine)
-    assert _query_spike_correlation_by_condition(engine) == {}
-    engine.dispose(close=True)
-
-
-def test_query_spike_correlation_skips_1x1_matrix() -> None:
-    """A 1x1 correlation matrix (single ROI) is skipped."""
-    from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_correlation_by_condition,
+    assert (
+        _query_fov_scalar_by_condition(engine, None, "global_spike_max_lag_correlation")
+        == {}
     )
-
-    engine = create_engine("sqlite:///:memory:")
-    create_database_and_tables(engine)
-
-    with Session(engine) as session:
-        exp = Experiment(name="single_roi")
-        session.add(exp)
-        session.flush()
-        settings = AnalysisSettings(frame_rate=10.0)
-        session.add(settings)
-        session.flush()
-        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
-        session.add(run)
-        session.flush()
-        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
-        session.add(plate)
-        session.flush()
-        cond = Condition(name="WT", condition_type="genotype")
-        well = Well(plate=plate, name="W0", row=0, column=0, conditions=[cond])
-        session.add(well)
-        session.flush()
-        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
-        session.add(fov)
-        session.flush()
-        fa = FOVAnalysis(
-            fov_id=fov.id,
-            analysis_result_id=run.id,
-            spike_max_lag_correlation_matrix=[[1.0]],
-        )
-        session.add(fa)
-        session.flush()
-        rid: int = run.id  # type: ignore[assignment]
-        session.commit()
-
-    data = _query_spike_correlation_by_condition(engine, rid)
-    assert data == {}
     engine.dispose(close=True)
 
 
@@ -1038,25 +1020,21 @@ def test_query_burst_metrics_operational_error() -> None:
     engine.dispose(close=True)
 
 
-def test_query_spike_synchrony_operational_error() -> None:
-    """_query_spike_synchrony_by_condition returns {} on OperationalError."""
+def test_query_fov_scalar_operational_error() -> None:
+    """_query_fov_scalar_by_condition returns {} on OperationalError."""
     from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_synchrony_by_condition,
+        _query_fov_scalar_by_condition,
     )
 
     engine = _make_no_table_engine()
-    assert _query_spike_synchrony_by_condition(engine) == {}
-    engine.dispose(close=True)
-
-
-def test_query_spike_correlation_operational_error() -> None:
-    """_query_spike_correlation_by_condition returns {} on OperationalError."""
-    from cali.plot._multi_wells_plots._inferred_spikes import (
-        _query_spike_correlation_by_condition,
+    assert (
+        _query_fov_scalar_by_condition(engine, None, "global_spike_jitter_synchrony")
+        == {}
     )
-
-    engine = _make_no_table_engine()
-    assert _query_spike_correlation_by_condition(engine) == {}
+    assert (
+        _query_fov_scalar_by_condition(engine, None, "global_spike_max_lag_correlation")
+        == {}
+    )
     engine.dispose(close=True)
 
 

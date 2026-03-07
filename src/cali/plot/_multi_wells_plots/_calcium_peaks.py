@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from ._util import (
     BarPlotData,
-    _aggregate_fov_data_to_condition_stats,
+    _aggregate_fov_scalar_to_condition_stats,
     _create_pyqtgraph_bar_plot,
     _get_condition_label,
     plot_parameter_bar_plot,
@@ -295,12 +295,13 @@ def _plot_calcium_burst_metric(
         widget.clear_plot()
         return
 
-    metric_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
+    # Each FOV contributes a single scalar → use between-FOV SEM (weight=1)
+    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
+        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
         for cond, fov_dict in data_by_condition.items()
     }
 
-    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
+    plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
         return
@@ -471,11 +472,11 @@ def _compute_calcium_burst_metric(
     data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)
     if not data_by_condition:
         return None
-    metric_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
+    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
+        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
         for cond, fov_dict in data_by_condition.items()
     }
-    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
+    plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:
         return None
     return plot_data, name, units

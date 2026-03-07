@@ -18,9 +18,17 @@ from ._multi_wells_plots import (
     compute_calcium_burst_avg_duration_data,
     compute_calcium_burst_avg_interval_data,
     compute_calcium_burst_count_data,
+    compute_calcium_den_dff_correlation_data,
+    compute_calcium_dff_correlation_data,
     compute_cell_size_data,
+    compute_fraction_significant_ccg_pairs_data,
+    compute_fraction_significant_ccg_pairs_rising_edges_data,
     compute_percentage_active_data,
     compute_percentage_active_stim_split_data,
+    compute_spike_correlation_data,
+    compute_spike_correlation_rising_edges_data,
+    compute_spike_synchrony_data,
+    compute_spike_synchrony_rising_edges_data,
     make_parameter_compute_fn,
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
@@ -29,12 +37,16 @@ from ._multi_wells_plots import (
     plot_calcium_burst_avg_duration_bar_plot,
     plot_calcium_burst_avg_interval_bar_plot,
     plot_calcium_burst_count_bar_plot,
+    plot_calcium_den_dff_correlation_bar_plot,
+    plot_calcium_dff_correlation_bar_plot,
     plot_calcium_peaks_amplitude_bar_plot,
     plot_calcium_peaks_amplitude_stim_split_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
     plot_calcium_peaks_frequency_stim_split_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
+    plot_fraction_significant_ccg_pairs_bar_plot,
+    plot_fraction_significant_ccg_pairs_rising_edges_bar_plot,
     plot_inferred_spikes_frequency_bar_plot,
     plot_inferred_spikes_frequency_stim_split_bar_plot,
     plot_inferred_spikes_rising_edge_frequency_bar_plot,
@@ -45,6 +57,10 @@ from ._multi_wells_plots import (
     # plot_pca_scree,
     plot_percentage_active_bar_plot,
     plot_percentage_active_stim_split_bar_plot,
+    plot_spike_correlation_bar_plot,
+    plot_spike_correlation_rising_edges_bar_plot,
+    plot_spike_synchrony_bar_plot,
+    plot_spike_synchrony_rising_edges_bar_plot,
 )
 from ._single_wells_plots.burst import (
     _plot_calcium_burst_activity,
@@ -909,6 +925,72 @@ AnalysisProduct(
     category="Inferred Spikes Burst Analysis",
     pipeline_stage=PipelineStage.ANALYSIS,
     compute_fn=compute_burst_rate_data,
+)
+
+# Multi-Well Products — network metrics (FOV-level scalars)
+AnalysisProduct(
+    name="Calcium ΔF/F Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_dff_correlation_bar_plot,
+    category="Calcium Correlation",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_dff_correlation_data,
+)
+AnalysisProduct(
+    name="Calcium Denoised ΔF/F Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_den_dff_correlation_bar_plot,
+    category="Calcium Correlation",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_den_dff_correlation_data,
+)
+AnalysisProduct(
+    name="Spike Jitter Synchrony Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_synchrony_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_synchrony_data,
+)
+AnalysisProduct(
+    name="Spike Max-Lag Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_correlation_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_correlation_data,
+)
+AnalysisProduct(
+    name="Spike Jitter Synchrony Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_synchrony_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_synchrony_rising_edges_data,
+)
+AnalysisProduct(
+    name="Spike Max-Lag Correlation Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_correlation_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_correlation_rising_edges_data,
+)
+AnalysisProduct(
+    name="Fraction Significant CCG Pairs Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_fraction_significant_ccg_pairs_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_fraction_significant_ccg_pairs_data,
+)
+AnalysisProduct(
+    name="Fraction Significant CCG Pairs Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_fraction_significant_ccg_pairs_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_fraction_significant_ccg_pairs_rising_edges_data,
 )
 
 # Multi-Well Products — PCA

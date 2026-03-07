@@ -11,11 +11,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from ._util import (
     BarPlotData,
-    _aggregate_fov_data_to_condition_stats,
+    _aggregate_fov_scalar_to_condition_stats,
     _create_pyqtgraph_bar_plot,
     _get_condition_label,
     plot_parameter_bar_plot,
@@ -133,12 +131,13 @@ def _plot_burst_metric(
         widget.clear_plot()
         return
 
-    metric_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
+    # Each FOV contributes a single scalar → use between-FOV SEM (weight=1)
+    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
+        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
         for cond, fov_dict in data_by_condition.items()
     }
 
-    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
+    plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
 
     if not plot_data["conditions"]:  # pragma: no cover
         widget.clear_plot()
@@ -298,11 +297,11 @@ def _compute_burst_metric(
     data_by_condition = _query_burst_metrics_by_condition(engine, run_id)
     if not data_by_condition:
         return None
-    metric_data: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [m[metric_key]] for fov, m in fov_dict.items()}
+    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
+        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
         for cond, fov_dict in data_by_condition.items()
     }
-    plot_data = _aggregate_fov_data_to_condition_stats(metric_data)
+    plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:
         return None
     return plot_data, name, units
@@ -347,25 +346,31 @@ def compute_burst_rate_data(
 # ---------------------------------------------------------------------------
 
 
-def _query_spike_synchrony_by_condition(
+def _query_fov_scalar_by_condition(
     engine: Engine,
-    run_id: int | None = None,
-) -> dict[str, dict[str, float]]:
-    """Query spike synchrony per FOV, grouped by condition.
-
-    Uses pre-computed global_spike_jitter_synchrony from FOVAnalysis.
+    run_id: int | None,
+    field_name: str,
+    *,
+    use_n_pairs_weight: bool = True,
+) -> dict[str, dict[str, tuple[float, int]]]:
+    """Query a scalar FOVAnalysis field per FOV, grouped by condition.
 
     Parameters
     ----------
     engine : Engine
-        Database engine
+        Database engine.
     run_id : int | None
-        Filter by specific analysis run
+        Filter by specific analysis run.
+    field_name : str
+        Name of the ``FOVAnalysis`` attribute to read (must be a float field).
+    use_n_pairs_weight : bool
+        If True, weight is ``n_rois*(n_rois-1)//2`` (number of unique pairs).
+        If False, weight is 1 (equal weight per FOV).
 
     Returns
     -------
-    dict[str, dict[str, float]]
-        Nested dict: {condition: {fov_name: synchrony_value}}
+    dict[str, dict[str, tuple[float, int]]]
+        ``{condition: {fov_name: (scalar_value, weight)}}``
     """
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
@@ -374,107 +379,98 @@ def _query_spike_synchrony_by_condition(
 
     try:
         with Session(engine) as session:
+            field_col = getattr(FOVAnalysis, field_name)
             stmt = (
                 select(FOVAnalysis, FOV, Well)
                 .join(FOV, FOVAnalysis.fov_id == FOV.id)
                 .join(Well, FOV.well_id == Well.id)
+                .where(col(field_col).is_not(None))
             )
 
             if run_id is not None:
                 stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
 
-            stmt = stmt.where(
-                col(FOVAnalysis.global_spike_jitter_synchrony).is_not(None)
-            )
-
             results = session.exec(stmt).all()
 
-            data: dict[str, dict[str, float]] = {}
+            data: dict[str, dict[str, tuple[float, int]]] = {}
             for fov_analysis, fov, well in results:
-                if fov_analysis.global_spike_jitter_synchrony is None:
+                value = getattr(fov_analysis, field_name)
+                if value is None:
                     continue  # pragma: no cover
+
+                if use_n_pairs_weight and fov_analysis.active_roi_labels:
+                    n_rois = len(fov_analysis.active_roi_labels)
+                    weight = max(1, n_rois * (n_rois - 1) // 2)
+                else:
+                    weight = 1
+
                 cond_label = _get_condition_label(well)
-                data.setdefault(cond_label, {})[fov.name] = (
-                    fov_analysis.global_spike_jitter_synchrony
-                )
+                data.setdefault(cond_label, {})[fov.name] = (float(value), weight)
 
         return data
     except OperationalError:
         logging.getLogger(__name__).debug(
-            "Failed to query spike synchrony (table may not exist yet)",
+            "Failed to query %s (table may not exist yet)",
+            field_name,
             exc_info=True,
         )
         return {}
 
 
-def _query_spike_correlation_by_condition(
+def _plot_fov_scalar_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
     engine: Engine,
-    run_id: int | None = None,
-) -> dict[str, dict[str, float]]:
-    """Query mean spike correlation per FOV, grouped by condition.
+    run_id: int | None,
+    field_name: str,
+    units: str,
+    title_suffix: str = "",
+    *,
+    use_n_pairs_weight: bool = True,
+) -> None:
+    """Plot a FOV-level scalar metric across conditions."""
+    data_by_condition = _query_fov_scalar_by_condition(
+        engine, run_id, field_name, use_n_pairs_weight=use_n_pairs_weight
+    )
+    if not data_by_condition:
+        widget.clear_plot()
+        return
 
-    Uses pre-computed spike_correlation_matrix from FOVAnalysis.
-    Returns the mean of off-diagonal elements as the global correlation metric.
+    plot_data = _aggregate_fov_scalar_to_condition_stats(data_by_condition)
 
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    run_id : int | None
-        Filter by specific analysis run
+    if not plot_data["conditions"]:  # pragma: no cover
+        widget.clear_plot()
+        return
 
-    Returns
-    -------
-    dict[str, dict[str, float]]
-        Nested dict: {condition: {fov_name: mean_correlation_value}}
-    """
-    from sqlalchemy.exc import OperationalError
-    from sqlmodel import Session, col, select
+    _create_pyqtgraph_bar_plot(
+        widget=widget,
+        data=plot_data,
+        parameter=text,
+        units=units,
+        title_suffix=title_suffix,
+        bar_label="Mean ± SEM (per FOV)",
+    )
 
-    from cali.sqlmodel import FOV, FOVAnalysis, Well
 
-    try:
-        with Session(engine) as session:
-            stmt = (
-                select(FOVAnalysis, FOV, Well)
-                .join(FOV, FOVAnalysis.fov_id == FOV.id)
-                .join(Well, FOV.well_id == Well.id)
-            )
-
-            if run_id is not None:
-                stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
-
-            stmt = stmt.where(
-                col(FOVAnalysis.spike_max_lag_correlation_matrix).is_not(None)
-            )
-
-            results = session.exec(stmt).all()
-
-            data: dict[str, dict[str, float]] = {}
-            for fov_analysis, fov, well in results:
-                if fov_analysis.spike_max_lag_correlation_matrix is None:
-                    continue  # pragma: no cover
-
-                corr_matrix = np.asarray(
-                    fov_analysis.spike_max_lag_correlation_matrix, dtype=float
-                )
-                n = corr_matrix.shape[0]
-                if n < 2:
-                    continue
-
-                mask = ~np.eye(n, dtype=bool)
-                mean_corr = float(np.mean(corr_matrix[mask]))
-
-                cond_label = _get_condition_label(well)
-                data.setdefault(cond_label, {})[fov.name] = mean_corr
-
-        return data
-    except OperationalError:
-        logging.getLogger(__name__).debug(
-            "Failed to query spike correlation (table may not exist yet)",
-            exc_info=True,
-        )
-        return {}
+def _compute_fov_scalar_data(
+    engine: Engine,
+    run_id: int | None,
+    field_name: str,
+    name: str,
+    units: str,
+    *,
+    use_n_pairs_weight: bool = True,
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute a FOV-level scalar metric without rendering (for CSV export)."""
+    data_by_condition = _query_fov_scalar_by_condition(
+        engine, run_id, field_name, use_n_pairs_weight=use_n_pairs_weight
+    )
+    if not data_by_condition:
+        return None
+    plot_data = _aggregate_fov_scalar_to_condition_stats(data_by_condition)
+    if not plot_data["conditions"]:
+        return None
+    return plot_data, name, units
 
 
 def plot_spike_synchrony_bar_plot(
@@ -484,30 +480,27 @@ def plot_spike_synchrony_bar_plot(
     run_id: int | None = None,
 ) -> None:
     """Plot inferred spikes global synchrony across conditions."""
-    data_by_condition = _query_spike_synchrony_by_condition(engine, run_id)
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_spike_jitter_synchrony",
+        units="Synchrony",
+        title_suffix=" (Jitter Synchrony)",
+    )
 
-    if not data_by_condition:
-        widget.clear_plot()
-        return
 
-    data_as_lists: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [val] for fov, val in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
-    }
-
-    plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
-
-    if not plot_data["conditions"]:  # pragma: no cover
-        widget.clear_plot()
-        return
-
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="Median",
-        title_suffix=" (Median - Thresholded Data)",
-        bar_label="Mean ± SEM (per FOV)",
+def compute_spike_synchrony_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute spike synchrony data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_spike_jitter_synchrony",
+        "Spike Jitter Synchrony",
+        "Synchrony",
     )
 
 
@@ -517,33 +510,227 @@ def plot_spike_correlation_bar_plot(
     engine: Engine,
     run_id: int | None = None,
 ) -> None:
-    """Plot inferred spikes global correlation across conditions.
-
-    Uses the mean of off-diagonal correlation values from the spike
-    correlation matrix stored in FOVAnalysis.
-    """
-    data_by_condition = _query_spike_correlation_by_condition(engine, run_id)
-
-    if not data_by_condition:
-        widget.clear_plot()
-        return
-
-    data_as_lists: dict[str, dict[str, list[float]]] = {
-        cond: {fov: [val] for fov, val in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
-    }
-
-    plot_data = _aggregate_fov_data_to_condition_stats(data_as_lists)
-
-    if not plot_data["conditions"]:  # pragma: no cover
-        widget.clear_plot()
-        return
-
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
+    """Plot inferred spikes global max-lag correlation across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_spike_max_lag_correlation",
         units="Correlation",
-        title_suffix=" (Mean Off-Diagonal)",
-        bar_label="Mean ± SEM (per FOV)",
+        title_suffix=" (Max-Lag Cross-Correlation)",
+    )
+
+
+def compute_spike_correlation_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute spike correlation data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_spike_max_lag_correlation",
+        "Spike Max-Lag Correlation",
+        "Correlation",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Calcium correlation bar plots
+# ---------------------------------------------------------------------------
+
+
+def plot_calcium_dff_correlation_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot calcium ΔF/F correlation across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_calcium_dff_correlation",
+        units="Correlation",
+        title_suffix=" (Zero-Lag Pearson)",
+    )
+
+
+def compute_calcium_dff_correlation_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute calcium ΔF/F correlation data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_calcium_dff_correlation",
+        "Calcium ΔF/F Correlation",
+        "Correlation",
+    )
+
+
+def plot_calcium_den_dff_correlation_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot calcium denoised ΔF/F correlation across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_calcium_den_dff_correlation",
+        units="Correlation",
+        title_suffix=" (Zero-Lag Pearson, Denoised)",
+    )
+
+
+def compute_calcium_den_dff_correlation_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute calcium denoised ΔF/F correlation data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_calcium_den_dff_correlation",
+        "Calcium Denoised ΔF/F Correlation",
+        "Correlation",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rising edges bar plots
+# ---------------------------------------------------------------------------
+
+
+def plot_spike_synchrony_rising_edges_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot spike jitter synchrony (rising edges) across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_spike_jitter_synchrony_rising_edges",
+        units="Synchrony",
+        title_suffix=" (Jitter Synchrony, Rising Edges)",
+    )
+
+
+def compute_spike_synchrony_rising_edges_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute spike synchrony (rising edges) data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_spike_jitter_synchrony_rising_edges",
+        "Spike Jitter Synchrony (Rising Edges)",
+        "Synchrony",
+    )
+
+
+def plot_spike_correlation_rising_edges_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot spike max-lag correlation (rising edges) across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="global_spike_max_lag_correlation_rising_edges",
+        units="Correlation",
+        title_suffix=" (Max-Lag Cross-Correlation, Rising Edges)",
+    )
+
+
+def compute_spike_correlation_rising_edges_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute spike correlation (rising edges) data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "global_spike_max_lag_correlation_rising_edges",
+        "Spike Max-Lag Correlation (Rising Edges)",
+        "Correlation",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fraction of significant CCG pairs bar plots
+# ---------------------------------------------------------------------------
+
+
+def plot_fraction_significant_ccg_pairs_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot fraction of significant CCG pairs across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="fraction_significant_ccg_pairs",
+        units="Fraction",
+        title_suffix=" (|z| > 2)",
+    )
+
+
+def compute_fraction_significant_ccg_pairs_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute fraction of significant CCG pairs data without rendering."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "fraction_significant_ccg_pairs",
+        "Fraction Significant CCG Pairs",
+        "Fraction",
+    )
+
+
+def plot_fraction_significant_ccg_pairs_rising_edges_bar_plot(
+    widget: _MultilWellGraphWidget,
+    text: str,
+    engine: Engine,
+    run_id: int | None = None,
+) -> None:
+    """Plot fraction of significant CCG pairs (rising edges) across conditions."""
+    _plot_fov_scalar_bar_plot(
+        widget,
+        text,
+        engine,
+        run_id,
+        field_name="fraction_significant_ccg_pairs_rising_edges",
+        units="Fraction",
+        title_suffix=" (|z| > 2, Rising Edges)",
+    )
+
+
+def compute_fraction_significant_ccg_pairs_rising_edges_data(
+    engine: Engine, run_id: int | None
+) -> tuple[BarPlotData, str, str] | None:
+    """Compute fraction of significant CCG pairs (rising edges) data."""
+    return _compute_fov_scalar_data(
+        engine,
+        run_id,
+        "fraction_significant_ccg_pairs_rising_edges",
+        "Fraction Significant CCG Pairs (Rising Edges)",
+        "Fraction",
     )

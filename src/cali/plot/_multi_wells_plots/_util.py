@@ -469,6 +469,94 @@ def _aggregate_fov_data_to_condition_stats(
     )
 
 
+def _aggregate_fov_scalar_to_condition_stats(
+    data_by_condition: dict[str, dict[str, tuple[float, int]]],
+) -> BarPlotData:
+    """Aggregate FOV-level scalar metrics to condition-level statistics.
+
+    Unlike ``_aggregate_fov_data_to_condition_stats`` which computes
+    **within-FOV** variability (across ROIs), this function computes
+    **between-FOV** variability — the correct approach when each FOV
+    contributes a single scalar value (e.g. mean correlation, synchrony,
+    burst count).
+
+    Each FOV scalar is weighted by *weight* (typically the number of
+    unique ROI pairs ``n*(n-1)/2`` for correlation metrics, or ``1`` for
+    unweighted metrics like burst count).
+
+    Weighted mean::
+
+        x̄ = Σ(w_i · x_i) / Σ(w_i)
+
+    Weighted sample variance (reliability weights)::
+
+        s² = Σ(w_i · (x_i - x̄)²) / (Σw - Σw²/Σw)
+
+    SEM = sqrt(s² / M), where M is the number of FOVs.
+
+    Parameters
+    ----------
+    data_by_condition : dict[str, dict[str, tuple[float, int]]]
+        Nested dict: ``{condition: {fov_name: (scalar_value, weight)}}``.
+        Weight is typically ``n_pairs`` for correlation/synchrony metrics
+        or ``1`` for unweighted metrics (e.g. burst count).
+
+    Returns
+    -------
+    BarPlotData
+        Aggregated data ready for plotting.
+    """
+    conditions: list[str] = []
+    means: list[float] = []
+    sems: list[float] = []
+    fov_values_list: list[np.ndarray] = []
+
+    for cond_label, fov_dict in data_by_condition.items():
+        if not fov_dict:
+            continue
+
+        values: list[float] = []
+        weights: list[float] = []
+        for _fov_name, (scalar, weight) in fov_dict.items():
+            values.append(scalar)
+            weights.append(float(weight))
+
+        if not values:
+            continue
+
+        x = np.array(values)
+        w = np.array(weights, dtype=float)
+        m = len(x)
+        w_sum = w.sum()
+
+        # Weighted mean
+        cond_mean = float(np.dot(w, x) / w_sum) if w_sum > 0 else 0.0
+
+        # Between-FOV weighted SEM
+        if m > 1 and w_sum > 0:
+            # Reliability-weighted sample variance
+            denom = w_sum - np.dot(w, w) / w_sum
+            if denom > 0:
+                var_w = float(np.dot(w, (x - cond_mean) ** 2) / denom)
+            else:
+                var_w = 0.0
+            cond_sem = float(np.sqrt(var_w / m))
+        else:
+            cond_sem = 0.0
+
+        conditions.append(cond_label)
+        means.append(cond_mean)
+        sems.append(cond_sem)
+        fov_values_list.append(x)
+
+    return BarPlotData(
+        conditions=conditions,
+        means=means,
+        sems=sems,
+        fov_values_list=fov_values_list,
+    )
+
+
 def _aggregate_percentage_data_to_condition_stats(
     data_by_condition: dict[str, dict[str, tuple[float, int]]],
 ) -> BarPlotData:

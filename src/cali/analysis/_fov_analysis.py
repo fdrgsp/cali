@@ -17,8 +17,9 @@ from cali.analysis._fov_metrics import (
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
     _detect_spikes_population_bursts,
+    _get_fraction_significant_pairs,
+    _get_global_pairwise_score,
     _get_spike_correlations_matrix,
-    _get_spike_synchrony,
 )
 from cali.analysis._trace_analysis import (
     compute_rising_edges,
@@ -181,6 +182,18 @@ def compute_fov_analysis(
     # 2. Zero-lag correlation on denoised ΔF/F traces
     calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
 
+    # Global calcium correlation scalars (median of row-means, off-diagonal)
+    global_calcium_dff_corr = (
+        _get_global_pairwise_score(calcium_dff_corr_matrix)
+        if calcium_dff_corr_matrix is not None
+        else None
+    )
+    global_calcium_den_dff_corr = (
+        _get_global_pairwise_score(calcium_den_dff_corr_matrix)
+        if calcium_den_dff_corr_matrix is not None
+        else None
+    )
+
     # Cluster analysis on denoised ΔF/F correlation matrix
     cluster_labels = None
     cluster_method_used = None
@@ -227,11 +240,13 @@ def compute_fov_analysis(
     spike_max_lag_values_matrix = None
     global_spike_max_lag_corr = None
     spike_ccg_zscore_matrix = None
+    frac_sig_ccg_pairs = None
     # 3b. Max lag correlation on spikes (rising edges)
     spike_max_lag_corr_matrix_rising_edges = None
     spike_max_lag_values_matrix_rising_edges = None
     global_spike_max_lag_corr_rising_edges = None
     spike_ccg_zscore_matrix_rising_edges = None
+    frac_sig_ccg_pairs_rising_edges = None
     # 4. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_sync_matrix = None
     global_spike_jitter_sync = None
@@ -259,7 +274,13 @@ def compute_fov_analysis(
             n_shuffles=n_shuffles,
         )
         if spike_max_lag_corr_matrix is not None:
-            global_spike_max_lag_corr = _get_spike_synchrony(spike_max_lag_corr_matrix)
+            global_spike_max_lag_corr = _get_global_pairwise_score(
+                spike_max_lag_corr_matrix
+            )
+        if spike_ccg_zscore_matrix is not None:
+            frac_sig_ccg_pairs = _get_fraction_significant_pairs(
+                spike_ccg_zscore_matrix
+            )
 
         # 3b. Max lag correlation on spikes (thresholded rising edges)
         # Only compute if enabled (approximately doubles CCG computation time)
@@ -278,8 +299,12 @@ def compute_fov_analysis(
                 n_shuffles=n_shuffles,
             )
             if spike_max_lag_corr_matrix_rising_edges is not None:
-                global_spike_max_lag_corr_rising_edges = _get_spike_synchrony(
+                global_spike_max_lag_corr_rising_edges = _get_global_pairwise_score(
                     spike_max_lag_corr_matrix_rising_edges
+                )
+            if spike_ccg_zscore_matrix_rising_edges is not None:
+                frac_sig_ccg_pairs_rising_edges = _get_fraction_significant_pairs(
+                    spike_ccg_zscore_matrix_rising_edges
                 )
 
         # 4. Jitter synchrony on spikes (thresholded binary)
@@ -291,7 +316,9 @@ def compute_fov_analysis(
             jitter_window=jitter_window_frames,
         )
         if spike_jitter_sync_matrix is not None:
-            global_spike_jitter_sync = _get_spike_synchrony(spike_jitter_sync_matrix)
+            global_spike_jitter_sync = _get_global_pairwise_score(
+                spike_jitter_sync_matrix
+            )
 
         # 4b. Jitter synchrony on spikes (thresholded rising edges)
         if (
@@ -306,7 +333,7 @@ def compute_fov_analysis(
                 )
             )
             if spike_jitter_sync_matrix_rising_edges is not None:
-                global_spike_jitter_sync_rising_edges = _get_spike_synchrony(
+                global_spike_jitter_sync_rising_edges = _get_global_pairwise_score(
                     spike_jitter_sync_matrix_rising_edges
                 )
 
@@ -376,6 +403,8 @@ def compute_fov_analysis(
             if calcium_den_dff_corr_matrix is not None
             else None
         ),
+        global_calcium_dff_correlation=global_calcium_dff_corr,
+        global_calcium_den_dff_correlation=global_calcium_den_dff_corr,
         # Spike metrics
         spike_max_lag_correlation_matrix=(
             spike_max_lag_corr_matrix.tolist()
@@ -412,6 +441,8 @@ def compute_fov_analysis(
             if spike_ccg_zscore_matrix_rising_edges is not None
             else None
         ),
+        fraction_significant_ccg_pairs=frac_sig_ccg_pairs,
+        fraction_significant_ccg_pairs_rising_edges=(frac_sig_ccg_pairs_rising_edges),
         spike_jitter_synchrony_matrix=(
             spike_jitter_sync_matrix.tolist()
             if spike_jitter_sync_matrix is not None

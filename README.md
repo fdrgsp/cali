@@ -678,3 +678,25 @@ For the **% Active Cells** metric, a binomial error model is used in place of th
 **Step 1 — ROI → FOV**: for each FOV, the percentage of active ROIs is computed as the number of active ROIs divided by the total number of ROIs, multiplied by 100.
 
 **Step 2 — FOV → Condition**: FOV percentages are combined into a weighted mean proportion, where each FOV is weighted by its total ROI count. The error bar is the binomial SEM: the square root of the weighted proportion times one minus that proportion, divided by the total number of ROIs across all FOVs in the condition. This captures the uncertainty in estimating the underlying proportion of active cells, and automatically scales with both the estimated proportion and the total number of observations.
+
+#### FOV-Level Scalar Metrics (Network Metrics)
+
+Some metrics are inherently FOV-level scalars rather than per-ROI distributions — for example, global correlation, synchrony, and burst counts. These are computed from pairwise matrices or population-level analyses and yield a single value per FOV.
+
+For these metrics, there are no within-FOV ROI values to average over, so the error must come from **between-FOV variability** within a condition. The aggregation uses a weighted between-FOV SEM:
+
+**Weighted Mean**: each FOV scalar is weighted by the number of unique ROI pairs in that FOV (`n*(n-1)/2` for correlation/synchrony metrics, or equal weight for burst metrics). FOVs with more cells produce more reliable pairwise estimates and therefore contribute proportionally more.
+
+**Between-FOV SEM**: the weighted sample variance is computed from the spread of FOV-level values around the weighted mean, and the SEM is the square root of this variance divided by the number of FOVs. When only a single FOV exists for a condition, the SEM is zero (no between-FOV variability can be estimated), making the superimposed FOV dots critical for visual assessment.
+
+The FOV-level scalar metrics available in the Multi-Well tab include:
+
+- **Calcium ΔF/F Correlation**: global zero-lag Pearson correlation on ΔF/F traces (median of off-diagonal row-means)
+- **Calcium Denoised ΔF/F Correlation**: same as above but on denoised ΔF/F traces
+- **Spike Jitter Synchrony**: global synchrony of inferred spikes (jitter window method)
+- **Spike Max-Lag Correlation**: global max-lag cross-correlation of inferred spikes (CCG method)
+- **Spike Jitter Synchrony (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Spike Max-Lag Correlation (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2 in the CCG analysis, measuring network connectivity density
+- **Fraction Significant CCG Pairs (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Burst Count, Duration, Interval, Rate**: population-level burst statistics (both spike-based and calcium-based)

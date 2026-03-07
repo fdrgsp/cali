@@ -223,20 +223,20 @@ def test_get_spike_synchrony_matrix() -> None:
     assert matrix[0, 1] > 0.0
 
 
-def test_get_spike_synchrony() -> None:
-    from cali.analysis._fov_metrics import _get_spike_synchrony
+def test_get_global_pairwise_score() -> None:
+    from cali.analysis._fov_metrics import _get_global_pairwise_score
 
     # Empty or None
-    assert _get_spike_synchrony(None) is None
-    assert _get_spike_synchrony(np.array([])) is None
+    assert _get_global_pairwise_score(None) is None
+    assert _get_global_pairwise_score(np.array([])) is None
 
     # Too small
-    assert _get_spike_synchrony(np.zeros((1, 1))) is None
+    assert _get_global_pairwise_score(np.zeros((1, 1))) is None
 
     # Valid matrix (3x3)
     matrix = np.array([[1.0, 0.5, 0.2], [0.5, 1.0, 0.8], [0.2, 0.8, 1.0]])
 
-    score = _get_spike_synchrony(matrix)
+    score = _get_global_pairwise_score(matrix)
     assert score is not None
     assert np.isclose(score, 0.5)
 
