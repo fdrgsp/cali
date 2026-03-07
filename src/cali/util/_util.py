@@ -126,7 +126,22 @@ def commit_fov_result(
     commit : bool
         Whether to commit immediately (True) or let caller handle batched commits
         (False). Default True.
+
+    Raises
+    ------
+    ValueError
+        If ``detection_settings_id`` is provided but does not exist in the database.
     """
+    # Validate detection_settings_id exists in the database
+    if detection_settings_id is not None:
+        if session.get(DetectionSettings, detection_settings_id) is None:
+            msg = (
+                f"DetectionSettings with ID {detection_settings_id} "
+                "not found in database."
+            )
+            cali_logger.error(msg)
+            raise ValueError(msg)
+
     # Query for plate ID directly to avoid loading relationships
     plate_statement = (
         select(Plate.id).join(Experiment).where(Experiment.id == experiment.id)

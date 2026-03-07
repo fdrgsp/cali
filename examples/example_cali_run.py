@@ -13,18 +13,23 @@ from cali.sqlmodel import (
 )
 from cali.sqlmodel._visualize_experiment import print_cali_results
 
-runner = CaliRunner()
-
 database_name = "results.cali"
 database_path = f"{database_name}"
 dataset = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 
-# None to process all positions or list of global indices e.g. [0, 2, 5]
-positions_to_process = None
+# Clean up previous run for this example
+if Path(database_path).exists():
+    Path(database_path).unlink()
 
 exp = Experiment.create_from_data("exp", dataset)
 
-# this will create detection settings with ID 1
+# initialize the runner
+runner = CaliRunner()
+
+# None to process all positions or list of global indices e.g. [0, 2, 5]
+positions_to_process = None
+
+# run detection with Cellpose
 detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
 runner.run(
     experiment=exp,
@@ -36,24 +41,25 @@ runner.run(
     overwrite=True,
 )
 
-# this will create extraction settings with ID 1
+# run extraction using the previous detection settings
 extraction_settings = ExtractionSettings(dff_window=10, threads=3)
 runner.run(
     experiment=exp,
     dataset_path=dataset,
-    detection_settings=1,
+    detection_settings=detection_settings,
     extraction_settings=extraction_settings,
     global_position_indices=positions_to_process,
     output_path=Path(database_path).parent,
     database_name=database_name,
 )
 
+# run analysis using the previous detection and extraction settings
 analysis_settings = AnalysisSettings(peaks_height_value=2)
 runner.run(
     experiment=exp,
     dataset_path=dataset,
-    detection_settings=1,
-    extraction_settings=1,
+    detection_settings=detection_settings,
+    extraction_settings=extraction_settings,
     analysis_settings=analysis_settings,
     global_position_indices=positions_to_process,
     output_path=Path(database_path).parent,
