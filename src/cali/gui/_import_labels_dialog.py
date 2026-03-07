@@ -12,6 +12,7 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
 )
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
+    QApplication,
     QDialog,
     QGroupBox,
     QHBoxLayout,
@@ -25,8 +26,14 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from superqt import QIconifyIcon
+from superqt.utils import create_worker
 
-from cali.gui._util import _BrowseWidget, auto_match_files, show_error_dialog
+from cali.gui._util import (
+    _BrowseWidget,
+    _ProgressBarWidget,
+    auto_match_files,
+    show_error_dialog,
+)
 from cali.logger import cali_logger
 
 # Role for storing FOV data in tree items
@@ -292,13 +299,42 @@ class _ImportLabelsDialog(QDialog):
             )
             return
 
-        try:
-            det_id = self._import_labels_to_database()
-            self._imported_detection_settings_id = det_id
-            self.accept()
-        except Exception as e:
-            show_error_dialog(self, f"Failed to import labels:\n{e}")
-            cali_logger.error(f"Failed to import labels: {e}")
+        # Disable UI and show loading bar
+        self.setEnabled(False)
+        self._loading_bar = _ProgressBarWidget(
+            self, text="Importing Labels to the Database..."
+        )
+        self._loading_bar.show_progress_bar(False)
+        self._loading_bar.show()
+        # Needed for windows
+        QApplication.processEvents()
+
+        # Run import in a background thread
+        label_map = dict(self._label_map)
+        self._worker = create_worker(
+            _import_labels_to_database,
+            self._database_path,
+            label_map,
+            _start_thread=True,
+            _connect={
+                "returned": self._on_import_finished,
+                "errored": self._on_import_errored,
+            },
+        )
+
+    def _on_import_finished(self, det_id: int) -> None:
+        """Handle successful import."""
+        self._loading_bar.hide()
+        self.setEnabled(True)
+        self._imported_detection_settings_id = det_id
+        self.accept()
+
+    def _on_import_errored(self, error: Exception) -> None:
+        """Handle import failure."""
+        self._loading_bar.hide()
+        self.setEnabled(True)
+        show_error_dialog(self, f"Failed to import labels:\n{error}")
+        cali_logger.error(f"Failed to import labels: {error}")
 
     # --- Private: auto-assignment ---
 
@@ -380,138 +416,140 @@ class _ImportLabelsDialog(QDialog):
             else:
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled)
 
-    def _import_labels_to_database(self) -> int:
-        """Read label TIFFs and commit ROI/Mask objects to the database.
 
-        Returns
-        -------
-        int
-            The detection_settings_id for the imported labels.
-        """
-        import tifffile
-        from sqlmodel import Session, create_engine, select
+def _import_labels_to_database(database_path: str, label_map: dict[int, Path]) -> int:
+    """Read label TIFFs and commit ROI/Mask objects to the database.
 
-        from cali.sqlmodel._model import (
-            FOV,
-            ROI,
-            DetectionSettings,
-            Experiment,
-            Mask,
-        )
-        from cali.util import commit_fov_result, mask_to_coordinates
+    Parameters
+    ----------
+    database_path : str
+        Path to the SQLite database file.
+    label_map : dict[int, Path]
+        Mapping of FOV IDs to label TIFF file paths.
 
-        engine = create_engine(
-            f"sqlite:///{self._database_path}",
-            echo=False,
-            connect_args={"timeout": 30.0, "check_same_thread": False},
-            pool_pre_ping=True,
-        )
+    Returns
+    -------
+    int
+        The detection_settings_id for the imported labels.
+    """
+    import tifffile
+    from sqlmodel import Session, create_engine, select
 
-        try:
-            with Session(engine) as session:
-                # 1. Get or create DetectionSettings(method="imported")
-                det_settings = DetectionSettings(method="imported")
+    from cali.sqlmodel._model import (
+        FOV,
+        ROI,
+        DetectionSettings,
+        Experiment,
+        Mask,
+    )
+    from cali.util import commit_fov_result, mask_to_coordinates
 
-                existing = session.exec(
-                    select(DetectionSettings).where(
-                        DetectionSettings.method == "imported"
+    engine = create_engine(
+        f"sqlite:///{database_path}",
+        echo=False,
+        connect_args={"timeout": 30.0, "check_same_thread": False},
+        pool_pre_ping=True,
+    )
+
+    try:
+        with Session(engine) as session:
+            # 1. Get or create DetectionSettings(method="imported")
+            det_settings = DetectionSettings(method="imported")
+
+            existing = session.exec(
+                select(DetectionSettings).where(DetectionSettings.method == "imported")
+            ).all()
+            matched = None
+            for candidate in existing:
+                if candidate == det_settings:
+                    matched = candidate
+                    break
+
+            if matched is not None:
+                det_settings = matched
+            else:
+                session.add(det_settings)
+                session.flush()
+
+            det_id = det_settings.id
+            assert det_id is not None
+
+            # 2. Load experiment
+            experiment_row = session.exec(select(Experiment)).first()
+            if experiment_row is None:
+                raise ValueError("No experiment found in database.")
+
+            experiment = Experiment.load_from_database(database_path, load_data=False)
+
+            # 3. For each assigned label, read TIFF and create FOV with ROIs
+            for fov_id, label_path in label_map.items():
+                # Get FOV info from DB
+                fov_row = session.get(FOV, fov_id)
+                if fov_row is None:
+                    cali_logger.warning(f"FOV id={fov_id} not found in DB, skipping.")
+                    continue
+
+                # Read label TIFF
+                label_array = tifffile.imread(str(label_path))
+                if label_array.ndim != 2:
+                    cali_logger.warning(
+                        f"Label file {label_path.name} is not 2D "
+                        f"(shape={label_array.shape}), skipping."
                     )
-                ).all()
-                matched = None
-                for candidate in existing:
-                    if candidate == det_settings:
-                        matched = candidate
-                        break
+                    continue
 
-                if matched is not None:
-                    det_settings = matched
-                else:
-                    session.add(det_settings)
-                    session.flush()
+                # Get unique labels (excluding background 0)
+                label_values = np.unique(label_array)
+                label_values = label_values[label_values > 0]
 
-                det_id = det_settings.id
-                assert det_id is not None
+                if len(label_values) == 0:
+                    cali_logger.warning(
+                        f"No labels found in {label_path.name}, skipping."
+                    )
+                    continue
 
-                # 2. Load experiment
-                experiment_row = session.exec(select(Experiment)).first()
-                if experiment_row is None:
-                    raise ValueError("No experiment found in database.")
-
-                experiment = Experiment.load_from_database(
-                    self._database_path, load_data=False
+                # Create FOV result with ROIs
+                fov_result = FOV(
+                    name=fov_row.name,
+                    position_index=fov_row.position_index,
+                    fov_number=fov_row.fov_number,
+                    rois=[],
                 )
 
-                # 3. For each assigned label, read TIFF and create FOV with ROIs
-                for fov_id, label_path in self._label_map.items():
-                    # Get FOV info from DB
-                    fov_row = session.get(FOV, fov_id)
-                    if fov_row is None:
-                        cali_logger.warning(
-                            f"FOV id={fov_id} not found in DB, skipping."
-                        )
-                        continue
-
-                    # Read label TIFF
-                    label_array = tifffile.imread(str(label_path))
-                    if label_array.ndim != 2:
-                        cali_logger.warning(
-                            f"Label file {label_path.name} is not 2D "
-                            f"(shape={label_array.shape}), skipping."
-                        )
-                        continue
-
-                    # Get unique labels (excluding background 0)
-                    label_values = np.unique(label_array)
-                    label_values = label_values[label_values > 0]
-
-                    if len(label_values) == 0:
-                        cali_logger.warning(
-                            f"No labels found in {label_path.name}, skipping."
-                        )
-                        continue
-
-                    # Create FOV result with ROIs
-                    fov_result = FOV(
-                        name=fov_row.name,
-                        position_index=fov_row.position_index,
-                        fov_number=fov_row.fov_number,
-                        rois=[],
+                for lv in label_values:
+                    roi_mask_binary = label_array == lv
+                    mask_coords, mask_shape = mask_to_coordinates(roi_mask_binary)
+                    mask_obj = Mask(
+                        coords_y=mask_coords[0],
+                        coords_x=mask_coords[1],
+                        height=mask_shape[0],
+                        width=mask_shape[1],
+                        mask_type="roi",
                     )
-
-                    for lv in label_values:
-                        roi_mask_binary = label_array == lv
-                        mask_coords, mask_shape = mask_to_coordinates(roi_mask_binary)
-                        mask_obj = Mask(
-                            coords_y=mask_coords[0],
-                            coords_x=mask_coords[1],
-                            height=mask_shape[0],
-                            width=mask_shape[1],
-                            mask_type="roi",
-                        )
-                        roi = ROI(
-                            label_value=int(lv),
-                            active=None,
-                            stimulated=None,
-                            roi_mask=mask_obj,
-                            fov_id=0,  # placeholder, set by commit_fov_result
-                        )
-                        fov_result.rois.append(roi)
-
-                    commit_fov_result(
-                        session=session,
-                        experiment=experiment,
-                        fov_result=fov_result,
-                        detection_settings_id=det_id,
-                        commit=False,
+                    roi = ROI(
+                        label_value=int(lv),
+                        active=None,
+                        stimulated=None,
+                        roi_mask=mask_obj,
+                        fov_id=0,  # placeholder, set by commit_fov_result
                     )
+                    fov_result.rois.append(roi)
 
-                session.commit()
-                cali_logger.info(
-                    f"Imported labels for {len(self._label_map)} FOV(s) "
-                    f"(detection_settings_id={det_id})"
+                commit_fov_result(
+                    session=session,
+                    experiment=experiment,
+                    fov_result=fov_result,
+                    detection_settings_id=det_id,
+                    commit=False,
                 )
 
-        finally:
-            engine.dispose(close=True)
+            session.commit()
+            cali_logger.info(
+                f"Imported labels for {len(label_map)} FOV(s) "
+                f"(detection_settings_id={det_id})"
+            )
 
-        return det_id
+    finally:
+        engine.dispose(close=True)
+
+    return det_id

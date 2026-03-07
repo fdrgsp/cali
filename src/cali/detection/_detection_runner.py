@@ -107,11 +107,7 @@ class DetectionRunner:
                 position_indices=global_position_indices,
             )
         elif detection_settings.method == "imported":
-            # Imported labels are already in the database; nothing to run.
-            cali_logger.info(
-                "Imported labels detected - skipping detection "
-                "(labels already in database)."
-            )
+            cali_logger.info("🏷️ Using imported labels - no detection to run.")
             return
         else:
             msg = (
