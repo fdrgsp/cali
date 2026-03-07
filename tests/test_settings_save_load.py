@@ -530,15 +530,16 @@ def test_load_settings_with_evoked_experiment_data(
     assert loaded_analysis.spikes_data.enable_rising_edge_analysis is True
 
 
-def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
+def test_run_selection_loads_all_settings(
+    cali_gui: Any, qtbot: QtBot, test_db_copy: Path
+) -> None:
     """Test that selecting run loads all extraction, analysis, and detection
     settings."""
     # Use the test database which has runs with dff_percentile=10
-    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
     data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 
     # Initialize the GUI from the test database
-    cali_gui._initialize_from_database(db_path, data_path)
+    cali_gui._initialize_from_database(str(test_db_copy), data_path)
 
     # Set a different value first to verify it changes
     from cali.gui._extraction_gui import (
@@ -618,17 +619,16 @@ def test_run_selection_loads_all_settings(cali_gui: Any, qtbot: QtBot) -> None:
 
 
 def test_run_selection_preserves_export_options_and_enabled(
-    cali_gui: Any, qtbot: QtBot
+    cali_gui: Any, qtbot: QtBot, test_db_copy: Path
 ) -> None:
     """Selecting a run preserves extraction/analysis export state.
 
     Loading a run's settings must not reset the export_options or
     export_enabled values the user had configured.
     """
-    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
     data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 
-    cali_gui._initialize_from_database(db_path, data_path)
+    cali_gui._initialize_from_database(str(test_db_copy), data_path)
 
     # Set export-enabled to the non-default state for each widget:
     # extraction defaults True → set False

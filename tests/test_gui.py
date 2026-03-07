@@ -475,7 +475,9 @@ def test_combo_visibility_changes(qtbot: QtBot) -> None:
     assert not gui._run_cali_wdg._extraction_settings_combo.isVisible()
 
 
-def test_on_worker_finished_selects_recent_run(qtbot: QtBot) -> None:
+def test_on_worker_finished_selects_recent_run(
+    qtbot: QtBot, test_db_copy: Path
+) -> None:
     """Test that _on_worker_finished selects the most recently modified run."""
     gui = CaliGui()
     qtbot.addWidget(gui)
@@ -484,13 +486,12 @@ def test_on_worker_finished_selects_recent_run(qtbot: QtBot) -> None:
 
     # Load the test database which has 2 runs with different last_modified times
     data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
-    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
 
     # Initialize GUI from database
-    gui._initialize_from_database(db_path, data_path)
+    gui._initialize_from_database(str(test_db_copy), data_path)
 
     # Get the most recently modified run from database to know which one to expect
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(f"sqlite:///{test_db_copy}")
     with Session(engine) as session:
         from sqlmodel import select
 

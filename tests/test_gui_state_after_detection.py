@@ -14,20 +14,21 @@ from qtpy.QtCore import Qt
 from cali.gui import CaliGui
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pytestqt.qtbot import QtBot
 
 
 @pytest.fixture
-def gui_with_detection(qtbot: QtBot) -> CaliGui:
+def gui_with_detection(qtbot: QtBot, test_db_copy: Path) -> CaliGui:
     """Create a GUI loaded with a database that has detection results."""
     gui = CaliGui()
     qtbot.addWidget(gui)
 
     # Load the test database that has detection results
-    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
     data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
 
-    gui._initialize_from_database(db_path, data_path)
+    gui._initialize_from_database(str(test_db_copy), data_path)
     qtbot.waitUntil(lambda: gui._loading_bar.isHidden(), timeout=10000)
 
     return gui

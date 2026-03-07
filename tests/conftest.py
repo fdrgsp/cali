@@ -6,6 +6,7 @@ The pytest-qt plugin auto-imports PyQt6 during initialization, so we
 preload torch here to ensure proper DLL loading order.
 """
 
+import shutil
 import sys
 import tempfile
 from collections.abc import Generator, Iterator
@@ -73,6 +74,17 @@ def temp_db() -> Generator[TempDB, None, None]:
     except PermissionError:
         # On Windows, file might still be locked
         pass
+
+
+_TEST_DB = Path("tests/test_data/data_and_db_for_tests/test_db.cali")
+
+
+@pytest.fixture
+def test_db_copy(tmp_path: Path) -> Path:
+    """Return a disposable copy of test_db.cali so the original is never modified."""
+    dest = tmp_path / "test_db.cali"
+    shutil.copy2(_TEST_DB, dest)
+    return dest
 
 
 @pytest.fixture
