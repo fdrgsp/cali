@@ -124,11 +124,11 @@ class _DetectionGUI(QWidget):
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
-    def active_method(self) -> Literal["cellpose", "imported"]:
+    def active_method(self) -> Literal["cellpose", "imported_labels"]:
         """Return which detection method is currently active."""
         if self._cellpose_wdg.isChecked():
             return "cellpose"
-        return "imported"
+        return "imported_labels"
 
     def value(self) -> CellposeSettingsData:
         """Return the detection parameters of the selected method."""
@@ -141,7 +141,7 @@ class _DetectionGUI(QWidget):
         method: str = "cellpose",
     ) -> None:
         """Set the detection parameters of the selected method."""
-        if method == "imported":
+        if method == "imported_labels":
             with signals_blocked(self._imported_labels_wdg):
                 self._imported_labels_wdg.setChecked(True)
             with signals_blocked(self._cellpose_wdg):
@@ -180,10 +180,10 @@ class _DetectionGUI(QWidget):
 
         from cali.sqlmodel import DetectionSettings
 
-        if self.active_method() == "imported":
+        if self.active_method() == "imported_labels":
             return DetectionSettings(
                 created_at=datetime.now(),
-                method="imported",
+                method="imported_labels",
             )
 
         settings = self.value()
@@ -595,8 +595,8 @@ class _ImportedLabelsWidget(QGroupBox):
 
         dialog = _ImportLabelsDialog(self._database_path, parent=self)
         if dialog.exec():
-            self._detection_settings_id = dialog.value()
-            self._n_imported_fovs = len(dialog._label_map)
+            self._detection_settings_id = dialog._imported_detection_settings_id
+            self._n_imported_fovs = len(dialog.value())
             self._status_label.setText(
                 f"{self._n_imported_fovs} FOV(s) imported "
                 f"(Detection ID: {self._detection_settings_id})"

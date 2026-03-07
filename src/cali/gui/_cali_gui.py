@@ -456,7 +456,7 @@ class CaliGui(QMainWindow):
                 detection_data = asdict(self._detection_wdg.value())
             else:
                 detection_data = {
-                    "method": "imported",
+                    "method": "imported_labels",
                     "detection_settings_id": (
                         self._detection_wdg._imported_labels_wdg.detection_settings_id()
                     ),
@@ -489,8 +489,8 @@ class CaliGui(QMainWindow):
             # detection
             detection = settings.get("detection", {})
             if detection:
-                if detection.get("method") == "imported":
-                    self._detection_wdg.setValue(method="imported")
+                if detection.get("method") == "imported_labels":
+                    self._detection_wdg.setValue(method="imported_labels")
                     det_id = detection.get("detection_settings_id")
                     self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
                         det_id
@@ -1389,7 +1389,7 @@ class CaliGui(QMainWindow):
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
-                if self._detection_wdg.active_method() == "imported":
+                if self._detection_wdg.active_method() == "imported_labels":
                     det_id = (
                         self._detection_wdg._imported_labels_wdg.detection_settings_id()
                     )
@@ -2259,8 +2259,8 @@ class CaliGui(QMainWindow):
                             use_gpu=d_settings.use_gpu,
                         )
                     )
-                elif d_settings.method == "imported":
-                    self._detection_wdg.setValue(method="imported")
+                elif d_settings.method == "imported_labels":
+                    self._detection_wdg.setValue(method="imported_labels")
                     self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
                         d_settings.id
                     )
