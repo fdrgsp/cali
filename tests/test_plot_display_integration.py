@@ -1,5 +1,7 @@
 """Integration test to verify plots actually display correctly."""
 
+from pathlib import Path
+
 import pytest
 from pytestqt.qtbot import QtBot
 from sqlmodel import Session, select
@@ -9,11 +11,11 @@ from cali.sqlmodel._model import FOV
 
 
 @pytest.fixture
-def gui_with_test_data(qtbot: QtBot) -> CaliGui:
+def gui_with_test_data(qtbot: QtBot, test_db_copy: Path) -> CaliGui:
     """Create a CaliGui instance with test data."""
     gui = CaliGui()
     qtbot.addWidget(gui)
-    gui._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    gui._database_path = str(test_db_copy)
     gui._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
     gui._initialize_from_database(gui._database_path, gui._data_path)
     return gui

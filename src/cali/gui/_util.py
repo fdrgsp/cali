@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import TYPE_CHECKING, Literal, cast
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
@@ -24,6 +25,7 @@ from qtpy.QtWidgets import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from cali._constants import CorrelationDataType, TraceDataType
@@ -279,6 +281,86 @@ class _WaitingProgressBarWidget(QDialog):
             value = 0
             self._direction = 1
         self._progress_bar.setValue(value)
+
+
+def auto_match_files(
+    files: Sequence[Path],
+    target_names: Sequence[str],
+) -> dict[str, Path]:
+    """Match files to target names (1:1) based on filename substring matching.
+
+    For each target name (processed longest-first), finds files whose stem
+    contains the target name at a word boundary. Only unambiguous matches
+    (exactly one candidate) are assigned, and each file is used at most once.
+
+    Parameters
+    ----------
+    files : Sequence[Path]
+        Available files to match.
+    target_names : Sequence[str]
+        Target identifiers to match against (e.g. FOV names like "A1_0000").
+
+    Returns
+    -------
+    dict[str, Path]
+        Mapping of target_name -> matched file Path.
+    """
+    result: dict[str, Path] = {}
+    claimed: set[Path] = set()
+
+    # Process longest targets first so "A1_0000" matches before "A1"
+    sorted_targets = sorted(target_names, key=len, reverse=True)
+
+    for target in sorted_targets:
+        pattern = re.compile(rf"(^|[^A-Za-z0-9]){re.escape(target)}($|[^A-Za-z0-9])")
+        candidates = [f for f in files if f not in claimed and pattern.search(f.stem)]
+        if len(candidates) == 1:
+            result[target] = candidates[0]
+            claimed.add(candidates[0])
+
+    return result
+
+
+def auto_match_files_grouped(
+    files: Sequence[Path],
+    target_names: Sequence[str],
+) -> dict[str, list[Path]]:
+    """Match files to target names, allowing multiple files per target.
+
+    For each file, finds all matching targets and picks the longest (most
+    specific) one. If multiple targets of the same length match, the file is
+    skipped. Multiple files can be assigned to the same target.
+
+    Parameters
+    ----------
+    files : Sequence[Path]
+        Available files to match.
+    target_names : Sequence[str]
+        Target identifiers (e.g. well names like "A1", "B5").
+
+    Returns
+    -------
+    dict[str, list[Path]]
+        Mapping of target_name -> list of matched file Paths.
+    """
+    result: dict[str, list[Path]] = {}
+    patterns = {
+        name: re.compile(rf"(^|[^A-Za-z0-9]){re.escape(name)}($|[^A-Za-z0-9])")
+        for name in target_names
+    }
+
+    for f in files:
+        stem = f.stem
+        matches = [name for name, pat in patterns.items() if pat.search(stem)]
+        if not matches:
+            continue
+        # Pick longest match (most specific)
+        max_len = max(len(m) for m in matches)
+        best = [m for m in matches if len(m) == max_len]
+        if len(best) == 1:
+            result.setdefault(best[0], []).append(f)
+
+    return result
 
 
 def parse_lineedit_text(input_str: str) -> list[int]:

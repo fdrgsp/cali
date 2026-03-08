@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import pytest
 from pyqtgraph import BarGraphItem
 from qtpy.QtWidgets import QWidget
-from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, create_engine, select
 
@@ -49,43 +48,7 @@ def multi_well_widget_with_data(
     db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
     engine = create_engine(f"sqlite:///{db_path}")
 
-    # Migrate schema if needed - add new columns that don't exist
-    # This must happen BEFORE any model queries
-    with engine.connect() as conn:
-        try:
-            # Check if column exists by trying to select it
-            conn.execute(
-                text("SELECT calcium_peaks_max_lag FROM analysis_settings LIMIT 1")
-            )
-        except OperationalError:
-            # Column doesn't exist, add it
-            try:
-                conn.execute(
-                    text(
-                        "ALTER TABLE analysis_settings "
-                        "ADD COLUMN calcium_peaks_max_lag INTEGER DEFAULT 5"
-                    )
-                )
-                conn.commit()
-            except OperationalError:
-                # Failed to add column, rollback
-                conn.rollback()
-
-        # Check and add pixel_size column if missing
-        try:
-            conn.execute(text("SELECT pixel_size FROM extraction_settings LIMIT 1"))
-        except OperationalError:
-            try:
-                conn.execute(
-                    text("ALTER TABLE extraction_settings ADD COLUMN pixel_size REAL")
-                )
-                conn.commit()
-            except OperationalError:
-                conn.rollback()
-
-    # Get the run_id with the most positions analysed so all wells/conditions
-    # are represented.  Run 1 in the test DB only covers well B5 (1 condition),
-    # while Run 2 covers all 4 wells (4 conditions).
+    # Get a valid run_id from the database
     with Session(engine) as session:
         runs = session.exec(select(CaliResult)).all()
         best = max(runs, key=lambda r: len(r.positions_analyzed or []))

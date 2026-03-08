@@ -361,6 +361,19 @@ def test_detection_runner_error(data_path: Path) -> None:
         list(runner.run(dataset, settings, [0]))
 
 
+def test_detection_runner_imported_method(data_path: Path) -> None:
+    """Test DetectionRunner with method='imported' skips detection and returns []."""
+    from cali.detection._detection_runner import DetectionRunner
+    from cali.readers import TensorstoreZarrReader
+
+    runner = DetectionRunner()
+    settings = DetectionSettings(method="imported_labels")
+    dataset = TensorstoreZarrReader(data_path)
+
+    result = runner.run(dataset, settings, [0])
+    assert result == []
+
+
 def test_cali_runner_overwrite_mocked(
     test_db_path: Path,
     test_experiment: Experiment,

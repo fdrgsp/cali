@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine
 from sqlmodel import Session, select
 
 from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
@@ -35,40 +34,6 @@ def db_engine() -> Generator[Engine, None, None]:
     db_path = TEST_DB
     assert db_path.exists(), f"Test database not found: {db_path}"
     engine = create_engine(f"sqlite:///{db_path}")
-
-    # Migrate schema if needed - add new columns that don't exist
-    # This must happen BEFORE any model queries
-    with engine.connect() as conn:
-        try:
-            # Check if column exists by trying to select it
-            conn.execute(
-                text("SELECT calcium_peaks_max_lag FROM analysis_settings LIMIT 1")
-            )
-        except OperationalError:
-            # Column doesn't exist, add it
-            try:
-                conn.execute(
-                    text(
-                        "ALTER TABLE analysis_settings "
-                        "ADD COLUMN calcium_peaks_max_lag INTEGER DEFAULT 5"
-                    )
-                )
-                conn.commit()
-            except OperationalError:
-                # Failed to add column, rollback
-                conn.rollback()
-
-        # Check and add pixel_size column if missing
-        try:
-            conn.execute(text("SELECT pixel_size FROM extraction_settings LIMIT 1"))
-        except OperationalError:
-            try:
-                conn.execute(
-                    text("ALTER TABLE extraction_settings ADD COLUMN pixel_size REAL")
-                )
-                conn.commit()
-            except OperationalError:
-                conn.rollback()
 
     yield engine
     engine.dispose()  # Close all connections

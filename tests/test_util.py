@@ -407,6 +407,48 @@ def test_commit_fov_result_existing_fov_detection_mode(tmp_path: Path) -> None:
     engine.dispose()
 
 
+def test_commit_fov_result_raises_on_invalid_detection_settings_id(
+    tmp_path: Path,
+) -> None:
+    """Test commit_fov_result raises ValueError when detection_settings_id not in DB."""
+    from sqlmodel import Session, SQLModel, create_engine
+
+    from cali.sqlmodel._model import (
+        FOV,
+        Experiment,
+        Plate,
+    )
+    from cali.util._util import commit_fov_result
+
+    db_path = tmp_path / "test.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        plate = Plate(name="test_plate", rows=8, columns=12)
+        exp = Experiment(
+            name="test_exp",
+            experiment_type="Spontaneous Activity",
+            plate=plate,
+        )
+        session.add(exp)
+        session.commit()
+
+        fov_result = FOV(name="A1_0000", position_index=0, fov_number=0)
+
+        import pytest
+
+        with pytest.raises(ValueError, match="DetectionSettings with ID 999 not found"):
+            commit_fov_result(
+                session,
+                exp,
+                fov_result,
+                detection_settings_id=999,
+            )
+
+    engine.dispose()
+
+
 def test_update_fovs_in_database(tmp_path: Path) -> None:
     """Test update_fovs_in_database function."""
     from sqlmodel import Session, create_engine, select
