@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 import tifffile
 from sqlmodel import Session, create_engine, select
 
-from cali.runner import CaliRunner
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -19,41 +18,6 @@ from cali.util import import_labels_to_database
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from unittest.mock import MagicMock
-
-
-@pytest.fixture
-def populated_db(
-    tmp_path: Path,
-    test_experiment: Any,
-    data_path: Path,
-    mock_detection_runner: MagicMock,
-) -> Path:
-    """Create a database with an Experiment and FOVs via a mocked detection run."""
-    db_path = tmp_path / "import_test.cali"
-    runner = CaliRunner(commit_batch_size=1)
-    detection_settings = DetectionSettings(method="cellpose", model_type="cpsam")
-    runner.run(
-        experiment=test_experiment,
-        dataset_path=data_path,
-        detection_settings=detection_settings,
-        database_name=db_path.name,
-        output_path=db_path.parent,
-        global_position_indices=[0],
-    )
-    return db_path
-
-
-@pytest.fixture
-def label_tiff(tmp_path: Path) -> Path:
-    """Create a simple 2D label TIFF with 3 labelled regions."""
-    arr = np.zeros((256, 256), dtype=np.uint16)
-    arr[10:30, 10:30] = 1
-    arr[50:70, 50:70] = 2
-    arr[100:120, 100:120] = 3
-    p = tmp_path / "labels.tif"
-    tifffile.imwrite(p, arr)
-    return p
 
 
 def _get_first_fov_name(db_path: Path) -> str:

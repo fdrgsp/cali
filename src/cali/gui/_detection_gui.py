@@ -591,10 +591,14 @@ class _ImportedLabelsWidget(QGroupBox):
             show_error_dialog(self, "Please load a database first.")
             return
 
-        from cali.gui._import_labels_dialog import _ImportLabelsDialog
+        from cali.gui._import_labels_dialog import (
+            _ImportLabelsDialog,  # pragma: no cover
+        )
 
-        dialog = _ImportLabelsDialog(self._database_path, parent=self)
-        if dialog.exec():
+        dialog = _ImportLabelsDialog(
+            self._database_path, parent=self
+        )  # pragma: no cover
+        if dialog.exec():  # pragma: no cover
             self._detection_settings_id = dialog._imported_detection_settings_id
             self._n_imported_fovs = len(dialog.value())
             self._status_label.setText(

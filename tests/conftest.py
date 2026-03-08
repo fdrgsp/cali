@@ -148,6 +148,44 @@ def create_mock_fov(position_index: int = 0, num_rois: int = 3) -> FOV:
     return fov
 
 
+@pytest.fixture
+def populated_db(
+    tmp_path: Path,
+    test_experiment: Any,
+    data_path: Path,
+    mock_detection_runner: MagicMock,
+) -> Path:
+    """Create a database with an Experiment and FOVs via a mocked detection run."""
+    from cali.runner import CaliRunner
+    from cali.sqlmodel._model import DetectionSettings
+
+    db_path = tmp_path / "test_populated.cali"
+    runner = CaliRunner(commit_batch_size=1)
+    runner.run(
+        experiment=test_experiment,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
+        database_name=db_path.name,
+        output_path=db_path.parent,
+        global_position_indices=[0],
+    )
+    return db_path
+
+
+@pytest.fixture
+def label_tiff(tmp_path: Path) -> Path:
+    """Create a simple 2D label TIFF with 3 labelled regions."""
+    import tifffile
+
+    arr = np.zeros((256, 256), dtype=np.uint16)
+    arr[10:30, 10:30] = 1
+    arr[50:70, 50:70] = 2
+    arr[100:120, 100:120] = 3
+    p = tmp_path / "A1_0000_labels.tif"
+    tifffile.imwrite(p, arr)
+    return p
+
+
 @pytest.fixture()
 def mock_detection_runner() -> Iterator[MagicMock]:
     """Fixture that patches DetectionRunner to return mock FOVs quickly.

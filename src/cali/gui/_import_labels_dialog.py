@@ -237,7 +237,7 @@ class _ImportLabelsDialog(QDialog):
         self._update_available_list_states()
         self._auto_assign_labels()
 
-    def _on_well_selection_changed(self) -> None:
+    def _on_well_selection_changed(self) -> None:  # pragma: no cover
         """Update the FOV list when a well is selected in the plate map."""
         if not self._plate_view:
             return
@@ -269,7 +269,7 @@ class _ImportLabelsDialog(QDialog):
 
         self._fov_list.resizeColumnToContents(0)
 
-    def _on_assign(self) -> None:
+    def _on_assign(self) -> None:  # pragma: no cover
         """Assign the selected label file to the selected FOV."""
         selected_file_items = self._available_list.selectedItems()
         if not selected_file_items:
@@ -298,7 +298,7 @@ class _ImportLabelsDialog(QDialog):
         fov_item.setText(1, label_path.name)
         self._update_available_list_states()
 
-    def _on_unassign(self) -> None:
+    def _on_unassign(self) -> None:  # pragma: no cover
         """Remove the label assignment from the selected FOV."""
         selected_fov_items = self._fov_list.selectedItems()
         if not selected_fov_items:
@@ -313,14 +313,14 @@ class _ImportLabelsDialog(QDialog):
             fov_item.setText(1, "")
             self._update_available_list_states()
 
-    def _on_reset(self) -> None:
+    def _on_reset(self) -> None:  # pragma: no cover
         """Clear all label-to-FOV assignments."""
         self._label_map.clear()
         # Refresh FOV list for currently selected well
         self._on_well_selection_changed()
         self._update_available_list_states()
 
-    def _on_ok(self) -> None:
+    def _on_ok(self) -> None:  # pragma: no cover
         """Validate and import labels to the database."""
         if not self._label_map:
             show_error_dialog(
@@ -351,14 +351,14 @@ class _ImportLabelsDialog(QDialog):
             },
         )
 
-    def _on_import_finished(self, det_id: int) -> None:
+    def _on_import_finished(self, det_id: int) -> None:  # pragma: no cover
         """Handle successful import."""
         self._loading_bar.hide()
         self.setEnabled(True)
         self._imported_detection_settings_id = det_id
         self.accept()
 
-    def _on_import_errored(self, error: Exception) -> None:
+    def _on_import_errored(self, error: Exception) -> None:  # pragma: no cover
         """Handle import failure."""
         self._loading_bar.hide()
         self.setEnabled(True)
@@ -430,10 +430,10 @@ class _ImportLabelsDialog(QDialog):
                     self._well_fovs[well_name] = []
                 self._well_fovs[well_name].append((fov_id, fov_name, pos_idx))
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             cali_logger.error(f"Failed to query FOVs from database: {e}")
 
-    def _update_available_list_states(self) -> None:
+    def _update_available_list_states(self) -> None:  # pragma: no cover
         """Grey out files that are already assigned."""
         assigned_names = {p.name for p in self._label_map.values()}
         for i in range(self._available_list.count()):

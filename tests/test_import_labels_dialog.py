@@ -2,52 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
-import tifffile
 
 from cali.gui._import_labels_dialog import _ImportLabelsDialog
-from cali.runner import CaliRunner
-from cali.sqlmodel._model import DetectionSettings
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from unittest.mock import MagicMock
 
     from pytestqt.qtbot import QtBot
-
-
-@pytest.fixture
-def populated_db(
-    tmp_path: Path,
-    test_experiment: Any,
-    data_path: Path,
-    mock_detection_runner: MagicMock,
-) -> Path:
-    """Database with one detected FOV (FOV name: A1_0000)."""
-    db_path = tmp_path / "dialog_test.cali"
-    runner = CaliRunner(commit_batch_size=1)
-    runner.run(
-        experiment=test_experiment,
-        dataset_path=data_path,
-        detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
-        database_name=db_path.name,
-        output_path=db_path.parent,
-        global_position_indices=[0],
-    )
-    return db_path
-
-
-@pytest.fixture
-def label_tiff(tmp_path: Path) -> Path:
-    """A simple 2D label TIFF."""
-    arr = np.zeros((256, 256), dtype=np.uint16)
-    arr[10:30, 10:30] = 1
-    p = tmp_path / "A1_0000_labels.tif"
-    tifffile.imwrite(p, arr)
-    return p
 
 
 @pytest.fixture
@@ -67,11 +31,9 @@ def test_set_value_populates_label_map(
     dialog: _ImportLabelsDialog, label_tiff: Path
 ) -> None:
     """setValue() with a valid fov_name -> path mapping populates _label_map."""
-    # Get the first FOV name from _well_fovs
     fov_name = next(
         fov_name for fovs in dialog._well_fovs.values() for _, fov_name, _ in fovs
     )
-
     dialog.setValue({fov_name: label_tiff})
 
     result = dialog.value()
@@ -100,3 +62,48 @@ def test_set_value_roundtrip(dialog: _ImportLabelsDialog, label_tiff: Path) -> N
     dialog.setValue(snapshot)
 
     assert dialog.value() == snapshot
+
+
+def test_on_folder_selected_populates_list(
+    dialog: _ImportLabelsDialog, label_tiff: Path
+) -> None:
+    """Selecting a folder with TIFFs populates the available files list."""
+    dialog._on_folder_selected(str(label_tiff.parent))
+    assert dialog._available_list.count() >= 1
+    assert len(dialog._label_files) >= 1
+
+
+def test_on_folder_selected_invalid_path(dialog: _ImportLabelsDialog) -> None:
+    """Non-directory path is a no-op."""
+    dialog._on_folder_selected("/nonexistent/path")
+    assert dialog._available_list.count() == 0
+
+
+def test_auto_assign_labels_matches_fovs(
+    dialog: _ImportLabelsDialog, tmp_path: Path
+) -> None:
+    """Auto-assign matches label files to FOVs by filename."""
+    import numpy as np
+    import tifffile
+
+    # Get the actual first FOV name from the database
+    fov_name = next(
+        fov_name for fovs in dialog._well_fovs.values() for _, fov_name, _ in fovs
+    )
+    # Create a label file whose stem contains the FOV name
+    label_path = tmp_path / f"{fov_name}_labels.tif"
+    tifffile.imwrite(label_path, np.zeros((10, 10), dtype=np.uint16))
+
+    dialog._label_files = [label_path]
+    dialog._auto_assign_labels()
+
+    result = dialog.value()
+    assert len(result) > 0
+    assert fov_name in result
+
+
+def test_auto_assign_labels_no_files(dialog: _ImportLabelsDialog) -> None:
+    """Auto-assign with no label files is a no-op."""
+    dialog._label_files = []
+    dialog._auto_assign_labels()
+    assert dialog.value() == {}

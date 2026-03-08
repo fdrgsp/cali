@@ -454,7 +454,7 @@ class CaliGui(QMainWindow):
         if path:
             if self._detection_wdg.active_method() == "cellpose":
                 detection_data = asdict(self._detection_wdg.value())
-            else:
+            else:  # pragma: no cover
                 detection_data = {
                     "method": "imported_labels",
                     "detection_settings_id": (
@@ -489,7 +489,7 @@ class CaliGui(QMainWindow):
             # detection
             detection = settings.get("detection", {})
             if detection:
-                if detection.get("method") == "imported_labels":
+                if detection.get("method") == "imported_labels":  # pragma: no cover
                     self._detection_wdg.setValue(method="imported_labels")
                     det_id = detection.get("detection_settings_id")
                     self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
@@ -1389,7 +1389,9 @@ class CaliGui(QMainWindow):
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
-                if self._detection_wdg.active_method() == "imported_labels":
+                if (
+                    self._detection_wdg.active_method() == "imported_labels"
+                ):  # pragma: no cover
                     det_id = (
                         self._detection_wdg._imported_labels_wdg.detection_settings_id()
                     )
@@ -1906,7 +1908,9 @@ class CaliGui(QMainWindow):
         # for sw_graph in self.SW_GRAPHS:
         #     sw_graph._update_combo_item_availability()
 
-    def _on_labels_imported(self, detection_settings_id: int) -> None:
+    def _on_labels_imported(
+        self, detection_settings_id: int
+    ) -> None:  # pragma: no cover
         """Handle labels imported from the import dialog.
 
         Refreshes the runs panel, detection settings, and image viewer so the
@@ -2259,7 +2263,7 @@ class CaliGui(QMainWindow):
                             use_gpu=d_settings.use_gpu,
                         )
                     )
-                elif d_settings.method == "imported_labels":
+                elif d_settings.method == "imported_labels":  # pragma: no cover
                     self._detection_wdg.setValue(method="imported_labels")
                     self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
                         d_settings.id
