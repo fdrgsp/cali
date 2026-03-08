@@ -24,6 +24,7 @@ from ._database_to_csv import (
 from ._util import (
     commit_fov_result,
     coordinates_to_mask,
+    import_labels_to_database,
     load_data_from_path,
     load_fovs_from_database,
     mask_to_coordinates,
@@ -54,6 +55,7 @@ __all__ = [
     "export_neuropil_corrected_traces_to_csv",
     "export_neuropil_traces_to_csv",
     "export_raw_traces_to_csv",
+    "import_labels_to_database",
     "load_data_from_path",
     "load_fovs_from_database",
     "mask_to_coordinates",

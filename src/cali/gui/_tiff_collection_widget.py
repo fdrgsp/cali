@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
 )
 from superqt import QIconifyIcon
 
+from cali.gui._util import auto_match_files_grouped
 from cali.readers import TiffCollectionReader, TiffCollectionSettings
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class TiffCollectionWidget(QDialog):
         plate_layout = QVBoxLayout(plate_group)
         plate_layout.setContentsMargins(0, 0, 0, 0)
         self._plate_widget = WellPlateWidget()
+        self._plate_widget.valueChanged.connect(self._auto_assign_to_wells)
         plate_layout.addWidget(self._plate_widget)
 
         # Make plate view only select a single well at a time
@@ -110,14 +112,18 @@ class TiffCollectionWidget(QDialog):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(5)
-        self._add_btn = QPushButton(QIconifyIcon("mdi:arrow-down"), "Add to Well")
+        self._add_btn = QPushButton(QIconifyIcon("mdi:arrow-down"), "Add")
         self._add_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._add_btn.clicked.connect(self._on_add_clicked)
-        self._remove_btn = QPushButton(QIconifyIcon("mdi:arrow-up"), "Remove from Well")
+        self._remove_btn = QPushButton(QIconifyIcon("mdi:arrow-up"), "Remove")
         self._remove_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._remove_btn.clicked.connect(self._on_remove_clicked)
+        self._reset_btn = QPushButton(QIconifyIcon("mdi:restart"), "Reset")
+        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._reset_btn.clicked.connect(self._on_reset_clicked)
         button_layout.addWidget(self._add_btn)
         button_layout.addWidget(self._remove_btn)
+        button_layout.addWidget(self._reset_btn)
 
         # Assigned files list
         assigned_label = QLabel("Files Assigned to Selected Well:")
@@ -262,6 +268,8 @@ class TiffCollectionWidget(QDialog):
         for tiff_file in self._tiff_files:
             self._available_list.addItem(tiff_file.name)
 
+        self._auto_assign_to_wells()
+
     def value(self) -> TiffCollectionReader:
         """Get the configured TiffCollectionReader parameters.
 
@@ -297,6 +305,40 @@ class TiffCollectionWidget(QDialog):
         return TiffCollectionReader(settings)
 
     # -------------------------PRIVATE METHODS-------------------------
+
+    def _auto_assign_to_wells(self) -> None:
+        """Attempt to auto-match TIFF files to wells by filename."""
+        # Clear existing assignments first (e.g. when plate type changes)
+        self._file_map.clear()
+        self._assigned_list.clear()
+
+        if not self._tiff_files:
+            self._update_available_list_states()
+            return
+
+        plate_plan = self._plate_widget.value()
+        plate = plate_plan.plate
+        if plate is None:
+            self._update_available_list_states()
+            return
+
+        # Build list of valid well names and their (row, col)
+        well_names: list[str] = []
+        well_coords: dict[str, tuple[int, int]] = {}
+        for row_idx in range(plate.rows):
+            for col_idx in range(plate.columns):
+                name = f"{chr(ord('A') + row_idx)}{col_idx + 1}"
+                well_names.append(name)
+                well_coords[name] = (row_idx, col_idx)
+
+        matches = auto_match_files_grouped(self._tiff_files, well_names)
+
+        for well_name, matched_files in matches.items():
+            row_col = well_coords[well_name]
+            self._file_map[row_col] = sorted(matched_files)
+
+        self._update_available_list_states()
+        self._on_well_selection_changed()
 
     def _update_available_list_states(self) -> None:
         """Update the enabled/disabled state of items in the available list."""
@@ -435,6 +477,12 @@ class TiffCollectionWidget(QDialog):
 
         # Update both lists
         self._on_well_selection_changed()
+        self._update_available_list_states()
+
+    def _on_reset_clicked(self) -> None:
+        """Clear all file-to-well assignments."""
+        self._file_map.clear()
+        self._assigned_list.clear()
         self._update_available_list_states()
 
     def _on_ok_clicked(self) -> None:

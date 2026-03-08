@@ -106,10 +106,13 @@ class DetectionRunner:
                 detection_settings=detection_settings,
                 position_indices=global_position_indices,
             )
+        elif detection_settings.method == "imported_labels":
+            cali_logger.info("🏷️ Using imported labels - no detection to run.")
+            return
         else:
             msg = (
                 f"❌ Unknown detection method: {detection_settings.method}. "
-                "Supported methods: 'cellpose'"
+                "Supported methods: 'cellpose', 'imported_labels'."
             )
             cali_logger.error(msg)
             raise ValueError(msg)

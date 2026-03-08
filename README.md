@@ -193,7 +193,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
 **NOTE**: If you are loading a folder of TIFF files, a plate assignment widget will open where you can:
 
 - select the plate type
-- assign each TIFF file (as a FOV) to a well.
+- assign each TIFF file (as a FOV) to a well. Files are **auto-matched** to wells by filename pattern (e.g., a file containing `A1` in its name is automatically assigned to well A1). You can manually adjust assignments using the Add/Remove buttons if needed.
 
 After confirming the plate assignment, the main `cali` window will open. Next time, the project can be loaded directly from the database file.
 
@@ -215,7 +215,16 @@ Hovering over each parameter in the Detection, Extraction, and Analysis tabs sho
 
 #### Detection Tab
 
-The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Currently, only **Cellpose** is supported as the segmentation method. The user can set Cellpose parameters and run the segmentation.
+The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Two detection methods are available:
+
+- **Cellpose**: run Cellpose segmentation with configurable parameters directly from the GUI.
+- **Imported Labels**: import pre-existing label TIFF files (e.g., from manual segmentation or another tool) and assign them to specific FOVs. Clicking "Import Labels..." opens a dedicated dialog where you can:
+  - browse for a folder containing label TIFF files
+  - view the plate map and select individual wells
+  - assign each label file to a specific FOV (files are **auto-matched** to FOVs by filename pattern when possible)
+  - manually adjust assignments using Assign/Unassign/Reset buttons
+
+  On import, each label TIFF is read and converted into ROI/Mask objects in the database. The user can then proceed with extraction and analysis as usual.
 
 <img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
 

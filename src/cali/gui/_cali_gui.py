@@ -377,6 +377,11 @@ class CaliGui(QMainWindow):
         # connect plate map widget to save when OK is clicked
         self._plate_map_wdg.plateMapSaved.connect(self._save_plate_map_to_database)
 
+        # connect imported labels signal to refresh viewer after import
+        self._detection_wdg._imported_labels_wdg.labelsImported.connect(
+            self._on_labels_imported
+        )
+
         # FINALIZE WINDOW ------------------------------------------------------------
         self.showMaximized()
         self._set_splitter_sizes()
@@ -447,8 +452,17 @@ class CaliGui(QMainWindow):
             self, "Save Run Settings", "", "JSON Files (*.json);;All Files (*)"
         )
         if path:
+            if self._detection_wdg.active_method() == "cellpose":
+                detection_data = asdict(self._detection_wdg.value())
+            else:  # pragma: no cover
+                detection_data = {
+                    "method": "imported_labels",
+                    "detection_settings_id": (
+                        self._detection_wdg._imported_labels_wdg.detection_settings_id()
+                    ),
+                }
             full_settings = {
-                "detection": asdict(self._detection_wdg.value()),
+                "detection": detection_data,
                 "extraction": asdict(self._extraction_wdg.value()),
                 "analysis": asdict(self._analysis_wdg.value()),
             }
@@ -475,7 +489,16 @@ class CaliGui(QMainWindow):
             # detection
             detection = settings.get("detection", {})
             if detection:
-                self._detection_wdg.setValue(CellposeSettingsData(**detection))
+                if detection.get("method") == "imported_labels":  # pragma: no cover
+                    self._detection_wdg.setValue(method="imported_labels")
+                    det_id = detection.get("detection_settings_id")
+                    self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
+                        det_id
+                    )
+                else:
+                    # Remove "method" key if present (not a CellposeSettingsData field)
+                    detection.pop("method", None)
+                    self._detection_wdg.setValue(CellposeSettingsData(**detection))
 
             # extraction
             extraction = settings.get("extraction", {})
@@ -661,6 +684,10 @@ class CaliGui(QMainWindow):
         # UPDATE GUI SETTINGS  --------------------------------------------------------
         if self._database_path is not None:
             self._update_gui_settings(self._database_path, experiment=experiment)
+            # Pass database path to imported labels widget
+            self._detection_wdg._imported_labels_wdg.set_database_path(
+                self._database_path
+            )
 
         # UPDATE GUI ------------------------------------------------------------------
         if experiment.plate is not None:
@@ -1362,7 +1389,23 @@ class CaliGui(QMainWindow):
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
-                detection_settings = self._detection_wdg.to_model_settings()
+                if (
+                    self._detection_wdg.active_method() == "imported_labels"
+                ):  # pragma: no cover
+                    det_id = (
+                        self._detection_wdg._imported_labels_wdg.detection_settings_id()
+                    )
+                    if det_id is None:
+                        show_error_dialog(
+                            self,
+                            "No labels have been imported yet.\n"
+                            "Please click 'Import Labels...' in the "
+                            "Detection tab first.",
+                        )
+                        return
+                    detection_settings = det_id  # pass as int (existing DB ID)
+                else:
+                    detection_settings = self._detection_wdg.to_model_settings()
 
             pos = value.positions or list(range(self._get_total_positions()))
 
@@ -1865,6 +1908,21 @@ class CaliGui(QMainWindow):
         # for sw_graph in self.SW_GRAPHS:
         #     sw_graph._update_combo_item_availability()
 
+    def _on_labels_imported(
+        self, detection_settings_id: int
+    ) -> None:  # pragma: no cover
+        """Handle labels imported from the import dialog.
+
+        Refreshes the runs panel, detection settings, and image viewer so the
+        user can immediately see the imported labels.
+        """
+        # Refresh the runs panel and settings combos
+        self._runs_panel.refresh_runs()
+        if self._database_path:
+            self._populate_settings(self._database_path)
+        # Refresh the image viewer to show the imported labels
+        self._on_fov_table_selection_changed()
+
     def _save_plate_map_to_database(self) -> None:
         """Save plate map data from GUI to database."""
         if self._database_path is None:
@@ -2204,6 +2262,11 @@ class CaliGui(QMainWindow):
                             batch_size=d_settings.batch_size,
                             use_gpu=d_settings.use_gpu,
                         )
+                    )
+                elif d_settings.method == "imported_labels":  # pragma: no cover
+                    self._detection_wdg.setValue(method="imported_labels")
+                    self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
+                        d_settings.id
                     )
                 else:
                     msg = f"❌ Unknown detection method: {d_settings.method}."

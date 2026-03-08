@@ -37,9 +37,10 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="function")
 def plot_widget_with_db(
     qtbot: QtBot,
+    test_db_copy: Path,
 ) -> Generator[tuple[_SingleWellGraphWidget, str, str], None, None]:
     """Create a plot widget connected to test database with full pipeline results."""
-    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    db_path = str(test_db_copy)
 
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
@@ -61,11 +62,11 @@ def plot_widget_with_db(
 
 
 @pytest.fixture
-def gui_for_plots(qtbot: QtBot) -> CaliGui:
+def gui_for_plots(qtbot: QtBot, test_db_copy: Path) -> CaliGui:
     """Create a CaliGui instance with test data for plot testing."""
     gui = CaliGui()
     qtbot.addWidget(gui)
-    gui._database_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+    gui._database_path = str(test_db_copy)
     gui._data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
     gui._initialize_from_database(gui._database_path, gui._data_path)
     return gui

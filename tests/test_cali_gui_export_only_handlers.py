@@ -17,12 +17,6 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def test_db_path() -> Path:
-    """Return path to test database."""
-    return Path("tests/test_data/data_and_db_for_tests/test_db.cali")
-
-
-@pytest.fixture
 def test_data_path() -> Path:
     """Return path to test data directory."""
     return Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
@@ -45,7 +39,7 @@ def test_handle_export_only_no_database(qtbot: QtBot) -> None:
 
 def test_handle_export_only_no_exports_selected(
     qtbot: QtBot,
-    test_db_path: Path,
+    test_db_copy: Path,
     test_data_path: Path,
 ) -> None:
     """Test _handle_export_only with no export options selected."""
@@ -53,7 +47,7 @@ def test_handle_export_only_no_exports_selected(
     qtbot.addWidget(gui)
 
     # Initialize GUI with database
-    gui._initialize_from_database(str(test_db_path), str(test_data_path))
+    gui._initialize_from_database(str(test_db_copy), str(test_data_path))
     qtbot.wait(100)
 
     # Disable all export options
@@ -69,7 +63,7 @@ def test_handle_export_only_no_exports_selected(
 
 def test_handle_export_only_export_failure(
     qtbot: QtBot,
-    test_db_path: Path,
+    test_db_copy: Path,
     test_data_path: Path,
 ) -> None:
     """Test _handle_export_only handles export failure gracefully."""
@@ -77,7 +71,7 @@ def test_handle_export_only_export_failure(
     qtbot.addWidget(gui)
 
     # Initialize GUI with database
-    gui._initialize_from_database(str(test_db_path), str(test_data_path))
+    gui._initialize_from_database(str(test_db_copy), str(test_data_path))
     qtbot.wait(100)
 
     # Enable some export options
