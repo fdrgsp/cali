@@ -1711,3 +1711,704 @@ def test_export_multi_well_pca_to_csv(
     assert "explained_variance_pct" in loadings.columns
     assert "cumulative_variance_pct" in loadings.columns
     assert loadings["component"].iloc[0] == "PC1"
+
+
+# ---------------------------------------------------------------------------
+# Rising edges & calcium correlation plot functions
+# ---------------------------------------------------------------------------
+
+
+def test_plot_calcium_dff_correlation_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_calcium_dff_correlation_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_calcium_dff_correlation_bar_plot(widget, "DFF Corr", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_calcium_den_dff_correlation_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_calcium_den_dff_correlation_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_calcium_den_dff_correlation_bar_plot(widget, "Den DFF Corr", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_spike_synchrony_rising_edges_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_spike_synchrony_rising_edges_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_spike_synchrony_rising_edges_bar_plot(widget, "Sync RE", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_spike_correlation_rising_edges_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_spike_correlation_rising_edges_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_spike_correlation_rising_edges_bar_plot(widget, "Corr RE", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_fraction_significant_ccg_pairs_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_fraction_significant_ccg_pairs_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_fraction_significant_ccg_pairs_bar_plot(widget, "CCG", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_plot_fraction_significant_ccg_pairs_rising_edges_renders(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        plot_fraction_significant_ccg_pairs_rising_edges_bar_plot,
+    )
+
+    widget, engine, run_id = full_widget
+    plot_fraction_significant_ccg_pairs_rising_edges_bar_plot(
+        widget, "CCG RE", engine, run_id
+    )
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Headless compute functions (cover lines 300-307, 405, 470-473, 475-482, 550)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_burst_count_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    """_compute_burst_metric returns data when burst metrics exist."""
+    from cali.plot._multi_wells_plots._inferred_spikes import compute_burst_count_data
+
+    engine, run_id = full_db
+    result = compute_burst_count_data(engine, run_id)
+    assert result is not None
+    bar_data, name, _units = result
+    assert name == "Burst Count"
+    assert len(bar_data["conditions"]) >= 1
+
+
+def test_compute_burst_avg_duration_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_burst_avg_duration_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_burst_avg_duration_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_spike_synchrony_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    """_compute_fov_scalar_data returns data for synchrony."""
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_spike_synchrony_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_spike_synchrony_data(engine, run_id)
+    assert result is not None
+    _bar_data, name, _units = result
+    assert name == "Spike Jitter Synchrony"
+
+
+def test_compute_spike_correlation_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_spike_correlation_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_spike_correlation_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_calcium_dff_correlation_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_calcium_dff_correlation_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_calcium_dff_correlation_data(engine, run_id)
+    assert result is not None
+    _bar_data, name, _units = result
+    assert name == "Calcium ΔF/F Correlation"
+
+
+def test_compute_calcium_den_dff_correlation_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_calcium_den_dff_correlation_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_calcium_den_dff_correlation_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_spike_synchrony_rising_edges_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_spike_synchrony_rising_edges_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_spike_synchrony_rising_edges_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_spike_correlation_rising_edges_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_spike_correlation_rising_edges_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_spike_correlation_rising_edges_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_fraction_significant_ccg_pairs_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_fraction_significant_ccg_pairs_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_fraction_significant_ccg_pairs_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_fraction_significant_ccg_pairs_rising_edges_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_fraction_significant_ccg_pairs_rising_edges_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_fraction_significant_ccg_pairs_rising_edges_data(engine, run_id)
+    assert result is not None
+
+
+def test_compute_fov_scalar_data_empty_db() -> None:
+    """_compute_fov_scalar_data returns None for empty DB."""
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        compute_spike_synchrony_data,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_spike_synchrony_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+def test_query_fov_scalar_no_weight(
+    full_db: tuple[Engine, int],
+) -> None:
+    """_query_fov_scalar_by_condition with use_n_pairs_weight=False gives weight=1."""
+    from cali.plot._multi_wells_plots._inferred_spikes import (
+        _query_fov_scalar_by_condition,
+    )
+
+    engine, run_id = full_db
+    data = _query_fov_scalar_by_condition(
+        engine, run_id, "global_spike_jitter_synchrony", use_n_pairs_weight=False
+    )
+    for fov_dict in data.values():
+        for _scalar, weight in fov_dict.values():
+            assert weight == 1
+
+
+# ---------------------------------------------------------------------------
+# Calcium burst headless compute (cover lines 475-482)
+# ---------------------------------------------------------------------------
+
+
+def _build_db_with_calcium_bursts() -> tuple[Engine, int]:
+    """In-memory DB with calcium burst data on FOVAnalysis."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="burst_exp")
+        session.add(exp)
+        session.flush()
+
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W1", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+
+        fa = FOVAnalysis(
+            fov_id=fov.id,
+            analysis_result_id=run.id,
+            calcium_burst_count=5,
+            calcium_burst_avg_duration=1.2,
+            calcium_burst_avg_interval=3.5,
+        )
+        session.add(fa)
+        session.commit()
+        run_id: int = run.id  # type: ignore[assignment]
+
+    return engine, run_id
+
+
+def test_compute_calcium_burst_count_data() -> None:
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_count_data,
+    )
+
+    engine, run_id = _build_db_with_calcium_bursts()
+    result = compute_calcium_burst_count_data(engine, run_id)
+    assert result is not None
+    bar_data, name, _units = result
+    assert name == "Calcium Burst Count"
+    assert bar_data["means"][0] == 5.0
+    engine.dispose(close=True)
+
+
+def test_compute_calcium_burst_avg_duration_data() -> None:
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_avg_duration_data,
+    )
+
+    engine, run_id = _build_db_with_calcium_bursts()
+    result = compute_calcium_burst_avg_duration_data(engine, run_id)
+    assert result is not None
+    engine.dispose(close=True)
+
+
+def test_compute_calcium_burst_empty_db() -> None:
+    """_compute_calcium_burst_metric returns None for empty DB."""
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_count_data,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_calcium_burst_count_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# Cell properties headless compute (cover lines 226, 236, 239)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_cell_size_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._cell_properties import compute_cell_size_data
+
+    engine, run_id = full_db
+    result = compute_cell_size_data(engine, run_id)
+    assert result is not None
+    _bar_data, name, units = result
+    assert name == "Cell Size"
+    assert units == "μm²"
+
+
+def test_compute_cell_size_data_empty_db() -> None:
+    from cali.plot._multi_wells_plots._cell_properties import compute_cell_size_data
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_cell_size_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+def test_compute_percentage_active_data(
+    full_db: tuple[Engine, int],
+) -> None:
+    from cali.plot._multi_wells_plots._cell_properties import (
+        compute_percentage_active_data,
+    )
+
+    engine, run_id = full_db
+    result = compute_percentage_active_data(engine, run_id)
+    assert result is not None
+    _bar_data, name, units = result
+    assert name == "Percentage Active ROIs"
+    assert units == "%"
+
+
+def test_compute_percentage_active_data_empty_db() -> None:
+    from cali.plot._multi_wells_plots._cell_properties import (
+        compute_percentage_active_data,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_percentage_active_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+def test_compute_percentage_active_stim_split_data_empty_db() -> None:
+    from cali.plot._multi_wells_plots._cell_properties import (
+        compute_percentage_active_stim_split_data,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_percentage_active_stim_split_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# _aggregate_fov_scalar_to_condition_stats edge cases (cover lines 516, 525, 542, 545)
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_fov_scalar_empty_fov_dict() -> None:
+    """Empty fov_dict in a condition is skipped (line 516)."""
+    from cali.plot._multi_wells_plots._util import (
+        _aggregate_fov_scalar_to_condition_stats,
+    )
+
+    data: dict[str, dict[str, tuple[float, int]]] = {
+        "WT": {},
+        "KO": {"fov_0": (0.5, 3)},
+    }
+    result = _aggregate_fov_scalar_to_condition_stats(data)
+    assert result["conditions"] == ["KO"]
+
+
+def test_aggregate_fov_scalar_single_fov_zero_sem() -> None:
+    """Single FOV gives SEM=0 (line 545)."""
+    from cali.plot._multi_wells_plots._util import (
+        _aggregate_fov_scalar_to_condition_stats,
+    )
+
+    data: dict[str, dict[str, tuple[float, int]]] = {
+        "WT": {"fov_0": (0.7, 3)},
+    }
+    result = _aggregate_fov_scalar_to_condition_stats(data)
+    assert result["conditions"] == ["WT"]
+    assert result["sems"][0] == 0.0
+
+
+def test_aggregate_fov_scalar_equal_weights_zero_denom() -> None:
+    """Two FOVs with identical values → var_w denominator might be zero (line 542)."""
+    from cali.plot._multi_wells_plots._util import (
+        _aggregate_fov_scalar_to_condition_stats,
+    )
+
+    data: dict[str, dict[str, tuple[float, int]]] = {
+        "WT": {"fov_0": (0.5, 1), "fov_1": (0.5, 1)},
+    }
+    result = _aggregate_fov_scalar_to_condition_stats(data)
+    assert result["conditions"] == ["WT"]
+    assert result["means"][0] == 0.5
+    # identical values → variance should be 0
+    assert result["sems"][0] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _get_fraction_significant_pairs edge cases (cover lines 581, 583, 590)
+# ---------------------------------------------------------------------------
+
+
+def test_get_fraction_significant_pairs_none() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(None) is None
+
+
+def test_get_fraction_significant_pairs_empty() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.array([])) is None
+
+
+def test_get_fraction_significant_pairs_1x1() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.array([[3.0]])) is None
+
+
+def test_get_fraction_significant_pairs_nonsquare() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.ones((2, 3))) is None
+
+
+def test_get_fraction_significant_pairs_valid() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    mat = np.array([[0.0, 3.0], [3.0, 0.0]])
+    result = _get_fraction_significant_pairs(mat, threshold=2.0)
+    assert result == 1.0
+
+    mat2 = np.array([[0.0, 1.0], [1.0, 0.0]])
+    result2 = _get_fraction_significant_pairs(mat2, threshold=2.0)
+    assert result2 == 0.0
+
+
+# ---------------------------------------------------------------------------
+# make_parameter_compute_fn returning None for empty data (cover line 809)
+# ---------------------------------------------------------------------------
+
+
+def test_make_parameter_compute_fn_returns_none_empty_db() -> None:
+    from cali.plot._multi_wells_plots._util import make_parameter_compute_fn
+
+    fn = make_parameter_compute_fn("amplitude", "dF/F", "Amplitude")
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    result = fn(engine, None)
+    assert result is None
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# export_multi_well_to_csv: NaN filling & exception handling
+# (cover lines 1416, 1426-1428, 1448)
+# ---------------------------------------------------------------------------
+
+
+def test_export_multi_well_nan_filling(
+    full_db: tuple[Engine, int], tmp_path: Path
+) -> None:
+    """Conditions with different FOV counts fill missing values with NaN."""
+    import pandas as pd
+
+    from cali.util._database_to_csv import export_multi_well_to_csv
+
+    engine, run_id = full_db
+
+    # Add an extra FOV to one condition to trigger unequal FOV counts
+    with Session(engine) as session:
+        from sqlmodel import select
+
+        wells = session.exec(select(Well)).all()
+        # Find the first well
+        target_well = wells[0]
+        extra_fov = FOV(name="extra_fov", position_index=99, well_id=target_well.id)
+        session.add(extra_fov)
+        session.flush()
+
+        extra_fa = FOVAnalysis(
+            fov_id=extra_fov.id,
+            analysis_result_id=run_id,
+            active_roi_labels=[1],
+            global_spike_jitter_synchrony=0.42,
+        )
+        session.add(extra_fa)
+
+        extra_roi = ROI(
+            label_value=1, active=True, fov_id=extra_fov.id, cell_size=100.0
+        )
+        session.add(extra_roi)
+        session.flush()
+
+        da = DataAnalysis(
+            roi_id=extra_roi.id,
+            analysis_result_id=run_id,
+            peaks_amplitudes_den_dff=[1.0],
+            den_dff_frequency=0.5,
+        )
+        session.add(da)
+        session.commit()
+
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+    export_multi_well_to_csv(engine, run_id, db_path, experiment_type="spontaneous")
+
+    output_dir = tmp_path / "test_exports" / f"run_{run_id}" / "multi_well"
+    csv_files = list(output_dir.glob("*.csv"))
+    assert len(csv_files) > 0
+
+    # Check at least one CSV has NaN-filled columns
+    found_nan = False
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        fov_cols = [c for c in df.columns if c.startswith("fov_")]
+        if fov_cols and df[fov_cols].isna().any().any():
+            found_nan = True
+            break
+    assert found_nan, "Expected NaN fill for unequal FOV counts"
+
+
+def test_export_multi_well_exception_handling(
+    full_db: tuple[Engine, int], tmp_path: Path
+) -> None:
+    """Exception in compute_fn is caught and export continues."""
+    from cali.util._database_to_csv import export_multi_well_to_csv
+
+    engine, run_id = full_db
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+
+    # Patch one compute function to raise, others should still export
+    with patch(
+        "cali.plot._multi_wells_plots._inferred_spikes.compute_spike_synchrony_data",
+        side_effect=RuntimeError("test error"),
+    ):
+        # Should not raise despite one compute_fn failing
+        export_multi_well_to_csv(engine, run_id, db_path, experiment_type="spontaneous")
+
+    output_dir = tmp_path / "test_exports" / f"run_{run_id}" / "multi_well"
+    # Other products should still have been exported
+    csv_files = list(output_dir.glob("*.csv"))
+    assert len(csv_files) > 0
+
+
+# ---------------------------------------------------------------------------
+# export_multi_well_pca_to_csv edge cases (cover lines 1493-1505)
+# ---------------------------------------------------------------------------
+
+
+def test_export_pca_fewer_than_2_fovs(tmp_path: Path) -> None:
+    """PCA export skips when fewer than 2 FOVs."""
+    from cali.util._database_to_csv import export_multi_well_pca_to_csv
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="e")
+        session.add(exp)
+        session.flush()
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W1", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+
+        roi = ROI(label_value=1, active=True, fov_id=fov.id, cell_size=100.0)
+        session.add(roi)
+        session.flush()
+
+        da = DataAnalysis(
+            roi_id=roi.id,
+            analysis_result_id=run.id,
+            den_dff_frequency=0.5,
+        )
+        session.add(da)
+        session.commit()
+        run_id = run.id
+
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+    # Should not raise, just skip
+    export_multi_well_pca_to_csv(engine, run_id, db_path)
+
+    output_dir = tmp_path / "test_exports" / f"run_{run_id}" / "multi_well"
+    # No PCA files should be created
+    assert not output_dir.exists() or not list(output_dir.glob("pca_*.csv"))
+    engine.dispose(close=True)
+
+
+def test_export_pca_build_matrix_exception(
+    full_db: tuple[Engine, int], tmp_path: Path
+) -> None:
+    """PCA export catches exception from build_fov_feature_matrix."""
+    from cali.util._database_to_csv import export_multi_well_pca_to_csv
+
+    engine, run_id = full_db
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+
+    with patch(
+        "cali.plot._multi_wells_plots._dimensionality_reduction.build_fov_feature_matrix",
+        side_effect=RuntimeError("bad matrix"),
+    ):
+        # Should not raise
+        export_multi_well_pca_to_csv(engine, run_id, db_path)
+
+
+def test_export_pca_compute_pca_exception(
+    full_db: tuple[Engine, int], tmp_path: Path
+) -> None:
+    """PCA export catches exception from compute_pca."""
+    from cali.util._database_to_csv import export_multi_well_pca_to_csv
+
+    engine, run_id = full_db
+    db_path = tmp_path / "test.cali"
+    db_path.touch()
+
+    with patch(
+        "cali.plot._multi_wells_plots._dimensionality_reduction.compute_pca",
+        side_effect=RuntimeError("singular matrix"),
+    ):
+        # Should not raise
+        export_multi_well_pca_to_csv(engine, run_id, db_path)
