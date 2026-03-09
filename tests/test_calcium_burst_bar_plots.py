@@ -314,3 +314,110 @@ def test_plot_calcium_burst_avg_interval_no_crash_empty_db(
         empty_widget.engine,
         empty_widget.run_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Calcium burst headless compute
+# ---------------------------------------------------------------------------
+
+
+def _build_db_with_calcium_bursts() -> tuple[Engine, int]:
+    """In-memory DB with one condition/FOV with calcium burst data."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="burst_exp")
+        session.add(exp)
+        session.flush()
+
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W1", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+
+        fa = FOVAnalysis(
+            fov_id=fov.id,
+            analysis_result_id=run.id,
+            calcium_burst_count=5,
+            calcium_burst_avg_duration=1.2,
+            calcium_burst_avg_interval=3.5,
+        )
+        session.add(fa)
+        session.commit()
+        run_id: int = run.id  # type: ignore[assignment]
+
+    return engine, run_id
+
+
+def test_compute_calcium_burst_count_data() -> None:
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_count_data,
+    )
+
+    engine, run_id = _build_db_with_calcium_bursts()
+    result = compute_calcium_burst_count_data(engine, run_id)
+    assert result is not None
+    bar_data, name, _units = result
+    assert name == "Calcium Burst Count"
+    assert bar_data["means"][0] == 5.0
+    engine.dispose(close=True)
+
+
+def test_compute_calcium_burst_avg_duration_data() -> None:
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_avg_duration_data,
+    )
+
+    engine, run_id = _build_db_with_calcium_bursts()
+    result = compute_calcium_burst_avg_duration_data(engine, run_id)
+    assert result is not None
+    engine.dispose(close=True)
+
+
+def test_compute_calcium_burst_empty_db() -> None:
+    """compute_calcium_burst_count_data returns None for empty DB."""
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        compute_calcium_burst_count_data,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    assert compute_calcium_burst_count_data(engine, None) is None
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# Stim-split empty data paths
+# ---------------------------------------------------------------------------
+
+
+def test_calcium_peaks_amplitude_stim_split_empty(qtbot: QtBot) -> None:
+    """plot_calcium_peaks_amplitude_stim_split_bar_plot handles empty evoked data."""
+    from cali.plot._multi_wells_plots._calcium_peaks import (
+        plot_calcium_peaks_amplitude_stim_split_bar_plot,
+    )
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    plot_calcium_peaks_amplitude_stim_split_bar_plot(widget, "Amp Stim", engine, None)
+    engine.dispose(close=True)

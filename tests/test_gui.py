@@ -1,13 +1,17 @@
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import useq
 from pytestqt.qtbot import QtBot
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QStandardItemModel
+from qtpy.QtWidgets import QApplication, QMessageBox
 from sqlmodel import Session, create_engine
 
 from cali.gui import CaliGui
+from cali.gui._run_selection_dialog import RunSelectionDialog
 from cali.gui._run_widget import CaliRunSettings
 from cali.sqlmodel._model import (
     AnalysisSettings,
@@ -882,3 +886,665 @@ def test_plate_map_widget_close_cancel(
     # Verify dialog is still visible and signal was NOT emitted
     assert not widget._plate_map_dialog.isHidden()
     assert not signal_emitted
+
+
+# ============================================================================
+# GUI Initialization Tests
+# ============================================================================
+
+
+@pytest.fixture
+def gui(qtbot: QtBot) -> CaliGui:
+    """Create a CaliGui instance."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+    return gui
+
+
+def test_initialize_from_database_success(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
+) -> None:
+    """Test successful initialization from existing database."""
+    from cali.runner import CaliRunner
+    from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
+
+    data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
+    db_path = tmp_path / "test.cali"
+
+    # Create experiment with plate structure from data
+    exp = Experiment.create_from_data(
+        name="Test",
+        data_path=data_path,
+        description="Test experiment",
+    )
+    runner = CaliRunner()
+    runner.run(
+        experiment=exp,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
+        extraction_settings=ExtractionSettings(),
+        analysis_settings=AnalysisSettings(),
+        global_position_indices=[0],
+        database_name="test.cali",
+        output_path=tmp_path,
+    )
+
+    # Initialize GUI from database
+    gui._initialize_from_database(db_path, data_path)
+
+    # Verify state
+    assert gui._database_path == str(db_path)
+    assert gui._data_path == str(data_path)
+    assert gui._output_path == str(tmp_path)
+    assert gui._data is not None
+    assert gui._data.sequence is not None
+    assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_database_not_exists(gui: CaliGui, qtbot: QtBot) -> None:
+    """Test initialization fails when database doesn't exist."""
+    with patch("cali.gui._cali_gui.show_error_dialog") as mock_dialog:
+        gui._initialize_from_database("nonexistent.cali", "fake_data")
+
+        # Should show error dialog
+        mock_dialog.assert_called_once()
+        args = mock_dialog.call_args[0]
+        assert "not found" in args[1].lower()
+        assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_database_invalid_data_path(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test initialization fails with invalid data path."""
+    # Create minimal database
+    from cali.sqlmodel import save_experiment_to_database
+
+    exp = Experiment(name="Test", description="Test")
+    db_path = tmp_path / "test.cali"
+    save_experiment_to_database(exp, tmp_path, database_name="test.cali")
+
+    with patch("cali.gui._cali_gui.show_error_dialog") as mock_dialog:
+        gui._initialize_from_database(db_path, "invalid/path")
+
+        # Should show error about unsupported format
+        mock_dialog.assert_called_once()
+        args = mock_dialog.call_args[0]
+        assert "unsupported file format" in args[1].lower()
+        assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_directories_new_database(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test creating new database from directories."""
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+    output_path = tmp_path
+    db_name = "new_test.cali"
+
+    gui._initialize_from_directories(str(data_path), str(output_path), db_name)
+
+    # Verify database was created
+    db_path = output_path / db_name
+    assert db_path.exists()
+    assert gui._database_path == str(db_path)
+    assert gui._data_path == data_path
+    assert gui._output_path == str(output_path)
+    assert gui._data is not None
+    assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_directories_existing_db_no_overwrite(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
+) -> None:
+    """Test loading existing database when user chooses not to overwrite."""
+    # Create existing database
+    from cali.runner import CaliRunner
+    from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
+
+    data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
+    db_name = "existing.cali"
+
+    exp = Experiment.create_from_data(
+        name="Existing",
+        data_path=data_path,
+        description="Existing experiment",
+    )
+    runner = CaliRunner()
+    runner.run(
+        experiment=exp,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
+        extraction_settings=ExtractionSettings(),
+        analysis_settings=AnalysisSettings(),
+        global_position_indices=[0],
+        database_name=db_name,
+        output_path=tmp_path,
+    )
+
+    # Mock user choosing "No" (don't overwrite)
+    with patch.object(
+        QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+    ):
+        gui._initialize_from_directories(str(data_path), str(tmp_path), db_name)
+
+    # Should load existing database
+    assert gui._database_path == str(tmp_path / db_name)
+    assert gui._data is not None
+    assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_directories_existing_db_overwrite(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test overwriting existing database when user chooses to overwrite."""
+    from cali.sqlmodel import save_experiment_to_database
+
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+    db_name = "to_overwrite.cali"
+
+    exp = Experiment(name="Old", description="Old experiment")
+    save_experiment_to_database(exp, tmp_path, database_name=db_name)
+
+    old_db_path = tmp_path / db_name
+    assert old_db_path.exists()
+
+    # Mock user choosing "Yes" (overwrite)
+    with patch.object(
+        QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+    ):
+        gui._initialize_from_directories(str(data_path), str(tmp_path), db_name)
+
+    # Database should be overwritten with new experiment
+    assert gui._database_path == str(tmp_path / db_name)
+    assert old_db_path.exists()  # File still exists but contents replaced
+
+    # Load and verify it's a new experiment
+    from sqlmodel import Session, create_engine
+
+    engine = create_engine(f"sqlite:///{old_db_path}")
+    with Session(engine) as session:
+        new_exp = Experiment.load_from_database(old_db_path, session=session)
+        # New experiment should have default name "Cali Experiment"
+        assert new_exp.name == "Cali Experiment"
+
+    engine.dispose(close=True)
+    assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_from_directories_invalid_data_path(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test initialization fails with invalid data path."""
+    with patch("cali.gui._cali_gui.show_error_dialog") as mock_dialog:
+        gui._initialize_from_directories("invalid/path", str(tmp_path))
+
+        # Should show error
+        mock_dialog.assert_called_once()
+        args = mock_dialog.call_args[0]
+        assert "no valid data" in args[1].lower()
+        assert not gui._loading_bar.isVisible()
+
+
+def test_initialize_appends_cali_extension(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test that .cali extension is automatically appended if missing."""
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+    db_name = "test_db"  # No .cali extension
+
+    gui._initialize_from_directories(str(data_path), str(tmp_path), db_name)
+
+    # Should add .cali extension
+    expected_db_path = tmp_path / "test_db.cali"
+    assert gui._database_path == str(expected_db_path)
+    assert expected_db_path.exists()
+
+
+def test_clear_widget_before_initialization(gui: CaliGui, qtbot: QtBot) -> None:
+    """Test that widget state is properly cleared before initialization."""
+    # Set some state
+    gui._database_path = "old_path.cali"
+    gui._data_path = "old_data"
+    gui._output_path = "old_output"
+    gui._data = Mock()
+
+    # Clear
+    gui._clear_widget_before_initialization()
+
+    # Verify everything is reset
+    assert gui._database_path is None
+    assert gui._data_path is None
+    assert gui._output_path is None
+    assert gui._data is None
+
+
+def test_initialize_updates_graph_properties(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path, mock_detection_runner: MagicMock
+) -> None:
+    """Test that graph widgets are updated with database path."""
+    from cali.runner import CaliRunner
+    from cali.sqlmodel import AnalysisSettings, DetectionSettings, ExtractionSettings
+
+    data_path = Path("tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr")
+    db_path = tmp_path / "test.cali"
+
+    exp = Experiment.create_from_data(
+        name="Test",
+        data_path=data_path,
+        description="Test",
+    )
+    runner = CaliRunner()
+    runner.run(
+        experiment=exp,
+        dataset_path=data_path,
+        detection_settings=DetectionSettings(method="cellpose", model_type="cpsam"),
+        extraction_settings=ExtractionSettings(),
+        analysis_settings=AnalysisSettings(),
+        global_position_indices=[0],
+        database_name="test.cali",
+        output_path=tmp_path,
+    )
+
+    gui._initialize_from_database(db_path, data_path)
+
+    # Verify all graph widgets have database path set
+    for sw_graph in gui.SW_GRAPHS:
+        assert sw_graph.database_path == str(db_path)
+        assert sw_graph.engine is not None
+
+    for mw_graph in gui.MW_GRAPHS:
+        assert mw_graph.database_path == str(db_path)
+        assert mw_graph.engine is not None
+
+
+def test_initialize_handles_missing_sequence(
+    gui: CaliGui, qtbot: QtBot, tmp_path: Path
+) -> None:
+    """Test that initialization fails gracefully when sequence is missing."""
+    # Create database with experiment
+    from cali.sqlmodel import save_experiment_to_database
+
+    exp = Experiment(name="Test", description="Test")
+    db_path = tmp_path / "test.cali"
+    save_experiment_to_database(exp, tmp_path, database_name="test.cali")
+
+    # Mock load_data_from_path to return data without sequence
+    mock_data = Mock()
+    mock_data.sequence = None
+
+    with (
+        patch("cali.gui._cali_gui.load_data_from_path", return_value=mock_data),
+        patch("cali.gui._cali_gui.show_error_dialog") as mock_dialog,
+    ):
+        gui._initialize_from_database(db_path, "fake_path")
+
+        # Should show error about missing sequence
+        mock_dialog.assert_called_once()
+        args = mock_dialog.call_args[0]
+        assert "mdasequence not found" in args[1].lower()
+        assert not gui._loading_bar.isVisible()
+
+
+# ============================================================================
+# GUI No HCS Plate Plan Tests
+# ============================================================================
+
+
+def test_plate_plan_preserved_after_reload(qtbot: QtBot) -> None:
+    """Test that plate plan from wizard is preserved after data reload.
+
+    When loading a non-HCS tensorstore (stage_positions is tuple, not WellPlatePlan),
+    the user selects a plate plan via the wizard. This plate plan should be:
+    1. Saved to the experiment
+    2. Re-applied to the data after reload
+    3. Used for GUI display (not falling back to DEFAULT_PLATE_PLAN)
+    """
+    widget = CaliGui()
+    qtbot.addWidget(widget)
+
+    # Initialize from non-HCS data
+    data_path = "tests/test_data/no_hcs/no_hcs.tensorstore.zarr"
+    db_path = Path("tests/test_data/no_hcs/no_hcs.cali")
+
+    # The workflow would be:
+    # 1. User loads non-HCS data -> wizard appears
+    # 2. User selects plate plan
+    # 3. Data is reloaded
+    # 4. Plate plan should be re-applied
+
+    # For testing, we'll directly test the fix:
+    # After _initialize_from_directories completes, the data should have
+    # the plate plan set (not be a tuple)
+
+    # If database exists, load from it
+    if db_path.exists():
+        widget._initialize_from_database(db_path, data_path)
+    else:
+        # Would need to mock the wizard for full test
+        pytest.skip("Database doesn't exist, would require wizard mocking")
+
+    # After initialization, check that data has plate plan set
+    assert widget._data is not None
+    assert widget._data.sequence is not None
+
+    # Load experiment from database
+    from cali.sqlmodel import Experiment
+
+    experiment = Experiment.load_from_database(db_path, load_data=False)
+
+    # Check that experiment has a plate
+    assert experiment.plate is not None, "Experiment should have a plate"
+
+    # Check that the plate has a plate plan
+    exp_plate_plan = experiment.plate.plate_plan
+    assert exp_plate_plan is not None, "Experiment plate should have a plate_plan"
+
+    # The data should have the plate plan applied (loaded from database)
+    # Note: The GUI loads data without plate_plan now, it relies on the database
+    # storing the plate_plan, which is then used by _draw_plate_with_selection
+    # So we just verify that the experiment has the plate_plan stored correctly
+
+    # Verify it's a WellPlatePlan
+    assert isinstance(exp_plate_plan, useq.WellPlatePlan), (
+        f"Expected WellPlatePlan, got {type(exp_plate_plan)}"
+    )
+
+    # Verify it has the expected structure
+    assert exp_plate_plan.plate is not None, "Plate plan should have a plate"
+    assert len(exp_plate_plan.selected_well_names) > 0, "Should have selected wells"
+
+
+# ============================================================================
+# GUI State After Detection Tests
+# ============================================================================
+
+
+@pytest.fixture
+def gui_with_detection(qtbot: QtBot, test_db_copy: Path) -> CaliGui:
+    """Create a GUI loaded with a database that has detection results."""
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Load the test database that has detection results
+    data_path = "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr"
+
+    gui._initialize_from_database(str(test_db_copy), data_path)
+    qtbot.waitUntil(lambda: gui._loading_bar.isHidden(), timeout=10000)
+
+    return gui
+
+
+def test_label_button_enabled_after_loading_database(
+    gui_with_detection: CaliGui, qtbot: QtBot
+) -> None:
+    """Test label button is enabled after loading database with detection.
+
+    This test simulates the ACTUAL user workflow:
+    1. Load database with detection results
+    2. Click on a well
+    3. Select FOV from table
+    4. Verify label button is enabled
+
+    This is a regression test for the bug where labels would not appear.
+    """
+    # The GUI fixture already loaded the database
+    # Now we need to simulate selecting a well and FOV
+
+    # First, let's manually trigger what happens when you click on B5
+    assert gui_with_detection._data is not None
+    assert gui_with_detection._data.sequence is not None
+
+    # Get B5_0000 position (should be position 0)
+    positions = gui_with_detection._data.sequence.stage_positions
+
+    b5_pos = None
+    for i, pos in enumerate(positions):
+        # Look for the FULL FOV name with position index
+        if hasattr(pos, "name") and pos.name and "B5_0000" in pos.name:
+            b5_pos = (i, pos)
+            break
+
+    if b5_pos is None:
+        pytest.skip("B5_0000 position not found in test data")
+
+    pos_idx, pos = b5_pos
+
+    # Simulate well selection by calling the handler directly
+    # This is what happens when you click on a well
+    from cali.gui._fov_table import WellInfo
+
+    well_info = WellInfo(pos_idx=pos_idx, fov=pos)
+
+    # Add the position to the FOV table (simulating what happens on well click)
+    gui_with_detection._fov_table.clear()
+    gui_with_detection._fov_table.setRowCount(0)
+    gui_with_detection._fov_table.add_position(well_info)
+
+    qtbot.wait(100)
+
+    # Now select the FOV in the table (simulating user click)
+    gui_with_detection._fov_table.selectRow(0)
+    qtbot.wait(200)
+
+    # Verify labels were loaded
+    roi_labels, neuropil_labels = gui_with_detection._get_labels(well_info)
+    assert roi_labels is not None, "ROI labels should exist for B5_0000"
+    assert neuropil_labels is not None, "Neuropil labels should exist for B5_0000"
+
+    # Verify the label button is enabled
+    assert gui_with_detection._image_viewer._labels.isEnabled(), (
+        "Label button should be enabled when detection results exist for the FOV"
+    )
+
+
+def test_label_button_enabled_after_detection(
+    gui_with_detection: CaliGui, qtbot: QtBot
+) -> None:
+    """Test label button in image viewer is enabled when setData gets labels.
+
+    This test verifies the fix for the bug where the label button would never
+    be enabled even when labels existed. The bug was that setData() was
+    checking for labels_image and contours_image existence BEFORE
+    update_image() created them.
+
+    This is a regression test for the bug introduced in commit d4742d6.
+    """
+    import numpy as np
+
+    # Create dummy image and label data (simulating what would come from DB)
+    image_data = np.random.rand(512, 512).astype(np.float32)
+
+    # Create a simple label mask with a few ROIs
+    labels = np.zeros((512, 512), dtype=np.uint16)
+    labels[50:100, 50:100] = 1  # ROI 1
+    labels[150:200, 150:200] = 2  # ROI 2
+    labels[250:300, 250:300] = 3  # ROI 3
+
+    # Call setData with both image and labels (this is what
+    # _on_fov_table_selection_changed does)
+    gui_with_detection._image_viewer.setData(image_data, labels)
+
+    qtbot.wait(100)
+
+    # Verify the label button is enabled
+    assert gui_with_detection._image_viewer._labels.isEnabled(), (
+        "Label button should be enabled when setData is called with labels"
+    )
+
+    # Verify images were created
+    assert gui_with_detection._image_viewer._viewer.image is not None
+    assert gui_with_detection._image_viewer._viewer.labels_image is not None
+    assert gui_with_detection._image_viewer._viewer.contours_image is not None
+
+    # Verify the button tooltip is correct (should be the enabled tooltip)
+    tooltip = gui_with_detection._image_viewer._labels.toolTip()
+    assert "Toggle ROI labels visibility" in tooltip, (
+        f"Expected enabled tooltip, got: {tooltip}"
+    )
+
+
+def test_visualization_combo_enabled_after_analysis(
+    gui_with_detection: CaliGui, qtbot: QtBot
+) -> None:
+    """Test visualization combos have enabled items after loading analysis.
+
+    This test verifies that combo boxes in the visualization tab are properly
+    populated and have enabled items when analysis results exist.
+    """
+    # Switch to visualization tab
+    gui_with_detection._main_tab.setCurrentWidget(gui_with_detection._visualization_tab)
+    qtbot.wait(100)
+
+    # Select a well and FOV (same as above)
+    assert gui_with_detection._data is not None
+    assert gui_with_detection._data.sequence is not None
+
+    pos = gui_with_detection._data.sequence.stage_positions[0]
+    scene = gui_with_detection._plate_view.scene()
+    items = scene.items()  # type: ignore
+
+    for item in items:
+        if hasattr(item, "well_pos") and item.well_pos == pos:  # type: ignore
+            gui_with_detection._plate_view.clearSelection()
+            item.setSelected(True)
+            break
+
+    qtbot.wait(100)
+
+    if gui_with_detection._fov_table.rowCount() > 0:
+        gui_with_detection._fov_table.selectRow(0)
+        qtbot.wait(100)
+
+    # Check that at least one graph widget has enabled combo items
+    graph_widget = gui_with_detection._single_well_graph_1
+
+    # Verify combo box is enabled
+    assert graph_widget._combo.isEnabled(), (
+        "Plot selection combo should be enabled when analysis results exist"
+    )
+
+    # Verify at least some items are enabled
+    model = graph_widget._combo.model()
+    enabled_items = []
+    for i in range(model.rowCount()):  # type: ignore
+        item = model.item(i)  # type: ignore
+        if item and (item.flags() & Qt.ItemFlag.ItemIsEnabled):  # type: ignore
+            enabled_items.append(item.text())
+
+    assert len(enabled_items) > 0, (
+        f"At least some plot options should be enabled. "
+        f"Total items: {model.rowCount()}, Enabled: {len(enabled_items)}"  # type: ignore
+    )
+
+
+def test_labels_button_disabled_when_no_labels(qtbot: QtBot) -> None:
+    """Test that label button is disabled when no labels exist.
+
+    This is a control test to verify the button is properly disabled
+    when there are no detection results.
+    """
+    gui = CaliGui()
+    qtbot.addWidget(gui)
+
+    # Don't load any database - just verify initial state
+    assert not gui._image_viewer._labels.isEnabled(), (
+        "Label button should be disabled initially when no labels exist"
+    )
+
+    # Set data without labels
+    import numpy as np
+
+    data = np.random.rand(100, 100).astype(np.float32)
+    gui._image_viewer.setData(data, labels=None)
+
+    # Verify button is still disabled
+    assert not gui._image_viewer._labels.isEnabled(), (
+        "Label button should remain disabled when setData is called with labels=None"
+    )
+
+    # Verify tooltip indicates why it's disabled
+    tooltip = gui._image_viewer._labels.toolTip()
+    assert "No labels data available" in tooltip, (
+        f"Expected disabled tooltip explaining why, got: {tooltip}"
+    )
+
+
+# ============================================================================
+# GUI Ambiguous Runs Tests
+# ============================================================================
+
+
+def test_run_selection_dialog_formatting() -> None:
+    """Test that run selection dialog formats runs correctly."""
+    # Create mock runs
+    run1 = MagicMock(spec=CaliResult)
+    run1.id = 1
+    run1.detection_settings_id = 1
+    run1.extraction_settings_id = 1
+    run1.analysis_settings_id = None
+    run1.positions_detected = [0, 1]
+    run1.positions_extracted = [0, 1]
+    run1.positions_analyzed = None
+
+    run2 = MagicMock(spec=CaliResult)
+    run2.id = 2
+    run2.detection_settings_id = 1
+    run2.extraction_settings_id = 2
+    run2.analysis_settings_id = None
+    run2.positions_detected = [2, 3]
+    run2.positions_extracted = [2, 3]
+    run2.positions_analyzed = None
+
+    runs = [run1, run2]
+    message = "Multiple runs exist with the same detection settings (ID 1)"
+
+    # Create dialog
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    dialog = RunSelectionDialog(None, runs, message)
+
+    # Check that runs are in the list
+    assert dialog._runs_list.count() == 2
+
+    # Check formatting
+    item1_text = dialog._runs_list.item(0).text()
+    assert "Run ID 1:" in item1_text
+    assert "Detection: ID 1" in item1_text
+    assert "Extraction: ID 1" in item1_text
+    assert "Analysis: None" in item1_text
+    assert "detected=[0, 1]" in item1_text
+
+    item2_text = dialog._runs_list.item(1).text()
+    assert "Run ID 2:" in item2_text
+    assert "Extraction: ID 2" in item2_text
+
+
+def test_run_selection_dialog_get_selected() -> None:
+    """Test getting selected run ID from dialog."""
+    run1 = MagicMock(spec=CaliResult)
+    run1.id = 1
+    run1.detection_settings_id = 1
+    run1.extraction_settings_id = 1
+    run1.analysis_settings_id = None
+    run1.positions_detected = [0]
+    run1.positions_extracted = [0]
+    run1.positions_analyzed = None
+
+    runs = [run1]
+    message = "Test message"
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    dialog = RunSelectionDialog(None, runs, message)
+
+    # Initially nothing selected
+    assert dialog.get_selected_run_id() is None
+
+    # Select first item
+    dialog._runs_list.setCurrentRow(0)
+    assert dialog.get_selected_run_id() == 1

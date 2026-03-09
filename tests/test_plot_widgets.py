@@ -608,3 +608,81 @@ def test_clicking_back_to_previous_well_shows_plot(
         f"Initial: {initial_plot_items}, After clear: {plot_items_after_clear}, "
         f"Final: {final_plot_items}"
     )
+
+
+# ============================================================================
+# Additional Combo Box Tests (Legacy Database Path)
+# ============================================================================
+
+
+@pytest.fixture(scope="function")
+def widget_with_db(
+    qtbot: QtBot,
+) -> Generator[tuple[_SingleWellGraphWidget, str, str], None, None]:
+    """Create a widget connected to the test database with full pipeline results."""
+    # Use existing test database
+    db_path = "tests/test_data/data_and_db_for_tests/test_db.cali"
+
+    # Get the FOV name from the database
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        fov_name = session.exec(select(FOV.name).limit(1)).first()
+
+    assert fov_name is not None
+
+    # Create fresh widget for each test
+    widget = _SingleWellGraphWidget(None)  # type: ignore[arg-type]
+    qtbot.addWidget(widget)
+
+    # Connect to database but don't set FOV or run_id
+    widget.database_path = db_path
+    widget.engine = engine
+
+    # Explicitly ensure clean state
+    widget._fov = ""
+    widget._run_id = None
+
+    yield widget, db_path, fov_name
+
+    engine.dispose(close=True)
+
+
+def _count_combo_items(widget: _SingleWellGraphWidget, *, enabled: bool) -> int:
+    """Count enabled or disabled combo box items (excluding sections and 'None')."""
+    model = widget._combo.model()
+    return sum(
+        1
+        for i in range(model.rowCount())
+        if (bool(model.item(i).flags() & Qt.ItemFlag.ItemIsEnabled) == enabled)
+        and not model.item(i).data(Qt.ItemDataRole.UserRole + 1)  # Skip sections
+        and model.item(i).text() != "None"
+    )
+
+
+def _assert_pipeline_stages(
+    widget: _SingleWellGraphWidget, *, has_det: bool, has_ext: bool, has_ana: bool
+) -> None:
+    """Assert pipeline stage availability matches expectations."""
+    actual_det, actual_ext, actual_ana = widget._check_pipeline_stage_availability()
+    assert actual_det == has_det
+    assert actual_ext == has_ext
+    assert actual_ana == has_ana
+
+
+# ============================================================================
+# Combo Box Enabling/Disabling Tests
+# ============================================================================
+
+
+def test_combo_disabled_without_fov_or_run(
+    widget_with_db: tuple[_SingleWellGraphWidget, str, str],
+) -> None:
+    """Test that combo items are disabled when no FOV or run_id is set."""
+    widget, _, _ = widget_with_db
+
+    # Initial state - no FOV or run_id
+    _assert_pipeline_stages(widget, has_det=False, has_ext=False, has_ana=False)
+
+    # All plots should be disabled (added 2 CCG z-score plots + 2 inferred spikes freq
+    # + 4 cluster analysis plots)
+    assert _count_combo_items(widget, enabled=False) == 54

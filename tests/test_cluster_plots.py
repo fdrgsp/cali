@@ -1032,3 +1032,21 @@ def test_plot_traces_edge_cases_empty_and_constant(
     # The function completes successfully and registers a click handler.
     handler = plot_widget.plotItem.property("cluster_traces_click_handler")
     assert handler is not None
+
+
+# ---------------------------------------------------------------------------
+# _get_cluster_color extended palette
+# ---------------------------------------------------------------------------
+
+
+def test_get_cluster_color_extended_palette() -> None:
+    """_get_cluster_color generates valid RGBA colors beyond the built-in palette."""
+    from cali.plot._single_wells_plots.cluster._plot_cluster_analysis import (
+        CLUSTER_COLORS,
+        _get_cluster_color,
+    )
+
+    n_total = len(CLUSTER_COLORS) + 5
+    for cid in range(n_total):
+        color = _get_cluster_color(cid, n_total=n_total)
+        assert len(color) == 4, f"Expected RGBA tuple for cluster {cid}"

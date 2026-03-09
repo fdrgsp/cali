@@ -869,3 +869,44 @@ def test_detect_calcium_population_bursts_returns_raw_before_smoothed() -> None:
     assert smoothed_nonzero >= raw_nonzero, (
         "Smoothed trace should be at least as wide as raw"
     )
+
+
+# ---------------------------------------------------------------------------
+# _get_fraction_significant_pairs
+# ---------------------------------------------------------------------------
+
+
+def test_get_fraction_significant_pairs_none() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(None) is None
+
+
+def test_get_fraction_significant_pairs_empty() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.array([])) is None
+
+
+def test_get_fraction_significant_pairs_1x1() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.array([[3.0]])) is None
+
+
+def test_get_fraction_significant_pairs_nonsquare() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    assert _get_fraction_significant_pairs(np.ones((2, 3))) is None
+
+
+def test_get_fraction_significant_pairs_valid() -> None:
+    from cali.analysis._fov_metrics import _get_fraction_significant_pairs
+
+    mat = np.array([[0.0, 3.0], [3.0, 0.0]])
+    result = _get_fraction_significant_pairs(mat, threshold=2.0)
+    assert result == 1.0
+
+    mat2 = np.array([[0.0, 1.0], [1.0, 0.0]])
+    result2 = _get_fraction_significant_pairs(mat2, threshold=2.0)
+    assert result2 == 0.0
