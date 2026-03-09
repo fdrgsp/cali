@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 ERROR_BAR_COLOR = "k"
 ERROR_BAR_WIDTH = 2
 ERROR_BAR_X_WIDTH_MULTIPLIER = 0.02
+SCATTER_SIZE = 7
+SINGLE_ROI_COLOR = "k"
+GRAY_BACKGROUND_COLOR = (150, 150, 150, 160)
+GRAY_BACKGROUND_SIZE = 5
 
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
@@ -168,7 +172,7 @@ def _plot_iei_data(
     # Determine colors based on number of ROIs
     n_rois = len(roi_labels)
     if n_rois == 1:
-        colors = ["k"]
+        colors = [SINGLE_ROI_COLOR]
     else:
         colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 
@@ -178,8 +182,8 @@ def _plot_iei_data(
             x=np.asarray(gray_x, dtype=float),
             y=np.asarray(gray_y, dtype=float),
             pen=None,
-            brush=pg.mkBrush(150, 150, 150, 160),
-            size=5,
+            brush=pg.mkBrush(*GRAY_BACKGROUND_COLOR),
+            size=GRAY_BACKGROUND_SIZE,
         )
         plot.addItem(gray_scatter)
 
@@ -203,7 +207,7 @@ def _plot_iei_data(
         y=y_arr,
         pen=[pg.mkPen(c) for c in colors],
         brush=[pg.mkBrush(c) for c in colors],
-        size=7,
+        size=SCATTER_SIZE,
         data=[str(lbl) for lbl in roi_labels],
     )
     plot.addItem(mean_scatter)

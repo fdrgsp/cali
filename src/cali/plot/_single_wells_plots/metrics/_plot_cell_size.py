@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
 
+# PLOT STYLE CONSTANTS
+SCATTER_SIZE = 7
+
 
 def _get_traces_for_run(roi_model: ROI, run_id: int | None) -> Traces | None:
     """Get the Traces object for a specific run from the ROI's traces_history."""
@@ -145,7 +148,7 @@ def _plot_cell_size_data(
         y=y_values,
         pen=None,
         brush=brushes,
-        size=7,
+        size=SCATTER_SIZE,
     )
     plot.addItem(scatter)
 

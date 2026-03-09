@@ -22,6 +22,19 @@ if TYPE_CHECKING:
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 
 
+# PLOT STYLE CONSTANTS
+EVK_STIM_COLOR = "green"
+EVK_NON_STIM_COLOR = "magenta"
+DEFAULT_CONDITION_COLOR = "gray"
+BAR_WIDTH = 0.6
+ERROR_BAR_BEAM = 0.2
+ERROR_BAR_COLOR = "k"
+ERROR_BAR_WIDTH = 2
+FOV_SCATTER_SIZE = 6
+FOV_SCATTER_PEN_WIDTH = 1
+FOV_SCATTER_JITTER = 0.05
+
+
 def _get_default_color(condition: str) -> str:
     """Get the default color for a condition based on its name.
 
@@ -36,11 +49,11 @@ def _get_default_color(condition: str) -> str:
         Color name: "green" for evk_stim, "magenta" for evk_non_stim, "gray" otherwise
     """
     if condition.endswith(EVK_STIM):
-        return "green"
+        return EVK_STIM_COLOR
     elif condition.endswith(EVK_NON_STIM):
-        return "magenta"
+        return EVK_NON_STIM_COLOR
     else:
-        return "gray"
+        return DEFAULT_CONDITION_COLOR
 
 
 # Palette of visually distinct colors used when no specific color is assigned.
@@ -726,7 +739,7 @@ def _create_pyqtgraph_bar_plot(
     bar_graph = BarGraphItem(
         x=x,
         height=filtered_means,
-        width=0.6,
+        width=BAR_WIDTH,
         brushes=[pg.mkBrush(color) for color in filtered_colors],
     )
     plot_item.addItem(bar_graph)
@@ -736,8 +749,8 @@ def _create_pyqtgraph_bar_plot(
         x=x,
         y=filtered_means,
         height=np.array(filtered_sems),
-        beam=0.2,
-        pen={"color": "k", "width": 2},
+        beam=ERROR_BAR_BEAM,
+        pen={"color": ERROR_BAR_COLOR, "width": ERROR_BAR_WIDTH},
     )
     plot_item.addItem(error_bars)
 
@@ -745,13 +758,13 @@ def _create_pyqtgraph_bar_plot(
     rng = np.random.default_rng(42)
     for idx, fov_vals in enumerate(filtered_fov_values):
         # Add some jitter to x positions for visibility
-        x_positions = rng.normal(idx, 0.05, size=len(fov_vals))
+        x_positions = rng.normal(idx, FOV_SCATTER_JITTER, size=len(fov_vals))
         scatter = pg.ScatterPlotItem(
             x=x_positions,
             y=fov_vals,
-            size=6,
-            pen=pg.mkPen("k", width=1),
-            brush=pg.mkBrush("k"),
+            size=FOV_SCATTER_SIZE,
+            pen=pg.mkPen(ERROR_BAR_COLOR, width=FOV_SCATTER_PEN_WIDTH),
+            brush=pg.mkBrush(ERROR_BAR_COLOR),
         )
         plot_item.addItem(scatter)
 

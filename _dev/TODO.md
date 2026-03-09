@@ -7,12 +7,7 @@
     - https://www.scientifica.uk.com/learning-zone/how-to-compute-δf-f-from-calcium-imaging-data?utm_source=chatgpt.com
 
 
-
-- ‼ Multi-Plot ‼
-
 - I want to add to add to #sym:_ImageViewer the fact that if I keep pressed ctrl whyle clicking on the roi, I sulect multiple of them. I guess this would mean to update the #sym:valueChanged signal...what do you think? This will allow to hoghlight the traces for exaole in the plots of all the roi I highlight.
-
-- code and widget to load own label images for segmentation
 
 - export labels
 
@@ -24,9 +19,6 @@
 
 - fix: titles correlation are too long
 
-- add stim vs non-stim calcium peaks raster
-- add sotrted stim vs non-stim calcium and spikes heatmap to plots
-
 - test more gui stuff
 
 - create a general CaliReader object to handle different data types that can be used with the micromanager-gui tensorstore/ome zarr, with ome-zarr using yaozarrs and from tifffile for ome-tiff. even better would be to use bffile.
@@ -34,5 +26,3 @@
 - group tests
 
 - group in tabs the export options in analysis gui
-
-- we should also be able to export the data of the plots...so I think we need to add to the _SingleWellGraphWidget and _MultiWellGraphWidget a button to export the data of the plot as csv.

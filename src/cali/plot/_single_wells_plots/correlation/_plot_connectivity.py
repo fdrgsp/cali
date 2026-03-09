@@ -26,6 +26,10 @@ NODES_COLOR = (200, 200, 200, 255)  # light gray
 NODES_COLOR_OUTLINE = (50, 50, 50, 255)  # dark gray
 EDGE_COLOR = (100, 100, 100, 220)  # gray
 EDGE_WIDTH = 5
+EDGE_MIN_WIDTH = 1.0
+NODE_SIZE = 15.0
+NODE_OUTLINE_WIDTH = 1.0
+NODE_TEXT_SIZE = "10pt"
 
 
 def plot_connectivity_graph(
@@ -231,7 +235,7 @@ def _create_pyqtgraph_connectivity_item(
     weights: np.ndarray,
     roi_labels: Iterable[int],
     layout: str = "circular",
-    node_size: float = 15.0,
+    node_size: float = NODE_SIZE,
     roi_positions: np.ndarray | None = None,
 ) -> pg.GraphItem:
     """
@@ -297,14 +301,14 @@ def _create_pyqtgraph_connectivity_item(
 
     # 4) Edge widths
     edge_widths = _normalize_edge_widths(
-        edge_weights, min_width=1.0, max_width=EDGE_WIDTH
+        edge_weights, min_width=EDGE_MIN_WIDTH, max_width=EDGE_WIDTH
     )
 
     # 5) Node symbols/labels
     # symbolBrush: fill color
     brushes = [pg.mkBrush(*NODES_COLOR)] * n
     # symbolPen: outline
-    pens = [pg.mkPen(*NODES_COLOR_OUTLINE, width=1.0)] * n
+    pens = [pg.mkPen(*NODES_COLOR_OUTLINE, width=NODE_OUTLINE_WIDTH)] * n
 
     # Edge pens (one per edge)
     edge_pens = [pg.mkPen(*EDGE_COLOR, width=w) for w in edge_widths]
@@ -323,7 +327,7 @@ def _create_pyqtgraph_connectivity_item(
         pxMode=True,
         pens=edge_pens,
         texts=labels,
-        textSize="10pt",
+        textSize=NODE_TEXT_SIZE,
         data=roi_labels,  # Set per-point data for click handling
     )
 

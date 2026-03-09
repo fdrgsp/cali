@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 STIMULATED_COLOR = "green"
 NON_STIMULATED_COLOR = "magenta"
+STIMULATED_RGBA = (0, 255, 0, 255)
+NON_STIMULATED_RGBA = (255, 0, 255, 255)
+CONTOUR_COLOR = "yellow"
+CONTOUR_WIDTH = 2
+LEGEND_LINE_WIDTH = 2
 
 
 def _visualize_stimulated_area(
@@ -160,9 +165,9 @@ def _visualize_stimulated_area(
             mask_lbl = labels == lbl
             roi = next(r for r, _ in roi_data if r.label_value == lbl)
             if roi.stimulated:
-                color = (0, 255, 0, 255)  # green
+                color = STIMULATED_RGBA
             else:
-                color = (255, 0, 255, 255)  # magenta
+                color = NON_STIMULATED_RGBA
             img_rgba[mask_lbl] = color
 
         img_item = pg.ImageItem(img_rgba, axisOrder="row-major")
@@ -180,7 +185,7 @@ def _visualize_stimulated_area(
                 plot.plot(
                     c[:, 1],
                     c[:, 0],
-                    pen=pg.mkPen("yellow", width=2),
+                    pen=pg.mkPen(CONTOUR_COLOR, width=CONTOUR_WIDTH),
                 )
 
         plot.setTitle("Stimulated / Non-Stimulated ROI Masks")
@@ -190,13 +195,19 @@ def _visualize_stimulated_area(
             legend.clear()
 
             # Dummy items just to show colors in legend
-            stim_item = pg.PlotDataItem(pen=pg.mkPen(STIMULATED_COLOR, width=2))
-            non_stim_item = pg.PlotDataItem(pen=pg.mkPen(NON_STIMULATED_COLOR, width=2))
+            stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(STIMULATED_COLOR, width=LEGEND_LINE_WIDTH)
+            )
+            non_stim_item = pg.PlotDataItem(
+                pen=pg.mkPen(NON_STIMULATED_COLOR, width=LEGEND_LINE_WIDTH)
+            )
             legend.addItem(stim_item, "Stimulated ROIs")
             legend.addItem(non_stim_item, "Non-Stimulated ROIs")
 
             if stimulated_area and stim_mask is not None:
-                stim_area_item = pg.PlotDataItem(pen=pg.mkPen("yellow", width=2))
+                stim_area_item = pg.PlotDataItem(
+                    pen=pg.mkPen(CONTOUR_COLOR, width=LEGEND_LINE_WIDTH)
+                )
                 legend.addItem(stim_area_item, "Stimulation Area")
 
             legend.setVisible(True)
@@ -227,7 +238,9 @@ def _visualize_stimulated_area(
         # Legend: only stimulation area
         if legend is not None:
             legend.clear()
-            stim_area_item = pg.PlotDataItem(pen=pg.mkPen("yellow", width=2))
+            stim_area_item = pg.PlotDataItem(
+                pen=pg.mkPen(CONTOUR_COLOR, width=LEGEND_LINE_WIDTH)
+            )
             legend.addItem(stim_area_item, "Stimulation Area")
             legend.setVisible(True)
 

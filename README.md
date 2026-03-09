@@ -304,11 +304,29 @@ Available visualizations include:
 
 #### Multi Well Tab
 
-The Multi Well tab visualizes summary metrics across all wells/FOVs.
+The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a two-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means are combined into condition-level estimates weighted by sample size. Error bars represent pooled SEM, and individual FOV means are overlaid as scatter points.
 
 If the plate was treated with different conditions (e.g. drug vs control), clicking the **Show/Edit Plate Map** button under the plate layout opens a plate map editor where each well can be assigned to a condition. Currently, two condition dimensions are supported (e.g. genotype and treatment). This information is used to group wells/FOVs in the Multi Well tab. If no plate map is defined, data are shown on a per-well basis.
 
-TODO: [screenshot of the multi well visualization tab once implemented]
+Available multi-well visualizations include:
+
+- **Cell Properties**: % active cells, mean cell size, and per-condition stim/non-stim breakdowns (evoked experiments).
+- **Calcium Peaks**: amplitude, frequency, and inter-event interval (IEI) bar plots; stim-split amplitude and frequency (evoked experiments).
+- **Calcium Bursts**: population-level burst count, average duration, and average inter-burst interval.
+- **Inferred Spike Frequency**: thresholded and rising-edge variants; stim-split frequency (evoked experiments).
+- **Inferred Spike Bursts**: burst count, average duration, average interval, and burst rate.
+- **Calcium Correlation**: global Pearson correlation on ΔF/F and denoised ΔF/F traces.
+- **Spike Synchrony**: jitter-based synchrony (with rising-edge variant).
+- **Spike Correlation**: max-lag cross-correlation from CCG analysis (with rising-edge variant).
+- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2, measuring network connectivity density (with rising-edge variant).
+
+### CSV Export
+
+`cali` supports exporting analysis results to CSV files. When running the pipeline, the following export options are available in the **Extraction** and **Analysis** tabs:
+
+- **Trace Exports** (from Extraction tab): raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
+- **Correlation Matrix Exports** (from Analysis tab): pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
+- **Multi-Well Aggregated Data** (from Analysis tab): exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.
 
 <br>
 
