@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 # PLOT STYLE CONSTANTS
 SCATTER_SIZE = 7
+SINGLE_ROI_COLOR = "k"
 
 
 def _plot_inferred_spikes_frequency_data(
@@ -129,7 +130,7 @@ def _plot_inferred_spikes_frequency_data(
     # Determine colors based on number of ROIs
     n_rois = len(roi_labels)
     if n_rois == 1:
-        colors = ["k"]
+        colors = [SINGLE_ROI_COLOR]
     else:
         colors = [pg.intColor(i, hues=max(n_rois, 16)) for i in range(n_rois)]
 

@@ -1,12 +1,13 @@
-"""Evoked activity bar plots for multi-well analysis.
+"""Evoked activity utilities for multi-well analysis.
 
-This module provides bar plot visualizations for evoked experiments:
-- Stimulated peaks amplitude
-- Non-stimulated peaks amplitude
+This module provides query helpers for evoked experiments:
+- Query evoked amplitudes by condition from traces
+- Aggregate evoked amplitude data with LED power labels
 """
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -25,14 +26,11 @@ from cali.sqlmodel import (
 from ._util import (
     BarPlotData,
     _aggregate_fov_data_to_condition_stats,
-    _create_pyqtgraph_bar_plot,
     _get_condition_label,
 )
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
-
-    from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 
 
 def _query_evoked_amplitudes_by_condition(
@@ -168,8 +166,6 @@ def _aggregate_evoked_data_to_condition_stats(
 
                 # Extract numeric value for sorting
                 # Handle both "5.0%" and "5.000mW/cm²" formats
-                import re
-
                 numeric_match = re.search(r"(\d+\.?\d*)", power_str)
                 numeric_power = float(numeric_match.group(1)) if numeric_match else 0.0
 
@@ -197,83 +193,3 @@ def _aggregate_evoked_data_to_condition_stats(
 
     # Aggregate all flattened conditions
     return _aggregate_fov_data_to_condition_stats(sorted_flattened)
-
-
-def plot_stimulated_peaks_amplitude_bar_plot(
-    widget: _MultilWellGraphWidget,
-    text: str,
-    engine: Engine,
-    run_id: int | None = None,
-) -> None:
-    """Plot stimulated calcium peaks amplitude across conditions.
-
-    For evoked experiments. Creates separate plots for each LED power/pulse
-    combination.
-    """
-    # Query stimulated amplitudes
-    data_by_condition = _query_evoked_amplitudes_by_condition(
-        engine, stimulated=True, run_id=run_id
-    )
-
-    if not data_by_condition:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # Aggregate data (flattens power/pulse into condition names)
-    plot_data = _aggregate_evoked_data_to_condition_stats(data_by_condition)
-
-    if not plot_data["conditions"]:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # Create the plot
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="ΔF/F0",
-        title_suffix="",
-        bar_label="Weighted Mean ± Pooled SEM",
-    )
-
-
-def plot_non_stimulated_peaks_amplitude_bar_plot(
-    widget: _MultilWellGraphWidget,
-    text: str,
-    engine: Engine,
-    run_id: int | None = None,
-) -> None:
-    """Plot non-stimulated calcium peaks amplitude across conditions.
-
-    For evoked experiments. Creates separate plots for each LED power/pulse
-    combination.
-    """
-    # Query non-stimulated amplitudes
-    data_by_condition = _query_evoked_amplitudes_by_condition(
-        engine, stimulated=False, run_id=run_id
-    )
-
-    if not data_by_condition:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # Aggregate data (flattens power/pulse into condition names)
-    plot_data = _aggregate_evoked_data_to_condition_stats(data_by_condition)
-
-    if not plot_data["conditions"]:
-        widget.clear_plot()
-        widget.plot_widget.setTitle(f"{text}<br>(No Data)")
-        return
-
-    # Create the plot
-    _create_pyqtgraph_bar_plot(
-        widget=widget,
-        data=plot_data,
-        parameter=text,
-        units="ΔF/F0",
-        title_suffix="",
-        bar_label="Weighted Mean ± Pooled SEM",
-    )

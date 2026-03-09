@@ -8,6 +8,7 @@ Provides three cluster visualization types:
 
 from __future__ import annotations
 
+import colorsys
 import contextlib
 from typing import TYPE_CHECKING
 
@@ -42,13 +43,71 @@ CLUSTER_COLORS = [
     (23, 190, 207, 255),  # cyan
 ]
 
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def _make_n_cluster_colors(n: int) -> list[tuple[int, int, int, int]]:
+    """Return n visually distinct RGBA color tuples.
+
+    Uses the qualitative palette for the first entries; generates additional
+    golden-ratio HSV colors beyond that so no two clusters ever share a color.
+    """
+    if n <= 0:
+        return []
+    if n <= len(CLUSTER_COLORS):
+        return list(CLUSTER_COLORS[:n])
+
+    colors: list[tuple[int, int, int, int]] = list(CLUSTER_COLORS)
+    for i in range(n - len(CLUSTER_COLORS)):
+        h = (i * _GOLDEN_RATIO) % 1.0
+        s = 0.75 if i % 2 == 0 else 0.55
+        v = 0.85 if i % 3 != 2 else 0.65
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        colors.append((int(r * 255), int(g * 255), int(b * 255), 255))
+    return colors
+
+
 CORR_CMAP_NAME = "viridis"
 CORR_CMAP = pg.colormap.get(CORR_CMAP_NAME)
 
+# Cluster heatmap
+CLUSTER_BOUNDARY_COLOR = "w"
+CLUSTER_BOUNDARY_WIDTH = 2
 
-def _get_cluster_color(cluster_id: int) -> tuple[int, int, int, int]:
-    """Get color for a cluster, cycling through palette if needed."""
-    return CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
+# Cluster raster
+RASTER_SYMBOL = "s"
+RASTER_SYMBOL_SIZE = 3
+LEGEND_SYMBOL_SIZE = 8
+
+# Cluster connectivity graph
+NODE_SIZE = 15
+NODE_OUTLINE_WIDTH = 1.0
+NODE_TEXT_SIZE = "10pt"
+LEGEND_NODE_SIZE = 10
+
+# Cluster traces
+TRACE_WIDTH = 3
+TRACE_VERTICAL_SPACING = 1.1
+
+
+def _get_cluster_color(
+    cluster_id: int, n_total: int | None = None
+) -> tuple[int, int, int, int]:
+    """Get color for a cluster.
+
+    Parameters
+    ----------
+    cluster_id : int
+        Zero-based cluster index.
+    n_total : int | None
+        Total number of clusters.  When provided and greater than the
+        built-in palette size, distinct generated colors are used so that
+        no two clusters share the same color.
+    """
+    total = n_total if n_total is not None else len(CLUSTER_COLORS)
+    if total <= len(CLUSTER_COLORS):
+        return CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
+    return _make_n_cluster_colors(total)[cluster_id]
 
 
 def _get_cluster_data_from_db(
@@ -207,10 +266,11 @@ def _plot_cluster_sorted_correlation_heatmap(
 
     for b in boundaries:
         # Horizontal line
-        h_line = pg.InfiniteLine(pos=b, angle=0, pen=pg.mkPen("w", width=2))
+        boundary_pen = pg.mkPen(CLUSTER_BOUNDARY_COLOR, width=CLUSTER_BOUNDARY_WIDTH)
+        h_line = pg.InfiniteLine(pos=b, angle=0, pen=boundary_pen)
         plot.addItem(h_line)
         # Vertical line
-        v_line = pg.InfiniteLine(pos=b, angle=90, pen=pg.mkPen("w", width=2))
+        v_line = pg.InfiniteLine(pos=b, angle=90, pen=boundary_pen)
         plot.addItem(v_line)
 
     method_str = method or "unknown"
@@ -377,14 +437,14 @@ def _plot_cluster_colored_raster(
         if len(peaks) == 0:  # pragma: no cover
             continue
 
-        color = _get_cluster_color(cluster_id)
+        color = _get_cluster_color(cluster_id, n_total=n_clusters)
         scatter = pg.ScatterPlotItem(
             x=peaks,
             y=np.full(len(peaks), row_idx),
             pen=pg.mkPen(None),
             brush=pg.mkBrush(*color),
-            symbol="s",
-            size=3,
+            symbol=RASTER_SYMBOL,
+            size=RASTER_SYMBOL_SIZE,
         )
         plot.addItem(scatter)
 
@@ -392,13 +452,13 @@ def _plot_cluster_colored_raster(
     if n_clusters:
         widget.legend.clear()
         for c in range(n_clusters):
-            color = _get_cluster_color(c)
+            color = _get_cluster_color(c, n_total=n_clusters)
             widget.legend.addItem(
                 pg.ScatterPlotItem(
                     pen=pg.mkPen(None),
                     brush=pg.mkBrush(*color),
-                    symbol="s",
-                    size=8,
+                    symbol=RASTER_SYMBOL,
+                    size=LEGEND_SYMBOL_SIZE,
                 ),
                 f"Cluster {c}",
             )
@@ -518,21 +578,27 @@ def _plot_cluster_connectivity_graph(
     )
 
     # Node appearance: each cluster gets a distinct color
-    brushes = [pg.mkBrush(*_get_cluster_color(cl)) for cl in cluster_labels_f]
-    pens = [pg.mkPen(50, 50, 50, 255, width=1.0)] * n
+    n_total_clusters = (
+        n_clusters if n_clusters is not None else len(set(cluster_labels_f))
+    )
+    brushes = [
+        pg.mkBrush(*_get_cluster_color(cl, n_total=n_total_clusters))
+        for cl in cluster_labels_f
+    ]
+    pens = [pg.mkPen(50, 50, 50, 255, width=NODE_OUTLINE_WIDTH)] * n
     text_labels = [str(lbl) for lbl in roi_labels_f]
 
     graph_item = pg.GraphItem()
     graph_item.setData(
         pos=pos,
         adj=np.empty((0, 2), dtype=int),  # no edges — color conveys grouping
-        size=15,
+        size=NODE_SIZE,
         symbol="o",
         symbolBrush=brushes,
         symbolPen=pens,
         pxMode=True,
         texts=text_labels,
-        textSize="10pt",
+        textSize=NODE_TEXT_SIZE,
         data=list(roi_labels_f),
     )
     plot.addItem(graph_item)
@@ -542,13 +608,13 @@ def _plot_cluster_connectivity_graph(
     if unique_clusters:
         widget.legend.clear()
         for c in unique_clusters:
-            color = _get_cluster_color(c)
+            color = _get_cluster_color(c, n_total=n_total_clusters)
             widget.legend.addItem(
                 pg.ScatterPlotItem(
                     pen=pg.mkPen(None),
                     brush=pg.mkBrush(*color),
                     symbol="o",
-                    size=10,
+                    size=LEGEND_NODE_SIZE,
                 ),
                 f"Cluster {c}",
             )
@@ -678,19 +744,19 @@ def _plot_cluster_colored_traces(
         else:
             trace_norm = np.zeros_like(trace)
 
-        color = _get_cluster_color(cluster_id)
+        color = _get_cluster_color(cluster_id, n_total=n_clusters)
         x = np.arange(len(trace_norm))
-        plot.plot(x, trace_norm + offset, pen=pg.mkPen(color, width=1))
+        plot.plot(x, trace_norm + offset, pen=pg.mkPen(color, width=TRACE_WIDTH))
         plotted_roi_labels.append(_roi.label_value)
-        offset += 1.1  # vertical spacing between traces
+        offset += TRACE_VERTICAL_SPACING
 
     # Add legend
     if n_clusters:
         widget.legend.clear()
         for c in range(n_clusters):
-            color = _get_cluster_color(c)
+            color = _get_cluster_color(c, n_total=n_clusters)
             widget.legend.addItem(
-                pg.PlotDataItem(pen=pg.mkPen(color, width=2)),
+                pg.PlotDataItem(pen=pg.mkPen(color, width=TRACE_WIDTH)),
                 f"Cluster {c}",
             )
         widget.legend.setVisible(True)
@@ -717,7 +783,9 @@ def _plot_cluster_colored_traces(
             return
         mouse_point = _vb.mapSceneToView(pos)
         # Traces are spaced 1.1 apart starting at offset 0
-        row_idx = max(0, min(n_plotted - 1, round(mouse_point.y() / 1.1)))
+        row_idx = max(
+            0, min(n_plotted - 1, round(mouse_point.y() / TRACE_VERTICAL_SPACING))
+        )
         if 0 <= row_idx < n_plotted:
             widget.roiSelected.emit(str(plotted_roi_labels[row_idx]))
 

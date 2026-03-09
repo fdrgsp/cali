@@ -5,7 +5,8 @@ Common functions used across multiple plot types.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+import colorsys
+from typing import TYPE_CHECKING, Callable, TypedDict
 
 import numpy as np
 import pyqtgraph as pg
@@ -19,6 +20,19 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+
+
+# PLOT STYLE CONSTANTS
+EVK_STIM_COLOR = "green"
+EVK_NON_STIM_COLOR = "magenta"
+DEFAULT_CONDITION_COLOR = "gray"
+BAR_WIDTH = 0.6
+ERROR_BAR_BEAM = 0.2
+ERROR_BAR_COLOR = "k"
+ERROR_BAR_WIDTH = 2
+FOV_SCATTER_SIZE = 6
+FOV_SCATTER_PEN_WIDTH = 1
+FOV_SCATTER_JITTER = 0.05
 
 
 def _get_default_color(condition: str) -> str:
@@ -35,32 +49,114 @@ def _get_default_color(condition: str) -> str:
         Color name: "green" for evk_stim, "magenta" for evk_non_stim, "gray" otherwise
     """
     if condition.endswith(EVK_STIM):
-        return "green"
+        return EVK_STIM_COLOR
     elif condition.endswith(EVK_NON_STIM):
-        return "magenta"
+        return EVK_NON_STIM_COLOR
     else:
-        return "gray"
+        return DEFAULT_CONDITION_COLOR
+
+
+# Palette of visually distinct colors used when no specific color is assigned.
+_CONDITION_PALETTE = [
+    "#1f77b4",  # muted blue
+    "#ff7f0e",  # safety orange
+    "#2ca02c",  # cooked asparagus green
+    "#d62728",  # brick red
+    "#9467bd",  # muted purple
+    "#8c564b",  # chestnut brown
+    "#e377c2",  # raspberry yogurt pink
+    "#7f7f7f",  # middle gray
+    "#bcbd22",  # curry yellow-green
+    "#17becf",  # blue-teal
+]
+
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def _make_n_colors(n: int) -> list[str]:
+    """Return n visually distinct hex color strings.
+
+    Uses the qualitative palette for the first entries; generates additional
+    evenly-spaced HSV colors (golden-ratio hue steps) beyond that so that no
+    two conditions ever share the same color regardless of how many there are.
+    """
+    if n <= 0:
+        return []
+    if n <= len(_CONDITION_PALETTE):
+        return list(_CONDITION_PALETTE[:n])
+
+    colors = list(_CONDITION_PALETTE)
+    for i in range(n - len(_CONDITION_PALETTE)):
+        h = (i * _GOLDEN_RATIO) % 1.0
+        s = 0.75 if i % 2 == 0 else 0.55
+        v = 0.85 if i % 3 != 2 else 0.65
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        colors.append(f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}")
+    return colors
 
 
 def _get_default_conditions(
     conditions: list[str],
+    multicolor: bool = False,
+    override_color: str | None = None,
 ) -> dict[str, dict[str, bool | str]]:
     """Create default conditions dict with colors based on condition names.
+
+    EVK_STIM conditions always get green, EVK_NON_STIM always get magenta.
+
+    For all other conditions:
+    - When `override_color` is set, all conditions use that fixed color (e.g.
+      `"green"` for the stim-only bar plot, `"magenta"` for non-stim).
+    - When `multicolor=False` (default, used by bar plots): every
+      non-EVK condition gets "gray".  This keeps bar plots visually neutral
+      so that only the stimulation-split variants use colour.
+    - When `multicolor=True` (used by scatter / PCA plots): each non-EVK
+      condition is assigned a distinct colour from the palette so that
+      different conditions are visually distinguishable in the scatter space.
 
     Parameters
     ----------
     conditions : list[str]
         List of condition names
+    multicolor : bool
+        When True, assign distinct palette colours to non-EVK conditions.
+        When False (default), assign "gray" to all non-EVK conditions.
+    override_color : str | None
+        When set, every condition receives this color regardless of its name.
+        Takes precedence over both `multicolor` and the EVK special colors.
 
     Returns
     -------
     dict[str, dict[str, bool | str]]
         Dictionary mapping condition name to dict with 'visible' and 'color' keys
     """
-    return {
-        cond: {"visible": True, "color": _get_default_color(cond)}
-        for cond in conditions
-    }
+    result: dict[str, dict[str, bool | str]] = {}
+
+    if override_color is not None:
+        for cond in conditions:
+            result[cond] = {"visible": True, "color": override_color}
+        return result
+
+    if multicolor:
+        # Pre-compute enough distinct colors for all non-EVK conditions so
+        # that no two conditions ever share a color, even beyond 10.
+        non_evk_count = sum(1 for c in conditions if _get_default_color(c) == "gray")
+        extra_colors = _make_n_colors(non_evk_count)
+        palette_idx = 0
+        for cond in conditions:
+            color = _get_default_color(cond)
+            if color == "gray":
+                color = extra_colors[palette_idx]
+                palette_idx += 1
+            result[cond] = {"visible": True, "color": color}
+    else:
+        # Bar-plot mode: non-EVK conditions are always gray; only
+        # stim/non-stim labels carry the green/magenta signal.
+        for cond in conditions:
+            color = _get_default_color(cond)
+            result[cond] = {"visible": True, "color": color}
+
+    return result
 
 
 class BarPlotData(TypedDict):
@@ -127,6 +223,32 @@ def _get_condition_label(
     return base_label
 
 
+def _get_experiment_type(session: Session, run_id: int) -> str | None:
+    """Look up experiment_type for a given CaliResult run_id.
+
+    Parameters
+    ----------
+    session : Session
+        Active database session.
+    run_id : int
+        CaliResult id.
+
+    Returns
+    -------
+    str | None
+        The experiment type (e.g., "Spontaneous Activity", "Evoked Activity"),
+        or None if not found.
+    """
+    from cali.sqlmodel import CaliResult
+
+    stmt = (
+        select(AnalysisSettings.experiment_type)
+        .join(CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id)
+        .where(CaliResult.id == run_id)
+    )
+    return session.exec(stmt).first()  # type: ignore
+
+
 def _query_roi_parameter_by_condition(
     engine: Engine,
     parameter: str,
@@ -156,16 +278,7 @@ def _query_roi_parameter_by_condition(
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
         if include_stim_status and run_id is not None:
-            from cali.sqlmodel import CaliResult
-
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # Build query - start from DataAnalysis and join backwards
         stmt = (
@@ -236,16 +349,7 @@ def _query_roi_attribute_by_condition(
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
         if include_stim_status and run_id is not None:
-            from cali.sqlmodel import CaliResult
-
-            stmt_exp_type = (
-                select(AnalysisSettings.experiment_type)
-                .join(
-                    CaliResult, CaliResult.analysis_settings_id == AnalysisSettings.id
-                )
-                .where(CaliResult.id == run_id)
-            )
-            experiment_type = session.exec(stmt_exp_type).first()
+            experiment_type = _get_experiment_type(session, run_id)
 
         # Build query from ROI table
         stmt = (
@@ -289,88 +393,21 @@ def _query_roi_attribute_by_condition(
     return data
 
 
-def _compute_weighted_mean_and_pooled_sem(
-    fov_means: np.ndarray,
-    fov_sems: np.ndarray,
-    fov_ns: np.ndarray,
-) -> tuple[float, float]:
-    """Compute weighted mean and pooled SEM from FOV-level statistics.
-
-    Parameters
-    ----------
-    fov_means : np.ndarray
-        Array of means per FOV
-    fov_sems : np.ndarray
-        Array of SEMs per FOV
-    fov_ns : np.ndarray
-        Array of sample sizes per FOV
-
-    Returns
-    -------
-    tuple[float, float]
-        (weighted_mean, pooled_sem)
-    """
-    total_n = fov_ns.sum()
-
-    if total_n <= 1:
-        weighted_mean = float(fov_means.mean()) if len(fov_means) > 0 else 0.0
-        pooled_sem = 0.0
-    else:
-        # Weighted mean
-        weighted_mean = float(np.sum(fov_means * fov_ns) / total_n)
-
-        # Pooled SEM: sqrt(sum(SEM^2 * N) / total_N)
-        pooled_sem = float(np.sqrt(np.sum((fov_sems**2) * fov_ns) / total_n))
-
-    return weighted_mean, pooled_sem
-
-
-def _compute_binomial_sem(
-    fov_percentages: np.ndarray,
-    fov_ns: np.ndarray,
-) -> tuple[float, float]:
-    """Compute weighted mean and binomial SEM for percentage data.
-
-    Parameters
-    ----------
-    fov_percentages : np.ndarray
-        Array of percentages per FOV (0-100 scale)
-    fov_ns : np.ndarray
-        Array of sample sizes per FOV
-
-    Returns
-    -------
-    tuple[float, float]
-        (weighted_mean_percentage, binomial_sem_percentage)
-    """
-    total_n = fov_ns.sum()
-
-    if total_n <= 1:
-        weighted_mean = (
-            float(fov_percentages.mean()) if len(fov_percentages) > 0 else 0.0
-        )
-        binomial_sem = 0.0
-    else:
-        # Convert percentages to proportions for calculation
-        fov_proportions = fov_percentages / 100.0
-
-        # Weighted mean proportion
-        weighted_p = float(np.sum(fov_proportions * fov_ns) / total_n)
-
-        # Binomial SEM: sqrt(p(1-p)/n)
-        binomial_sem = float(np.sqrt(weighted_p * (1 - weighted_p) / total_n) * 100)
-        weighted_mean = weighted_p * 100
-
-    return weighted_mean, binomial_sem
-
-
 def _aggregate_fov_data_to_condition_stats(
     data_by_condition: dict[str, dict[str, list[float]]],
 ) -> BarPlotData:
-    """Aggregate FOV-level data to condition-level statistics.
+    """Aggregate ROI-level data to condition-level statistics.
 
-    Computes mean and SEM for each FOV, then computes weighted mean
-    and pooled SEM across FOVs within each condition.
+    Two-level hierarchical aggregation:
+
+    **Step 1 — ROI → FOV**: For each FOV, all ROI values are averaged to produce
+    a single FOV mean.  The FOV-level SEM is `std(roi_values, ddof=1) / sqrt(n)`.
+
+    **Step 2 — FOV → Condition**: FOV means are combined into a weighted average
+    where each FOV is weighted by its number of ROIs (so FOVs with more cells
+    contribute proportionally more).  The condition-level SEM is a pooled SEM:
+    the squared FOV SEMs are weighted by their ROI counts, summed, and the
+    square root of the weighted average is taken.
 
     Parameters
     ----------
@@ -391,18 +428,17 @@ def _aggregate_fov_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        # Compute mean and SEM for each FOV
-        fov_means_list = []
-        fov_sems_list = []
-        fov_ns_list = []
+        # Step 1: ROI → FOV (compute per-FOV mean, SEM, and ROI count)
+        fov_means_list: list[float] = []
+        fov_sems_list: list[float] = []
+        fov_n_list: list[int] = []
 
         for _fov_name, roi_values in fov_dict.items():
             if not roi_values:
                 continue
 
             # Flatten if values are lists (e.g., peaks_amplitudes_den_dff, iei)
-            # Some parameters return lists per ROI, we need to flatten them
-            flat_values = []
+            flat_values: list[float] = []
             for val in roi_values:
                 if isinstance(val, (list, np.ndarray)):
                     flat_values.extend(val)
@@ -412,31 +448,119 @@ def _aggregate_fov_data_to_condition_stats(
             if not flat_values:
                 continue
 
-            values_arr = np.array(flat_values)
-            n = len(values_arr)
-            fov_mean = float(values_arr.mean())
-            fov_sem = float(values_arr.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+            arr = np.asarray(flat_values, dtype=float)
+            n = len(arr)
+            fov_mean = float(np.mean(arr))
+            fov_sem = float(np.std(arr, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
 
             fov_means_list.append(fov_mean)
             fov_sems_list.append(fov_sem)
-            fov_ns_list.append(n)
+            fov_n_list.append(n)
 
         if not fov_means_list:
             continue
 
         fov_means = np.array(fov_means_list)
         fov_sems = np.array(fov_sems_list)
-        fov_ns = np.array(fov_ns_list)
+        fov_n = np.array(fov_n_list, dtype=float)
 
-        # Compute weighted mean and pooled SEM
-        weighted_mean, pooled_sem = _compute_weighted_mean_and_pooled_sem(
-            fov_means, fov_sems, fov_ns
-        )
+        # Step 2: FOV → Condition (weighted mean + pooled SEM)
+        total_n = fov_n.sum()
+        condition_mean = float(np.dot(fov_n, fov_means) / total_n)
+        condition_sem = float(np.sqrt(np.dot(fov_n, fov_sems**2) / total_n))
 
         conditions.append(cond_label)
-        means.append(weighted_mean)
-        sems.append(pooled_sem)
+        means.append(condition_mean)
+        sems.append(condition_sem)
         fov_values_list.append(fov_means)
+
+    return BarPlotData(
+        conditions=conditions,
+        means=means,
+        sems=sems,
+        fov_values_list=fov_values_list,
+    )
+
+
+def _aggregate_fov_scalar_to_condition_stats(
+    data_by_condition: dict[str, dict[str, tuple[float, int]]],
+) -> BarPlotData:
+    """Aggregate FOV-level scalar metrics to condition-level statistics.
+
+    Unlike ``_aggregate_fov_data_to_condition_stats`` which computes
+    **within-FOV** variability (across ROIs), this function computes
+    **between-FOV** variability — the correct approach when each FOV
+    contributes a single scalar value (e.g. mean correlation, synchrony,
+    burst count).
+
+    Each FOV scalar is weighted by *weight* (typically the number of
+    unique ROI pairs ``n*(n-1)/2`` for correlation metrics, or ``1`` for
+    unweighted metrics like burst count).
+
+    Weighted mean::
+
+        x̄ = Σ(w_i · x_i) / Σ(w_i)
+
+    Weighted sample variance (reliability weights)::
+
+        s² = Σ(w_i · (x_i - x̄)²) / (Σw - Σw²/Σw)
+
+    SEM = sqrt(s² / M), where M is the number of FOVs.
+
+    Parameters
+    ----------
+    data_by_condition : dict[str, dict[str, tuple[float, int]]]
+        Nested dict: ``{condition: {fov_name: (scalar_value, weight)}}``.
+        Weight is typically ``n_pairs`` for correlation/synchrony metrics
+        or ``1`` for unweighted metrics (e.g. burst count).
+
+    Returns
+    -------
+    BarPlotData
+        Aggregated data ready for plotting.
+    """
+    conditions: list[str] = []
+    means: list[float] = []
+    sems: list[float] = []
+    fov_values_list: list[np.ndarray] = []
+
+    for cond_label, fov_dict in data_by_condition.items():
+        if not fov_dict:
+            continue
+
+        values: list[float] = []
+        weights: list[float] = []
+        for _fov_name, (scalar, weight) in fov_dict.items():
+            values.append(scalar)
+            weights.append(float(weight))
+
+        if not values:
+            continue
+
+        x = np.array(values)
+        w = np.array(weights, dtype=float)
+        m = len(x)
+        w_sum = w.sum()
+
+        # Weighted mean
+        cond_mean = float(np.dot(w, x) / w_sum) if w_sum > 0 else 0.0
+
+        # Between-FOV weighted SEM
+        if m > 1 and w_sum > 0:
+            # Reliability-weighted sample variance
+            denom = w_sum - np.dot(w, w) / w_sum
+            if denom > 0:
+                var_w = float(np.dot(w, (x - cond_mean) ** 2) / denom)
+            else:
+                var_w = 0.0
+            cond_sem = float(np.sqrt(var_w / m))
+        else:
+            cond_sem = 0.0
+
+        conditions.append(cond_label)
+        means.append(cond_mean)
+        sems.append(cond_sem)
+        fov_values_list.append(x)
 
     return BarPlotData(
         conditions=conditions,
@@ -451,12 +575,20 @@ def _aggregate_percentage_data_to_condition_stats(
 ) -> BarPlotData:
     """Aggregate FOV-level percentage data to condition-level statistics.
 
-    Uses binomial statistics for percentage data.
+    Uses a binomial error model because the quantity is a proportion.
+
+    **Step 1 — ROI → FOV**: percentage = active / total * 100.
+
+    **Step 2 — FOV → Condition**: FOV percentages are combined into a weighted
+    mean proportion (weighted by total ROI count per FOV).  The error bar is
+    the binomial SEM: `sqrt(p * (1 - p) / N) * 100` where *p* is the
+    weighted proportion (0-1) and *N* is the total number of ROIs across all
+    FOVs in the condition.
 
     Parameters
     ----------
     data_by_condition : dict[str, dict[str, tuple[float, int]]]
-        Nested dict: {condition: {fov: (percentage, n)}}
+        Nested dict: {condition: {fov: (percentage, n_total_rois)}}
 
     Returns
     -------
@@ -472,25 +604,32 @@ def _aggregate_percentage_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        fov_percentages_list = []
-        fov_ns_list = []
+        fov_percentages_list: list[float] = []
+        fov_n_list: list[int] = []
 
         for _fov_name, (percentage, n) in fov_dict.items():
             fov_percentages_list.append(percentage)
-            fov_ns_list.append(n)
+            fov_n_list.append(n)
 
         if not fov_percentages_list:
             continue
 
         fov_percentages = np.array(fov_percentages_list)
-        fov_ns = np.array(fov_ns_list)
+        fov_n = np.array(fov_n_list, dtype=float)
+        total_n = fov_n.sum()
 
-        # Compute weighted mean and binomial SEM
-        weighted_mean, binomial_sem = _compute_binomial_sem(fov_percentages, fov_ns)
+        # Weighted mean proportion (in %)
+        mean_pct = float(np.dot(fov_n, fov_percentages) / total_n)
+
+        # Binomial SEM (convert to 0-1 proportion for the formula)
+        p = mean_pct / 100.0
+        sem_pct = (
+            float(np.sqrt(p * (1.0 - p) / total_n) * 100.0) if total_n > 0 else 0.0
+        )
 
         conditions.append(cond_label)
-        means.append(weighted_mean)
-        sems.append(binomial_sem)
+        means.append(mean_pct)
+        sems.append(sem_pct)
         fov_values_list.append(fov_percentages)
 
     return BarPlotData(
@@ -501,13 +640,32 @@ def _aggregate_percentage_data_to_condition_stats(
     )
 
 
+class _BarTickLabel(pg.TextItem):
+    """TextItem that reports data bounds so autorange includes label space."""
+
+    def __init__(self, *args: object, y_extent: float = 0, **kw: object) -> None:
+        super().__init__(*args, **kw)
+        self._y_extent = y_extent
+
+    def dataBounds(
+        self, ax: int, frac: float = 1.0, orthoRange: object = None
+    ) -> tuple[float, float] | None:
+        if ax == 0:
+            x = self.pos().x()
+            return (x, x)
+        if ax == 1:
+            return (self._y_extent, 0.0)
+        return None
+
+
 def _create_pyqtgraph_bar_plot(
     widget: _MultilWellGraphWidget,
     data: BarPlotData,
     parameter: str,
     units: str = "",
     title_suffix: str = "",
-    bar_label: str = "Weighted Mean ± Pooled SEM",
+    bar_label: str = "Mean ± SEM (per FOV)",
+    override_color: str | None = None,
 ) -> None:
     """Create a bar plot with pyqtgraph.
 
@@ -525,10 +683,20 @@ def _create_pyqtgraph_bar_plot(
         Additional text to append to title
     bar_label : str
         Label for the bar in the legend
+    override_color : str | None
+        When set, all bars are painted this color regardless of condition names.
+        Use `"green"` for stim-only plots and `"magenta"` for non-stim plots.
     """
     # Filter based on condition toggles and respect user-defined order
     cond_list: dict[str, dict[str, bool | str]] = widget.conditions
-    if not cond_list or len(cond_list) != len(data["conditions"]):
+    if override_color is not None:
+        # Always re-initialize with the fixed override color so the bars
+        # are always the right color regardless of cached state.
+        cond_list = _get_default_conditions(
+            data["conditions"], override_color=override_color
+        )
+        widget.conditions = cond_list
+    elif not cond_list or len(cond_list) != len(data["conditions"]):
         # Initialize all conditions as enabled with default colors
         cond_list = _get_default_conditions(data["conditions"])
         widget.conditions = cond_list
@@ -571,7 +739,7 @@ def _create_pyqtgraph_bar_plot(
     bar_graph = BarGraphItem(
         x=x,
         height=filtered_means,
-        width=0.6,
+        width=BAR_WIDTH,
         brushes=[pg.mkBrush(color) for color in filtered_colors],
     )
     plot_item.addItem(bar_graph)
@@ -581,57 +749,80 @@ def _create_pyqtgraph_bar_plot(
         x=x,
         y=filtered_means,
         height=np.array(filtered_sems),
-        beam=0.2,
-        pen={"color": "k", "width": 2},
+        beam=ERROR_BAR_BEAM,
+        pen={"color": ERROR_BAR_COLOR, "width": ERROR_BAR_WIDTH},
     )
     plot_item.addItem(error_bars)
 
     # Add scatter points for individual FOV values
+    rng = np.random.default_rng(42)
     for idx, fov_vals in enumerate(filtered_fov_values):
         # Add some jitter to x positions for visibility
-        x_positions = np.random.normal(idx, 0.05, size=len(fov_vals))
+        x_positions = rng.normal(idx, FOV_SCATTER_JITTER, size=len(fov_vals))
         scatter = pg.ScatterPlotItem(
             x=x_positions,
             y=fov_vals,
-            size=6,
-            pen=pg.mkPen("k", width=1),
-            brush=pg.mkBrush("k"),
+            size=FOV_SCATTER_SIZE,
+            pen=pg.mkPen(ERROR_BAR_COLOR, width=FOV_SCATTER_PEN_WIDTH),
+            brush=pg.mkBrush(ERROR_BAR_COLOR),
         )
         plot_item.addItem(scatter)
 
-    # Set up axes with abbreviated labels if needed
+    # Hide default axis tick labels and add rotated TextItem labels instead
     bottom_axis = plot_item.getAxis("bottom")
-
-    # Create abbreviated condition labels to prevent overlap
-    # Use newlines to wrap long labels instead of rotation
-    abbreviated_conditions = []
-    for cond in filtered_conditions:
-        # Split on underscores and create multi-line labels
-        parts = cond.split("_")
-        if len(parts) > 2:
-            # Create label with line breaks for readability
-            abbreviated = "_".join(parts[:2]) + "\n" + "_".join(parts[2:])
-        else:
-            abbreviated = cond
-        abbreviated_conditions.append(abbreviated)
-
-    bottom_axis.setTicks(
-        [[(i, label) for i, label in enumerate(abbreviated_conditions)]]
-    )
-    # Increase tick text height to accommodate multi-line labels
-    # Also increase bottom spacing to prevent clipping at canvas edge
-    bottom_axis.setStyle(tickTextHeight=65)
-    bottom_axis.setHeight(80)  # Reserve more space for the bottom axis
+    bottom_axis.setTicks([[(i, "") for i in range(len(filtered_conditions))]])
+    bottom_axis.setStyle(showValues=False)
+    # Estimate label extent in data coords so autorange includes them
+    y_max = max((m + s for m, s in zip(filtered_means, filtered_sems)), default=1.0)
+    label_y_extent = -y_max * 0.35
+    for i, cond in enumerate(filtered_conditions):
+        label = _BarTickLabel(
+            text=cond,
+            angle=45,
+            anchor=(1, 0),
+            color="k",
+            y_extent=label_y_extent,
+        )
+        label.setPos(i, 0)
+        plot_item.addItem(label)
 
     units_text = f" ({units})" if units else ""
     plot_item.setLabel("left", f"{parameter}{units_text}")
 
     # Set title
-    title = f"{parameter} per Condition{title_suffix}"
+    title_error = f" — {bar_label}" if bar_label else ""
+    title = f"{parameter} per Condition{title_suffix}{title_error}"
     plot_item.setTitle(title)
 
     # Add grid
     plot_item.showGrid(x=False, y=True, alpha=0.3)
+
+
+def make_parameter_compute_fn(
+    parameter: str,
+    units: str,
+    name: str,
+    include_stim_status: bool = False,
+) -> Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]:
+    """Create a headless compute function for a standard parameter bar plot.
+
+    Returns a callable (engine, run_id) -> (BarPlotData, name, units) | None.
+    """
+
+    def _compute(
+        engine: Engine, run_id: int | None
+    ) -> tuple[BarPlotData, str, str] | None:
+        data_by_condition = _query_roi_parameter_by_condition(
+            engine, parameter, run_id, include_stim_status=include_stim_status
+        )
+        if not data_by_condition:
+            return None
+        plot_data = _aggregate_fov_data_to_condition_stats(data_by_condition)
+        if not plot_data["conditions"]:
+            return None
+        return plot_data, name, units
+
+    return _compute
 
 
 def plot_parameter_bar_plot(
@@ -642,6 +833,7 @@ def plot_parameter_bar_plot(
     parameter: str = "",
     units: str = "",
     title_suffix: str = "",
+    include_stim_status: bool = False,
 ) -> None:
     """Plot a bar plot for a given parameter across conditions.
 
@@ -661,13 +853,17 @@ def plot_parameter_bar_plot(
         Units for Y-axis label
     title_suffix : str
         Suffix to append to plot title (e.g., "(Median)")
+    include_stim_status : bool
+        If True, condition labels include stim/non-stim split (evoked plots only).
     """
     if not parameter:
         widget.clear_plot()
         return
 
     # Query data grouped by condition
-    data_by_condition = _query_roi_parameter_by_condition(engine, parameter, run_id)
+    data_by_condition = _query_roi_parameter_by_condition(
+        engine, parameter, run_id, include_stim_status=include_stim_status
+    )
 
     if not data_by_condition:
         widget.clear_plot()
@@ -687,5 +883,5 @@ def plot_parameter_bar_plot(
         parameter=text,
         units=units,
         title_suffix=title_suffix,
-        bar_label="Weighted Mean ± Pooled SEM",
+        bar_label="Mean ± SEM (per FOV)",
     )

@@ -3,9 +3,9 @@
 [![CI](https://github.com/fdrgsp/cali/actions/workflows/ci.yml/badge.svg)](https://github.com/fdrgsp/cali/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/fdrgsp/cali/branch/main/graph/badge.svg)](https://codecov.io/gh/fdrgsp/cali)
 
-A Gui for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WIP 🚧)
+A GUI for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WIP 🚧)
 
-`cali` is package that provides a gui to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
+`cali` is package that provides a GUI to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
 <img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
@@ -304,11 +304,29 @@ Available visualizations include:
 
 #### Multi Well Tab
 
-The Multi Well tab visualizes summary metrics across all wells/FOVs.
+The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a two-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means are combined into condition-level estimates weighted by sample size. Error bars represent pooled SEM, and individual FOV means are overlaid as scatter points.
 
 If the plate was treated with different conditions (e.g. drug vs control), clicking the **Show/Edit Plate Map** button under the plate layout opens a plate map editor where each well can be assigned to a condition. Currently, two condition dimensions are supported (e.g. genotype and treatment). This information is used to group wells/FOVs in the Multi Well tab. If no plate map is defined, data are shown on a per-well basis.
 
-TODO: [screenshot of the multi well visualization tab once implemented]
+Available multi-well visualizations include:
+
+- **Cell Properties**: % active cells, mean cell size, and per-condition stim/non-stim breakdowns (evoked experiments).
+- **Calcium Peaks**: amplitude, frequency, and inter-event interval (IEI) bar plots; stim-split amplitude and frequency (evoked experiments).
+- **Calcium Bursts**: population-level burst count, average duration, and average inter-burst interval.
+- **Inferred Spike Frequency**: thresholded and rising-edge variants; stim-split frequency (evoked experiments).
+- **Inferred Spike Bursts**: burst count, average duration, average interval, and burst rate.
+- **Calcium Correlation**: global Pearson correlation on ΔF/F and denoised ΔF/F traces.
+- **Spike Synchrony**: jitter-based synchrony (with rising-edge variant).
+- **Spike Correlation**: max-lag cross-correlation from CCG analysis (with rising-edge variant).
+- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2, measuring network connectivity density (with rising-edge variant).
+
+### CSV Export
+
+`cali` supports exporting analysis results to CSV files. When running the pipeline, the following export options are available in the **Extraction** and **Analysis** tabs:
+
+- **Trace Exports** (from Extraction tab): raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
+- **Correlation Matrix Exports** (from Analysis tab): pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
+- **Multi-Well Aggregated Data** (from Analysis tab): exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.
 
 <br>
 
@@ -655,3 +673,57 @@ where $a_i$ is the mean intra-cluster distance for ROI $i$ and $b_i$ is the mean
 
 - **Number of Clusters**: set to `0` (Auto) to detect the optimal K via silhouette scoring, or enter a positive integer to force a fixed cluster count.
 - **Auto-detect Max K**: upper bound of the silhouette-score scan (only active when Number of Clusters = 0). The scan evaluates every K from 2 up to this value.
+
+---
+
+### Multi-Well Condition Analysis
+
+The **Multi Well** tab displays condition-level summaries of analysis metrics, aggregating data from all wells and FOVs that share the same condition assignment. The aggregation follows a two-level hierarchical approach to correctly account for the nested structure of the data (ROIs within FOVs, FOVs within conditions).
+
+#### Condition Labels
+
+Conditions labels are defined via the plate map editor in the GUI. For `Evoked Activity` experiments, condition labels can optionally include the stimulation status of each ROI (e.g., `ctrl_stim` vs `ctrl_non_stim`), enabling a direct comparison between stimulated and non-stimulated populations within the same condition.
+
+#### Two-Level Aggregation
+
+For each metric, data are aggregated in two steps:
+
+**Step 1 — ROI → FOV**
+
+For each FOV, the values of all active ROIs are collected and averaged to produce a single FOV mean. The FOV-level standard error of the mean (SEM) is computed from the unbiased standard deviation of those ROI values divided by the square root of the number of active ROIs.
+
+**Step 2 — FOV → Condition**
+
+FOV-level means are then combined into a single condition-level estimate. The condition mean is computed as a weighted average of FOV means, where each FOV is weighted by its number of active ROIs — so FOVs with more cells contribute more to the overall estimate. The condition-level SEM is computed as a pooled SEM: the squared FOV SEMs are each weighted by their respective ROI counts, summed, and the square root of the weighted average is taken. This propagates the per-FOV uncertainty into the condition-level error bar.
+
+The individual FOV means are overlaid on each bar as scatter points, providing direct visibility into within-condition variability.
+
+#### Percentage Metrics
+
+For the **% Active Cells** metric, a binomial error model is used in place of the standard SEM, because the quantity is a proportion (number of active ROIs out of total ROIs per FOV).
+
+**Step 1 — ROI → FOV**: for each FOV, the percentage of active ROIs is computed as the number of active ROIs divided by the total number of ROIs, multiplied by 100.
+
+**Step 2 — FOV → Condition**: FOV percentages are combined into a weighted mean proportion, where each FOV is weighted by its total ROI count. The error bar is the binomial SEM: the square root of the weighted proportion times one minus that proportion, divided by the total number of ROIs across all FOVs in the condition. This captures the uncertainty in estimating the underlying proportion of active cells, and automatically scales with both the estimated proportion and the total number of observations.
+
+#### FOV-Level Scalar Metrics (Network Metrics)
+
+Some metrics are inherently FOV-level scalars rather than per-ROI distributions — for example, global correlation, synchrony, and burst counts. These are computed from pairwise matrices or population-level analyses and yield a single value per FOV.
+
+For these metrics, there are no within-FOV ROI values to average over, so the error must come from **between-FOV variability** within a condition. The aggregation uses a weighted between-FOV SEM:
+
+**Weighted Mean**: each FOV scalar is weighted by the number of unique ROI pairs in that FOV (`n*(n-1)/2` for correlation/synchrony metrics, or equal weight for burst metrics). FOVs with more cells produce more reliable pairwise estimates and therefore contribute proportionally more.
+
+**Between-FOV SEM**: the weighted sample variance is computed from the spread of FOV-level values around the weighted mean, and the SEM is the square root of this variance divided by the number of FOVs. When only a single FOV exists for a condition, the SEM is zero (no between-FOV variability can be estimated), making the superimposed FOV dots critical for visual assessment.
+
+The FOV-level scalar metrics available in the Multi-Well tab include:
+
+- **Calcium ΔF/F Correlation**: global zero-lag Pearson correlation on ΔF/F traces (median of off-diagonal row-means)
+- **Calcium Denoised ΔF/F Correlation**: same as above but on denoised ΔF/F traces
+- **Spike Jitter Synchrony**: global synchrony of inferred spikes (jitter window method)
+- **Spike Max-Lag Correlation**: global max-lag cross-correlation of inferred spikes (CCG method)
+- **Spike Jitter Synchrony (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Spike Max-Lag Correlation (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2 in the CCG analysis, measuring network connectivity density
+- **Fraction Significant CCG Pairs (Rising Edges)**: same as above but on rising-edge-filtered spike trains
+- **Burst Count, Duration, Interval, Rate**: population-level burst statistics (both spike-based and calcium-based)

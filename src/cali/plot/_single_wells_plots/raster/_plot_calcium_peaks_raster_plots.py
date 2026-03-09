@@ -25,6 +25,8 @@ RASTER_CMAP_NAME = "viridis"
 RASTER_CMAP = pg.colormap.get(RASTER_CMAP_NAME)
 HEATMAP_CMAP_NAME = "viridis"
 HEATMAP_CMAP = pg.colormap.get(HEATMAP_CMAP_NAME)
+X_RANGE_PADDING = 1.05
+COLORBAR_WIDTH = 15
 
 
 def _generate_raster_plot(
@@ -206,7 +208,7 @@ def _generate_raster_plot(
     # Set x-range to full frames with some padding at the end, enable autorange for y
     total_frames = len(sample_trace) if sample_trace is not None else 0
     if total_frames > 0:
-        plot.getViewBox().setXRange(0, total_frames * 1.05, padding=0)
+        plot.getViewBox().setXRange(0, total_frames * X_RANGE_PADDING, padding=0)
     plot.getViewBox().enableAutoRange(x=False, y=True)
 
     # ------------------------ Colorbar ------------------------ #
@@ -252,7 +254,7 @@ def _add_colorbar_to_widget(
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
         colorMap=RASTER_CMAP,
-        width=15,
+        width=COLORBAR_WIDTH,
         label="Amplitude (dec ΔF/F a.u.)",
         interactive=False,
     )
@@ -419,8 +421,8 @@ def _generate_intensity_heatmap(
     plot.addItem(img)
 
     # Viewbox settings: one flat band per ROI (inverted Y keeps ROI 1 at top)
-    vb.setLimits(xMin=0, xMax=n_frames * 1.05, yMin=0, yMax=n_rois)
-    vb.setRange(xRange=(0, n_frames * 1.05), yRange=(0, n_rois))
+    vb.setLimits(xMin=0, xMax=n_frames * X_RANGE_PADDING, yMin=0, yMax=n_rois)
+    vb.setRange(xRange=(0, n_frames * X_RANGE_PADDING), yRange=(0, n_rois))
     # Keep x-range fixed to show full frames with padding, only autorange y
     vb.enableAutoRange(x=False, y=True)
 
@@ -452,7 +454,7 @@ def _add_intensity_colorbar_to_widget(
     widget.colorbar = pg.ColorBarItem(
         values=(vmin, vmax),
         colorMap=RASTER_CMAP,
-        width=15,
+        width=COLORBAR_WIDTH,
         label="Intensity (dec ΔF/F a.u.)",
         interactive=False,
     )

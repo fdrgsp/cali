@@ -16,18 +16,23 @@ if TYPE_CHECKING:
 from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 from cali.plot._multi_wells_plots._calcium_peaks import (
     plot_calcium_peaks_amplitude_bar_plot,
+    plot_calcium_peaks_amplitude_stim_split_bar_plot,
     plot_calcium_peaks_frequency_bar_plot,
+    plot_calcium_peaks_frequency_stim_split_bar_plot,
     plot_calcium_peaks_iei_bar_plot,
 )
 from cali.plot._multi_wells_plots._cell_properties import (
+    _query_fov_percentage_active,
     plot_cell_size_bar_plot,
     plot_percentage_active_bar_plot,
+    plot_percentage_active_stim_split_bar_plot,
 )
-from cali.plot._multi_wells_plots._spike_analysis import (
+from cali.plot._multi_wells_plots._inferred_spikes import (
     plot_burst_avg_duration_bar_plot,
     plot_burst_avg_interval_bar_plot,
     plot_burst_count_bar_plot,
-    plot_spike_synchrony_bar_plot,
+    plot_inferred_spikes_frequency_stim_split_bar_plot,
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
 )
 from cali.sqlmodel import CaliResult
 
@@ -45,7 +50,9 @@ def multi_well_widget_with_data(
 
     # Get a valid run_id from the database
     with Session(engine) as session:
-        run_id = session.exec(select(CaliResult.id).limit(1)).first()
+        runs = session.exec(select(CaliResult)).all()
+        best = max(runs, key=lambda r: len(r.positions_analyzed or []))
+        run_id = best.id
 
     assert run_id is not None, "Test database should have at least one CaliResult"
 
@@ -225,33 +232,6 @@ def _has_fov_analysis_data(engine: Engine) -> bool:
         return False
 
 
-def _has_fov_analysis_data(engine: Engine) -> bool:
-    """Check if database has FOVAnalysis data."""
-    with Session(engine) as session:
-        try:
-            from cali.sqlmodel import FOVAnalysis
-
-            result = session.exec(select(FOVAnalysis)).first()
-            return result is not None
-        except Exception:
-            return False
-
-
-def test_plot_spike_synchrony_has_data(
-    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
-) -> None:
-    """Test that spike synchrony plot displays actual data."""
-    widget, run_id = multi_well_widget_with_data
-    assert widget.engine is not None
-
-    if not _has_fov_analysis_data(widget.engine):
-        pytest.skip("No FOVAnalysis data in database")
-
-    plot_spike_synchrony_bar_plot(widget, "Spike Synchrony", widget.engine, run_id)
-
-    _verify_plot_has_data(widget, "Spike Synchrony")
-
-
 def test_plot_burst_count_has_data(
     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
 ) -> None:
@@ -324,6 +304,29 @@ def test_plot_percentage_active_has_data(
     _verify_plot_has_data(widget, "Percentage Active ROIs")
 
 
+def test_percentage_active_condition_labels_are_condition_only(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Verify _query_fov_percentage_active groups by condition only.
+
+    For evoked experiments the label must NOT include stim/non-stim suffixes
+    such as ' (Stim)' or ' (NonStim)'. The current plots are condition-only;
+    separate evoked-specific plots handle the stim/non-stim split.
+    """
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    data = _query_fov_percentage_active(widget.engine, run_id=run_id)
+
+    stim_keywords = ("stim", "nonstim", "non-stim", "stimulated")
+    for cond_label in data:
+        label_lower = cond_label.lower()
+        assert not any(kw in label_lower for kw in stim_keywords), (
+            f"Condition label '{cond_label}' contains a stim/non-stim indicator. "
+            "Percentage active plot must group by condition only."
+        )
+
+
 def test_plot_cell_size_has_data(
     multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
 ) -> None:
@@ -334,3 +337,215 @@ def test_plot_cell_size_has_data(
     plot_cell_size_bar_plot(widget, "Cell Size", widget.engine, run_id)
 
     _verify_plot_has_data(widget, "Cell Size")
+
+
+# ---------------------------------------------------------------------------
+# Stim-split evoked multi-well plots
+# The test DB IS evoked but ROIs may not all have the stimulated attribute
+# set, so stim-split plots may produce limited data.  These tests verify
+# they run without raising an exception.
+# ---------------------------------------------------------------------------
+
+
+def test_stim_split_calcium_amplitude_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split amplitude plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    # Should run cleanly (returns no data on non-evoked DB)
+    plot_calcium_peaks_amplitude_stim_split_bar_plot(
+        widget, "Calcium Peaks Amplitude (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_calcium_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split frequency plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_calcium_peaks_frequency_stim_split_bar_plot(
+        widget, "Calcium Peaks Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_percentage_active_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split percentage active plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_percentage_active_stim_split_bar_plot(
+        widget, "Percentage Active (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_inferred_spikes_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split spike frequency plot must not raise on a non-evoked database."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_inferred_spikes_frequency_stim_split_bar_plot(
+        widget, "Inferred Spikes Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_inferred_spikes_rising_edge_frequency_runs_without_error(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Stim-split rising edge frequency plot must not raise on a non-evoked DB."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot(
+        widget, "Inferred Spikes RE Frequency (Stim Split)", widget.engine, run_id
+    )
+    assert widget.plot_item is not None
+
+
+def test_stim_split_plots_registered_in_analysis_products() -> None:
+    """Verify all new stim-split evoked plots are registered in ANALYSIS_PRODUCTS."""
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    product_names = {p.name for p in ANALYSIS_PRODUCTS}
+    expected = {
+        "Calcium Peaks Amplitude Bar Plot (Stim vs NonStim)",
+        "Calcium Peaks Frequency Bar Plot (Stim vs NonStim)",
+        "Percentage of Active Cells Bar Plot (Stim vs NonStim)",
+        "Inferred Spikes Frequency Bar Plot (Stim vs NonStim)",
+        "Inferred Spikes Rising Edge Frequency Bar Plot (Stim vs NonStim)",
+    }
+    missing = expected - product_names
+    assert not missing, (
+        f"These evoked stim-split products are not registered: {missing}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Condition count assertions — test_db.cali run 2 has 4 wells / 4 conditions
+# ---------------------------------------------------------------------------
+
+EXPECTED_CONDITIONS = {"t1_g1", "t2_g1", "t1_g2", "t2_g2"}
+
+
+def test_calcium_amplitude_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for calcium amplitude must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_calcium_peaks_amplitude_bar_plot(
+        widget, "Calcium Peaks Amplitude", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_percentage_active_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for percentage active must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_percentage_active_bar_plot(
+        widget, "Percentage Active ROIs", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_cell_size_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for cell size must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_cell_size_bar_plot(widget, "Cell Size", widget.engine, run_id)
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+def test_calcium_frequency_has_all_conditions(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """Bar plot for calcium frequency must show all 4 conditions."""
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_calcium_peaks_frequency_bar_plot(
+        widget, "Calcium Peaks Frequency", widget.engine, run_id
+    )
+
+    assert set(widget.conditions.keys()) == EXPECTED_CONDITIONS, (
+        f"Expected {EXPECTED_CONDITIONS}, got {set(widget.conditions.keys())}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# PCA plot tests
+# ---------------------------------------------------------------------------
+
+
+def test_pca_scatter_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA scatter plot must not crash, even when features have zero variance."""
+    from cali.plot._multi_wells_plots import plot_pca_scatter
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    # Should not raise — the test DB has identical values across FOVs,
+    # so PCA cannot run, but the plot must degrade gracefully.
+    plot_pca_scatter(widget, "PCA Scatter (FOV Feature Space)", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+def test_pca_loadings_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA loadings plot must not crash on zero-variance data."""
+    from cali.plot._multi_wells_plots import plot_pca_loadings
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_pca_loadings(widget, "PCA Loadings (PC1)", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+def test_pca_scree_no_crash(
+    multi_well_widget_with_data: tuple[_MultilWellGraphWidget, int],
+) -> None:
+    """PCA scree plot must not crash on zero-variance data."""
+    from cali.plot._multi_wells_plots import plot_pca_scree
+
+    widget, run_id = multi_well_widget_with_data
+    assert widget.engine is not None
+
+    plot_pca_scree(widget, "PCA Scree Plot", widget.engine, run_id)
+    assert widget.plot_item is not None
+
+
+# def test_pca_loadings_and_scree_registered_in_analysis_products() -> None:
+#     """Verify PCA loadings and scree plots are registered."""
+#     from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+#     product_names = {p.name for p in ANALYSIS_PRODUCTS}
+#     expected = {"PCA Loadings (PC1)", "PCA Scree Plot"}
+#     missing = expected - product_names
+#     assert not missing, f"These PCA products are not registered: {missing}"

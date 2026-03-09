@@ -23,6 +23,10 @@ DFF_OVERLAY_COLOR = "magenta"
 DFF_OVERLAY_WIDTH = 3
 THRESHOLD_COLOR = "magenta"
 THRESHOLD_WIDTH = 3
+TRACE_VERTICAL_SPACING = 1.1
+THRESHOLDED_SPIKE_WIDTH = 2
+RISING_EDGE_WIDTH = 2
+RISING_EDGE_HEIGHT = 1.0
 
 
 # -----------------------------------------------------------------------------#
@@ -331,7 +335,7 @@ def _plot_spike_trace(
 
     if normalize:
         # Reverse offset: lower index (ROI 1) gets higher offset → appears at top
-        offset = (n_rois - 1 - index) * 1.1
+        offset = (n_rois - 1 - index) * TRACE_VERTICAL_SPACING
         tr_norm = _normalize_trace_percentile(trace, p1, p2) + offset
         y = tr_norm
     else:
@@ -430,11 +434,11 @@ def _plot_thresholded_spikes(
         return None
 
     # Use black color for all traces
-    color = pg.mkPen("k", width=2)
+    color = pg.mkPen(INFERRED_TRACE_COLOR, width=THRESHOLDED_SPIKE_WIDTH)
 
     # Calculate offset for normalization
     if normalize:
-        offset = (n_rois - 1 - index) * 1.1
+        offset = (n_rois - 1 - index) * TRACE_VERTICAL_SPACING
     else:
         offset = 0.0
 
@@ -524,18 +528,18 @@ def _plot_spike_rising_edges(
         return None
 
     # Use black color for all traces
-    color = pg.mkPen("k", width=2)
+    color = pg.mkPen(INFERRED_TRACE_COLOR, width=RISING_EDGE_WIDTH)
 
     if normalize:
         # Stack ROIs vertically with reverse offset
-        offset = (n_rois - 1 - index) * 1.1
+        offset = (n_rois - 1 - index) * TRACE_VERTICAL_SPACING
         y_bottom = offset
-        y_top = offset + 1.0
+        y_top = offset + RISING_EDGE_HEIGHT
     else:
         # All edges from 0 to 1
         offset = 0.0
         y_bottom = 0.0
-        y_top = 1.0
+        y_top = RISING_EDGE_HEIGHT
 
     # Build all vertical lines as a single PlotDataItem with NaN separators
     # This is much more efficient than creating individual items

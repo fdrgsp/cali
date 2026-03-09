@@ -150,8 +150,10 @@ def test_export_traces_creates_condition_subfolders(
     The test database has wells with conditions (2x2 design):
       B5: g1 + t1  (positions 0,1)
       B6: g1 + t2  (positions 2,3)
+      B7: g2 + t1  (positions 4,5)
+      B8: g2 + t2  (positions 6,7)
     Run 1 covers positions [0,1] (well B5 = t1_g1).
-    Run 2 covers positions [2,3] (well B6 = t2_g1).
+    Run 2 covers all 8 positions (wells B5-B8 = all 4 conditions).
     """
     db_path = tmp_path / "test.cali"
 
@@ -202,19 +204,19 @@ def test_export_traces_multiple_conditions(
     """Test that exporting across conditions creates separate subfolders.
 
     Run 1 = positions [0,1] (B5 = t1_g1)
-    Run 2 = positions [2,3] (B6 = t2_g1)
-    Exporting all positions should create both condition subfolders.
+    Run 2 = all 8 positions (B5-B8 = t1_g1, t2_g1, t1_g2, t2_g2)
+    Exporting run 2 should create at least the t2_g1 condition subfolder.
     """
     db_path = tmp_path / "test.cali"
 
     export_traces = {RAW_CALCIUM_TRACES: True}
 
-    # Export run 2 (positions 2,3 = well B6 = condition "t2_g1")
+    # Export run 2 (all 8 positions = wells B5-B8; B6 has condition "t2_g1")
     export_traces_to_csv(test_engine, export_traces, run_id=2, db_path=db_path)
 
     export_dir = tmp_path / "test_exports" / "run_2"
 
-    # Run 2 covers B6 which has condition t2_g1
+    # Run 2 covers all wells including B6 which has condition t2_g1
     condition_dir = export_dir / "t2_g1"
     assert condition_dir.exists(), (
         f"Expected condition subfolder 't2_g1' in {export_dir}, "

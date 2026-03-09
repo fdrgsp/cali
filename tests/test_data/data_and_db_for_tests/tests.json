@@ -96,7 +96,7 @@
       "burst_min_duration": 150.0,
       "burst_gaussian_sigma": 0.02,
       "calcium_burst_threshold": 60.0,
-      "calcium_burst_min_duration": 150.0,
+      "calcium_burst_min_duration": 300.0,
       "calcium_burst_gaussian_sigma": 0.02,
       "spikes_sync_cross_corr_lag": 500.0,
       "ccg_n_shuffles": 30,
@@ -110,7 +110,7 @@
       "led_pulse_duration": 100.0,
       "led_pulse_powers": [2.0, 4.0, 6.0],
       "led_pulse_on_frames": [3, 53, 103],
-      "stimulation_mask_path": null,
+      "stimulation_mask_path": "tests/test_data/data_and_db_for_tests/stimulation_mask.tif",
       "threads": 3,
       "n_processes": 1
     }
@@ -124,11 +124,11 @@
       "positions_to_analyze": [0, 1]
     },
     {
-      "description": "Full analysis on positions [2,3] without neuropil correction",
+      "description": "Full analysis on all positions without neuropil correction",
       "detection_settings_index": 0,
       "extraction_settings_index": 1,
-      "analysis_settings_index": 0,
-      "positions_to_analyze": [2, 3]
+      "analysis_settings_index": 1,
+      "positions_to_analyze": null
     }
   ],
   "plate_maps": {

@@ -527,28 +527,68 @@ def _calculate_ccg_with_baseline_correction(
     return max_value, best_lag, float(zscore)
 
 
-def _get_spike_synchrony(spike_synchrony_matrix: np.ndarray | None) -> float | None:
-    """Calculate global spike synchrony score from a spike synchrony matrix."""
-    if spike_synchrony_matrix is None or spike_synchrony_matrix.size == 0:
+def _get_global_pairwise_score(
+    pairwise_matrix: np.ndarray | None,
+) -> float | None:
+    """Calculate a global scalar from a pairwise NxN matrix.
+
+    Computes the median of row-means of off-diagonal elements.
+    Used for correlation matrices, synchrony matrices, and any other
+    symmetric pairwise metric.
+    """
+    if pairwise_matrix is None or pairwise_matrix.size == 0:
         return None
     # Ensure the matrix is at least 2x2 and square
     if (
-        spike_synchrony_matrix.shape[0] < 2
-        or spike_synchrony_matrix.shape[0] != spike_synchrony_matrix.shape[1]
+        pairwise_matrix.shape[0] < 2
+        or pairwise_matrix.shape[0] != pairwise_matrix.shape[1]
     ):
         return None
 
     # Calculate the sum of each row, excluding the diagonal
-    n_rois = spike_synchrony_matrix.shape[0]
-    off_diagonal_sum = np.sum(spike_synchrony_matrix, axis=1) - np.diag(
-        spike_synchrony_matrix
-    )
+    n = pairwise_matrix.shape[0]
+    off_diagonal_sum = np.sum(pairwise_matrix, axis=1) - np.diag(pairwise_matrix)
 
     # Normalize by the number of off-diagonal elements per row
-    mean_synchrony_per_roi = off_diagonal_sum / (n_rois - 1)
+    mean_per_row = off_diagonal_sum / (n - 1)
 
-    # Return the median synchrony across all ROIs
-    return float(np.median(mean_synchrony_per_roi))
+    # Return the median across all rows
+    return float(np.median(mean_per_row))
+
+
+def _get_fraction_significant_pairs(
+    zscore_matrix: np.ndarray | None,
+    threshold: float = 2.0,
+) -> float | None:
+    """Fraction of ROI pairs with |z| above threshold in a z-score matrix.
+
+    Measures network connectivity density: what proportion of all possible
+    pairwise connections are statistically significant.
+
+    Parameters
+    ----------
+    zscore_matrix : np.ndarray | None
+        NxN z-score matrix (off-diagonal values are tested).
+    threshold : float
+        Z-score threshold for significance (default 2.0, i.e. p < 0.05).
+
+    Returns
+    -------
+    float | None
+        Fraction in [0, 1], or None if matrix is invalid.
+    """
+    if zscore_matrix is None or zscore_matrix.size == 0:
+        return None
+    if zscore_matrix.shape[0] < 2 or zscore_matrix.shape[0] != zscore_matrix.shape[1]:
+        return None
+
+    n = zscore_matrix.shape[0]
+    mask = ~np.eye(n, dtype=bool)
+    off_diag = np.abs(zscore_matrix[mask])
+    n_pairs = len(off_diag)
+    if n_pairs == 0:
+        return None
+    return float(np.sum(off_diag > threshold) / n_pairs)
 
 
 def _calculate_cross_correlation_with_lag(

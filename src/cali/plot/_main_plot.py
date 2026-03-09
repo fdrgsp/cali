@@ -10,7 +10,57 @@ from typing_extensions import TypeAlias
 from cali._constants import EVOKED
 
 from ._multi_wells_plots import (
+    compute_burst_avg_duration_data,
+    compute_burst_avg_interval_data,
+    compute_burst_count_data,
+    compute_burst_rate_data,
+    compute_calcium_amplitude_stim_split_data,
+    compute_calcium_burst_avg_duration_data,
+    compute_calcium_burst_avg_interval_data,
+    compute_calcium_burst_count_data,
+    compute_calcium_den_dff_correlation_data,
+    compute_calcium_dff_correlation_data,
+    compute_cell_size_data,
+    compute_fraction_significant_ccg_pairs_data,
+    compute_fraction_significant_ccg_pairs_rising_edges_data,
+    compute_percentage_active_data,
+    compute_percentage_active_stim_split_data,
+    compute_spike_correlation_data,
+    compute_spike_correlation_rising_edges_data,
+    compute_spike_synchrony_data,
+    compute_spike_synchrony_rising_edges_data,
+    make_parameter_compute_fn,
+    plot_burst_avg_duration_bar_plot,
+    plot_burst_avg_interval_bar_plot,
+    plot_burst_count_bar_plot,
+    plot_burst_rate_bar_plot,
+    plot_calcium_burst_avg_duration_bar_plot,
+    plot_calcium_burst_avg_interval_bar_plot,
+    plot_calcium_burst_count_bar_plot,
+    plot_calcium_den_dff_correlation_bar_plot,
+    plot_calcium_dff_correlation_bar_plot,
+    plot_calcium_peaks_amplitude_bar_plot,
+    plot_calcium_peaks_amplitude_stim_split_bar_plot,
+    plot_calcium_peaks_frequency_bar_plot,
+    plot_calcium_peaks_frequency_stim_split_bar_plot,
+    plot_calcium_peaks_iei_bar_plot,
     plot_cell_size_bar_plot,
+    plot_fraction_significant_ccg_pairs_bar_plot,
+    plot_fraction_significant_ccg_pairs_rising_edges_bar_plot,
+    plot_inferred_spikes_frequency_bar_plot,
+    plot_inferred_spikes_frequency_stim_split_bar_plot,
+    plot_inferred_spikes_rising_edge_frequency_bar_plot,
+    plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
+    # plot_pca_loadings,
+    # plot_pca_scatter,
+    # plot_pca_scatter_stim_split,
+    # plot_pca_scree,
+    plot_percentage_active_bar_plot,
+    plot_percentage_active_stim_split_bar_plot,
+    plot_spike_correlation_bar_plot,
+    plot_spike_correlation_rising_edges_bar_plot,
+    plot_spike_synchrony_bar_plot,
+    plot_spike_synchrony_rising_edges_bar_plot,
 )
 from ._single_wells_plots.burst import (
     _plot_calcium_burst_activity,
@@ -93,6 +143,8 @@ if TYPE_CHECKING:
         _SingleWellGraphWidget,
     )
 
+    from ._multi_wells_plots._util import BarPlotData
+
 
 from cali.logger import cali_logger
 
@@ -125,6 +177,10 @@ MultiWellAnalyzer: TypeAlias = (
     "Callable[..., None]"  # Flexible signature for partial functions
 )
 AnyAnalyzer: TypeAlias = "SingleWellAnalyzer | MultiWellAnalyzer"
+# Headless compute function: (engine, run_id) -> (BarPlotData, name, units) | None
+ComputeFn: TypeAlias = (
+    "Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]"
+)
 
 
 @dataclass
@@ -145,6 +201,10 @@ class AnalysisProduct:
         Minimum pipeline stage required to generate this plot
     experiment_type : str | None
         Required experiment type ("evoked" or "spontaneous"), None for all types
+    compute_fn : ComputeFn | None
+        Headless function that computes bar plot data without rendering.
+        Signature: (engine, run_id) -> (BarPlotData, name, units) | None.
+        Used for batch CSV export of multi-well aggregated data.
     """
 
     name: str
@@ -153,6 +213,7 @@ class AnalysisProduct:
     category: str = "General"
     pipeline_stage: PipelineStage = PipelineStage.ANALYSIS
     experiment_type: str | None = None  # "evoked", "spontaneous", or None for all
+    compute_fn: ComputeFn | None = None
 
     def __post_init__(self) -> None:
         """Register this product in the global registry."""
@@ -737,95 +798,293 @@ AnalysisProduct(
 # Multi-Well Analysis Products --------------------------------------------------------
 # These plot bar plots from database queries across multiple wells
 
-# General Multi-Well Products
+# General Multi-Well Products — scalar per-ROI metrics
 AnalysisProduct(
     name="Cell Size Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_cell_size_bar_plot,
     category="General",
     pipeline_stage=PipelineStage.DETECTION,
+    compute_fn=compute_cell_size_data,
 )
+AnalysisProduct(
+    name="Percentage of Active Cells Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_percentage_active_bar_plot,
+    category="General",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_percentage_active_data,
+)
+AnalysisProduct(
+    name="Calcium Peaks Amplitude Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_amplitude_bar_plot,
+    category="Calcium Peaks",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "peaks_amplitudes_den_dff", "ΔF/F0", "Calcium Peaks Amplitude"
+    ),
+)
+AnalysisProduct(
+    name="Calcium Peaks Frequency Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_frequency_bar_plot,
+    category="Calcium Peaks",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "den_dff_frequency", "Hz", "Calcium Peaks Frequency"
+    ),
+)
+AnalysisProduct(
+    name="Calcium Peaks Inter-Event Interval Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_iei_bar_plot,
+    category="Calcium Peaks",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn("iei", "s", "Calcium Peaks IEI"),
+)
+
+# Multi-Well Products — calcium burst metrics
+AnalysisProduct(
+    name="Calcium Burst Count Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_burst_count_bar_plot,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_count_data,
+)
+AnalysisProduct(
+    name="Calcium Burst Average Duration Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_burst_avg_duration_bar_plot,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_avg_duration_data,
+)
+AnalysisProduct(
+    name="Calcium Burst Average Interval Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_burst_avg_interval_bar_plot,
+    category="Calcium Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_burst_avg_interval_data,
+)
+
+AnalysisProduct(
+    name="Inferred Spikes Frequency Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_frequency_bar_plot,
+    category="Inferred Spikes",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_frequency", "Hz", "Inferred Spikes Frequency"
+    ),
+)
+AnalysisProduct(
+    name="Inferred Spikes Rising Edge Frequency Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_rising_edge_frequency_bar_plot,
+    category="Inferred Spikes",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_rising_edge_frequency",
+        "Hz",
+        "Inferred Spikes Rising Edge Frequency",
+    ),
+)
+
+# Multi-Well Products — inferred spikes burst metrics
+AnalysisProduct(
+    name="Inferred Spikes Burst Count Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_count_bar_plot,
+    category="Inferred Spikes Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_count_data,
+)
+AnalysisProduct(
+    name="Inferred Spikes Burst Average Duration Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_avg_duration_bar_plot,
+    category="Inferred Spikes Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_avg_duration_data,
+)
+AnalysisProduct(
+    name="Inferred Spikes Burst Average Interval Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_avg_interval_bar_plot,
+    category="Inferred Spikes Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_avg_interval_data,
+)
+AnalysisProduct(
+    name="Inferred Spikes Burst Rate Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_burst_rate_bar_plot,
+    category="Inferred Spikes Burst Analysis",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_burst_rate_data,
+)
+
+# Multi-Well Products — network metrics (FOV-level scalars)
+AnalysisProduct(
+    name="Calcium ΔF/F Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_dff_correlation_bar_plot,
+    category="Calcium Correlation",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_dff_correlation_data,
+)
+AnalysisProduct(
+    name="Calcium Denoised ΔF/F Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_den_dff_correlation_bar_plot,
+    category="Calcium Correlation",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_calcium_den_dff_correlation_data,
+)
+AnalysisProduct(
+    name="Spike Jitter Synchrony Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_synchrony_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_synchrony_data,
+)
+AnalysisProduct(
+    name="Spike Max-Lag Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_correlation_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_correlation_data,
+)
+AnalysisProduct(
+    name="Spike Jitter Synchrony Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_synchrony_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_synchrony_rising_edges_data,
+)
+AnalysisProduct(
+    name="Spike Max-Lag Correlation Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_correlation_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_correlation_rising_edges_data,
+)
+AnalysisProduct(
+    name="Fraction Significant CCG Pairs Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_fraction_significant_ccg_pairs_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_fraction_significant_ccg_pairs_data,
+)
+AnalysisProduct(
+    name="Fraction Significant CCG Pairs Bar Plot (Rising Edges)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_fraction_significant_ccg_pairs_rising_edges_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_fraction_significant_ccg_pairs_rising_edges_data,
+)
+
+# Multi-Well Products — PCA
 # AnalysisProduct(
-#     name="Percentage of Active Cells Bar Plot",
+#     name="PCA Scatter (FOV Feature Space)",
 #     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_percentage_active_bar_plot,
-#     category="General",
+#     analyzer=plot_pca_scatter,
+#     category="PCA",
 #     pipeline_stage=PipelineStage.ANALYSIS,
 # )
 # AnalysisProduct(
-#     name="Calcium Peaks Amplitude Bar Plot",
+#     name="PCA Scatter (Stim vs NonStim)",
 #     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_calcium_peaks_amplitude_bar_plot,
-#     category="General",
+#     analyzer=plot_pca_scatter_stim_split,
+#     category="PCA",
+#     pipeline_stage=PipelineStage.ANALYSIS,
+#     experiment_type=EVOKED,
+# )
+# AnalysisProduct(
+#     name="PCA Loadings (PC1)",
+#     group=AnalysisGroup.MULTI_WELL,
+#     analyzer=plot_pca_loadings,
+#     category="PCA",
 #     pipeline_stage=PipelineStage.ANALYSIS,
 # )
 # AnalysisProduct(
-#     name="Calcium Peaks Frequency Bar Plot",
+#     name="PCA Scree Plot",
 #     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_calcium_peaks_frequency_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Calcium Peaks Inter-Event Interval Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_calcium_peaks_iei_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Inferred Spikes Global Synchrony Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_spike_synchrony_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Burst Count Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_burst_count_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Burst Average Duration Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_burst_avg_duration_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Burst Average Interval Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_burst_avg_interval_bar_plot,
-#     category="General",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-# )
-# AnalysisProduct(
-#     name="Burst Rate Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_burst_rate_bar_plot,
-#     category="General",
+#     analyzer=plot_pca_scree,
+#     category="PCA",
 #     pipeline_stage=PipelineStage.ANALYSIS,
 # )
 
 # Evoked Multi-Well Products
-# AnalysisProduct(
-#     name="Stimulated Peaks Amplitude Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_stimulated_peaks_amplitude_bar_plot,
-#     category="Evoked",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
-# AnalysisProduct(
-#     name="Non-Stimulated Peaks Amplitude Bar Plot",
-#     group=AnalysisGroup.MULTI_WELL,
-#     analyzer=plot_non_stimulated_peaks_amplitude_bar_plot,
-#     category="Evoked",
-#     pipeline_stage=PipelineStage.ANALYSIS,
-#     experiment_type=EVOKED,
-# )
+AnalysisProduct(
+    name="Calcium Peaks Amplitude Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_amplitude_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+    compute_fn=compute_calcium_amplitude_stim_split_data,
+)
+AnalysisProduct(
+    name="Calcium Peaks Frequency Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_calcium_peaks_frequency_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "den_dff_frequency",
+        "Hz",
+        "Calcium Peaks Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
+)
+AnalysisProduct(
+    name="Percentage of Active Cells Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_percentage_active_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+    compute_fn=compute_percentage_active_stim_split_data,
+)
+AnalysisProduct(
+    name="Inferred Spikes Frequency Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_frequency_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_frequency",
+        "Hz",
+        "Inferred Spikes Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
+)
+AnalysisProduct(
+    name="Inferred Spikes Rising Edge Frequency Bar Plot (Stim vs NonStim)",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_inferred_spikes_rising_edge_frequency_stim_split_bar_plot,
+    category="Evoked",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    experiment_type=EVOKED,
+    compute_fn=make_parameter_compute_fn(
+        "inferred_spikes_rising_edge_frequency",
+        "Hz",
+        "Inferred Spikes Rising Edge Frequency (Stim vs NonStim)",
+        include_stim_status=True,
+    ),
+)
 
 # DATABASE HELPERS ====================================================================
 # Helper functions to extract plotting data from database models

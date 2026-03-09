@@ -1811,6 +1811,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         Zero-lag Pearson correlation on denoised ΔF/F traces (NxN for N active ROIs)
     calcium_den_dff_corr_matrix : list[list[float]] | None
         Zero-lag Pearson correlation on denoised ΔF/F traces (NxN for N active ROIs)
+    global_calcium_dff_correlation : float | None
+        Global calcium ΔF/F correlation (median of off-diagonal row-means)
+    global_calcium_den_dff_correlation : float | None
+        Global calcium denoised ΔF/F correlation (median of off-diagonal row-means)
     spike_max_lag_correlation_matrix : list[list[float]] | None
         Max lag correlation on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_max_lag_correlation : float | None
@@ -1835,6 +1839,12 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         |z| > 2 suggests significant functional connectivity.
     spike_ccg_zscore_matrix_rising_edges : list[list[float]] | None
         Z-score matrix for CCG significance (thresholded rising edges).
+    fraction_significant_ccg_pairs : float | None
+        Fraction of ROI pairs with |z| > 2 in the CCG z-score matrix
+        (thresholded binary). Measures network connectivity density.
+    fraction_significant_ccg_pairs_rising_edges : float | None
+        Fraction of ROI pairs with |z| > 2 in the CCG z-score matrix
+        (thresholded rising edges).
     spike_jitter_synchrony_matrix : list[list[float]] | None
         Jitter synchrony on spike events (thresholded binary) (NxN for N active ROIs)
     global_spike_jitter_synchrony : float | None
@@ -1916,6 +1926,10 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     calcium_den_dff_corr_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
+    # Global calcium correlation scalars (median of row-means, off-diagonal)
+    global_calcium_dff_correlation: float | None = None
+    global_calcium_den_dff_correlation: float | None = None
+
     # Spike metrics (from inferred spikes)
     # 1. Max lag correlation on spikes (thresholded binary)
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
@@ -1944,6 +1958,9 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     spike_ccg_zscore_matrix_rising_edges: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
     )
+    # 2e. Fraction of significant CCG pairs (|z| > 2)
+    fraction_significant_ccg_pairs: float | None = None
+    fraction_significant_ccg_pairs_rising_edges: float | None = None
     # 3. Jitter synchrony on spikes (thresholded binary)
     spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)

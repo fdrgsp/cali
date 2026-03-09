@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -37,6 +38,7 @@ from tqdm import tqdm
 
 from cali._constants import (
     DEFAULT_CALI_DB_NAME,
+    DEFAULT_FRAME_RATE,
     EVENT_KEY,
     OME_ZARR,
     PYMMCW_METADATA_KEY,
@@ -500,6 +502,8 @@ class CaliGui(QMainWindow):
                     detection.pop("method", None)
                     self._detection_wdg.setValue(CellposeSettingsData(**detection))
 
+            _default_threads = max((os.cpu_count() or 1) - 2, 1)
+
             # extraction
             extraction = settings.get("extraction", {})
             ext_settings = extraction.get("trace_extraction_data", {})
@@ -527,6 +531,7 @@ class CaliGui(QMainWindow):
                             if metadata_settings
                             else None
                         ),
+                        threads=extraction.get("threads", _default_threads),
                         export_options=ext_export_options,
                         export_enabled=ext_export_enabled,
                     )
@@ -568,6 +573,9 @@ class CaliGui(QMainWindow):
                         if experiment_type_data
                         else None
                     ),
+                    frame_rate=analysis.get("frame_rate", DEFAULT_FRAME_RATE),
+                    threads=analysis.get("threads", _default_threads),
+                    n_processes=analysis.get("n_processes", _default_threads),
                     export_options=analysis_export_options,
                     export_enabled=analysis_export_enabled,
                 )
@@ -1812,6 +1820,30 @@ class CaliGui(QMainWindow):
                         analysis_export_opts,
                         run_id,
                         db_path,
+                    )
+
+                # Export multi-well aggregated data
+                if analysis_export_opts and analysis_export_opts.get(
+                    "Multi-Well Aggregated Data", False
+                ):
+                    from sqlmodel import Session as _Session
+                    from sqlmodel import col as _col
+                    from sqlmodel import select as _select
+
+                    from cali.sqlmodel import AnalysisSettings, CaliResult
+                    from cali.util._database_to_csv import export_multi_well_to_csv
+
+                    # Query experiment type for this run
+                    with _Session(engine) as session:
+                        stmt = (
+                            _select(AnalysisSettings.experiment_type)
+                            .join(CaliResult)
+                            .where(_col(CaliResult.id) == run_id)
+                        )
+                        exp_type = session.exec(stmt).first()
+
+                    export_multi_well_to_csv(
+                        engine, run_id, db_path, experiment_type=exp_type
                     )
 
                 # Show success message

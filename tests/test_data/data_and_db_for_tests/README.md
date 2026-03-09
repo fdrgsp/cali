@@ -14,7 +14,7 @@ This directory contains the **primary test dataset** used across all Cali tests.
   - Generated from evk.tensorstore.zarr
   - Contains 2 CaliResults with different extraction settings
   - Run 1: Positions [0, 1] (B5_0000, B5_0001) with neuropil correction
-  - Run 2: Positions [2, 3] (B6_0000, B6_0001) without neuropil correction
+  - Run 2: All 8 positions (B5–B8, 2 FOVs each) without neuropil correction
   - Includes plate map with conditions: genotype (g1-g4) and treatment (t1-t4)
   - LED stimulation settings configured for evoked activity analysis
 

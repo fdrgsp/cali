@@ -29,6 +29,7 @@ PEAKS_SYMBOL = "x"
 PEAKS_SIZE = 10
 THRESHOLD_COLOR = "magenta"
 THRESHOLD_WIDTH = 3
+TRACE_VERTICAL_SPACING = 1.1
 
 
 # -----------------------------------------------------------------------------#
@@ -253,7 +254,9 @@ def _normalize_and_offset(
             p1, p2 = 0.0, 1.0
 
         # Reverse offsets: ROI 1 (index 0) gets highest offset → appears at top
-        offsets = np.arange(Y.shape[0] - 1, -1, -1, dtype=float) * 1.1
+        offsets = (
+            np.arange(Y.shape[0] - 1, -1, -1, dtype=float) * TRACE_VERTICAL_SPACING
+        )
     else:
         offsets = np.zeros(Y.shape[0], dtype=float)
 

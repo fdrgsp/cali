@@ -58,6 +58,7 @@ from cali._constants import (
     INFERRED_SPIKES_SYNCHRONY,
     INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
+    MULTI_WELL_AGGREGATED_DATA,
     MULTIPLIER,
     SPONTANEOUS,
     CorrelationDataType,
@@ -200,33 +201,36 @@ class _AnalysisGUI(QWidget):
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
+        # Multi-Well Aggregated Data
+        self._export_group.add_section_label("Multi-Well Aggregated Data", 0, 0)
+        self._export_group.add_option(MULTI_WELL_AGGREGATED_DATA, 1, 0, checked=True)
         # Calcium correlations
-        self._export_group.add_section_label("Calcium Correlations", 0, 0)
-        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 1, 0, checked=False)
-        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 2, 0)
+        self._export_group.add_section_label("Calcium Correlations", 2, 0)
+        self._export_group.add_option(CALCIUM_DFF_CORRELATION, 3, 0, checked=False)
+        self._export_group.add_option(CALCIUM_DEN_DFF_CORRELATION, 4, 0)
         # Cluster Analysis
-        self._export_group.add_section_label("Cluster Analysis", 3, 0)
-        self._export_group.add_option(CLUSTER_LABELS, 4, 0)
+        self._export_group.add_section_label("Cluster Analysis", 5, 0)
+        self._export_group.add_option(CLUSTER_LABELS, 6, 0)
         # Inferred Spikes - Thresholded Binary
-        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 5, 0)
-        self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_BINARY, 6, 0)
-        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 7, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 8, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 9, 0)
-        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 10, 0)
+        self._export_group.add_section_label("Inferred Spikes (Thresholded)", 7, 0)
+        self._export_group.add_option(INFERRED_SPIKES_THRESHOLDED_BINARY, 8, 0)
+        self._export_group.add_option(INFERRED_SPIKES_SYNCHRONY, 9, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION, 10, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CROSS_CORRELATION_LAGS, 11, 0)
+        self._export_group.add_option(INFERRED_SPIKES_CCG_ZSCORE, 12, 0)
         # Inferred Spikes - Thresholded Rising Edges
-        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 11, 0)
+        self._export_group.add_section_label("Inferred Spikes (Rising Edges)", 13, 0)
         self._export_group.add_option(
-            INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 12, 0, checked=False
+            INFERRED_SPIKES_SYNCHRONY_RISING_EDGES, 14, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 13, 0, checked=False
+            INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES, 15, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 14, 0, checked=False
+            INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES, 16, 0, checked=False
         )
         self._export_group.add_option(
-            INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 15, 0, checked=False
+            INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 17, 0, checked=False
         )
         self._export_group.add_stretch("horizontal")
 

@@ -11,6 +11,10 @@ from cali.gui._pygraph_plot_widgets import _ConditionsDialog
 from cali.plot._multi_wells_plots._util import (
     _get_default_color,
     _get_default_conditions,
+    _make_n_colors,
+)
+from cali.plot._single_wells_plots.cluster._plot_cluster_analysis import (
+    _make_n_cluster_colors,
 )
 
 if TYPE_CHECKING:
@@ -52,10 +56,12 @@ def test_get_default_conditions() -> None:
     # Check all are visible
     assert all(v["visible"] for v in result.values())
 
-    # Check colors
-    assert result["control"]["color"] == "gray"
+    # EVK conditions keep their fixed colors
     assert result["treatment_evk_stim"]["color"] == "green"
     assert result["treatment_evk_non_stim"]["color"] == "magenta"
+
+    # Non-EVK condition gets gray (bar-plot default: neutral gray)
+    assert result["control"]["color"] == "gray"
 
 
 def test_get_default_conditions_order() -> None:
@@ -64,6 +70,53 @@ def test_get_default_conditions_order() -> None:
     result = _get_default_conditions(conditions)
 
     assert list(result.keys()) == conditions
+
+
+def test_get_default_conditions_distinct_palette_colors() -> None:
+    """Test that multiple non-EVK conditions get distinct colors with
+    multicolor=True.
+    """
+    conditions = ["g1_t1", "g1_t2", "g2_t1", "g2_t2"]
+    result = _get_default_conditions(conditions, multicolor=True)
+
+    colors = [result[c]["color"] for c in conditions]
+    # All non-EVK conditions must be assigned distinct colors in multicolor mode
+    assert len(set(colors)) == len(colors), (
+        f"Expected {len(conditions)} distinct colors, got: {colors}"
+    )
+
+
+def test_get_default_conditions_all_gray_by_default() -> None:
+    """Non-EVK conditions are all gray by default (bar-plot mode)."""
+    conditions = ["g1_t1", "g1_t2", "g2_t1", "g2_t2"]
+    result = _get_default_conditions(conditions)
+
+    for cond in conditions:
+        assert result[cond]["color"] == "gray", (
+            f"Expected gray for {cond}, got {result[cond]['color']}"
+        )
+
+
+def test_get_default_conditions_override_color_applies_to_all() -> None:
+    """When override_color is given, all conditions receive that color."""
+    conditions = ["ctrl", "drug", "vehicle"]
+    result = _get_default_conditions(conditions, override_color="green")
+
+    for cond in conditions:
+        assert result[cond]["color"] == "green", (
+            f"Expected green for {cond}, got {result[cond]['color']}"
+        )
+
+
+def test_get_default_conditions_override_color_supersedes_evk() -> None:
+    """override_color takes precedence even over EVK_STIM / EVK_NON_STIM conditions."""
+    conditions = ["ctrl_evk_stim", "ctrl_evk_non_stim", "control"]
+    result = _get_default_conditions(conditions, override_color="magenta")
+
+    for cond in conditions:
+        assert result[cond]["color"] == "magenta", (
+            f"Expected magenta for {cond}, got {result[cond]['color']}"
+        )
 
 
 def test_dialog_stores_colors(qtbot: QtBot) -> None:
@@ -136,17 +189,22 @@ def test_mixed_evoked_non_evoked_defaults() -> None:
         "treatment_evk_non_stim",
     ]
 
+    # Bar-plot mode (default): non-EVK conditions are gray
     result = _get_default_conditions(conditions)
-
-    # Non-evoked conditions should be gray
     assert result["control"]["color"] == "gray"
     assert result["treatment"]["color"] == "gray"
 
-    # Stimulated conditions should be green
+    # Multicolor mode (PCA): each non-EVK condition gets a distinct color
+    result_multi = _get_default_conditions(conditions, multicolor=True)
+    assert result_multi["control"]["color"] != "gray"
+    assert result_multi["treatment"]["color"] != "gray"
+    assert result_multi["control"]["color"] != result_multi["treatment"]["color"]
+
+    # Stimulated conditions are always green
     assert result["control_evk_stim"]["color"] == "green"
     assert result["treatment_evk_stim"]["color"] == "green"
 
-    # Non-stimulated conditions should be magenta
+    # Non-stimulated conditions are always magenta
     assert result["control_evk_non_stim"]["color"] == "magenta"
     assert result["treatment_evk_non_stim"]["color"] == "magenta"
 
@@ -178,3 +236,48 @@ def test_dialog_color_change(qtbot: QtBot) -> None:
     # Color should be changed
     assert result["control"]["color"] == "red"
     assert result["treatment"]["color"] == "green"
+
+
+@pytest.mark.parametrize("n", [1, 5, 10, 11, 15, 25])
+def test_make_n_colors_returns_n_unique_colors(n: int) -> None:
+    """Test that _make_n_colors returns exactly n unique hex color strings."""
+    colors = _make_n_colors(n)
+    assert len(colors) == n, f"Expected {n} colors, got {len(colors)}"
+    assert len(set(colors)) == n, (
+        f"Expected {n} unique colors for n={n}, got {len(set(colors))}: {colors}"
+    )
+
+
+def test_make_n_colors_empty() -> None:
+    """Test that _make_n_colors returns empty list for n=0."""
+    assert _make_n_colors(0) == []
+
+
+def test_get_default_conditions_more_than_palette_size() -> None:
+    """Test that _get_default_conditions assigns unique colors for > 10
+    conditions (multicolor=True).
+    """
+    # Create 13 non-EVK conditions (more than the 10-color palette)
+    conditions = [f"group_{i}" for i in range(13)]
+    result = _get_default_conditions(conditions, multicolor=True)
+
+    colors = [result[c]["color"] for c in conditions]
+    assert len(set(colors)) == len(colors), (
+        f"All {len(conditions)} conditions must have unique colors, got: {colors}"
+    )
+
+
+@pytest.mark.parametrize("n", [1, 5, 10, 11, 15, 25])
+def test_make_n_cluster_colors_returns_n_unique_colors(n: int) -> None:
+    """Test that _make_n_cluster_colors returns exactly n unique RGBA tuples."""
+    colors = _make_n_cluster_colors(n)
+    assert len(colors) == n, f"Expected {n} cluster colors, got {len(colors)}"
+    assert len(set(colors)) == n, (
+        f"Expected {n} unique cluster colors for n={n},"
+        f" got {len(set(colors))}: {colors}"
+    )
+
+
+def test_make_n_cluster_colors_empty() -> None:
+    """Test that _make_n_cluster_colors returns empty list for n=0."""
+    assert _make_n_cluster_colors(0) == []

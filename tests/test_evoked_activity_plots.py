@@ -91,3 +91,137 @@ def test_aggregate_evoked_data_percentage_power() -> None:
     expected_conditions = {"Control (10%)", "Treatment (10%)"}
     assert set(plot_data["conditions"]) == expected_conditions
     assert len(plot_data["fov_values_list"]) == 2
+
+
+def test_stim_split_amplitude_appends_evk_suffixes() -> None:
+    """Aggregated stim/non-stim amplitude data gets EVK_STIM / EVK_NON_STIM suffixes.
+
+    This exercises the combining logic inside
+    plot_calcium_peaks_amplitude_stim_split_bar_plot without requiring a real DB.
+    """
+    from cali._constants import EVK_NON_STIM, EVK_STIM
+
+    stim_data = {"ctrl": {"FOV_0": {"25%_50": [0.1, 0.2]}}}
+    non_stim_data = {"ctrl": {"FOV_1": {"25%_50": [0.05, 0.08]}}}
+
+    stim_plot = _aggregate_evoked_data_to_condition_stats(stim_data)
+    non_stim_plot = _aggregate_evoked_data_to_condition_stats(non_stim_data)
+
+    stim_conditions = [f"{c}_{EVK_STIM}" for c in stim_plot["conditions"]]
+    non_stim_conditions = [f"{c}_{EVK_NON_STIM}" for c in non_stim_plot["conditions"]]
+
+    # All stim conditions must end with EVK_STIM
+    assert all(c.endswith(EVK_STIM) for c in stim_conditions)
+    # All non-stim conditions must end with EVK_NON_STIM
+    assert all(c.endswith(EVK_NON_STIM) for c in non_stim_conditions)
+    # Power label is preserved in the condition name
+    assert any("25%" in c for c in stim_conditions)
+    assert any("25%" in c for c in non_stim_conditions)
+    # No overlap between stim and non-stim condition names
+    assert not set(stim_conditions) & set(non_stim_conditions)
+
+
+def test_stim_split_amplitude_interleaved_order() -> None:
+    """Bars are interleaved: stim/non-stim pairs grouped by condition+power.
+
+    Expected x-axis order (for two conditions, two powers each):
+      ctrl (10%)_evk_stim, ctrl (10%)_evk_non_stim,
+      ctrl (25%)_evk_stim, ctrl (25%)_evk_non_stim,
+      trt (10%)_evk_stim,  trt (10%)_evk_non_stim,
+      trt (25%)_evk_stim,  trt (25%)_evk_non_stim
+    NOT: all stim first, then all non-stim.
+    """
+    import re
+
+    from cali._constants import EVK_NON_STIM, EVK_STIM
+
+    stim_raw = {
+        "ctrl": {
+            "FOV_0": {"10%_50": [0.1], "25%_50": [0.2]},
+        },
+        "trt": {
+            "FOV_1": {"10%_50": [0.3], "25%_50": [0.4]},
+        },
+    }
+    non_stim_raw = {
+        "ctrl": {
+            "FOV_0": {"10%_50": [0.05], "25%_50": [0.08]},
+        },
+        "trt": {
+            "FOV_1": {"10%_50": [0.11], "25%_50": [0.15]},
+        },
+    }
+
+    stim_plot = _aggregate_evoked_data_to_condition_stats(stim_raw)
+    non_stim_plot = _aggregate_evoked_data_to_condition_stats(non_stim_raw)
+
+    # Reproduce the interleaving logic from the plot function
+    stim_lookup = {
+        c: (m, s, f)
+        for c, m, s, f in zip(
+            stim_plot["conditions"],
+            stim_plot["means"],
+            stim_plot["sems"],
+            stim_plot["fov_values_list"],
+        )
+    }
+    non_stim_lookup = {
+        c: (m, s, f)
+        for c, m, s, f in zip(
+            non_stim_plot["conditions"],
+            non_stim_plot["means"],
+            non_stim_plot["sems"],
+            non_stim_plot["fov_values_list"],
+        )
+    }
+
+    seen: set[str] = set()
+    all_base: list[str] = []
+    for cond in list(stim_lookup) + list(non_stim_lookup):
+        if cond not in seen:
+            seen.add(cond)
+            all_base.append(cond)
+
+    def _sort_key(c: str) -> tuple[str, float]:
+        base = c.rsplit(" (", 1)[0]
+        tail = c.rsplit(" (", 1)[-1] if " (" in c else ""
+        m_match = re.search(r"(\d+\.?\d*)", tail)
+        return (base, float(m_match.group(1)) if m_match else 0.0)
+
+    all_base.sort(key=_sort_key)
+
+    combined: list[str] = []
+    for base_cond in all_base:
+        if base_cond in stim_lookup:
+            combined.append(f"{base_cond}_{EVK_STIM}")
+        if base_cond in non_stim_lookup:
+            combined.append(f"{base_cond}_{EVK_NON_STIM}")
+
+    expected = [
+        f"ctrl (10%)_{EVK_STIM}",
+        f"ctrl (10%)_{EVK_NON_STIM}",
+        f"ctrl (25%)_{EVK_STIM}",
+        f"ctrl (25%)_{EVK_NON_STIM}",
+        f"trt (10%)_{EVK_STIM}",
+        f"trt (10%)_{EVK_NON_STIM}",
+        f"trt (25%)_{EVK_STIM}",
+        f"trt (25%)_{EVK_NON_STIM}",
+    ]
+    assert combined == expected, f"Got: {combined}"
+
+
+def test_stimulated_non_stimulated_amplitude_products_removed() -> None:
+    """Standalone stim-only / non-stim-only amplitude plots must no longer exist.
+
+    These were replaced by the combined Calcium Peaks Amplitude Bar Plot
+    (Stim vs NonStim) which shows both sides in one chart with power labels.
+    """
+    from cali.plot._main_plot import ANALYSIS_PRODUCTS
+
+    names = {p.name for p in ANALYSIS_PRODUCTS}
+    assert "Stimulated Peaks Amplitude Bar Plot" not in names, (
+        "Standalone stim-only amplitude plot should have been removed"
+    )
+    assert "Non-Stimulated Peaks Amplitude Bar Plot" not in names, (
+        "Standalone non-stim-only amplitude plot should have been removed"
+    )
