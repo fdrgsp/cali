@@ -18,10 +18,24 @@ import numpy as np
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlmodel import Session
 from useq import register_well_plates
 
-from cali.sqlmodel import Experiment
-from cali.sqlmodel._model import FOV, ROI, Mask
+from cali.sqlmodel import (
+    FOV,
+    Condition,
+    Experiment,
+    FOVAnalysis,
+    Plate,
+    Well,
+)
+from cali.sqlmodel._model import (
+    ROI,
+    AnalysisSettings,
+    CaliResult,
+    DataAnalysis,
+    Mask,
+)
 from cali.sqlmodel._util import create_database_and_tables
 
 # Import torch before pytest-qt initializes on Windows
@@ -208,3 +222,122 @@ def mock_detection_runner() -> Iterator[MagicMock]:
 
         mock.side_effect = mock_detection
         yield mock
+
+
+# ---------------------------------------------------------------------------
+# Shared rich in-memory DB: 2 conditions x 2 FOVs with ROIs, burst stats,
+# synchrony, correlation, CCG, and stim data. Reused across multi-well tests.
+# ---------------------------------------------------------------------------
+
+
+def _build_full_db() -> tuple[Engine, int]:
+    """In-memory DB with rich data for synchrony, correlation, PCA tests."""
+    import gc
+
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="full_exp")
+        session.add(exp)
+        session.flush()
+
+        settings = AnalysisSettings(frame_rate=10.0, enable_rising_edge_analysis=True)
+        session.add(settings)
+        session.flush()
+
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        run_id: int = run.id  # type: ignore[assignment]
+
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+
+        rng = np.random.default_rng(42)
+
+        for cond_name, row_idx in [("WT", 0), ("KO", 1)]:
+            cond = Condition(name=cond_name, condition_type="genotype")
+            for fov_idx in range(2):
+                well = Well(
+                    plate=plate,
+                    name=f"{cond_name}_W{fov_idx}",
+                    row=row_idx,
+                    column=fov_idx,
+                    conditions=[cond],
+                )
+                session.add(well)
+                session.flush()
+
+                fov = FOV(
+                    name=f"fov_{cond_name.lower()}_{fov_idx}",
+                    position_index=fov_idx,
+                    well_id=well.id,
+                )
+                session.add(fov)
+                session.flush()
+
+                corr = rng.uniform(0.2, 0.8, (3, 3))
+                np.fill_diagonal(corr, 1.0)
+                corr = ((corr + corr.T) / 2).tolist()
+                corr_arr = np.array(corr)
+                n = corr_arr.shape[0]
+                mask_arr = ~np.eye(n, dtype=bool)
+                global_corr = float(np.mean(corr_arr[mask_arr]))
+
+                fa = FOVAnalysis(
+                    fov_id=fov.id,
+                    analysis_result_id=run.id,
+                    active_roi_labels=[1, 2, 3],
+                    spike_burst_count=3 + fov_idx,
+                    spike_burst_avg_duration=0.5 + 0.1 * fov_idx,
+                    spike_burst_avg_interval=2.0 + 0.2 * fov_idx,
+                    spike_population_activity=[0.0] * 600,
+                    global_spike_jitter_synchrony=0.3 + 0.1 * fov_idx,
+                    global_spike_max_lag_correlation=global_corr,
+                    spike_max_lag_correlation_matrix=corr,
+                    global_calcium_dff_correlation=0.4 + 0.05 * fov_idx,
+                    global_calcium_den_dff_correlation=0.5 + 0.05 * fov_idx,
+                    global_spike_jitter_synchrony_rising_edges=(0.25 + 0.1 * fov_idx),
+                    global_spike_max_lag_correlation_rising_edges=(global_corr * 0.9),
+                    fraction_significant_ccg_pairs=0.6 + 0.05 * fov_idx,
+                    fraction_significant_ccg_pairs_rising_edges=(0.5 + 0.05 * fov_idx),
+                )
+                session.add(fa)
+
+                for roi_idx in range(3):
+                    roi = ROI(
+                        label_value=roi_idx + 1,
+                        active=True,
+                        fov_id=fov.id,
+                        cell_size=float(rng.uniform(50, 200)),
+                    )
+                    session.add(roi)
+                    session.flush()
+
+                    da = DataAnalysis(
+                        roi_id=roi.id,
+                        analysis_result_id=run.id,
+                        peaks_amplitudes_den_dff=rng.uniform(0.5, 3.0, 5).tolist(),
+                        den_dff_frequency=float(rng.uniform(0.1, 2.0)),
+                        iei=rng.uniform(0.5, 5.0, 4).tolist(),
+                        inferred_spikes_frequency=float(rng.uniform(0.1, 1.0)),
+                        inferred_spikes_rising_edge_frequency=float(
+                            rng.uniform(0.05, 0.5)
+                        ),
+                    )
+                    session.add(da)
+
+        session.commit()
+
+    gc.collect()
+    return engine, run_id
+
+
+@pytest.fixture
+def full_db() -> Generator[tuple[Engine, int], None, None]:
+    """In-memory DB with 2 conditions x 2 FOVs, burst/sync/corr/PCA data."""
+    engine, run_id = _build_full_db()
+    yield engine, run_id
+    engine.dispose(close=True)

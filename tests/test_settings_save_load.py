@@ -692,3 +692,118 @@ def test_load_settings_legacy_cluster_data_key(
     # Values should have been migrated from the legacy 'cluster_data' key
     assert analysis_value.calcium_peaks_data.cluster_n_clusters == 4
     assert analysis_value.calcium_peaks_data.cluster_max_k == 12
+
+
+# ---------------------------------------------------------------------------
+# Pure-JSON serialisation round-trip (no Qt required)
+# ---------------------------------------------------------------------------
+
+
+def test_settings_json_round_trip(tmp_path: Path) -> None:
+    """JSON save/load of all settings dataclasses preserves every field."""
+    import json
+    import os
+    from dataclasses import asdict
+
+    from cali._constants import DEFAULT_FRAME_RATE
+    from cali.gui._analysis_gui import (
+        AnalysisSettingsData,
+        CalciumPeaksData,
+        ExperimentTypeData,
+        SpikeData,
+    )
+    from cali.gui._detection_gui import CellposeSettingsData
+    from cali.gui._extraction_gui import (
+        ExtractionSettingsData,
+        MetadataData,
+        TraceExtractionData,
+    )
+
+    detection = CellposeSettingsData(
+        model_type="cyto3", diameter=30.0, cellprob_threshold=0.5, use_gpu=False
+    )
+    extraction = ExtractionSettingsData(
+        trace_extraction_data=TraceExtractionData(dff_window_size=5.0, frame_rate=20.0),
+        metadata_data=MetadataData(pixel_size=0.5, frame_rate=20.0),
+        threads=2,
+    )
+    analysis = AnalysisSettingsData(
+        calcium_peaks_data=CalciumPeaksData(peaks_height=5.0),
+        spikes_data=SpikeData(spike_threshold=2.0),
+        experiment_type_data=ExperimentTypeData(
+            experiment_type="Evoked Activity",
+            led_pulse_powers=[1.0, 2.0],
+            led_pulse_on_frames=[5, 10],
+        ),
+        frame_rate=20.0,
+        threads=2,
+        n_processes=4,
+    )
+
+    full_settings = {
+        "detection": asdict(detection),
+        "extraction": asdict(extraction),
+        "analysis": asdict(analysis),
+    }
+    json_path = tmp_path / "settings.json"
+    with open(json_path, "w") as f:
+        json.dump(full_settings, f)
+
+    with open(json_path) as f:
+        settings = json.load(f)
+
+    det_loaded = CellposeSettingsData(**settings["detection"])
+    assert det_loaded == detection
+
+    ext = settings["extraction"]
+    ext_export_options = ext.get("export_options")
+    if ext_export_options is not None:
+        ext_export_options = {k: tuple(v) for k, v in ext_export_options.items()}
+    ext_loaded = ExtractionSettingsData(
+        trace_extraction_data=(
+            TraceExtractionData(**ext["trace_extraction_data"])
+            if ext.get("trace_extraction_data")
+            else None
+        ),
+        metadata_data=(
+            MetadataData(**ext["metadata_data"]) if ext.get("metadata_data") else None
+        ),
+        threads=ext.get("threads", max((os.cpu_count() or 1) - 2, 1)),
+        export_options=ext_export_options,
+        export_enabled=ext.get("export_enabled", True),
+    )
+    assert ext_loaded.threads == extraction.threads
+    assert ext_loaded.trace_extraction_data == extraction.trace_extraction_data
+    assert ext_loaded.metadata_data == extraction.metadata_data
+
+    ana = settings["analysis"]
+    ana_export_options = ana.get("export_options")
+    if ana_export_options is not None:
+        ana_export_options = {k: tuple(v) for k, v in ana_export_options.items()}
+    _default_threads = max((os.cpu_count() or 1) - 2, 1)
+    ana_loaded = AnalysisSettingsData(
+        calcium_peaks_data=(
+            CalciumPeaksData(**ana["calcium_peaks_data"])
+            if ana.get("calcium_peaks_data")
+            else None
+        ),
+        spikes_data=(
+            SpikeData(**ana["spikes_data"]) if ana.get("spikes_data") else None
+        ),
+        experiment_type_data=(
+            ExperimentTypeData(**ana["experiment_type_data"])
+            if ana.get("experiment_type_data")
+            else None
+        ),
+        frame_rate=ana.get("frame_rate", DEFAULT_FRAME_RATE),
+        threads=ana.get("threads", _default_threads),
+        n_processes=ana.get("n_processes", _default_threads),
+        export_options=ana_export_options,
+        export_enabled=ana.get("export_enabled", False),
+    )
+    assert ana_loaded.frame_rate == analysis.frame_rate
+    assert ana_loaded.threads == analysis.threads
+    assert ana_loaded.n_processes == analysis.n_processes
+    assert ana_loaded.calcium_peaks_data == analysis.calcium_peaks_data
+    assert ana_loaded.spikes_data == analysis.spikes_data
+    assert ana_loaded.experiment_type_data == analysis.experiment_type_data

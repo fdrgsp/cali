@@ -12,7 +12,9 @@ from __future__ import annotations
 import gc
 import importlib.util
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from qtpy.QtWidgets import QWidget
 from sqlmodel import Session, create_engine
@@ -20,10 +22,13 @@ from sqlmodel import Session, create_engine
 from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
 from cali.plot._multi_wells_plots._dimensionality_reduction import (
     FEATURE_COLUMNS,
+    _prepare_feature_matrix,
     build_fov_feature_matrix,
     compute_pca,
+    plot_pca_loadings,
     plot_pca_scatter,
     plot_pca_scatter_stim_split,
+    plot_pca_scree,
 )
 from cali.sqlmodel import (
     FOV,
@@ -33,7 +38,12 @@ from cali.sqlmodel import (
     Plate,
     Well,
 )
-from cali.sqlmodel._model import AnalysisSettings, CaliResult
+from cali.sqlmodel._model import (
+    ROI,
+    AnalysisSettings,
+    CaliResult,
+    DataAnalysis,
+)
 from cali.sqlmodel._util import create_database_and_tables
 
 HAS_PG = importlib.util.find_spec("pyqtgraph") is not None
@@ -462,3 +472,457 @@ def test_build_fov_feature_matrix_with_roi_data_populates_metrics() -> None:
     finally:
         engine.dispose(close=True)
         gc.collect()
+
+
+# ---------------------------------------------------------------------------
+# Additional widget fixture using shared full_db from conftest
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def full_widget(
+    qtbot: QtBot,
+    full_db: tuple[Engine, int],
+) -> Generator[tuple[_MultilWellGraphWidget, Engine, int], None, None]:
+    engine, run_id = full_db
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    qtbot.addWidget(widget)
+    widget.engine = engine
+    widget.run_id = run_id
+    yield widget, engine, run_id
+
+
+# ---------------------------------------------------------------------------
+# _prepare_feature_matrix edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_feature_matrix_drops_zero_variance() -> None:
+    """Columns with zero variance are dropped before PCA."""
+    df = pd.DataFrame({"varying": [1.0, 2.0, 3.0], "constant": [5.0, 5.0, 5.0]})
+    X, used = _prepare_feature_matrix(df, feature_cols=["varying", "constant"])
+    assert "varying" in used
+    assert "constant" not in used
+    assert X.shape[1] == 1
+
+
+def test_prepare_feature_matrix_raises_all_constant() -> None:
+    """All-constant features raise ValueError."""
+    df = pd.DataFrame({"a": [1.0, 1.0], "b": [2.0, 2.0]})
+    with pytest.raises(ValueError, match="No features with non-zero variance"):
+        _prepare_feature_matrix(df, feature_cols=["a", "b"])
+
+
+# ---------------------------------------------------------------------------
+# PCA rendering with rich full_db (loadings, scree, stim-split)
+# ---------------------------------------------------------------------------
+
+
+def test_pca_loadings_renders_bars(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    from pyqtgraph import BarGraphItem
+
+    widget, engine, run_id = full_widget
+    plot_pca_loadings(widget, "Loadings", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    assert len(bar_items) >= 1
+
+
+def test_pca_scree_renders_bars_and_line(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    import pyqtgraph as pg
+    from pyqtgraph import BarGraphItem
+
+    widget, engine, run_id = full_widget
+    plot_pca_scree(widget, "Scree", engine, run_id)
+    bar_items = [i for i in widget.plot_item.items if isinstance(i, BarGraphItem)]
+    line_items = [i for i in widget.plot_item.items if isinstance(i, pg.PlotDataItem)]
+    assert len(bar_items) >= 1, "Scree plot should have bars"
+    assert len(line_items) >= 1, "Scree plot should have cumulative line"
+
+
+def test_pca_scatter_renders_with_full_db(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    import pyqtgraph as pg
+
+    widget, engine, run_id = full_widget
+    plot_pca_scatter(widget, "PCA", engine, run_id)
+    scatter_items = [
+        i for i in widget.plot_item.items if isinstance(i, pg.ScatterPlotItem)
+    ]
+    assert len(scatter_items) >= 1
+
+
+def test_pca_scatter_stim_split_no_crash_full_db(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """PCA stim-split with non-evoked data still runs without error."""
+    widget, engine, run_id = full_widget
+    plot_pca_scatter_stim_split(widget, "PCA stim", engine, run_id)
+    assert widget.plot_item is not None
+
+
+# ---------------------------------------------------------------------------
+# build_fov_feature_matrix edge cases (stim, no FOVAnalysis)
+# ---------------------------------------------------------------------------
+
+
+def test_build_feature_matrix_burst_stats_populated(
+    full_db: tuple[Engine, int],
+) -> None:
+    """Non-stim-split matrix should have burst stats from FOVAnalysis."""
+    engine, run_id = full_db
+    df = build_fov_feature_matrix(engine, run_id, include_stim_status=False)
+    assert len(df) == 4
+    assert not df["burst_count"].isna().all()
+
+
+def test_build_feature_matrix_stim_split_sets_burst_nan(
+    full_db: tuple[Engine, int],
+) -> None:
+    """When include_stim_status=True, burst columns are NaN."""
+    engine, run_id = full_db
+    df = build_fov_feature_matrix(engine, run_id, include_stim_status=True)
+    if len(df) > 0:
+        for col_name in ["burst_count", "burst_avg_duration_s", "burst_avg_interval_s"]:
+            assert df[col_name].isna().all(), f"{col_name} should be NaN for stim-split"
+
+
+def test_build_feature_matrix_stim_suffix() -> None:
+    """build_fov_feature_matrix adds _stim suffix when ROI has stimulated=True."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="stim_exp")
+        session.add(exp)
+        session.flush()
+        settings = AnalysisSettings(frame_rate=10.0, enable_rising_edge_analysis=True)
+        session.add(settings)
+        session.flush()
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W0", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+        roi = ROI(
+            label_value=1,
+            active=True,
+            fov_id=fov.id,
+            cell_size=100.0,
+            stimulated=True,
+        )
+        session.add(roi)
+        session.flush()
+        da = DataAnalysis(
+            roi_id=roi.id,
+            analysis_result_id=run.id,
+            peaks_amplitudes_den_dff=[1.0, 2.0],
+            den_dff_frequency=1.5,
+            iei=[0.5],
+            inferred_spikes_frequency=0.5,
+            inferred_spikes_rising_edge_frequency=0.3,
+        )
+        session.add(da)
+        run_id: int = run.id  # type: ignore[assignment]
+        session.commit()
+
+    df = build_fov_feature_matrix(engine, run_id, include_stim_status=True)
+    assert any("_stim" in name for name in df["fov_name"])
+    engine.dispose(close=True)
+
+
+def test_build_feature_matrix_nan_burst_no_fov_analysis() -> None:
+    """When FOVAnalysis is missing, burst columns should be NaN."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+
+    with Session(engine) as session:
+        exp = Experiment(name="no_fa_exp")
+        session.add(exp)
+        session.flush()
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W0", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+        roi = ROI(label_value=1, active=True, fov_id=fov.id, cell_size=100.0)
+        session.add(roi)
+        session.flush()
+        da = DataAnalysis(
+            roi_id=roi.id,
+            analysis_result_id=run.id,
+            peaks_amplitudes_den_dff=[1.0, 2.0],
+            den_dff_frequency=1.5,
+            iei=[0.5],
+            inferred_spikes_frequency=0.5,
+        )
+        session.add(da)
+        run_id: int = run.id  # type: ignore[assignment]
+        session.commit()
+
+    df = build_fov_feature_matrix(engine, run_id, include_stim_status=False)
+    assert len(df) >= 1
+    assert df["burst_count"].isna().all()
+    engine.dispose(close=True)
+
+
+# ---------------------------------------------------------------------------
+# PCA error / edge paths
+# ---------------------------------------------------------------------------
+
+
+def test_pca_scatter_error_path_too_few_fovs(qtbot: QtBot) -> None:
+    """PCA scatter with < 2 FOVs shows informative message, does not crash."""
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    with Session(engine) as session:
+        exp = Experiment(name="tiny")
+        session.add(exp)
+        session.flush()
+        settings = AnalysisSettings(frame_rate=10.0)
+        session.add(settings)
+        session.flush()
+        run = CaliResult(experiment=exp.id, analysis_settings_id=settings.id)
+        session.add(run)
+        session.flush()
+        plate = Plate(experiment=exp, name="P1", plate_type="6-well")
+        session.add(plate)
+        session.flush()
+        cond = Condition(name="WT", condition_type="genotype")
+        well = Well(plate=plate, name="W0", row=0, column=0, conditions=[cond])
+        session.add(well)
+        session.flush()
+        fov = FOV(name="fov_0", position_index=0, well_id=well.id)
+        session.add(fov)
+        session.flush()
+        fa = FOVAnalysis(fov_id=fov.id, analysis_result_id=run.id)
+        session.add(fa)
+        session.flush()
+        run_id: int = run.id  # type: ignore[assignment]
+        session.commit()
+
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    plot_pca_scatter(widget, "PCA", engine, run_id)
+    assert widget.plot_item is not None
+    engine.dispose(close=True)
+
+
+@pytest.mark.parametrize(
+    "plot_fn",
+    ["plot_pca_loadings", "plot_pca_scree"],
+)
+def test_pca_full_too_few_fovs(qtbot: QtBot, plot_fn: str) -> None:
+    """PCA loadings/scree with insufficient data shows message without crash."""
+    import importlib
+
+    mod = importlib.import_module(
+        "cali.plot._multi_wells_plots._dimensionality_reduction"
+    )
+    fn = getattr(mod, plot_fn)
+    engine = create_engine("sqlite:///:memory:")
+    create_database_and_tables(engine)
+    parent = QWidget()
+    widget = _MultilWellGraphWidget(parent)
+    qtbot.addWidget(parent)
+    fn(widget, "test", engine, run_id=None)
+    assert widget.plot_item is not None
+    engine.dispose(close=True)
+
+
+def test_pca_scatter_hidden_condition(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """PCA scatter skips conditions with visible=False."""
+    widget, engine, run_id = full_widget
+    plot_pca_scatter(widget, "PCA", engine, run_id)
+    # Hide one condition
+    for cond_name in widget.conditions:
+        widget.conditions[cond_name]["visible"] = False
+        break
+    plot_pca_scatter(widget, "PCA", engine, run_id)
+    assert widget.plot_item is not None
+
+
+@pytest.mark.parametrize(
+    "patch_target,plot_fn",
+    [
+        (
+            "cali.plot._multi_wells_plots._dimensionality_reduction"
+            ".build_fov_feature_matrix",
+            "plot_pca_scatter",
+        ),
+        (
+            "cali.plot._multi_wells_plots._dimensionality_reduction.compute_pca",
+            "plot_pca_scatter",
+        ),
+        (
+            "cali.plot._multi_wells_plots._dimensionality_reduction"
+            ".build_fov_feature_matrix",
+            "plot_pca_loadings",
+        ),
+    ],
+)
+def test_pca_handles_exception(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+    patch_target: str,
+    plot_fn: str,
+) -> None:
+    """PCA scatter/loadings handle RuntimeError from build_matrix or compute_pca."""
+    import importlib
+
+    mod = importlib.import_module(
+        "cali.plot._multi_wells_plots._dimensionality_reduction"
+    )
+    fn = getattr(mod, plot_fn)
+    widget, engine, run_id = full_widget
+    with patch(patch_target, side_effect=RuntimeError("mock")):
+        fn(widget, "test", engine, run_id)
+    assert widget.plot_item is not None
+
+
+# ---------------------------------------------------------------------------
+# _query_roi_attribute_by_condition with include_stim_status
+# ---------------------------------------------------------------------------
+
+
+def test_query_roi_attribute_stim_status_with_run_id(
+    full_db: tuple[Engine, int],
+) -> None:
+    """_query_roi_attribute_by_condition with include_stim_status and run_id."""
+    from cali.plot._multi_wells_plots._util import _query_roi_attribute_by_condition
+
+    engine, run_id = full_db
+    result = _query_roi_attribute_by_condition(
+        engine, "cell_size", run_id=run_id, include_stim_status=True
+    )
+    assert isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# _PCAFeaturesDialog widget tests
+# ---------------------------------------------------------------------------
+
+
+def test_pca_features_dialog_default_all_checked(qtbot: QtBot) -> None:
+    from cali.gui._pygraph_plot_widgets import _PCAFeaturesDialog
+
+    dialog = _PCAFeaturesDialog(
+        current_features=None, experiment_type=None, enable_rising_edge=True
+    )
+    qtbot.addWidget(dialog)
+
+    for feat in FEATURE_COLUMNS:
+        cb = dialog._checkboxes[feat]
+        assert cb.isChecked(), f"{feat} should be checked by default"
+        assert cb.isEnabled(), f"{feat} should be enabled"
+
+    assert dialog.get_features() is None
+
+
+def test_pca_features_dialog_subset_selected(qtbot: QtBot) -> None:
+    from cali.gui._pygraph_plot_widgets import _PCAFeaturesDialog
+
+    selected = ["mean_amplitude", "mean_frequency"]
+    dialog = _PCAFeaturesDialog(
+        current_features=selected, experiment_type=None, enable_rising_edge=True
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog._checkboxes["mean_amplitude"].isChecked()
+    assert dialog._checkboxes["mean_frequency"].isChecked()
+    assert not dialog._checkboxes["mean_iei"].isChecked()
+    result = dialog.get_features()
+    assert result is not None
+    assert set(result) == set(selected)
+
+
+def test_pca_features_dialog_evoked_disables_burst(qtbot: QtBot) -> None:
+    from cali._constants import EVOKED
+    from cali.gui._pygraph_plot_widgets import _BURST_FEATURES, _PCAFeaturesDialog
+
+    dialog = _PCAFeaturesDialog(
+        current_features=None, experiment_type=EVOKED, enable_rising_edge=True
+    )
+    qtbot.addWidget(dialog)
+    for feat in _BURST_FEATURES:
+        cb = dialog._checkboxes[feat]
+        assert not cb.isEnabled(), f"{feat} should be disabled for evoked"
+        assert not cb.isChecked(), f"{feat} should be unchecked for evoked"
+
+
+def test_pca_features_dialog_rising_edge_disabled(qtbot: QtBot) -> None:
+    from cali.gui._pygraph_plot_widgets import _PCAFeaturesDialog
+
+    dialog = _PCAFeaturesDialog(
+        current_features=None, experiment_type=None, enable_rising_edge=False
+    )
+    qtbot.addWidget(dialog)
+    cb = dialog._checkboxes["mean_spike_freq_edges"]
+    assert not cb.isEnabled()
+    assert not cb.isChecked()
+
+
+# ---------------------------------------------------------------------------
+# _MultilWellGraphWidget PCA UI interactions
+# ---------------------------------------------------------------------------
+
+
+def test_pca_combo_shows_features_button(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """Selecting a PCA option shows the _pca_features_btn."""
+    widget, engine, run_id = full_widget
+    widget._engine = engine
+    widget._run_id = run_id
+    widget._on_combo_changed("PCA Scatter")
+    assert not widget._pca_features_btn.isHidden()
+    widget._on_combo_changed("None")
+    assert widget._pca_features_btn.isHidden()
+
+
+def test_show_pca_features_dialog(
+    full_widget: tuple[_MultilWellGraphWidget, Engine, int],
+) -> None:
+    """_show_pca_features_dialog queries DB and processes dialog result."""
+    from qtpy.QtWidgets import QDialog
+
+    widget, engine, run_id = full_widget
+    widget._engine = engine
+    widget._run_id = run_id
+
+    with patch("cali.gui._pygraph_plot_widgets._PCAFeaturesDialog") as MockDialog:
+        mock_instance = MockDialog.return_value
+        mock_instance.exec.return_value = QDialog.DialogCode.Accepted
+        mock_instance.get_features.return_value = ["mean_amplitude", "mean_frequency"]
+
+        widget._show_pca_features_dialog()
+
+        MockDialog.assert_called_once()
+        assert widget._pca_features == ["mean_amplitude", "mean_frequency"]
