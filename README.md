@@ -7,11 +7,62 @@ A GUI for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 
 `cali` is package that provides a GUI to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
-<img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
+<img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
 
-<br><br>
+<br>
 
-## To Run
+## Table of Contents
+
+- [Getting Started](#getting-started)
+  - [Quick Run (without installing)](#quick-run-without-installing)
+  - [Installation](#installation)
+    - [Using (uv) pip](#-using-uv-pip)
+    - [Using uv](#-using-uv)
+  - [Notes](#-notes)
+- [CLI](#cli)
+  - [`cali tree`](#cali-tree-to-inspect-a-database)
+  - [Logger](#logger)
+- [GUI Overview](#gui-overview)
+  - [File Formats](#file-formats)
+  - [Open a File](#open-a-file)
+  - [Main Window](#main-window)
+  - [Pipeline Tabs](#pipeline-tabs)
+    - [Detection Tab](#detection-tab)
+    - [Extraction Tab](#extraction-tab)
+    - [Analysis Tab](#analysis-tab)
+  - [Run the Pipeline](#run-the-pipeline)
+  - [Visualization Tab](#visualization-tab)
+    - [Single Well Tab](#single-well-tab)
+    - [Multi Well Tab](#multi-well-tab)
+- [Analysis Details](#analysis-details)
+  - [Extraction](#extraction)
+    - [ΔF/F Calculation](#δff-calculation)
+    - [OASIS Denoising](#oasis-denoising)
+  - [Analysis](#analysis)
+    - [Calcium Peak Detection](#calcium-peak-detection)
+    - [Calcium Burst Detection](#calcium-burst-detection)
+    - [Inferred Spikes Thresholding](#inferred-spikes-thresholding)
+    - [Inferred Spikes Burst Detection](#inferred-spikes-burst-detection)
+  - [Correlation Analysis](#correlation-analysis)
+    - [Pairwise Pearson Correlation on Calcium Traces](#pairwise-pearson-correlation-on-calcium-traces)
+    - [Cross-Correlogram (CCG) Analysis on Inferred Spikes](#cross-correlogram-ccg-analysis-on-inferred-spikes)
+    - [Jitter Synchrony on Inferred Spikes](#jitter-synchrony-on-inferred-spikes)
+  - [Cluster Analysis](#cluster-analysis)
+  - [Multi-Well Condition Analysis](#multi-well-condition-analysis)
+    - [Condition Labels](#condition-labels)
+    - [Two-Level Aggregation](#two-level-aggregation)
+    - [Percentage Metrics](#percentage-metrics)
+    - [FOV-Level Scalar Metrics (Network Metrics)](#fov-level-scalar-metrics-network-metrics)
+
+<br>
+
+---
+
+<br>
+
+## Getting Started
+
+### Quick Run (without installing)
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run `cali` directly without installing it using:
 
@@ -37,11 +88,9 @@ uvx -p 3.13 --index pytorch-cu130=https://download.pytorch.org/whl/cu130 "git+ht
 nvidia-smi
 ```
 
-<br>
+### Installation
 
-## To install
-
-### ▶ Using (uv) pip
+#### ▶ Using (uv) pip
 
 Install `cali` directly without cloning (use python 3.11 or greater):
 
@@ -67,7 +116,7 @@ To use Cellpose with GPU (e.g. on Windows), the correct version of CUDA has to b
 nvidia-smi
 ```
 
-### ▶ Using uv
+#### ▶ Using uv
 
 Clone the repository and install with `uv sync`:
 
@@ -100,9 +149,9 @@ uv sync --extra cp4 --extra cu130   # Cellpose 4.x + CUDA 13.0
 nvidia-smi
 ```
 
-### ▶ NOTES
+#### ▶ NOTES
 
-#### Building on macOS
+##### Building on macOS
 
 If you encounter build errors with `oasis-deconv` (especially SDK-related errors), set these environment variables before installing:
 
@@ -115,8 +164,9 @@ Then run your installation command.
 
 <br>
 
-
 ---
+
+<br>
 
 ## CLI
 
@@ -162,9 +212,13 @@ cali tree my_experiment.cali --level well --show-settings False
 cali --logger DEBUG
 ```
 
+<br>
+
 ---
 
-## Overview
+<br>
+
+## GUI Overview
 
 <https://github.com/user-attachments/assets/4fdcabb9-6d7b-4c4f-ae84-8dffc8487376>
 
@@ -188,7 +242,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
   - the output path for the `cali` project database file, and
   - the name of the project (if you omit `.cali`, it will be added automatically).
 
-<img width="600" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
+<img width="600" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
 
 **NOTE**: If you are loading a folder of TIFF files, a plate assignment widget will open where you can:
 
@@ -197,7 +251,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
 
 After confirming the plate assignment, the main `cali` window will open. Next time, the project can be loaded directly from the database file.
 
-<img width="800" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
+<img width="800" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
 
 ### Main Window
 
@@ -207,7 +261,7 @@ The main window contains the following sections:
 - **Center panel**: contains tabs for ROI detection, trace extraction, analysis, and a visualization tab for displaying results.
 - **Right panel**: contains the list of *Runs* the user has performed. `cali` is structured so that each time the user changes pipeline settings and runs the analysis, a new *Run* is created. This allows comparing different settings and results. Selecting a run updates the center panel tabs to show the settings and results for that run.
 
-<img width="1739" height="1095" alt="Screenshot 2025-12-17 at 9 56 06 AM" src="https://github.com/user-attachments/assets/5192b1a5-783e-4636-95ba-a8408d5b6a44" />
+<img width="1739" height="1095" alt="Screenshot 2025-12-17 at 9 56 06 AM" src="https://github.com/user-attachments/assets/5192b1a5-783e-4636-95ba-a8408d5b6a44" />
 
 ### Pipeline Tabs
 
@@ -226,7 +280,7 @@ The Detection tab allows the user to set the parameters used to segment cells an
 
   On import, each label TIFF is read and converted into ROI/Mask objects in the database. The user can then proceed with extraction and analysis as usual.
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
 
 #### Extraction Tab
 
@@ -239,8 +293,9 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
   - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
+- **CSV Export**: raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 12 PM" src="https://github.com/user-attachments/assets/639a7c5a-84e1-4f9c-8fc4-c99bff962094" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 12 PM" src="https://github.com/user-attachments/assets/639a7c5a-84e1-4f9c-8fc4-c99bff962094" />
 
 #### Analysis Tab
 
@@ -253,15 +308,18 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
 - **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
+- **CSV Export**:
+  - Pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
+  - Multi-well aggregated data: exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 21 PM" src="https://github.com/user-attachments/assets/fe17ae9b-410f-4579-b532-1342a0598ca1" />
+<img width="800" alt="Screenshot 2026-01-31 at 4 00 21 PM" src="https://github.com/user-attachments/assets/fe17ae9b-410f-4579-b532-1342a0598ca1" />
 
 ### Run the Pipeline
 
 After setting parameters in each tab, the user can run the pipeline using the run panel at the bottom center of the main window.
 
 <br>
-<img width="800" alt="Screenshot 2025-12-14 at 7 01 27 PM" src="https://github.com/user-attachments/assets/95d08357-b284-486a-9160-b430d4a9247c" />
+<img width="800" alt="Screenshot 2025-12-14 at 7 01 27 PM" src="https://github.com/user-attachments/assets/95d08357-b284-486a-9160-b430d4a9247c" />
 <br>
 <br>
 
@@ -269,7 +327,7 @@ The user can select which steps to run (Detection, Extraction, Analysis) using t
 
 If the user wants to first explore and optimize parameters, a subset of wells/FOVs can be specified in the **Positions to Extract** field. By entering a comma-separated list of FOV position indices (obtained from the FOV table under the plate layout, e.g. `1, 3, 4` or `3-7` for a range), only those positions will be processed. This is useful to quickly test and optimize parameters before running the full pipeline. Once satisfied, the user can clear **Positions to Extract** and run the pipeline on the full dataset.
 
-Segmentation results and neuropil masks (if enabled) are displayed in the image viewer by clicking on “Labels”. The rest of the results can be visualized in the **Visualization** tab.
+Segmentation results and neuropil masks (if enabled) are displayed in the image viewer by clicking on "Labels". The rest of the results can be visualized in the **Visualization** tab.
 
 The full pipeline settings can be saved and loaded through the `save` and `load` button next to the `Run` and `Cancel` buttons.
 
@@ -300,7 +358,7 @@ Available visualizations include:
 - **Stimulated vs Non-Stimulated Analysis** (for `Evoked Activity`): visualize and compare metrics between stimulated and non-stimulated ROIs.
 - **Cluster Analysis**: cluster-sorted correlation heatmap, cluster-colored raster plot, and cluster-colored trace overlay, showing how ROIs are grouped into functional clusters based on correlated activity.
 
-<img width="927" height="1041" alt="Screenshot 2025-12-17 at 10 20 23 AM" src="https://github.com/user-attachments/assets/2620b629-c718-46d3-9c3a-eb83ca9ed3f4" />
+<img width="927" height="1041" alt="Screenshot 2025-12-17 at 10 20 23 AM" src="https://github.com/user-attachments/assets/2620b629-c718-46d3-9c3a-eb83ca9ed3f4" />
 
 #### Multi Well Tab
 
@@ -320,17 +378,11 @@ Available multi-well visualizations include:
 - **Spike Correlation**: max-lag cross-correlation from CCG analysis (with rising-edge variant).
 - **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2, measuring network connectivity density (with rising-edge variant).
 
-### CSV Export
-
-`cali` supports exporting analysis results to CSV files. When running the pipeline, the following export options are available in the **Extraction** and **Analysis** tabs:
-
-- **Trace Exports** (from Extraction tab): raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
-- **Correlation Matrix Exports** (from Analysis tab): pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
-- **Multi-Well Aggregated Data** (from Analysis tab): exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.
-
 <br>
 
 ---
+
+<br>
 
 ## Analysis Details
 
@@ -349,7 +401,7 @@ where:
 - $F(t)$ is the raw fluorescence at time $t$
 - $F_0(t)$ is the baseline fluorescence estimated from a sliding window
 
-The baseline $F_0(t)$ is computed by taking the 10th percentile of the fluorescence within a sliding window centered at each time point.
+The baseline $F_0(t)$ is computed by taking a user-defined percentile of the fluorescence within a sliding window centered at each time point.
 
 **GUI Parameters**:
 
@@ -365,7 +417,7 @@ For each ROI, `OASIS` is used to:
 - estimate the noise level of the ΔF/F trace (later used for calcium peak detection)
 - obtain both a denoised ΔF/F trace and an inferred spike train.
 
-**GUI Parameters**  
+**GUI Parameters**
 Currently, only the following parameter is exposed in the GUI:
 
 - **Decay Constant** ($\tau$, seconds): calcium decay time constant (depends on the calcium indicator and cell type).
@@ -394,10 +446,10 @@ We use **height**, **prominence**, and **minimum distance** thresholds to identi
 
 There are two modes to determine the peak *height* threshold:
 
-- **MULTIPLIER** (recommended):  
+- **MULTIPLIER** (recommended):
   The height threshold is computed separately for each ROI as a multiple of the noise level estimated during `OASIS`-based noise estimation.
 
-- **GLOBAL**:  
+- **GLOBAL**:
   A fixed absolute height value specified by the user. The same value is used for all ROIs in all wells/FOVs. This is mainly useful for testing, as it does *not* adapt to different noise levels across ROIs.
 
 The **prominence** threshold is always computed as a multiple of the noise level estimated during `OASIS`.
@@ -413,8 +465,8 @@ After detection, the following metrics are computed per ROI:
 **GUI Parameters**:
 
 - **Height Mode**: `MULTIPLIER` (× noise level) or `GLOBAL` (absolute value)
-- **Height Value**:  
-  - if `MULTIPLIER`: height threshold = value × noise  
+- **Height Value**:
+  - if `MULTIPLIER`: height threshold = value × noise
   - if `GLOBAL`: height threshold = absolute value
 - **Prominence Multiplier**: minimum prominence relative to noise
 - **Min Distance** (ms): minimum time between consecutive peaks
@@ -448,9 +500,9 @@ After detection, the following metrics are computed per ROI:
 
 **Computed Metrics**:
 
-- Burst count  
-- Average burst duration  
-- Average inter-burst interval  
+- Burst count
+- Average burst duration
+- Average inter-burst interval
 - Burst onset/offset times
 
 #### Inferred Spikes Thresholding
@@ -461,19 +513,19 @@ After detection, the following metrics are computed per ROI:
 
 Two modes are available:
 
-- **MULTIPLIER** (recommended):  
-  - Estimate a noise level from the positive spikes (e.g. via Median Absolute Deviation (MAD) or a low percentile).  
+- **MULTIPLIER** (recommended):
+  - Estimate a noise level from the positive spikes (e.g. via Median Absolute Deviation (MAD) or a low percentile).
   - The spike threshold is set as *threshold = value × noise* (per ROI).
 
-- **GLOBAL**:  
-  - Use a fixed, absolute threshold for all ROIs and wells/FOVs.  
+- **GLOBAL**:
+  - Use a fixed, absolute threshold for all ROIs and wells/FOVs.
   - Mainly useful for diagnostic/testing purposes; it does not adapt to per-ROI noise.
 
 **GUI Parameters**:
 
 - **Threshold Mode**: `MULTIPLIER` (× estimated noise level) or `GLOBAL` (absolute value).
-- **Spike Threshold Value**:  
-  - if `MULTIPLIER`: threshold = value × noise  
+- **Spike Threshold Value**:
+  - if `MULTIPLIER`: threshold = value × noise
   - if `GLOBAL`: threshold = absolute value
 
 #### Inferred Spikes Burst Detection
@@ -495,9 +547,9 @@ Two modes are available:
 
 **Computed Metrics**:
 
-- Number of network bursts  
-- Average burst duration  
-- Average inter-burst interval  
+- Number of network bursts
+- Average burst duration
+- Average inter-burst interval
 - Population firing rate during bursts
 
 ### Correlation Analysis
@@ -558,7 +610,7 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 4. **Baseline correction (shift predictor)**: To distinguish true functional connectivity from slow co-modulations (e.g., both neurons increasing activity over time), we compute a **null model** that represents what the CCG would look like if there were no precise timing relationships between the neurons.
 
    **What is a circular shift?**
-   A circular shift (also called circular permutation) wraps the spike train around itself: elements that "fall off" one end reappear at the other. For example, with a spike train `[0,0,1,0,1,1,0,0]` and a shift of 3 positions:
+   A circular shift wraps the spike train around itself: elements that "fall off" one end reappear at the other. For example, with a spike train `[0,0,1,0,1,1,0,0]` and a shift of 3 positions:
    - The last 3 elements `[1,0,0]` move to the front
    - Result: `[1,0,0,0,0,1,0,1]`
 
@@ -610,7 +662,7 @@ The CCG analysis computes the probability that neuron j fires at a given time la
 **GUI Parameters**:
 
 - **CCG Max Lag** (ms): Maximum time offset (converted to frames) over which to search for correlations.
-- **CCG Baseline Shuffles**: Number of circular shift surrogates for baseline correction (default: 30). More shuffles = more accurate baseline but slower computation.
+- **CCG Baseline Shuffles**: Number of circular shift surrogates for baseline correction (default: 20). More shuffles = more accurate baseline but slower computation.
 - **Enable Rising Edge Analysis**: When enabled, performs additional CCG analysis on spike onset times (0→1 transitions). Approximately doubles CCG computation time.
 
 **Summary Metric**:
@@ -623,7 +675,7 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
 **Calculation** (bidirectional jitter-based synchrony):
 
 1. **Input**: Two binary spike trains (arrays of 0s and 1s representing spike times).
-2. Spike events are defined as the rising edges in the binary spike trains.
+2. Spike events are defined as all non-zero frames in the binary spike trains (i.e., every frame where the value is 1). When rising-edge analysis is enabled, only the onset frames (transitions from 0 to 1) are used instead.
 3. For each spike in neuron $i$, check whether neuron $j$ fires within a temporal tolerance window of $±w$ frames. If yes, count this as a coincident spike.
 4. Repeat in the opposite direction: for each spike in neuron $j$, check for a spike in neuron $i$ within $±w$ frames.
 5. Count coincidences in both directions:
@@ -637,7 +689,7 @@ Global synchrony = median of the mean CCG per ROI (row means), excluding the dia
 
 This yields a synchrony score between 0 and 1:
 
-- **0** → no spikes occur near each other in time  
+- **0** → no spikes occur near each other in time
 - **1** → every spike from both neurons has a partner within the jitter window
 
 *Example*: Neuron i has 8 spikes and neuron j has 6 spikes. With a jitter window of ±2 frames: starting from neuron i's spikes, 5 of the 8 have a spike in neuron j within ±2 frames ($C_{i \to j}$ = 5). Starting from neuron j's spikes, 4 of the 6 have a spike in neuron i within ±2 frames ($C_{j \to i}$ = 4). The synchrony score is $S_{ij}$ = (5 + 4) / (8 + 6) = 9/14 ≈ 0.64. This means about 64% of all spikes from both neurons have a temporally coincident partner. If all spikes were perfectly synchronized (every spike in i matched one in j and vice versa), the score would be 1.0.
@@ -659,7 +711,7 @@ Each ROI is represented by its row in the correlation matrix (a vector of length
 
 **Method — Hierarchical clustering (average/UPGMA linkage)**:
 
-Builds a cluster hierarchy by iteratively merging the pair of clusters with the smallest average pairwise distance. The distance between ROIs is defined as $d_{ij} = 1 - r_{ij}$, where $r_{ij}$ is the Pearson correlation coefficient, so highly correlated ROIs are close together ($d \approx 0$) and anti-correlated ROIs are far apart ($d \approx 2$). Average linkage (UPGMA) works correctly with correlation-based distances without requiring the Euclidean assumption of Ward's method, making it the standard choice in calcium imaging and neuroscience. A complete linkage tree (dendrogram) is built and then cut at the level that produces the target number of clusters.
+Builds a cluster hierarchy by iteratively merging the pair of clusters with the smallest average pairwise distance. The distance between ROIs is defined as $d_{ij} = 1 - r_{ij}$, where $r_{ij}$ is the Pearson correlation coefficient, so highly correlated ROIs are close together ($d \approx 0$) and anti-correlated ROIs are far apart ($d \approx 2$). A linkage tree is built and then cut at the level that produces the target number of clusters.
 
 **Automatic cluster count selection**:
 
@@ -673,8 +725,6 @@ where $a_i$ is the mean intra-cluster distance for ROI $i$ and $b_i$ is the mean
 
 - **Number of Clusters**: set to `0` (Auto) to detect the optimal K via silhouette scoring, or enter a positive integer to force a fixed cluster count.
 - **Auto-detect Max K**: upper bound of the silhouette-score scan (only active when Number of Clusters = 0). The scan evaluates every K from 2 up to this value.
-
----
 
 ### Multi-Well Condition Analysis
 
