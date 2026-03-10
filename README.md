@@ -7,7 +7,7 @@ A GUI for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 
 `cali` is package that provides a GUI to load calcium imaging timelapse data (1-photon neuronal cultures), segment neurons using Cellpose, extract and analyse fluorescence traces and visualize them. It was originally designed to work in combination with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), an open-source software to control microscopes through `Micro-Manager` and [pymmcore-plus](https://github.com/pymmcore-plus).
 
-<img width="1736" height="1093" alt="Screenshot 2025-12-17 at 10 10 43 AM" src="https://github.com/user-attachments/assets/aac1188b-180e-49dc-b095-3d3a3e350750" />
+<img width="1750" height="1103" alt="Screenshot 2026-03-09 at 10 58 41 PM" src="https://github.com/user-attachments/assets/b9189d48-a2c1-494f-8fc4-7ceb9bd4012e" />
 
 <br>
 
@@ -198,6 +198,8 @@ cali tree my_experiment.cali -l fov -s False
 # Full level names also work
 cali tree my_experiment.cali --level well --show-settings False
 ```
+<img width="833" alt="Screenshot 2026-03-09 at 9 59 02 PM" src="https://github.com/user-attachments/assets/b5482401-245f-4814-9acd-c516d54c7755" />
+
 
 ### Logger
 
@@ -242,7 +244,7 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
   - the output path for the `cali` project database file, and
   - the name of the project (if you omit `.cali`, it will be added automatically).
 
-<img width="600" alt="Screenshot 2025-12-14 at 10 03 57 AM" src="https://github.com/user-attachments/assets/46e989b5-9c0e-451d-a5e0-98af878bb32b" />
+<img width="600" alt="Screenshot 2026-03-09 at 10 01 00 PM" src="https://github.com/user-attachments/assets/76bc82ee-7d19-478e-b95e-0b02c72c90ee" />
 
 **NOTE**: If you are loading a folder of TIFF files, a plate assignment widget will open where you can:
 
@@ -251,7 +253,8 @@ In the GUI, go to `File -> Select Data Source...`. Two options are available:
 
 After confirming the plate assignment, the main `cali` window will open. Next time, the project can be loaded directly from the database file.
 
-<img width="800" alt="Screenshot 2025-12-14 at 10 05 20 AM" src="https://github.com/user-attachments/assets/97cb92d0-6749-4f8f-9f42-8530e59692af" />
+<img width="800" alt="Screenshot 2026-03-09 at 10 02 10 PM" src="https://github.com/user-attachments/assets/5edd79e4-250f-4b94-8acf-003b863ca60b" />
+
 
 ### Main Window
 
@@ -261,7 +264,8 @@ The main window contains the following sections:
 - **Center panel**: contains tabs for ROI detection, trace extraction, analysis, and a visualization tab for displaying results.
 - **Right panel**: contains the list of *Runs* the user has performed. `cali` is structured so that each time the user changes pipeline settings and runs the analysis, a new *Run* is created. This allows comparing different settings and results. Selecting a run updates the center panel tabs to show the settings and results for that run.
 
-<img width="1739" height="1095" alt="Screenshot 2025-12-17 at 9 56 06 AM" src="https://github.com/user-attachments/assets/5192b1a5-783e-4636-95ba-a8408d5b6a44" />
+<img width="1750" height="1103" alt="Screenshot 2026-03-09 at 10 10 25 PM" src="https://github.com/user-attachments/assets/3af9fccb-4412-4865-ae1a-8e24fa1262af" />
+
 
 ### Pipeline Tabs
 
@@ -279,8 +283,9 @@ The Detection tab allows the user to set the parameters used to segment cells an
   - manually adjust assignments using Assign/Unassign/Reset buttons
 
   On import, each label TIFF is read and converted into ROI/Mask objects in the database. The user can then proceed with extraction and analysis as usual.
+  
+<img width="800" alt="Screenshot 2026-03-09 at 10 11 24 PM" src="https://github.com/user-attachments/assets/ecd650d5-6450-49e8-abb5-cee35341c5f7" />
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 05 PM" src="https://github.com/user-attachments/assets/fbd211f2-918e-49a5-b10f-700e8c4bd265" />
 
 #### Extraction Tab
 
@@ -295,7 +300,8 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
 - **CSV Export**: raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 12 PM" src="https://github.com/user-attachments/assets/639a7c5a-84e1-4f9c-8fc4-c99bff962094" />
+<img width="800" alt="Screenshot 2026-03-09 at 10 11 33 PM" src="https://github.com/user-attachments/assets/d6a6bcd0-137d-441c-a3f5-0e7b9c292e82" />
+
 
 #### Analysis Tab
 
@@ -312,7 +318,8 @@ The Analysis tab allows the user to configure analysis of the extracted traces, 
   - Pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
   - Multi-well aggregated data: exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.
 
-<img width="800" alt="Screenshot 2026-01-31 at 4 00 21 PM" src="https://github.com/user-attachments/assets/fe17ae9b-410f-4579-b532-1342a0598ca1" />
+<img width="800" alt="Screenshot 2026-03-09 at 10 11 44 PM" src="https://github.com/user-attachments/assets/9d4d613e-92d1-40ee-9b9c-ad0742c9a815" />
+
 
 ### Run the Pipeline
 
