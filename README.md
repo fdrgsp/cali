@@ -37,7 +37,7 @@ A GUI for Calcium Imaging Data Segmentation, Analysis and Visualization (🚧 WI
 - [Analysis Details](#analysis-details)
   - [Extraction](#extraction)
     - [ΔF/F Calculation](#δff-calculation)
-    - [OASIS Denoising](#oasis-denoising)
+    - [OASIS Denoising and Deconvolution](#oasis-denoising-and-deconvolution)
   - [Analysis](#analysis)
     - [Calcium Peak Detection](#calcium-peak-detection)
     - [Calcium Burst Detection](#calcium-burst-detection)
@@ -415,7 +415,7 @@ The baseline $F_0(t)$ is computed by taking a user-defined percentile of the flu
 - **Window Size** (s): size of the sliding window for baseline calculation.
 - **Percentile**: percentile of fluorescence values used as the baseline F₀ (default: 10).
 
-#### OASIS Denoising
+#### OASIS Denoising and Deconvolution
 
 **Purpose**: `cali` uses the [OASIS algorithm](https://github.com/j-friedrich/OASIS) (Friedrich et al., 2017) to denoise the ΔF/F signal and infer the underlying spike activity.
 
@@ -423,6 +423,12 @@ For each ROI, `OASIS` is used to:
 
 - estimate the noise level of the ΔF/F trace (later used for calcium peak detection)
 - obtain both a denoised ΔF/F trace and an inferred spike train.
+
+**Understanding the inferred spike train:**
+
+The inferred spike trace has the same length and time axis as the input ΔF/F, one value per acquired frame. Each value represents an inferred event magnitude (deconvolved activity) assigned to that frame. A larger value means more inferred activity, but the scale isn’t in physical units; interpret the values as relative and use them for comparison within your dataset.
+
+Since the output is sampled once per frame, temporal resolution is limited by the acquisition rate. For example, at 10 Hz, each sample corresponds to a 100 ms bin. Events closer together than 100 ms cannot be cleanly separated and will generally appear as a larger inferred value in one frame or spread across adjacent frames. In practice, calcium indicator kinetics and noise can further reduce effective timing precision to multiple frames, so a single underlying spike/event may yield inferred activity spanning 2–3 frames. Higher frame rates help, but indicator dynamics and SNR often set the ultimate limit.
 
 **GUI Parameters**
 Currently, only the following parameter is exposed in the GUI:
