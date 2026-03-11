@@ -1936,9 +1936,13 @@ class CaliGui(QMainWindow):
         self._select_most_recently_modified_run()
         # Refresh the image viewer to update labels with the new detection settings
         self._on_fov_table_selection_changed()
-        # Refresh plot combo availability to reflect new analysis data
-        # for sw_graph in self.SW_GRAPHS:
-        #     sw_graph._update_combo_item_availability()
+        # Refresh plot combo availability to reflect new analysis data.
+        # This is a safety net: _on_fov_table_selection_changed above should
+        # already set the FOV and update availability, but if image loading
+        # failed or the FOV was not set for any reason, this ensures the
+        # combo items are updated based on the current database state.
+        for sw_graph in self.SW_GRAPHS:
+            sw_graph._rebuild_combo_box(preserve_selection=True)
 
     def _on_labels_imported(
         self, detection_settings_id: int
@@ -2725,6 +2729,10 @@ class CaliGui(QMainWindow):
                 self._update_single_wells_graphs_combo(clear=True)
                 return
 
+            # Determine FOV title early so graph combo is always updated,
+            # even if image loading fails below.
+            title = value.fov.name or f"Position {value.pos_idx}"
+
             # Database-only mode: no image data, but still show labels and graphs
             if self._data is None or not self._data.sequence:
                 roi_labels, neuropil_labels = self._get_labels(value)
@@ -2737,7 +2745,6 @@ class CaliGui(QMainWindow):
                     else None
                 )
                 self._image_viewer.setData(None, roi_labels, neuropil_labels)
-                title = value.fov.name or f"Position {value.pos_idx}"
                 self._update_single_wells_graphs_combo(set_fov=title)
                 self._loading_bar.hide()
                 return
@@ -2759,10 +2766,14 @@ class CaliGui(QMainWindow):
             # Update graph widgets with new FOV - this will trigger plot reload
             # Use the FOV name directly - it already contains the full identifier
             # (e.g., "B5_0000" for well B5, position 0000)
-            title = value.fov.name or f"Position {value.pos_idx}"
             self._update_single_wells_graphs_combo(set_fov=title)
             self._loading_bar.hide()
         except Exception as e:
+            # Still update graph combo availability even if image loading failed,
+            # so plot options are enabled based on the analysis data in the database.
+            if value is not None:
+                title = value.fov.name or f"Position {value.pos_idx}"
+                self._update_single_wells_graphs_combo(set_fov=title)
             msg = f"❌ Failed to load FOV:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
