@@ -1083,6 +1083,57 @@ def test_useq_plate_to_db_with_positions(temp_db: TempDB) -> None:
     assert len(plate.wells) > 0
 
 
+def test_useq_plate_plan_to_db_natural_sort_order() -> None:
+    """Test that FOV position_index follows natural sort order, not lexicographic.
+
+    Regression test: wells B2-B11 should be sorted as B2, B3, ..., B10, B11
+    (natural order), not B10, B11, B2, B3, ... (lexicographic order).
+    This ensures that position_index correctly maps to tensorstore data order.
+    """
+    exp = Experiment(name="natural_sort_test")
+
+    # Wells B2 through B11: row 1, columns 1-10
+    plan = useq.WellPlatePlan(
+        plate=useq.WellPlate.from_str("96-well"),
+        a1_center_xy=(0.0, 0.0),
+        selected_wells=((1,), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)),
+        num_points=1,
+    )
+
+    plate = useq_plate_plan_to_db(plan, exp)
+
+    # Collect all FOVs across all wells, sorted by position_index
+    all_fovs = []
+    for well in plate.wells:
+        for fov in well.fovs:
+            all_fovs.append((fov.position_index, fov.name, well.name))
+
+    all_fovs.sort(key=lambda x: x[0])
+
+    # Extract just the well names in position_index order
+    well_order = [well_name for _, _, well_name in all_fovs]
+
+    # Verify natural sort: B2 should come before B10
+    assert well_order.index("B2") < well_order.index("B10"), (
+        f"B2 should have lower position_index than B10, got order: {well_order}"
+    )
+    assert well_order.index("B3") < well_order.index("B10"), (
+        f"B3 should have lower position_index than B10, got order: {well_order}"
+    )
+    assert well_order.index("B9") < well_order.index("B10"), (
+        f"B9 should have lower position_index than B10, got order: {well_order}"
+    )
+    assert well_order.index("B10") < well_order.index("B11"), (
+        f"B10 should have lower position_index than B11, got order: {well_order}"
+    )
+
+    # Verify the complete order is natural
+    expected_order = [f"B{col}" for col in range(2, 12)]
+    assert well_order == expected_order, (
+        f"Expected natural order {expected_order}, got {well_order}"
+    )
+
+
 def test_util_load_experiment_from_database(tmp_path: Path) -> None:
     """Test load_experiment_from_database utility."""
     from cali.sqlmodel._util import (

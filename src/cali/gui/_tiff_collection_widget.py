@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -510,7 +511,12 @@ class TiffCollectionWidget(QDialog):
             }
             counts_display = "\n".join(
                 f"  {well}: {count} file(s)"
-                for well, count in sorted(well_name_counts.items())
+                for well, count in sorted(
+                    well_name_counts.items(),
+                    key=lambda x: [
+                        int(c) if c.isdigit() else c for c in re.split(r"(\d+)", x[0])
+                    ],
+                )
             )
 
             QMessageBox.warning(
