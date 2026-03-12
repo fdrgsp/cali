@@ -64,6 +64,29 @@ register_well_plates(
 )
 
 
+@pytest.fixture(autouse=True)
+def _mock_pyconify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Mock pyconify.svg_path to avoid network requests in tests."""
+    svg_dir = tmp_path / "icons"
+    svg_dir.mkdir()
+    _counter = 0
+
+    def mock_svg_path(*key: str, color: str | None = None, **kwargs: object) -> Path:
+        nonlocal _counter
+        fill = color or "currentColor"
+        svg_content = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+            f'<rect width="24" height="24" fill="{fill}"/></svg>'
+        )
+        svg_file = svg_dir / f"icon_{_counter}.svg"
+        _counter += 1
+        svg_file.write_text(svg_content)
+        return svg_file
+
+    monkeypatch.setattr("pyconify.api.svg_path", mock_svg_path)
+    yield
+
+
 @pytest.fixture
 def temp_db() -> Generator[TempDB, None, None]:
     """Create a temporary SQLite database for testing."""
