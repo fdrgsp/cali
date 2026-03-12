@@ -1548,3 +1548,169 @@ def test_run_selection_dialog_get_selected() -> None:
     # Select first item
     dialog._runs_list.setCurrentRow(0)
     assert dialog.get_selected_run_id() == 1
+
+
+# ---------------------------------------------------------------------------
+# _show_save_labels_dialog tests
+# ---------------------------------------------------------------------------
+
+
+def test_save_labels_menu_action_exists(gui: CaliGui) -> None:
+    """Test that 'Save Labels as Tiff...' action exists in the File menu."""
+    actions = [a.text() for a in gui.file_menu.actions()]
+    assert "Save Labels as Tiff..." in actions
+
+
+def test_show_save_labels_no_database(gui: CaliGui) -> None:
+    """Test _show_save_labels_dialog shows error when no database is loaded."""
+    gui._database_path = None
+
+    with patch("cali.gui._cali_gui.show_error_dialog") as mock_err:
+        gui._show_save_labels_dialog()
+        mock_err.assert_called_once()
+        assert "No database loaded" in mock_err.call_args[0][1]
+
+
+def test_show_save_labels_no_detection_results(gui: CaliGui, tmp_path: Path) -> None:
+    """Test _show_save_labels_dialog shows error when no detection results exist."""
+    from cali.sqlmodel._model import SQLModel as CaliSQLModel
+
+    db_path = tmp_path / "empty.cali"
+    engine = create_engine(f"sqlite:///{db_path}")
+    CaliSQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(Experiment(name="E"))
+        session.commit()
+    engine.dispose(close=True)
+
+    gui._database_path = str(db_path)
+
+    with patch("cali.gui._cali_gui.show_error_dialog") as mock_err:
+        gui._show_save_labels_dialog()
+        mock_err.assert_called_once()
+        assert "No detection results" in mock_err.call_args[0][1]
+
+
+def test_show_save_labels_dialog_cancelled(
+    gui: CaliGui, temp_db_with_detection: Path
+) -> None:
+    """Test _show_save_labels_dialog does nothing when dialog is cancelled."""
+    gui._database_path = str(temp_db_with_detection)
+
+    with patch("cali.gui._cali_gui._SaveLabelsAsTiff") as MockDialog:
+        MockDialog.return_value.exec.return_value = False
+        gui._show_save_labels_dialog()
+        MockDialog.return_value.populate_detection_settings.assert_called_once()
+        MockDialog.return_value.value.assert_not_called()
+
+
+def test_show_save_labels_dialog_success(
+    gui: CaliGui, temp_db_with_detection: Path, tmp_path: Path
+) -> None:
+    """Test _show_save_labels_dialog calls save_labeled_images on accept."""
+    gui._database_path = str(temp_db_with_detection)
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with (
+        patch("cali.gui._cali_gui._SaveLabelsAsTiff") as MockDialog,
+        patch("cali.util.save_labeled_images") as mock_save,
+    ):
+        MockDialog.return_value.exec.return_value = True
+        MockDialog.return_value.value.return_value = (
+            str(output_dir),
+            [0, 1],
+            1,
+            False,
+        )
+        gui._show_save_labels_dialog()
+        mock_save.assert_called_once_with(
+            db_path=str(temp_db_with_detection),
+            output_dir=str(output_dir),
+            position_indices=[0, 1],
+            detection_settings_id=1,
+            overwrite=False,
+        )
+
+
+def test_show_save_labels_dialog_empty_positions_uses_all(
+    gui: CaliGui, temp_db_with_detection: Path, tmp_path: Path
+) -> None:
+    """Test that empty positions list uses all positions."""
+    gui._database_path = str(temp_db_with_detection)
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with (
+        patch("cali.gui._cali_gui._SaveLabelsAsTiff") as MockDialog,
+        patch("cali.util.save_labeled_images") as mock_save,
+        patch.object(gui, "_get_total_positions", return_value=5),
+    ):
+        MockDialog.return_value.exec.return_value = True
+        MockDialog.return_value.value.return_value = (
+            str(output_dir),
+            [],
+            None,
+            True,
+        )
+        gui._show_save_labels_dialog()
+        mock_save.assert_called_once_with(
+            db_path=str(temp_db_with_detection),
+            output_dir=str(output_dir),
+            position_indices=[0, 1, 2, 3, 4],
+            detection_settings_id=None,
+            overwrite=True,
+        )
+
+
+def test_show_save_labels_dialog_save_error(
+    gui: CaliGui, temp_db_with_detection: Path, tmp_path: Path
+) -> None:
+    """Test _show_save_labels_dialog handles save_labeled_images exceptions."""
+    gui._database_path = str(temp_db_with_detection)
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    with (
+        patch("cali.gui._cali_gui._SaveLabelsAsTiff") as MockDialog,
+        patch(
+            "cali.util.save_labeled_images",
+            side_effect=RuntimeError("disk full"),
+        ),
+        patch("cali.gui._cali_gui.show_error_dialog") as mock_err,
+    ):
+        MockDialog.return_value.exec.return_value = True
+        MockDialog.return_value.value.return_value = (
+            str(output_dir),
+            [0],
+            1,
+            False,
+        )
+        gui._show_save_labels_dialog()
+        mock_err.assert_called_once()
+        assert "disk full" in mock_err.call_args[0][1]
+
+
+def test_show_save_labels_dialog_invalid_path(
+    gui: CaliGui, temp_db_with_detection: Path
+) -> None:
+    """Test _show_save_labels_dialog shows error for non-directory path."""
+    gui._database_path = str(temp_db_with_detection)
+
+    with (
+        patch("cali.gui._cali_gui._SaveLabelsAsTiff") as MockDialog,
+        patch("cali.gui._cali_gui.show_error_dialog") as mock_err,
+    ):
+        MockDialog.return_value.exec.return_value = True
+        MockDialog.return_value.value.return_value = (
+            "/nonexistent/dir",
+            [0],
+            1,
+            False,
+        )
+        gui._show_save_labels_dialog()
+        mock_err.assert_called_once()
+        assert "not a directory" in mock_err.call_args[0][1]
