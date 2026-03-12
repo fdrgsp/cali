@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
 from superqt import QIconifyIcon
 from superqt.utils import create_worker
 
+from cali._constants import natural_sort_key
 from cali.gui._util import (
     _BrowseWidget,
     _ProgressBarWidget,
@@ -228,7 +229,8 @@ class _ImportLabelsDialog(QDialog):
                 p
                 for p in folder.iterdir()
                 if p.suffix.lower() in (".tif", ".tiff") and not p.name.startswith(".")
-            ]
+            ],
+            key=lambda p: natural_sort_key(p.name),
         )
         self._available_list.clear()
         for f in self._label_files:

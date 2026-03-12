@@ -23,6 +23,7 @@ from cali._constants import (
     RAW_CALCIUM_TRACES,
     CorrelationDataType,
     TraceDataType,
+    natural_sort_key,
 )
 from cali.sqlmodel._model import (
     FOV,
@@ -1100,7 +1101,7 @@ def _export_trace_data(
         all_data = []
         column_names = []
 
-        for fov_key in sorted(fov_data.keys()):
+        for fov_key in sorted(fov_data.keys(), key=natural_sort_key):
             # Add stimulated ROIs first
             for roi_info in sorted(
                 fov_data[fov_key]["stim"], key=lambda x: x["roi_label"]
