@@ -78,7 +78,7 @@ from ._plate_plan_wizard import PlatePlanWizard
 from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidget
 from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
-from ._save_as_widgets import _SaveAsTiff
+from ._save_as_widgets import _SaveAsTiff, _SaveLabelsAsTiff
 from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
     _ElapsedTimer,
@@ -136,8 +136,12 @@ class CaliGui(QMainWindow):
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
         save_as_tiff_action.triggered.connect(self._show_save_as_tiff_dialog)
+        save_labels_action = QAction("Save Labels as Tiff...", self)
+        save_labels_action.setToolTip("Save labeled images (ROI masks) as TIFF files.")
+        save_labels_action.triggered.connect(self._show_save_labels_dialog)
         self.file_menu.addAction(open_action)
         self.file_menu.addAction(save_as_tiff_action)
+        self.file_menu.addAction(save_labels_action)
         self.setMenuBar(self.menu_bar)
 
         # TIFF COLLECTION WIDGET ------------------------------------------------------
@@ -3024,6 +3028,80 @@ class CaliGui(QMainWindow):
                     "finished": self._on_loading_finished,
                 },
             )
+
+    def _show_save_labels_dialog(self) -> None:
+        """Show the save labels as tiff dialog."""
+        if self._database_path is None:
+            show_error_dialog(
+                self,
+                "❌ No database loaded! Please load a database first.",
+            )
+            return
+
+        # Query detection settings from the database
+        from cali.sqlmodel._model import DetectionSettings
+
+        engine = create_engine(
+            f"sqlite:///{self._database_path}",
+            connect_args={"timeout": 30.0, "check_same_thread": False},
+            pool_pre_ping=True,
+        )
+        settings_list: list[tuple[int, str]] = []
+        try:
+            with Session(engine) as session:
+                results = session.exec(select(DetectionSettings)).all()
+                for d_settings in results:
+                    if d_settings.id is not None:
+                        settings_list.append((d_settings.id, d_settings.method))
+        finally:
+            engine.dispose(close=True)
+
+        if not settings_list:
+            show_error_dialog(
+                self,
+                "❌ No detection results found in the database.\n"
+                "Please run detection first.",
+            )
+            return
+
+        settings_list.sort(key=lambda x: x[0])
+
+        dialog = _SaveLabelsAsTiff(self)
+        dialog.populate_detection_settings(settings_list)
+
+        if dialog.exec():
+            path, positions, detection_settings_id, overwrite = dialog.value()
+
+            if not Path(path).is_dir():
+                show_error_dialog(
+                    self,
+                    f"❌ The path {path} is not a directory!",
+                )
+                return
+
+            # If no positions specified, use all positions
+            if not positions:
+                positions = list(range(self._get_total_positions()))
+
+            self._init_loading_bar("Saving labeled images...")
+
+            try:
+                from cali.util import save_labeled_images
+
+                save_labeled_images(
+                    db_path=self._database_path,
+                    output_dir=path,
+                    position_indices=positions or None,
+                    detection_settings_id=detection_settings_id,
+                    overwrite=overwrite,
+                )
+                cali_logger.info(f"✅ Labeled images saved to {path}")
+            except Exception as e:
+                msg = f"❌ Failed to save labeled images:\n{e}"
+                show_error_dialog(self, msg)
+                cali_logger.error(msg)
+            finally:
+                self._loading_bar.hide()
 
     def _update_progress(self, value: int | str) -> None:
         """Update the progress bar value."""
