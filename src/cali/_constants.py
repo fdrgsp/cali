@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
+
+
+def natural_sort_key(text: str) -> list:
+    """Sort key that handles numeric substrings naturally (e.g. B2 before B10)."""
+    return [int(c) if c.isdigit() else c for c in re.split(r"(\d+)", text)]
+
 
 # ==================== Metadata Keys ====================
 EVENT_KEY = "mda_event"

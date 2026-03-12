@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -26,6 +25,7 @@ from qtpy.QtWidgets import (
 )
 from superqt import QIconifyIcon
 
+from cali._constants import natural_sort_key
 from cali.gui._util import auto_match_files_grouped
 from cali.readers import TiffCollectionReader, TiffCollectionSettings
 
@@ -243,7 +243,8 @@ class TiffCollectionWidget(QDialog):
             if tiff_path.is_dir():
                 # Find all TIFF files in directory
                 tiff_files_list = sorted(
-                    list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff"))
+                    list(tiff_path.glob("*.tif")) + list(tiff_path.glob("*.tiff")),
+                    key=lambda p: natural_sort_key(p.name),
                 )
             else:
                 # Single file provided
@@ -263,7 +264,10 @@ class TiffCollectionWidget(QDialog):
         # Remove hidden files starting with "." (e.g. on MacOS)
         tiff_files_list = [p for p in tiff_files_list if not p.name.startswith(".")]
 
-        self._tiff_files = sorted(Path(f) for f in tiff_files_list)
+        self._tiff_files = sorted(
+            (Path(f) for f in tiff_files_list),
+            key=lambda p: natural_sort_key(p.name),
+        )
 
         # Update available files list
         for tiff_file in self._tiff_files:
@@ -336,7 +340,9 @@ class TiffCollectionWidget(QDialog):
 
         for well_name, matched_files in matches.items():
             row_col = well_coords[well_name]
-            self._file_map[row_col] = sorted(matched_files)
+            self._file_map[row_col] = sorted(
+                matched_files, key=lambda p: natural_sort_key(p.name)
+            )
 
         self._update_available_list_states()
         self._on_well_selection_changed()
@@ -513,9 +519,7 @@ class TiffCollectionWidget(QDialog):
                 f"  {well}: {count} file(s)"
                 for well, count in sorted(
                     well_name_counts.items(),
-                    key=lambda x: [
-                        int(c) if c.isdigit() else c for c in re.split(r"(\d+)", x[0])
-                    ],
+                    key=lambda x: natural_sort_key(x[0]),
                 )
             )
 

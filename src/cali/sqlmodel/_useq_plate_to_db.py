@@ -16,14 +16,8 @@ if TYPE_CHECKING:
 
     from ._model import Experiment
 
-import re
-
+from cali._constants import natural_sort_key
 from cali.logger import cali_logger
-
-
-def _natural_sort_key(text: str) -> list:
-    """Sort key that handles well names naturally (B2 before B10)."""
-    return [int(c) if c.isdigit() else c for c in re.split(r"(\d+)", text)]
 
 
 def _row_index_to_label(row: int) -> str:
@@ -296,7 +290,7 @@ def useq_plate_plan_to_db(
 
     # Create FOVs for all wells with sequential position indices
     global_position_index = 0
-    for well_name in sorted(wells_data.keys(), key=_natural_sort_key):
+    for well_name in sorted(wells_data.keys(), key=natural_sort_key):
         # Get the well object we created
         well = next((w for w in plate.wells if w.name == well_name), None)  # type: ignore[assignment]
         if well is None:
