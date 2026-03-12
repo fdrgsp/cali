@@ -2567,13 +2567,15 @@ class CaliGui(QMainWindow):
 
     def _init_loading_bar(self, text: str, show_progress_bar: bool = True) -> None:
         """Reset the loading bar."""
-        self._loading_bar.setEnabled(True)
-        self._loading_bar.setText(text)
-        self._loading_bar.setValue(0)
+        # Recreate each time to avoid Windows repaint issues when reusing a hidden
+        # QDialog instance (contents render white/blank on re-show).
+        # deleteLater() is required so Qt removes the old widget from its child list;
+        # simply reassigning the Python reference leaves it as an orphaned child.
+        self._loading_bar.deleteLater()
+        self._loading_bar = _ProgressBarWidget(self, text=text)
         self._loading_bar.showPercentage(show_progress_bar)
         self._loading_bar.show_progress_bar(show_progress_bar)
         self._loading_bar.show()
-        # force update of the loading bar (windows requires this)
         QApplication.processEvents()
 
     def _update_graphs_with_roi(self, roi: int) -> None:
