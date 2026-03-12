@@ -941,6 +941,30 @@ def test_initialize_from_database_success(
     assert not gui._loading_bar.isVisible()
 
 
+def test_init_loading_bar_recreates_widget(gui: CaliGui, qtbot: QtBot) -> None:
+    """Test that _init_loading_bar creates a fresh widget each call.
+
+    Each call must produce a new instance (different identity) so that Qt
+    re-renders the contents correctly (fixes a Windows repaint bug where a
+    reused hidden QDialog renders white/blank on re-show).
+    """
+    first_bar = gui._loading_bar
+    gui._init_loading_bar("First")
+
+    second_bar = gui._loading_bar
+    assert second_bar is not first_bar, "second call must produce a new widget"
+    assert second_bar.isVisible()
+    assert second_bar._label.text() == "First"
+
+    gui._init_loading_bar("Second", show_progress_bar=False)
+
+    third_bar = gui._loading_bar
+    assert third_bar is not second_bar, "third call must produce a new widget"
+    assert third_bar.isVisible()
+    assert third_bar._label.text() == "Second"
+    assert third_bar._progress_bar.isHidden()
+
+
 def test_initialize_from_database_not_exists(gui: CaliGui, qtbot: QtBot) -> None:
     """Test initialization fails when database doesn't exist."""
     with patch("cali.gui._cali_gui.show_error_dialog") as mock_dialog:
