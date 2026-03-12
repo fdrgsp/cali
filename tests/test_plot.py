@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import gc
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,7 +37,8 @@ def db_engine() -> Generator[Engine, None, None]:
     engine = create_engine(f"sqlite:///{db_path}")
 
     yield engine
-    engine.dispose()  # Close all connections
+    engine.dispose(close=True)
+    gc.collect()
 
 
 @pytest.fixture

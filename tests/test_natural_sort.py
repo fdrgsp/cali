@@ -165,6 +165,8 @@ def test_import_labels_folder_sorted_naturally(
 
 def test_export_traces_fov_columns_natural_order(tmp_path: Path) -> None:
     """CSV columns from _export_trace_data are ordered naturally by FOV name."""
+    import gc
+
     import pandas as pd
     from sqlalchemy import create_engine
     from sqlmodel import Session
@@ -226,6 +228,8 @@ def test_export_traces_fov_columns_natural_order(tmp_path: Path) -> None:
 
     output = tmp_path / "traces.csv"
     _export_trace_data(engine, output, RAW_CALCIUM_TRACES, run_id=run_id)
+    engine.dispose(close=True)
+    gc.collect()
 
     df = pd.read_csv(output)
     # Column names look like "B1_0000_ROI_1_stim" — extract the FOV prefix
