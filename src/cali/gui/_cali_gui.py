@@ -2567,8 +2567,8 @@ class CaliGui(QMainWindow):
 
     def _init_loading_bar(self, text: str, show_progress_bar: bool = True) -> None:
         """Reset the loading bar."""
-        # Recreate each time to avoid macOS Sheet repaint issues when reusing
-        # a hidden QDialog instance (contents render white/blank).
+        # Recreate each time to avoid Windows repaint issues when reusing a hidden
+        # QDialog instance (contents render white/blank on re-show).
         # deleteLater() is required so Qt removes the old widget from its child list;
         # simply reassigning the Python reference leaves it as an orphaned child.
         self._loading_bar.deleteLater()
