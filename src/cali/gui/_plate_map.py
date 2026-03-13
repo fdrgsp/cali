@@ -13,7 +13,7 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     WellPlateView,
 )
 from qtpy.QtCore import QSize, Qt, Signal
-from qtpy.QtGui import QColor, QIcon
+from qtpy.QtGui import QColor, QIcon, QPixmap
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
     QComboBox,
@@ -43,6 +43,13 @@ ALIGN_LEFT = "QPushButton { text-align: left;}"
 DATA_CONDITION = 5
 
 
+def _make_color_icon(color_name: str, size: int = 16) -> QIcon:
+    """Create a solid-color square icon without any network request."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(color_name))
+    return QIcon(pixmap)
+
+
 class _ConditionWidget(QWidget):
     valueChanged = Signal(object)
 
@@ -58,7 +65,7 @@ class _ConditionWidget(QWidget):
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
         for color_name in QColor.colorNames():
-            color_icon = QIcon(QIconifyIcon("mdi:square", color=color_name))
+            color_icon = _make_color_icon(color_name)
             self._color_combo.addItem(color_icon, color_name)
         self._color_combo.setMaxVisibleItems(10)
 
