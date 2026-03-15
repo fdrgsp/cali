@@ -953,20 +953,20 @@ AnalysisProduct(
     compute_fn=compute_spike_synchrony_data,
 )
 AnalysisProduct(
-    name="Spike Max-Lag Correlation Bar Plot",
-    group=AnalysisGroup.MULTI_WELL,
-    analyzer=plot_spike_correlation_bar_plot,
-    category="Spike Synchrony",
-    pipeline_stage=PipelineStage.ANALYSIS,
-    compute_fn=compute_spike_correlation_data,
-)
-AnalysisProduct(
     name="Spike Jitter Synchrony Bar Plot (Rising Edges)",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_spike_synchrony_rising_edges_bar_plot,
     category="Spike Synchrony",
     pipeline_stage=PipelineStage.ANALYSIS,
     compute_fn=compute_spike_synchrony_rising_edges_data,
+)
+AnalysisProduct(
+    name="Spike Max-Lag Correlation Bar Plot",
+    group=AnalysisGroup.MULTI_WELL,
+    analyzer=plot_spike_correlation_bar_plot,
+    category="Spike Synchrony",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    compute_fn=compute_spike_correlation_data,
 )
 AnalysisProduct(
     name="Spike Max-Lag Correlation Bar Plot (Rising Edges)",
