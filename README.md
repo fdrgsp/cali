@@ -382,8 +382,25 @@ Available multi-well visualizations include:
 - **Inferred Spike Bursts**: burst count, average duration, average interval, and burst rate.
 - **Calcium Correlation**: global Pearson correlation on ΔF/F and denoised ΔF/F traces.
 - **Spike Synchrony**: jitter-based synchrony (with rising-edge variant).
-- **Spike Correlation**: max-lag cross-correlation from CCG analysis (with rising-edge variant).
-- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2, measuring network connectivity density (with rising-edge variant).
+- **Spike Correlation**: max-lag cross-correlation from CCG analysis (with rising-edge variant). Values are dimensionless peak CCG probabilities (0–1); if the y-axis shows an SI-prefix multiplier (e.g. `×0.001`), multiply the displayed tick value by that factor to get the actual value:
+
+  | Condition | Displayed | Actual value |
+  |---|---|---|
+  | 1st | ~100 | ~0.100 |
+  | 2nd | ~110 | ~0.110 |
+  | 3rd | ~320 | ~0.320 |
+
+  The third condition has ~3× stronger spike cross-correlation than the other two.
+
+- **Fraction Significant CCG Pairs**: fraction of ROI pairs with |z-score| > 2, measuring network connectivity density (with rising-edge variant). Values are fractions (0–1), where `1.0` = 100 % of pairs significantly coupled (e.g. displayed `950` with `×0.001` → actual `0.950`):
+
+  | Condition | Displayed | Actual value |
+  |---|---|---|
+  | 1st | ~305 | ~0.305 (30.5 % of pairs) |
+  | 2nd | ~290 | ~0.290 (29 % of pairs) |
+  | 3rd | ~950 | ~0.950 (95 % of pairs) |
+
+  The third condition has nearly all ROI pairs significantly correlated, while the first two have roughly 30 %. Compare alongside Spike Correlation to distinguish **connectivity density** (how many pairs are coupled) from **coupling strength** (how strong those correlations are).
 
 <br>
 
