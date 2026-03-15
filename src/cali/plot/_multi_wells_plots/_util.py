@@ -400,14 +400,14 @@ def _aggregate_fov_data_to_condition_stats(
 
     Two-level hierarchical aggregation:
 
-    **Step 1 — ROI → FOV**: For each FOV, all ROI values are averaged to produce
-    a single FOV mean.  The FOV-level SEM is `std(roi_values, ddof=1) / sqrt(n)`.
+    **Step 1 — ROI → FOV**: For each FOV, all ROI values (including flattened
+    lists such as individual peak amplitudes) are averaged to produce a single
+    FOV mean.
 
-    **Step 2 — FOV → Condition**: FOV means are combined into a weighted average
-    where each FOV is weighted by its number of ROIs (so FOVs with more cells
-    contribute proportionally more).  The condition-level SEM is a pooled SEM:
-    the squared FOV SEMs are weighted by their ROI counts, summed, and the
-    square root of the weighted average is taken.
+    **Step 2 — FOV → Condition**: The condition mean is the unweighted mean of
+    the FOV means, treating each FOV as one independent biological replicate.
+    The condition SEM is computed across FOV means:
+    ``std(fov_means, ddof=1) / sqrt(n_fovs)``.
 
     Parameters
     ----------
@@ -428,10 +428,8 @@ def _aggregate_fov_data_to_condition_stats(
         if not fov_dict:
             continue
 
-        # Step 1: ROI → FOV (compute per-FOV mean, SEM, and ROI count)
+        # Step 1: ROI → FOV (compute per-FOV mean)
         fov_means_list: list[float] = []
-        fov_sems_list: list[float] = []
-        fov_n_list: list[int] = []
 
         for _fov_name, roi_values in fov_dict.items():
             if not roi_values:
@@ -448,26 +446,19 @@ def _aggregate_fov_data_to_condition_stats(
             if not flat_values:
                 continue
 
-            arr = np.asarray(flat_values, dtype=float)
-            n = len(arr)
-            fov_mean = float(np.mean(arr))
-            fov_sem = float(np.std(arr, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
-
-            fov_means_list.append(fov_mean)
-            fov_sems_list.append(fov_sem)
-            fov_n_list.append(n)
+            fov_means_list.append(float(np.mean(flat_values)))
 
         if not fov_means_list:
             continue
 
         fov_means = np.array(fov_means_list)
-        fov_sems = np.array(fov_sems_list)
-        fov_n = np.array(fov_n_list, dtype=float)
 
-        # Step 2: FOV → Condition (weighted mean + pooled SEM)
-        total_n = fov_n.sum()
-        condition_mean = float(np.dot(fov_n, fov_means) / total_n)
-        condition_sem = float(np.sqrt(np.dot(fov_n, fov_sems**2) / total_n))
+        # Step 2: FOV → Condition (mean of FOV means ± SEM across FOVs)
+        n_fovs = len(fov_means)
+        condition_mean = float(np.mean(fov_means))
+        condition_sem = (
+            float(np.std(fov_means, ddof=1) / np.sqrt(n_fovs)) if n_fovs > 1 else 0.0
+        )
 
         conditions.append(cond_label)
         means.append(condition_mean)
@@ -487,11 +478,8 @@ def _aggregate_fov_scalar_to_condition_stats(
 ) -> BarPlotData:
     """Aggregate FOV-level scalar metrics to condition-level statistics.
 
-    Unlike ``_aggregate_fov_data_to_condition_stats`` which computes
-    **within-FOV** variability (across ROIs), this function computes
-    **between-FOV** variability — the correct approach when each FOV
-    contributes a single scalar value (e.g. mean correlation, synchrony,
-    burst count).
+    Used when each FOV contributes a single scalar value (e.g. mean
+    correlation, synchrony, burst count) rather than per-ROI distributions.
 
     Each FOV scalar is weighted by *weight* (typically the number of
     unique ROI pairs ``n*(n-1)/2`` for correlation metrics, or ``1`` for

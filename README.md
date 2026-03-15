@@ -369,7 +369,7 @@ Available visualizations include:
 
 #### Multi Well Tab
 
-The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a two-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means are combined into condition-level estimates weighted by sample size. Error bars represent pooled SEM, and individual FOV means are overlaid as scatter points.
+The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a two-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means are combined into condition-level estimates treating each FOV as one independent biological replicate. Error bars represent the between-FOV SEM, and individual FOV means are overlaid as scatter points.
 
 If the plate was treated with different conditions (e.g. drug vs control), clicking the **Show/Edit Plate Map** button under the plate layout opens a plate map editor where each well can be assigned to a condition. Currently, two condition dimensions are supported (e.g. genotype and treatment). This information is used to group wells/FOVs in the Multi Well tab. If no plate map is defined, data are shown on a per-well basis.
 
@@ -753,11 +753,11 @@ For each metric, data are aggregated in two steps:
 
 **Step 1 — ROI → FOV**
 
-For each FOV, the values of all active ROIs are collected and averaged to produce a single FOV mean. The FOV-level standard error of the mean (SEM) is computed from the unbiased standard deviation of those ROI values divided by the square root of the number of active ROIs.
+For each FOV, the values of all active ROIs (including flattened per-ROI lists such as individual peak amplitudes) are averaged to produce a single FOV mean.
 
 **Step 2 — FOV → Condition**
 
-FOV-level means are then combined into a single condition-level estimate. The condition mean is computed as a weighted average of FOV means, where each FOV is weighted by its number of active ROIs — so FOVs with more cells contribute more to the overall estimate. The condition-level SEM is computed as a pooled SEM: the squared FOV SEMs are each weighted by their respective ROI counts, summed, and the square root of the weighted average is taken. This propagates the per-FOV uncertainty into the condition-level error bar.
+FOV means are combined into a condition-level estimate by treating each FOV as one independent biological replicate. The condition mean is the unweighted mean of the FOV means and the condition SEM is computed across FOV means: `std(fov_means, ddof=1) / sqrt(n_fovs)`.
 
 The individual FOV means are overlaid on each bar as scatter points, providing direct visibility into within-condition variability.
 

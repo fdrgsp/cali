@@ -45,14 +45,10 @@ Condition "drug"
 
 ## Step 1 — ROI → FOV
 
-For each FOV compute:
+For each FOV compute the mean of its ROI values:
 
 $$
 \mu_\text{FOV} = \frac{1}{n}\sum_{i=1}^{n} x_i
-\qquad
-\text{SEM}_\text{FOV} = \frac{\sigma_\text{FOV}}{\sqrt{n}}
-\quad\text{where}\quad
-\sigma_\text{FOV} = \sqrt{\frac{\sum(x_i - \mu_\text{FOV})^2}{n-1}}
 $$
 
 ### FOV-A  (n = 4, values = [0.10, 0.14, 0.12, 0.08])
@@ -61,29 +57,10 @@ $$
 \mu_A = \frac{0.10 + 0.14 + 0.12 + 0.08}{4} = \frac{0.44}{4} = \mathbf{0.110\ \text{Hz}}
 $$
 
-$$
-\sigma_A = \sqrt{\frac{(0.10-0.11)^2 + (0.14-0.11)^2 + (0.12-0.11)^2 + (0.08-0.11)^2}{3}}
-= \sqrt{\frac{0.0001+0.0009+0.0001+0.0009}{3}}
-= \sqrt{0.000\overline{6}} \approx 0.02582
-$$
-
-$$
-\text{SEM}_A = \frac{0.02582}{\sqrt{4}} = \frac{0.02582}{2} \approx \mathbf{0.01291\ \text{Hz}}
-$$
-
 ### FOV-B  (n = 3, values = [0.20, 0.22, 0.18])
 
 $$
 \mu_B = \frac{0.20 + 0.22 + 0.18}{3} = \frac{0.60}{3} = \mathbf{0.200\ \text{Hz}}
-$$
-
-$$
-\sigma_B = \sqrt{\frac{(0.20-0.20)^2 + (0.22-0.20)^2 + (0.18-0.20)^2}{2}}
-= \sqrt{\frac{0 + 0.0004 + 0.0004}{2}} = \sqrt{0.0004} = 0.02000
-$$
-
-$$
-\text{SEM}_B = \frac{0.02000}{\sqrt{3}} \approx \frac{0.02000}{1.7321} \approx \mathbf{0.01155\ \text{Hz}}
 $$
 
 ### FOV-C  (n = 3, values = [0.30, 0.35, 0.28])
@@ -92,98 +69,89 @@ $$
 \mu_C = \frac{0.30 + 0.35 + 0.28}{3} = \frac{0.93}{3} = \mathbf{0.310\ \text{Hz}}
 $$
 
-$$
-\sigma_C = \sqrt{\frac{(0.30-0.31)^2+(0.35-0.31)^2+(0.28-0.31)^2}{2}}
-= \sqrt{\frac{0.0001+0.0016+0.0009}{2}} = \sqrt{0.0013} \approx 0.03606
-$$
-
-$$
-\text{SEM}_C = \frac{0.03606}{\sqrt{3}} \approx \mathbf{0.02082\ \text{Hz}}
-$$
-
 ### FOV-D  (n = 4, values = [0.40, 0.42, 0.38, 0.39])
 
 $$
 \mu_D = \frac{0.40 + 0.42 + 0.38 + 0.39}{4} = \frac{1.59}{4} = \mathbf{0.3975\ \text{Hz}}
 $$
 
-$$
-\sigma_D = \sqrt{\frac{(0.40-0.3975)^2+(0.42-0.3975)^2+(0.38-0.3975)^2+(0.39-0.3975)^2}{3}}
-\approx \sqrt{\frac{0.0000063+0.000506+0.000306+0.0000063}{3}}
-\approx \sqrt{0.000273} \approx 0.01652
-$$
-
-$$
-\text{SEM}_D = \frac{0.01652}{\sqrt{4}} \approx \mathbf{0.00826\ \text{Hz}}
-$$
-
 **Step 1 summary table**
 
-| FOV | n | μ (Hz) | σ (Hz) | SEM (Hz) |
-|-----|---|--------|--------|----------|
-| A   | 4 | 0.1100 | 0.02582| 0.01291  |
-| B   | 3 | 0.2000 | 0.02000| 0.01155  |
-| C   | 3 | 0.3100 | 0.03606| 0.02082  |
-| D   | 4 | 0.3975 | 0.01652| 0.00826  |
+| FOV | n | μ (Hz) |
+|-----|---|--------|
+| A   | 4 | 0.1100 |
+| B   | 3 | 0.2000 |
+| C   | 3 | 0.3100 |
+| D   | 4 | 0.3975 |
 
 ---
 
 ## Step 2 — FOV → Condition
 
-Each FOV is weighted by its number of ROIs ($n_i$).
+Each FOV is treated as one independent biological replicate. The condition
+mean is the unweighted mean of FOV means and the SEM is computed across
+FOV means.
 
 $$
-\bar{x}_\text{cond} = \frac{\sum_i n_i\,\mu_i}{\sum_i n_i}
+\bar{x}_\text{cond} = \frac{1}{M}\sum_{i=1}^{M} \mu_i
 \qquad
-\text{SEM}_\text{cond} = \sqrt{\frac{\sum_i n_i\,\text{SEM}_i^2}{\sum_i n_i}}
+\text{SEM}_\text{cond} = \frac{\sigma(\mu_1, \dots, \mu_M)}{\sqrt{M}}
+\quad\text{where}\quad
+\sigma = \text{std}(\text{ddof}=1)
 $$
 
-### Condition "ctrl"  (FOV-A + FOV-B)
+### Condition "ctrl"  (FOV-A + FOV-B, M = 2)
 
 $$
 \bar{x}_\text{ctrl}
-= \frac{4 \times 0.1100 + 3 \times 0.2000}{4+3}
-= \frac{0.440 + 0.600}{7}
-= \frac{1.040}{7}
-\approx \mathbf{0.1486\ \text{Hz}}
+= \frac{0.1100 + 0.2000}{2}
+= \frac{0.3100}{2}
+= \mathbf{0.1550\ \text{Hz}}
+$$
+
+$$
+\sigma_\text{ctrl}
+= \sqrt{\frac{(0.1100 - 0.1550)^2 + (0.2000 - 0.1550)^2}{1}}
+= \sqrt{\frac{0.002025 + 0.002025}{1}}
+= \sqrt{0.004050}
+\approx 0.06364
 $$
 
 $$
 \text{SEM}_\text{ctrl}
-= \sqrt{\frac{4 \times 0.01291^2 + 3 \times 0.01155^2}{7}}
-= \sqrt{\frac{4 \times 0.0001667 + 3 \times 0.0001334}{7}}
-= \sqrt{\frac{0.000667 + 0.000400}{7}}
-= \sqrt{\frac{0.001067}{7}}
-\approx \sqrt{0.0001524}
-\approx \mathbf{0.01234\ \text{Hz}}
+= \frac{0.06364}{\sqrt{2}}
+\approx \mathbf{0.04500\ \text{Hz}}
 $$
 
-### Condition "drug"  (FOV-C + FOV-D)
+### Condition "drug"  (FOV-C + FOV-D, M = 2)
 
 $$
 \bar{x}_\text{drug}
-= \frac{3 \times 0.3100 + 4 \times 0.3975}{3+4}
-= \frac{0.930 + 1.590}{7}
-= \frac{2.520}{7}
-\approx \mathbf{0.3600\ \text{Hz}}
+= \frac{0.3100 + 0.3975}{2}
+= \frac{0.7075}{2}
+= \mathbf{0.35375\ \text{Hz}}
+$$
+
+$$
+\sigma_\text{drug}
+= \sqrt{\frac{(0.3100 - 0.35375)^2 + (0.3975 - 0.35375)^2}{1}}
+= \sqrt{\frac{0.001914 + 0.001914}{1}}
+= \sqrt{0.003828}
+\approx 0.06187
 $$
 
 $$
 \text{SEM}_\text{drug}
-= \sqrt{\frac{3 \times 0.02082^2 + 4 \times 0.00826^2}{7}}
-= \sqrt{\frac{3 \times 0.000433 + 4 \times 0.0000682}{7}}
-= \sqrt{\frac{0.001299 + 0.000273}{7}}
-= \sqrt{\frac{0.001572}{7}}
-\approx \sqrt{0.0002246}
-\approx \mathbf{0.01499\ \text{Hz}}
+= \frac{0.06187}{\sqrt{2}}
+\approx \mathbf{0.04375\ \text{Hz}}
 $$
 
 **Final bar-plot values (Metric 1)**
 
 | Condition | Mean (Hz) | SEM (Hz) | FOV dots |
 |-----------|-----------|----------|----------|
-| ctrl      | 0.1486    | 0.01234  | 0.110, 0.200 |
-| drug      | 0.3600    | 0.01499  | 0.310, 0.3975 |
+| ctrl      | 0.1550    | 0.04500  | 0.110, 0.200 |
+| drug      | 0.35375   | 0.04375  | 0.310, 0.3975 |
 
 ---
 
@@ -385,10 +353,9 @@ Raw data
   └─ per-ROI scalar (frequency, amplitude, IEI, …)
         │
         ▼  Step 1: μ_FOV = mean(ROIs)
-        │           SEM_FOV = std(ROIs, ddof=1) / sqrt(n)
         │
-        ▼  Step 2: μ_cond = Σ(n_i · μ_FOV_i) / Σn_i          [weighted mean]
-                    SEM_cond = sqrt(Σ(n_i · SEM_FOV_i²) / Σn_i) [pooled SEM]
+        ▼  Step 2: μ_cond = mean(μ_FOV_1, …, μ_FOV_M)         [unweighted mean]
+                    SEM_cond = std(μ_FOVs, ddof=1) / sqrt(M)    [between-FOV SEM]
 
   └─ per-ROI binary (active / not-active → % Active Cells)
         │
@@ -407,8 +374,9 @@ Raw data
 
 > **Key design choices**
 >
-> * Per-ROI metrics use an ROI-count–weighted average so that FOVs with more
->   cells contribute proportionally more.
+> * Per-ROI metrics treat each FOV as one independent biological replicate —
+>   the condition mean is the unweighted mean of FOV means, and the SEM
+>   reflects between-FOV variability.
 > * Percentage / proportion metrics use the binomial model instead of the
 >   standard SEM because the quantity is bounded in [0, 100].
 > * Network/pairwise metrics use between-FOV variability (not within-FOV ROI
