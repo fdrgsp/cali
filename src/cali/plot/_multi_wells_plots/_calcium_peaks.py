@@ -214,7 +214,7 @@ def plot_calcium_peaks_frequency_stim_split_bar_plot(
 def _query_calcium_burst_metrics_by_condition(
     engine: Engine,
     run_id: int | None = None,
-) -> dict[str, dict[str, dict[str, float]]]:
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
     """Query pre-computed calcium burst metrics from FOVAnalysis, grouped by condition.
 
     Parameters
@@ -226,9 +226,9 @@ def _query_calcium_burst_metrics_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, dict[str, float]]]
-        Nested dict: {condition: {fov_name: {"count": ..., "avg_duration_s": ...,
-        "avg_interval_s": ...}}}
+    dict[str, dict[str, dict[str, dict[str, float]]]]
+        Nested dict: {condition: {well_id: {fov_name: {"count": ...,
+        "avg_duration_s": ..., "avg_interval_s": ...}}}}
     """
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
@@ -247,12 +247,13 @@ def _query_calcium_burst_metrics_by_condition(
 
             results = session.exec(stmt).all()
 
-            data: dict[str, dict[str, dict[str, float]]] = {}
+            data: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
             for fa, fov, well in results:
                 if not fa.calcium_burst_count:  # skip None and 0 (no bursts detected)
                     continue
                 cond_label = _get_condition_label(well)
-                data.setdefault(cond_label, {})[fov.name] = {
+                well_key = str(well.id)
+                data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = {
                     "count": float(fa.calcium_burst_count),
                     "avg_duration_s": (
                         float(fa.calcium_burst_avg_duration)
@@ -295,10 +296,13 @@ def _plot_calcium_burst_metric(
         widget.clear_plot()
         return
 
-    # Each FOV contributes a single scalar → use between-FOV SEM (weight=1)
-    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
-        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
+    # Each FOV contributes a single scalar → use between-well SEM (weight=1)
+    scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        cond: {
+            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            for well, fov_dict in well_dict.items()
+        }
+        for cond, well_dict in data_by_condition.items()
     }
 
     plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
@@ -472,9 +476,12 @@ def _compute_calcium_burst_metric(
     data_by_condition = _query_calcium_burst_metrics_by_condition(engine, run_id)
     if not data_by_condition:
         return None
-    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
-        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
+    scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        cond: {
+            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            for well, fov_dict in well_dict.items()
+        }
+        for cond, well_dict in data_by_condition.items()
     }
     plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:

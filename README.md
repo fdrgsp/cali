@@ -369,7 +369,7 @@ Available visualizations include:
 
 #### Multi Well Tab
 
-The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a two-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means are combined into condition-level estimates treating each FOV as one independent biological replicate. Error bars represent the between-FOV SEM, and individual FOV means are overlaid as scatter points.
+The Multi Well tab visualizes summary metrics across all wells/FOVs, aggregated by condition. Data are grouped using a three-level hierarchical aggregation: ROI values are first averaged within each FOV, then FOV means within the same well are averaged to produce a single well mean (treating FOVs as technical replicates), and finally well means are combined into condition-level estimates treating each well as one independent biological replicate. Error bars represent the between-well SEM, and individual well means are overlaid as scatter points.
 
 If the plate was treated with different conditions (e.g. drug vs control), clicking the **Show/Edit Plate Map** button under the plate layout opens a plate map editor where each well can be assigned to a condition. Currently, two condition dimensions are supported (e.g. genotype and treatment). This information is used to group wells/FOVs in the Multi Well tab. If no plate map is defined, data are shown on a per-well basis.
 
@@ -747,37 +747,43 @@ The **Multi Well** tab displays condition-level summaries of analysis metrics, a
 
 Conditions labels are defined via the plate map editor in the GUI. For `Evoked Activity` experiments, condition labels can optionally include the stimulation status of each ROI (e.g., `ctrl_stim` vs `ctrl_non_stim`), enabling a direct comparison between stimulated and non-stimulated populations within the same condition.
 
-#### Two-Level Aggregation
+#### Three-Level Aggregation
 
-For each metric, data are aggregated in two steps:
+For each metric, data are aggregated in three steps:
 
 **Step 1 — ROI → FOV**
 
 For each FOV, the values of all active ROIs (including flattened per-ROI lists such as individual peak amplitudes) are averaged to produce a single FOV mean.
 
-**Step 2 — FOV → Condition**
+**Step 2 — FOV → Well**
 
-FOV means are combined into a condition-level estimate by treating each FOV as one independent biological replicate. The condition mean is the unweighted mean of the FOV means and the condition SEM is computed across FOV means: `std(fov_means, ddof=1) / sqrt(n_fovs)`.
+FOV means within the same well are averaged (unweighted) to produce a single well mean. Multiple FOVs from the same well are treated as technical replicates of the same biological sample.
 
-The individual FOV means are overlaid on each bar as scatter points, providing direct visibility into within-condition variability.
+**Step 3 — Well → Condition**
+
+The condition mean is the unweighted mean of the well means, treating each well as one independent biological replicate. The condition SEM is computed across well means: `std(well_means, ddof=1) / sqrt(n_wells)`.
+
+The individual well means are overlaid on each bar as scatter points, providing direct visibility into within-condition variability.
 
 #### Percentage Metrics
 
-For the **% Active Cells** metric, a binomial error model is used in place of the standard SEM, because the quantity is a proportion (number of active ROIs out of total ROIs per FOV).
+For the **% Active Cells** metric, the same three-level hierarchy is used:
 
 **Step 1 — ROI → FOV**: for each FOV, the percentage of active ROIs is computed as the number of active ROIs divided by the total number of ROIs, multiplied by 100.
 
-**Step 2 — FOV → Condition**: FOV percentages are combined into a weighted mean proportion, where each FOV is weighted by its total ROI count. The error bar is the binomial SEM: the square root of the weighted proportion times one minus that proportion, divided by the total number of ROIs across all FOVs in the condition. This captures the uncertainty in estimating the underlying proportion of active cells, and automatically scales with both the estimated proportion and the total number of observations.
+**Step 2 — FOV → Well**: FOV percentages within the same well are averaged (unweighted) to produce a single well percentage.
+
+**Step 3 — Well → Condition**: The condition mean and SEM are computed across well means: `std(well_means, ddof=1) / sqrt(n_wells)`. Using between-well SEM avoids pseudo-replication: cells within the same well are not independent, and collecting more ROIs from the same well should not shrink the error bar.
 
 #### FOV-Level Scalar Metrics (Network Metrics)
 
 Some metrics are inherently FOV-level scalars rather than per-ROI distributions — for example, global correlation, synchrony, and burst counts. These are computed from pairwise matrices or population-level analyses and yield a single value per FOV.
 
-For these metrics, there are no within-FOV ROI values to average over, so the error must come from **between-FOV variability** within a condition. The aggregation uses a weighted between-FOV SEM:
+For these metrics, there are no within-FOV ROI values to average over, so the aggregation uses a two-step well-based hierarchy:
 
-**Weighted Mean**: each FOV scalar is weighted by the number of unique ROI pairs in that FOV (`n*(n-1)/2` for correlation/synchrony metrics, or equal weight for burst metrics). FOVs with more cells produce more reliable pairwise estimates and therefore contribute proportionally more.
+**Step 1 — FOV → Well**: FOV scalars within the same well are combined using a weighted mean (weight = number of unique ROI pairs `n*(n-1)/2` for correlation/synchrony metrics, or equal weight for burst metrics). FOVs with more cells produce more reliable pairwise estimates and therefore contribute proportionally more within the well.
 
-**Between-FOV SEM**: the weighted sample variance is computed from the spread of FOV-level values around the weighted mean, and the SEM is the square root of this variance divided by the number of FOVs. When only a single FOV exists for a condition, the SEM is zero (no between-FOV variability can be estimated), making the superimposed FOV dots critical for visual assessment.
+**Step 2 — Well → Condition**: The condition mean is the unweighted mean of the well means; the condition SEM is `std(well_means, ddof=1) / sqrt(n_wells)`. Wells are treated as equal independent biological replicates.
 
 The FOV-level scalar metrics available in the Multi-Well tab include:
 

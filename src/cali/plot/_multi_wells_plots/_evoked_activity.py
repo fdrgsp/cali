@@ -37,8 +37,8 @@ def _query_evoked_amplitudes_by_condition(
     engine: Engine,
     stimulated: bool = True,
     run_id: int | None = None,
-) -> dict[str, dict[str, dict[str, list[float]]]]:
-    """Query evoked amplitudes grouped by condition → FOV → power_pulse.
+) -> dict[str, dict[str, dict[str, dict[str, list[float]]]]]:
+    """Query evoked amplitudes grouped by condition → well → FOV → power_pulse.
 
     Calculates stimulated/non-stimulated amplitudes on-the-fly from traces data.
 
@@ -53,8 +53,8 @@ def _query_evoked_amplitudes_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, dict[str, list[float]]]]
-        Nested dict: {condition: {fov: {power_pulse: [amplitudes]}}}
+    dict[str, dict[str, dict[str, dict[str, list[float]]]]]
+        Nested dict: {condition: {well_id: {fov: {power_pulse: [amplitudes]}}}}
     """
     from cali.plot._util import separate_stimulated_vs_non_stimulated_peaks
 
@@ -83,8 +83,8 @@ def _query_evoked_amplitudes_by_condition(
 
         results = session.exec(stmt).all()
 
-        # Group by condition and FOV and power_pulse
-        data: dict[str, dict[str, dict[str, list[float]]]] = {}
+        # Group by condition → well → FOV → power_pulse
+        data: dict[str, dict[str, dict[str, dict[str, list[float]]]]] = {}
 
         for roi, fov, well, traces, analysis, settings in results:
             # Check if this is an evoked experiment
@@ -121,18 +121,19 @@ def _query_evoked_amplitudes_by_condition(
 
             # Build condition label (without power/pulse)
             cond_label = _get_condition_label(well)
+            well_key = str(well.id)
 
             # Store amplitudes grouped by power_pulse
             for power_pulse, amplitude_list in amps.items():
-                data.setdefault(cond_label, {}).setdefault(fov.name, {}).setdefault(
-                    power_pulse, []
-                ).extend(amplitude_list)
+                data.setdefault(cond_label, {}).setdefault(well_key, {}).setdefault(
+                    fov.name, {}
+                ).setdefault(power_pulse, []).extend(amplitude_list)
 
     return data
 
 
 def _aggregate_evoked_data_to_condition_stats(
-    data_by_condition: dict[str, dict[str, dict[str, list[float]]]],
+    data_by_condition: dict[str, dict[str, dict[str, dict[str, list[float]]]]],
 ) -> BarPlotData:
     """Aggregate evoked amplitude data across all power/pulse combinations.
 
@@ -144,40 +145,43 @@ def _aggregate_evoked_data_to_condition_stats(
 
     Parameters
     ----------
-    data_by_condition : dict[str, dict[str, dict[str, list[float]]]]
-        Nested dict: {condition: {fov: {power_pulse: [amplitudes]}}}
+    data_by_condition : dict[str, dict[str, dict[str, dict[str, list[float]]]]]
+        Nested dict: {condition: {well_id: {fov: {power_pulse: [amplitudes]}}}}
 
     Returns
     -------
     BarPlotData
         Aggregated plot data with power/pulse in condition names
     """
-    # Reorganize to flatten structure: condition_power → fov → values
+    # Reorganize to flatten structure: condition_power → well_id → fov → values
     # Also track the numeric power value for sorting
-    flattened: dict[str, dict[str, list[float]]] = {}
+    flattened: dict[str, dict[str, dict[str, list[float]]]] = {}
     power_values: dict[str, float] = {}  # Maps condition_with_power to numeric power
 
-    for condition, fov_dict in data_by_condition.items():
-        for fov, power_pulse_dict in fov_dict.items():
-            for power_pulse, amplitudes in power_pulse_dict.items():
-                # Extract power value from power_pulse string
-                # Format is "X.X%" or "X.XXXmW/cm²", followed by "_duration"
-                power_str = power_pulse.split("_")[0]  # Get just the power part
+    for condition, well_dict in data_by_condition.items():
+        for well_key, fov_dict in well_dict.items():
+            for fov, power_pulse_dict in fov_dict.items():
+                for power_pulse, amplitudes in power_pulse_dict.items():
+                    # Extract power value from power_pulse string
+                    # Format is "X.X%" or "X.XXXmW/cm²", followed by "_duration"
+                    power_str = power_pulse.split("_")[0]  # Get just the power part
 
-                # Extract numeric value for sorting
-                # Handle both "5.0%" and "5.000mW/cm²" formats
-                numeric_match = re.search(r"(\d+\.?\d*)", power_str)
-                numeric_power = float(numeric_match.group(1)) if numeric_match else 0.0
+                    # Extract numeric value for sorting
+                    # Handle both "5.0%" and "5.000mW/cm²" formats
+                    numeric_match = re.search(r"(\d+\.?\d*)", power_str)
+                    numeric_power = (
+                        float(numeric_match.group(1)) if numeric_match else 0.0
+                    )
 
-                # Create new condition name with power
-                condition_with_power = f"{condition} ({power_str})"
+                    # Create new condition name with power
+                    condition_with_power = f"{condition} ({power_str})"
 
-                flattened.setdefault(condition_with_power, {}).setdefault(
-                    fov, []
-                ).extend(amplitudes)
+                    flattened.setdefault(condition_with_power, {}).setdefault(
+                        well_key, {}
+                    ).setdefault(fov, []).extend(amplitudes)
 
-                # Store the numeric power for sorting
-                power_values[condition_with_power] = numeric_power
+                    # Store the numeric power for sorting
+                    power_values[condition_with_power] = numeric_power
 
     # Sort by condition name first, then by power value
     # Extract base condition name (everything before the last opening parenthesis)
