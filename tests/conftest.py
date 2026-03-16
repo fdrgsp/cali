@@ -84,6 +84,7 @@ def _mock_pyconify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
         return svg_file
 
     monkeypatch.setattr("pyconify.api.svg_path", mock_svg_path)
+    monkeypatch.setattr("superqt.iconify.svg_path", mock_svg_path, raising=False)
     yield
 
 
