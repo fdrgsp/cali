@@ -956,7 +956,7 @@ class _CalciumPeaksWidget(QWidget):
         self._burst_wdg.setValue(
             (
                 DEFAULT_BURST_THRESHOLD,
-                3000.0,  # 3 seconds = 3000ms
+                DEFAULT_MIN_BURST_DURATION,
                 DEFAULT_BURST_GAUSS_SIGMA,
             )
         )
@@ -1080,7 +1080,7 @@ class _BurstWidget(QWidget):
         self._burst_min_duration_ms.setDecimals(2)
         self._burst_min_duration_ms.setRange(0.0, 100000.0)
         self._burst_min_duration_ms.setSingleStep(100.0)
-        self._burst_min_duration_ms.setValue(3000.0)  # 3 seconds
+        self._burst_min_duration_ms.setValue(DEFAULT_MIN_BURST_DURATION)
 
         self._burst_blur_label = QLabel("Burst Gaussian Blur Sigma:", self)
         self._burst_blur_label.setSizePolicy(*FIXED)
@@ -1317,7 +1317,7 @@ class _SpikeWidget(QWidget):
         self._burst_wdg.setValue(
             (
                 DEFAULT_BURST_THRESHOLD,
-                3000.0,  # 3 seconds = 3000ms
+                DEFAULT_MIN_BURST_DURATION,
                 DEFAULT_BURST_GAUSS_SIGMA,
             )
         )

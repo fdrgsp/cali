@@ -47,6 +47,7 @@ from cali._constants import (
     DEFAULT_ENABLE_RISING_EDGE_ANALYSIS,
     DEFAULT_FRAME_RATE,
     DEFAULT_HEIGHT,
+    DEFAULT_MIN_BURST_DURATION,
     DEFAULT_SPIKE_SYNC_JITTER_WINDOW,
     DEFAULT_SPIKE_SYNCHRONY_MAX_LAG,
     DEFAULT_SPIKE_THRESHOLD,
@@ -1154,10 +1155,10 @@ class AnalysisSettings(SQLModel, table=True):
     spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
     spike_threshold_mode: str = MULTIPLIER
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
-    burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
+    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION
     burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     calcium_burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
-    calcium_burst_min_duration: float = 3000.0  # milliseconds (3 seconds)
+    calcium_burst_min_duration: float = DEFAULT_MIN_BURST_DURATION
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
     spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
