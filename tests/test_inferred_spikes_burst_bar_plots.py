@@ -132,35 +132,39 @@ def test_query_returns_two_conditions(spike_burst_db: tuple[Engine, int]) -> Non
     assert set(data.keys()) == {"WT", "KO"}
 
 
-def test_query_returns_two_fovs_per_condition(
+def test_query_returns_two_wells_per_condition(
     spike_burst_db: tuple[Engine, int],
 ) -> None:
-    """Returns one entry per FOV within each condition."""
+    """Returns one entry per well within each condition."""
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
-    for cond, fov_dict in data.items():
-        assert len(fov_dict) == 2, f"Expected 2 FOVs for {cond}, got {len(fov_dict)}"
+    for cond, well_dict in data.items():
+        assert len(well_dict) == 2, f"Expected 2 wells for {cond}, got {len(well_dict)}"
 
 
 def test_query_metrics_keys_present(spike_burst_db: tuple[Engine, int]) -> None:
     """Each FOV entry contains the expected metric keys."""
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
-    for cond, fov_dict in data.items():
-        for fov_name, metrics in fov_dict.items():
-            assert "count" in metrics, f"Missing 'count' for {cond}/{fov_name}"
-            assert "avg_duration_sec" in metrics
-            assert "avg_interval_sec" in metrics
-            assert "rate_per_min" in metrics
+    for cond, well_dict in data.items():
+        for well_id, fov_dict in well_dict.items():
+            for fov_name, metrics in fov_dict.items():
+                assert "count" in metrics, (
+                    f"Missing 'count' for {cond}/{well_id}/{fov_name}"
+                )
+                assert "avg_duration_sec" in metrics
+                assert "avg_interval_sec" in metrics
+                assert "rate_per_min" in metrics
 
 
 def test_query_count_value(spike_burst_db: tuple[Engine, int]) -> None:
     """Stored spike_burst_count is returned as a float."""
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
-    for _cond, fov_dict in data.items():
-        for _fov, metrics in fov_dict.items():
-            assert metrics["count"] >= 3.0
+    for _cond, well_dict in data.items():
+        for _well, fov_dict in well_dict.items():
+            for _fov, metrics in fov_dict.items():
+                assert metrics["count"] >= 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +183,10 @@ def test_query_rate_computed_from_population_activity(
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
     # fov_wt_0 has burst_count=3; recording = 600/10/60 = 1 min → rate = 3.0
-    fov_wt_0 = data["WT"]["fov_wt_0"]
+    wt_fovs = {
+        fov_name: m for well_d in data["WT"].values() for fov_name, m in well_d.items()
+    }
+    fov_wt_0 = wt_fovs["fov_wt_0"]
     expected_rate = 3.0 / (_N_FRAMES / _FRAME_RATE / 60.0)
     assert abs(fov_wt_0["rate_per_min"] - expected_rate) < 1e-9
 
@@ -228,7 +235,10 @@ def test_query_rate_zero_when_no_population_activity() -> None:
         session.commit()
 
     data = _query_burst_metrics_by_condition(engine, run_id)
-    assert data["WT"]["fov_0"]["rate_per_min"] == 0.0
+    wt_fovs = {
+        fov_name: m for well_d in data["WT"].values() for fov_name, m in well_d.items()
+    }
+    assert wt_fovs["fov_0"]["rate_per_min"] == 0.0
     engine.dispose(close=True)
 
 
@@ -348,7 +358,10 @@ def test_query_uses_stored_avg_duration(spike_burst_db: tuple[Engine, int]) -> N
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
     # fov_wt_0 was stored with spike_burst_avg_duration=0.5
-    fov_wt_0 = data["WT"]["fov_wt_0"]
+    wt_fovs = {
+        fov_name: m for well_d in data["WT"].values() for fov_name, m in well_d.items()
+    }
+    fov_wt_0 = wt_fovs["fov_wt_0"]
     assert abs(fov_wt_0["avg_duration_sec"] - 0.5) < 1e-9
 
 
@@ -356,7 +369,10 @@ def test_query_uses_stored_avg_interval(spike_burst_db: tuple[Engine, int]) -> N
     """avg_interval_sec reflects the stored spike_burst_avg_interval value."""
     engine, run_id = spike_burst_db
     data = _query_burst_metrics_by_condition(engine, run_id)
-    assert data["WT"]["fov_wt_0"]["avg_interval_sec"] == pytest.approx(2.0)
+    wt_fovs = {
+        fov_name: m for well_d in data["WT"].values() for fov_name, m in well_d.items()
+    }
+    assert wt_fovs["fov_wt_0"]["avg_interval_sec"] == pytest.approx(2.0)
 
 
 # ---------------------------------------------------------------------------
@@ -401,11 +417,12 @@ def test_query_fov_scalar_returns_conditions(
     engine, run_id = full_db
     data = _query_fov_scalar_by_condition(engine, run_id, column)
     assert set(data.keys()) == {"WT", "KO"}
-    for _cond, fov_dict in data.items():
-        assert len(fov_dict) == 2
-        for scalar, weight in fov_dict.values():
-            assert isinstance(scalar, float)
-            assert isinstance(weight, int)
+    for _cond, well_dict in data.items():
+        assert len(well_dict) == 2  # 2 wells per condition
+        for _well_id, fov_dict in well_dict.items():
+            for scalar, weight in fov_dict.values():
+                assert isinstance(scalar, float)
+                assert isinstance(weight, int)
 
 
 @pytest.mark.parametrize(
@@ -433,9 +450,10 @@ def test_query_fov_scalar_no_weight(full_db: tuple[Engine, int]) -> None:
     data = _query_fov_scalar_by_condition(
         engine, run_id, "global_spike_jitter_synchrony", use_n_pairs_weight=False
     )
-    for fov_dict in data.values():
-        for _scalar, weight in fov_dict.values():
-            assert weight == 1
+    for well_dict in data.values():
+        for fov_dict in well_dict.values():
+            for _scalar, weight in fov_dict.values():
+                assert weight == 1
 
 
 # ---------------------------------------------------------------------------
@@ -608,39 +626,41 @@ def test_compute_fov_scalar_data_empty_db() -> None:
 
 
 def test_aggregate_fov_scalar_empty_fov_dict_skipped() -> None:
-    """Empty fov_dict in a condition is skipped."""
+    """Empty well_dict in a condition is skipped."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_scalar_to_condition_stats,
     )
 
-    data: dict[str, dict[str, tuple[float, int]]] = {
+    data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
         "WT": {},
-        "KO": {"fov_0": (0.5, 3)},
+        "KO": {"w1": {"fov_0": (0.5, 3)}},
     }
     result = _aggregate_fov_scalar_to_condition_stats(data)
     assert result["conditions"] == ["KO"]
 
 
 def test_aggregate_fov_scalar_single_fov_zero_sem() -> None:
-    """Single FOV → SEM=0."""
+    """Single well (one FOV) → SEM=0."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_scalar_to_condition_stats,
     )
 
-    data: dict[str, dict[str, tuple[float, int]]] = {"WT": {"fov_0": (0.7, 3)}}
+    data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        "WT": {"w1": {"fov_0": (0.7, 3)}}
+    }
     result = _aggregate_fov_scalar_to_condition_stats(data)
     assert result["conditions"] == ["WT"]
     assert result["sems"][0] == 0.0
 
 
 def test_aggregate_fov_scalar_equal_weights_zero_variance() -> None:
-    """Two FOVs with identical values → variance=0, SEM=0."""
+    """Two wells with identical FOV values → variance=0, SEM=0."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_scalar_to_condition_stats,
     )
 
-    data: dict[str, dict[str, tuple[float, int]]] = {
-        "WT": {"fov_0": (0.5, 1), "fov_1": (0.5, 1)},
+    data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        "WT": {"w1": {"fov_0": (0.5, 1)}, "w2": {"fov_1": (0.5, 1)}},
     }
     result = _aggregate_fov_scalar_to_condition_stats(data)
     assert result["means"][0] == 0.5

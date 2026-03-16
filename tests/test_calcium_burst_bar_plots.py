@@ -157,23 +157,26 @@ def test_query_returns_two_conditions(calcium_burst_db: tuple[Engine, int]) -> N
     assert set(data.keys()) == {"WT", "KO"}
 
 
-def test_query_returns_two_fovs_per_condition(
+def test_query_returns_two_wells_per_condition(
     calcium_burst_db: tuple[Engine, int],
 ) -> None:
     engine, run_id = calcium_burst_db
     data = _query_calcium_burst_metrics_by_condition(engine, run_id)
-    for cond, fov_dict in data.items():
-        assert len(fov_dict) == 2, f"Expected 2 FOVs for {cond}, got {len(fov_dict)}"
+    for cond, well_dict in data.items():
+        assert len(well_dict) == 2, f"Expected 2 wells for {cond}, got {len(well_dict)}"
 
 
 def test_query_metrics_keys(calcium_burst_db: tuple[Engine, int]) -> None:
     engine, run_id = calcium_burst_db
     data = _query_calcium_burst_metrics_by_condition(engine, run_id)
-    for cond, fov_dict in data.items():
-        for fov_name, metrics in fov_dict.items():
-            assert "count" in metrics, f"Missing 'count' for {cond}/{fov_name}"
-            assert "avg_duration_s" in metrics
-            assert "avg_interval_s" in metrics
+    for cond, well_dict in data.items():
+        for well_id, fov_dict in well_dict.items():
+            for fov_name, metrics in fov_dict.items():
+                assert "count" in metrics, (
+                    f"Missing 'count' for {cond}/{well_id}/{fov_name}"
+                )
+                assert "avg_duration_s" in metrics
+                assert "avg_interval_s" in metrics
 
 
 def test_query_returns_empty_for_empty_db() -> None:

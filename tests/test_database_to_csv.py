@@ -491,20 +491,34 @@ def test_export_multi_well_pca_to_csv(
 def test_export_multi_well_nan_filling(
     full_db: tuple[Engine, int], tmp_path: Path
 ) -> None:
-    """Conditions with different FOV counts fill missing values with NaN."""
+    """Conditions with different well counts fill missing values with NaN."""
     import pandas as pd
     from sqlmodel import Session, select
 
-    from cali.sqlmodel import FOV, FOVAnalysis, Well
+    from cali.sqlmodel import FOV, Condition, FOVAnalysis, Well
     from cali.sqlmodel._model import ROI, DataAnalysis
     from cali.util._database_to_csv import export_multi_well_to_csv
 
     engine, run_id = full_db
 
     with Session(engine) as session:
-        wells = session.exec(select(Well)).all()
-        target_well = wells[0]
-        extra_fov = FOV(name="extra_fov", position_index=99, well_id=target_well.id)
+        # Add a brand-new well (+ FOV + analysis data) to one condition to create
+        # unequal well counts across conditions → triggers NaN filling in CSV.
+        existing_wells = session.exec(select(Well)).all()
+        target_well = existing_wells[0]  # belongs to WT condition
+        wt_cond = session.exec(select(Condition).where(Condition.name == "WT")).first()
+
+        extra_well = Well(
+            plate_id=target_well.plate_id,
+            name="extra_well",
+            row=99,
+            column=99,
+            conditions=[wt_cond],
+        )
+        session.add(extra_well)
+        session.flush()
+
+        extra_fov = FOV(name="extra_fov", position_index=99, well_id=extra_well.id)
         session.add(extra_fov)
         session.flush()
 
@@ -546,7 +560,7 @@ def test_export_multi_well_nan_filling(
         if fov_cols and df[fov_cols].isna().any().any():
             found_nan = True
             break
-    assert found_nan, "Expected NaN fill for unequal FOV counts"
+    assert found_nan, "Expected NaN fill for unequal well counts"
 
 
 def test_export_multi_well_exception_handling(

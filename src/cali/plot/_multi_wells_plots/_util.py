@@ -254,8 +254,8 @@ def _query_roi_parameter_by_condition(
     parameter: str,
     run_id: int | None = None,
     include_stim_status: bool = False,
-) -> dict[str, dict[str, list[float]]]:
-    """Query ROI-level parameters grouped by condition and FOV.
+) -> dict[str, dict[str, dict[str, list[float]]]]:
+    """Query ROI-level parameters grouped by condition, well, and FOV.
 
     Parameters
     ----------
@@ -271,8 +271,8 @@ def _query_roi_parameter_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, list[float]]]
-        Nested dict: {condition_label: {fov_name: [values]}}
+    dict[str, dict[str, dict[str, list[float]]]]
+        Nested dict: {condition_label: {well_id: {fov_name: [values]}}}
     """
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
@@ -295,8 +295,8 @@ def _query_roi_parameter_by_condition(
 
         results = session.exec(stmt).all()
 
-        # Group by condition and FOV
-        data: dict[str, dict[str, list[float]]] = {}
+        # Group by condition → well → FOV
+        data: dict[str, dict[str, dict[str, list[float]]]] = {}
         for analysis, roi, fov, well in results:
             # Get value for this ROI
             value = getattr(analysis, parameter, None)
@@ -309,13 +309,10 @@ def _query_roi_parameter_by_condition(
             else:
                 cond_label = _get_condition_label(well)
 
-            # Initialize nested structure if needed
-            if cond_label not in data:
-                data[cond_label] = {}
-            if fov.name not in data[cond_label]:
-                data[cond_label][fov.name] = []
-
-            data[cond_label][fov.name].append(value)
+            well_key = str(well.id)
+            data.setdefault(cond_label, {}).setdefault(well_key, {}).setdefault(
+                fov.name, []
+            ).append(value)
 
     return data
 
@@ -325,8 +322,8 @@ def _query_roi_attribute_by_condition(
     attribute: str,
     run_id: int | None = None,
     include_stim_status: bool = False,
-) -> dict[str, dict[str, list[float]]]:
-    """Query ROI attributes grouped by condition and FOV.
+) -> dict[str, dict[str, dict[str, list[float]]]]:
+    """Query ROI attributes grouped by condition, well, and FOV.
 
     Parameters
     ----------
@@ -342,8 +339,8 @@ def _query_roi_attribute_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, list[float]]]
-        Nested dict: {condition_label: {fov_name: [values]}}
+    dict[str, dict[str, dict[str, list[float]]]]
+        Nested dict: {condition_label: {well_id: {fov_name: [values]}}}
     """
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
@@ -368,8 +365,8 @@ def _query_roi_attribute_by_condition(
 
         results = session.exec(stmt).all()
 
-        # Group by condition and FOV
-        data: dict[str, dict[str, list[float]]] = {}
+        # Group by condition → well → FOV
+        data: dict[str, dict[str, dict[str, list[float]]]] = {}
         for roi, fov, well in results:
             # Get value from ROI
             value = getattr(roi, attribute, None)
@@ -382,97 +379,100 @@ def _query_roi_attribute_by_condition(
             else:
                 cond_label = _get_condition_label(well)
 
-            # Initialize nested structure if needed
-            if cond_label not in data:
-                data[cond_label] = {}
-            if fov.name not in data[cond_label]:
-                data[cond_label][fov.name] = []
-
-            data[cond_label][fov.name].append(value)
+            well_key = str(well.id)
+            data.setdefault(cond_label, {}).setdefault(well_key, {}).setdefault(
+                fov.name, []
+            ).append(value)
 
     return data
 
 
 def _aggregate_fov_data_to_condition_stats(
-    data_by_condition: dict[str, dict[str, list[float]]],
+    data_by_condition: dict[str, dict[str, dict[str, list[float]]]],
 ) -> BarPlotData:
     """Aggregate ROI-level data to condition-level statistics.
 
-    Two-level hierarchical aggregation:
+    Three-level hierarchical aggregation:
 
-    **Step 1 — ROI → FOV**: For each FOV, all ROI values are averaged to produce
-    a single FOV mean.  The FOV-level SEM is `std(roi_values, ddof=1) / sqrt(n)`.
+    **Step 1 — ROI → FOV**: For each FOV, all ROI values (including flattened
+    lists such as individual peak amplitudes) are averaged to produce a single
+    FOV mean.
 
-    **Step 2 — FOV → Condition**: FOV means are combined into a weighted average
-    where each FOV is weighted by its number of ROIs (so FOVs with more cells
-    contribute proportionally more).  The condition-level SEM is a pooled SEM:
-    the squared FOV SEMs are weighted by their ROI counts, summed, and the
-    square root of the weighted average is taken.
+    **Step 2 — FOV → Well**: FOV means within the same well are averaged
+    (unweighted mean) to produce a single well mean, treating each imaging field
+    as a technical replicate within the biological replicate.
+
+    **Step 3 — Well → Condition**: The condition mean is the unweighted mean of
+    the well means, treating each well as one independent biological replicate.
+    The condition SEM is computed across well means:
+    ``std(well_means, ddof=1) / sqrt(n_wells)``.
 
     Parameters
     ----------
-    data_by_condition : dict[str, dict[str, list[float]]]
-        Nested dict: {condition: {fov: [roi_values]}}
+    data_by_condition : dict[str, dict[str, dict[str, list[float]]]]
+        Nested dict: {condition: {well_id: {fov_name: [roi_values]}}}
 
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting
+        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        well mean per entry (the scatter dots on the bar chart).
     """
     conditions = []
     means = []
     sems = []
     fov_values_list = []
 
-    for cond_label, fov_dict in data_by_condition.items():
-        if not fov_dict:
+    for cond_label, well_dict in data_by_condition.items():
+        if not well_dict:
             continue
 
-        # Step 1: ROI → FOV (compute per-FOV mean, SEM, and ROI count)
-        fov_means_list: list[float] = []
-        fov_sems_list: list[float] = []
-        fov_n_list: list[int] = []
+        well_means_list: list[float] = []
 
-        for _fov_name, roi_values in fov_dict.items():
-            if not roi_values:
+        for _well_id, fov_dict in well_dict.items():
+            if not fov_dict:
                 continue
 
-            # Flatten if values are lists (e.g., peaks_amplitudes_den_dff, iei)
-            flat_values: list[float] = []
-            for val in roi_values:
-                if isinstance(val, (list, np.ndarray)):
-                    flat_values.extend(val)
-                else:
-                    flat_values.append(val)
+            # Step 1: ROI → FOV (compute per-FOV mean)
+            fov_means_for_well: list[float] = []
 
-            if not flat_values:
+            for _fov_name, roi_values in fov_dict.items():
+                if not roi_values:
+                    continue
+
+                # Flatten if values are lists (e.g., peaks_amplitudes_den_dff, iei)
+                flat_values: list[float] = []
+                for val in roi_values:
+                    if isinstance(val, (list, np.ndarray)):
+                        flat_values.extend(val)
+                    else:
+                        flat_values.append(val)
+
+                if flat_values:
+                    fov_means_for_well.append(float(np.mean(flat_values)))
+
+            if not fov_means_for_well:
                 continue
 
-            arr = np.asarray(flat_values, dtype=float)
-            n = len(arr)
-            fov_mean = float(np.mean(arr))
-            fov_sem = float(np.std(arr, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+            # Step 2: FOV → Well (unweighted mean of FOV means within well)
+            well_means_list.append(float(np.mean(fov_means_for_well)))
 
-            fov_means_list.append(fov_mean)
-            fov_sems_list.append(fov_sem)
-            fov_n_list.append(n)
-
-        if not fov_means_list:
+        if not well_means_list:
             continue
 
-        fov_means = np.array(fov_means_list)
-        fov_sems = np.array(fov_sems_list)
-        fov_n = np.array(fov_n_list, dtype=float)
+        well_means = np.array(well_means_list)
 
-        # Step 2: FOV → Condition (weighted mean + pooled SEM)
-        total_n = fov_n.sum()
-        condition_mean = float(np.dot(fov_n, fov_means) / total_n)
-        condition_sem = float(np.sqrt(np.dot(fov_n, fov_sems**2) / total_n))
+        # Step 3: Well → Condition (unweighted mean of well means ± SEM across wells)
+        n_wells = len(well_means)
+        condition_mean = float(np.mean(well_means))
+        condition_sem = (
+            float(np.std(well_means, ddof=1) / np.sqrt(n_wells)) if n_wells > 1 else 0.0
+        )
 
         conditions.append(cond_label)
         means.append(condition_mean)
         sems.append(condition_sem)
-        fov_values_list.append(fov_means)
+        fov_values_list.append(well_means)
 
     return BarPlotData(
         conditions=conditions,
@@ -483,84 +483,78 @@ def _aggregate_fov_data_to_condition_stats(
 
 
 def _aggregate_fov_scalar_to_condition_stats(
-    data_by_condition: dict[str, dict[str, tuple[float, int]]],
+    data_by_condition: dict[str, dict[str, dict[str, tuple[float, int]]]],
 ) -> BarPlotData:
     """Aggregate FOV-level scalar metrics to condition-level statistics.
 
-    Unlike ``_aggregate_fov_data_to_condition_stats`` which computes
-    **within-FOV** variability (across ROIs), this function computes
-    **between-FOV** variability — the correct approach when each FOV
-    contributes a single scalar value (e.g. mean correlation, synchrony,
-    burst count).
+    Used when each FOV contributes a single scalar value (e.g. mean
+    correlation, synchrony, burst count) rather than per-ROI distributions.
 
-    Each FOV scalar is weighted by *weight* (typically the number of
-    unique ROI pairs ``n*(n-1)/2`` for correlation metrics, or ``1`` for
-    unweighted metrics like burst count).
+    Three-level hierarchical aggregation:
 
-    Weighted mean::
+    **Step 1 — FOV → Well**: FOV scalars within the same well are combined
+    using a weighted mean (weight = ``n_pairs = n*(n-1)/2`` for correlation /
+    synchrony metrics, or ``1`` for unweighted metrics like burst count).
+    This gives a single well-level estimate.
 
-        x̄ = Σ(w_i · x_i) / Σ(w_i)
-
-    Weighted sample variance (reliability weights)::
-
-        s² = Σ(w_i · (x_i - x̄)²) / (Σw - Σw²/Σw)
-
-    SEM = sqrt(s² / M), where M is the number of FOVs.
+    **Step 2 — Well → Condition**: The condition mean is the *unweighted* mean
+    of the well means; the condition SEM is
+    ``std(well_means, ddof=1) / sqrt(n_wells)``.
+    Wells are treated as equal independent biological replicates.
 
     Parameters
     ----------
-    data_by_condition : dict[str, dict[str, tuple[float, int]]]
-        Nested dict: ``{condition: {fov_name: (scalar_value, weight)}}``.
+    data_by_condition : dict[str, dict[str, dict[str, tuple[float, int]]]]
+        Nested dict: ``{condition: {well_id: {fov_name: (scalar_value, weight)}}}``.
         Weight is typically ``n_pairs`` for correlation/synchrony metrics
         or ``1`` for unweighted metrics (e.g. burst count).
 
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting.
+        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        well mean per entry (the scatter dots on the bar chart).
     """
     conditions: list[str] = []
     means: list[float] = []
     sems: list[float] = []
     fov_values_list: list[np.ndarray] = []
 
-    for cond_label, fov_dict in data_by_condition.items():
-        if not fov_dict:
+    for cond_label, well_dict in data_by_condition.items():
+        if not well_dict:
             continue
 
-        values: list[float] = []
-        weights: list[float] = []
-        for _fov_name, (scalar, weight) in fov_dict.items():
-            values.append(scalar)
-            weights.append(float(weight))
+        well_means_list: list[float] = []
 
-        if not values:
+        for _well_id, fov_dict in well_dict.items():
+            if not fov_dict:
+                continue
+
+            # Step 1: FOV → Well (weighted mean by n_pairs or 1)
+            values = [v for v, _w in fov_dict.values()]
+            weights = [float(w) for _v, w in fov_dict.values()]
+            x = np.array(values)
+            w = np.array(weights, dtype=float)
+            w_sum = w.sum()
+            if w_sum > 0:
+                well_means_list.append(float(np.dot(w, x) / w_sum))
+
+        if not well_means_list:
             continue
 
-        x = np.array(values)
-        w = np.array(weights, dtype=float)
-        m = len(x)
-        w_sum = w.sum()
+        well_means = np.array(well_means_list)
+        n_wells = len(well_means)
 
-        # Weighted mean
-        cond_mean = float(np.dot(w, x) / w_sum) if w_sum > 0 else 0.0
-
-        # Between-FOV weighted SEM
-        if m > 1 and w_sum > 0:
-            # Reliability-weighted sample variance
-            denom = w_sum - np.dot(w, w) / w_sum
-            if denom > 0:
-                var_w = float(np.dot(w, (x - cond_mean) ** 2) / denom)
-            else:
-                var_w = 0.0
-            cond_sem = float(np.sqrt(var_w / m))
-        else:
-            cond_sem = 0.0
+        # Step 2: Well → Condition (unweighted mean ± SEM across wells)
+        cond_mean = float(np.mean(well_means))
+        cond_sem = (
+            float(np.std(well_means, ddof=1) / np.sqrt(n_wells)) if n_wells > 1 else 0.0
+        )
 
         conditions.append(cond_label)
         means.append(cond_mean)
         sems.append(cond_sem)
-        fov_values_list.append(x)
+        fov_values_list.append(well_means)
 
     return BarPlotData(
         conditions=conditions,
@@ -571,66 +565,76 @@ def _aggregate_fov_scalar_to_condition_stats(
 
 
 def _aggregate_percentage_data_to_condition_stats(
-    data_by_condition: dict[str, dict[str, tuple[float, int]]],
+    data_by_condition: dict[str, dict[str, dict[str, tuple[float, int]]]],
 ) -> BarPlotData:
     """Aggregate FOV-level percentage data to condition-level statistics.
 
-    Uses a binomial error model because the quantity is a proportion.
+    Three-level hierarchical aggregation (mirrors
+    ``_aggregate_fov_data_to_condition_stats``):
 
-    **Step 1 — ROI → FOV**: percentage = active / total * 100.
+    **Step 1 — FOV percentages already computed** as ``active / total * 100``.
 
-    **Step 2 — FOV → Condition**: FOV percentages are combined into a weighted
-    mean proportion (weighted by total ROI count per FOV).  The error bar is
-    the binomial SEM: `sqrt(p * (1 - p) / N) * 100` where *p* is the
-    weighted proportion (0-1) and *N* is the total number of ROIs across all
-    FOVs in the condition.
+    **Step 2 — FOV → Well**: FOV percentages within the same well are averaged
+    (unweighted mean) to produce a single well percentage.  This treats each
+    imaging field as a technical replicate within the biological unit.
+
+    **Step 3 — Well → Condition**: The condition mean and SEM are computed
+    across well means: ``std(well_means, ddof=1) / sqrt(n_wells)``.
+
+    Using between-well SEM (rather than the binomial formula) avoids
+    pseudo-replication: cells within the same well are not independent
+    Bernoulli trials, and collecting more ROIs from the same well should
+    not shrink the error bar.
 
     Parameters
     ----------
-    data_by_condition : dict[str, dict[str, tuple[float, int]]]
-        Nested dict: {condition: {fov: (percentage, n_total_rois)}}
+    data_by_condition : dict[str, dict[str, dict[str, tuple[float, int]]]]
+        Nested dict: {condition: {well_id: {fov_name: (percentage, n_total_rois)}}}
 
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting
+        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        well mean per entry (the scatter dots on the bar chart).
     """
     conditions = []
     means = []
     sems = []
     fov_values_list = []
 
-    for cond_label, fov_dict in data_by_condition.items():
-        if not fov_dict:
+    for cond_label, well_dict in data_by_condition.items():
+        if not well_dict:
             continue
 
-        fov_percentages_list: list[float] = []
-        fov_n_list: list[int] = []
+        well_means_list: list[float] = []
 
-        for _fov_name, (percentage, n) in fov_dict.items():
-            fov_percentages_list.append(percentage)
-            fov_n_list.append(n)
+        for _well_id, fov_dict in well_dict.items():
+            if not fov_dict:
+                continue
 
-        if not fov_percentages_list:
+            # Step 2: FOV → Well (unweighted mean of FOV percentages within well)
+            fov_pcts = [pct for pct, n in fov_dict.values() if n > 0]
+            if not fov_pcts:
+                continue
+
+            well_means_list.append(float(np.mean(fov_pcts)))
+
+        if not well_means_list:
             continue
 
-        fov_percentages = np.array(fov_percentages_list)
-        fov_n = np.array(fov_n_list, dtype=float)
-        total_n = fov_n.sum()
+        well_means = np.array(well_means_list)
 
-        # Weighted mean proportion (in %)
-        mean_pct = float(np.dot(fov_n, fov_percentages) / total_n)
-
-        # Binomial SEM (convert to 0-1 proportion for the formula)
-        p = mean_pct / 100.0
-        sem_pct = (
-            float(np.sqrt(p * (1.0 - p) / total_n) * 100.0) if total_n > 0 else 0.0
+        # Step 3: Well → Condition (unweighted mean ± SEM across wells)
+        n_wells = len(well_means)
+        condition_mean = float(np.mean(well_means))
+        condition_sem = (
+            float(np.std(well_means, ddof=1) / np.sqrt(n_wells)) if n_wells > 1 else 0.0
         )
 
         conditions.append(cond_label)
-        means.append(mean_pct)
-        sems.append(sem_pct)
-        fov_values_list.append(fov_percentages)
+        means.append(condition_mean)
+        sems.append(condition_sem)
+        fov_values_list.append(well_means)
 
     return BarPlotData(
         conditions=conditions,

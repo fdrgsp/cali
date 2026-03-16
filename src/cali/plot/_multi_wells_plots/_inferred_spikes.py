@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 def _query_burst_metrics_by_condition(
     engine: Engine,
     run_id: int | None = None,
-) -> dict[str, dict[str, dict[str, float]]]:
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
     """Query pre-computed spike burst metrics from FOVAnalysis, grouped by condition.
 
     Uses stored `FOVAnalysis.spike_burst_count`, `spike_burst_avg_duration`,
@@ -45,9 +45,9 @@ def _query_burst_metrics_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, dict[str, float]]]
-        Nested dict: {condition: {fov_name: {"count": ..., "avg_duration_sec": ...,
-        "avg_interval_sec": ..., "rate_per_min": ...}}}
+    dict[str, dict[str, dict[str, dict[str, float]]]]
+        Nested dict: {condition: {well_id: {fov_name: {"count": ...,
+        "avg_duration_sec": ..., "avg_interval_sec": ..., "rate_per_min": ...}}}}
     """
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
@@ -71,13 +71,14 @@ def _query_burst_metrics_by_condition(
                 stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
             results = session.exec(stmt).all()
 
-            data: dict[str, dict[str, dict[str, float]]] = {}
+            data: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
 
             for fa, fov, well, settings in results:
                 if not fa.spike_burst_count:  # skip None and 0
                     continue
 
                 cond_label = _get_condition_label(well)
+                well_key = str(well.id)
 
                 # Compute burst rate from stored population activity length
                 rate_per_min = 0.0
@@ -87,7 +88,7 @@ def _query_burst_metrics_by_condition(
                     if duration_min > 0:
                         rate_per_min = fa.spike_burst_count / duration_min
 
-                data.setdefault(cond_label, {})[fov.name] = {
+                data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = {
                     "count": float(fa.spike_burst_count),
                     "avg_duration_sec": (
                         float(fa.spike_burst_avg_duration)
@@ -131,10 +132,13 @@ def _plot_burst_metric(
         widget.clear_plot()
         return
 
-    # Each FOV contributes a single scalar → use between-FOV SEM (weight=1)
-    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
-        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
+    # Each FOV contributes a single scalar → use between-well SEM (weight=1)
+    scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        cond: {
+            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            for well, fov_dict in well_dict.items()
+        }
+        for cond, well_dict in data_by_condition.items()
     }
 
     plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
@@ -297,9 +301,12 @@ def _compute_burst_metric(
     data_by_condition = _query_burst_metrics_by_condition(engine, run_id)
     if not data_by_condition:
         return None
-    scalar_data: dict[str, dict[str, tuple[float, int]]] = {
-        cond: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
-        for cond, fov_dict in data_by_condition.items()
+    scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
+        cond: {
+            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            for well, fov_dict in well_dict.items()
+        }
+        for cond, well_dict in data_by_condition.items()
     }
     plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:
@@ -352,8 +359,8 @@ def _query_fov_scalar_by_condition(
     field_name: str,
     *,
     use_n_pairs_weight: bool = True,
-) -> dict[str, dict[str, tuple[float, int]]]:
-    """Query a scalar FOVAnalysis field per FOV, grouped by condition.
+) -> dict[str, dict[str, dict[str, tuple[float, int]]]]:
+    """Query a scalar FOVAnalysis field per FOV, grouped by condition and well.
 
     Parameters
     ----------
@@ -369,8 +376,8 @@ def _query_fov_scalar_by_condition(
 
     Returns
     -------
-    dict[str, dict[str, tuple[float, int]]]
-        ``{condition: {fov_name: (scalar_value, weight)}}``
+    dict[str, dict[str, dict[str, tuple[float, int]]]]
+        ``{condition: {well_id: {fov_name: (scalar_value, weight)}}}``
     """
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
@@ -392,7 +399,7 @@ def _query_fov_scalar_by_condition(
 
             results = session.exec(stmt).all()
 
-            data: dict[str, dict[str, tuple[float, int]]] = {}
+            data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             for fov_analysis, fov, well in results:
                 value = getattr(fov_analysis, field_name)
                 if value is None:
@@ -405,7 +412,11 @@ def _query_fov_scalar_by_condition(
                     weight = 1
 
                 cond_label = _get_condition_label(well)
-                data.setdefault(cond_label, {})[fov.name] = (float(value), weight)
+                well_key = str(well.id)
+                data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = (
+                    float(value),
+                    weight,
+                )
 
         return data
     except OperationalError:

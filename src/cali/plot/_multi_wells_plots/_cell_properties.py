@@ -33,8 +33,8 @@ def _query_fov_percentage_active(
     engine: Engine,
     run_id: int | None = None,
     include_stim_status: bool = False,
-) -> dict[str, dict[str, tuple[float, int]]]:
-    """Query percentage of active ROIs per FOV, grouped by condition.
+) -> dict[str, dict[str, dict[str, tuple[float, int]]]]:
+    """Query percentage of active ROIs per FOV, grouped by condition and well.
 
     Parameters
     ----------
@@ -47,8 +47,8 @@ def _query_fov_percentage_active(
 
     Returns
     -------
-    dict[str, dict[str, tuple[float, int]]]
-        Nested dict: {condition_label: {fov_name: (percentage, n_total)}}
+    dict[str, dict[str, dict[str, tuple[float, int]]]]
+        Nested dict: {condition_label: {well_id: {fov_name: (percentage, n_total)}}}
     """
     with Session(engine) as session:
         # Get experiment type when stim split is requested
@@ -72,34 +72,37 @@ def _query_fov_percentage_active(
 
         results = session.exec(stmt).all()
 
-        # Group by condition and FOV, count active vs total
-        data: dict[str, dict[str, tuple[int, int]]] = {}
+        # Group by condition → well → FOV, count active vs total
+        data: dict[str, dict[str, dict[str, tuple[int, int]]]] = {}
         for roi, fov, well in results:
-            # Group by condition only (no stim/non-stim split)
             cond_label = (
                 _get_condition_label(well, roi, experiment_type)
                 if include_stim_status
                 else _get_condition_label(well)
             )
-
+            well_key = str(well.id)
             if cond_label not in data:
                 data[cond_label] = {}
-            if fov.name not in data[cond_label]:
-                data[cond_label][fov.name] = (0, 0)
+            if well_key not in data[cond_label]:
+                data[cond_label][well_key] = {}
+            if fov.name not in data[cond_label][well_key]:
+                data[cond_label][well_key][fov.name] = (0, 0)
 
-            active_count, total_count = data[cond_label][fov.name]
+            active_count, total_count = data[cond_label][well_key][fov.name]
             total_count += 1
             if roi.active:
                 active_count += 1
-            data[cond_label][fov.name] = (active_count, total_count)
+            data[cond_label][well_key][fov.name] = (active_count, total_count)
 
         # Convert to percentages
-        result: dict[str, dict[str, tuple[float, int]]] = {}
-        for cond_label, fov_dict in data.items():
+        result: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
+        for cond_label, well_dict in data.items():
             result[cond_label] = {}
-            for fov_name, (active, total) in fov_dict.items():
-                percentage = (active / total * 100) if total > 0 else 0.0
-                result[cond_label][fov_name] = (percentage, total)
+            for well_key, fov_dict in well_dict.items():
+                result[cond_label][well_key] = {}
+                for fov_name, (active, total) in fov_dict.items():
+                    percentage = (active / total * 100) if total > 0 else 0.0
+                    result[cond_label][well_key][fov_name] = (percentage, total)
 
     return result
 

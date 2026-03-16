@@ -30,70 +30,97 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_aggregate_fov_data_weighted_mean() -> None:
-    """Condition mean is a weighted average of FOV means (weighted by ROI count)."""
+def test_aggregate_fov_data_unweighted_mean() -> None:
+    """Condition mean is the unweighted mean of well means (one FOV per well)."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_data_to_condition_stats,
     )
 
     data = {
         "Drug": {
-            "fov1": [0.3, 0.5, 0.8, 0.4, 0.6],  # 5 ROIs, mean=0.52
-            "fov2": [1.0, 1.2],  # 2 ROIs, mean=1.10
-            "fov3": [0.7, 0.9, 0.6, 0.8],  # 4 ROIs, mean=0.75
+            "w1": {"fov1": [0.3, 0.5, 0.8, 0.4, 0.6]},  # well mean = 0.52
+            "w2": {"fov2": [1.0, 1.2]},  # well mean = 1.10
+            "w3": {"fov3": [0.7, 0.9, 0.6, 0.8]},  # well mean = 0.75
         }
     }
     result = _aggregate_fov_data_to_condition_stats(data)
 
-    expected_mean = (5 * 0.52 + 2 * 1.10 + 4 * 0.75) / 11
+    # Unweighted mean of well means: (0.52 + 1.10 + 0.75) / 3
+    expected_mean = np.mean([0.52, 1.10, 0.75])
     assert abs(result["means"][0] - expected_mean) < 1e-10
 
 
-def test_aggregate_fov_data_pooled_sem() -> None:
-    """Condition SEM is pooled from per-FOV SEMs weighted by ROI count."""
+def test_aggregate_fov_data_sem_across_wells() -> None:
+    """Condition SEM is computed across well means."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_data_to_condition_stats,
     )
 
     data = {
         "Ctrl": {
-            "fov1": [1.0, 2.0, 3.0],  # n=3
-            "fov2": [4.0, 5.0],  # n=2
+            "w1": {"fov1": [1.0, 2.0, 3.0]},  # well mean = 2.0
+            "w2": {"fov2": [4.0, 5.0]},  # well mean = 4.5
         }
     }
     result = _aggregate_fov_data_to_condition_stats(data)
 
-    fov1_sem = 1.0 / np.sqrt(3)
-    fov2_sem = np.std([4.0, 5.0], ddof=1) / np.sqrt(2)
-    expected_sem = np.sqrt((3 * fov1_sem**2 + 2 * fov2_sem**2) / 5)
+    well_means = np.array([2.0, 4.5])
+    expected_sem = float(np.std(well_means, ddof=1) / np.sqrt(2))
     assert abs(result["sems"][0] - expected_sem) < 1e-10
 
 
-def test_aggregate_fov_data_single_fov() -> None:
-    """Single FOV: mean is the FOV mean, SEM is the within-FOV SEM."""
+def test_aggregate_fov_data_single_well() -> None:
+    """Single well: mean is the FOV mean, SEM is 0 (only one well)."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_data_to_condition_stats,
     )
 
-    data = {"A": {"fov1": [2.0, 4.0, 6.0]}}
+    data = {"A": {"w1": {"fov1": [2.0, 4.0, 6.0]}}}
     result = _aggregate_fov_data_to_condition_stats(data)
 
     assert abs(result["means"][0] - 4.0) < 1e-10
-    expected_sem = np.std([2.0, 4.0, 6.0], ddof=1) / np.sqrt(3)
+    assert result["sems"][0] == 0.0
+
+
+def test_aggregate_fov_data_multiple_fovs_per_well() -> None:
+    """Multiple FOVs in the same well are averaged to one well mean before SEM."""
+    from cali.plot._multi_wells_plots._util import (
+        _aggregate_fov_data_to_condition_stats,
+    )
+
+    # w1 has 2 FOVs (means 2.0 and 4.0) → well mean = 3.0
+    # w2 has 1 FOV (mean = 7.0) → well mean = 7.0
+    data = {
+        "A": {
+            "w1": {"fov1": [1.0, 2.0, 3.0], "fov2": [4.0, 5.0]},
+            "w2": {"fov3": [7.0]},
+        }
+    }
+    result = _aggregate_fov_data_to_condition_stats(data)
+
+    np.array([3.0, 7.0])  # (2.0+4.5)/2=3.25... wait
+    # fov1 mean = 2.0, fov2 mean = 4.5, w1 mean = (2.0+4.5)/2 = 3.25
+    # w2 mean = 7.0
+    # condition mean = (3.25 + 7.0) / 2 = 5.125
+    w1_mean = np.mean([2.0, 4.5])
+    expected_mean = np.mean([w1_mean, 7.0])
+    expected_sem = float(np.std([w1_mean, 7.0], ddof=1) / np.sqrt(2))
+    assert abs(result["means"][0] - expected_mean) < 1e-10
     assert abs(result["sems"][0] - expected_sem) < 1e-10
 
 
 def test_aggregate_fov_data_single_roi_per_fov() -> None:
-    """Single ROI per FOV: SEM should be 0 (no within-FOV variability)."""
+    """Single ROI per FOV, each FOV in its own well: SEM across two well means."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_fov_data_to_condition_stats,
     )
 
-    data = {"A": {"fov1": [3.0], "fov2": [7.0]}}
+    data = {"A": {"w1": {"fov1": [3.0]}, "w2": {"fov2": [7.0]}}}
     result = _aggregate_fov_data_to_condition_stats(data)
 
     assert abs(result["means"][0] - 5.0) < 1e-10
-    assert result["sems"][0] == 0.0
+    expected_sem = float(np.std([3.0, 7.0], ddof=1) / np.sqrt(2))
+    assert abs(result["sems"][0] - expected_sem) < 1e-10
 
 
 def test_aggregate_fov_data_empty() -> None:
@@ -116,14 +143,14 @@ def test_aggregate_fov_data_with_list_values() -> None:
 
     data = {
         "X": {
-            "fov1": [[1.0, 2.0], [3.0]],  # ROI1 has 2 peaks, ROI2 has 1
-            "fov2": [[4.0, 5.0, 6.0]],  # ROI3 has 3 peaks
+            "w1": {"fov1": [[1.0, 2.0], [3.0]]},  # ROI1 has 2 peaks, ROI2 has 1
+            "w2": {"fov2": [[4.0, 5.0, 6.0]]},  # ROI3 has 3 peaks
         }
     }
     result = _aggregate_fov_data_to_condition_stats(data)
-    # fov1 flat: [1,2,3] → mean=2.0, n=3
-    # fov2 flat: [4,5,6] → mean=5.0, n=3
-    # weighted mean = (3*2 + 3*5)/6 = 3.5
+    # fov1 flat: [1,2,3] → mean=2.0; w1 mean = 2.0
+    # fov2 flat: [4,5,6] → mean=5.0; w2 mean = 5.0
+    # unweighted mean = (2.0 + 5.0) / 2 = 3.5
     assert abs(result["means"][0] - 3.5) < 1e-10
 
 
@@ -132,55 +159,76 @@ def test_aggregate_fov_data_with_list_values() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_aggregate_percentage_weighted_mean() -> None:
-    """Percentage mean is weighted by total ROI count per FOV."""
+def test_aggregate_percentage_unweighted_mean() -> None:
+    """Condition mean is the unweighted mean of well means (one FOV per well)."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_percentage_data_to_condition_stats,
     )
 
     data = {
         "Ctrl": {
-            "fov1": (80.0, 10),  # 8/10 active
-            "fov2": (15.0, 20),  # 3/20 active
+            "w1": {"fov1": (80.0, 10)},
+            "w2": {"fov2": (15.0, 20)},
         }
     }
     result = _aggregate_percentage_data_to_condition_stats(data)
 
-    expected_mean = (10 * 80.0 + 20 * 15.0) / 30
+    # Unweighted mean of well means: (80.0 + 15.0) / 2
+    expected_mean = (80.0 + 15.0) / 2.0
     assert abs(result["means"][0] - expected_mean) < 1e-10
 
 
-def test_aggregate_percentage_binomial_sem() -> None:
-    """SEM uses binomial formula: sqrt(p*(1-p)/N) * 100."""
+def test_aggregate_percentage_sem_across_wells() -> None:
+    """SEM is computed across well means, not via the binomial formula."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_percentage_data_to_condition_stats,
     )
 
     data = {
         "Ctrl": {
-            "fov1": (80.0, 10),
-            "fov2": (15.0, 20),
+            "w1": {"fov1": (80.0, 10)},
+            "w2": {"fov2": (15.0, 20)},
         }
     }
     result = _aggregate_percentage_data_to_condition_stats(data)
 
-    p = result["means"][0] / 100.0
-    n_total = 30
-    expected_sem = np.sqrt(p * (1 - p) / n_total) * 100
+    well_means = np.array([80.0, 15.0])
+    expected_sem = float(np.std(well_means, ddof=1) / np.sqrt(2))
     assert abs(result["sems"][0] - expected_sem) < 1e-10
 
 
-def test_aggregate_percentage_single_fov() -> None:
-    """Single FOV: binomial SEM based on that FOV's count."""
+def test_aggregate_percentage_single_well() -> None:
+    """Single well: mean equals the FOV mean, SEM is 0 (only one well)."""
     from cali.plot._multi_wells_plots._util import (
         _aggregate_percentage_data_to_condition_stats,
     )
 
-    data = {"A": {"fov1": (50.0, 20)}}
+    data = {"A": {"w1": {"fov1": (50.0, 20)}}}
     result = _aggregate_percentage_data_to_condition_stats(data)
 
     assert abs(result["means"][0] - 50.0) < 1e-10
-    expected_sem = np.sqrt(0.25 / 20) * 100
+    assert result["sems"][0] == 0.0
+
+
+def test_aggregate_percentage_multiple_fovs_per_well() -> None:
+    """Multiple FOVs in the same well are averaged before inter-well SEM."""
+    from cali.plot._multi_wells_plots._util import (
+        _aggregate_percentage_data_to_condition_stats,
+    )
+
+    # w1 has 2 FOVs: 60% and 80% → well mean = 70%
+    # w2 has 1 FOV: 50% → well mean = 50%
+    data = {
+        "A": {
+            "w1": {"fov1": (60.0, 10), "fov2": (80.0, 5)},
+            "w2": {"fov3": (50.0, 8)},
+        }
+    }
+    result = _aggregate_percentage_data_to_condition_stats(data)
+
+    expected_mean = np.mean([70.0, 50.0])
+    expected_sem = float(np.std([70.0, 50.0], ddof=1) / np.sqrt(2))
+    assert abs(result["means"][0] - expected_mean) < 1e-10
     assert abs(result["sems"][0] - expected_sem) < 1e-10
 
 
