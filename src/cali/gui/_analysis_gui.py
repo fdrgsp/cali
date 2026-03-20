@@ -394,7 +394,9 @@ class _AnalysisGUI(QWidget):
 
         # Enforce at least one must be checked.
         if not calcium_on and not spikes_on:
-            self.sender().setChecked(True)
+            sender = self.sender()
+            if isinstance(sender, QCheckBox):
+                sender.setChecked(True)
             calcium_on = self._enable_calcium_cb.isChecked()
             spikes_on = self._enable_spikes_cb.isChecked()
 
