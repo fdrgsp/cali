@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, create_engine, select
 
@@ -23,6 +24,34 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
 from cali.logger import cali_logger
+
+
+def migrate_analysis_settings(engine: Engine) -> None:
+    """Add missing columns to analysis_settings table for existing databases.
+
+    This is safe to call multiple times — it only adds columns that don't exist.
+    """
+    with engine.connect() as conn:
+        existing_cols = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(analysis_settings)"))
+        }
+        if not existing_cols:
+            return  # table doesn't exist yet
+        if "enable_calcium" not in existing_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE analysis_settings "
+                    "ADD COLUMN enable_calcium BOOLEAN DEFAULT 1 NOT NULL"
+                )
+            )
+        if "enable_spikes" not in existing_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE analysis_settings "
+                    "ADD COLUMN enable_spikes BOOLEAN DEFAULT 1 NOT NULL"
+                )
+            )
+        conn.commit()
 
 
 def create_database_and_tables(engine: Engine) -> None:
@@ -61,6 +90,7 @@ def create_database_and_tables(engine: Engine) -> None:
     )
 
     SQLModel.metadata.create_all(engine)
+    migrate_analysis_settings(engine)
 
 
 def save_experiment_to_database(

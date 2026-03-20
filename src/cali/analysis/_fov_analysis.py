@@ -175,24 +175,26 @@ def compute_fov_analysis(
         )
         return None
 
-    # Calcium trace metrics: ΔF/F and denoised ΔF/F
-    # 1. Zero-lag correlation on ΔF/F traces
-    calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
+    # Calcium trace metrics (gated by enable_calcium)
+    calcium_dff_corr_matrix = None
+    calcium_den_dff_corr_matrix = None
+    global_calcium_dff_corr = None
+    global_calcium_den_dff_corr = None
 
-    # 2. Zero-lag correlation on denoised ΔF/F traces
-    calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
+    if analysis_settings.enable_calcium:
+        calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
+        calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
 
-    # Global calcium correlation scalars (median of row-means, off-diagonal)
-    global_calcium_dff_corr = (
-        _get_global_pairwise_score(calcium_dff_corr_matrix)
-        if calcium_dff_corr_matrix is not None
-        else None
-    )
-    global_calcium_den_dff_corr = (
-        _get_global_pairwise_score(calcium_den_dff_corr_matrix)
-        if calcium_den_dff_corr_matrix is not None
-        else None
-    )
+        global_calcium_dff_corr = (
+            _get_global_pairwise_score(calcium_dff_corr_matrix)
+            if calcium_dff_corr_matrix is not None
+            else None
+        )
+        global_calcium_den_dff_corr = (
+            _get_global_pairwise_score(calcium_den_dff_corr_matrix)
+            if calcium_den_dff_corr_matrix is not None
+            else None
+        )
 
     # Cluster analysis on denoised ΔF/F correlation matrix
     cluster_labels = None
@@ -254,7 +256,7 @@ def compute_fov_analysis(
     spike_jitter_sync_matrix_rising_edges = None
     global_spike_jitter_sync_rising_edges = None
 
-    if len(spike_data_dict) >= 2:
+    if analysis_settings.enable_spikes and len(spike_data_dict) >= 2:
         # 3a. Max lag correlation on spikes (thresholded binary)
         # Using standard CCG methodology with:
         # - Per-trigger probability normalization (trigger_prob)
@@ -346,7 +348,7 @@ def compute_fov_analysis(
     spike_population_activity: np.ndarray | None = None
     spike_population_activity_raw: np.ndarray | None = None
 
-    if len(spike_trains) >= 2:
+    if analysis_settings.enable_spikes and len(spike_trains) >= 2:
         (
             spike_burst_count,
             spike_burst_avg_duration,
@@ -372,7 +374,7 @@ def compute_fov_analysis(
     calcium_population_activity: np.ndarray | None = None
     calcium_population_activity_raw: np.ndarray | None = None
 
-    if len(calcium_peak_events) >= 2:
+    if analysis_settings.enable_calcium and len(calcium_peak_events) >= 2:
         (
             calcium_burst_count,
             calcium_burst_avg_duration,

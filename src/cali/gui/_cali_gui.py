@@ -566,6 +566,8 @@ class CaliGui(QMainWindow):
 
             self._analysis_wdg.setValue(
                 AnalysisSettingsData(
+                    enable_calcium=analysis.get("enable_calcium", True),
+                    enable_spikes=analysis.get("enable_spikes", True),
                     calcium_peaks_data=(
                         CalciumPeaksData(**calcium_peaks_data)
                         if calcium_peaks_data
@@ -2363,6 +2365,8 @@ class CaliGui(QMainWindow):
                 _cur_ana = self._analysis_wdg.value()
                 self._analysis_wdg.setValue(
                     AnalysisSettingsData(
+                        enable_calcium=a_settings.enable_calcium,
+                        enable_spikes=a_settings.enable_spikes,
                         experiment_type_data=ExperimentTypeData(
                             experiment_type=a_settings.experiment_type,
                             led_power_equation=a_settings.led_power_equation,

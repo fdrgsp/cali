@@ -78,6 +78,8 @@ FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 class AnalysisSettingsData:
     """Data structure to hold the analysis settings."""
 
+    enable_calcium: bool = True
+    enable_spikes: bool = True
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
     experiment_type_data: ExperimentTypeData | None = None
@@ -170,8 +172,8 @@ class _AnalysisGUI(QWidget):
         threads_layout.addWidget(self._threads)
 
         # N_PROCESSES WIDGET ---------------------------------------------------------
-        n_processes_wdg = QWidget()
-        n_processes_wdg.setToolTip(
+        self._n_processes_wdg = QWidget()
+        self._n_processes_wdg.setToolTip(
             "Number of worker processes for parallel CCG computation.\n\n"
             "By default, the value is set to the number of CPUs - 2 "
             f"(in your system: {cpu_to_use}).\n\n"
@@ -182,12 +184,12 @@ class _AnalysisGUI(QWidget):
             "• Lower values: Slower but less resource intensive\n\n"
             "Note: This is separate from 'threads' which controls ROI extraction."
         )
-        n_processes_lbl = QLabel("CCG Worker Processes:", n_processes_wdg)
+        n_processes_lbl = QLabel("CCG Worker Processes:", self._n_processes_wdg)
         n_processes_lbl.setSizePolicy(*FIXED)
-        self._n_processes = QSpinBox(n_processes_wdg)
+        self._n_processes = QSpinBox(self._n_processes_wdg)
         self._n_processes.setRange(1, 100)
         self._n_processes.setValue(cpu_to_use)
-        n_processes_layout = QHBoxLayout(n_processes_wdg)
+        n_processes_layout = QHBoxLayout(self._n_processes_wdg)
         n_processes_layout.setContentsMargins(0, 0, 0, 10)
         n_processes_layout.setSpacing(5)
         n_processes_layout.addWidget(n_processes_lbl)
@@ -198,6 +200,15 @@ class _AnalysisGUI(QWidget):
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
         self._metadata_wdg = _MetadataWidget(self)
+
+        # ENABLE CHECKBOXES ----------------------------------------------------------
+        self._enable_calcium_cb = QCheckBox()
+        self._enable_calcium_cb.setChecked(True)
+        self._enable_calcium_cb.stateChanged.connect(self._on_enable_changed)
+
+        self._enable_spikes_cb = QCheckBox()
+        self._enable_spikes_cb.setChecked(True)
+        self._enable_spikes_cb.stateChanged.connect(self._on_enable_changed)
 
         self._export_group = _ExportGroup()
         self._export_group.setChecked(False)
@@ -246,15 +257,32 @@ class _AnalysisGUI(QWidget):
         # add analysis widgets to scroll area
         group_layout.addWidget(create_divider_line("Experiment Type"))
         group_layout.addWidget(self._experiment_type_wdg)
-        group_layout.addWidget(create_divider_line("Calcium Traces and Peaks"))
+        # Calcium divider with checkbox
+        calcium_divider_container = QWidget()
+        calcium_divider_layout = QHBoxLayout(calcium_divider_container)
+        calcium_divider_layout.setContentsMargins(0, 0, 0, 0)
+        calcium_divider_layout.setSpacing(10)
+        calcium_divider_layout.addWidget(self._enable_calcium_cb)
+        calcium_divider_layout.addWidget(
+            create_divider_line("Calcium Traces and Peaks"), 1
+        )
+        group_layout.addWidget(calcium_divider_container)
         group_layout.addWidget(self._calcium_peaks_wdg)
-        group_layout.addWidget(create_divider_line("Inferred Spikes"))
+
+        # Spikes divider with checkbox
+        spikes_divider_container = QWidget()
+        spikes_divider_layout = QHBoxLayout(spikes_divider_container)
+        spikes_divider_layout.setContentsMargins(0, 0, 0, 0)
+        spikes_divider_layout.setSpacing(10)
+        spikes_divider_layout.addWidget(self._enable_spikes_cb)
+        spikes_divider_layout.addWidget(create_divider_line("Inferred Spikes"), 1)
+        group_layout.addWidget(spikes_divider_container)
         group_layout.addWidget(self._spike_wdg)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Parallelization"))
         group_layout.addWidget(threads_wdg)
-        group_layout.addWidget(n_processes_wdg)
+        group_layout.addWidget(self._n_processes_wdg)
         group_layout.addWidget(create_divider_line("Export Options"))
         export_collapsible = QCollapsible("Select the Data to Export as csv")
         export_collapsible.setToolTip(
@@ -297,6 +325,8 @@ class _AnalysisGUI(QWidget):
     def value(self) -> AnalysisSettingsData:
         """Get the current values of the widget."""
         return AnalysisSettingsData(
+            enable_calcium=self._enable_calcium_cb.isChecked(),
+            enable_spikes=self._enable_spikes_cb.isChecked(),
             calcium_peaks_data=self._calcium_peaks_wdg.value(),
             spikes_data=self._spike_wdg.value(),
             experiment_type_data=self._experiment_type_wdg.value(),
@@ -309,6 +339,11 @@ class _AnalysisGUI(QWidget):
 
     def setValue(self, value: AnalysisSettingsData) -> None:
         """Set the values of the widget."""
+        self._enable_calcium_cb.setChecked(value.enable_calcium)
+        self._enable_spikes_cb.setChecked(value.enable_spikes)
+        self._calcium_peaks_wdg.setEnabled(value.enable_calcium)
+        self._spike_wdg.setEnabled(value.enable_spikes)
+        self._n_processes_wdg.setVisible(value.enable_spikes)
         if value.calcium_peaks_data is not None:
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
@@ -325,6 +360,11 @@ class _AnalysisGUI(QWidget):
 
     def reset(self) -> None:
         """Reset the widget to default values."""
+        self._enable_calcium_cb.setChecked(True)
+        self._enable_spikes_cb.setChecked(True)
+        self._calcium_peaks_wdg.setEnabled(True)
+        self._spike_wdg.setEnabled(True)
+        self._n_processes_wdg.setVisible(True)
         self._experiment_type_wdg.reset()
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
@@ -339,6 +379,24 @@ class _AnalysisGUI(QWidget):
         return cast(
             "dict[CorrelationDataType, bool]", self._export_group.get_export_options()
         )
+
+    # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _on_enable_changed(self) -> None:
+        """Handle enable/disable checkbox changes with at-least-one validation."""
+        calcium_on = self._enable_calcium_cb.isChecked()
+        spikes_on = self._enable_spikes_cb.isChecked()
+
+        # Enforce at least one must be checked
+        if not calcium_on and not spikes_on:
+            sender = self.sender()
+            with signals_blocked(sender):
+                sender.setChecked(True)
+            return
+
+        self._calcium_peaks_wdg.setEnabled(calcium_on)
+        self._spike_wdg.setEnabled(spikes_on)
+        self._n_processes_wdg.setVisible(spikes_on)
 
     def to_model_settings(self) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
@@ -359,6 +417,8 @@ class _AnalysisGUI(QWidget):
 
         return AnalysisSettings(
             created_at=datetime.now(),
+            enable_calcium=settings.enable_calcium,
+            enable_spikes=settings.enable_spikes,
             threads=self._threads.value(),
             n_processes=self._n_processes.value(),
             frame_rate=settings.frame_rate,

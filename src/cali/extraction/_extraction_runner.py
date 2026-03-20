@@ -741,58 +741,72 @@ class ExtractionRunner:
             # consider the roi stimulated if more than 10% of the roi overlaps
             stimulated = roi_stimulation_overlap_ratio > 0.1
 
-            # Compute thresholds
-            # fmt: off
-            spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-            peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff, sn, analysis_settings)  # noqa E501
-            # fmt: on
+            # --- Calcium peak detection (gated by enable_calcium) ---
+            frequency = None
+            peaks_den_dff = np.array([], dtype=int)
+            peaks_amplitudes_den_dff: list[float] = []
+            iei: list[float] = []
+            peaks_prominence_den_dff = None
+            peaks_height_den_dff = None
 
-            if self._check_for_abort_requested():
-                return None
+            if analysis_settings.enable_calcium:
+                # fmt: off
+                peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff, sn, analysis_settings)  # noqa E501
+                # fmt: on
 
-            # Detect peaks - convert milliseconds to frames
-            min_distance_ms = analysis_settings.peaks_distance
-            min_distance_frames = max(
-                1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
-            )
-            peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
-                den_dff,
-                peaks_height_den_dff,
-                peaks_prominence_den_dff,
-                min_distance_frames,
-            )
+                if self._check_for_abort_requested():
+                    return None
 
-            if self._check_for_abort_requested():
-                return None
-
-            # Calculate calcium event frequency
-            frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
-
-            # Calculate calcium event inter-event intervals (IEI)
-            iei_ms = calculate_inter_event_intervals(peaks_den_dff, elapsed_time_list)
-            iei = [x / 1000 for x in iei_ms]  # Convert ms to sec
-
-            # Calculate inferred spike frequency
-            num_thresholded_spikes, num_rising_edges = count_thresholded_spike_events(
-                spikes, spike_detection_threshold
-            )
-            inferred_spikes_freq = calculate_frequency(
-                num_thresholded_spikes, tot_time_sec
-            )
-            # Only compute rising edge frequency if enabled
-            inferred_spikes_rising_edge_freq = None
-            if analysis_settings.enable_rising_edge_analysis:
-                inferred_spikes_rising_edge_freq = calculate_frequency(
-                    num_rising_edges, tot_time_sec
+                min_distance_ms = analysis_settings.peaks_distance
+                min_distance_frames = max(
+                    1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
                 )
+                peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
+                    den_dff,
+                    peaks_height_den_dff,
+                    peaks_prominence_den_dff,
+                    min_distance_frames,
+                )
+
+                if self._check_for_abort_requested():
+                    return None
+
+                frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
+                iei_ms = calculate_inter_event_intervals(
+                    peaks_den_dff, elapsed_time_list
+                )
+                iei = [x / 1000 for x in iei_ms]
+
+            # --- Inferred spike analysis (gated by enable_spikes) ---
+            spike_detection_threshold = None
+            inferred_spikes_freq = None
+            inferred_spikes_rising_edge_freq = None
+            num_thresholded_spikes = 0
+
+            if analysis_settings.enable_spikes:
+                # fmt: off
+                spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
+                # fmt: on
+                num_thresholded_spikes, num_rising_edges = (
+                    count_thresholded_spike_events(spikes, spike_detection_threshold)
+                )
+                inferred_spikes_freq = calculate_frequency(
+                    num_thresholded_spikes, tot_time_sec
+                )
+                if analysis_settings.enable_rising_edge_analysis:
+                    inferred_spikes_rising_edge_freq = calculate_frequency(
+                        num_rising_edges, tot_time_sec
+                    )
 
             # Create DataAnalysis object (analysis product)
             data_analysis = DataAnalysis(
                 total_recording_time_sec=tot_time_sec,
                 den_dff_frequency=frequency,
-                peaks_den_dff=peaks_den_dff.tolist(),
-                peaks_amplitudes_den_dff=peaks_amplitudes_den_dff,
-                iei=iei,
+                peaks_den_dff=(
+                    peaks_den_dff.tolist() if len(peaks_den_dff) > 0 else None
+                ),
+                peaks_amplitudes_den_dff=peaks_amplitudes_den_dff or None,
+                iei=iei or None,
                 peaks_prominence_den_dff=peaks_prominence_den_dff,
                 peaks_height_den_dff=peaks_height_den_dff,
                 inferred_spikes_threshold=spike_detection_threshold,
@@ -800,7 +814,13 @@ class ExtractionRunner:
                 inferred_spikes_rising_edge_frequency=inferred_spikes_rising_edge_freq,
             )
 
-            active = len(peaks_den_dff) > 0
+            # Determine active status based on enabled analyses
+            if analysis_settings.enable_calcium:
+                active = len(peaks_den_dff) > 0
+            elif analysis_settings.enable_spikes:
+                active = num_thresholded_spikes > 0
+            else:
+                active = False
 
         return (traces, data_analysis, active, stimulated, roi_size, roi_size_units)
 
