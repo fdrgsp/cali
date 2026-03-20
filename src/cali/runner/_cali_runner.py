@@ -78,22 +78,11 @@ class CaliRunner:
     ...     force=True,
     ... )
 
-    Adjust commit frequency:
-    >>> # Commit every 5 FOVs instead of default 10
-    >>> runner = CaliRunner(commit_batch_size=5)
     """
 
-    def __init__(self, commit_batch_size: int = 10) -> None:
-        """Initialize the unified runner.
-
-        Parameters
-        ----------
-        commit_batch_size : int
-            Number of FOVs to accumulate before committing to database.
-            Default is 10. Set to 1 for immediate commits (safest but slowest).
-        """
+    def __init__(self) -> None:
+        """Initialize the unified runner."""
         self._db_path: Path | None = None
-        self.commit_batch_size = commit_batch_size
 
         # Internal runners
         self._detection_runner = DetectionRunner()
@@ -614,6 +603,9 @@ class CaliRunner:
                         raise ValueError(msg)
                     batch_size = extraction_threads
 
+                    # Commit batch size matches the extraction threads count
+                    ext_commit_batch_size = extraction_threads
+
                     positions_processed = []
                     fov_count = 0
 
@@ -701,6 +693,7 @@ class CaliRunner:
                                     experiment,
                                     fov_count,
                                     len(positions_to_process),
+                                    commit_batch_size=ext_commit_batch_size,
                                 )
                                 positions_processed.append(fov.position_index)
 
@@ -727,11 +720,14 @@ class CaliRunner:
                                     experiment,
                                     fov_count,
                                     len(positions_to_process),
+                                    commit_batch_size=ext_commit_batch_size,
                                 )
                                 positions_processed.append(fov.position_index)
 
                         # Commit any remaining in this batch and clear memory
-                        self._commit_remaining_fovs(batch_fov_count, session)
+                        self._commit_remaining_fovs(
+                            batch_fov_count, session, ext_commit_batch_size
+                        )
 
                         # Expunge FOVs to free memory
                         for fov in batch_fovs:
@@ -898,6 +894,9 @@ class CaliRunner:
             )
 
         if positions_for_detection:
+            # Commit batch size matches the cellpose batch size
+            det_commit_batch_size = detection_settings.batch_size
+
             yield f"PROGRESS:RESET:{len(positions_for_detection)}"
             fov_count = 0
             for fov in self._run_detection(
@@ -920,13 +919,14 @@ class CaliRunner:
                     fov_count,
                     len(positions_for_detection),
                     detection_settings_id=det_id,
+                    commit_batch_size=det_commit_batch_size,
                 )
                 if committed and fov in session:
                     session.expunge(fov)
 
                 positions_processed.append(pos_idx)
 
-            self._commit_remaining_fovs(fov_count, session)
+            self._commit_remaining_fovs(fov_count, session, det_commit_batch_size)
 
             # Log detection completion
             if positions_processed:
@@ -2050,20 +2050,22 @@ class CaliRunner:
         fov_count: int,
         total: int,
         detection_settings_id: int | None = None,
+        *,
+        commit_batch_size: int = 1,
     ) -> bool:
         """Commit a single FOV result with batch logging.
 
-        Commits to the database every `self.commit_batch_size` FOVs.
+        Commits to the database every ``commit_batch_size`` FOVs.
 
         Returns
         -------
         bool
             True if a batch commit was performed.
         """
-        should_commit = fov_count % self.commit_batch_size == 0
+        should_commit = fov_count % commit_batch_size == 0
         if should_commit:
             cali_logger.info(
-                f"💾 Committing batch of {self.commit_batch_size} FOVs "
+                f"💾 Committing batch of {commit_batch_size} FOVs "
                 f"(total: {fov_count}/{total})..."
             )
         commit_fov_result(
@@ -2071,14 +2073,16 @@ class CaliRunner:
         )
         if should_commit:
             cali_logger.info(
-                f"💾 Committed batch of {self.commit_batch_size} FOVs "
+                f"💾 Committed batch of {commit_batch_size} FOVs "
                 f"(total: {fov_count}/{total})"
             )
         return should_commit
 
-    def _commit_remaining_fovs(self, fov_count: int, session: Session) -> None:
+    def _commit_remaining_fovs(
+        self, fov_count: int, session: Session, commit_batch_size: int = 1
+    ) -> None:
         """Commit any remaining uncommitted FOVs in the current batch."""
-        uncommitted = fov_count % self.commit_batch_size
+        uncommitted = fov_count % commit_batch_size
         if uncommitted > 0:
             cali_logger.info(f"💾 Committing final batch of {uncommitted} FOVs...")
             session.commit()

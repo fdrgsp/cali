@@ -124,7 +124,7 @@ class CaliGui(QMainWindow):
         self._runner = CaliRunner()
 
         # PROGRESS BAR WIDGET --------------------------------------------------------
-        self._loading_bar = _ProgressBarWidget(self)
+        self._loading_bar: _ProgressBarWidget | None = None
 
         # MENU BAR -------------------------------------------------------------------
         self.menu_bar = QMenuBar(self)
@@ -657,7 +657,7 @@ class CaliGui(QMainWindow):
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             return False
 
         if data.sequence is None:
@@ -667,7 +667,7 @@ class CaliGui(QMainWindow):
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             return False
 
         return True
@@ -714,7 +714,7 @@ class CaliGui(QMainWindow):
             cali_logger.warning("❌ Experiment has no plate.")
 
         # HIDE LOADING BAR ------------------------------------------------------------
-        self._loading_bar.hide()
+        self._hide_loading_bar()
 
     def _initialize_from_database(
         self, database_path: str | Path, data_path: str | Path
@@ -731,7 +731,7 @@ class CaliGui(QMainWindow):
             msg = f"❌ Database file not found at:\n{database_path}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             return
 
         # OPEN THE DATABASE -----------------------------------------------------------
@@ -782,7 +782,7 @@ class CaliGui(QMainWindow):
             msg = f"❌ Database file not found at:\n{database_path}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             return
 
         # OPEN THE DATABASE -----------------------------------------------------------
@@ -817,7 +817,7 @@ class CaliGui(QMainWindow):
             )
             show_error_dialog(self, msg)
             cali_logger.error(msg)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             return
 
         # ASSIGN VARIABLES (no data, no data_path) ------------------------------------
@@ -900,7 +900,7 @@ class CaliGui(QMainWindow):
                 self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
 
                 if self._data is None:
-                    self._loading_bar.hide()
+                    self._hide_loading_bar()
                     return
 
                 # if used micromanager-gui without HCS but with list of positions
@@ -929,7 +929,7 @@ class CaliGui(QMainWindow):
             self._data, tiff_file_map, tiff_plate_type, tiff_metadata = result
 
             if self._data is None:
-                self._loading_bar.hide()
+                self._hide_loading_bar()
                 return
 
             # if used micromanager-gui without HCS but with list of positions
@@ -1867,7 +1867,7 @@ class CaliGui(QMainWindow):
             cali_logger.error(f"❌ Failed to export data: {e}")
             show_error_dialog(self, f"❌ Export failed:\n\n{e}")
         finally:
-            self._loading_bar.hide()
+            self._hide_loading_bar()
 
     def _on_worker_errored(self, error: Any) -> None:
         """Handle errors from the runner."""
@@ -2144,7 +2144,7 @@ class CaliGui(QMainWindow):
                     msg = f"❌ Failed to initialize from database:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
-                    self._loading_bar.hide()
+                    self._hide_loading_bar()
                     return
 
             # input from database only (no data path)
@@ -2155,7 +2155,7 @@ class CaliGui(QMainWindow):
                     msg = f"❌ Failed to initialize from database:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
-                    self._loading_bar.hide()
+                    self._hide_loading_bar()
                     return
 
             # input from directories
@@ -2164,7 +2164,7 @@ class CaliGui(QMainWindow):
                     msg = "❌ Output path must be provided to create the cali database!"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
-                    self._loading_bar.hide()
+                    self._hide_loading_bar()
                     return
                 try:
                     self._initialize_from_directories(
@@ -2176,7 +2176,7 @@ class CaliGui(QMainWindow):
                     msg = f"❌ Failed to initialize from directories:\n{e}"
                     show_error_dialog(self, msg)
                     cali_logger.error(msg)
-                    self._loading_bar.hide()
+                    self._hide_loading_bar()
                     return
 
     def _clear_widget_before_initialization(self) -> None:
@@ -2413,10 +2413,10 @@ class CaliGui(QMainWindow):
             # Refresh the image viewer to update labels with the new detection settings
             self._on_fov_table_selection_changed()
 
-            self._loading_bar.hide()
+            self._hide_loading_bar()
 
         except Exception as e:
-            self._loading_bar.hide()
+            self._hide_loading_bar()
             show_error_dialog(self, f"Failed to load run settings: {e}")
             cali_logger.error(f"❌ Failed to load run #{run_id}: {e}")
 
@@ -2569,16 +2569,19 @@ class CaliGui(QMainWindow):
             cali_logger.error(msg)
             return
 
+    def _hide_loading_bar(self) -> None:
+        """Hide the loading bar if it exists."""
+        if self._loading_bar is not None:
+            self._loading_bar.hide()
+
     def _init_loading_bar(self, text: str, show_progress_bar: bool = True) -> None:
         """Reset the loading bar."""
-        # Recreate each time to avoid Windows repaint issues when reusing a hidden
-        # QDialog instance (contents render white/blank on re-show).
-        # deleteLater() is required so Qt removes the old widget from its child list;
-        # simply reassigning the Python reference leaves it as an orphaned child.
-        self._loading_bar.deleteLater()
+        if self._loading_bar is not None:
+            self._loading_bar.deleteLater()
         self._loading_bar = _ProgressBarWidget(self, text=text)
         self._loading_bar.showPercentage(show_progress_bar)
         self._loading_bar.show_progress_bar(show_progress_bar)
+        QApplication.processEvents()
         self._loading_bar.show()
         QApplication.processEvents()
 
@@ -2749,7 +2752,7 @@ class CaliGui(QMainWindow):
                 self._image_viewer.setData(None, roi_labels, neuropil_labels)
                 title = value.fov.name or f"Position {value.pos_idx}"
                 self._update_single_wells_graphs_combo(set_fov=title)
-                self._loading_bar.hide()
+                self._hide_loading_bar()
                 return
 
             # get a single frame for the selected FOV (at 2/3 of the time points)
@@ -2771,7 +2774,7 @@ class CaliGui(QMainWindow):
             # (e.g., "B5_0000" for well B5, position 0000)
             title = value.fov.name or f"Position {value.pos_idx}"
             self._update_single_wells_graphs_combo(set_fov=title)
-            self._loading_bar.hide()
+            self._hide_loading_bar()
         except Exception as e:
             msg = f"❌ Failed to load FOV:\n{e}"
             show_error_dialog(self, msg)
@@ -3021,7 +3024,8 @@ class CaliGui(QMainWindow):
 
             # start the waiting progress bar
             self._init_loading_bar("Saving as tiff...")
-            self._loading_bar.setRange(0, len(positions))
+            if self._loading_bar is not None:
+                self._loading_bar.setRange(0, len(positions))
 
             create_worker(
                 self._save_as_tiff,
@@ -3107,18 +3111,18 @@ class CaliGui(QMainWindow):
                 show_error_dialog(self, msg)
                 cali_logger.error(msg)
             finally:
-                self._loading_bar.hide()
+                self._hide_loading_bar()
 
     def _update_progress(self, value: int | str) -> None:
         """Update the progress bar value."""
         if isinstance(value, str):
             show_error_dialog(self, value)
-        else:
+        elif self._loading_bar is not None:
             self._loading_bar.setValue(value)
 
     def _on_loading_finished(self) -> None:
         """Called when the loading of the analysis data is finished."""
-        self._loading_bar.hide()
+        self._hide_loading_bar()
 
     def _save_as_tiff(
         self, path: str, positions: list[int], sequence: useq.MDASequence

@@ -28,7 +28,7 @@ def cleanup_gc() -> Iterator[None]:
 
 @pytest.fixture
 def runner() -> CaliRunner:
-    return CaliRunner(commit_batch_size=1)
+    return CaliRunner()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Test takes too long on Windows")
@@ -43,7 +43,7 @@ def test_cali_runner_real_cellpose(
     """
     from cellpose import core
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",

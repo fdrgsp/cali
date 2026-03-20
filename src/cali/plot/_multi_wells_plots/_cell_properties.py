@@ -80,7 +80,7 @@ def _query_fov_percentage_active(
                 if include_stim_status
                 else _get_condition_label(well)
             )
-            well_key = str(well.id)
+            well_key = well.name
             if cond_label not in data:
                 data[cond_label] = {}
             if well_key not in data[cond_label]:

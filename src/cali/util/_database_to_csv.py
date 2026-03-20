@@ -1201,7 +1201,9 @@ def export_traces_to_csv(
                 group_indices = [i for i in group_indices if i in position_indices]
                 if not group_indices:
                     continue
-            out_dir = export_dir / label if label else export_dir
+            # Sanitize label for use as folder name (e.g. "+/+" -> "+_+")
+            safe_label = label.replace("/", "_")
+            out_dir = export_dir / safe_label if safe_label else export_dir
             export_targets.append((out_dir, group_indices))
 
     # Export each selected trace type into each target directory
@@ -1337,7 +1339,9 @@ def export_correlations_to_csv(
                 group_indices = [i for i in group_indices if i in position_indices]
                 if not group_indices:
                     continue
-            out_dir = export_dir / label if label else export_dir
+            # Sanitize label for use as folder name (e.g. "+/+" -> "+_+")
+            safe_label = label.replace("/", "_")
+            out_dir = export_dir / safe_label if safe_label else export_dir
             export_targets.append((out_dir, group_indices))
 
     # Export each selected correlation type into each target directory
@@ -1433,20 +1437,31 @@ def export_multi_well_to_csv(
 
         bar_data, _name, _units = result
         # Build DataFrame from BarPlotData
-        fov_values = bar_data["fov_values_list"]
-        max_fovs = max((len(fv) for fv in fov_values), default=0)
+        well_values = bar_data["well_values_list"]
+        well_names = bar_data["well_names_list"]
+        # Collect all unique well names across conditions to use as columns
+        all_well_names: list[str] = []
+        seen_wells: set[str] = set()
+        for names in well_names:
+            for name in names:
+                if name not in seen_wells:
+                    seen_wells.add(name)
+                    all_well_names.append(name)
         rows: list[dict[str, object]] = []
-        for cond, mean, sem, fv in zip(
+        for cond, mean, sem, wv, wn in zip(
             bar_data["conditions"],
             bar_data["means"],
             bar_data["sems"],
-            fov_values,
+            well_values,
+            well_names,
         ):
             row: dict[str, object] = {"condition": cond, "mean": mean, "sem": sem}
-            for i, val in enumerate(fv):
-                row[f"fov_{i + 1}"] = float(val)
-            for i in range(len(fv), max_fovs):
-                row[f"fov_{i + 1}"] = float("nan")
+            # Map well names to values for this condition
+            name_to_val = dict(zip(wn, wv))
+            for name in all_well_names:
+                row[name] = (
+                    float(name_to_val[name]) if name in name_to_val else float("nan")
+                )
             rows.append(row)
 
         df = pd.DataFrame(rows)
