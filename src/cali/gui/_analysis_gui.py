@@ -204,11 +204,11 @@ class _AnalysisGUI(QWidget):
         # ENABLE CHECKBOXES ----------------------------------------------------------
         self._enable_calcium_cb = QCheckBox()
         self._enable_calcium_cb.setChecked(True)
-        self._enable_calcium_cb.stateChanged.connect(self._on_enable_changed)
+        self._enable_calcium_cb.clicked.connect(self._on_enable_changed)
 
         self._enable_spikes_cb = QCheckBox()
         self._enable_spikes_cb.setChecked(True)
-        self._enable_spikes_cb.stateChanged.connect(self._on_enable_changed)
+        self._enable_spikes_cb.clicked.connect(self._on_enable_changed)
 
         self._export_group = _ExportGroup()
         # Multi-Well Aggregated Data
@@ -392,12 +392,12 @@ class _AnalysisGUI(QWidget):
         calcium_on = self._enable_calcium_cb.isChecked()
         spikes_on = self._enable_spikes_cb.isChecked()
 
-        # Enforce at least one must be checked
+        # Enforce at least one must be checked.
+        # Uses clicked (not stateChanged) so setChecked won't re-trigger this slot.
         if not calcium_on and not spikes_on:
-            sender = self.sender()
-            with signals_blocked(sender):
-                sender.setChecked(True)
-            return
+            self.sender().setChecked(True)
+            calcium_on = self._enable_calcium_cb.isChecked()
+            spikes_on = self._enable_spikes_cb.isChecked()
 
         self._calcium_peaks_wdg.setEnabled(calcium_on)
         self._spike_wdg.setEnabled(spikes_on)
