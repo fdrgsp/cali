@@ -28,7 +28,6 @@ from tests.conftest import create_mock_fov
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
     from pathlib import Path
-    from unittest.mock import MagicMock
 
 
 def test_cancel_mid_position_roi_processing(
@@ -44,7 +43,7 @@ def test_cancel_mid_position_roi_processing(
     3. Cancel while processing ROIs (before all ROIs are done)
     4. Verify the position is NOT in positions_extracted/positions_analyzed
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Step 1: Run detection to completion
     with patch(
@@ -92,7 +91,7 @@ def test_cancel_mid_position_roi_processing(
         engine.dispose()
 
     # Step 2: Run extraction but cancel mid-position
-    runner2 = CaliRunner(commit_batch_size=1)
+    runner2 = CaliRunner()
 
     # Track how many ROIs were processed before cancellation
     rois_processed = 0
@@ -193,7 +192,7 @@ def test_cancel_between_detection_and_extraction(
     data_path: Path,
 ) -> None:
     """Test cancellation after detection but before extraction starts."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Track when detection completes
     detection_completed = False
@@ -271,7 +270,7 @@ def test_detection_cancel_after_partial_completion(
     data_path: Path,
 ) -> None:
     """Test that positions_detected reflects partial completion on cancellation."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Mock cellpose to yield only 1 of 2 requested positions before cancelling
     positions_yielded = []
@@ -347,7 +346,7 @@ def test_detection_cancel_before_any_completion(
         return
         yield  # pragma: no cover - unreachable but keeps generator type
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose",
@@ -391,7 +390,7 @@ def test_extraction_cancel_after_partial_completion(
     data_path: Path,
 ) -> None:
     """Test extraction cancellation updates positions_analyzed correctly."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # First, run detection to completion
     with patch(
@@ -423,7 +422,7 @@ def test_extraction_cancel_after_partial_completion(
         )
 
     # Now run extraction but cancel after processing 1 position
-    runner2 = CaliRunner(commit_batch_size=1)
+    runner2 = CaliRunner()
     positions_extracted = []
 
     original_run_extraction = runner2._run_extraction
@@ -493,7 +492,7 @@ def test_successful_run_all_positions_tracked(
     data_path: Path,
 ) -> None:
     """Test that successful runs track all positions correctly."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -551,7 +550,7 @@ def test_partial_positions_subset_requested(
     data_path: Path,
 ) -> None:
     """Test running on a subset of positions works correctly."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -614,7 +613,7 @@ def test_cancel_event_resets_between_runs(
     This verifies that calling cancel() before a run doesn't affect that run
     (the event is cleared when the run starts).
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -695,100 +694,6 @@ def test_cancel_event_resets_between_runs(
 
 
 # ============================================================================
-# Commit Batch Logging Tests
-# ============================================================================
-
-
-def test_commit_batch_logging_reports_correct_count(
-    data_path: Path,
-    tmp_path: Path,
-    mock_detection_runner: MagicMock,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that commit batch logging shows correct FOV count per batch.
-
-    This test verifies that when processing multiple batches of FOVs,
-    the "Committing final batch of X FOVs" message shows the correct
-    count for just that batch, not the accumulated count.
-
-    Regression test for issue where fov_count accumulated across batches,
-    causing misleading log messages like "Committing final batch of 4 FOVs"
-    when only 2 FOVs were in that batch.
-    """
-    test_db_path = tmp_path / "test_commit_batch.cali"
-
-    # Create experiment
-    exp = Experiment.create_from_data("test_commit_batch", str(data_path))
-
-    # Setup settings
-    detection_settings = DetectionSettings(
-        method="cellpose",
-        model_type="cyto3",
-    )
-    extraction_settings = ExtractionSettings()
-    analysis_settings = AnalysisSettings()
-
-    # Use a large commit batch size to force "final batch" commits
-    # Process 2 positions with commit_batch_size=10 and threads=1
-    # This creates 2 outer batches, each processing 1 FOV
-    # Since batch size (1) < commit_batch_size (10), we get "final batch" commits
-    runner = CaliRunner(commit_batch_size=10)
-
-    # Run pipeline with 2 positions
-    with caplog.at_level("INFO", logger="cali_logger"):
-        runner.run(
-            exp,
-            data_path,
-            detection_settings,
-            extraction_settings=extraction_settings,
-            analysis_settings=analysis_settings,
-            global_position_indices=[0, 1],
-            database_name=test_db_path.name,
-            output_path=test_db_path.parent,
-        )
-
-    # Verify database was created
-    assert test_db_path.exists()
-
-    # Parse log messages for commit batch counts IN EXTRACTION/ANALYSIS
-    # Detection phase doesn't have outer batch looping, so we ignore it
-    commit_messages = []
-    in_extraction_phase = False
-
-    for record in caplog.records:
-        # Mark when we enter extraction/analysis phase
-        if "Running Extraction and" in record.message:
-            in_extraction_phase = True
-
-        # Collect "final batch" messages only from extraction/analysis
-        if in_extraction_phase and "Committing final batch of" in record.message:
-            commit_messages.append(record.message)
-
-    # Should have "final batch" commit messages from both extraction batches
-    # With commit_batch_size=10 (larger than batch size), each outer batch
-    # will have uncommitted FOVs that trigger "final batch" commits
-    assert len(commit_messages) >= 2, (
-        "Expected at least 2 'final batch' messages from extraction, got "
-        f"{len(commit_messages)}"
-    )
-
-    # Extract FOV counts from messages
-    import re
-
-    for msg in commit_messages:
-        match = re.search(r"Committing final batch of (\d+) FOVs", msg)
-        if match:
-            count = int(match.group(1))
-            # Each outer batch processes 1 FOV (threads=1), so final batch should be 1
-            # Not accumulated counts like 1, 2, 3, etc.
-            assert count == 1, (
-                f"Expected final batch count of 1 (not accumulated), got {count}. "
-                f"This suggests fov_count is accumulating across batches instead of "
-                f"using batch_fov_count."
-            )
-
-
-# ============================================================================
 # Ambiguous Detection Tests
 # ============================================================================
 
@@ -799,7 +704,7 @@ def test_detection_only_with_single_existing_run(
     data_path: Path,
 ) -> None:
     """Test detection-only when there's only one existing run - should work fine."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -864,7 +769,7 @@ def test_detection_only_with_multiple_runs_same_detection_different_extraction(
 
     Same detection but different extraction should raise an error.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -949,7 +854,7 @@ def test_detection_only_with_multiple_runs_same_detection_extraction_different_a
 
     Same detection+extraction but different analysis should raise an error.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -1038,7 +943,7 @@ def test_detection_only_disambiguated_by_extraction(
     data_path: Path,
 ) -> None:
     """Test extraction settings disambiguates multiple runs."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"
@@ -1125,7 +1030,7 @@ def test_detection_only_disambiguated_by_analysis(
     data_path: Path,
 ) -> None:
     """Test analysis settings disambiguates multiple runs."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     with patch(
         "cali.detection._detection_runner.DetectionRunner._run_cellpose"

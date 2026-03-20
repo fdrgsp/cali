@@ -198,7 +198,7 @@ def populated_db(
     from cali.sqlmodel._model import DetectionSettings
 
     db_path = tmp_path / "test_populated.cali"
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
