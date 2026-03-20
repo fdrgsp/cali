@@ -1201,7 +1201,9 @@ def export_traces_to_csv(
                 group_indices = [i for i in group_indices if i in position_indices]
                 if not group_indices:
                     continue
-            out_dir = export_dir / label if label else export_dir
+            # Sanitize label for use as folder name (e.g. "+/+" -> "+_+")
+            safe_label = label.replace("/", "_")
+            out_dir = export_dir / safe_label if safe_label else export_dir
             export_targets.append((out_dir, group_indices))
 
     # Export each selected trace type into each target directory
@@ -1337,7 +1339,9 @@ def export_correlations_to_csv(
                 group_indices = [i for i in group_indices if i in position_indices]
                 if not group_indices:
                     continue
-            out_dir = export_dir / label if label else export_dir
+            # Sanitize label for use as folder name (e.g. "+/+" -> "+_+")
+            safe_label = label.replace("/", "_")
+            out_dir = export_dir / safe_label if safe_label else export_dir
             export_targets.append((out_dir, group_indices))
 
     # Export each selected correlation type into each target directory
