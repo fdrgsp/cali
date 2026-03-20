@@ -2574,7 +2574,7 @@ class CaliGui(QMainWindow):
         """Reset the loading bar."""
         if self._loading_bar is not None:
             self._loading_bar.deleteLater()
-        self._loading_bar = _ProgressBarWidget(text=text)
+        self._loading_bar = _ProgressBarWidget(self, text=text)
         self._loading_bar.showPercentage(show_progress_bar)
         self._loading_bar.show_progress_bar(show_progress_bar)
         QApplication.processEvents()
