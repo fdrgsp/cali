@@ -393,7 +393,6 @@ class _AnalysisGUI(QWidget):
         spikes_on = self._enable_spikes_cb.isChecked()
 
         # Enforce at least one must be checked.
-        # Uses clicked (not stateChanged) so setChecked won't re-trigger this slot.
         if not calcium_on and not spikes_on:
             self.sender().setChecked(True)
             calcium_on = self._enable_calcium_cb.isChecked()
