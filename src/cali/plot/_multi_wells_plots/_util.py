@@ -165,7 +165,8 @@ class BarPlotData(TypedDict):
     conditions: list[str]
     means: list[float]
     sems: list[float]
-    fov_values_list: list[np.ndarray]
+    well_values_list: list[np.ndarray]
+    well_names_list: list[list[str]]
 
 
 def _get_condition_label(
@@ -309,7 +310,7 @@ def _query_roi_parameter_by_condition(
             else:
                 cond_label = _get_condition_label(well)
 
-            well_key = str(well.id)
+            well_key = well.name
             data.setdefault(cond_label, {}).setdefault(well_key, {}).setdefault(
                 fov.name, []
             ).append(value)
@@ -379,7 +380,7 @@ def _query_roi_attribute_by_condition(
             else:
                 cond_label = _get_condition_label(well)
 
-            well_key = str(well.id)
+            well_key = well.name
             data.setdefault(cond_label, {}).setdefault(well_key, {}).setdefault(
                 fov.name, []
             ).append(value)
@@ -415,21 +416,23 @@ def _aggregate_fov_data_to_condition_stats(
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        Aggregated data ready for plotting. ``well_values_list`` holds one
         well mean per entry (the scatter dots on the bar chart).
     """
     conditions = []
     means = []
     sems = []
-    fov_values_list = []
+    well_values_list = []
+    well_names_list: list[list[str]] = []
 
     for cond_label, well_dict in data_by_condition.items():
         if not well_dict:
             continue
 
         well_means_list: list[float] = []
+        well_names: list[str] = []
 
-        for _well_id, fov_dict in well_dict.items():
+        for well_name, fov_dict in well_dict.items():
             if not fov_dict:
                 continue
 
@@ -456,6 +459,7 @@ def _aggregate_fov_data_to_condition_stats(
 
             # Step 2: FOV → Well (unweighted mean of FOV means within well)
             well_means_list.append(float(np.mean(fov_means_for_well)))
+            well_names.append(well_name)
 
         if not well_means_list:
             continue
@@ -472,13 +476,15 @@ def _aggregate_fov_data_to_condition_stats(
         conditions.append(cond_label)
         means.append(condition_mean)
         sems.append(condition_sem)
-        fov_values_list.append(well_means)
+        well_values_list.append(well_means)
+        well_names_list.append(well_names)
 
     return BarPlotData(
         conditions=conditions,
         means=means,
         sems=sems,
-        fov_values_list=fov_values_list,
+        well_values_list=well_values_list,
+        well_names_list=well_names_list,
     )
 
 
@@ -512,21 +518,23 @@ def _aggregate_fov_scalar_to_condition_stats(
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        Aggregated data ready for plotting. ``well_values_list`` holds one
         well mean per entry (the scatter dots on the bar chart).
     """
     conditions: list[str] = []
     means: list[float] = []
     sems: list[float] = []
-    fov_values_list: list[np.ndarray] = []
+    well_values_list: list[np.ndarray] = []
+    well_names_list: list[list[str]] = []
 
     for cond_label, well_dict in data_by_condition.items():
         if not well_dict:
             continue
 
         well_means_list: list[float] = []
+        well_names: list[str] = []
 
-        for _well_id, fov_dict in well_dict.items():
+        for well_name, fov_dict in well_dict.items():
             if not fov_dict:
                 continue
 
@@ -538,6 +546,7 @@ def _aggregate_fov_scalar_to_condition_stats(
             w_sum = w.sum()
             if w_sum > 0:
                 well_means_list.append(float(np.dot(w, x) / w_sum))
+                well_names.append(well_name)
 
         if not well_means_list:
             continue
@@ -554,13 +563,15 @@ def _aggregate_fov_scalar_to_condition_stats(
         conditions.append(cond_label)
         means.append(cond_mean)
         sems.append(cond_sem)
-        fov_values_list.append(well_means)
+        well_values_list.append(well_means)
+        well_names_list.append(well_names)
 
     return BarPlotData(
         conditions=conditions,
         means=means,
         sems=sems,
-        fov_values_list=fov_values_list,
+        well_values_list=well_values_list,
+        well_names_list=well_names_list,
     )
 
 
@@ -594,21 +605,23 @@ def _aggregate_percentage_data_to_condition_stats(
     Returns
     -------
     BarPlotData
-        Aggregated data ready for plotting. ``fov_values_list`` holds one
+        Aggregated data ready for plotting. ``well_values_list`` holds one
         well mean per entry (the scatter dots on the bar chart).
     """
     conditions = []
     means = []
     sems = []
-    fov_values_list = []
+    well_values_list = []
+    well_names_list: list[list[str]] = []
 
     for cond_label, well_dict in data_by_condition.items():
         if not well_dict:
             continue
 
         well_means_list: list[float] = []
+        well_names: list[str] = []
 
-        for _well_id, fov_dict in well_dict.items():
+        for well_name, fov_dict in well_dict.items():
             if not fov_dict:
                 continue
 
@@ -618,6 +631,7 @@ def _aggregate_percentage_data_to_condition_stats(
                 continue
 
             well_means_list.append(float(np.mean(fov_pcts)))
+            well_names.append(well_name)
 
         if not well_means_list:
             continue
@@ -634,13 +648,15 @@ def _aggregate_percentage_data_to_condition_stats(
         conditions.append(cond_label)
         means.append(condition_mean)
         sems.append(condition_sem)
-        fov_values_list.append(well_means)
+        well_values_list.append(well_means)
+        well_names_list.append(well_names)
 
     return BarPlotData(
         conditions=conditions,
         means=means,
         sems=sems,
-        fov_values_list=fov_values_list,
+        well_values_list=well_values_list,
+        well_names_list=well_names_list,
     )
 
 
@@ -712,7 +728,7 @@ def _create_pyqtgraph_bar_plot(
             data["conditions"],
             data["means"],
             data["sems"],
-            data["fov_values_list"],
+            data["well_values_list"],
         )
     }
 

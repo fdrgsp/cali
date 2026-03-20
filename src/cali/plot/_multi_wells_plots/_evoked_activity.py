@@ -121,7 +121,7 @@ def _query_evoked_amplitudes_by_condition(
 
             # Build condition label (without power/pulse)
             cond_label = _get_condition_label(well)
-            well_key = str(well.id)
+            well_key = well.name
 
             # Store amplitudes grouped by power_pulse
             for power_pulse, amplitude_list in amps.items():

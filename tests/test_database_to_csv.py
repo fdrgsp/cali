@@ -556,8 +556,8 @@ def test_export_multi_well_nan_filling(
     found_nan = False
     for csv_file in csv_files:
         df = pd.read_csv(csv_file)
-        fov_cols = [c for c in df.columns if c.startswith("fov_")]
-        if fov_cols and df[fov_cols].isna().any().any():
+        well_cols = [c for c in df.columns if c not in ("condition", "mean", "sem")]
+        if well_cols and df[well_cols].isna().any().any():
             found_nan = True
             break
     assert found_nan, "Expected NaN fill for unequal well counts"

@@ -19,11 +19,17 @@ def test_condition_ordering_logic() -> None:
         "conditions": ["control", "knockout", "treatment_A", "treatment_B"],
         "means": [10.0, 12.0, 15.0, 20.0],
         "sems": [1.0, 1.2, 1.5, 2.0],
-        "fov_values_list": [
+        "well_values_list": [
             np.array([9.0, 10.0, 11.0]),
             np.array([11.0, 12.0, 13.0]),
             np.array([13.0, 15.0, 17.0]),
             np.array([18.0, 20.0, 22.0]),
+        ],
+        "well_names_list": [
+            ["W1", "W2", "W3"],
+            ["W4", "W5", "W6"],
+            ["W7", "W8", "W9"],
+            ["W10", "W11", "W12"],
         ],
     }
 
@@ -42,7 +48,7 @@ def test_condition_ordering_logic() -> None:
             data["conditions"],
             data["means"],
             data["sems"],
-            data["fov_values_list"],
+            data["well_values_list"],
         )
     }
 
@@ -75,12 +81,13 @@ def test_condition_ordering_preserves_new_order() -> None:
         "conditions": ["A", "B", "C", "D"],
         "means": [1.0, 2.0, 3.0, 4.0],
         "sems": [0.1, 0.2, 0.3, 0.4],
-        "fov_values_list": [
+        "well_values_list": [
             np.array([1.0]),
             np.array([2.0]),
             np.array([3.0]),
             np.array([4.0]),
         ],
+        "well_names_list": [["W1"], ["W2"], ["W3"], ["W4"]],
     }
 
     # User reverses the order
@@ -97,7 +104,7 @@ def test_condition_ordering_preserves_new_order() -> None:
             data["conditions"],
             data["means"],
             data["sems"],
-            data["fov_values_list"],
+            data["well_values_list"],
         )
     }
 

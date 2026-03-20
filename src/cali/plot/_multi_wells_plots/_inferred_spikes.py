@@ -78,7 +78,7 @@ def _query_burst_metrics_by_condition(
                     continue
 
                 cond_label = _get_condition_label(well)
-                well_key = str(well.id)
+                well_key = well.name
 
                 # Compute burst rate from stored population activity length
                 rate_per_min = 0.0
@@ -412,7 +412,7 @@ def _query_fov_scalar_by_condition(
                     weight = 1
 
                 cond_label = _get_condition_label(well)
-                well_key = str(well.id)
+                well_key = well.name
                 data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = (
                     float(value),
                     weight,
