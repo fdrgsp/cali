@@ -2568,7 +2568,7 @@ class CaliGui(QMainWindow):
     def _hide_loading_bar(self) -> None:
         """Hide the loading bar if it exists."""
         if self._loading_bar is not None:
-            self._hide_loading_bar()
+            self._loading_bar.hide()
 
     def _init_loading_bar(self, text: str, show_progress_bar: bool = True) -> None:
         """Reset the loading bar."""
