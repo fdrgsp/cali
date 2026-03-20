@@ -108,6 +108,8 @@ def rebuild_test_database() -> None:
             ]
             analysis_settings = AnalysisSettings(
                 created_at=datetime.now(),
+                enable_calcium=as_config.get("enable_calcium", True),
+                enable_spikes=as_config.get("enable_spikes", True),
                 peaks_height_value=as_config["peaks_height_value"],
                 peaks_height_mode=as_config["peaks_height_mode"],
                 peaks_distance=as_config["peaks_distance"],

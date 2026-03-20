@@ -273,7 +273,7 @@ def _query_roi_parameter_by_condition(
     Returns
     -------
     dict[str, dict[str, dict[str, list[float]]]]
-        Nested dict: {condition_label: {well_id: {fov_name: [values]}}}
+        Nested dict: {condition_label: {well_name: {fov_name: [values]}}}
     """
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
@@ -341,7 +341,7 @@ def _query_roi_attribute_by_condition(
     Returns
     -------
     dict[str, dict[str, dict[str, list[float]]]]
-        Nested dict: {condition_label: {well_id: {fov_name: [values]}}}
+        Nested dict: {condition_label: {well_name: {fov_name: [values]}}}
     """
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed

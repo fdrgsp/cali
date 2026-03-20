@@ -56,6 +56,8 @@
   "analysis_settings": [
     {
       "id": 1,
+      "enable_calcium": true,
+      "enable_spikes": true,
       "peaks_height_value": 2.0,
       "peaks_height_mode": "multiplier",
       "peaks_distance": 200.0,
@@ -86,6 +88,8 @@
     },
     {
       "id": 2,
+      "enable_calcium": true,
+      "enable_spikes": true,
       "peaks_height_value": 3.0,
       "peaks_height_mode": "multiplier",
       "peaks_distance": 300.0,

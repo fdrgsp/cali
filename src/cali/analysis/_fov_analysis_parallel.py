@@ -248,21 +248,26 @@ def compute_fov_analysis_parallel(
     # Get number of workers from settings
     n_workers = max(1, analysis_settings.n_processes)
 
-    # Calcium trace correlations (fast, no parallelization needed)
-    calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
-    calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
+    # Calcium trace correlations (gated by enable_calcium)
+    calcium_dff_corr_matrix = None
+    calcium_den_dff_corr_matrix = None
+    global_calcium_dff_corr = None
+    global_calcium_den_dff_corr = None
 
-    # Global calcium correlation scalars (median of row-means, off-diagonal)
-    global_calcium_dff_corr = (
-        _get_global_pairwise_score(calcium_dff_corr_matrix)
-        if calcium_dff_corr_matrix is not None
-        else None
-    )
-    global_calcium_den_dff_corr = (
-        _get_global_pairwise_score(calcium_den_dff_corr_matrix)
-        if calcium_den_dff_corr_matrix is not None
-        else None
-    )
+    if analysis_settings.enable_calcium:
+        calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
+        calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
+
+        global_calcium_dff_corr = (
+            _get_global_pairwise_score(calcium_dff_corr_matrix)
+            if calcium_dff_corr_matrix is not None
+            else None
+        )
+        global_calcium_den_dff_corr = (
+            _get_global_pairwise_score(calcium_den_dff_corr_matrix)
+            if calcium_den_dff_corr_matrix is not None
+            else None
+        )
 
     # Cluster analysis on denoised ΔF/F correlation matrix
     cluster_labels = None
@@ -312,7 +317,7 @@ def compute_fov_analysis_parallel(
     spike_jitter_sync_matrix_rising_edges = None
     global_spike_jitter_sync_rising_edges = None
 
-    if len(spike_trains) >= 2:
+    if analysis_settings.enable_spikes and len(spike_trains) >= 2:
         spike_trains_array = np.array(spike_trains, dtype=np.float32)
         pairs = [(i, j) for i in range(n_rois) for j in range(i + 1, n_rois)]
 
@@ -475,7 +480,7 @@ def compute_fov_analysis_parallel(
     spike_population_activity: np.ndarray | None = None
     spike_population_activity_raw: np.ndarray | None = None
 
-    if len(spike_trains) >= 2:
+    if analysis_settings.enable_spikes and len(spike_trains) >= 2:
         (
             spike_burst_count,
             spike_burst_avg_duration,
@@ -500,7 +505,7 @@ def compute_fov_analysis_parallel(
     calcium_population_activity: np.ndarray | None = None
     calcium_population_activity_raw: np.ndarray | None = None
 
-    if len(calcium_peak_events) >= 2:
+    if analysis_settings.enable_calcium and len(calcium_peak_events) >= 2:
         (
             calcium_burst_count,
             calcium_burst_avg_duration,

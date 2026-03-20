@@ -1146,6 +1146,9 @@ class AnalysisSettings(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
+    enable_calcium: bool = Field(default=True)
+    enable_spikes: bool = Field(default=True)
+
     peaks_height_value: float = DEFAULT_HEIGHT
     peaks_height_mode: str = MULTIPLIER
     peaks_distance: float = 200.0  # milliseconds (2 frames at 10fps)
@@ -1203,7 +1206,9 @@ class AnalysisSettings(SQLModel, table=True):
         if not isinstance(other, AnalysisSettings):
             return False
         return (
-            self.peaks_height_value == other.peaks_height_value
+            self.enable_calcium == other.enable_calcium
+            and self.enable_spikes == other.enable_spikes
+            and self.peaks_height_value == other.peaks_height_value
             and self.peaks_height_mode == other.peaks_height_mode
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
@@ -1236,6 +1241,8 @@ class AnalysisSettings(SQLModel, table=True):
         """Custom hash that excludes id and created_at for consistency with __eq__."""
         return hash(
             (
+                self.enable_calcium,
+                self.enable_spikes,
                 self.peaks_height_value,
                 self.peaks_height_mode,
                 self.peaks_distance,
@@ -1306,6 +1313,10 @@ class AnalysisSettings(SQLModel, table=True):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
+            # Migrate existing databases to add new columns if missing
+            from cali.sqlmodel._util import migrate_analysis_settings
+
+            migrate_analysis_settings(engine)
             our_session = session = Session(engine)
         else:
             our_session = None
