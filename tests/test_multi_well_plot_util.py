@@ -49,6 +49,9 @@ def test_aggregate_fov_data_unweighted_mean() -> None:
     expected_mean = np.mean([0.52, 1.10, 0.75])
     assert abs(result["means"][0] - expected_mean) < 1e-10
 
+    # well_names_list tracks the well keys used in the input data
+    assert result["well_names_list"] == [["w1", "w2", "w3"]]
+
 
 def test_aggregate_fov_data_sem_across_wells() -> None:
     """Condition SEM is computed across well means."""
@@ -80,6 +83,7 @@ def test_aggregate_fov_data_single_well() -> None:
 
     assert abs(result["means"][0] - 4.0) < 1e-10
     assert result["sems"][0] == 0.0
+    assert result["well_names_list"] == [["w1"]]
 
 
 def test_aggregate_fov_data_multiple_fovs_per_well() -> None:
@@ -176,6 +180,9 @@ def test_aggregate_percentage_unweighted_mean() -> None:
     # Unweighted mean of well means: (80.0 + 15.0) / 2
     expected_mean = (80.0 + 15.0) / 2.0
     assert abs(result["means"][0] - expected_mean) < 1e-10
+
+    # well_names_list tracks the well keys
+    assert result["well_names_list"] == [["w1", "w2"]]
 
 
 def test_aggregate_percentage_sem_across_wells() -> None:
@@ -330,7 +337,8 @@ def test_create_bar_plot_with_override_color(
         "conditions": ["WT", "KO"],
         "means": [1.0, 2.0],
         "sems": [0.1, 0.2],
-        "fov_values_list": [np.array([1.0]), np.array([2.0])],
+        "well_values_list": [np.array([1.0]), np.array([2.0])],
+        "well_names_list": [["W1"], ["W2"]],
     }
     _create_pyqtgraph_bar_plot(
         widget=widget,

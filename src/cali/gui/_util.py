@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+import sys
 from typing import TYPE_CHECKING, Literal, cast
 
 from qtpy.QtCore import QElapsedTimer, QObject, Qt, QTimer, Signal
@@ -189,7 +190,13 @@ class _ProgressBarWidget(QDialog):
 
     def __init__(self, parent: QWidget | None = None, *, text: str = "") -> None:
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.Sheet)
+
+        if sys.platform == "darwin":
+            self.setWindowFlags(Qt.WindowType.Sheet)
+        else:
+            self.setWindowFlags(
+                Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint
+            )
 
         self._label = QLabel(text)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)

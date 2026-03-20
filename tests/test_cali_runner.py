@@ -107,7 +107,7 @@ def cleanup_gc() -> Iterator[None]:
 
 @pytest.fixture
 def runner() -> CaliRunner:
-    return CaliRunner(commit_batch_size=1)
+    return CaliRunner()
 
 
 # =============================================================================
@@ -122,7 +122,7 @@ def test_cali_runner_detection_only_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test running detection only (mocked cellpose for speed)."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -177,7 +177,7 @@ def test_cali_runner_full_pipeline_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test running full pipeline with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -227,7 +227,7 @@ def test_cali_runner_incremental_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test incremental running (detection, then extraction) with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -381,7 +381,7 @@ def test_cali_runner_overwrite_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test overwriting existing database with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose",
         model_type=MODEL,
@@ -428,7 +428,7 @@ def test_cali_runner_validation_error_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test validation error when experiment mismatch."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -466,7 +466,7 @@ def test_cali_runner_skipping_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test skipping detection if already exists."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -502,7 +502,7 @@ def test_cali_runner_upgrading_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test upgrading result from detection-only to full analysis."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -615,7 +615,7 @@ def test_cali_runner_batching_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test batching logic in CaliRunner with mocked detection."""
-    runner = CaliRunner(commit_batch_size=2)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -646,7 +646,7 @@ def test_cali_runner_commit_error_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling during batch commit with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -675,7 +675,7 @@ def test_cali_runner_process_batch_error_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling in _run_detection with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -704,7 +704,7 @@ def test_cali_runner_settings_reuse_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test reusing existing settings in CaliRunner with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
     )
@@ -787,7 +787,7 @@ def test_cali_runner_stimulation_mask_mocked(
     # Create dummy mask file using helper
     mask_path = create_stimulation_mask_file(tmp_path)
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -865,7 +865,7 @@ def test_cali_runner_mask_fields_thread_safe(
         If True, tests full pipeline with stimulation mask.
         If False, tests extraction-only with just ROI masks.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -950,7 +950,7 @@ def test_detection_runner_2d_data(
 
     from cali.readers import TensorstoreZarrReader
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Mock dataset with 2D data
     dataset = MagicMock(spec=TensorstoreZarrReader)
@@ -987,7 +987,7 @@ def test_detection_runner_debug(
     """Test detection with debug logging enabled."""
     monkeypatch.setenv("CELLPOSE_DEBUG", "1")
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -1015,7 +1015,7 @@ def test_extraction_runner_cancel_mocked(
     import time
     from typing import Any
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Start run in a thread
     def run_task() -> None:
@@ -1068,7 +1068,7 @@ def test_cali_runner_settings_errors_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test error handling for settings lookup with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # 1. Non-existent DetectionSettings ID
     with pytest.raises(ValueError, match="DetectionSettings with ID 999 not found"):
@@ -1196,7 +1196,7 @@ def test_extraction_runner_cancel_before_start_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test cancellation before extraction starts with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Set cancel event
     runner.cancel()
@@ -1232,7 +1232,7 @@ def test_cali_runner_update_result_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test updating an existing analysis result with mocked detection."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -2754,7 +2754,7 @@ def test_force_replaces_results(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test that force=True deletes old results and creates new ones."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -2823,7 +2823,7 @@ def test_fov_analysis_computed_on_full_pipeline(
     with valid trace data. With mock data, we verify the database schema
     and relationships work correctly.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -2902,7 +2902,7 @@ def test_fov_analysis_not_created_without_analysis(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test that FOVAnalysis is NOT created when only running detection/extraction."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose",
@@ -2945,7 +2945,7 @@ def test_cali_runner_analysis_only_skip_extraction_mocked(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test Analysis Only mode - skips extraction when it already exists."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3045,7 +3045,7 @@ def test_analysis_only_all_positions_have_extraction_mocked(
     This covers line 643 in _cali_runner.py where it logs that extraction exists
     for ALL positions and will run analysis-only.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3117,7 +3117,7 @@ def test_last_modified_updated_on_result_update(
     """
     import time
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3184,7 +3184,7 @@ def test_find_source_trace_by_extraction_and_detection(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test _find_source_trace filters by extraction and detection settings IDs."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3249,7 +3249,7 @@ def test_analysis_only_creates_data_analysis_records(
     This verifies the fix where _run_analysis_only now uses AnalysisRunner
     to create ROI-level DataAnalysis records, not just FOV-level FOVAnalysis.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3343,7 +3343,7 @@ def test_analysis_only_copies_traces_to_new_run(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Test that traces are copied (not shared) when running analysis-only."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     detection_settings = DetectionSettings(
         method="cellpose", model_type=MODEL, diameter=30.0
@@ -3433,7 +3433,7 @@ def test_scenario_i1_empty_positions_list(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario I1: Run with positions=[] (empty list) should be no-op."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # Run with empty positions list
@@ -3468,7 +3468,7 @@ def test_scenario_i3_detection_finds_zero_rois(
     data_path: Path,
 ) -> None:
     """Scenario I3: Detection finds 0 ROIs - FOV created but no ROIs."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # Mock detection to return FOV with no ROIs
@@ -3523,7 +3523,7 @@ def test_scenario_i4_run_all_positions_none(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario I4: Run with None positions (all) processes all dataset positions."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # Run with None (all positions)
@@ -3554,7 +3554,7 @@ def test_scenario_f2_force_reruns_all_stages(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario F2: force=True re-runs from detection (deletes old data)."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
 
@@ -3614,7 +3614,7 @@ def test_scenario_f3_force_full_pipeline_rerun(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario F3: force=True on full pipeline re-runs everything."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -3673,7 +3673,7 @@ def test_scenario_h2_extraction_settings_deduplication(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario H2: Create ExtractionSettings twice returns same ID."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # Create identical extraction settings for two runs
@@ -3738,7 +3738,7 @@ def test_scenario_h3_analysis_settings_deduplication(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario H3: Create AnalysisSettings twice returns same ID."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
 
@@ -3804,7 +3804,7 @@ def test_scenario_k3_two_results_same_detection_share_rois(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario K3: Two CaliResults with same det_id, different ext_id share ROIs."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # First run: det + ext with extraction settings 1
@@ -3870,7 +3870,7 @@ def test_scenario_e3_extend_analysis_to_more_positions(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario E3: Run full on [0], then extend to [0,1] to add analysis to [1]."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -3929,7 +3929,7 @@ def test_scenario_m1_different_experiment_requires_different_db(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario M1: Different experiments require separate database files."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # Create two different experiments
     exp1 = Experiment.create_from_data("Experiment 1", str(data_path))
@@ -3985,7 +3985,7 @@ def test_scenario_a3_detection_only_all_positions(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario A3: Detection only on all positions (None)."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     runner.run(
@@ -4017,7 +4017,7 @@ def test_scenario_a4_detection_extraction_single_position(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario A4: Det+Ext on single position [0]."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
 
@@ -4055,7 +4055,7 @@ def test_scenario_d4_different_detection_creates_new_result(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario D4: Changing det_id while adding ext+ana creates new CaliResult."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
 
     # First run: det_id=1, ext_id=1
     detection_settings_1 = DetectionSettings(
@@ -4121,7 +4121,7 @@ def test_scenario_l1_incremental_position_expansion(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario L1: Incrementally expand full pipeline to more positions."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -4200,7 +4200,7 @@ def test_scenario_b4_extraction_on_undetected_position(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario B4: Extraction on position with no detection produces no traces."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
 
@@ -4258,7 +4258,7 @@ def test_scenario_b5_extraction_mixed_detected_undetected(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario B5: Extraction on [0,1,2] when only [0,1] detected."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
 
@@ -4307,7 +4307,7 @@ def test_scenario_c4_analysis_on_unextracted_position(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario C4: Analysis on position with no extraction - runs extraction first."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -4366,7 +4366,7 @@ def test_scenario_c5_analysis_mixed_extracted_unextracted(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario C5: Analysis on [0,1,2] when only [0,1] have extraction."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -4423,7 +4423,7 @@ def test_scenario_i2_position_not_in_dataset(
     that position's data.
     The test does NOT use mock_detection_runner so actual dataset access occurs.
     """
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
 
     # Dataset has 8 positions (0-7), request position 99
@@ -4447,7 +4447,7 @@ def test_scenario_l2_analysis_without_extraction_for_some_positions(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario L2: Det [0,1], Ext [0], then Ana [0,1] - runs ext on [1] first."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -4514,7 +4514,7 @@ def test_scenario_l3_mixed_extraction_then_full_pipeline(
     mock_detection_runner: MagicMock,
 ) -> None:
     """Scenario L3: Det [0,1], Ext [0], then Ext+Ana [0,1]."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
     extraction_settings = ExtractionSettings(threads=THREADS)
     analysis_settings = AnalysisSettings(threads=THREADS)
@@ -4738,7 +4738,7 @@ def test_runner_raises_when_extraction_needed_but_no_dataset(
 ) -> None:
     """runner.run raises ValueError when extraction is needed but
     dataset_path=None (all positions already detected)."""
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     exp = Experiment.create_from_data(name="TestExtNoData", data_path=str(data_path))
     db_name = "test_ext_no_data.cali"
     detection_settings = DetectionSettings(method="cellpose", model_type=MODEL)
@@ -4782,7 +4782,7 @@ def test_runner_uses_tiff_collection_reader(
 
     from cali.readers._tiff_collection_reader import TiffCollectionReader
 
-    runner = CaliRunner(commit_batch_size=1)
+    runner = CaliRunner()
     exp = Experiment.create_from_data(name="TestTiffColl", data_path=str(data_path))
 
     mock_settings = MagicMock()

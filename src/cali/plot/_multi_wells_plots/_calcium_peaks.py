@@ -110,25 +110,27 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
     )
 
     # Build per-condition lookups keyed by the base condition name (e.g. "ctrl (25%)")
-    stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    stim_lookup: dict[str, tuple[float, float, np.ndarray, list[str]]] = {}
     if stim_plot_data:
-        for cond, mean, sem, fov_vals in zip(
+        for cond, mean, sem, well_vals, well_names in zip(
             stim_plot_data["conditions"],
             stim_plot_data["means"],
             stim_plot_data["sems"],
-            stim_plot_data["fov_values_list"],
+            stim_plot_data["well_values_list"],
+            stim_plot_data["well_names_list"],
         ):
-            stim_lookup[cond] = (mean, sem, fov_vals)
+            stim_lookup[cond] = (mean, sem, well_vals, well_names)
 
-    non_stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    non_stim_lookup: dict[str, tuple[float, float, np.ndarray, list[str]]] = {}
     if non_stim_plot_data:
-        for cond, mean, sem, fov_vals in zip(
+        for cond, mean, sem, well_vals, well_names in zip(
             non_stim_plot_data["conditions"],
             non_stim_plot_data["means"],
             non_stim_plot_data["sems"],
-            non_stim_plot_data["fov_values_list"],
+            non_stim_plot_data["well_values_list"],
+            non_stim_plot_data["well_names_list"],
         ):
-            non_stim_lookup[cond] = (mean, sem, fov_vals)
+            non_stim_lookup[cond] = (mean, sem, well_vals, well_names)
 
     # Collect all unique base conditions and sort by (base_name, numeric_power)
     # so that the x-axis order is: ctrl (25%) stim, ctrl (25%) non-stim,
@@ -153,20 +155,23 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
     combined_means: list[float] = []
     combined_sems: list[float] = []
     combined_fov_values: list[np.ndarray] = []
+    combined_well_names: list[list[str]] = []
 
     for base_cond in all_base_conditions:
         if base_cond in stim_lookup:
-            mean, sem, fov_vals = stim_lookup[base_cond]
+            mean, sem, well_vals, well_names = stim_lookup[base_cond]
             combined_conditions.append(f"{base_cond}_{EVK_STIM}")
             combined_means.append(mean)
             combined_sems.append(sem)
-            combined_fov_values.append(fov_vals)
+            combined_fov_values.append(well_vals)
+            combined_well_names.append(well_names)
         if base_cond in non_stim_lookup:
-            mean, sem, fov_vals = non_stim_lookup[base_cond]
+            mean, sem, well_vals, well_names = non_stim_lookup[base_cond]
             combined_conditions.append(f"{base_cond}_{EVK_NON_STIM}")
             combined_means.append(mean)
             combined_sems.append(sem)
-            combined_fov_values.append(fov_vals)
+            combined_fov_values.append(well_vals)
+            combined_well_names.append(well_names)
 
     if not combined_conditions:  # pragma: no cover
         widget.clear_plot()
@@ -177,7 +182,8 @@ def plot_calcium_peaks_amplitude_stim_split_bar_plot(
         "conditions": combined_conditions,
         "means": combined_means,
         "sems": combined_sems,
-        "fov_values_list": combined_fov_values,
+        "well_values_list": combined_fov_values,
+        "well_names_list": combined_well_names,
     }
 
     _create_pyqtgraph_bar_plot(
@@ -252,7 +258,7 @@ def _query_calcium_burst_metrics_by_condition(
                 if not fa.calcium_burst_count:  # skip None and 0 (no bursts detected)
                     continue
                 cond_label = _get_condition_label(well)
-                well_key = str(well.id)
+                well_key = well.name
                 data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = {
                     "count": float(fa.calcium_burst_count),
                     "avg_duration_s": (
@@ -387,25 +393,27 @@ def _compute_evoked_stim_split_data(
         else None
     )
 
-    stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    stim_lookup: dict[str, tuple[float, float, np.ndarray, list[str]]] = {}
     if stim_plot_data:
-        for cond, mean, sem, fov_vals in zip(
+        for cond, mean, sem, well_vals, well_names in zip(
             stim_plot_data["conditions"],
             stim_plot_data["means"],
             stim_plot_data["sems"],
-            stim_plot_data["fov_values_list"],
+            stim_plot_data["well_values_list"],
+            stim_plot_data["well_names_list"],
         ):
-            stim_lookup[cond] = (mean, sem, fov_vals)
+            stim_lookup[cond] = (mean, sem, well_vals, well_names)
 
-    non_stim_lookup: dict[str, tuple[float, float, np.ndarray]] = {}
+    non_stim_lookup: dict[str, tuple[float, float, np.ndarray, list[str]]] = {}
     if non_stim_plot_data:
-        for cond, mean, sem, fov_vals in zip(
+        for cond, mean, sem, well_vals, well_names in zip(
             non_stim_plot_data["conditions"],
             non_stim_plot_data["means"],
             non_stim_plot_data["sems"],
-            non_stim_plot_data["fov_values_list"],
+            non_stim_plot_data["well_values_list"],
+            non_stim_plot_data["well_names_list"],
         ):
-            non_stim_lookup[cond] = (mean, sem, fov_vals)
+            non_stim_lookup[cond] = (mean, sem, well_vals, well_names)
 
     seen: set[str] = set()
     all_base_conditions: list[str] = []
@@ -426,20 +434,23 @@ def _compute_evoked_stim_split_data(
     combined_means: list[float] = []
     combined_sems: list[float] = []
     combined_fov_values: list[np.ndarray] = []
+    combined_well_names: list[list[str]] = []
 
     for base_cond in all_base_conditions:
         if base_cond in stim_lookup:
-            mean, sem, fov_vals = stim_lookup[base_cond]
+            mean, sem, well_vals, well_names = stim_lookup[base_cond]
             combined_conditions.append(f"{base_cond}_{EVK_STIM}")
             combined_means.append(mean)
             combined_sems.append(sem)
-            combined_fov_values.append(fov_vals)
+            combined_fov_values.append(well_vals)
+            combined_well_names.append(well_names)
         if base_cond in non_stim_lookup:
-            mean, sem, fov_vals = non_stim_lookup[base_cond]
+            mean, sem, well_vals, well_names = non_stim_lookup[base_cond]
             combined_conditions.append(f"{base_cond}_{EVK_NON_STIM}")
             combined_means.append(mean)
             combined_sems.append(sem)
-            combined_fov_values.append(fov_vals)
+            combined_fov_values.append(well_vals)
+            combined_well_names.append(well_names)
 
     if not combined_conditions:
         return None
@@ -449,7 +460,8 @@ def _compute_evoked_stim_split_data(
             conditions=combined_conditions,
             means=combined_means,
             sems=combined_sems,
-            fov_values_list=combined_fov_values,
+            well_values_list=combined_fov_values,
+            well_names_list=combined_well_names,
         ),
         name,
         units,

@@ -16,6 +16,7 @@ from cali._constants import (
     INFERRED_SPIKES_SYNCHRONY,
     INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
+    MULTI_WELL_AGGREGATED_DATA,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
@@ -77,28 +78,24 @@ def test_analysis_gui_get_export_options_filters_unchecked(qtbot: QtBot) -> None
     widget = _AnalysisGUI()
     qtbot.addWidget(widget)
 
-    # By default, the export group should be disabled
-    assert not widget._export_group.isChecked()
-
-    # Enable export group for testing
-    widget._export_group.setChecked(True)
+    # By default, the export group should be enabled
+    assert widget._export_group.isChecked()
 
     # Get export options
     export_options = widget.get_export_options()
     assert export_options is not None
 
-    # By default, CALCIUM_DFF_CORRELATION is unchecked (row 0, checked=False)
-    # Other correlations are checked by default
+    # By default, only MULTI_WELL_AGGREGATED_DATA is checked;
+    # all correlation options are unchecked
+    assert MULTI_WELL_AGGREGATED_DATA in export_options
 
-    # Unchecked option should NOT be in export_options
+    # Unchecked options should NOT be in export_options
     assert CALCIUM_DFF_CORRELATION not in export_options
-
-    # Checked options should be in export_options
-    assert CALCIUM_DEN_DFF_CORRELATION in export_options
-    assert INFERRED_SPIKES_THRESHOLDED_BINARY in export_options
-    assert INFERRED_SPIKES_SYNCHRONY in export_options
-    assert INFERRED_SPIKES_CROSS_CORRELATION in export_options
-    assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS in export_options
+    assert CALCIUM_DEN_DFF_CORRELATION not in export_options
+    assert INFERRED_SPIKES_THRESHOLDED_BINARY not in export_options
+    assert INFERRED_SPIKES_SYNCHRONY not in export_options
+    assert INFERRED_SPIKES_CROSS_CORRELATION not in export_options
+    assert INFERRED_SPIKES_CROSS_CORRELATION_LAGS not in export_options
 
 
 def test_analysis_gui_export_disabled(qtbot: QtBot) -> None:

@@ -55,7 +55,7 @@ def test_aggregate_evoked_data_to_condition_stats() -> None:
     assert set(plot_data["conditions"]) == expected_conditions
     assert len(plot_data["means"]) == 4
     assert len(plot_data["sems"]) == 4
-    assert len(plot_data["fov_values_list"]) == 4
+    assert len(plot_data["well_values_list"]) == 4
 
 
 def test_aggregate_evoked_data_single_power() -> None:
@@ -78,7 +78,7 @@ def test_aggregate_evoked_data_single_power() -> None:
     assert set(plot_data["conditions"]) == expected_conditions
     assert len(plot_data["means"]) == 2
     assert len(plot_data["sems"]) == 2
-    assert len(plot_data["fov_values_list"]) == 2
+    assert len(plot_data["well_values_list"]) == 2
 
 
 def test_aggregate_evoked_data_percentage_power() -> None:
@@ -98,7 +98,7 @@ def test_aggregate_evoked_data_percentage_power() -> None:
     # Should extract "10%" as the power
     expected_conditions = {"Control (10%)", "Treatment (10%)"}
     assert set(plot_data["conditions"]) == expected_conditions
-    assert len(plot_data["fov_values_list"]) == 2
+    assert len(plot_data["well_values_list"]) == 2
 
 
 def test_stim_split_amplitude_appends_evk_suffixes() -> None:
@@ -162,7 +162,7 @@ def test_stim_split_amplitude_interleaved_order() -> None:
             stim_plot["conditions"],
             stim_plot["means"],
             stim_plot["sems"],
-            stim_plot["fov_values_list"],
+            stim_plot["well_values_list"],
         )
     }
     non_stim_lookup = {
@@ -171,7 +171,7 @@ def test_stim_split_amplitude_interleaved_order() -> None:
             non_stim_plot["conditions"],
             non_stim_plot["means"],
             non_stim_plot["sems"],
-            non_stim_plot["fov_values_list"],
+            non_stim_plot["well_values_list"],
         )
     }
 
