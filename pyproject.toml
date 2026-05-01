@@ -186,6 +186,7 @@ filterwarnings = [
     "ignore::FutureWarning",
     "ignore:Conversion of an array with ndim > 0 to a scalar:DeprecationWarning",
     "ignore:'count' is passed as positional argument:DeprecationWarning:vispy",
+    "ignore:Sparse invariant checks are implicitly disabled.*:UserWarning",
 ]
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
