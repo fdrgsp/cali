@@ -347,6 +347,9 @@ class CaliGui(QMainWindow):
         self._fov_table.doubleClicked.connect(self._on_fov_double_click)
 
         self._runs_panel.runSelected.connect(self._on_run_item_selected)
+        self._runs_panel.segmentationSelected.connect(
+            self._on_saved_segmentation_selected
+        )
         self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
@@ -994,7 +997,7 @@ class CaliGui(QMainWindow):
             self._runs_panel._runs_list.setCurrentRow(0)
             # emit runSelected signal for the first run
             if (first_item := self._runs_panel._runs_list.item(0)) is not None:
-                self._runs_panel._on_item_clicked(first_item)
+                self._runs_panel._on_run_item_clicked(first_item)
         # load plate plan data
         if experiment is None:
             experiment = Experiment.load_from_database(database_path, load_data=False)
@@ -2419,6 +2422,51 @@ class CaliGui(QMainWindow):
             self._hide_loading_bar()
             show_error_dialog(self, f"Failed to load run settings: {e}")
             cali_logger.error(f"❌ Failed to load run #{run_id}: {e}")
+
+    def _on_saved_segmentation_selected(self, detection_settings_id: int) -> None:
+        """Handle selection of an orphan (saved) segmentation in the runs panel.
+
+        Loads the detection parameters into the detection widget and refreshes
+        the image viewer so the labels reflect this segmentation.
+        """
+        if self._database_path is None:
+            return
+
+        try:
+            d_settings = DetectionSettings.load_from_database(
+                self._database_path, id=detection_settings_id
+            )
+            assert isinstance(d_settings, DetectionSettings)
+            if d_settings.method == "cellpose":
+                self._detection_wdg.setValue(
+                    CellposeSettingsData(
+                        model_type=d_settings.model_type,
+                        model_path=d_settings.custom_model,
+                        diameter=d_settings.diameter,
+                        cellprob_threshold=d_settings.cellprob_threshold,
+                        flow_threshold=d_settings.flow_threshold,
+                        min_size=d_settings.min_size,
+                        normalize=d_settings.normalize,
+                        batch_size=d_settings.batch_size,
+                        use_gpu=d_settings.use_gpu,
+                    )
+                )
+            elif d_settings.method == "imported_labels":  # pragma: no cover
+                self._detection_wdg.setValue(method="imported_labels")
+                self._detection_wdg._imported_labels_wdg.set_detection_settings_id(
+                    d_settings.id
+                )
+
+            cali_logger.info(f"✅ Selected saved segmentation #{detection_settings_id}")
+
+            # Refresh the image viewer to show the segmentation labels
+            self._on_fov_table_selection_changed()
+
+        except Exception as e:
+            show_error_dialog(self, f"Failed to load saved segmentation: {e}")
+            cali_logger.error(
+                f"❌ Failed to load saved segmentation #{detection_settings_id}: {e}"
+            )
 
     def _set_splitter_sizes(self) -> None:
         """Set the initial sizes for the splitters."""
