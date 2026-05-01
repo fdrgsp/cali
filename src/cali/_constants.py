@@ -23,10 +23,12 @@ EVOKED = "Evoked Activity"
 # ==================== Writer Types and File Extensions ====================
 ZARR_TESNSORSTORE = "tensorstore-zarr"
 OME_ZARR = "ome-zarr"
+OME_TIFF = "ome-tiff"
 # dict with writer name and extension
 WRITERS: dict[str, list[str]] = {
     ZARR_TESNSORSTORE: [".tensorstore.zarr"],
-    OME_ZARR: [".ome.zarr"],
+    OME_ZARR: [".ome.zarr", ".zarr"],
+    OME_TIFF: [".ome.tif", ".ome.tiff"],
 }
 TS = WRITERS[ZARR_TESNSORSTORE][0]
 OZ = WRITERS[OME_ZARR][0]

@@ -191,7 +191,7 @@ def test_load_data_from_path_ome_zarr(tmp_path: Path) -> None:
         result = load_data_from_path(zarr_path)
         # If it succeeds, result should be a reader
         assert result is not None
-    except (ValueError, RuntimeError, KeyError):
+    except (ValueError, RuntimeError, KeyError, FileNotFoundError):
         # Expected - not a valid OME zarr
         pass
 

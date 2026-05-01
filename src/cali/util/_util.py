@@ -10,7 +10,13 @@ from tqdm import tqdm
 
 from cali._constants import OZ, TS
 from cali.logger import cali_logger
-from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.readers import (
+    OMETiffReader,
+    OMEZarrReader,
+    TensorstoreZarrReader,
+    YaozarrsReader,
+)
+from cali.readers._protocol import CaliDataReader
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -31,7 +37,7 @@ _NUMBA_LOCK = threading.Lock()
 
 def load_data_from_path(
     data_path: str | Path,
-) -> TensorstoreZarrReader | OMEZarrReader | None:
+) -> CaliDataReader | None:
     """Load data from the given path using the appropriate reader.
 
     Parameters
@@ -41,21 +47,55 @@ def load_data_from_path(
 
     Returns
     -------
-    TensorstoreZarrReader | OMEZarrReader | None
+    CaliDataReader | None
         The appropriate reader for the data format, or None if unsupported
     """
     cali_logger.info(f"💿 Loading data from path: {data_path}")
     data_path_str = str(data_path)
 
-    # read tensorstore from micromanager-gui package
+    # read tensorstore zarr (micromanager-gui package)
     if data_path_str.endswith(TS):
         return TensorstoreZarrReader(data_path)
 
-    # read ome zarr from micromanager-gui package
-    elif data_path_str.endswith(OZ):
-        return OMEZarrReader(data_path)
+    # read OME-Zarr: try OMEZarrReader (mm-gui format) first, fall back to YaozarrsReader
+    elif data_path_str.endswith(OZ) or _is_ome_zarr(data_path):
+        if _is_mm_gui_zarr(data_path):
+            return OMEZarrReader(data_path)
+        return YaozarrsReader(data_path)
+
+    # read OME-TIFF files
+    elif data_path_str.endswith((".ome.tif", ".ome.tiff")):
+        return OMETiffReader(data_path)
 
     return None
+
+
+def _is_mm_gui_zarr(path: str | Path) -> bool:
+    """Check if zarr was written by micromanager-gui (has p0/useq_MDASequence)."""
+    import zarr
+
+    try:
+        store = zarr.open(str(path), mode="r")
+        return "useq_MDASequence" in store["p0"].attrs
+    except (KeyError, Exception):
+        return False
+
+
+def _is_ome_zarr(path: str | Path) -> bool:
+    """Check if path is an OME-Zarr (has plate or multiscales in .zattrs)."""
+    import json as _json
+
+    p = Path(path)
+    if not p.is_dir() or p.suffix != ".zarr":
+        return False
+    zattrs = p / ".zattrs"
+    if zattrs.exists():
+        try:
+            attrs = _json.loads(zattrs.read_text())
+            return "plate" in attrs or "multiscales" in attrs
+        except (ValueError, OSError):
+            return False
+    return False
 
 
 def mask_to_coordinates(

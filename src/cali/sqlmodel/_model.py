@@ -56,8 +56,7 @@ from cali._constants import (
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
 
 if TYPE_CHECKING:
-    from cali.readers._ome_zarr_reader import OMEZarrReader
-    from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
+    from cali.readers._protocol import CaliDataReader
 
 # ==================== Custom Column Types ====================
 
@@ -652,7 +651,7 @@ class Experiment(SQLModel, table=True):
         from ._data_to_plate import data_to_plate
 
         tiff_settings: TiffCollectionSettings | None = None
-        data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        data: CaliDataReader | None
         # If TIFF parameters provided, create TiffCollectionReader
         if (
             tiff_file_map is not None

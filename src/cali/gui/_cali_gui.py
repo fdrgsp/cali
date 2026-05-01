@@ -92,8 +92,7 @@ if TYPE_CHECKING:
 
 from cali.logger import cali_logger
 from cali.readers import (
-    OMEZarrReader,
-    TensorstoreZarrReader,
+    CaliDataReader,
     TiffCollectionReader,
 )
 
@@ -116,9 +115,7 @@ class CaliGui(QMainWindow):
         self._database_path: str | None = None
         self._data_path: str | None = None
         self._output_path: str | None = None
-        self._data: (
-            TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
-        ) = None
+        self._data: CaliDataReader | None = None
 
         # RUNNER ----------------------------------------------------------------------
         self._runner = CaliRunner()
@@ -597,7 +594,7 @@ class CaliGui(QMainWindow):
     def _load_data_or_configure_tiff(
         self, data_path: str
     ) -> tuple[
-        TiffCollectionReader | Any | None,
+        CaliDataReader | None,
         dict[str, Any] | None,
         str | None,
         dict[str, Any] | None,
@@ -610,7 +607,7 @@ class CaliGui(QMainWindow):
             Tuple of (data, tiff_file_map, tiff_plate_type, tiff_metadata)
         """
         tiff_file_map = tiff_plate_type = tiff_metadata = None
-        data: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None
+        data: CaliDataReader | None
 
         data = load_data_from_path(data_path)
 
@@ -641,7 +638,7 @@ class CaliGui(QMainWindow):
 
         return data, tiff_file_map, tiff_plate_type, tiff_metadata
 
-    def _validate_data(self, data: TiffCollectionReader | Any | None) -> bool:
+    def _validate_data(self, data: CaliDataReader | None) -> bool:
         """Validate data and show errors if invalid.
 
         Returns

@@ -10,18 +10,14 @@ from cali.sqlmodel._useq_plate_to_db import useq_plate_plan_to_db
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from cali.readers import (
-        OMEZarrReader,
-        TensorstoreZarrReader,
-        TiffCollectionReader,
-    )
+    from cali.readers import CaliDataReader
     from cali.sqlmodel import Experiment, Plate
 
 from cali.logger import cali_logger
 
 
 def data_to_plate(
-    data: str | Path | TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+    data: str | Path | CaliDataReader,
     experiment: Experiment,
     plate_maps: dict[str, dict[str, str]] | None = None,
     plate_plan: useq.WellPlatePlan | None = None,

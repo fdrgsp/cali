@@ -22,8 +22,7 @@ from cali.util import commit_fov_result, load_data_from_path
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
 
-    from cali.readers._ome_zarr_reader import OMEZarrReader
-    from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
+    from cali.readers._protocol import CaliDataReader
     from cali.sqlmodel import (
         AnalysisSettings,
         DetectionSettings,
@@ -243,7 +242,7 @@ class CaliRunner:
         self._extraction_runner._cancellation_event.clear()
 
         # 0. Make sure data are ready (can be None for analysis-only mode)
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader | None = (
+        dataset: CaliDataReader | None = (
             None
         )
         if dataset_path is not None:
@@ -844,7 +843,7 @@ class CaliRunner:
         self,
         session: Session,
         experiment: Experiment,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         detection_settings: DetectionSettings,
         det_id: int,
         positions_for_detection: list[int],
@@ -858,7 +857,7 @@ class CaliRunner:
             Database session.
         experiment : Experiment
             Experiment being processed.
-        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+        dataset : CaliDataReader
             Dataset to detect ROIs in.
         detection_settings : DetectionSettings
             Detection configuration.
@@ -1406,7 +1405,7 @@ class CaliRunner:
 
     def _run_detection(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
@@ -1424,7 +1423,7 @@ class CaliRunner:
 
     def _run_extraction(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
@@ -1435,7 +1434,7 @@ class CaliRunner:
 
         Parameters
         ----------
-        dataset : TensorstoreZarrReader | OMEZarrReader
+        dataset : CaliDataReader
             Dataset reader
         extraction_settings : ExtractionSettings
             Extraction configuration (neuropil, dff, deconvolution)

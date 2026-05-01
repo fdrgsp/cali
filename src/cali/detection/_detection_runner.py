@@ -11,8 +11,7 @@ from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
 from cali.logger import cali_logger
-from cali.readers import OMEZarrReader, TensorstoreZarrReader
-from cali.readers._tiff_collection_reader import TiffCollectionReader
+from cali.readers._protocol import CaliDataReader
 from cali.sqlmodel._model import FOV, ROI, DetectionSettings, Mask
 from cali.util import mask_to_coordinates
 
@@ -44,7 +43,7 @@ class DetectionRunner:
 
     def run(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
         as_generator: bool = False,
@@ -60,7 +59,7 @@ class DetectionRunner:
 
         Parameters
         ----------
-        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+        dataset : CaliDataReader
             Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method field determines which algorithm to use)
@@ -85,7 +84,7 @@ class DetectionRunner:
 
     def _run_generator(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         detection_settings: DetectionSettings,
         global_position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
@@ -93,11 +92,8 @@ class DetectionRunner:
         # Reset cancellation event
         self._cancellation_event.clear()
 
-        assert isinstance(
-            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
-        ), (
-            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
-            "TiffCollectionReader instance."
+        assert isinstance(dataset, CaliDataReader), (
+            "Data must be a CaliDataReader instance."
         )
 
         if detection_settings.method == "cellpose":
@@ -121,7 +117,7 @@ class DetectionRunner:
 
     def _run_cellpose(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         detection_settings: DetectionSettings,
         position_indices: Sequence[int],
     ) -> Generator[FOV, None, None]:
@@ -129,7 +125,7 @@ class DetectionRunner:
 
         Parameters
         ----------
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+        dataset: CaliDataReader
             Data reader instance for imaging data
         detection_settings : DetectionSettings
             Detection parameters (method should be "cellpose")
@@ -197,7 +193,7 @@ class DetectionRunner:
 
     def _run_cellpose_detection(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         position_indices: Sequence[int],
         model: CellposeModel,
         diameter: float | None,
@@ -214,11 +210,8 @@ class DetectionRunner:
         FOV
             FOV objects with ROIs and Masks, ready to be committed
         """
-        assert isinstance(
-            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
-        ), (
-            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
-            "TiffCollectionReader instance."
+        assert isinstance(dataset, CaliDataReader), (
+            "Data must be a CaliDataReader instance."
         )
 
         # Process images in batches

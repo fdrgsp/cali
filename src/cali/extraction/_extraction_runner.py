@@ -18,8 +18,7 @@ from cali._constants import (
 from cali.analysis._fov_metrics import get_overlap_roi_with_stimulated_area
 from cali.analysis._trace_analysis import compute_inferred_spike_threshold
 from cali.logger import cali_logger
-from cali.readers import OMEZarrReader, TensorstoreZarrReader
-from cali.readers._tiff_collection_reader import TiffCollectionReader
+from cali.readers._protocol import CaliDataReader
 from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
@@ -53,7 +52,7 @@ class ExtractionRunner:
 
     def run(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         extraction_settings: ExtractionSettings,
         fovs: Iterable[FOV],
         *,
@@ -68,7 +67,7 @@ class ExtractionRunner:
 
         Parameters
         ----------
-        dataset : TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader
+        dataset : CaliDataReader
             Data reader instance for imaging data
         extraction_settings : ExtractionSettings
             Extraction parameters (neuropil, dff_window, decay_constant, etc.)
@@ -103,7 +102,7 @@ class ExtractionRunner:
 
     def _run_generator(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
@@ -112,11 +111,8 @@ class ExtractionRunner:
         # Reset cancellation event
         self._cancellation_event.clear()
 
-        assert isinstance(
-            dataset, (TensorstoreZarrReader, OMEZarrReader, TiffCollectionReader)
-        ), (
-            "Data must be a TensorstoreZarrReader, OMEZarrReader, or "
-            "TiffCollectionReader instance."
+        assert isinstance(dataset, CaliDataReader), (
+            "Data must be a CaliDataReader instance."
         )
 
         # Eagerly load stimulation_mask attributes to prevent lazy loading issues
@@ -202,7 +198,7 @@ class ExtractionRunner:
     def _exec_in_threadpool(
         self,
         analyze: Callable,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         cancel_event: threading.Event,
         fovs: Iterable[FOV],
         extraction_settings: ExtractionSettings,
@@ -265,7 +261,7 @@ class ExtractionRunner:
 
     def _analyze_position(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov: FOV,
@@ -284,7 +280,7 @@ class ExtractionRunner:
 
     def _extract_trace_data_per_position(
         self,
-        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        dataset: CaliDataReader,
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov_to_analyze: FOV,
