@@ -238,14 +238,11 @@ class YaozarrsReader:
             plate_attrs, fovs_per_well=max(fovs_per_well, 1)
         )
 
-    def _parse_axes_from_multiscales(
-        self, multiscales: list[dict[str, Any]]
-    ) -> None:
+    def _parse_axes_from_multiscales(self, multiscales: list[dict[str, Any]]) -> None:
         """Extract axis names from multiscales metadata."""
         if multiscales and "axes" in multiscales[0]:
             self._axis_names = [
-                ax.get("name", ax.get("type", ""))
-                for ax in multiscales[0]["axes"]
+                ax.get("name", ax.get("type", "")) for ax in multiscales[0]["axes"]
             ]
 
     def _get_dimension_size(self, axis: str) -> int:
@@ -282,13 +279,10 @@ class YaozarrsReader:
         size_c = self._get_dimension_size("c")
 
         if self._plate_plan is not None:
-            stage_positions: useq.WellPlatePlan | list[useq.Position] = (
-                self._plate_plan
-            )
+            stage_positions: useq.WellPlatePlan | list[useq.Position] = self._plate_plan
         else:
             positions = [
-                useq.Position(name=f"p{i:04d}")
-                for i in range(len(self._image_paths))
+                useq.Position(name=f"p{i:04d}") for i in range(len(self._image_paths))
             ]
             stage_positions = positions
 
@@ -308,10 +302,7 @@ class YaozarrsReader:
 
         for p in range(len(self._image_paths)):
             # Get position name
-            if (
-                self._sequence
-                and p < len(self._sequence.stage_positions)
-            ):
+            if self._sequence and p < len(self._sequence.stage_positions):
                 pos = self._sequence.stage_positions[p]
                 pos_name = pos.name or f"p{p:04d}"
             else:
@@ -344,9 +335,7 @@ class YaozarrsReader:
                 result.append(slice(None))
         return tuple(result)
 
-    def _get_metadata_for_indexers(
-        self, indexers: Mapping[str, int]
-    ) -> list[dict]:
+    def _get_metadata_for_indexers(self, indexers: Mapping[str, int]) -> list[dict]:
         """Return metadata entries matching the given indexers."""
         result = []
         for meta in self._metadata_list:

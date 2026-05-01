@@ -220,12 +220,8 @@ class OMETiffReader:
             if ome_plate.wells:
                 fovs = max(len(ome_plate.wells[0].well_samples), 1)
 
-            self._plate_plan = ome_plate_to_plate_plan(
-                ome_plate, fovs_per_well=fovs
-            )
-            stage_positions: useq.WellPlatePlan | list[useq.Position] = (
-                self._plate_plan
-            )
+            self._plate_plan = ome_plate_to_plate_plan(ome_plate, fovs_per_well=fovs)
+            stage_positions: useq.WellPlatePlan | list[useq.Position] = self._plate_plan
         else:
             # No plate - create positions from images
             positions = []
@@ -256,10 +252,7 @@ class OMETiffReader:
                         # Get position name
                         if p < len(self._ome.images):
                             pos_name = self._ome.images[p].name or f"p{p:04d}"
-                        elif (
-                            self._sequence
-                            and p < len(self._sequence.stage_positions)
-                        ):
+                        elif self._sequence and p < len(self._sequence.stage_positions):
                             pos = self._sequence.stage_positions[p]
                             pos_name = pos.name or f"p{p:04d}"
                         else:
@@ -305,9 +298,7 @@ class OMETiffReader:
                 result.append(slice(None))
         return tuple(result)
 
-    def _get_metadata_for_indexers(
-        self, indexers: Mapping[str, int]
-    ) -> list[dict]:
+    def _get_metadata_for_indexers(self, indexers: Mapping[str, int]) -> list[dict]:
         """Return metadata entries matching the given indexers."""
         result = []
         for meta in self._metadata_list:

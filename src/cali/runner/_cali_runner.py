@@ -242,9 +242,7 @@ class CaliRunner:
         self._extraction_runner._cancellation_event.clear()
 
         # 0. Make sure data are ready (can be None for analysis-only mode)
-        dataset: CaliDataReader | None = (
-            None
-        )
+        dataset: CaliDataReader | None = None
         if dataset_path is not None:
             tiff_settings = experiment.tiff_collection_settings(dataset_path)
             if tiff_settings is not None:

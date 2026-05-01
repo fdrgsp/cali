@@ -130,8 +130,7 @@ def build_channels(
         return None
     names = channel_names or [f"ch{i}" for i in range(size_c)]
     return tuple(
-        useq.Channel(config=name, exposure=exposure)
-        for name in names[:size_c]
+        useq.Channel(config=name, exposure=exposure) for name in names[:size_c]
     )
 
 
