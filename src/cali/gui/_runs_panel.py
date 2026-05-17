@@ -174,7 +174,7 @@ class _RunsPanel(QGroupBox):
         self._delete_btn.setIcon(QIconifyIcon("mdi:delete", color=RED))
         self._delete_btn.setToolTip(
             "Delete the selected run (if it's the only run left, you will be asked if "
-            "you want to keep the segmentations, if any)."
+            "you want to keep the segmentation)."
         )
         self._delete_btn.clicked.connect(self._delete_selected)
         self._delete_btn.setEnabled(False)
