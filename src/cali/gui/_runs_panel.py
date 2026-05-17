@@ -143,13 +143,21 @@ class _RunsPanel(QGroupBox):
         saved_layout = QVBoxLayout(saved_container)
         saved_layout.setContentsMargins(0, 0, 0, 0)
         saved_layout.setSpacing(2)
-        saved_layout.addWidget(QLabel("Saved Segmentations"))
+        _SAVED_SEGS_TOOLTIP = (
+            "Each segmentation is normally stored as part of a run.\n"
+            "When you delete a run, cali asks whether you also want to delete\n"
+            "the segmentation (ROIs + masks) that was produced by that run.\n"
+            "If you choose to keep it, it is preserved here — independent of\n"
+            "any run — so you can inspect its labels or reuse it later.\n\n"
+            "Click an entry to load its detection settings into the Detection\n"
+            "tab and preview its labels in the image viewer."
+        )
+        saved_segs_label = QLabel("Saved Segmentations")
+        saved_segs_label.setToolTip(_SAVED_SEGS_TOOLTIP)
+        saved_layout.addWidget(saved_segs_label)
         self._saved_segs_list = QListWidget()
         self._saved_segs_list.setAlternatingRowColors(True)
-        self._saved_segs_list.setToolTip(
-            "Segmentations kept after their runs were deleted. "
-            "Click to view labels or reuse in a new run."
-        )
+        self._saved_segs_list.setToolTip(_SAVED_SEGS_TOOLTIP)
         saved_layout.addWidget(self._saved_segs_list)
         self._splitter.addWidget(saved_container)
         self._splitter.setStretchFactor(0, 4)
