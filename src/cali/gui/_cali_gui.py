@@ -2436,7 +2436,8 @@ class CaliGui(QMainWindow):
             d_settings = DetectionSettings.load_from_database(
                 self._database_path, id=detection_settings_id
             )
-            assert isinstance(d_settings, DetectionSettings)
+            if not isinstance(d_settings, DetectionSettings):  # pragma: no cover
+                raise TypeError(f"Expected DetectionSettings, got {type(d_settings)}")
             if d_settings.method == "cellpose":
                 self._detection_wdg.setValue(
                     CellposeSettingsData(

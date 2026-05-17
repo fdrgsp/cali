@@ -66,13 +66,13 @@ class _DetectionKeepDialog(QDialog):
         self, summaries: list[_DetectionSummary], parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Delete All Runs")
+        self.setWindowTitle("Delete All")
         layout = QVBoxLayout(self)
         layout.addWidget(
             QLabel(
                 "All runs will be deleted.\n"
-                "Tick any segmentations you want to keep — unticked ones will be "
-                "deleted along with their ROIs."
+                "Tick any segmentations you want to keep — unticked ones will also "
+                "be deleted along with their ROIs."
             )
         )
         self._checkboxes: dict[int, QCheckBox] = {}
@@ -173,18 +173,21 @@ class _RunsPanel(QGroupBox):
         self._delete_btn = QPushButton("Delete Selected")
         self._delete_btn.setIcon(QIconifyIcon("mdi:delete", color=RED))
         self._delete_btn.setToolTip(
-            "Delete the selected run or saved segmentation from the database"
+            "Delete the selected run (if it's the only run left, you will be asked if "
+            "you want to keep the segmentations, if any)."
         )
         self._delete_btn.clicked.connect(self._delete_selected)
         self._delete_btn.setEnabled(False)
         buttons_layout.addWidget(self._delete_btn)
 
         # Clear all button
-        self._clear_all_btn = QPushButton("Delete All")
-        self._clear_all_btn.setIcon(QIconifyIcon("mdi:delete-forever", color=RED))
-        self._clear_all_btn.setToolTip("Delete all runs from the database")
-        self._clear_all_btn.clicked.connect(self._clear_all_runs)
-        buttons_layout.addWidget(self._clear_all_btn)
+        self._delete_all_btn = QPushButton("Delete All")
+        self._delete_all_btn.setIcon(QIconifyIcon("mdi:delete-forever", color=RED))
+        self._delete_all_btn.setToolTip(
+            "Delete all runs (you will be asked if you want to keep any segmentations)."
+        )
+        self._delete_all_btn.clicked.connect(self._clear_all_runs)
+        buttons_layout.addWidget(self._delete_all_btn)
 
         layout.addLayout(buttons_layout)
 
@@ -823,27 +826,28 @@ class _RunsPanel(QGroupBox):
             from sqlmodel import Session, create_engine
 
             engine = create_engine(f"sqlite:///{self._database_path}")
-            with Session(engine) as session:
-                result = session.get(CaliResult, run_id)
-                if not result:
-                    return
+            try:
+                with Session(engine) as session:
+                    result = session.get(CaliResult, run_id)
+                    if not result:
+                        return
 
-                detection_id = result.detection_settings_id
-                analysis_id = result.analysis_settings_id
+                    detection_id = result.detection_settings_id
+                    analysis_id = result.analysis_settings_id
 
-                # Delete the analysis result (cascades to Traces via FK)
-                session.delete(result)
-                session.commit()
+                    # Delete the analysis result (cascades to Traces via FK)
+                    session.delete(result)
+                    session.commit()
 
-                # Clean up orphaned settings (and ROIs unless keep_detection)
-                self._cleanup_orphaned_data(
-                    session,
-                    detection_id,
-                    analysis_id,
-                    keep_detection=keep_detection,
-                )
-
-            engine.dispose(close=True)
+                    # Clean up orphaned settings (and ROIs unless keep_detection)
+                    self._cleanup_orphaned_data(
+                        session,
+                        detection_id,
+                        analysis_id,
+                        keep_detection=keep_detection,
+                    )
+            finally:
+                engine.dispose(close=True)
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to delete run: {e}")
