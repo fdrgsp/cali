@@ -776,7 +776,8 @@ class DetectionSettings(SQLModel, table=True):
     normalize : bool
         Whether to normalize images before detection
     batch_size : int
-        Number of images to process per batch. By default, 8.
+        Number of 256x256 GPU tiles processed simultaneously by Cellpose.
+        Higher values are faster on large GPUs but use more GPU memory. By default, 8.
     use_gpu : bool
         Whether to use GPU acceleration if available. By default, True.
     """
