@@ -402,8 +402,9 @@ class _CellposeDetectionWidget(QGroupBox):
         # BATCH SIZE WIDGET -----------------------------------------------------------
         self._batch_wdg = QWidget(self)
         self._batch_wdg.setToolTip(
-            "Number of images to process per batch. Higher values are faster "
-            "but use more memory."
+            "Number of 256x256 image tiles processed simultaneously on the GPU. "
+            "Higher values are faster on large GPUs but use more GPU memory. "
+            "Reduce if you run out of GPU memory."
         )
         batch_layout = QHBoxLayout(self._batch_wdg)
         batch_layout.setContentsMargins(0, 0, 0, 0)
