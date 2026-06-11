@@ -93,7 +93,7 @@ MULTIPLIER = "multiplier"
 # ==================== Default Values ====================
 DEFAULT_BURST_THRESHOLD = 65.0
 DEFAULT_CALCIUM_BURST_THRESHOLD = 25.0
-DEFAULT_MIN_BURST_DURATION = 3
+DEFAULT_MIN_BURST_DURATION = 500  # milliseconds
 DEFAULT_BURST_GAUSS_SIGMA = 0.3
 DEFAULT_FRAME_RATE = 10.0  # frames per second (fps)
 DEFAULT_DFF_WINDOW = 10.0  # seconds
