@@ -461,9 +461,13 @@ class _RunsPanel(QGroupBox):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                ids = {r for r in session.exec(select(column)).all() if r is not None}
-            engine.dispose(close=True)
+            try:
+                with Session(engine) as session:
+                    ids = {
+                        r for r in session.exec(select(column)).all() if r is not None
+                    }
+            finally:
+                engine.dispose(close=True)
             return sorted(ids)
         except Exception as e:
             cali_logger.error(f"Failed to fetch IDs: {e}")
@@ -515,12 +519,14 @@ class _RunsPanel(QGroupBox):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                rows = session.exec(
-                    select(DetectionSettings).order_by(DetectionSettings.id)
-                ).all()
-                summaries = [self._build_summary(session, d) for d in rows]
-            engine.dispose(close=True)
+            try:
+                with Session(engine) as session:
+                    rows = session.exec(
+                        select(DetectionSettings).order_by(DetectionSettings.id)
+                    ).all()
+                    summaries = [self._build_summary(session, d) for d in rows]
+            finally:
+                engine.dispose(close=True)
             return summaries
         except Exception as e:
             cali_logger.error(f"Failed to compute detection summaries: {e}")
@@ -538,13 +544,15 @@ class _RunsPanel(QGroupBox):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                count = session.exec(
-                    select(func.count())
-                    .select_from(CaliResult)
-                    .where(CaliResult.detection_settings_id == detection_id)
-                ).one()
-            engine.dispose(close=True)
+            try:
+                with Session(engine) as session:
+                    count = session.exec(
+                        select(func.count())
+                        .select_from(CaliResult)
+                        .where(CaliResult.detection_settings_id == detection_id)
+                    ).one()
+            finally:
+                engine.dispose(close=True)
             return int(count or 0)
         except Exception as e:
             cali_logger.error(f"Failed to count runs using detection: {e}")
@@ -796,10 +804,12 @@ class _RunsPanel(QGroupBox):
             from sqlmodel import Session, create_engine
 
             engine = create_engine(f"sqlite:///{self._database_path}")
-            with Session(engine) as session:
-                result = session.get(CaliResult, run_id)
-                detection_id = result.detection_settings_id if result else None
-            engine.dispose(close=True)
+            try:
+                with Session(engine) as session:
+                    result = session.get(CaliResult, run_id)
+                    detection_id = result.detection_settings_id if result else None
+            finally:
+                engine.dispose(close=True)
             return detection_id
         except Exception as e:
             cali_logger.error(f"Failed to look up detection for run {run_id}: {e}")
@@ -879,35 +889,37 @@ class _RunsPanel(QGroupBox):
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                # Drop all runs (cascades to Traces, DataAnalysis, FOVAnalysis via FK)
-                session.exec(delete(CaliResult))
-                # Run-scoped settings always go
-                session.exec(delete(ExtractionSettings))
-                session.exec(delete(AnalysisSettings))
-                session.commit()
+            try:
+                with Session(engine) as session:
+                    # Drop all runs (cascades to Traces, DataAnalysis, FOVAnalysis
+                    # via FK)
+                    session.exec(delete(CaliResult))
+                    # Run-scoped settings always go
+                    session.exec(delete(ExtractionSettings))
+                    session.exec(delete(AnalysisSettings))
+                    session.commit()
 
-                # Detection cleanup: per-detection so we can spare kept ones
-                all_detection_ids = [
-                    did
-                    for did in session.exec(select(DetectionSettings.id)).all()
-                    if did is not None
-                ]
-                for did in all_detection_ids:
-                    if did in keep:
-                        continue
-                    self._delete_detection_data(did, session=session)
+                    # Detection cleanup: per-detection so we can spare kept ones
+                    all_detection_ids = [
+                        did
+                        for did in session.exec(select(DetectionSettings.id)).all()
+                        if did is not None
+                    ]
+                    for did in all_detection_ids:
+                        if did in keep:
+                            continue
+                        self._delete_detection_data(did, session=session)
 
-                # Untagged ROIs (detection_settings_id is NULL) are unreachable
-                # without a run, so wipe them too.
-                session.exec(
-                    delete(ROI).where(ROI.detection_settings_id.is_(None))  # type: ignore[union-attr]
-                )
-                session.commit()
+                    # Untagged ROIs (detection_settings_id is NULL) are unreachable
+                    # without a run, so wipe them too.
+                    session.exec(
+                        delete(ROI).where(ROI.detection_settings_id.is_(None))  # type: ignore[union-attr]
+                    )
+                    session.commit()
 
-                self._delete_empty_fovs(session)
-
-            engine.dispose(close=True)
+                    self._delete_empty_fovs(session)
+            finally:
+                engine.dispose(close=True)
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to clear all runs: {e}")
@@ -955,9 +967,11 @@ class _RunsPanel(QGroupBox):
             from sqlmodel import Session, create_engine
 
             engine = create_engine(f"sqlite:///{self._database_path}")
-            with Session(engine) as s:
-                _do(s)
-            engine.dispose(close=True)
+            try:
+                with Session(engine) as s:
+                    _do(s)
+            finally:
+                engine.dispose(close=True)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to delete segmentation: {e}")
 

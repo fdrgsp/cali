@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QEvent, QPointF, Qt
+from qtpy.QtGui import QMouseEvent
 from qtpy.QtWidgets import QDialog, QListWidgetItem, QMessageBox
 
 from cali.gui._runs_panel import _DetectionKeepDialog, _DetectionSummary, _RunsPanel
@@ -1449,3 +1450,611 @@ def test_clear_all_runs_accepted_with_kept_detection(
     runs_panel._database_path = None
     qtbot.wait(50)
     gc.collect()
+
+
+# ============================================================================
+# select_run_by_index()
+# ============================================================================
+
+
+def test_select_run_by_index_emits_run_selected(
+    tmp_path: Path, runs_panel: _RunsPanel, qtbot: QtBot
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        _, run_id = _add_detection_and_run(session)
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+
+    received: list[int] = []
+    runs_panel.runSelected.connect(received.append)
+
+    runs_panel.select_run_by_index(0)
+
+    assert runs_panel._runs_list.currentItem() is runs_panel._runs_list.item(0)
+    assert received == [run_id]
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+# ============================================================================
+# get_selected_detection_settings_id() — edge cases
+# ============================================================================
+
+
+def test_get_selected_detection_settings_id_run_item_without_data(
+    runs_panel: _RunsPanel,
+) -> None:
+    """A selected run item with no UserRole data returns None."""
+    item = QListWidgetItem("no data")
+    runs_panel._runs_list.addItem(item)
+    runs_panel._runs_list.setCurrentItem(item)
+
+    assert runs_panel.get_selected_detection_settings_id() is None
+
+
+def test_get_selected_detection_settings_id_run_handles_exception(
+    tmp_path: Path,
+    runs_panel: _RunsPanel,
+    qtbot: QtBot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        _add_detection_and_run(session)
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+    runs_panel._runs_list.setCurrentItem(runs_panel._runs_list.item(0))
+
+    def raise_err(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("sqlmodel.create_engine", raise_err)
+
+    assert runs_panel.get_selected_detection_settings_id() is None
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+# ============================================================================
+# get_analysis_settings_ids()
+# ============================================================================
+
+
+def test_get_analysis_settings_ids(tmp_path: Path, runs_panel: _RunsPanel) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        d = DetectionSettings(method="cellpose", model_type="cpsam")
+        session.add(d)
+        session.flush()
+        session.add(
+            CaliResult(
+                experiment=1,
+                detection_settings_id=d.id,
+                analysis_settings_id=7,
+                positions_detected=[0],
+            )
+        )
+        session.add(
+            CaliResult(
+                experiment=1,
+                detection_settings_id=d.id,
+                analysis_settings_id=None,
+                positions_detected=[1],
+            )
+        )
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel._database_path = db_path
+    assert runs_panel.get_analysis_settings_ids() == [7]
+
+
+# ============================================================================
+# highlight_run_by_settings()
+# ============================================================================
+
+
+def test_highlight_run_by_settings_match_selects_item(
+    tmp_path: Path, runs_panel: _RunsPanel, qtbot: QtBot
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        detection_id, run_id = _add_detection_and_run(session)
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+    runs_panel._runs_list.clearSelection()
+
+    runs_panel.highlight_run_by_settings(detection_id, None, None)
+
+    current = runs_panel._runs_list.currentItem()
+    assert current is not None
+    assert current.data(Qt.ItemDataRole.UserRole) == run_id
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+def test_highlight_run_by_settings_no_match_clears_selection(
+    tmp_path: Path, runs_panel: _RunsPanel, qtbot: QtBot
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        _add_detection_and_run(session)
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+    runs_panel._runs_list.setCurrentItem(runs_panel._runs_list.item(0))
+
+    # No run uses detection_id=999
+    runs_panel.highlight_run_by_settings(999, None, None)
+
+    assert not runs_panel._runs_list.selectedItems()
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+# ============================================================================
+# _fetch_ids() / _all_detection_summaries() / _count_runs_using_detection()
+# / _get_detection_id_for_run() / _delete_detection_data() — error paths
+# ============================================================================
+
+
+def test_fetch_ids_no_database(runs_panel: _RunsPanel) -> None:
+    assert runs_panel._fetch_ids(DetectionSettings.id) == []
+
+
+@pytest.fixture
+def invalid_db_path(tmp_path: Path) -> Path:
+    """Path to a file that exists but is not a valid SQLite database."""
+    bad_db = tmp_path / "bad.cali"
+    bad_db.write_text("not a database")
+    return bad_db
+
+
+def test_fetch_ids_handles_exception(
+    invalid_db_path: Path, runs_panel: _RunsPanel
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    assert runs_panel._fetch_ids(DetectionSettings.id) == []
+
+
+def test_all_detection_summaries_handles_exception(
+    invalid_db_path: Path, runs_panel: _RunsPanel
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    assert runs_panel._all_detection_summaries() == []
+
+
+def test_count_runs_using_detection_handles_exception(
+    invalid_db_path: Path, runs_panel: _RunsPanel
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    assert runs_panel._count_runs_using_detection(1) == 0
+
+
+def test_get_detection_id_for_run_handles_exception(
+    invalid_db_path: Path, runs_panel: _RunsPanel
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    assert runs_panel._get_detection_id_for_run(1) is None
+
+
+def test_delete_detection_data_no_database(runs_panel: _RunsPanel) -> None:
+    """No database path set → returns without error."""
+    runs_panel._delete_detection_data(1)
+
+
+def test_delete_detection_data_handles_exception(
+    invalid_db_path: Path,
+    runs_panel: _RunsPanel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    warnings: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **kw: warnings.append(a[-1]))
+
+    runs_panel._delete_detection_data(1)
+
+    assert warnings
+
+
+# ============================================================================
+# _delete_detection_data() — also removes referenced Mask rows
+# ============================================================================
+
+
+def test_delete_detection_data_removes_roi_mask(
+    tmp_path: Path, runs_panel: _RunsPanel
+) -> None:
+    from sqlmodel import Session, create_engine, select
+
+    from cali.sqlmodel._model import FOV, ROI, Mask
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        fov = FOV(name="A1_0000", position_index=0)
+        session.add(fov)
+        session.flush()
+        d = DetectionSettings(method="cellpose", model_type="cpsam")
+        session.add(d)
+        session.flush()
+        mask = Mask(mask_type="roi", coords_y=[0], coords_x=[0], height=1, width=1)
+        session.add(mask)
+        session.flush()
+        roi = ROI(
+            fov_id=fov.id,
+            label_value=1,
+            detection_settings_id=d.id,
+            roi_mask_id=mask.id,
+        )
+        session.add(roi)
+        session.commit()
+        detection_id = d.id
+        mask_id = mask.id
+    engine.dispose(close=True)
+
+    runs_panel._database_path = db_path
+    runs_panel._delete_detection_data(detection_id)
+
+    engine2 = create_engine(f"sqlite:///{db_path}")
+    with Session(engine2) as session:
+        assert session.get(DetectionSettings, detection_id) is None
+        assert session.get(Mask, mask_id) is None
+        assert session.exec(select(ROI)).all() == []
+    engine2.dispose(close=True)
+
+
+# ============================================================================
+# _delete_run_from_database() — missing result
+# ============================================================================
+
+
+def test_delete_run_from_database_missing_result(
+    tmp_path: Path, runs_panel: _RunsPanel
+) -> None:
+    db_path = _make_db(tmp_path)
+    runs_panel._database_path = db_path
+
+    # No run with this ID exists; should just return without error
+    runs_panel._delete_run_from_database(9999)
+
+
+# ============================================================================
+# _delete_selected_run() — shared detection, deletion cancelled
+# ============================================================================
+
+
+def test_delete_selected_run_shared_detection_cancelled(
+    tmp_path: Path,
+    runs_panel: _RunsPanel,
+    qtbot: QtBot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        d = DetectionSettings(method="cellpose", model_type="cpsam")
+        session.add(d)
+        session.flush()
+        r1 = CaliResult(
+            experiment=1, detection_settings_id=d.id, positions_detected=[0]
+        )
+        r2 = CaliResult(
+            experiment=1, detection_settings_id=d.id, positions_detected=[1]
+        )
+        session.add_all([r1, r2])
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+
+    runs_panel._runs_list.setCurrentItem(runs_panel._runs_list.item(0))
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **kw: QMessageBox.StandardButton.No
+    )
+
+    runs_panel._delete_selected_run()
+    qtbot.wait(50)
+
+    # Nothing deleted after declining the confirmation
+    assert runs_panel._runs_list.count() == 2
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+# ============================================================================
+# _delete_selected_saved_segmentation() — nothing selected
+# ============================================================================
+
+
+def test_delete_selected_saved_segmentation_no_selection(
+    runs_panel: _RunsPanel,
+) -> None:
+    runs_panel._saved_segs_list.clearSelection()
+    # Should return early without raising
+    runs_panel._delete_selected_saved_segmentation()
+
+
+# ============================================================================
+# _ask_keep_or_delete_segmentation() — button choices
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "button_text,expected",
+    [
+        ("Keep segmentation", True),
+        ("Delete everything", False),
+        ("Cancel", None),
+        (None, None),
+    ],
+)
+def test_ask_keep_or_delete_segmentation_choices(
+    runs_panel: _RunsPanel,
+    monkeypatch: pytest.MonkeyPatch,
+    button_text: str | None,
+    expected: bool | None,
+) -> None:
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
+
+    def fake_clicked_button(self: QMessageBox) -> object:
+        if button_text is None:
+            return None
+        return next(b for b in self.buttons() if b.text() == button_text)
+
+    monkeypatch.setattr(QMessageBox, "clickedButton", fake_clicked_button)
+
+    assert runs_panel._ask_keep_or_delete_segmentation(1, 2) is expected
+
+
+# ============================================================================
+# _clear_all_runs() — nothing to clear
+# ============================================================================
+
+
+def test_clear_all_runs_no_items_does_nothing(
+    runs_panel: _RunsPanel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert runs_panel._runs_list.count() == 0
+    assert runs_panel._saved_segs_list.count() == 0
+
+    called: list[bool] = []
+    monkeypatch.setattr(_DetectionKeepDialog, "exec", lambda self: called.append(True))
+
+    runs_panel._clear_all_runs()
+
+    assert called == []
+
+
+# ============================================================================
+# eventFilter() — clicking empty area of either list deselects
+# ============================================================================
+
+
+def _empty_area_press_event() -> QMouseEvent:
+    return QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(-10, -10),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_event_filter_empty_click_clears_runs_selection(
+    runs_panel: _RunsPanel,
+) -> None:
+    item = QListWidgetItem("run")
+    runs_panel._runs_list.addItem(item)
+    runs_panel._runs_list.setCurrentItem(item)
+    assert runs_panel._runs_list.selectedItems()
+
+    runs_panel.eventFilter(runs_panel._runs_list.viewport(), _empty_area_press_event())
+
+    assert not runs_panel._runs_list.selectedItems()
+
+
+def test_event_filter_empty_click_clears_saved_segs_selection(
+    runs_panel: _RunsPanel,
+) -> None:
+    item = QListWidgetItem("seg")
+    runs_panel._saved_segs_list.addItem(item)
+    runs_panel._saved_segs_list.setCurrentItem(item)
+    assert runs_panel._saved_segs_list.selectedItems()
+
+    runs_panel.eventFilter(
+        runs_panel._saved_segs_list.viewport(), _empty_area_press_event()
+    )
+
+    assert not runs_panel._saved_segs_list.selectedItems()
+
+
+# ============================================================================
+# _delete_selected_run() — no/invalid selection
+# ============================================================================
+
+
+def test_delete_selected_run_no_current_item(runs_panel: _RunsPanel) -> None:
+    runs_panel._runs_list.clearSelection()
+    assert runs_panel._runs_list.currentItem() is None
+    # Should return early without raising
+    runs_panel._delete_selected_run()
+
+
+def test_delete_selected_run_item_without_data(runs_panel: _RunsPanel) -> None:
+    item = QListWidgetItem("no data")
+    runs_panel._runs_list.addItem(item)
+    runs_panel._runs_list.setCurrentItem(item)
+    # item has no UserRole data → run_id is None → early return
+    runs_panel._delete_selected_run()
+
+
+# ============================================================================
+# _clear_all_runs() — accepted with nothing kept
+# ============================================================================
+
+
+def test_clear_all_runs_accepted_with_nothing_kept(
+    tmp_path: Path,
+    runs_panel: _RunsPanel,
+    qtbot: QtBot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        _add_detection_and_run(session)
+        session.commit()
+    engine.dispose(close=True)
+
+    runs_panel.set_database_path(db_path)
+    qtbot.wait(50)
+
+    monkeypatch.setattr(
+        _DetectionKeepDialog, "exec", lambda self: QDialog.DialogCode.Accepted
+    )
+    monkeypatch.setattr(_DetectionKeepDialog, "kept_detection_ids", lambda self: set())
+
+    runs_panel._clear_all_runs()
+    qtbot.wait(50)
+
+    assert runs_panel._runs_list.count() == 0
+    assert runs_panel._saved_segs_list.count() == 0
+
+    runs_panel.clear()
+    runs_panel._database_path = None
+    qtbot.wait(50)
+    gc.collect()
+
+
+# ============================================================================
+# _delete_run_from_database() — no database / exception
+# ============================================================================
+
+
+def test_delete_run_from_database_no_database(runs_panel: _RunsPanel) -> None:
+    assert runs_panel._database_path is None
+    # Should return early without raising
+    runs_panel._delete_run_from_database(1)
+
+
+def test_delete_run_from_database_handles_exception(
+    invalid_db_path: Path,
+    runs_panel: _RunsPanel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    warnings: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **kw: warnings.append(a[-1]))
+
+    runs_panel._delete_run_from_database(1)
+
+    assert warnings
+
+
+# ============================================================================
+# _clear_all_from_database() — exception
+# ============================================================================
+
+
+def test_clear_all_from_database_handles_exception(
+    invalid_db_path: Path,
+    runs_panel: _RunsPanel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runs_panel._database_path = invalid_db_path
+    warnings: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **kw: warnings.append(a[-1]))
+
+    runs_panel._clear_all_from_database()
+
+    assert warnings
+
+
+# ============================================================================
+# _cleanup_orphaned_data() — orphaned AnalysisSettings cleanup
+# ============================================================================
+
+
+def test_cleanup_orphaned_data_deletes_orphaned_analysis_settings(
+    tmp_path: Path, runs_panel: _RunsPanel
+) -> None:
+    from sqlmodel import Session, create_engine
+
+    from cali.sqlmodel._model import AnalysisSettings
+
+    db_path = _make_db(tmp_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        a = AnalysisSettings()
+        session.add(a)
+        session.flush()
+        d = DetectionSettings(method="cellpose", model_type="cpsam")
+        session.add(d)
+        session.flush()
+        r = CaliResult(
+            experiment=1,
+            detection_settings_id=d.id,
+            analysis_settings_id=a.id,
+            positions_detected=[0],
+        )
+        session.add(r)
+        session.commit()
+        run_id = r.id
+        analysis_id = a.id
+    engine.dispose(close=True)
+
+    runs_panel._database_path = db_path
+    runs_panel._delete_run_from_database(run_id, keep_detection=False)
+
+    engine2 = create_engine(f"sqlite:///{db_path}")
+    with Session(engine2) as session:
+        assert session.get(AnalysisSettings, analysis_id) is None
+    engine2.dispose(close=True)
