@@ -118,6 +118,7 @@ def test_once_per_fov_model_rate_noise_and_provenance(fake_reference: tuple) -> 
         np.zeros((1, 64)),
         np.full((1, 96), np.nan),
         np.full((1, 96), np.inf),
+        np.full((1, 96), 1e40),
         np.ones((1, 96), dtype=complex),
         np.full((1, 96), "invalid"),
     ],
@@ -317,6 +318,7 @@ def test_backend_import_defers_torch_and_image_readers(tmp_path: Path) -> None:
             (
                 "import sys; "
                 "import cali.extraction._spike_inference._cascade_reference; "
+                "import cali.extraction._spike_inference._cascade_service; "
                 "assert 'torch' not in sys.modules; "
                 "assert 'cascade2p' not in sys.modules; "
                 "assert 'cali.readers' not in sys.modules; "

@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, and P3a pretrained upstream reference adapter implemented; next: P3b cached/chunked inference service; later runner/consumer/comparison integration pending; production CASCADE not enabled
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained upstream reference adapter, and private experimental P3b cached/chunked inference service implemented; next: P5 runner integration and full extraction performance gates; later consumer/comparison integration pending; production CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -442,9 +442,10 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P3b's cached/chunked inference service and equivalence/memory checks. Follow the
-binding sequence in §9 for packaging, the reference
-oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
+**Next landing step:** P5 runner integration: batched OASIS/CASCADE/dual outputs, unchanged
+OASIS calcium/noise results, complete-FOV atomic persistence, and full extraction performance
+checks. Follow the binding sequence in §9 for analysis semantics and CASCADE GUI exposure.
+CASCADE is not yet available in production extraction.
 
 Step 6 — pinned catalogue, verified model cache, and download CLI (2026-10-03):
 
@@ -514,6 +515,71 @@ Full regression validation: **1847 passed, 7 skipped in 237.41 s**, including GU
 and existing extraction paths. Ruff passes, and mypy adds no diagnostics (354 existing).
 The first actual CASCADE inference step in cali is complete;
 runner/GUI exposure remains gated by the binding steps 8–12.
+
+Step 8 — private cached predictor and bounded inference service (2026-10-03):
+
+- `CachedCascadePredictor` now uses the external package's model definitions, checkpoints,
+  and noise estimator, with independently written window/cache orchestration. No GPL source
+  was copied into cali. It shares the reference adapter's timing, provenance, manifest, and
+  output validation; inputs outside float32 range now fail before either prediction path.
+- Valid windows stream directly into float32 chunks (default **1,024 windows**), avoiding
+  the upstream full float64 ROI × time × window allocation. Alignment, ensemble averaging,
+  negative clipping, and padded edges match the CPU oracle. Unsupported fractional window
+  alignment fails explicitly instead of inventing a prediction.
+- An LRU cache keys ensembles by resolved model directory, verified manifest, noise level,
+  device/index, and float32 dtype. Its default **128 MiB parameter/buffer budget** is not a
+  total process-memory limit. Failed/cancelled loads never publish partial ensembles.
+  Each inference rechecks the bound manifest; cache clearing releases modules deterministically.
+- `CascadeInferenceService` owns every model/Torch operation on one worker, with a bounded
+  **one-request queue**. Callers blocked on submission can cancel; cancelled queued requests
+  release their arrays promptly. Running cancellation finishes the current chunk and discards
+  the entire FOV result. Close drains/cancels accepted requests, releases models, and joins
+  the worker. Errors propagate to callers without leaving completed FOV arrays in idle worker
+  frames. No per-call global Torch thread settings are changed.
+- Tests cover chunk boundaries/alignment, exact fake-model averaging and edges, model reuse,
+  LRU eviction, manifest/device cache identity, failed loads, worker ownership, cancellation,
+  queue pressure, shutdown, exception forwarding/recovery, and idle input release. Optional
+  installed-wheel tests compare three chunk sizes and concurrent service submissions against
+  both the pinned real golden fixture and direct upstream synthetic predictions. CI now runs
+  these pretrained comparisons alongside the reference adapter under warnings-as-errors.
+
+The reproducible [benchmark script](benchmark_cascade_inference.py) and
+[CPU results](cascade_p3b_cpu_benchmark.json) compare fresh processes on macOS arm64,
+Python 3.13, Torch 2.14.1, one Torch thread, and the verified 30 Hz model. The workload has
+**100 ROIs × 6,000 frames**, one cold FOV and four warm FOVs. Concurrent callers retain actual
+`_RoiParts`, stacked DFF, and 6,000 × 32 × 32 source images (36,390,400 bytes per FOV).
+It measures controlled Phase-B inference, without Phase-A calculation, OASIS, persistence,
+analysis, or real-plate certification. The locked-cache baseline bypasses owner enforcement
+only inside the benchmark and serializes access with an external lock.
+
+| CPU path | Cold FOV (s) | Four warm FOVs (s) | Peak RSS (MiB) | Growth above startup peak (MiB) | Warm checkpoint loads |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Upstream reference | 87.83 | 358.33 | 1,619.94 | 1,218.31 | 120 |
+| Cached, serial | 87.37 | 337.70 | 544.83 | 146.34 | 0 |
+| Cached service, four callers | 85.54 | 338.47 | 542.39 | 144.72 | 0 |
+| Cached with external lock, four callers | 83.52 | 333.51 | 663.34 | 265.28 | 0 |
+
+All cached paths have **zero maximum absolute error** against the reference's float32 output
+in this workload. Each loaded 30 checkpoints cold; all cached variants reused them warm.
+The service queue reached capacity while four callers retained inputs. Its incremental peak
+RSS meets the chosen **256 MiB** budget, measured relative to each process's startup peak
+after package initialization. The service's warm batch is about **5.9% faster** than upstream,
+but **1.5% slower** than the locked cached baseline: this does not establish a material
+full-plate wall-time gain. The result artifact records the measured prototype source hashes;
+final validation, checkpoint placement, filename handling, cancellation, and ownership
+safeguards were verified separately after that measurement.
+
+The cached path remains **private and experimental**. P3b's full extraction performance gates
+still require P5's OASIS-only/CASCADE-only/dual runs, separate persistence/analysis costs,
+unchanged OASIS results, and a real plate. CUDA/MPS were unavailable in the validation
+environment; GPU numerical/performance acceptance is pending. Retain the upstream reference
+until these release gates pass.
+
+Validation: **1875 passed, 11 skipped in 294.23 s** in the full base suite; **66 passed,
+1 deselected in 5.40 s** against the freshly installed wheel with optional pretrained tests
+enabled and warnings-as-errors. The deselected test intentionally imports the public image
+runner, which initializes the unrelated legacy Numcodecs stack. Ruff passes; mypy adds no
+diagnostics (354 existing). Test-migrated database fixtures were restored after validation.
 
 ## 0. TL;DR
 

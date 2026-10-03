@@ -108,6 +108,10 @@ class CascadeReferenceBackend:
             or not np.all(np.isfinite(dff))
         ):
             raise ValueError("CASCADE requires finite real DFF values.")
+        if np.any(dff > np.finfo(np.float32).max) or np.any(
+            dff < -np.finfo(np.float32).max
+        ):
+            raise ValueError("CASCADE DFF values must be representable as float32.")
         valid_start, valid_stop = self.model.valid_interval(dff.shape[1])
         if len(timing.timestamps_ms) != dff.shape[1]:
             raise ValueError("CASCADE timing must match the retained DFF length.")
@@ -148,15 +152,8 @@ class CascadeReferenceBackend:
         if cancel is not None and cancel():
             raise InferenceCancelled("CASCADE reference batch cancelled.")
         prediction = np.asarray(
-            package.cascade.predict(
-                model.name,
-                dff,
-                model_folder=str(model.directory.parent),
-                threshold=0,
-                padding=0,
-                trace_noise_levels=noise,
-                verbosity=0,
-                device=package.torch.device(self._resolved_device),
+            self._predict(
+                dff, model, package, noise, selected, self._resolved_device, cancel
             )
         )
         if cancel is not None and cancel():
@@ -171,7 +168,7 @@ class CascadeReferenceBackend:
         if np.any(prediction[:, :valid_start]) or np.any(prediction[:, valid_stop:]):
             raise ValueError("CASCADE returned nonzero receptive-field padding.")
         return CascadeResult(
-            prediction.astype(np.float32),
+            prediction.astype(np.float32, copy=False),
             noise.copy(),
             selected,
             coverage,
@@ -183,4 +180,28 @@ class CascadeReferenceBackend:
             package.source_manifest_sha256,
             self._resolved_device,
             observed_rate,
+        )
+
+    def _predict(
+        self,
+        dff: np.ndarray,
+        model: CascadeModel,
+        package: CascadePackage,
+        noise: np.ndarray,
+        selected: np.ndarray,
+        device: str,
+        cancel: Callable[[], bool] | None,
+    ) -> np.ndarray:
+        """Keep upstream prediction as the oracle behind shared input validation."""
+        return np.asarray(
+            package.cascade.predict(
+                model.name,
+                dff,
+                model_folder=str(model.directory.parent),
+                threshold=0,
+                padding=0,
+                trace_noise_levels=noise,
+                verbosity=0,
+                device=package.torch.device(device),
+            )
         )
