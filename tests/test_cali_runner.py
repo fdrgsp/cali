@@ -1506,7 +1506,7 @@ def test_result_upgrade_flow_mocked(
     finally:
         engine.dispose()
 
-    # 3. Upgrade to Analysis
+    # 3. Analyze a stored extraction without overwriting its generation
     runner.run(
         experiment=test_experiment,
         dataset_path=data_path,
@@ -1522,8 +1522,13 @@ def test_result_upgrade_flow_mocked(
     try:
         with Session(engine) as session:
             results = session.exec(select(CaliResult)).all()
-            assert len(results) == 1
-            assert results[0].analysis_settings_id is not None
+            assert len(results) == 2
+            source, analysis = sorted(results, key=lambda result: result.id)
+            assert source.analysis_settings_id is None
+            assert analysis.analysis_settings_id is not None
+            assert analysis.source_extraction_result_id == source.id
+            assert analysis.positions_extracted is None
+            assert analysis.positions_analyzed == [0, 1]
     finally:
         engine.dispose()
 
@@ -3656,12 +3661,18 @@ def test_scenario_f3_force_full_pipeline_rerun(
     try:
         with Session(engine) as session:
             results_after = session.exec(select(CaliResult)).all()
-            # After force, should have a new result (old one deleted)
-            assert len(results_after) == 1
-            # The result should still have all stages completed
-            assert results_after[0].positions_detected == [0]
-            assert results_after[0].positions_extracted == [0]
-            assert results_after[0].positions_analyzed == [0]
+            assert len(results_after) == 2
+            previous, current = sorted(results_after, key=lambda result: result.id)
+            assert current.id != previous.id
+            assert previous.source_extraction_result_id == previous.id
+            assert current.source_extraction_result_id == current.id
+            assert current.positions_detected == [0]
+            assert current.positions_extracted == [0]
+            assert current.positions_analyzed == [0]
+            assert all(
+                trace.analysis_result_id == current.id
+                for trace in session.exec(select(Traces)).all()
+            )
     finally:
         engine.dispose()
 
@@ -3913,12 +3924,19 @@ def test_scenario_e3_extend_analysis_to_more_positions(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert result is not None
-            # Now all three should be processed
-            assert set(result.positions_detected) == {0, 1, 2}
-            assert set(result.positions_extracted) == {0, 1, 2}
-            assert set(result.positions_analyzed) == {0, 1, 2}
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 2
+            assert (
+                results[0].positions_extracted
+                == results[0].positions_analyzed
+                == [0, 1]
+            )
+            assert (
+                results[1].positions_extracted == results[1].positions_analyzed == [2]
+            )
+            assert all(
+                result.source_extraction_result_id == result.id for result in results
+            )
     finally:
         engine.dispose()
 
@@ -4163,10 +4181,13 @@ def test_scenario_l1_incremental_position_expansion(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert set(result.positions_detected) == {0, 1}
-            assert set(result.positions_extracted) == {0, 1}
-            assert set(result.positions_analyzed) == {0, 1}
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 2
+            assert [result.positions_extracted for result in results] == [[0], [1]]
+            assert [result.positions_analyzed for result in results] == [[0], [1]]
+            assert all(
+                result.source_extraction_result_id == result.id for result in results
+            )
     finally:
         engine.dispose()
 
@@ -4185,10 +4206,13 @@ def test_scenario_l1_incremental_position_expansion(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert set(result.positions_detected) == {0, 1, 2}
-            assert set(result.positions_extracted) == {0, 1, 2}
-            assert set(result.positions_analyzed) == {0, 1, 2}
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 3
+            assert [result.positions_extracted for result in results] == [[0], [1], [2]]
+            assert [result.positions_analyzed for result in results] == [[0], [1], [2]]
+            assert all(
+                result.source_extraction_result_id == result.id for result in results
+            )
     finally:
         engine.dispose()
 
@@ -4349,12 +4373,14 @@ def test_scenario_c4_analysis_on_unextracted_position(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert result is not None
-            # All three positions should be processed
-            assert 2 in result.positions_detected
-            assert 2 in result.positions_extracted
-            assert 2 in result.positions_analyzed
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 2
+            assert results[0].positions_extracted == [0, 1]
+            assert results[0].analysis_settings_id is None
+            assert (
+                results[1].positions_extracted == results[1].positions_analyzed == [2]
+            )
+            assert results[1].source_extraction_result_id == results[1].id
     finally:
         engine.dispose()
 
@@ -4397,12 +4423,20 @@ def test_scenario_c5_analysis_mixed_extracted_unextracted(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert result is not None
-            # All positions should be fully processed
-            assert set(result.positions_detected) == {0, 1, 2}
-            assert set(result.positions_extracted) == {0, 1, 2}
-            assert set(result.positions_analyzed) == {0, 1, 2}
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 3
+            source, new_extraction, analysis = results
+            assert source.positions_extracted == [0, 1]
+            assert source.analysis_settings_id is None
+            assert (
+                new_extraction.positions_extracted
+                == new_extraction.positions_analyzed
+                == [2]
+            )
+            assert new_extraction.source_extraction_result_id == new_extraction.id
+            assert analysis.positions_extracted is None
+            assert analysis.positions_analyzed == [0, 1]
+            assert analysis.source_extraction_result_id == source.id
 
             # Verify analysis data exists
             data_analysis = session.exec(select(DataAnalysis)).all()
@@ -4498,11 +4532,20 @@ def test_scenario_l2_analysis_without_extraction_for_some_positions(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert result is not None
-            assert set(result.positions_detected) == {0, 1}
-            assert set(result.positions_extracted) == {0, 1}  # Both extracted now
-            assert set(result.positions_analyzed) == {0, 1}  # Both analyzed
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 3
+            source, new_extraction, analysis = results
+            assert source.positions_extracted == [0]
+            assert source.analysis_settings_id is None
+            assert (
+                new_extraction.positions_extracted
+                == new_extraction.positions_analyzed
+                == [1]
+            )
+            assert new_extraction.source_extraction_result_id == new_extraction.id
+            assert analysis.positions_extracted is None
+            assert analysis.positions_analyzed == [0]
+            assert analysis.source_extraction_result_id == source.id
     finally:
         engine.dispose()
 
@@ -4555,11 +4598,20 @@ def test_scenario_l3_mixed_extraction_then_full_pipeline(
     engine = create_engine(f"sqlite:///{test_db_path}")
     try:
         with Session(engine) as session:
-            result = session.exec(select(CaliResult)).first()
-            assert result is not None
-            assert set(result.positions_detected) == {0, 1}
-            assert set(result.positions_extracted) == {0, 1}
-            assert set(result.positions_analyzed) == {0, 1}
+            results = session.exec(select(CaliResult).order_by(CaliResult.id)).all()
+            assert len(results) == 3
+            source, new_extraction, analysis = results
+            assert source.positions_extracted == [0]
+            assert source.analysis_settings_id is None
+            assert (
+                new_extraction.positions_extracted
+                == new_extraction.positions_analyzed
+                == [1]
+            )
+            assert new_extraction.source_extraction_result_id == new_extraction.id
+            assert analysis.positions_extracted is None
+            assert analysis.positions_analyzed == [0]
+            assert analysis.source_extraction_result_id == source.id
 
             # Verify we have traces and analysis for both positions
             traces = session.exec(select(Traces)).all()

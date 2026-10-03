@@ -6,7 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlmodel import Session, select
+from sqlalchemy import and_, or_
+from sqlmodel import Session, col, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME, CorrelationDataType, TraceDataType
 from cali.analysis import AnalysisRunner
@@ -16,11 +17,25 @@ from cali.logger import cali_logger
 from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
-from cali.sqlmodel._model import FOV, ROI, CaliResult, SpikeTrace, Traces
+from cali.sqlmodel._model import (
+    FOV,
+    ROI,
+    CaliResult,
+    DataAnalysis,
+    ExtractionFrameWindow,
+    FOVAnalysis,
+    SpikeAnalysis,
+    SpikeFOVAnalysis,
+    SpikeInferenceRun,
+    SpikeTrace,
+    Traces,
+)
 from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
+
+    from sqlalchemy.engine import Engine
 
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
@@ -536,18 +551,39 @@ class CaliRunner:
                     if source_extraction_result_id is not None:
                         positions_need_extraction = set()
                     positions_need_analysis = set()
+                    analysis_sources: dict[int, int] = {}
+                    source_trace_ids: dict[int, int] = {}
                     if analysis_settings_id is not None:
-                        positions_need_analysis = set(
-                            self._get_positions_for_analysis(
+                        yield "📋 Selecting extraction sources..."
+                        analysis_sources, source_trace_ids = (
+                            self._plan_analysis_sources(
                                 session,
+                                sorted(
+                                    set(global_position_indices)
+                                    - positions_need_extraction
+                                ),
+                                extraction_settings_id,
                                 det_id,
-                                extraction_settings_id,  # type: ignore
-                                analysis_settings_id,
-                                global_position_indices,
-                                force=force,
-                                source_extraction_result_id=source_extraction_result_id,
+                                source_extraction_result_id,
                             )
                         )
+                        for source_id in sorted(set(analysis_sources.values())):
+                            source_positions = sorted(
+                                position
+                                for position, selected in analysis_sources.items()
+                                if selected == source_id
+                            )
+                            positions_need_analysis.update(
+                                self._get_positions_for_analysis(
+                                    session,
+                                    det_id,
+                                    extraction_settings_id,  # type: ignore
+                                    analysis_settings_id,
+                                    source_positions,
+                                    force=force,
+                                    source_extraction_result_id=source_id,
+                                )
+                            )
 
                     # Combine all positions that need processing
                     positions_to_process = sorted(
@@ -592,49 +628,58 @@ class CaliRunner:
 
                     yield f"PROGRESS:RESET:{len(positions_to_process)}"
 
-                    # Create CaliResult FIRST with expected positions so we have the ID
-                    analysis_result_was_created = False
+                    # Each result owns new extraction or refers to exactly one source.
+                    grouped_positions: dict[int | None, list[int]] = {}
+                    if positions_need_extraction:
+                        grouped_positions[None] = sorted(positions_need_extraction)
+                    for position in sorted(positions_only_analysis):
+                        grouped_positions.setdefault(
+                            analysis_sources[position], []
+                        ).append(position)
+                    result_ids: dict[int | None, int] = {}
                     if experiment.id is not None:
-                        # For extraction/analysis, we track both stages
-                        if analysis_settings_id is not None:
-                            # Full pipeline: track detected, extracted and analyzed
-                            analysis_result_id, analysis_result_was_created = (
-                                self._create_or_update_analysis_result(
-                                    session=session,
-                                    experiment_id=experiment.id,
-                                    detection_settings_id=det_id,
-                                    extraction_settings_id=extraction_settings_id,
-                                    analysis_settings_id=analysis_settings_id,
-                                    positions_detected=list(positions_to_process),
-                                    positions_extracted=(
-                                        sorted(positions_need_extraction) or None
-                                    ),
-                                    positions_analyzed=list(positions_to_process),
-                                    source_extraction_result_id=source_extraction_result_id,
-                                )
+                        for (
+                            selected_source,
+                            group_positions,
+                        ) in grouped_positions.items():
+                            group_id, _ = self._create_or_update_analysis_result(
+                                session=session,
+                                experiment_id=experiment.id,
+                                detection_settings_id=det_id,
+                                extraction_settings_id=extraction_settings_id,
+                                analysis_settings_id=analysis_settings_id,
+                                positions_detected=group_positions,
+                                positions_extracted=[]
+                                if selected_source is None
+                                else None,
+                                positions_analyzed=[]
+                                if analysis_settings_id is not None
+                                else None,
+                                source_extraction_result_id=selected_source,
+                                owns_extraction=selected_source is None,
                             )
-                        else:
-                            # Extraction only: track detected and extracted
-                            analysis_result_id, analysis_result_was_created = (
-                                self._create_or_update_analysis_result(
-                                    session=session,
-                                    experiment_id=experiment.id,
-                                    detection_settings_id=det_id,
-                                    extraction_settings_id=extraction_settings_id,
-                                    analysis_settings_id=None,
-                                    positions_detected=list(positions_to_process),
-                                    positions_extracted=list(positions_to_process),
+                            result_ids[selected_source] = group_id
+                            if force:
+                                self._delete_extraction_results(
+                                    session, group_id, group_positions
                                 )
-                            )
-
-                    if (
-                        force
-                        and analysis_result_id is not None
-                        and positions_to_process
-                    ):
-                        self._delete_extraction_results(
-                            session, analysis_result_id, list(positions_to_process)
-                        )
+                                result = session.get(CaliResult, group_id)
+                                assert result is not None
+                                result.positions_extracted = (
+                                    sorted(
+                                        set(result.positions_extracted or [])
+                                        - set(group_positions)
+                                    )
+                                    or None
+                                )
+                                result.positions_analyzed = (
+                                    sorted(
+                                        set(result.positions_analyzed or [])
+                                        - set(group_positions)
+                                    )
+                                    or None
+                                )
+                                session.commit()
 
                     # Process in batches
                     # Use a batch size that matches the number of threads to
@@ -650,13 +695,16 @@ class CaliRunner:
                     ext_commit_batch_size = extraction_threads
 
                     positions_processed = []
+                    completed_by_result: dict[int, list[int]] = {
+                        group_id: [] for group_id in result_ids.values()
+                    }
                     fov_count = 0
 
                     for i in range(0, len(positions_to_process), batch_size):
                         # Check for cancellation before each batch
                         if self._extraction_runner._cancellation_event.is_set():
                             cali_logger.info("🛑 Run cancelled during extraction!")
-                            return
+                            break
 
                         # Track FOVs committed in this batch for final commit logging
                         batch_fov_count = 0
@@ -678,6 +726,8 @@ class CaliRunner:
                             extraction_settings_id,
                             det_id,
                             source_extraction_result_id,
+                            trace_ids_by_roi=source_trace_ids,
+                            source_ids_by_position=analysis_sources,
                         )
 
                         # Detach FOVs from session to allow safe threading
@@ -705,6 +755,7 @@ class CaliRunner:
 
                         # Log batch processing plan
                         if fovs_need_extraction:
+                            analysis_result_id = result_ids.get(None)
                             n_extraction = len(fovs_need_extraction)
                             cali_logger.info(
                                 f"📈 Running extraction on {n_extraction} FOVs..."
@@ -750,6 +801,10 @@ class CaliRunner:
                                     commit_batch_size=ext_commit_batch_size,
                                 )
                                 positions_processed.append(fov.position_index)
+                                if analysis_result_id is not None:
+                                    completed_by_result[analysis_result_id].append(
+                                        fov.position_index
+                                    )
 
                         # Run analysis-only for FOVs with existing extraction
                         if analysis_settings_obj and fovs_only_analysis:
@@ -757,6 +812,9 @@ class CaliRunner:
                                 analysis_settings_obj,
                                 fovs=fovs_only_analysis,
                             ):
+                                analysis_result_id = result_ids[
+                                    analysis_sources[fov.position_index]
+                                ]
                                 self._process_fov_results(
                                     fov,
                                     session,
@@ -777,6 +835,9 @@ class CaliRunner:
                                     commit_batch_size=ext_commit_batch_size,
                                 )
                                 positions_processed.append(fov.position_index)
+                                completed_by_result[analysis_result_id].append(
+                                    fov.position_index
+                                )
 
                         # Commit any remaining in this batch and clear memory
                         self._commit_remaining_fovs(
@@ -796,33 +857,24 @@ class CaliRunner:
                     cali_logger.info(
                         "📝 Updating CaliResult with completed positions..."
                     )
-                    if analysis_result_id is not None:
-                        result = session.get(CaliResult, analysis_result_id)
+                    for group_id, group_completed in completed_by_result.items():
+                        result = session.get(CaliResult, group_id)
                         if result:
-                            completed = sorted(positions_processed)
+                            completed = sorted(group_completed)
                             completed_extraction = (
                                 set(completed) & positions_need_extraction
                             )
                             result.positions_extracted = (
-                                sorted(
-                                    (
-                                        set(result.positions_extracted or [])
-                                        - positions_need_extraction
-                                    )
-                                    | completed_extraction
+                                self._merge_positions(
+                                    result.positions_extracted,
+                                    sorted(completed_extraction),
                                 )
                                 or None
                             )
-                            if analysis_result_was_created:
-                                # Replace: result was created in this run
-                                if analysis_settings_id is not None:
-                                    result.positions_analyzed = completed
-                            else:
-                                # Merge: result existed from previous run
-                                if analysis_settings_id is not None:
-                                    result.positions_analyzed = self._merge_positions(
-                                        result.positions_analyzed, positions_processed
-                                    )
+                            if analysis_settings_id is not None:
+                                result.positions_analyzed = self._merge_positions(
+                                    result.positions_analyzed, completed
+                                )
                             session.add(result)
                             session.commit()
 
@@ -832,74 +884,105 @@ class CaliRunner:
                                 else "extracted"
                             )
                             cali_logger.info(
-                                f"📝 Updated CaliResult ID {analysis_result_id} "
+                                f"📝 Updated CaliResult ID {group_id} "
                                 f"with completed {stage} positions: "
                                 f"{result.positions_extracted}"
                             )
 
-                    # Export traces to CSV if requested
-                    if export_traces and analysis_result_id is not None:
-                        from cali.util._database_to_csv import export_traces_to_csv
+                    if self._extraction_runner._cancellation_event.is_set():
+                        return
 
-                        yield "🗂️ Exporting traces to CSV..."
-                        export_traces_to_csv(
+                    # Export each generation separately, including its position subset.
+                    for (
+                        analysis_result_id,
+                        exported_positions,
+                    ) in completed_by_result.items():
+                        if not exported_positions:
+                            continue
+                        yield from self._export_run_results(
                             engine,
+                            analysis_result_id,
+                            sorted(exported_positions),
                             export_traces,
-                            analysis_result_id,
-                            self._db_path,
-                        )
-                        yield "🗂️ Exported traces to CSV"
-                    # Export correlations to CSV if requested
-                    if export_correlations and analysis_result_id is not None:
-                        from cali.util._database_to_csv import (
-                            export_correlations_to_csv,
-                        )
-
-                        yield "🗂️ Exporting correlations to CSV..."
-                        export_correlations_to_csv(
-                            engine,
                             export_correlations,
-                            analysis_result_id,
-                            self._db_path,
-                            position_indices=(
-                                positions_processed if user_provided_positions else None
-                            ),
+                            analysis_settings_obj,
+                            user_provided_positions,
                         )
-                        yield "🗂️ Exported correlations to CSV"
-
-                        # Export multi-well aggregated data if requested
-                        if export_correlations.get("Multi-Well Aggregated Data", False):
-                            from cali.util._database_to_csv import (
-                                export_multi_well_to_csv,
-                            )
-
-                            experiment_type = (
-                                analysis_settings_obj.experiment_type
-                                if analysis_settings_obj is not None
-                                else None
-                            )
-                            yield "🗂️ Exporting multi-well aggregated data..."
-                            export_multi_well_to_csv(
-                                engine,
-                                analysis_result_id,
-                                self._db_path,
-                                experiment_type=experiment_type,
-                            )
-                            # Also export PCA data
-                            # from cali.util._database_to_csv import (
-                            #     export_multi_well_pca_to_csv,
-                            # )
-
-                            # export_multi_well_pca_to_csv(
-                            #     engine,
-                            #     analysis_result_id,
-                            #     self._db_path,
-                            # )
-                            yield "🗂️ Exported multi-well aggregated data"
 
         finally:
             cali_logger.info("🏁 Cali Run finished!")
             engine.dispose(close=True)
+
+    def _export_run_results(
+        self,
+        engine: Engine,
+        analysis_result_id: int,
+        positions_processed: list[int],
+        export_traces: dict[TraceDataType, bool] | None,
+        export_correlations: dict[CorrelationDataType, bool] | None,
+        analysis_settings_obj: AnalysisSettings | None,
+        user_provided_positions: bool,
+    ) -> Generator[str, None, None]:
+        """Export the products and position subset owned by a single result."""
+        assert self._db_path is not None
+        if export_traces:
+            from cali.util._database_to_csv import export_traces_to_csv
+
+            yield "🗂️ Exporting traces to CSV..."
+            export_traces_to_csv(
+                engine,
+                export_traces,
+                analysis_result_id,
+                self._db_path,
+            )
+            yield "🗂️ Exported traces to CSV"
+        # Export correlations to CSV if requested
+        if export_correlations:
+            from cali.util._database_to_csv import (
+                export_correlations_to_csv,
+            )
+
+            yield "🗂️ Exporting correlations to CSV..."
+            export_correlations_to_csv(
+                engine,
+                export_correlations,
+                analysis_result_id,
+                self._db_path,
+                position_indices=(
+                    positions_processed if user_provided_positions else None
+                ),
+            )
+            yield "🗂️ Exported correlations to CSV"
+
+            # Export multi-well aggregated data if requested
+            if export_correlations.get("Multi-Well Aggregated Data", False):
+                from cali.util._database_to_csv import (
+                    export_multi_well_to_csv,
+                )
+
+                experiment_type = (
+                    analysis_settings_obj.experiment_type
+                    if analysis_settings_obj is not None
+                    else None
+                )
+                yield "🗂️ Exporting multi-well aggregated data..."
+                export_multi_well_to_csv(
+                    engine,
+                    analysis_result_id,
+                    self._db_path,
+                    experiment_type=experiment_type,
+                )
+                # Also export PCA data
+                # from cali.util._database_to_csv import (
+                #     export_multi_well_pca_to_csv,
+                # )
+
+                # export_multi_well_pca_to_csv(
+                #     engine,
+                #     analysis_result_id,
+                #     self._db_path,
+                # )
+                yield "🗂️ Exported multi-well aggregated data"
 
     # ==================== PHASE METHODS ====================
 
@@ -1641,6 +1724,14 @@ class CaliRunner:
         result = session.get(CaliResult, analysis_result_id)
         if result is not None:
             record_result_sources(session, result, source_ids)
+            self._merge_result_positions(
+                result,
+                [fov.position_index],
+                [fov.position_index] if include_traces else None,
+                [fov.position_index]
+                if result.analysis_settings_id is not None
+                else None,
+            )
 
     def _pin_analysis_source_traces(
         self,
@@ -1649,56 +1740,181 @@ class CaliRunner:
         extraction_settings_id: int | None,
         detection_settings_id: int,
         source_extraction_result_id: int | None = None,
+        *,
+        trace_ids_by_roi: dict[int, int] | None = None,
+        source_ids_by_position: dict[int, int] | None = None,
     ) -> None:
         """Select once, before computation, and reuse the same trace at persistence."""
         for fov in fovs:
             for roi in fov.rois:
                 if roi.id is None:
                     continue
-                trace = self._find_source_trace(
+                if trace_ids_by_roi is not None and roi.id not in trace_ids_by_roi:
+                    raise ValueError(
+                        f"FOV {fov.name}, ROI {roi.label_value}: source selection "
+                        "changed after preflight. Retry or select an extraction source."
+                    )
+                selected_trace = self._select_analysis_trace(
                     session,
-                    roi.id,
+                    fov,
+                    roi,
                     extraction_settings_id,
                     detection_settings_id,
-                    source_extraction_result_id=source_extraction_result_id,
+                    source_extraction_result_id,
+                    trace_id=trace_ids_by_roi.get(roi.id)
+                    if trace_ids_by_roi is not None
+                    else None,
                 )
-                if trace is None:
-                    raise ValueError(
-                        f"FOV {fov.name}, ROI {roi.label_value}: no trace exists "
-                        "for the selected extraction source."
-                    )
-                window = trace.extraction_frame_window
-                owner = session.get(CaliResult, trace.analysis_result_id)
-                resolution = owner.legacy_trace_resolution if owner else None
-                if (
-                    window is None
-                    or window.extraction_result_id is None
-                    or (resolution or "").startswith("unresolved")
-                    or resolution == "multiple_sources"
-                    or (
-                        owner is not None
-                        and any(
-                            child.provenance_source == "legacy_unresolved"
-                            for analysis in owner.data_analysis_results
-                            if analysis.roi_id == roi.id
-                            for child in analysis.spike_analyses
-                        )
-                    )
-                    or (
-                        owner is not None
-                        and any(
-                            child.provenance_source == "legacy_unresolved"
-                            for analysis in owner.fov_analysis_results
-                            if analysis.fov_id == fov.id
-                            for child in analysis.spike_analyses
-                        )
-                    )
+                selected_window = selected_trace.extraction_frame_window
+                assert selected_window is not None
+                if source_ids_by_position is not None and (
+                    selected_window.extraction_result_id
+                    != source_ids_by_position[fov.position_index]
                 ):
                     raise ValueError(
-                        f"FOV {fov.name}, ROI {roi.label_value}: extraction source "
-                        "is unresolved. Select a source extraction or re-extract."
+                        f"FOV {fov.name}: extraction source changed after preflight. "
+                        "Retry or select an extraction source."
                     )
-                roi._analysis_source_trace = trace
+                roi._analysis_source_trace = selected_trace
+
+    def _select_analysis_trace(
+        self,
+        session: Session,
+        fov: FOV,
+        roi: ROI,
+        extraction_settings_id: int | None,
+        detection_settings_id: int,
+        source_extraction_result_id: int | None = None,
+        *,
+        trace_id: int | None = None,
+    ) -> Traces:
+        assert roi.id is not None
+        trace: Traces | None = (
+            session.get(Traces, trace_id)
+            if trace_id is not None
+            else self._find_source_trace(
+                session,
+                roi.id,
+                extraction_settings_id,
+                detection_settings_id,
+                source_extraction_result_id=source_extraction_result_id,
+            )
+        )
+        if trace is None or trace.roi_id != roi.id:
+            raise ValueError(
+                f"FOV {fov.name}, ROI {roi.label_value}: no trace exists "
+                "for the selected extraction source."
+            )
+        window = trace.extraction_frame_window
+        owner = session.get(CaliResult, trace.analysis_result_id)
+        resolution = owner.legacy_trace_resolution if owner else None
+        if (
+            owner is None
+            or owner.detection_settings_id != detection_settings_id
+            or (
+                extraction_settings_id is not None
+                and owner.extraction_settings_id != extraction_settings_id
+            )
+            or (
+                source_extraction_result_id is not None
+                and owner.id != source_extraction_result_id
+            )
+            or window is None
+            or window.extraction_result_id is None
+            or (resolution or "").startswith("unresolved")
+            or resolution == "multiple_sources"
+            or any(
+                child.inference_run is None
+                or (
+                    child.inference_run.extraction_result_id
+                    != window.extraction_result_id
+                )
+                for child in trace.spike_traces
+            )
+            or session.exec(
+                select(SpikeAnalysis.id)
+                .join(DataAnalysis)
+                .where(
+                    DataAnalysis.analysis_result_id == owner.id,
+                    DataAnalysis.roi_id == roi.id,
+                    SpikeAnalysis.provenance_source == "legacy_unresolved",
+                )
+                .limit(1)
+            ).first()
+            is not None
+            or session.exec(
+                select(SpikeFOVAnalysis.id)
+                .join(FOVAnalysis)
+                .where(
+                    FOVAnalysis.analysis_result_id == owner.id,
+                    FOVAnalysis.fov_id == fov.id,
+                    SpikeFOVAnalysis.provenance_source == "legacy_unresolved",
+                )
+                .limit(1)
+            ).first()
+            is not None
+        ):
+            raise ValueError(
+                f"FOV {fov.name}, ROI {roi.label_value}: extraction source "
+                "is unresolved. Select a source extraction or re-extract."
+            )
+        return trace
+
+    def _plan_analysis_sources(
+        self,
+        session: Session,
+        positions: Sequence[int],
+        extraction_settings_id: int | None,
+        detection_settings_id: int,
+        source_extraction_result_id: int | None = None,
+    ) -> tuple[dict[int, int], dict[int, int]]:
+        """Preflight source ownership and save exact trace IDs without mutating FOVs."""
+        source_by_position: dict[int, int] = {}
+        trace_ids: dict[int, int] = {}
+        if not positions:
+            return source_by_position, trace_ids
+        rows = session.exec(
+            select(FOV.position_index, FOV.id, ROI.id)
+            .join(ROI)
+            .where(
+                col(FOV.position_index).in_(positions),
+                ROI.detection_settings_id == detection_settings_id,
+            )
+            .order_by(col(FOV.position_index), col(ROI.id))
+        ).all()
+        for position, fov_id, roi_id in rows:
+            fov = session.get(FOV, fov_id)
+            roi = session.get(ROI, roi_id)
+            assert fov is not None and roi is not None
+            assert roi_id is not None
+            trace = self._select_analysis_trace(
+                session,
+                fov,
+                roi,
+                extraction_settings_id,
+                detection_settings_id,
+                source_extraction_result_id,
+            )
+            window = trace.extraction_frame_window
+            assert window is not None and window.extraction_result_id is not None
+            assert trace.id is not None
+            source_id = window.extraction_result_id
+            if (
+                position in source_by_position
+                and source_by_position[position] != source_id
+            ):
+                raise ValueError(
+                    f"FOV {fov.name}: ROIs span extraction generations. "
+                    "Select one extraction source covering every ROI or re-extract."
+                )
+            source_by_position[position] = source_id
+            trace_ids[roi_id] = trace.id
+        missing = sorted(set(positions) - source_by_position.keys())
+        if missing:
+            raise ValueError(
+                f"No detected ROIs exist for analysis positions {missing}."
+            )
+        return source_by_position, trace_ids
 
     @staticmethod
     def _find_source_trace(
@@ -1840,15 +2056,14 @@ class CaliRunner:
         positions_extracted: list[int] | None = None,
         positions_analyzed: list[int] | None = None,
         source_extraction_result_id: int | None = None,
+        owns_extraction: bool = False,
     ) -> tuple[int, bool]:
         """Create or update a CaliResult entry with progressive stage tracking.
 
-        Handles progressive analysis stages:
-        1. If exact match exists (same detection, extraction, analysis settings),
-           merge positions
-        2. If partial match exists (same detection/extraction but less complete),
-           upgrade the existing result with new settings
-        3. Otherwise, create new result and clean up superseded ones
+        Reuse analysis records only for the selected extraction source. Fresh
+        extraction can upgrade an empty record, while records with persisted
+        trace/window/inference provenance keep their original generation.
+        Detection-only updates retain progressive position tracking.
 
         Parameters
         ----------
@@ -1870,6 +2085,8 @@ class CaliRunner:
             Positions with full analysis results
         source_extraction_result_id : int | None
             Exact source for analysis-only reuse; excludes upgrades of the source.
+        owns_extraction : bool
+            Create a fresh extraction generation unless an empty record can be reused.
 
         Returns
         -------
@@ -1911,6 +2128,41 @@ class CaliRunner:
                 CaliResult.source_extraction_result_id == source_extraction_result_id,
                 CaliResult.id != source_extraction_result_id,
             )
+        own_source = and_(
+            or_(
+                col(CaliResult.source_extraction_result_id).is_(None),
+                col(CaliResult.source_extraction_result_id) == col(CaliResult.id),
+            ),
+            or_(
+                col(CaliResult.legacy_trace_resolution).is_(None),
+                and_(
+                    ~col(CaliResult.legacy_trace_resolution).startswith("unresolved"),
+                    col(CaliResult.legacy_trace_resolution) != "multiple_sources",
+                ),
+            ),
+        )
+        available_extraction = own_source
+        if owns_extraction:
+            # Existing provenance may still be used by copied analyses, even if
+            # a forced detection already removed the source's ROI trace rows.
+            available_extraction = and_(
+                own_source,
+                ~select(Traces.id)
+                .where(col(Traces.analysis_result_id) == col(CaliResult.id))
+                .exists(),
+                ~select(ExtractionFrameWindow.id)
+                .where(
+                    col(ExtractionFrameWindow.extraction_result_id)
+                    == col(CaliResult.id)
+                )
+                .exists(),
+                ~select(SpikeInferenceRun.id)
+                .where(
+                    col(SpikeInferenceRun.extraction_result_id) == col(CaliResult.id)
+                )
+                .exists(),
+            )
+            query = query.where(available_extraction)
         exact_match = session.exec(query).first()
 
         if exact_match:
@@ -1956,6 +2208,7 @@ class CaliRunner:
                     CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
                     CaliResult.analysis_settings_id.is_(None),  # type: ignore
+                    available_extraction,
                 )
             ).first()
 
@@ -2121,6 +2374,7 @@ class CaliRunner:
                     CaliResult.experiment == experiment_id,
                     CaliResult.detection_settings_id == detection_settings_id,
                     CaliResult.extraction_settings_id == extraction_settings_id,
+                    available_extraction,
                 )
             ).first()
 

@@ -990,7 +990,7 @@ def test_detection_only_disambiguated_by_extraction(
         )
 
         # Run 3: Detection + Extraction (dff_window=100) on position 1
-        # This should add to Run 1 because extraction settings match
+        # This starts a fresh extraction generation using the same settings
         extraction_settings_1_copy = ExtractionSettings(dff_window=100, threads=1)
         runner.run(
             experiment=test_experiment,
@@ -1002,14 +1002,14 @@ def test_detection_only_disambiguated_by_extraction(
             global_position_indices=[1],
         )
 
-        # Verify: Should still have 2 results, with Run 1 having positions [0, 1]
+        # Verify that each extraction generation remains separately recorded
         engine = create_engine(f"sqlite:///{test_db_path}")
         try:
             with Session(engine) as session:
                 results = list(session.exec(select(CaliResult)).all())
-                assert len(results) == 2
+                assert len(results) == 3
 
-                # Find the result with dff_window=100
+                # Both invocations with dff_window=100 retain their generation.
                 run1 = None
                 for r in results:
                     if r.extraction_settings_id:
@@ -1019,7 +1019,11 @@ def test_detection_only_disambiguated_by_extraction(
                             break
 
                 assert run1 is not None
-                assert set(run1.positions_detected or []) == {0, 1}
+                assert run1.positions_detected == [0]
+                additional = results[-1]
+                assert additional.positions_detected == [1]
+                assert additional.extraction_settings_id == run1.extraction_settings_id
+                assert additional.source_extraction_result_id == additional.id
         finally:
             engine.dispose()
 
@@ -1084,7 +1088,7 @@ def test_detection_only_disambiguated_by_analysis(
         )
 
         # Run 3: Full pipeline (height=1.0) on position 1
-        # Should add to Run 1 because analysis settings match
+        # Analysis refers to the extraction from Run 2
         analysis_settings_1_copy = AnalysisSettings(
             peaks_height_value=1.0, peaks_height_mode="std", threads=1
         )
@@ -1099,14 +1103,14 @@ def test_detection_only_disambiguated_by_analysis(
             global_position_indices=[1],
         )
 
-        # Verify: Should still have 2 results, with Run 1 having positions [0, 1]
+        # Verify that the analysis refers to its actual extraction generation
         engine = create_engine(f"sqlite:///{test_db_path}")
         try:
             with Session(engine) as session:
                 results = list(session.exec(select(CaliResult)).all())
-                assert len(results) == 2
+                assert len(results) == 3
 
-                # Find the result with peaks_height_value=1.0
+                # Matching analysis settings still preserve distinct extraction sources.
                 run1 = None
                 for r in results:
                     if r.analysis_settings_id:
@@ -1116,9 +1120,12 @@ def test_detection_only_disambiguated_by_analysis(
                             break
 
                 assert run1 is not None
-                assert set(run1.positions_detected or []) == {0, 1}
-                # Position 0 extraction may fail with mock data, but position 1 should
-                # succeed
-                assert 1 in (run1.positions_analyzed or [])
+                assert run1.positions_detected == [0]
+                additional = results[-1]
+                assert additional.positions_detected == [1]
+                assert additional.positions_analyzed == [1]
+                assert additional.positions_extracted is None
+                assert additional.analysis_settings_id == run1.analysis_settings_id
+                assert additional.source_extraction_result_id == results[1].id
         finally:
             engine.dispose()

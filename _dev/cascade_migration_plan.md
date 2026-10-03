@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, ROI/FOV spike results, and normalized JSON implemented; source-audit completion and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b normalized settings/results/JSON, source audits, explicit repair API, and runner source splitting implemented; GUI source repair/comparison and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -242,6 +242,30 @@ storage/source/JSON checks and **26 passed** after final typing cleanup. Ruff pa
 at 354 existing diagnostics with no additions. Fixtures were restored. This is the headless repair
 API; GUI repair/comparison controls and future mixed-source workload splitting remain pending
 before P2b can be marked complete. CASCADE remains gated.
+
+P2b continuation — separate runner extraction generations (2026-10-03):
+
+- Analysis preflight identifies one extraction source per FOV and pins exact trace IDs for
+  every ROI before creating output records or running analysis. Requests spanning sources
+  create/reuse one analysis result per source. A single FOV whose ROIs span generations fails
+  with a source-selection/re-extraction instruction before any output is created.
+- Fresh extraction owns a separate generation, including incremental positions and forced
+  reruns with identical settings. Only empty records without trace/window/inference provenance
+  can be upgraded. Mixed fresh/reused workloads preserve their original extraction records,
+  shared windows/inference metadata, and method-bound ROI/FOV ownership.
+- Analysis completion is checked against the selected generation, so a newer extraction needs
+  analysis even when settings are unchanged. Batching and thread counts remain shared across
+  source groups; exports receive separate result IDs and sorted position subsets.
+- Per-FOV stage flags commit with scientific products. Cancellation preserves only completed
+  positions, a later worker failure preserves earlier committed batches, and incomplete batches
+  roll back both products and flags. Forced explicitly sourced analysis changes its own copied
+  products while preserving the extraction and other source groups.
+
+Validation: **1694 passed, 1 skipped in 226.55 s** in the full suite; **167 passed** in focused
+runner/source/export checks, followed by **12 passed** after adding batch-rollback coverage and
+sorting export positions. Ruff passes; mypy remains at 354 existing diagnostics with no additions.
+Checked-in fixtures were restored. GUI source repair/comparison controls remain the next P2b step;
+CASCADE remains gated.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
