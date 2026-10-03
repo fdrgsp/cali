@@ -83,6 +83,8 @@ class CaliRunSettings:
         Extraction settings ID to use (for analysis only mode)
     run_id : int | None
         Run ID to export from (for export only mode)
+    source_extraction_result_id : int | None
+        Exact extraction generation for analysis-only reuse
     """
 
     positions: list[int]
@@ -92,6 +94,17 @@ class CaliRunSettings:
     detection_settings_id: int | None
     extraction_settings_id: int | None
     run_id: int | None = None
+    source_extraction_result_id: int | None = None
+
+
+@dataclass(frozen=True)
+class ExtractionSourceOption:
+    """Scalar source details used to select an extraction generation."""
+
+    result_id: int
+    detection_settings_id: int
+    extraction_settings_id: int
+    positions: tuple[int, ...]
 
 
 class _RunCaliWidget(QWidget):
@@ -183,6 +196,23 @@ class _RunCaliWidget(QWidget):
         )
         self._extraction_settings_combo.setVisible(False)
 
+        self._source_options: list[ExtractionSourceOption] = []
+        self._source_extraction_combo = QComboBox()
+        self._source_extraction_combo.addItem("Automatic sources by position", None)
+        self._source_extraction_combo.setToolTip(
+            "Choose an exact extraction run for analysis, or use the latest "
+            "traces by position. All selected positions and ROIs must "
+            "be covered by an explicitly chosen run. Unresolved history requires "
+            "source selection or re-extraction."
+        )
+        self._source_extraction_combo.setVisible(False)
+        self._detection_settings_combo.currentIndexChanged.connect(
+            self._update_source_options
+        )
+        self._extraction_settings_combo.currentIndexChanged.connect(
+            self._update_source_options
+        )
+
         # Run IDs selector (for Export-only mode)
         self._run_ids_combo = QComboBox()
         self._run_ids_combo.setToolTip(
@@ -202,6 +232,14 @@ class _RunCaliWidget(QWidget):
         run_options_layout.addWidget(self._extraction_settings_combo)
         run_options_layout.addWidget(self._run_ids_combo)
 
+        self._source_options_wdg = QWidget()
+        source_layout = QHBoxLayout(self._source_options_wdg)
+        source_layout.setContentsMargins(0, 0, 0, 0)
+        source_layout.setSpacing(5)
+        source_layout.addWidget(QLabel("Extraction Source:"))
+        source_layout.addWidget(self._source_extraction_combo, 1)
+        self._source_options_wdg.setVisible(False)
+
         # main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -210,6 +248,7 @@ class _RunCaliWidget(QWidget):
         main_layout.addWidget(self._positions_wdg)
         main_layout.addWidget(create_divider_line("Run Options"))
         main_layout.addWidget(run_options_wdg)
+        main_layout.addWidget(self._source_options_wdg)
 
         # run control layout
         run_control_layout = QHBoxLayout()
@@ -255,6 +294,7 @@ class _RunCaliWidget(QWidget):
         self._run_options_combo.setEnabled(state)
         self._detection_settings_combo.setEnabled(state)
         self._extraction_settings_combo.setEnabled(state)
+        self._source_extraction_combo.setEnabled(state)
         self._run_ids_combo.setEnabled(state)
         self._run_btn.setEnabled(state)
         self._save_settings_btn.setEnabled(state)
@@ -308,6 +348,7 @@ class _RunCaliWidget(QWidget):
         self._positions_wdg.setValue("")
         self._run_options_combo.setCurrentIndex(0)
         self._detection_settings_combo.clear()
+        self.populate_extraction_sources([])
 
     def value(self) -> CaliRunSettings:
         """Get the current run settings.
@@ -324,6 +365,7 @@ class _RunCaliWidget(QWidget):
         detection_settings_id = None
         extraction_settings_id = None
         run_id = None
+        source_extraction_result_id = None
 
         # For Export Only mode, get the run ID
         if "Export Only" in option:
@@ -342,6 +384,9 @@ class _RunCaliWidget(QWidget):
             # Get extraction settings ID (only for Analysis Only)
             if "Analysis Only" in option:
                 extraction_settings_id = self._extraction_settings_combo.currentData()
+                source_extraction_result_id = (
+                    self._source_extraction_combo.currentData()
+                )
 
         # Determine which stages to run
         extraction_only = "Extraction Only (require detection)"
@@ -372,6 +417,7 @@ class _RunCaliWidget(QWidget):
             detection_settings_id=detection_settings_id,
             extraction_settings_id=extraction_settings_id,
             run_id=run_id,
+            source_extraction_result_id=source_extraction_result_id,
         )
 
     def get_detection_settings_id(self) -> int | None:
@@ -450,6 +496,34 @@ class _RunCaliWidget(QWidget):
             has_extractions=has_extractions,
             has_runs=has_runs,
         )
+
+    def populate_extraction_sources(
+        self, sources: list[ExtractionSourceOption]
+    ) -> None:
+        """Populate compatible generations, preserving a still-valid selection."""
+        self._source_options = sources
+        self._update_source_options()
+
+    def _update_source_options(self) -> None:
+        selected = self._source_extraction_combo.currentData()
+        self._source_extraction_combo.clear()
+        self._source_extraction_combo.addItem("Automatic sources by position", None)
+        detection_id = self._detection_settings_combo.currentData()
+        extraction_id = self._extraction_settings_combo.currentData()
+        for source in self._source_options:
+            if (
+                source.detection_settings_id != detection_id
+                or source.extraction_settings_id != extraction_id
+            ):
+                continue
+            positions = ", ".join(map(str, source.positions))
+            self._source_extraction_combo.addItem(
+                f"Extraction Run #{source.result_id} · positions {positions}",
+                source.result_id,
+            )
+        index = self._source_extraction_combo.findData(selected)
+        if index >= 0:
+            self._source_extraction_combo.setCurrentIndex(index)
 
     def _update_options_availability(
         self, has_detections: bool, has_extractions: bool, has_runs: bool = False
@@ -555,6 +629,8 @@ class _RunCaliWidget(QWidget):
 
         # Show extraction settings only for "Analysis Only"
         self._extraction_settings_combo.setVisible(is_analysis_only)
+        self._source_extraction_combo.setVisible(is_analysis_only)
+        self._source_options_wdg.setVisible(is_analysis_only)
 
         # Show run IDs only for "Export Only"
         self._run_ids_combo.setVisible(is_export_only)

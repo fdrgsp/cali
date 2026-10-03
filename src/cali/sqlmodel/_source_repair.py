@@ -1,6 +1,7 @@
 """Explicit source selection for verified, quarantined legacy result snapshots."""
 
 from collections import Counter
+from dataclasses import dataclass
 
 from sqlmodel import Session, select
 
@@ -16,6 +17,32 @@ from ._model import (
     Traces,
 )
 from ._source_provenance import MigrationIssue
+
+
+@dataclass(frozen=True)
+class SourceRepairPreview:
+    """Verified source comparison without changes to a stored legacy result."""
+
+    result_id: int
+    source_result_id: int
+    positions: tuple[int, ...]
+    trace_count: int
+    roi_metric_count: int
+    fov_metric_count: int
+    spike_outputs: tuple[tuple[str, str], ...]
+    retained_frame_counts: tuple[int, ...]
+    source_start_frames: tuple[int, ...]
+
+
+@dataclass
+class _SourceRepairPlan:
+    result: CaliResult
+    source: CaliResult
+    pairs: list[tuple[Traces, Traces]]
+    roi_links: list[tuple[SpikeAnalysis, SpikeTrace]]
+    fov_links: list[tuple[SpikeFOVAnalysis, SpikeInferenceRun]]
+    issues: list[MigrationIssue]
+    evidence: dict
 
 
 def _spike_for_method(trace: Traces, method: str) -> SpikeTrace | None:
@@ -90,17 +117,10 @@ def _same_payload(copied: Traces, source: Traces) -> bool:
     return True
 
 
-def select_legacy_result_source(
+def _prepare_source_repair(
     session: Session, result_id: int, source_extraction_result_id: int
-) -> CaliResult:
-    """Stage an audited repair after the caller explicitly chooses an extraction.
-
-    Verify the entire result before changing any links. Arrays, metrics, activity,
-    ordering, and existing provenance records are preserved. Incompatible sources
-    require a fresh analysis instead. Only this result is repaired; dependent
-    histories keep their own audits until selected separately. The caller owns
-    the transaction and must commit (or roll back) the staged changes.
-    """
+) -> _SourceRepairPlan:
+    """Verify the entire snapshot before previewing or applying source links."""
     ensure_schema_current(session.get_bind())
     with session.no_autoflush:
         result: CaliResult | None = session.get(CaliResult, result_id)
@@ -273,9 +293,88 @@ def select_legacy_result_source(
                 for trace, original in pairs
             ],
         }
+        return _SourceRepairPlan(
+            result, source, pairs, roi_links, fov_links, issues, evidence
+        )
+
+
+def preview_legacy_result_source(
+    session: Session, result_id: int, source_extraction_result_id: int
+) -> SourceRepairPreview:
+    """Compare a selected source using the same checks as repair, without writing.
+
+    Incompatible sources raise ValueError. Pending caller work is neither flushed
+    nor changed, and no trace, metric, or audit link is modified.
+    """
+    plan = _prepare_source_repair(session, result_id, source_extraction_result_id)
+    with session.no_autoflush:
+        originals = [original for _, original in plan.pairs]
+        return SourceRepairPreview(
+            result_id=result_id,
+            source_result_id=source_extraction_result_id,
+            positions=tuple(
+                sorted(
+                    {
+                        trace.roi.fov.position_index
+                        for trace in originals
+                        if trace.roi is not None
+                        and trace.roi.fov is not None
+                        and trace.roi.fov.position_index is not None
+                    }
+                )
+            ),
+            trace_count=len(plan.pairs),
+            roi_metric_count=len(plan.roi_links),
+            fov_metric_count=len(plan.fov_links),
+            spike_outputs=tuple(
+                sorted(
+                    {
+                        (child.inference_run.method, child.inference_run.units)
+                        for trace, _ in plan.pairs
+                        for child in trace.spike_traces
+                    }
+                )
+            ),
+            retained_frame_counts=tuple(
+                sorted(
+                    {
+                        trace.extraction_frame_window.retained_frame_count
+                        for trace in originals
+                        if trace.extraction_frame_window is not None
+                        and trace.extraction_frame_window.retained_frame_count
+                        is not None
+                    }
+                )
+            ),
+            source_start_frames=tuple(
+                sorted(
+                    {
+                        trace.extraction_frame_window.source_start_frame
+                        for trace in originals
+                        if trace.extraction_frame_window is not None
+                    }
+                )
+            ),
+        )
+
+
+def select_legacy_result_source(
+    session: Session, result_id: int, source_extraction_result_id: int
+) -> CaliResult:
+    """Stage an audited repair after the caller explicitly chooses an extraction.
+
+    Verify the entire result before changing any links. Arrays, metrics, activity,
+    ordering, and existing provenance records are preserved. Incompatible sources
+    require a fresh analysis instead. Only this result is repaired; dependent
+    histories keep their own audits until selected separately. The caller owns
+    the transaction and must commit (or roll back) the staged changes.
+    """
+    plan = _prepare_source_repair(session, result_id, source_extraction_result_id)
+    result, source = plan.result, plan.source
+    with session.no_autoflush:
         # All validation has completed. Reuse original metadata while keeping the
         # result's own trace/metric rows and the old shared audited records intact.
-        for trace, original in pairs:
+        for trace, original in plan.pairs:
             trace.extraction_frame_window = original.extraction_frame_window
             for copied_spike in trace.spike_traces:
                 matching_spike = _spike_for_method(
@@ -283,16 +382,16 @@ def select_legacy_result_source(
                 )
                 assert matching_spike is not None  # Verified before mutation.
                 copied_spike.inference_run = matching_spike.inference_run
-        for roi_child, roi_spike in roi_links:
+        for roi_child, roi_spike in plan.roi_links:
             roi_child.spike_trace = roi_spike
             roi_child.provenance_source = "legacy_source_selected"
-        for fov_child, run in fov_links:
+        for fov_child, run in plan.fov_links:
             fov_child.inference_run = run
             fov_child.provenance_source = "legacy_source_selected"
         result.source_extraction_result_id = source.id
         result.legacy_trace_resolution = "source_selected"
         result.positions_extracted = None
-        for issue in issues:
+        for issue in plan.issues:
             if (
                 issue.code.startswith("unresolved")
                 or issue.code == "multiple_extraction_sources"
@@ -306,7 +405,7 @@ def select_legacy_result_source(
             MigrationIssue(
                 analysis_result_id=result_id,
                 code="legacy_source_selected",
-                details=evidence,
+                details=plan.evidence,
                 resolved=True,
             )
         )

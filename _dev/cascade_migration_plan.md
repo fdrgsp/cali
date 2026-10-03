@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b normalized settings/results/JSON, source audits, explicit repair API, and runner source splitting implemented; GUI source repair/comparison and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b normalized settings/results/JSON, source audits, verified GUI/API repair, and runner source splitting implemented; startup-discard completion and later method-specific comparison/consumers pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -265,6 +265,35 @@ Validation: **1694 passed, 1 skipped in 226.55 s** in the full suite; **167 pass
 runner/source/export checks, followed by **12 passed** after adding batch-rollback coverage and
 sorting export positions. Ruff passes; mypy remains at 354 existing diagnostics with no additions.
 Checked-in fixtures were restored. GUI source repair/comparison controls remain the next P2b step;
+CASCADE remains gated.
+
+P2b continuation — GUI source repair and explicit analysis selection (2026-10-03):
+
+- Unresolved legacy runs have a **Repair Source** action. A dialog requires an explicit extraction
+  choice and shows a verified source comparison before enabling repair: trace/metric coverage,
+  positions, method/units, retained counts, and source frame offsets. Incompatible selections show
+  why fresh analysis/extraction is required; no source is guessed or applied on opening the dialog.
+- The public `preview_legacy_result_source()` returns an immutable summary using the same complete
+  validation as the repair API. It leaves scientific data, provenance links, audit records, and
+  unrelated pending caller work unchanged. Applying a choice revalidates after the dialog and
+  commits the repair transaction; cancellation, changed sources, and commit errors preserve
+  quarantine. Successful repair refreshes the selected run and source choices; dependent runs
+  keep their own audits.
+- **Analysis Only** now offers an exact extraction-run selector filtered by detection/extraction
+  settings. Resolved owners with stored traces are listed through scalar queries; owners with
+  quarantined ROI/FOV metrics are excluded. Existing automatic selection remains available, while
+  an explicit choice reaches the runner and restricts the GUI's position-coverage check. Valid
+  choices survive refresh and clear when settings change or the GUI resets. Source links are also
+  visible on copied analysis run entries.
+- The GUI previously used edited detection settings rather than the selected Detection ID in
+  analysis-only mode. It now forwards that selected ID, keeping source and ROI selection aligned.
+
+Validation: **1707 passed, 1 skipped in 226.00 s** in the full suite; **222 passed** across affected
+source/GUI modules and **13 passed** after final layout review. Both controls were rendered offscreen
+and inspected at the existing panel width. Ruff passes; mypy remains at 354 existing diagnostics
+with no additions. Checked-in fixtures were restored. This completes GUI access to source
+comparison/repair and generation selection; later OASIS/CASCADE method comparison controls remain
+in P6/P8. The next landing step is P2c's shared trusted timing and retained-length preflight.
 CASCADE remains gated.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the

@@ -352,6 +352,7 @@ class CaliGui(QMainWindow):
             self._on_saved_segmentation_selected
         )
         self._runs_panel.settingsDeleted.connect(self._on_settings_deleted)
+        self._runs_panel.sourceRepaired.connect(self._on_source_repaired)
 
         # connect the roiSelected signal from the graphs to the image viewer so we can
         # highlight the roi in the image viewer when a roi is selected in the graph
@@ -1036,12 +1037,14 @@ class CaliGui(QMainWindow):
             current_run_option = self._get_run_option(current_value)
             preserve_detection_selection = current_value.detection_settings_id
             preserve_extraction_selection = current_value.extraction_settings_id
+            preserve_source_selection = current_value.source_extraction_result_id
 
             # Get all unique detection settings IDs
             detection_ids = self._runs_panel.get_detection_settings_ids()
 
             if not detection_ids:
                 self._run_cali_wdg.populate_detection_settings([])
+                self._run_cali_wdg.populate_extraction_sources([])
                 return
 
             settings_list = []
@@ -1101,6 +1104,15 @@ class CaliGui(QMainWindow):
                     if combo.itemData(i) == preserve_extraction_selection:
                         combo.setCurrentIndex(i)
                         break
+
+            self._run_cali_wdg.populate_extraction_sources(
+                self._runs_panel.get_extraction_sources()
+            )
+            if preserve_source_selection is not None:
+                source_combo = self._run_cali_wdg._source_extraction_combo
+                source_index = source_combo.findData(preserve_source_selection)
+                if source_index >= 0:
+                    source_combo.setCurrentIndex(source_index)
 
             # Populate run IDs
             run_ids = self._runs_panel.get_run_ids()
@@ -1185,6 +1197,7 @@ class CaliGui(QMainWindow):
         detection_settings_id: int,
         extraction_settings_id: int,
         positions: list[int],
+        source_extraction_result_id: int | None = None,
     ) -> list[int]:
         """Check which positions are missing extraction data.
 
@@ -1196,6 +1209,8 @@ class CaliGui(QMainWindow):
             Extraction settings ID to check
         positions : list[int]
             List of position indices to check
+        source_extraction_result_id : int | None
+            Restrict coverage to this explicitly selected extraction run
 
         Returns
         -------
@@ -1219,18 +1234,20 @@ class CaliGui(QMainWindow):
             with Session(engine) as session:
                 # Find positions that have Traces with this combination
                 query_start = time.perf_counter()
+                source_results = select(CaliResult.id).where(
+                    CaliResult.extraction_settings_id == extraction_settings_id
+                )
+                if source_extraction_result_id is not None:
+                    source_results = source_results.where(
+                        CaliResult.id == source_extraction_result_id
+                    )
                 existing_positions = session.exec(
                     select(FOV.position_index)
                     .join(ROI)
                     .join(Traces)
                     .where(
                         ROI.detection_settings_id == detection_settings_id,
-                        Traces.analysis_result_id.in_(  # type: ignore
-                            select(CaliResult.id).where(
-                                CaliResult.extraction_settings_id
-                                == extraction_settings_id
-                            )
-                        ),
+                        Traces.analysis_result_id.in_(source_results),  # type: ignore
                         FOV.position_index.in_(positions),  # type: ignore
                     )
                     .distinct()
@@ -1322,13 +1339,21 @@ class CaliGui(QMainWindow):
                     detection_settings_id_check, pos
                 )
                 missing_extraction = self._check_positions_missing_extraction(
-                    detection_settings_id_check, extraction_settings_id, pos
+                    detection_settings_id_check,
+                    extraction_settings_id,
+                    pos,
+                    source_extraction_result_id=value.source_extraction_result_id,
                 )
 
                 if missing_detection or missing_extraction:
                     # Simply inform the user and ask them to fix the issue
                     msg = "Cannot Run Analysis - Missing Required Data\n\n"
                     msg += f"Selected positions: {pos}\n\n"
+                    if value.source_extraction_result_id is not None:
+                        msg += (
+                            f"Source extraction: Run "
+                            f"#{value.source_extraction_result_id}\n\n"
+                        )
                     if missing_detection:
                         msg += f"Positions missing detection: {missing_detection}\n"
                     if missing_extraction:
@@ -1409,6 +1434,8 @@ class CaliGui(QMainWindow):
                     )
                     show_error_dialog(self, msg)
                     return
+            elif value.run_analysis and not value.run_extraction:
+                detection_settings = value.detection_settings_id
             elif detection_settings is None:
                 # Detection or Detection+Extraction mode: get from GUI
                 # (only if not already set from dialog above)
@@ -1553,6 +1580,7 @@ class CaliGui(QMainWindow):
                         as_generator=True,
                         export_traces=export_traces,
                         export_correlations=export_correlations,
+                        source_extraction_result_id=value.source_extraction_result_id,
                     )
                     assert result is not None
                     yield from result
@@ -2112,6 +2140,12 @@ class CaliGui(QMainWindow):
 
             # Refresh the FOV table selection to update the display
             # This will reload labels if the FOV still exists with remaining data
+            self._on_fov_table_selection_changed()
+
+    def _on_source_repaired(self, run_id: int) -> None:
+        """Refresh source choices and displayed data after a committed repair."""
+        if self._database_path:
+            self._populate_settings(self._database_path)
             self._on_fov_table_selection_changed()
 
     def _enable(self, state: bool) -> None:

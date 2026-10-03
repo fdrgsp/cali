@@ -22,7 +22,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlmodel import col, select
 from superqt import QIconifyIcon
 from superqt.utils import signals_blocked
@@ -35,6 +35,8 @@ from cali.sqlmodel._source_provenance import MigrationIssue
 
 if TYPE_CHECKING:
     from sqlmodel import Session
+
+    from ._run_widget import ExtractionSourceOption
 
 
 class _DetectionSummary(NamedTuple):
@@ -112,11 +114,14 @@ class _RunsPanel(QGroupBox):
         DetectionSettings ID
     settingsDeleted : None
         Emitted when settings may have changed (e.g. after deletion)
+    sourceRepaired : int
+        Emitted after verified source links have been committed
     """
 
     runSelected = Signal(int)
     segmentationSelected = Signal(int)
     settingsDeleted = Signal()
+    sourceRepaired = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("cali runs", parent=parent)
@@ -170,6 +175,14 @@ class _RunsPanel(QGroupBox):
         # Buttons layout
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()  # Push buttons to the right
+
+        self._repair_source_btn = QPushButton("Repair Source...")
+        self._repair_source_btn.setToolTip(
+            "Select and verify the extraction source for an unresolved legacy run."
+        )
+        self._repair_source_btn.setEnabled(False)
+        self._repair_source_btn.clicked.connect(self._repair_selected_source)
+        buttons_layout.addWidget(self._repair_source_btn)
 
         # Delete selected button (works for either list)
         self._delete_btn = QPushButton("Delete Selected")
@@ -374,6 +387,79 @@ class _RunsPanel(QGroupBox):
         from cali.sqlmodel._model import ExtractionSettings
 
         return self._fetch_ids(ExtractionSettings.id)
+
+    def get_extraction_sources(self) -> list[ExtractionSourceOption]:
+        """List resolved extraction owners without loading trace arrays."""
+        if self._database_path is None or not self._database_path.exists():
+            return []
+        from sqlmodel import Session
+
+        from cali.sqlmodel import SpikeAnalysis, SpikeFOVAnalysis, Traces
+
+        from ._run_widget import ExtractionSourceOption
+
+        engine = create_cali_engine(f"sqlite:///{self._database_path}")
+        try:
+            with Session(engine) as session:
+                rows = session.exec(
+                    select(
+                        col(CaliResult.id),
+                        col(CaliResult.detection_settings_id),
+                        col(CaliResult.extraction_settings_id),
+                        col(CaliResult.positions_extracted),
+                    )
+                    .where(
+                        col(CaliResult.source_extraction_result_id)
+                        == col(CaliResult.id),
+                        or_(
+                            col(CaliResult.legacy_trace_resolution).is_(None),
+                            and_(
+                                ~col(CaliResult.legacy_trace_resolution).startswith(
+                                    "unresolved"
+                                ),
+                                col(CaliResult.legacy_trace_resolution)
+                                != "multiple_sources",
+                            ),
+                        ),
+                        select(col(Traces.id))
+                        .where(col(Traces.analysis_result_id) == col(CaliResult.id))
+                        .exists(),
+                        ~select(col(SpikeAnalysis.id))
+                        .where(
+                            col(SpikeAnalysis.analysis_result_id) == col(CaliResult.id),
+                            SpikeAnalysis.provenance_source == "legacy_unresolved",
+                        )
+                        .exists(),
+                        ~select(col(SpikeFOVAnalysis.id))
+                        .where(
+                            col(SpikeFOVAnalysis.analysis_result_id)
+                            == col(CaliResult.id),
+                            SpikeFOVAnalysis.provenance_source == "legacy_unresolved",
+                        )
+                        .exists(),
+                    )
+                    .order_by(col(CaliResult.id))
+                ).all()
+                options = []
+                for row in rows:
+                    result_id, detection_id, extraction_id, positions = row
+                    if (
+                        result_id is not None
+                        and detection_id is not None
+                        and extraction_id is not None
+                        and positions
+                    ):
+                        options.append(
+                            ExtractionSourceOption(
+                                result_id,
+                                detection_id,
+                                extraction_id,
+                                tuple(sorted(positions)),
+                            )
+                        )
+                return options
+        finally:
+            engine.dispose(close=True)
 
     def get_analysis_settings_ids(self) -> list[int]:
         """Get all unique analysis settings IDs from runs."""
@@ -640,6 +726,13 @@ class _RunsPanel(QGroupBox):
             f"  {analysis_icon} Analysis ID: {result.analysis_settings_id}"
             f"{analysis_incomplete}"
         )
+        if (
+            result.source_extraction_result_id is not None
+            and result.source_extraction_result_id != result.id
+        ):
+            item_text += (
+                f"\n  ↪ Source extraction: Run #{result.source_extraction_result_id}"
+            )
 
         item = QListWidgetItem(item_text)
         resolution = result.legacy_trace_resolution or ""
@@ -664,6 +757,10 @@ class _RunsPanel(QGroupBox):
             if unresolved_metrics:
                 source_warning += "Historical spike metric ownership needs review.\n"
         item.setData(Qt.ItemDataRole.UserRole, result.id)
+        item.setData(
+            Qt.ItemDataRole.UserRole + 1,
+            resolution.startswith("unresolved") or resolution == "multiple_sources",
+        )
 
         item.setToolTip(
             f"Run #{result.id}\n"
@@ -715,6 +812,12 @@ class _RunsPanel(QGroupBox):
             self._saved_segs_list.selectedItems()
         )
         self._delete_btn.setEnabled(has_selection)
+        item = self._runs_list.currentItem()
+        self._repair_source_btn.setEnabled(
+            item is not None
+            and item.isSelected()
+            and bool(item.data(Qt.ItemDataRole.UserRole + 1))
+        )
 
     def _on_run_item_clicked(self, item: QListWidgetItem) -> None:
         run_id = item.data(Qt.ItemDataRole.UserRole)
@@ -727,6 +830,41 @@ class _RunsPanel(QGroupBox):
             self.segmentationSelected.emit(detection_id)
 
     # -------------------------------------------------------------------- delete
+
+    def _repair_selected_source(self) -> None:
+        """Apply an explicitly selected source after a read-only comparison."""
+        result_id = self.get_selected_run_id()
+        if result_id is None or self._database_path is None:
+            return
+        from sqlmodel import Session
+
+        from cali.sqlmodel import select_legacy_result_source
+
+        from ._source_repair_dialog import _SourceRepairDialog
+
+        dialog = _SourceRepairDialog(self._database_path, result_id, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        source_id = dialog.selected_source_id()
+        if source_id is None:
+            return
+        try:
+            if not self._database_path.exists():
+                raise ValueError("The database is no longer available.")
+            engine = create_cali_engine(f"sqlite:///{self._database_path}")
+            try:
+                with Session(engine) as session:
+                    # Revalidate after the dialog: another writer may have changed it.
+                    select_legacy_result_source(session, result_id, source_id)
+                    session.commit()
+            finally:
+                engine.dispose(close=True)
+        except Exception as error:
+            QMessageBox.warning(self, "Source repair failed", str(error))
+            return
+        self.refresh_runs()
+        self.select_run_by_id(result_id)
+        self.sourceRepaired.emit(result_id)
 
     def _delete_selected(self) -> None:
         """Delete whichever item (run or saved segmentation) is currently selected."""

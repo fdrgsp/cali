@@ -34,7 +34,11 @@ from ._model import (
     WellCondition,
 )
 from ._source_provenance import MigrationIssue
-from ._source_repair import select_legacy_result_source
+from ._source_repair import (
+    SourceRepairPreview,
+    preview_legacy_result_source,
+    select_legacy_result_source,
+)
 from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
     create_database_and_tables,
@@ -61,6 +65,7 @@ __all__ = [
     "Mask",
     "MigrationIssue",
     "Plate",
+    "SourceRepairPreview",
     "SpikeAnalysis",
     "SpikeAnalysisSettings",
     "SpikeFOVAnalysis",
@@ -81,6 +86,7 @@ __all__ = [
     "load_experiment_from_database",
     "migrate_database",
     "migrate_startup_discard",
+    "preview_legacy_result_source",
     "print_cali_results",
     "save_experiment_to_database",
     "select_legacy_result_source",
