@@ -296,6 +296,49 @@ comparison/repair and generation selection; later OASIS/CASCADE method compariso
 in P6/P8. The next landing step is P2c's shared trusted timing and retained-length preflight.
 CASCADE remains gated.
 
+P2c continuation — shared acquisition timing and retained-length preflight (2026-10-03):
+
+- A shared timing descriptor resolves complete finite/strictly increasing acquisition timestamps,
+  explicit `frame_period_ms` metadata, verified acquisition settings, or the legacy unverified
+  exposure axis, in that order. Actual timestamps retain their source origin; exposure is never
+  promoted to an acquisition interval. Invalid complete timestamps and conflicting/invalid period
+  metadata fail before ROI work. TIFF metadata/config round trips preserve the explicit period.
+- Seconds-mode timestamp crops retain `searchsorted(..., side="left")`; declared-period and verified
+  rates use ceiling conversion. Verified settings can provide a usable time axis even with zero
+  exposure and zero discard. Default unverified OASIS axes, duration calculations, and backend
+  numerics remain unchanged for valid legacy inputs.
+- Retained timing is validated once before masks, DFF, or inference. Every enabled consumer
+  declares its minimum length; errors identify FOV/position/source, original/discarded/retained
+  counts, and the limiting consumer. The rolling DFF baseline clips its window and requires one
+  sample; duration requires two, while OASIS requires five to guarantee a Welch frequency bin
+  strictly inside its configured noise band. The four-frame case previously produced an empty
+  band/NaN estimate. The backend also rejects short/nonfinite DFF matrices directly. Future model
+  consumers can declare a stricter receptive-field/valid-interval requirement.
+- The CASCADE timing validator now derives rate from the median **retained** sample interval,
+  rejects exposure-only timing and irregular intervals, and requires both extraction and model
+  rates to agree within 1%. Maximum measured interval deviation also has a 1% limit. User-verified
+  and declared-period sources preserve unknown measured jitter. This validator is tested ahead of
+  the model adapter; CASCADE execution remains disabled.
+- Schema v9 adds nullable acquisition rate, measured interval jitter, and validation status to
+  shared frame windows. New extraction persists retained timing quality; migration leaves unknown
+  historical values null and does not infer sampling from a possibly exposure-derived old axis.
+  The model-free column migration and version update roll back/retry together.
+
+Focused validation: **258 passed** across timing, migration, source repair, and runner integration;
+**59 passed** after final timing-boundary checks, including exact OASIS reference fixtures. Ruff
+passes; mypy has no added diagnostics (354 existing). Full suite: **1745 passed, 1 skipped in
+234.79 s**, against restored legacy fixtures.
+
+**When CASCADE code starts:** the remaining P2c work is the shared stimulation/event coordinate
+transform and source-index exports. Then follow §9: pinned installable CascadeTorch dependency
+(step 5), catalogue/model manifests and download path (step 6), and the direct upstream predictor
+(step 7/P3a). P3a is the first real CASCADE inference in cali's code. Optimized inference and
+runner wiring follow in steps 8–9/P3b/P5; method-specific analysis and GUI exposure remain gated
+until their later acceptance checks pass. No further storage/source-repair milestone is planned
+before this CASCADE phase. The local pinned `c6978d5` checkout was rechecked: it still has
+`find_packages()` without `cascade2p/__init__.py`, so step 5 includes the already specified minimal
+packaging repair rather than waiting for an external change.
+
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
 adding a regression and fix for validation copying an existing settings object without
@@ -321,9 +364,9 @@ source offsets. The remaining requirements are:
 
 - The shared persisted `ExtractionFrameWindow` and historical backfill are now implemented.
   Finish ownership/source audits alongside the remaining P2b result normalization.
-- Finish the shared timing descriptor, including trusted explicit frame-period metadata;
-  preflight against DFF/OASIS and eventually the selected CASCADE model rather than only
-  requiring two retained samples. Include file/FOV and limiting counts in errors.
+- Shared timing, explicit frame-period metadata, and DFF/OASIS retained-length preflight are now
+  implemented. Connect the selected model's minimum length and rate validation when the CASCADE
+  model manifest/backend lands.
 - Normalize one-based pulse input consistently. Some evoked consumers still deliberately
   retain the legacy zero-based convention, while plot bands use one-based conversion.
   Complete shared interval clipping/marking, including pulses crossing the cutoff.

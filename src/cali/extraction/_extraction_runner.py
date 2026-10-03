@@ -41,8 +41,8 @@ from ._frame_window import (
 from ._frame_window import (
     StartupDiscardError,
     build_timing_descriptor,
+    preflight_retained_timing,
     resolve_initial_frame_window,
-    retained_time_axis,
 )
 from ._neuropil import create_neuropil_from_dilation
 from ._spike_inference import InferenceCancelled, OasisBackend
@@ -348,14 +348,36 @@ class ExtractionRunner:
         fov_name = self._get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
         original_frame_count = data.shape[0]
-        timing = build_timing_descriptor(meta, original_frame_count)
-        frame_window = resolve_initial_frame_window(
-            discard_value=extraction_settings.discard_initial_value,
-            discard_unit=extraction_settings.discard_initial_unit,
-            frame_rate=extraction_settings.frame_rate,
-            frame_rate_verified=extraction_settings.frame_rate_verified,
-            timing=timing,
-        )
+        try:
+            timing = build_timing_descriptor(
+                meta,
+                original_frame_count,
+                frame_rate=extraction_settings.frame_rate,
+                frame_rate_verified=extraction_settings.frame_rate_verified,
+            )
+            frame_window = resolve_initial_frame_window(
+                discard_value=extraction_settings.discard_initial_value,
+                discard_unit=extraction_settings.discard_initial_unit,
+                frame_rate=extraction_settings.frame_rate,
+                frame_rate_verified=extraction_settings.frame_rate_verified,
+                timing=timing,
+            )
+            retained_timing = preflight_retained_timing(
+                timing,
+                frame_window,
+                frame_rate=extraction_settings.frame_rate,
+                minimum_frames={
+                    "ΔF/F baseline": 1,
+                    "calcium duration": 2,
+                    "OASIS noise estimation": OasisBackend.minimum_frames,
+                },
+            )
+        except StartupDiscardError as error:
+            source = meta[0].get("file_path") if meta else None
+            source = source or str(dataset.path)
+            raise StartupDiscardError(
+                f"{fov_name} (position {global_pos_idx}, source {source}): {error}"
+            ) from error
         if frame_window.source_start_frame:
             cali_logger.info(
                 f"⏭️ {fov_name}: discarded {frame_window.source_start_frame} of "
@@ -369,9 +391,7 @@ class ExtractionRunner:
             if len(meta) == original_frame_count:
                 meta = meta[frame_window.source_start_frame :]
 
-        elapsed_time_list = retained_time_axis(
-            timing, frame_window, frame_rate=extraction_settings.frame_rate
-        )
+        elapsed_time_list = retained_timing.timestamps_ms
 
         if fov_to_analyze is None or not fov_to_analyze.rois:
             cali_logger.error(
@@ -481,7 +501,9 @@ class ExtractionRunner:
                 "frames"
                 if extraction_settings.discard_initial_unit == "frames"
                 else "timestamps"
-                if timing.trusted
+                if frame_window.timing_source == "runner_time"
+                else "metadata_frame_period"
+                if frame_window.timing_source == "metadata_frame_period"
                 else "verified_frame_rate"
             ),
             original_frame_count=frame_window.original_frame_count,
@@ -495,7 +517,11 @@ class ExtractionRunner:
                 else None
             ),
             discarded_duration_ms=frame_window.discarded_duration_ms,
+            acquisition_frame_rate_hz=retained_timing.frame_rate_hz,
+            interval_jitter_fraction=retained_timing.interval_jitter_fraction,
+            timing_validation=retained_timing.validation,
             provenance_source="extraction",
+            schema_version=2,
         )
         inference_run = SpikeInferenceRun(
             backend_version=version("oasis-deconv"),

@@ -17,7 +17,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _add_columns(
@@ -173,6 +173,19 @@ def _method_settings(connection: Connection) -> None:
         raise ValueError("Spike settings backfill contains orphaned parent references.")
 
 
+def _acquisition_timing(connection: Connection) -> None:
+    """Persist future timing checks while keeping unknown historical timing null."""
+    _add_columns(
+        connection,
+        "extraction_frame_window",
+        (
+            ("acquisition_frame_rate_hz", "FLOAT"),
+            ("interval_jitter_fraction", "FLOAT"),
+            ("timing_validation", "VARCHAR"),
+        ),
+    )
+
+
 _MIGRATIONS = (
     _analysis_gates,
     _startup_discard,
@@ -182,6 +195,7 @@ _MIGRATIONS = (
     migrate_spike_analyses,
     migrate_spike_fov_analyses,
     audit_legacy_stage_sources,
+    _acquisition_timing,
 )
 
 

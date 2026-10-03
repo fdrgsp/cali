@@ -39,6 +39,9 @@ class ExtractionFrameWindow(SQLModel, table=True):  # type: ignore[call-arg, unu
     source_time_origin_ms: float | None = None
     source_start_timestamp_ms: float | None = None
     discarded_duration_ms: float = 0.0
+    acquisition_frame_rate_hz: float | None = None
+    interval_jitter_fraction: float | None = None
+    timing_validation: str | None = None
     provenance_source: str = "synthetic_legacy_api"
     schema_version: int = 1
 

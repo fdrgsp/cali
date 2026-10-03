@@ -475,6 +475,33 @@ def test_isel_metadata(temp_tiff_files: dict[str, list[Path]], tmp_path: Path) -
     assert meta[0]["exposure_ms"] == 100.0
 
 
+def test_explicit_frame_period_survives_tiff_metadata_and_config_round_trip(
+    temp_tiff_files: dict[str, list[Path]], tmp_path: Path
+) -> None:
+    """Keep the acquisition interval distinct from exposure across database reloads."""
+    settings = TiffCollectionSettings(
+        file_map=temp_tiff_files,
+        plate="96-well",
+        metadata={"exposure_ms": 20.0, "pixel_size_um": 0.5, "frame_period_ms": 100.0},
+        tiff_folder_path=tmp_path,
+    )
+    reader = TiffCollectionReader(settings)
+    _, metadata = reader.isel({"p": 0}, metadata=True)
+    assert all(frame["frame_period_ms"] == 100 for frame in metadata)
+    file_map, plate, metadata = reader.to_experiment_tiff_config()
+    assert metadata["exposure_ms"] == 20
+    assert metadata["frame_period_ms"] == 100
+    reopened = TiffCollectionReader(
+        TiffCollectionSettings(
+            file_map=file_map, plate=plate, metadata=metadata, tiff_folder_path=tmp_path
+        )
+    )
+    _, metadata = reopened.isel({"p": 0}, metadata=True)
+    assert all(frame["frame_period_ms"] == 100 for frame in metadata)
+    reopened.close()
+    reader.close()
+
+
 def test_isel_invalid_kwargs(
     temp_tiff_files: dict[str, list[Path]], tmp_path: Path
 ) -> None:

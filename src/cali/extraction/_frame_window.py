@@ -11,7 +11,9 @@ import numpy as np
 from cali._constants import RUNNER_TIME_KEY
 
 DiscardInitialUnit = Literal["frames", "seconds"]
-TimingSource = Literal["runner_time", "exposure", "user_verified"]
+TimingSource = Literal[
+    "runner_time", "metadata_frame_period", "exposure", "user_verified"
+]
 
 
 class StartupDiscardError(ValueError):
@@ -23,8 +25,11 @@ class TimingDescriptor:
     """Timing information for one uncropped source sequence."""
 
     timestamps_ms: list[float]
-    source: Literal["runner_time", "exposure"]
+    source: TimingSource
     trusted: bool
+    frame_rate_hz: float | None = None
+    interval_jitter_fraction: float | None = None
+    validation: str = "legacy_descriptor"
 
 
 @dataclass(frozen=True)
@@ -39,34 +44,95 @@ class ExtractionFrameWindow:
     timing_source: TimingSource
 
 
-def build_timing_descriptor(meta: list[dict], num_timepoints: int) -> TimingDescriptor:
-    """Build the legacy time axis and record whether timestamps are trustworthy."""
+def _describe_timing(
+    timestamps_ms: list[float], source: TimingSource, trusted: bool, validation: str
+) -> TimingDescriptor:
+    rate = None
+    jitter = None
+    if trusted and len(timestamps_ms) >= 2:
+        intervals = np.diff(timestamps_ms)
+        period = float(np.median(intervals))
+        if period > 0:
+            rate = 1000.0 / period
+            if source == "runner_time":
+                jitter = float(np.max(np.abs(intervals - period)) / period)
+    return TimingDescriptor(timestamps_ms, source, trusted, rate, jitter, validation)
+
+
+def build_timing_descriptor(
+    meta: list[dict],
+    num_timepoints: int,
+    *,
+    frame_rate: float | None = None,
+    frame_rate_verified: bool = False,
+) -> TimingDescriptor:
+    """Resolve acquisition timing without treating exposure as frame period.
+
+    Complete acquisition timestamps take priority over explicit ``frame_period_ms``
+    metadata, then user-verified settings. Exposure-only axes preserve legacy OASIS
+    behavior but never authorize seconds-mode discard or CASCADE model selection.
+    """
     if num_timepoints < 0:
         raise ValueError("Number of timepoints cannot be negative.")
 
-    exposure_ms = 0.0
-    if meta:
-        raw_exposure = meta[0].get("exposure_ms", 0.0)
-        if raw_exposure is not None:
-            exposure_ms = float(raw_exposure)
-
-    runner_times: list[float] = []
-    if meta and RUNNER_TIME_KEY in meta[0]:
-        for frame_meta in meta:
-            value = frame_meta.get(RUNNER_TIME_KEY)
-            if value is not None:
-                runner_times.append(float(value))
-
-    if len(runner_times) == num_timepoints:
+    if (
+        meta
+        and len(meta) == num_timepoints
+        and all(item.get(RUNNER_TIME_KEY) is not None for item in meta)
+    ):
+        try:
+            runner_times = [float(item[RUNNER_TIME_KEY]) for item in meta]
+        except (TypeError, ValueError) as error:
+            raise StartupDiscardError(
+                "Acquisition timestamps must be numeric."
+            ) from error
         times = np.asarray(runner_times, dtype=float)
-        trusted = bool(
-            np.all(np.isfinite(times))
-            and (len(times) < 2 or np.all(np.diff(times) > 0))
-        )
-        return TimingDescriptor(runner_times, "runner_time", trusted)
+        if not np.all(np.isfinite(times)) or (
+            len(times) >= 2 and not np.all(np.diff(times) > 0)
+        ):
+            raise StartupDiscardError(
+                "Acquisition timestamps must be finite and strictly increasing."
+            )
+        return _describe_timing(runner_times, "runner_time", True, "trusted_timestamps")
 
+    periods = [
+        item["frame_period_ms"]
+        for item in meta
+        if item.get("frame_period_ms") is not None
+    ]
+    if periods:
+        try:
+            values = np.asarray(periods, dtype=float)
+        except (TypeError, ValueError) as error:
+            raise StartupDiscardError(
+                "Frame-period metadata must be numeric."
+            ) from error
+        if not np.all(np.isfinite(values)) or np.any(values <= 0):
+            raise StartupDiscardError(
+                "Frame-period metadata must be finite and positive."
+            )
+        if not np.all(values == values[0]):
+            raise StartupDiscardError(
+                "Conflicting frame-period metadata requires per-frame timestamps."
+            )
+        timestamps = [frame * float(values[0]) for frame in range(num_timepoints)]
+        return _describe_timing(
+            timestamps, "metadata_frame_period", True, "trusted_frame_period"
+        )
+
+    if frame_rate_verified:
+        if frame_rate is None or not math.isfinite(frame_rate) or frame_rate <= 0:
+            raise StartupDiscardError("A positive verified frame rate is required.")
+        timestamps = [frame * 1000.0 / frame_rate for frame in range(num_timepoints)]
+        return _describe_timing(timestamps, "user_verified", True, "user_verified")
+
+    raw_exposure = meta[0].get("exposure_ms", 0.0) if meta else 0.0
+    try:
+        exposure_ms = float(raw_exposure) if raw_exposure is not None else 0.0
+    except (TypeError, ValueError) as error:
+        raise StartupDiscardError("Exposure metadata must be numeric.") from error
     timestamps_ms = [frame * exposure_ms for frame in range(num_timepoints)]
-    return TimingDescriptor(timestamps_ms, "exposure", False)
+    return _describe_timing(timestamps_ms, "exposure", False, "unverified_exposure")
 
 
 def resolve_initial_frame_window(
@@ -98,12 +164,21 @@ def resolve_initial_frame_window(
                 "Discard at Start must be a whole number in Frames mode."
             )
         source_start_frame = int(discard_value)
-    elif timing.trusted:
+    elif timing.trusted and timing.source == "runner_time":
         timestamps = np.asarray(timing.timestamps_ms, dtype=float)
         relative_ms = timestamps - timestamps[0]
         source_start_frame = int(
             np.searchsorted(relative_ms, discard_value * 1000.0, side="left")
         )
+    elif timing.trusted and timing.source in {"metadata_frame_period", "user_verified"}:
+        period = (
+            timing.timestamps_ms[1] - timing.timestamps_ms[0]
+            if original_count > 1
+            else None
+        )
+        if period is None or not math.isfinite(period) or period <= 0:
+            raise StartupDiscardError("At least two timed samples are required.")
+        source_start_frame = math.ceil(discard_value * 1000.0 / period)
     else:
         if not frame_rate_verified:
             raise StartupDiscardError(
@@ -121,15 +196,9 @@ def resolve_initial_frame_window(
             "Discard at Start removes the entire recording "
             f"({source_start_frame} of {original_count} frames)."
         )
-    if discard_value > 0 and retained_count < 2:
-        raise StartupDiscardError(
-            "Discard at Start must leave at least two frames for extraction "
-            f"({retained_count} would remain)."
-        )
-
     if source_start_frame == 0:
         source_start_time_ms = 0.0
-    elif timing_source == "user_verified":
+    elif timing_source == "user_verified" and timing.source != "user_verified":
         source_start_time_ms = source_start_frame * 1000.0 / frame_rate
     else:
         source_start_time_ms = (
@@ -154,17 +223,107 @@ def retained_time_axis(
 ) -> list[float]:
     """Return the retained time axis, rebased to the first retained frame."""
     start = window.source_start_frame
+    if window.timing_source == "user_verified" and timing.source != "user_verified":
+        interval_ms = 1000.0 / frame_rate
+        return [frame * interval_ms for frame in range(window.retained_frame_count)]
+
     if start == 0:
         # Preserve the exact legacy axis for the default/no-op configuration.
         return timing.timestamps_ms
 
-    if window.timing_source == "user_verified":
-        interval_ms = 1000.0 / frame_rate
-        return [frame * interval_ms for frame in range(window.retained_frame_count)]
-
     retained = timing.timestamps_ms[start:]
     first = retained[0]
     return [timestamp - first for timestamp in retained]
+
+
+def preflight_retained_timing(
+    timing: TimingDescriptor,
+    window: ExtractionFrameWindow,
+    *,
+    frame_rate: float,
+    minimum_frames: dict[str, int],
+) -> TimingDescriptor:
+    """Validate retained duration and every enabled consumer before ROI work."""
+    if not minimum_frames or any(count < 1 for count in minimum_frames.values()):
+        raise ValueError("Consumers must declare positive minimum frame counts.")
+    limiting, required = max(minimum_frames.items(), key=lambda item: item[1])
+    if window.retained_frame_count < required:
+        raise StartupDiscardError(
+            f"{window.original_frame_count} source frames minus "
+            f"{window.source_start_frame} discarded leaves "
+            f"{window.retained_frame_count} retained; {limiting} requires at least "
+            f"{required} frames. Reduce the discard or use a longer recording."
+        )
+    timestamps = retained_time_axis(timing, window, frame_rate=frame_rate)
+    times = np.asarray(timestamps, dtype=float)
+    if (
+        len(times) != window.retained_frame_count
+        or len(times) < 2
+        or (not np.all(np.isfinite(times)) or not np.all(np.diff(times) > 0))
+    ):
+        raise StartupDiscardError(
+            "Retained timing must have one finite, strictly increasing timestamp "
+            "per frame and positive duration. Supply acquisition timestamps, "
+            "frame_period_ms metadata, or a verified acquisition frame rate."
+        )
+    return _describe_timing(
+        timestamps,
+        window.timing_source,
+        timing.trusted or window.timing_source == "user_verified",
+        timing.validation if timing.source == window.timing_source else "user_verified",
+    )
+
+
+def validate_model_timing(
+    timing: TimingDescriptor,
+    *,
+    settings_frame_rate: float,
+    model_frame_rate: float,
+    relative_tolerance: float = 0.01,
+) -> float:
+    """Require trusted, uniform retained timing matching settings and model rate.
+
+    The default maximum interval deviation and rate mismatch are both 1%.
+    User-verified and metadata-period rates have unknown measured jitter.
+    """
+    if not math.isfinite(relative_tolerance) or not 0 < relative_tolerance < 1:
+        raise ValueError("Timing tolerance must be finite and between zero and one.")
+    if not timing.trusted or timing.source == "exposure":
+        raise StartupDiscardError(
+            "CASCADE requires acquisition timestamps, explicit frame-period metadata, "
+            "or a user-verified acquisition frame rate; exposure alone is insufficient."
+        )
+    times = np.asarray(timing.timestamps_ms, dtype=float)
+    if (
+        len(times) < 2
+        or not np.all(np.isfinite(times))
+        or not np.all(np.diff(times) > 0)
+    ):
+        raise StartupDiscardError(
+            "CASCADE requires finite, strictly increasing timing."
+        )
+    intervals = np.diff(times)
+    period = float(np.median(intervals))
+    observed_rate = 1000.0 / period
+    if timing.source == "runner_time":
+        jitter = float(np.max(np.abs(intervals - period)) / period)
+        if jitter > relative_tolerance:
+            raise StartupDiscardError(
+                f"CASCADE requires uniform intervals; maximum interval deviation "
+                f"is {jitter:.2%} (allowed {relative_tolerance:.2%})."
+            )
+    for label, rate in (
+        ("extraction settings", settings_frame_rate),
+        ("CASCADE model", model_frame_rate),
+    ):
+        if not math.isfinite(rate) or rate <= 0:
+            raise StartupDiscardError(f"{label} require a finite, positive frame rate.")
+        if abs(observed_rate - rate) / rate > relative_tolerance:
+            raise StartupDiscardError(
+                f"Acquisition rate {observed_rate:.6g} Hz does not match {label} "
+                f"rate {rate:.6g} Hz (allowed {relative_tolerance:.2%})."
+            )
+    return observed_rate
 
 
 def source_frame_to_retained(

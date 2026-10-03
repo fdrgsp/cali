@@ -19,6 +19,10 @@ class OasisBackend:
     """Preserve the legacy per-ROI OASIS computation inside a batch interface."""
 
     name = "oasis"
+    # Welch frequencies must include a bin strictly inside (0.25, 0.5).
+    # Five is the smallest length after which every longer input has such a bin;
+    # four frames produces an empty noise band and a NaN estimate.
+    minimum_frames = 5
 
     def infer_all(
         self,
@@ -33,6 +37,13 @@ class OasisBackend:
         """Infer rows in order, checking cancellation before and after each ROI."""
         if dff.ndim != 2:
             raise ValueError("OASIS requires a (ROIs, frames) DFF matrix.")
+        if dff.shape[1] < self.minimum_frames:
+            raise ValueError(
+                f"OASIS noise estimation requires at least {self.minimum_frames} "
+                f"frames; received {dff.shape[1]}."
+            )
+        if not np.all(np.isfinite(dff)):
+            raise ValueError("OASIS requires finite DFF values.")
         if roi_labels is not None and len(roi_labels) != len(dff):
             raise ValueError("ROI labels must match the number of DFF rows.")
         den_dff = np.empty(dff.shape, dtype=float)

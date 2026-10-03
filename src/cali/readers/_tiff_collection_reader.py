@@ -333,6 +333,8 @@ class TiffCollectionReader:
             first_meta = self._metadata[0]
             metadata["exposure_ms"] = first_meta.get("exposure_ms")
             metadata["pixel_size_um"] = first_meta.get("pixel_size_um")
+            if "frame_period_ms" in first_meta:
+                metadata["frame_period_ms"] = first_meta["frame_period_ms"]
 
         return file_map_str, self._plate.name, metadata
 
@@ -379,6 +381,8 @@ class TiffCollectionReader:
                 },
                 "file_path": str(tiff_path),
             }
+            if "frame_period_ms" in metadata:
+                frame_meta["frame_period_ms"] = metadata["frame_period_ms"]
             meta_list.append(frame_meta)
 
         return meta_list

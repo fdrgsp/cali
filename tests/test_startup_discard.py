@@ -165,14 +165,14 @@ def test_source_frame_and_interval_transform() -> None:
 
 def test_extraction_crops_once_before_roi_processing() -> None:
     runner = ExtractionRunner()
-    data = np.arange(6 * 2 * 2, dtype=float).reshape(6, 2, 2)
+    data = np.arange(8 * 2 * 2, dtype=float).reshape(8, 2, 2)
     meta = [
         {
             RUNNER_TIME_KEY: frame * 100.0,
             "exposure_ms": 100.0,
             "event": {"pos_name": "A1_0000"},
         }
-        for frame in range(6)
+        for frame in range(8)
     ]
     dataset = MagicMock()
     dataset.isel.return_value = (data, meta)
@@ -195,7 +195,7 @@ def test_extraction_crops_once_before_roi_processing() -> None:
         observed["data"] = args[0]
         observed["meta"] = args[1]
         return _RoiParts(
-            1, args[5], np.zeros(4), None, None, np.zeros(4), 1.0, "pixels"
+            1, args[5], np.zeros(6), None, None, np.zeros(6), 1.0, "pixels"
         )
 
     mask = np.ones((2, 2), dtype=bool)
@@ -210,7 +210,7 @@ def test_extraction_crops_once_before_roi_processing() -> None:
         patch(
             "cali.extraction._extraction_runner.OasisBackend.infer_all",
             return_value=OasisResult(
-                np.zeros((1, 4)), np.zeros((1, 4)), np.zeros(1), np.zeros((1, 1))
+                np.zeros((1, 6)), np.zeros((1, 6)), np.zeros(1), np.zeros((1, 1))
             ),
         ),
     ):
@@ -220,8 +220,11 @@ def test_extraction_crops_once_before_roi_processing() -> None:
     np.testing.assert_array_equal(observed["data"], data[2:])
     assert observed["meta"][0][RUNNER_TIME_KEY] == 200.0
     trace = fov.rois[0]._new_traces[0]
-    assert trace.x_axis == [0.0, 100.0, 200.0, 300.0]
+    assert trace.x_axis == [0.0, 100.0, 200.0, 300.0, 400.0, 500.0]
     assert trace.source_start_frame == 2
+    assert trace.extraction_frame_window.acquisition_frame_rate_hz == 10
+    assert trace.extraction_frame_window.interval_jitter_fraction == 0
+    assert trace.extraction_frame_window.timing_validation == "trusted_timestamps"
 
 
 def test_startup_discard_gui_round_trip(qtbot: QtBot) -> None:
