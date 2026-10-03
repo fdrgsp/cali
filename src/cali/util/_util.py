@@ -5,12 +5,13 @@ from pathlib import Path
 import numpy as np
 import tifffile
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, select
 from tqdm import tqdm
 
 from cali._constants import OZ, TS
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -389,7 +390,7 @@ def update_fovs_in_database(
         engine = db_path
         should_dispose = False
     else:
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{db_path}",
             echo=echo,
             connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -398,6 +399,7 @@ def update_fovs_in_database(
         should_dispose = True
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             for fov in fov_list:
                 # Load existing FOV from database by position_index to get the ID
@@ -503,7 +505,7 @@ def load_fovs_from_database(
     >>> update_fovs_in_database("results.cali", fovs)
     """
     from sqlalchemy.engine import Engine
-    from sqlmodel import Session, create_engine, select
+    from sqlmodel import Session, select
 
     from cali.sqlmodel._model import FOV
 
@@ -521,7 +523,7 @@ def load_fovs_from_database(
         engine = db_path
         should_dispose = False
     else:
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{db_path}",
             echo=echo,
             connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -530,6 +532,7 @@ def load_fovs_from_database(
         should_dispose = True
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             from sqlalchemy.orm import selectinload
 
@@ -730,7 +733,7 @@ def import_labels_to_database(
     """
     database_path = Path(database_path)
 
-    engine = create_engine(
+    engine = create_cali_engine(
         f"sqlite:///{database_path}",
         echo=False,
         connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -738,6 +741,7 @@ def import_labels_to_database(
     )
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             # 1. Create or reuse DetectionSettings for imported labels
             det_settings = DetectionSettings(method="imported_labels")

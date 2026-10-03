@@ -38,6 +38,7 @@ from cali.plot._main_plot import (
     requires_active_rois,
 )
 from cali.sqlmodel import FOV, ROI, AnalysisSettings, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel._engine import ensure_schema_current
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -200,6 +201,8 @@ class _SingleWellGraphWidget(QWidget):
 
     @engine.setter
     def engine(self, engine: Engine | None) -> None:
+        if engine is not None:
+            ensure_schema_current(engine)
         self._engine = engine
 
     # ------------------------------------------------------------------ #
@@ -649,6 +652,8 @@ class _MultilWellGraphWidget(QWidget):
 
     @engine.setter
     def engine(self, engine: Engine | None) -> None:
+        if engine is not None:
+            ensure_schema_current(engine)
         self._engine = engine
 
     # ------------------------------------------------------------------ #

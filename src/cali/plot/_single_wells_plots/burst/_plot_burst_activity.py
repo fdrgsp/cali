@@ -7,6 +7,7 @@ import pyqtgraph as pg
 
 from cali.logger import cali_logger
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
     ROI,
     CaliResult,
@@ -48,6 +49,7 @@ def _get_fov_analysis_for_run(
 
     from cali.sqlmodel._model import FOV
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get FOV
         stmt = select(FOV).where(col(FOV.name) == fov_name)
@@ -323,6 +325,7 @@ def _get_burst_parameters(
 
     from cali.sqlmodel._model import AnalysisSettings
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Prefer settings from the given run_id
         if run_id is not None:
@@ -376,6 +379,7 @@ def _get_population_spike_data(
 
     from cali.sqlmodel._model import FOV
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get detection_settings_id from the run if run_id is provided
         detection_settings_id: int | None = None
@@ -1280,6 +1284,7 @@ def _get_calcium_burst_parameters(
 
     from cali.sqlmodel._model import AnalysisSettings
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         if run_id is not None:
             from cali.sqlmodel._model import CaliResult
@@ -1332,6 +1337,7 @@ def _get_population_calcium_data(
 
     from cali.sqlmodel._model import FOV
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(FOV)

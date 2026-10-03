@@ -32,7 +32,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, select
 from superqt.utils import create_worker
 from tqdm import tqdm
 
@@ -64,6 +64,7 @@ from cali.sqlmodel import (
     has_fov_analysis,
     save_experiment_to_database,
 )
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 from cali.util import load_data_from_path
 
@@ -682,13 +683,14 @@ class CaliGui(QMainWindow):
         if self._database_path is not None:
             from cali.sqlmodel._model import FOV
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
             )
             try:
                 from sqlmodel import func
 
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     count = session.exec(select(func.count(FOV.id))).one()
                     return int(count)
@@ -797,11 +799,12 @@ class CaliGui(QMainWindow):
         # VALIDATE BOTH DETECTION AND EXTRACTION EXIST --------------------------------
         from cali.sqlmodel._model import DetectionSettings
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{database_path}",
             connect_args={"timeout": 30.0, "check_same_thread": False},
         )
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 has_detection = session.exec(
                     select(DetectionSettings.id).limit(1)
@@ -1044,14 +1047,15 @@ class CaliGui(QMainWindow):
             settings_list = []
 
             # Optimize: Load all settings in one query
-            from sqlmodel import Session, create_engine, select
+            from sqlmodel import Session, select
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     statement = select(DetectionSettings).where(
                         DetectionSettings.id.in_(detection_ids)  # type: ignore
@@ -1142,16 +1146,17 @@ class CaliGui(QMainWindow):
         if not self._database_path:
             return []
 
-        from sqlmodel import Session, create_engine, select
+        from sqlmodel import Session, select
 
         from cali.sqlmodel._model import FOV, ROI
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Find positions that already have ROIs with this detection
                 query_start = time.perf_counter()
@@ -1200,16 +1205,17 @@ class CaliGui(QMainWindow):
         if not self._database_path:
             return []
 
-        from sqlmodel import Session, create_engine, select
+        from sqlmodel import Session, select
 
         from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Find positions that have Traces with this combination
                 query_start = time.perf_counter()
@@ -1435,9 +1441,9 @@ class CaliGui(QMainWindow):
                 and detection_settings is not None
             ):
                 # Detection-only mode: check if multiple runs exist
-                from sqlmodel import Session, create_engine, select
+                from sqlmodel import Session, select
 
-                engine = create_engine(
+                engine = create_cali_engine(
                     f"sqlite:///{self._database_path}",
                     echo=False,
                     connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -1445,6 +1451,7 @@ class CaliGui(QMainWindow):
                 )
 
                 try:
+                    ensure_schema_current(engine)
                     with Session(engine) as session:
                         # Get detection settings ID
                         if isinstance(detection_settings, int):
@@ -1620,12 +1627,12 @@ class CaliGui(QMainWindow):
         run_analysis : bool
             Whether analysis is being run (for export filtering)
         """
-        from sqlmodel import Session, create_engine, select
+        from sqlmodel import Session, select
 
         # Query database for all compatible runs
         assert self._database_path is not None
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             echo=False,
             connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -1637,6 +1644,7 @@ class CaliGui(QMainWindow):
             detection_settings_id = detection_settings
         else:
             # Need to get the ID from the database
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Find or create detection settings
                 from cali.runner._cali_runner import CaliRunner
@@ -1648,6 +1656,7 @@ class CaliGui(QMainWindow):
 
         compatible_runs: list[CaliResult] = []
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Query all runs with matching detection settings
                 stmt = select(CaliResult).where(
@@ -1796,9 +1805,7 @@ class CaliGui(QMainWindow):
         self._init_loading_bar(f"📊 Exporting data from Run {run_id}...", False)
 
         try:
-            from sqlmodel import create_engine
-
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 echo=False,
                 connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -1905,13 +1912,14 @@ class CaliGui(QMainWindow):
         if not self._database_path:
             return
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             echo=False,
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Query for most recently modified CaliResult
                 most_recent = session.exec(
@@ -1974,17 +1982,18 @@ class CaliGui(QMainWindow):
 
         # Load experiment and update it with plate map data
         # Note: We need to update even if both are empty, to clear plate_maps
-        from sqlmodel import Session, create_engine, select
+        from sqlmodel import Session, select
 
         from cali.sqlmodel._model import Condition
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             echo=False,
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # Check if experiment table exists (database is initialized)
                 from sqlalchemy import inspect
@@ -2209,15 +2218,16 @@ class CaliGui(QMainWindow):
 
     def _update_graph_properties(self, database_path: Path | str) -> None:
         """Update all graph widgets with the current database path and engine."""
-        from sqlmodel import create_engine
-
         # Create new SQLAlchemy engine for database queries
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{database_path}",
             echo=False,
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
+        # Qt can destroy a window without sending closeEvent (e.g. deleteLater).
+        # Migration has already opened a connection even if no plot is queried.
+        self.destroyed.connect(lambda: engine.dispose(close=True))
 
         for sw_graph in self.SW_GRAPHS:
             if sw_graph.engine is not None:
@@ -2341,6 +2351,9 @@ class CaliGui(QMainWindow):
                             neuropil_correction_factor=(
                                 e_settings.neuropil_correction_factor
                             ),
+                            discard_initial_value=e_settings.discard_initial_value,
+                            discard_initial_unit=e_settings.discard_initial_unit,
+                            frame_rate_verified=e_settings.frame_rate_verified,
                         ),
                         metadata_data=MetadataData(
                             pixel_size=e_settings.pixel_size,
@@ -2708,11 +2721,12 @@ class CaliGui(QMainWindow):
                 return
             from cali.sqlmodel._model import FOV, Well
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     stmt = (
                         select(FOV.name, FOV.position_index)
@@ -2746,11 +2760,12 @@ class CaliGui(QMainWindow):
         if self._database_path:
             from cali.sqlmodel._model import FOV, Well
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     # Get FOVs for this well from database
                     stmt = (
@@ -2878,18 +2893,19 @@ class CaliGui(QMainWindow):
 
         try:
             from sqlalchemy.orm import selectinload
-            from sqlmodel import Session, create_engine, select
+            from sqlmodel import Session, select
 
             from cali.sqlmodel._model import FOV, ROI, Traces
             from cali.util import coordinates_to_mask
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 echo=False,
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     # Query ROIs with detection_settings_id filter
                     stmt = (
@@ -3100,13 +3116,14 @@ class CaliGui(QMainWindow):
         # Query detection settings from the database
         from cali.sqlmodel._model import DetectionSettings
 
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._database_path}",
             connect_args={"timeout": 30.0, "check_same_thread": False},
             pool_pre_ping=True,
         )
         settings_list: list[tuple[int, str]] = []
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 results = session.exec(select(DetectionSettings)).all()
                 for d_settings in results:

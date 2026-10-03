@@ -10,6 +10,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.sqlmodel import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOVAnalysis
 
 if TYPE_CHECKING:
@@ -107,6 +108,7 @@ def _get_calcium_peaks_events_from_rois(
     -------
         Dictionary mapping ROI names to binary peak event arrays
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         roi_data = []  # List of (ROI, Traces, DataAnalysis)
 

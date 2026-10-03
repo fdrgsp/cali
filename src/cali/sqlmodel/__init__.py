@@ -9,6 +9,7 @@ and export.
 from ._data_to_plate import data_to_plate
 from ._db_to_plate_map import experiment_to_plate_map_data
 from ._db_to_useq_plate import experiment_to_useq_plate, experiment_to_useq_plate_plan
+from ._engine import create_cali_engine, ensure_schema_current, migrate_database
 from ._model import (
     FOV,
     ROI,
@@ -32,6 +33,7 @@ from ._util import (
     has_experiment_analysis,
     has_fov_analysis,
     load_experiment_from_database,
+    migrate_startup_discard,
     save_experiment_to_database,
 )
 from ._visualize_experiment import print_cali_results
@@ -52,14 +54,18 @@ __all__ = [
     "Traces",
     "Well",
     "WellCondition",
+    "create_cali_engine",
     "create_database_and_tables",
     "data_to_plate",
+    "ensure_schema_current",
     "experiment_to_plate_map_data",
     "experiment_to_useq_plate",
     "experiment_to_useq_plate_plan",
     "has_experiment_analysis",
     "has_fov_analysis",
     "load_experiment_from_database",
+    "migrate_database",
+    "migrate_startup_discard",
     "print_cali_results",
     "save_experiment_to_database",
     "useq_plate_plan_to_db",

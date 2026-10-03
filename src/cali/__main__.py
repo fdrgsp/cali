@@ -9,6 +9,8 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from cali.sqlmodel._engine import create_cali_engine
+
 # CRITICAL: Import torch before Qt on Windows to avoid DLL conflicts
 # When PyQt6 initializes before PyTorch on Windows, it can cause c10.dll failures
 if sys.platform == "win32":
@@ -37,7 +39,6 @@ def _str_to_bool(value: str) -> bool:
 
 def _tree_command(parsed_args: argparse.Namespace) -> None:
     """Execute the `tree` sub-command."""
-    from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
     from cali.sqlmodel import print_cali_results
@@ -48,7 +49,7 @@ def _tree_command(parsed_args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # NullPool ensures connections are closed immediately (not kept in a pool).
-    engine = create_engine(f"sqlite:///{db_path}", poolclass=NullPool)
+    engine = create_cali_engine(f"sqlite:///{db_path}", poolclass=NullPool)
     try:
         print_cali_results(
             engine,

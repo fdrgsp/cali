@@ -12,11 +12,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 
 from ._model import Experiment
 
@@ -27,31 +27,13 @@ from cali.logger import cali_logger
 
 
 def migrate_analysis_settings(engine: Engine) -> None:
-    """Add missing columns to analysis_settings table for existing databases.
+    """Compatibility alias for the centralized schema migration."""
+    ensure_schema_current(engine)
 
-    This is safe to call multiple times — it only adds columns that don't exist.
-    """
-    with engine.connect() as conn:
-        existing_cols = {
-            row[1] for row in conn.execute(text("PRAGMA table_info(analysis_settings)"))
-        }
-        if not existing_cols:
-            return  # table doesn't exist yet
-        if "enable_calcium" not in existing_cols:
-            conn.execute(
-                text(
-                    "ALTER TABLE analysis_settings "
-                    "ADD COLUMN enable_calcium BOOLEAN DEFAULT 1 NOT NULL"
-                )
-            )
-        if "enable_spikes" not in existing_cols:
-            conn.execute(
-                text(
-                    "ALTER TABLE analysis_settings "
-                    "ADD COLUMN enable_spikes BOOLEAN DEFAULT 1 NOT NULL"
-                )
-            )
-        conn.commit()
+
+def migrate_startup_discard(engine: Engine) -> None:
+    """Compatibility alias for the centralized schema migration."""
+    ensure_schema_current(engine)
 
 
 def create_database_and_tables(engine: Engine) -> None:
@@ -64,9 +46,9 @@ def create_database_and_tables(engine: Engine) -> None:
 
     Example
     -------
-    >>> from sqlmodel import create_engine
+    >>> from cali.sqlmodel import create_cali_engine
     >>> from cali.sqlmodel import create_database_and_tables
-    >>> engine = create_engine("sqlite:///calcium_analysis.db")
+    >>> engine = create_cali_engine("sqlite:///calcium_analysis.db")
     >>> create_database_and_tables(engine)
     """
     from sqlmodel import SQLModel
@@ -89,8 +71,9 @@ def create_database_and_tables(engine: Engine) -> None:
         WellCondition,
     )
 
+    ensure_schema_current(engine)
     SQLModel.metadata.create_all(engine)
-    migrate_analysis_settings(engine)
+    ensure_schema_current(engine)
 
 
 def save_experiment_to_database(
@@ -142,7 +125,7 @@ def save_experiment_to_database(
     if overwrite and db_path.exists():
         db_path.unlink()
 
-    engine = create_engine(
+    engine = create_cali_engine(
         f"sqlite:///{db_path}",
         echo=echo,
         connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -151,6 +134,7 @@ def save_experiment_to_database(
     create_database_and_tables(engine)
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             # Pre-resolve conditions BEFORE merge to avoid session.merge()
             # limitations with link_model many-to-many relationships.
@@ -278,7 +262,7 @@ def load_experiment_from_database(
     ...     print(f"Loaded {len(exp.plate.wells)} wells")
     >>>
     >>> # For modifications, use engine + ID pattern instead:
-    >>> engine = create_engine("sqlite:///analysis.db")
+    >>> engine = create_cali_engine("sqlite:///analysis.db")
     >>> with Session(engine) as session:
     ...     exp = session.get(Experiment, experiment_id)
     ...     exp.name = "Updated Name"  # Modify within session
@@ -296,7 +280,7 @@ def load_experiment_from_database(
 
     # Convert to string for consistency
     db_path_str = str(db_path)
-    engine = create_engine(
+    engine = create_cali_engine(
         f"sqlite:///{db_path_str}",
         echo=echo,
         connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -305,6 +289,7 @@ def load_experiment_from_database(
 
     try:
         # Use context manager to ensure session is properly closed
+        ensure_schema_current(engine)
         with Session(engine, expire_on_commit=False) as session:
             # Query for experiment
             if experiment_name:
@@ -388,12 +373,13 @@ def has_fov_analysis(db_path: str | Path, fov_name: str) -> bool:
 
     from ._model import FOV, ROI, Traces
 
-    engine = create_engine(
+    engine = create_cali_engine(
         f"sqlite:///{db_path}",
         connect_args={"timeout": 30.0, "check_same_thread": False},
         pool_pre_ping=True,
     )
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             # Check if this specific FOV has any ROIs with Traces entries
             # (which indicates the FOV has been analyzed)
@@ -431,12 +417,13 @@ def has_experiment_analysis(db_path: str | Path) -> bool:
 
     from ._model import Traces
 
-    engine = create_engine(
+    engine = create_cali_engine(
         f"sqlite:///{db_path}",
         connect_args={"timeout": 30.0, "check_same_thread": False},
         pool_pre_ping=True,
     )
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             # Check if any Traces entries exist (indicates analysis has been run)
             statement = select(Traces).limit(1)

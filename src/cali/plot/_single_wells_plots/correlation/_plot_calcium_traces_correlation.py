@@ -12,6 +12,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, FOVAnalysis
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ def _get_dff_correlation_matrix_from_db(
         return None, None
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             stmt = (
                 select(FOVAnalysis)
@@ -113,6 +115,7 @@ def _get_den_dff_correlation_matrix_from_db(
         return None, None
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             stmt = (
                 select(FOVAnalysis)

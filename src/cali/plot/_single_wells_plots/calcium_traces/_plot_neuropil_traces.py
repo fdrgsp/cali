@@ -12,6 +12,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -234,6 +235,7 @@ def _plot_neuropil_traces(
         return
 
     # ---------- QUERY DATABASE ----------
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get detection_settings_id from the run
         result = session.get(CaliResult, run_id)

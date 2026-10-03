@@ -580,9 +580,13 @@ def test_sorted_spike_synchrony_click_emits_correct_roi_labels(
 
 
 def test_sorted_den_dff_correlation_windowed_click(
-    qtbot: QtBot,
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test windowed den_dff correlation click handler."""
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.correlation._plot_evoked_correlation_synchrony.ensure_schema_current",
+        lambda _: None,
+    )
     from cali.plot._single_wells_plots.correlation._plot_evoked_correlation_synchrony import (  # noqa: E501
         _plot_sorted_den_dff_correlation_windowed_by_stim,
     )
@@ -634,6 +638,7 @@ def test_sorted_den_dff_correlation_windowed_click(
             mock_trace = MagicMock()
             mock_trace.den_dff = np.random.rand(100).tolist()
             mock_trace.roi_id = label
+            mock_trace.source_start_frame = 0
 
             # Bind to roi for later lookup
             mock_roi.mock_trace = mock_trace

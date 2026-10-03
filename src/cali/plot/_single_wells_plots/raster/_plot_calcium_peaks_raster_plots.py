@@ -9,6 +9,7 @@ from matplotlib.colors import Normalize
 from sqlmodel import Session, col, select
 
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ def _generate_raster_plot(
     plot.setTitle(title)
 
     # ------------------------ Query DB ------------------------ #
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -338,6 +340,7 @@ def _generate_intensity_heatmap(
     plot.setTitle("Calcium Intensity Heatmap (Denoised ΔF/F)")
 
     # ------------------------ Query DB ------------------------ #
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)

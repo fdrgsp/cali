@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from sqlmodel import Session, col, select
 
+from cali.extraction._frame_window import source_frame_to_retained
 from cali.sqlmodel import (
     FOV,
     ROI,
@@ -22,6 +23,7 @@ from cali.sqlmodel import (
     Traces,
     Well,
 )
+from cali.sqlmodel._engine import ensure_schema_current
 
 from ._util import (
     BarPlotData,
@@ -58,6 +60,7 @@ def _query_evoked_amplitudes_by_condition(
     """
     from cali.plot._util import separate_stimulated_vs_non_stimulated_peaks
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Build query for all ROIs with their traces and analysis
         stmt = (
@@ -94,7 +97,17 @@ def _query_evoked_amplitudes_by_condition(
             # Build stimulations_frames_and_powers dict
             # Convert frames to int first to handle float values from database
             stimulations_frames_and_powers = {
-                str(int(frame)): power
+                str(
+                    int(
+                        source_frame_to_retained(
+                            frame,
+                            traces.source_start_frame,
+                            # Preserve this legacy consumer's existing frame
+                            # convention while shifting the cropped prefix.
+                            one_based=False,
+                        )
+                    )
+                ): power
                 for frame, power in zip(
                     settings.led_pulse_on_frames, settings.led_pulse_powers
                 )

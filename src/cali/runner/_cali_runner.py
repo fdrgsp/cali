@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import event
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, select
 
 from cali._constants import DEFAULT_CALI_DB_NAME, CorrelationDataType, TraceDataType
 from cali.analysis import AnalysisRunner
@@ -16,6 +16,7 @@ from cali.extraction import ExtractionRunner
 from cali.logger import cali_logger
 from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
 from cali.util import commit_fov_result, load_data_from_path
 
@@ -285,7 +286,7 @@ class CaliRunner:
         self._setup_database(self._db_path, experiment, overwrite)
 
         # 2. Get database engine and session
-        engine = create_engine(
+        engine = create_cali_engine(
             f"sqlite:///{self._db_path}",
             echo=echo,
             connect_args={"timeout": 30.0, "check_same_thread": False},
@@ -300,6 +301,7 @@ class CaliRunner:
             cursor.close()
 
         try:
+            ensure_schema_current(engine)
             with Session(engine) as session:
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
@@ -1244,13 +1246,14 @@ class CaliRunner:
             # experiment.id is now set by save_experiment_to_database
         else:
             # Validate experiment ID matches database
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 echo=False,
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     from cali.sqlmodel._model import Experiment
 
@@ -1513,6 +1516,11 @@ class CaliRunner:
                         inferred_spikes=source_trace.inferred_spikes,
                         x_axis=source_trace.x_axis,
                         x_axis_units=source_trace.x_axis_units,
+                        source_start_frame=source_trace.source_start_frame,
+                        source_start_time_ms=source_trace.source_start_time_ms,
+                        original_frame_count=source_trace.original_frame_count,
+                        discarded_duration_ms=source_trace.discarded_duration_ms,
+                        discard_timing_source=source_trace.discard_timing_source,
                         roi_id=roi.id,
                         analysis_result_id=analysis_result_id,
                         neuropil_mask_id=source_trace.neuropil_mask_id,

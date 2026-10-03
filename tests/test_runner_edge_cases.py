@@ -98,7 +98,7 @@ def test_cancel_mid_position_roi_processing(
     cancel_after_n_rois = 1  # Cancel after processing just 1 ROI
 
     # Patch the extraction method to cancel mid-position
-    original_extract = runner2._extraction_runner._process_roi_trace
+    original_extract = runner2._extraction_runner._compute_roi_dff
 
     def mock_extract_with_cancel(*args: Any, **kwargs: Any) -> Any:
         nonlocal rois_processed
@@ -111,7 +111,7 @@ def test_cancel_mid_position_roi_processing(
 
     with patch.object(
         runner2._extraction_runner,
-        "_process_roi_trace",
+        "_compute_roi_dff",
         side_effect=mock_extract_with_cancel,
     ):
         extraction_settings = ExtractionSettings(dff_window=100, threads=1)

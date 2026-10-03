@@ -18,6 +18,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, FOVAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -136,6 +137,7 @@ def _get_cluster_data_from_db(
         return None, None, None, None, None, None, None
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             stmt = (
                 select(FOVAnalysis)
@@ -400,6 +402,7 @@ def _plot_cluster_colored_raster(
     label_to_cluster = dict(zip(roi_labels, cluster_labels))
 
     # Query peak data from DB
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, DataAnalysis)
@@ -699,6 +702,7 @@ def _plot_cluster_colored_traces(
     label_to_cluster = dict(zip(roi_labels, cluster_labels))
 
     # Query traces from DB
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces)

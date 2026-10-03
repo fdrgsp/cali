@@ -25,6 +25,7 @@ from cali._constants import (
     TraceDataType,
     natural_sort_key,
 )
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -338,6 +339,7 @@ def export_correlation_matrices_to_csv(
         run_id = _get_default_run_id(engine)
 
     # Query FOV analysis data
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(FOVAnalysis, FOV)
@@ -790,6 +792,7 @@ def export_cluster_labels_to_csv(
     if run_id is None:
         run_id = _get_default_run_id(engine)
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(FOVAnalysis, FOV)
@@ -874,6 +877,7 @@ def _export_single_correlation_matrix(
         run_id = _get_default_run_id(engine)
 
     # Query FOV analysis data
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(FOVAnalysis, FOV)
@@ -952,6 +956,7 @@ def _get_condition_groups(
     from cali.plot._multi_wells_plots._util import _get_condition_label
 
     groups: dict[str, list[int]] = {}
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Query FOVs, optionally filtered by run_id
         if run_id is not None:
@@ -980,6 +985,7 @@ def _get_condition_groups(
 
 def _get_default_run_id(engine: Engine) -> int:
     """Get the first available analysis run ID."""
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = select(Traces.analysis_result_id).limit(1)
         run_id = session.exec(stmt).first()
@@ -1007,6 +1013,7 @@ def _export_trace_data(
         run_id = _get_default_run_id(engine)
 
     # Query traces data
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)

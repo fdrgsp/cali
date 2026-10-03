@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from cali.analysis._fov_metrics import (
     _compute_jitter_synchrony_matrix_numba,
@@ -419,8 +420,11 @@ def test_get_stimulated_amplitudes_from_roi_data() -> None:
 
 
 @patch("cali.plot._util.Session")
-def test_get_spikes_over_threshold(mock_session_cls: MagicMock) -> None:
+def test_get_spikes_over_threshold(
+    mock_session_cls: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Mock engine
+    monkeypatch.setattr("cali.plot._util.ensure_schema_current", lambda _: None)
     engine = MagicMock()
 
     # Mock session and query result
@@ -460,8 +464,13 @@ def test_get_spikes_over_threshold(mock_session_cls: MagicMock) -> None:
 
 
 @patch("cali.analysis._fov_metrics.Session")
-def test_get_calcium_peaks_events_from_rois(mock_session_cls: MagicMock) -> None:
+def test_get_calcium_peaks_events_from_rois(
+    mock_session_cls: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Mock engine
+    monkeypatch.setattr(
+        "cali.analysis._fov_metrics.ensure_schema_current", lambda _: None
+    )
     engine = MagicMock()
 
     # Mock session
@@ -532,9 +541,12 @@ def test_equation_from_str_invalid() -> None:
 
 @patch("cali.analysis._fov_metrics.Session")
 def test_get_calcium_peaks_events_from_rois_extra_cases(
-    mock_session_cls: MagicMock,
+    mock_session_cls: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Mock engine
+    monkeypatch.setattr(
+        "cali.analysis._fov_metrics.ensure_schema_current", lambda _: None
+    )
     engine = MagicMock()
     mock_session = MagicMock()
     mock_exec = MagicMock()

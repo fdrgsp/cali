@@ -29,6 +29,7 @@ from superqt.utils import signals_blocked
 
 from cali._constants import RED
 from cali.logger import cali_logger
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
 
 if TYPE_CHECKING:
@@ -232,33 +233,36 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
-            with Session(engine) as session:
-                # Runs
-                stmt = (
-                    select(CaliResult, DetectionSettings)
-                    .where(CaliResult.detection_settings_id == DetectionSettings.id)
-                    .order_by(CaliResult.created_at)
-                )
-                for result, detection_settings in session.exec(stmt).all():
-                    self._add_run_item(result, detection_settings)
+            engine = create_cali_engine(f"sqlite:///{self._database_path}")
+            try:
+                ensure_schema_current(engine)
+                with Session(engine) as session:
+                    # Runs
+                    stmt = (
+                        select(CaliResult, DetectionSettings)
+                        .where(CaliResult.detection_settings_id == DetectionSettings.id)
+                        .order_by(CaliResult.created_at)
+                    )
+                    for result, detection_settings in session.exec(stmt).all():
+                        self._add_run_item(result, detection_settings)
 
-                # Saved (orphan) segmentations: DetectionSettings without any CaliResult
-                used_ids_stmt = select(CaliResult.detection_settings_id).where(
-                    CaliResult.detection_settings_id.is_not(None)  # type: ignore[union-attr]
-                )
-                orphan_stmt = (
-                    select(DetectionSettings)
-                    .where(DetectionSettings.id.not_in(used_ids_stmt))  # type: ignore[union-attr]
-                    .order_by(DetectionSettings.id)
-                )
-                for d_settings in session.exec(orphan_stmt).all():
-                    summary = self._build_summary(session, d_settings)
-                    self._add_saved_seg_item(summary)
+                    # Saved segmentations have no referencing CaliResult.
+                    used_ids_stmt = select(CaliResult.detection_settings_id).where(
+                        CaliResult.detection_settings_id.is_not(None)  # type: ignore[union-attr]
+                    )
+                    orphan_stmt = (
+                        select(DetectionSettings)
+                        .where(DetectionSettings.id.not_in(used_ids_stmt))  # type: ignore[union-attr]
+                        .order_by(DetectionSettings.id)
+                    )
+                    for d_settings in session.exec(orphan_stmt).all():
+                        summary = self._build_summary(session, d_settings)
+                        self._add_saved_seg_item(summary)
 
-            engine.dispose(close=True)
+            finally:
+                engine.dispose(close=True)
 
         except Exception as e:
             cali_logger.error(f"Error loading runs: {e}")
@@ -311,17 +315,20 @@ class _RunsPanel(QGroupBox):
             if run_id is None or self._database_path is None:
                 return None
             try:
-                from sqlmodel import Session, create_engine
+                from sqlmodel import Session
 
-                engine = create_engine(
+                engine = create_cali_engine(
                     f"sqlite:///{self._database_path}",
                     connect_args={"timeout": 30.0, "check_same_thread": False},
                     pool_pre_ping=True,
                 )
-                with Session(engine) as session:
-                    result = session.get(CaliResult, run_id)
-                    detection_id = result.detection_settings_id if result else None
-                engine.dispose(close=True)
+                try:
+                    ensure_schema_current(engine)
+                    with Session(engine) as session:
+                        result = session.get(CaliResult, run_id)
+                        detection_id = result.detection_settings_id if result else None
+                finally:
+                    engine.dispose(close=True)
                 return detection_id
             except Exception as e:
                 cali_logger.error(f"Failed to get detection settings ID: {e}")
@@ -355,17 +362,20 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return []
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                stmt = select(CaliResult.analysis_settings_id).distinct()
-                ids = {r for r in session.exec(stmt).all() if r is not None}
-            engine.dispose(close=True)
+            try:
+                ensure_schema_current(engine)
+                with Session(engine) as session:
+                    stmt = select(CaliResult.analysis_settings_id).distinct()
+                    ids = {r for r in session.exec(stmt).all() if r is not None}
+            finally:
+                engine.dispose(close=True)
             return sorted(ids)
         except Exception as e:
             cali_logger.error(f"Failed to get analysis settings IDs: {e}")
@@ -376,14 +386,15 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return []
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     stmt = select(CaliResult.id)
                     ids = [r for r in session.exec(stmt).all() if r is not None]
@@ -409,30 +420,35 @@ class _RunsPanel(QGroupBox):
 
         try:
             from sqlalchemy import desc
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
-            with Session(engine) as session:
-                query = select(CaliResult)
-                if detection_id is not None:
-                    query = query.where(
-                        CaliResult.detection_settings_id == detection_id
-                    )
-                if extraction_id is not None:
-                    query = query.where(
-                        CaliResult.extraction_settings_id == extraction_id
-                    )
-                if analysis_id is not None:
-                    query = query.where(CaliResult.analysis_settings_id == analysis_id)
+            try:
+                ensure_schema_current(engine)
+                with Session(engine) as session:
+                    query = select(CaliResult)
+                    if detection_id is not None:
+                        query = query.where(
+                            CaliResult.detection_settings_id == detection_id
+                        )
+                    if extraction_id is not None:
+                        query = query.where(
+                            CaliResult.extraction_settings_id == extraction_id
+                        )
+                    if analysis_id is not None:
+                        query = query.where(
+                            CaliResult.analysis_settings_id == analysis_id
+                        )
 
-                query = query.order_by(desc(CaliResult.created_at))
-                matching_run = session.exec(query).first()
+                    query = query.order_by(desc(CaliResult.created_at))
+                    matching_run = session.exec(query).first()
 
-            engine.dispose(close=True)
+            finally:
+                engine.dispose(close=True)
 
             if matching_run:
                 for i in range(self._runs_list.count()):
@@ -454,14 +470,15 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return []
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     ids = {
                         r for r in session.exec(select(column)).all() if r is not None
@@ -512,14 +529,15 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return []
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     rows = session.exec(
                         select(DetectionSettings).order_by(DetectionSettings.id)
@@ -537,14 +555,15 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return 0
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     count = session.exec(
                         select(func.count())
@@ -801,10 +820,11 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return None
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_cali_engine(f"sqlite:///{self._database_path}")
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     result = session.get(CaliResult, run_id)
                     detection_id = result.detection_settings_id if result else None
@@ -833,10 +853,11 @@ class _RunsPanel(QGroupBox):
             return
 
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_cali_engine(f"sqlite:///{self._database_path}")
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     result = session.get(CaliResult, run_id)
                     if not result:
@@ -880,16 +901,17 @@ class _RunsPanel(QGroupBox):
         keep = set(keep_detection_ids or set())
 
         try:
-            from sqlmodel import Session, create_engine, delete
+            from sqlmodel import Session, delete
 
             from cali.sqlmodel._model import ROI, ExtractionSettings
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     # Drop all runs (cascades to Traces, DataAnalysis, FOVAnalysis
                     # via FK)
@@ -964,10 +986,11 @@ class _RunsPanel(QGroupBox):
         if self._database_path is None:
             return
         try:
-            from sqlmodel import Session, create_engine
+            from sqlmodel import Session
 
-            engine = create_engine(f"sqlite:///{self._database_path}")
+            engine = create_cali_engine(f"sqlite:///{self._database_path}")
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as s:
                     _do(s)
             finally:

@@ -35,6 +35,7 @@ from cali.gui._util import (
     show_error_dialog,
 )
 from cali.logger import cali_logger
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.util import import_labels_to_database
 
 # Role for storing FOV data in tree items
@@ -397,17 +398,18 @@ class _ImportLabelsDialog(QDialog):
         self._well_fovs.clear()
 
         try:
-            from sqlmodel import Session, create_engine, select
+            from sqlmodel import Session, select
 
             from cali.sqlmodel._model import FOV, Plate, Well
 
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{self._database_path}",
                 echo=False,
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             try:
+                ensure_schema_current(engine)
                 with Session(engine) as session:
                     # Load plate type and set on widget
                     plate_type = session.exec(select(Plate.plate_type)).first()

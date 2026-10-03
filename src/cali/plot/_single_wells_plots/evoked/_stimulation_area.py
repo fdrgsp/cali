@@ -9,6 +9,7 @@ from skimage.measure import find_contours
 from sqlmodel import Session, col, select
 
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, AnalysisSettings, CaliResult, Mask
 from cali.util._util import coordinates_to_mask
 
@@ -75,6 +76,7 @@ def _visualize_stimulated_area(
     image_shape: tuple[int, int] | None = None
 
     # ------------------ DB QUERY ------------------ #
+    ensure_schema_current(engine)
     with Session(engine) as session:
         session.expire_all()
 

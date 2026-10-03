@@ -1524,7 +1524,7 @@ def test_get_selected_detection_settings_id_run_handles_exception(
     def raise_err(*args: object, **kwargs: object) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("sqlmodel.create_engine", raise_err)
+    monkeypatch.setattr("cali.gui._runs_panel.create_cali_engine", raise_err)
 
     assert runs_panel.get_selected_detection_settings_id() is None
 

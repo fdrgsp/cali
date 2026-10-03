@@ -7,7 +7,9 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.extraction._frame_window import source_interval_to_retained
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
     FOV,
     ROI,
@@ -144,10 +146,11 @@ def _plot_stim_and_non_stim_peaks_amplitude(
         return
 
     # Query both stimulated and non-stimulated ROIs
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
-            .join(FOV, ROI.fov_id == FOV.id)
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
             .join(
                 Traces,
                 (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
@@ -426,10 +429,11 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
         return
 
     # ---------- DB QUERY ----------
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
-            .join(FOV, ROI.fov_id == FOV.id)
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
             .join(
                 Traces,
                 (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
@@ -684,7 +688,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
             frame_rate = T_orig / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride)
+    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride)
 
     # ---------- CLICK → roiSelected ----------
     _attach_click_handlers_evoked(widget, curves)
@@ -733,6 +737,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         return
 
     # ------------------------ Query DB ------------------------ #
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -897,7 +902,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             frame_rate = total_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
+    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride=1)
 
     # Set x-range to full frames with some padding at the end, enable autorange for y
     if total_frames > 0:
@@ -981,6 +986,7 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
         return
 
     # ------------------------ Query DB ------------------------ #
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -1127,7 +1133,7 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
             frame_rate = total_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
+    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride=1)
 
     # Set x-range to full frames with some padding at the end, enable autorange for y
     if total_frames > 0:
@@ -1175,6 +1181,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
         y_axis.setStyle(showValues=True)
         return
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
@@ -1313,7 +1320,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
             frame_rate = total_frames / data_analysis.total_recording_time_sec
             break
 
-    _add_led_stimulation_bands(plot, engine, run_id, frame_rate, stride=1)
+    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride=1)
 
     _attach_click_handlers_evoked(widget, curves)
 
@@ -1325,6 +1332,7 @@ def _add_led_stimulation_bands(
     plot: pg.PlotItem,
     engine: Engine,
     run_id: int,
+    fov_name: str,
     frame_rate: float | None = None,
     stride: int = 1,
     color: tuple[int, int, int, int] = LED_COLOR,
@@ -1339,6 +1347,8 @@ def _add_led_stimulation_bands(
         Database engine
     run_id : int
         Analysis result ID to get stimulation settings from
+    fov_name : str
+        FOV whose retained source window is being plotted
     frame_rate : float | None
         Frame rate in Hz (frames per second). If None, tries to get from settings.
     stride : int
@@ -1346,6 +1356,7 @@ def _add_led_stimulation_bands(
     color : tuple[int, int, int, int]
         RGBA color tuple for the bands (default blue: 0, 0, 255, 200)
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get analysis settings from run_id
         result = session.get(CaliResult, run_id)
@@ -1364,14 +1375,38 @@ def _add_led_stimulation_bands(
         if frame_rate is None:
             frame_rate = settings.frame_rate
 
+        trace = session.exec(
+            select(Traces)
+            .join(ROI, col(Traces.roi_id) == col(ROI.id))
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
+            .where(
+                Traces.analysis_result_id == run_id,
+                FOV.name == fov_name,
+            )
+        ).first()
+        if trace is None:
+            return
+
+        retained_frame_count = len(trace.x_axis or trace.raw_trace or [])
+        if retained_frame_count == 0:
+            return
+
         # Convert LED pulse duration from milliseconds to frames
         pulse_duration_frames = (settings.led_pulse_duration / 1000.0) * frame_rate
 
         # Add vertical bands for each LED pulse
         for pulse_frame in settings.led_pulse_on_frames:
-            # Account for downsampling stride
-            start_frame = (pulse_frame - 1) / stride
-            end_frame = ((pulse_frame - 1) + pulse_duration_frames) / stride
+            retained_interval = source_interval_to_retained(
+                pulse_frame,
+                pulse_duration_frames,
+                trace.source_start_frame,
+                retained_frame_count,
+            )
+            if retained_interval is None:
+                continue
+            start_frame, end_frame = retained_interval
+            start_frame /= stride
+            end_frame /= stride
 
             # Create a vertical LinearRegionItem for the LED pulse
             region = pg.LinearRegionItem(

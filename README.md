@@ -274,6 +274,7 @@ The Extraction tab allows the user to configure fluorescence trace extraction fr
   - window size for ΔF/F calculation
   - percentile for ΔF/F baseline
   - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
+  - optional startup exclusion in frames or seconds
 - **Metadata**: frame rate and pixel size
 - **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
 - **CSV Export**: raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
@@ -389,6 +390,19 @@ Available multi-well visualizations include:
 ## Analysis Details
 
 ### Extraction
+
+#### Discard at Start
+
+Use **Discard at Start** to exclude rapid indicator bleaching or acquisition-settling
+artefacts at the beginning of every source position. Choose **Frames** to remove an
+exact number of samples or **Seconds** to resolve the cutoff from per-frame acquisition
+timestamps. If timestamps are unavailable, seconds mode requires confirmation that the
+configured frame rate is the actual acquisition rate.
+
+The cutoff is applied before raw and neuropil traces, ΔF/F, OASIS, analysis, plots, and
+CSV export. ROI detection and masks are unchanged. Stored trace times are rebased to the
+first retained frame, while cali preserves the source-frame offset so stimulation frames
+remain aligned. The default, `0 frames`, preserves the previous behavior.
 
 #### ΔF/F Calculation
 

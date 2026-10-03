@@ -11,6 +11,8 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 from typing_extensions import Literal
 
+from cali.sqlmodel._engine import ensure_schema_current
+
 from ._model import (
     FOV,
     ROI,
@@ -46,6 +48,7 @@ def print_cali_results(
     max_experiment_level : MaxTreeLevel
         Maximum depth for experiment tree in each result (default: "roi")
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get analysis results - either filtered by experiment or all results
         if experiment_name is not None:
@@ -255,6 +258,12 @@ def _add_extraction_settings_to_tree(
         processing_node = settings_node.add("📈 [blue]Signal Processing[/blue]")
         processing_node.add(f"ΔF/F window: {settings.dff_window}")
         processing_node.add(f"Decay constant: {settings.decay_constant}")
+        processing_node.add(
+            f"Discard at start: {settings.discard_initial_value:g} "
+            f"{settings.discard_initial_unit}"
+        )
+        if settings.discard_initial_unit == "seconds":
+            processing_node.add(f"Frame rate verified: {settings.frame_rate_verified}")
 
 
 def _add_analysis_settings_to_tree(

@@ -8,6 +8,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis
 
 if TYPE_CHECKING:
@@ -74,6 +75,7 @@ def _plot_inferred_spikes_frequency_data(
         return
 
     # Query database for ROI + DataAnalysis
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI, DataAnalysis)

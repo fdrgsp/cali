@@ -8,6 +8,7 @@ from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, CaliResult, DataAnalysis, Traces
 
 if TYPE_CHECKING:
@@ -93,6 +94,7 @@ def _plot_cell_size_data(
     cell_sizes: list[float] = []
     units = ""
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         detection_settings_id: int | None = None
 

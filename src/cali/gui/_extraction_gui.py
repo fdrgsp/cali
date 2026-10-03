@@ -7,11 +7,14 @@ from typing import cast
 
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
+    QButtonGroup,
+    QCheckBox,
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -84,6 +87,9 @@ class TraceExtractionData:
     neuropil_inner_radius: int = DEFAULT_NEUROPIL_INNER_RADIUS
     neuropil_min_pixels: int = DEFAULT_NEUROPIL_MIN_PIXELS
     neuropil_correction_factor: float = DEFAULT_NEUROPIL_CORRECTION_FACTOR
+    discard_initial_value: float = 0.0
+    discard_initial_unit: str = "frames"
+    frame_rate_verified: bool = False
 
 
 class _ExtractionGUI(QWidget):
@@ -268,6 +274,15 @@ class _ExtractionGUI(QWidget):
             ),
             frame_rate=(
                 metadata_data.frame_rate if metadata_data else DEFAULT_FRAME_RATE
+            ),
+            frame_rate_verified=(
+                trace_data.frame_rate_verified if trace_data else False
+            ),
+            discard_initial_value=(
+                trace_data.discard_initial_value if trace_data else 0.0
+            ),
+            discard_initial_unit=(
+                trace_data.discard_initial_unit if trace_data else "frames"
             ),
             pixel_size=metadata_data.pixel_size if metadata_data else None,
         )
@@ -484,6 +499,55 @@ class _TraceExtractionWidget(QWidget):
         dec_wdg_layout.addWidget(self._decay_const_lbl)
         dec_wdg_layout.addWidget(self._decay_constant_spin)
 
+        # Initial frames/time to discard
+        self._discard_initial_wdg = QWidget(self)
+        self._discard_initial_wdg.setToolTip(
+            "Exclude acquisition startup from trace extraction.\n\n"
+            "The cutoff is applied independently to every source position before "
+            "raw traces, neuropil correction, ΔF/F₀, OASIS, analysis, and export. "
+            "Detection masks are unchanged.\n\n"
+            "Seconds mode uses acquisition timestamps when available. If timestamps "
+            "are unavailable, explicitly confirm that the configured frame rate is "
+            "the true acquisition rate."
+        )
+        self._discard_initial_lbl = QLabel(
+            "Discard at Start:", self._discard_initial_wdg
+        )
+        self._discard_initial_lbl.setSizePolicy(*FIXED)
+        self._discard_initial_spin = QDoubleSpinBox(self._discard_initial_wdg)
+        self._discard_initial_spin.setRange(0.0, 1_000_000_000.0)
+        self._discard_initial_spin.setSpecialValueText("None")
+        self._discard_initial_spin.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+
+        self._discard_frames_radio = QRadioButton("Frames", self._discard_initial_wdg)
+        self._discard_seconds_radio = QRadioButton("Seconds", self._discard_initial_wdg)
+        self._discard_unit_group = QButtonGroup(self._discard_initial_wdg)
+        self._discard_unit_group.addButton(self._discard_frames_radio)
+        self._discard_unit_group.addButton(self._discard_seconds_radio)
+        self._discard_frames_radio.setChecked(True)
+        self._discard_frames_radio.toggled.connect(self._on_discard_unit_changed)
+
+        discard_layout = QHBoxLayout(self._discard_initial_wdg)
+        discard_layout.setContentsMargins(0, 0, 0, 0)
+        discard_layout.setSpacing(5)
+        discard_layout.addWidget(self._discard_initial_lbl)
+        discard_layout.addWidget(self._discard_initial_spin)
+        discard_layout.addWidget(self._discard_frames_radio)
+        discard_layout.addWidget(self._discard_seconds_radio)
+
+        self._frame_rate_verified = QCheckBox(
+            "Use verified frame rate if timestamps are unavailable", self
+        )
+        self._frame_rate_verified.setToolTip(
+            "Enable only after confirming that the configured frame rate is the "
+            "actual acquisition rate. Exposure duration alone may omit camera "
+            "readout and inter-frame overhead."
+        )
+        self._frame_rate_verified.setEnabled(False)
+        self._on_discard_unit_changed(True)
+
         # main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -491,6 +555,8 @@ class _TraceExtractionWidget(QWidget):
         layout.addWidget(self._dff_wdg)
         layout.addWidget(self._dff_percentile_wdg)
         layout.addWidget(self._dec_wdg)
+        layout.addWidget(self._discard_initial_wdg)
+        layout.addWidget(self._frame_rate_verified)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -499,6 +565,7 @@ class _TraceExtractionWidget(QWidget):
         self._dff_lbl.setFixedWidth(width)
         self._dff_percentile_lbl.setFixedWidth(width)
         self._decay_const_lbl.setFixedWidth(width)
+        self._discard_initial_lbl.setFixedWidth(width)
 
     def value(
         self, neuropil_data: NeuropilData, frame_rate: float
@@ -512,6 +579,11 @@ class _TraceExtractionWidget(QWidget):
             neuropil_inner_radius=neuropil_data.neuropil_inner_radius,
             neuropil_min_pixels=neuropil_data.neuropil_min_pixels,
             neuropil_correction_factor=neuropil_data.neuropil_correction_factor,
+            discard_initial_value=self._discard_initial_spin.value(),
+            discard_initial_unit=(
+                "seconds" if self._discard_seconds_radio.isChecked() else "frames"
+            ),
+            frame_rate_verified=self._frame_rate_verified.isChecked(),
         )
 
     def setValue(self, value: TraceExtractionData) -> None:
@@ -519,12 +591,33 @@ class _TraceExtractionWidget(QWidget):
         self._dff_window_size_spin.setValue(value.dff_window_size)
         self._dff_percentile_spin.setValue(value.dff_percentile)
         self._decay_constant_spin.setValue(value.decay_constant)
+        self._discard_seconds_radio.setChecked(value.discard_initial_unit == "seconds")
+        self._discard_frames_radio.setChecked(value.discard_initial_unit != "seconds")
+        self._on_discard_unit_changed(self._discard_frames_radio.isChecked())
+        self._discard_initial_spin.setValue(value.discard_initial_value)
+        self._frame_rate_verified.setChecked(value.frame_rate_verified)
 
     def reset(self) -> None:
         """Reset the widget to default values."""
         self._dff_window_size_spin.setValue(DEFAULT_DFF_WINDOW)
         self._dff_percentile_spin.setValue(DEFAULT_DFF_PERCENTILE)
         self._decay_constant_spin.setValue(0.0)
+        self._discard_frames_radio.setChecked(True)
+        self._discard_initial_spin.setValue(0.0)
+        self._frame_rate_verified.setChecked(False)
+
+    def _on_discard_unit_changed(self, frames_checked: bool) -> None:
+        """Update the discard editor for Frames or Seconds mode."""
+        if frames_checked:
+            self._discard_initial_spin.setDecimals(0)
+            self._discard_initial_spin.setSingleStep(1.0)
+            self._discard_initial_spin.setSuffix(" frames")
+            self._frame_rate_verified.setEnabled(False)
+        else:
+            self._discard_initial_spin.setDecimals(3)
+            self._discard_initial_spin.setSingleStep(0.1)
+            self._discard_initial_spin.setSuffix(" s")
+            self._frame_rate_verified.setEnabled(True)
 
 
 class _MetadataWidget(QWidget):

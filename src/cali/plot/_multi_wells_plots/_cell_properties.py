@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from sqlmodel import Session, col, select
 
 from cali.sqlmodel import FOV, ROI, DataAnalysis, Well
+from cali.sqlmodel._engine import ensure_schema_current
 
 from ._util import (
     BarPlotData,
@@ -50,6 +51,7 @@ def _query_fov_percentage_active(
     dict[str, dict[str, dict[str, tuple[float, int]]]]
         Nested dict: {condition_label: {well_id: {fov_name: (percentage, n_total)}}}
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get experiment type when stim split is requested
         experiment_type = None

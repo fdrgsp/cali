@@ -15,6 +15,7 @@ from sqlmodel import Session, col, select
 
 from cali._constants import EVK_NON_STIM, EVK_STIM, EVOKED
 from cali.sqlmodel import FOV, ROI, AnalysisSettings, DataAnalysis, Well
+from cali.sqlmodel._engine import ensure_schema_current
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -275,6 +276,7 @@ def _query_roi_parameter_by_condition(
     dict[str, dict[str, dict[str, list[float]]]]
         Nested dict: {condition_label: {well_name: {fov_name: [values]}}}
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None
@@ -343,6 +345,7 @@ def _query_roi_attribute_by_condition(
     dict[str, dict[str, dict[str, list[float]]]]
         Nested dict: {condition_label: {well_name: {fov_name: [values]}}}
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
         experiment_type = None

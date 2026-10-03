@@ -13,6 +13,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from cali.sqlmodel._engine import ensure_schema_current
+
 from ._util import (
     BarPlotData,
     _aggregate_fov_scalar_to_condition_stats,
@@ -242,6 +244,7 @@ def _query_calcium_burst_metrics_by_condition(
     from cali.sqlmodel import FOV, FOVAnalysis, Well
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             stmt = (
                 select(FOVAnalysis, FOV, Well)

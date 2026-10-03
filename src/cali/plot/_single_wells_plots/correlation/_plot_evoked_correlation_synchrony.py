@@ -13,7 +13,9 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.extraction._frame_window import source_frame_to_retained
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI
 
 from ._plot_calcium_traces_correlation import (
@@ -41,6 +43,28 @@ STIM_RECTANGLE_COLOR = "orange"
 STIM_RECTANGLE_WIDTH = 8
 CMAP_NAME = "viridis"
 CMAP = pg.colormap.get(CMAP_NAME)
+
+
+def _retained_pulse_frames(
+    source_frames: list[int], source_start_frame: int, retained_frame_count: int
+) -> list[int]:
+    """Shift source pulse frames into this trace and omit discarded pulses."""
+    return sorted(
+        retained
+        for source in source_frames
+        if 0
+        <= (
+            retained := int(
+                source_frame_to_retained(
+                    source,
+                    source_start_frame,
+                    # Preserve this consumer's existing convention at zero discard.
+                    one_based=False,
+                )
+            )
+        )
+        < retained_frame_count
+    )
 
 
 # =============================================================================
@@ -154,6 +178,7 @@ def _get_sorted_rois_by_stimulation(
         (all_sorted_rois, stimulated_rois, non_stimulated_rois)
         all_sorted_rois is the concatenation of stimulated + non-stimulated
     """
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get stimulated ROIs
         stmt_stim = (
@@ -748,6 +773,7 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
         return
 
     # Get analysis settings to extract LED pulse frames and frame rate
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get the CaliResult for this run to find analysis_settings_id
         result = session.exec(select(CaliResult).where(CaliResult.id == run_id)).first()
@@ -771,7 +797,7 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
             plot.setTitle("Windowed Correlation (Sorted - No LED pulse frames defined)")
             return
 
-        led_pulse_frames = analysis_settings.led_pulse_on_frames
+        source_led_pulse_frames = analysis_settings.led_pulse_on_frames
         frame_rate = analysis_settings.frame_rate
 
         # Convert window_ms to frames
@@ -786,6 +812,8 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
 
         # Load all ROIs with their traces for this analysis run
         roi_data = {}
+        source_start_frame = 0
+        retained_frame_count = 0
         for roi in fov.rois:
             if roi.label_value not in all_sorted:
                 continue
@@ -802,9 +830,20 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
                 continue
 
             roi_data[roi.label_value] = np.array(trace.den_dff)
+            source_start_frame = trace.source_start_frame
+            retained_frame_count = len(trace.den_dff)
+
+        led_pulse_frames = _retained_pulse_frames(
+            source_led_pulse_frames,
+            source_start_frame,
+            retained_frame_count,
+        )
 
     if len(roi_data) < 2:
         plot.setTitle("Windowed Correlation (Sorted - Insufficient trace data)")
+        return
+    if not led_pulse_frames:
+        plot.setTitle("Windowed Correlation (Sorted - No retained LED pulses)")
         return
 
     # Extract windowed segments around each LED pulse
@@ -980,6 +1019,7 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
         return
 
     # Get analysis settings to extract LED pulse frames and frame rate
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get the CaliResult for this run to find analysis_settings_id
         result = session.exec(select(CaliResult).where(CaliResult.id == run_id)).first()
@@ -1009,7 +1049,7 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
             )
             return
 
-        led_pulse_frames = sorted(analysis_settings.led_pulse_on_frames)
+        source_led_pulse_frames = analysis_settings.led_pulse_on_frames
         frame_rate = analysis_settings.frame_rate
 
         # Convert window_ms to frames
@@ -1024,6 +1064,8 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
 
         # Load all ROIs with their traces for this analysis run
         roi_data = {}
+        source_start_frame = 0
+        retained_frame_count = 0
         for roi in fov.rois:
             if roi.label_value not in all_sorted:
                 continue
@@ -1040,6 +1082,14 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
                 continue
 
             roi_data[roi.label_value] = np.array(trace.den_dff)
+            source_start_frame = trace.source_start_frame
+            retained_frame_count = len(trace.den_dff)
+
+        led_pulse_frames = _retained_pulse_frames(
+            source_led_pulse_frames,
+            source_start_frame,
+            retained_frame_count,
+        )
 
     if len(roi_data) < 2:
         plot.setTitle(
@@ -1052,6 +1102,10 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
     for roi_label, full_trace in roi_data.items():
         segments = []
         trace_length = len(full_trace)
+
+        if not led_pulse_frames:
+            windowed_traces[roi_label] = full_trace
+            continue
 
         # Segment before first pulse
         if led_pulse_frames[0] - window_frames > 0:

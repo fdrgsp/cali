@@ -9,6 +9,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.plot._util import disconnect_hover_handlers
+from cali.sqlmodel._engine import ensure_schema_current
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -446,6 +447,7 @@ def get_fov_analysis_from_db(
     """
     from cali.sqlmodel._model import FOV, FOVAnalysis
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(FOVAnalysis)
@@ -610,6 +612,7 @@ def _get_roi_positions(
     """
     from cali.sqlmodel._model import FOV, ROI
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # Get ROIs for this FOV with their masks
         stmt = (

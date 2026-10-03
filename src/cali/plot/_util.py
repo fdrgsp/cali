@@ -9,6 +9,7 @@ from sqlmodel import Session, col, select
 
 from cali._constants import MAX_FRAMES_AFTER_STIMULATION, MWCM
 from cali.logger import cali_logger
+from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
 from cali.sqlmodel._util import ROIData
 
@@ -220,6 +221,7 @@ def _get_spikes_over_threshold(
     engine: Engine, fov_name: str, roi_id: int, raw: bool = False
 ) -> list[float] | None:
     """Get spikes over threshold from ROI data."""
+    ensure_schema_current(engine)
     with Session(engine) as session:
         stmt = (
             select(ROI)

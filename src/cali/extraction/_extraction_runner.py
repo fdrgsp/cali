@@ -2,19 +2,17 @@ import threading
 
 # ignore deprecation warnings from oasis
 import warnings
+from collections import deque
 from collections.abc import Generator, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, cast
 
 import numpy as np
-from oasis.functions import GetSn, deconvolve, estimate_parameters
 from tqdm import tqdm
 
-from cali._constants import (
-    EVENT_KEY,
-    RUNNER_TIME_KEY,
-)
+from cali._constants import EVENT_KEY
 from cali.analysis._fov_metrics import get_overlap_roi_with_stimulated_area
 from cali.analysis._trace_analysis import compute_inferred_spike_threshold
 from cali.logger import cali_logger
@@ -31,10 +29,32 @@ from cali.sqlmodel._model import (
 from cali.util import coordinates_to_mask, mask_to_coordinates
 from cali.util._util import _NUMBA_LOCK
 
+from ._frame_window import (
+    ExtractionFrameWindow,
+    StartupDiscardError,
+    build_timing_descriptor,
+    resolve_initial_frame_window,
+    retained_time_axis,
+)
 from ._neuropil import create_neuropil_from_dilation
+from ._spike_inference import InferenceCancelled, OasisBackend
 from ._util import calculate_dff
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+@dataclass
+class _RoiParts:
+    """Minimal ROI data retained between DFF computation and finalization."""
+
+    label_value: int
+    label_mask: np.ndarray
+    raw: np.ndarray
+    corrected: np.ndarray | None
+    neuropil: np.ndarray | None
+    dff: np.ndarray
+    roi_size: float
+    roi_size_units: str
 
 
 class ExtractionRunner:
@@ -257,6 +277,11 @@ class ExtractionRunner:
                         # Commit the results to database if we got any
                         if (fov_result := future.result()) is not None:
                             yield fov_result
+                    except StartupDiscardError:
+                        self._cancellation_event.set()
+                        for pending in futures:
+                            pending.cancel()
+                        raise
                     except Exception:
                         import traceback
 
@@ -305,6 +330,32 @@ class ExtractionRunner:
         # get the fov_name name from metadata
         fov_name = self._get_fov_name(EVENT_KEY, meta, global_pos_idx)
 
+        original_frame_count = data.shape[0]
+        timing = build_timing_descriptor(meta, original_frame_count)
+        frame_window = resolve_initial_frame_window(
+            discard_value=extraction_settings.discard_initial_value,
+            discard_unit=extraction_settings.discard_initial_unit,
+            frame_rate=extraction_settings.frame_rate,
+            frame_rate_verified=extraction_settings.frame_rate_verified,
+            timing=timing,
+        )
+        if frame_window.source_start_frame:
+            cali_logger.info(
+                f"⏭️ {fov_name}: discarded {frame_window.source_start_frame} of "
+                f"{frame_window.original_frame_count} startup frames "
+                f"({frame_window.discarded_duration_ms / 1000.0:.3f} s; "
+                f"{frame_window.timing_source} timing)"
+            )
+            data = data[frame_window.source_start_frame :]
+            # Some readers return one metadata item per frame; others return a single
+            # static metadata record. Only crop genuinely per-frame metadata.
+            if len(meta) == original_frame_count:
+                meta = meta[frame_window.source_start_frame :]
+
+        elapsed_time_list = retained_time_axis(
+            timing, frame_window, frame_rate=extraction_settings.frame_rate
+        )
+
         if fov_to_analyze is None or not fov_to_analyze.rois:
             cali_logger.error(
                 f"No ROI masks found for FOV {fov_name} at position {global_pos_idx}. "
@@ -330,10 +381,6 @@ class ExtractionRunner:
             extraction_settings, data, labels_masks
         )
 
-        # get the elapsed time from the metadata to calculate the total time in seconds
-        # assumes data shape is (time, height, width)
-        elapsed_time_list = self._get_elapsed_time_ms_list(meta, data.shape[0])
-
         # get the total time in seconds for the recording
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
 
@@ -348,6 +395,7 @@ class ExtractionRunner:
         # Create a map of label_value -> ROI for quick lookup
         roi_map = {roi.label_value: roi for roi in fov_to_analyze.rois}
 
+        parts_by_roi: deque[_RoiParts] = deque()
         for label_value in tqdm(labels_masks.keys(), desc=msg):
             if self._check_for_abort_requested():
                 cali_logger.info(
@@ -372,68 +420,110 @@ class ExtractionRunner:
                 )
                 else None
             )
-            trace_data = self._process_roi_trace(
+            parts = self._compute_roi_dff(
                 data,
                 meta,
                 fov_name,
                 extraction_settings,
-                analysis_settings,
                 label_value,
                 labels_masks[label_value],
-                tot_time_sec,
-                elapsed_time_list,
-                "ms",
                 neuropil_masks_dict.get(label_value),
                 neuropil_correction_factor,
             )
 
-            # Add traces and analysis to the existing ROI if processing succeeded
-            if trace_data is not None:
-                (
-                    traces,
-                    data_analysis,
-                    active,
-                    stimulated,
-                    roi_size,
-                    roi_size_units,
-                ) = trace_data
+            if parts is not None:
+                parts_by_roi.append(parts)
 
-                # Store cell size in ROI (update on every extraction run)
-                # This ensures the value is always populated even if initially None
-                existing_roi.cell_size = roi_size
-                existing_roi.cell_size_units = roi_size_units
+        # Phase B: exactly one backend invocation per FOV. The legacy rate is
+        # deliberately retained here to preserve OASIS AR(1) numerics.
+        if self._check_for_abort_requested():
+            return None
+        if parts_by_roi:
+            dff_matrix = np.vstack([parts.dff for parts in parts_by_roi])
+            try:
+                oasis = OasisBackend().infer_all(
+                    dff_matrix,
+                    frame_rate=dff_matrix.shape[1] / tot_time_sec,
+                    decay_constant=extraction_settings.decay_constant,
+                    roi_labels=[parts.label_value for parts in parts_by_roi],
+                    fov_name=fov_name,
+                    cancel=self._check_for_abort_requested,
+                )
+            except InferenceCancelled:
+                return None
+            del dff_matrix
 
-                # Save neuropil mask to the Traces object if it exists for this ROI
-                neuropil_mask_array = neuropil_masks_dict.get(label_value)
-                if neuropil_mask_array is not None and neuropil_mask_array.any():
-                    # Convert mask to sparse coordinates
-                    neuropil_coords, neuropil_shape = mask_to_coordinates(
-                        neuropil_mask_array
-                    )
-                    # Create Mask object
-                    neuropil_mask_obj = Mask(
-                        coords_y=neuropil_coords[0],
-                        coords_x=neuropil_coords[1],
-                        height=neuropil_shape[0],
-                        width=neuropil_shape[1],
-                        mask_type="neuropil",
-                    )
-                    # Assign to Traces (will be saved via relationship cascade)
-                    traces.neuropil_mask = neuropil_mask_obj
+        # Phase C: stage complete products before attaching anything to the FOV.
+        finalized = []
+        for index in range(len(parts_by_roi)):
+            if self._check_for_abort_requested():
+                return None
+            parts = parts_by_roi.popleft()
+            trace_data = self._finalize_roi(
+                parts,
+                oasis.den_dff[index],
+                oasis.spikes[index],
+                float(oasis.sn_by_roi[index]),
+                analysis_settings,
+                tot_time_sec,
+                elapsed_time_list,
+                "ms",
+                frame_window,
+            )
+            if trace_data is None:
+                return None
+            finalized.append((parts.label_value, trace_data))
+            # Release Phase-A traces immediately after conversion to stored lists.
+            del parts
+        if self._check_for_abort_requested():
+            return None
 
-                # Store new traces/analysis in temporary list on ROI
-                # This avoids SQLAlchemy warnings about modifying collections
-                # during threaded execution. The commit function will handle
-                # proper attachment.
-                if not hasattr(existing_roi, "_new_traces"):
-                    existing_roi._new_traces = []
-                    existing_roi._new_data_analysis = []
-                existing_roi._new_traces.append(traces)
-                # Only add data_analysis if it was computed
-                if data_analysis is not None:
-                    existing_roi._new_data_analysis.append(data_analysis)
-                existing_roi.active = active
-                existing_roi.stimulated = stimulated
+        for label_value, trace_data in finalized:
+            existing_roi = roi_map[label_value]
+            (
+                traces,
+                data_analysis,
+                active,
+                stimulated,
+                roi_size,
+                roi_size_units,
+            ) = trace_data
+            # Store cell size in ROI (update on every extraction run)
+            # This ensures the value is always populated even if initially None
+            existing_roi.cell_size = roi_size
+            existing_roi.cell_size_units = roi_size_units
+
+            # Save neuropil mask to the Traces object if it exists for this ROI
+            neuropil_mask_array = neuropil_masks_dict.get(label_value)
+            if neuropil_mask_array is not None and neuropil_mask_array.any():
+                # Convert mask to sparse coordinates
+                neuropil_coords, neuropil_shape = mask_to_coordinates(
+                    neuropil_mask_array
+                )
+                # Create Mask object
+                neuropil_mask_obj = Mask(
+                    coords_y=neuropil_coords[0],
+                    coords_x=neuropil_coords[1],
+                    height=neuropil_shape[0],
+                    width=neuropil_shape[1],
+                    mask_type="neuropil",
+                )
+                # Assign to Traces (will be saved via relationship cascade)
+                traces.neuropil_mask = neuropil_mask_obj
+
+            # Store new traces/analysis in temporary list on ROI
+            # This avoids SQLAlchemy warnings about modifying collections
+            # during threaded execution. The commit function will handle
+            # proper attachment.
+            if not hasattr(existing_roi, "_new_traces"):
+                existing_roi._new_traces = []
+                existing_roi._new_data_analysis = []
+            existing_roi._new_traces.append(traces)
+            # Only add data_analysis if it was computed
+            if data_analysis is not None:
+                existing_roi._new_data_analysis.append(data_analysis)
+            existing_roi.active = active
+            existing_roi.stimulated = stimulated
 
         # NOTE: FOV-level analysis (CCG) is now computed AFTER the threadpool completes
         # in _run_generator(). This avoids concurrent Pool creation when multiple
@@ -509,59 +599,18 @@ class ExtractionRunner:
 
         return labels_masks
 
-    def _process_roi_trace(
+    def _compute_roi_dff(
         self,
         data: np.ndarray,
         meta: list[dict],
         fov_name: str,
         extraction_settings: ExtractionSettings,
-        analysis_settings: AnalysisSettings | None,
         label_value: int,
         label_mask: np.ndarray,
-        tot_time_sec: float,
-        elapsed_time_list: list[float],
-        x_unit: str,
         neuropil_mask: np.ndarray | None = None,
         neuropil_correction_factor: float | None = None,
-    ) -> tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None:
-        """Process individual ROI trace and return trace data.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            Imaging data array (time, height, width)
-        meta : list[dict]
-            Metadata for the imaging data
-        fov_name : str
-            Name of the field of view
-        extraction_settings : ExtractionSettings
-            Settings for extraction (neuropil, dff_window, decay_constant)
-        analysis_settings : AnalysisSettings | None
-            Settings for analysis (peak detection, thresholds). If provided,
-            peak detection and analysis will be performed.
-        label_value : int
-            ROI label value
-        label_mask : np.ndarray
-            Boolean mask for the ROI
-        tot_time_sec : float
-            Total recording time in seconds
-        elapsed_time_list : list[float]
-            List of elapsed times for each frame
-        x_unit : str
-            Unit for x-axis (e.g., "ms")
-        neuropil_mask : np.ndarray | None
-            Neuropil mask for correction
-        neuropil_correction_factor : float | None
-            Factor for neuropil correction
-
-        Returns
-        -------
-        tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None
-            Tuple of (Traces, DataAnalysis | None, active, stimulated,
-            roi_size, roi_size_units) ready to add to an existing ROI,
-            or None if processing fails or ROI should be excluded.
-            DataAnalysis will be None if run_analysis=False.
-        """
+    ) -> _RoiParts | None:
+        """Compute raw, corrected, neuropil, and DFF traces before inference."""
         # Early exit if cancellation is requested
         if self._check_for_abort_requested():
             return None
@@ -627,93 +676,57 @@ class ExtractionRunner:
         if self._check_for_abort_requested():
             return None
 
-        # run OASIS deconvolution on the dff trace
-        tau = extraction_settings.decay_constant or 0.0  # seconds
-        frame_rate = len(dff) / tot_time_sec  # Hz
-        if tau > 0.0:
-            # User-provided decay constant τ → AR(1) coefficient g
-            g1 = float(np.exp(-1.0 / (frame_rate * tau)))  # AR(1) coefficient
-            g: tuple[float] | tuple[float, float] = (g1,)  # OASIS expects a tuple
-            optimize_g = 0  # do NOT re-optimize g, user fixed it
-            # Estimate noise from DFF trace
-            sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
-        else:
-            # Estimate AR parameters + noise from ORIGINAL dff trace
-            try:
-                g_arr, sn = estimate_parameters(
-                    dff,
-                    p=1,  # AR(1)
-                    range_ff=[0.25, 0.5],  # default
-                    method="median",  # mean or logmexp
-                    lags=10,
-                    fudge_factor=0.98,
-                )
-                # make sure g is a tuple
-                g = tuple(np.atleast_1d(g_arr))
-            except (np.linalg.LinAlgError, ValueError) as e:
-                # estimate_parameters can fail with LinAlgError on edge-case traces
-                # (e.g., very short traces or numerical issues in autocorrelation)
-                cali_logger.warning(
-                    f"⚠️ OASIS parameter estimation failed for ROI {label_value} in "
-                    f"{fov_name}: {e}. Using default AR1 coefficient (0.95,)."
-                )
-                g = (0.95,)  # fallback stable AR(1) coefficient
-                sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
-            optimize_g = 0  # set >0 only if you really want refine
+        return _RoiParts(
+            label_value,
+            label_mask,
+            roi_trace_uncorrected,
+            roi_trace if neuropil_trace is not None else None,
+            neuropil_trace,
+            dff,
+            roi_size,
+            roi_size_units,
+        )
 
-        # Deconvolve with error handling for invalid AR coefficients
-        try:
-            den_dff, spikes, _b, _g_fit, _lam = deconvolve(
-                dff,
-                g=g,
-                sn=sn,
-                penalty=1,  # L1 sparsity (standard OASIS)
-                optimize_g=optimize_g,
-            )
-        except (ValueError, RuntimeError) as e:
-            # If OASIS fails due to invalid AR coefficients, fall back to stable default
-            cali_logger.warning(
-                f"⚠️ OASIS deconvolution failed for ROI {label_value} in {fov_name}: "
-                f"{e}. Retrying with stable default AR1 coefficient (0.95,)."
-            )
-            optimize_g = 0
-            den_dff, spikes, _b, _g_fit, _lam = deconvolve(
-                dff,
-                g=(0.95,),  # fallback stable AR(1) coefficient
-                sn=sn,
-                penalty=1,  # L1 sparsity (standard OASIS)
-                optimize_g=optimize_g,
-            )
-
-        cali_logger.debug(f"OASIS params ROI {label_value}: g={g}, sn={sn}")
-
-        # Convert to float
-        den_dff = den_dff.astype(float)
-        spikes = spikes.astype(float)
-
-        # Check for cancellation after deconvolution
+    def _finalize_roi(
+        self,
+        parts: _RoiParts,
+        den_dff: np.ndarray,
+        spikes: np.ndarray,
+        sn: float,
+        analysis_settings: AnalysisSettings | None,
+        tot_time_sec: float,
+        elapsed_time_list: list[float],
+        x_unit: str,
+        frame_window: ExtractionFrameWindow,
+    ) -> tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None:
+        """Build trace and optional analysis products from completed inference."""
         if self._check_for_abort_requested():
             return None
 
         # Create Traces object (extraction product)
         corrected_trace = (
-            cast("list[float]", roi_trace.tolist())
-            if neuropil_trace is not None
+            cast("list[float]", parts.corrected.tolist())
+            if parts.corrected is not None
             else None
         )
         traces = Traces(
-            raw_trace=cast("list[float]", roi_trace_uncorrected.tolist()),
+            raw_trace=cast("list[float]", parts.raw.tolist()),
             corrected_trace=corrected_trace,
             neuropil_trace=(
-                cast("list[float]", neuropil_trace.tolist())
-                if neuropil_trace is not None
+                cast("list[float]", parts.neuropil.tolist())
+                if parts.neuropil is not None
                 else None
             ),
-            dff=cast("list[float]", dff.tolist()),
+            dff=cast("list[float]", parts.dff.tolist()),
             den_dff=den_dff.tolist(),
             inferred_spikes=spikes.tolist(),
             x_axis=elapsed_time_list,
             x_axis_units=x_unit,
+            source_start_frame=frame_window.source_start_frame,
+            source_start_time_ms=frame_window.source_start_time_ms,
+            original_frame_count=frame_window.original_frame_count,
+            discarded_duration_ms=frame_window.discarded_duration_ms,
+            discard_timing_source=frame_window.timing_source,
         )
 
         # Optionally perform analysis (peak detection, IEI, frequency)
@@ -736,7 +749,7 @@ class ExtractionRunner:
             stimulated_area_mask = analysis_settings.stimulated_mask_area()
             if stimulated_area_mask is not None:
                 roi_stimulation_overlap_ratio = get_overlap_roi_with_stimulated_area(
-                    stimulated_area_mask, label_mask
+                    stimulated_area_mask, parts.label_mask
                 )
             # consider the roi stimulated if more than 10% of the roi overlaps
             stimulated = roi_stimulation_overlap_ratio > 0.1
@@ -822,7 +835,14 @@ class ExtractionRunner:
             else:
                 active = False
 
-        return (traces, data_analysis, active, stimulated, roi_size, roi_size_units)
+        return (
+            traces,
+            data_analysis,
+            active,
+            stimulated,
+            parts.roi_size,
+            parts.roi_size_units,
+        )
 
     def _get_fov_name(self, event_key: str, meta: list[dict], p: int) -> str:
         """Retrieve the fov name from metadata.
@@ -852,24 +872,4 @@ class ExtractionRunner:
         self, meta: list[dict], num_timepoints: int
     ) -> list[float]:
         """Get elapsed time list from metadata."""
-        elapsed_time_list: list[float] = []
-
-        exposure_ms = cast("float", meta[0].get("exposure_ms", 0.0))
-
-        # if in metadata, get the elapsed time list from RUNNER_TIME_KEY
-        if RUNNER_TIME_KEY in meta[0]:  # new metadata format
-            for m in meta:
-                rt = m[RUNNER_TIME_KEY]
-                if rt is not None:
-                    elapsed_time_list.append(float(rt))
-
-            # if the elapsed time list is different from the number of
-            # timepoints, set it as list of timepoints every exp_time
-            if len(elapsed_time_list) != num_timepoints:
-                elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
-
-        # otherwise use exposure time and number of timepoints to create
-        # elapsed time list
-        else:
-            elapsed_time_list = [t * exposure_ms for t in range(num_timepoints)]
-        return elapsed_time_list
+        return build_timing_descriptor(meta, num_timepoints).timestamps_ms

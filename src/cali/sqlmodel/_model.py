@@ -22,17 +22,7 @@ import useq
 from pydantic import BaseModel
 from sqlalchemy import TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import selectinload
-from sqlmodel import (
-    JSON,
-    Column,
-    Field,
-    Relationship,
-    Session,
-    SQLModel,
-    create_engine,
-    desc,
-    select,
-)
+from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, desc, select
 
 from cali._constants import (
     DEFAULT_BURST_GAUSS_SIGMA,
@@ -55,6 +45,7 @@ from cali._constants import (
     SPONTANEOUS,
 )
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
+from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 
 if TYPE_CHECKING:
     from cali.readers._ome_zarr_reader import OMEZarrReader
@@ -262,13 +253,16 @@ class CaliResult(SQLModel, table=True):
         >>> latest = results[-1]  # Ordered by id (creation order)
         """
         if session is None:
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             our_session = session = Session(engine)
         else:
+            ensure_schema_current(
+                session.connection() if session.in_transaction() else session.get_bind()
+            )
             our_session = None
 
         try:
@@ -399,13 +393,16 @@ class Experiment(SQLModel, table=True):
             Experiment instance with all relationships loaded and detached
         """
         if session is None:
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             our_session = session = Session(engine)
         else:
+            ensure_schema_current(
+                session.connection() if session.in_transaction() else session.get_bind()
+            )
             our_session = None
 
         try:
@@ -885,13 +882,16 @@ class DetectionSettings(SQLModel, table=True):
         >>> latest = all_settings[-1]
         """
         if session is None:
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             our_session = session = Session(engine)
         else:
+            ensure_schema_current(
+                session.connection() if session.in_transaction() else session.get_bind()
+            )
             our_session = None
 
         try:
@@ -948,6 +948,12 @@ class ExtractionSettings(SQLModel, table=True):
         Percentile for ΔF/F baseline calculation (0-100, default: 10)
     frame_rate : float
         Acquisition frame rate (frames per second)
+    frame_rate_verified : bool
+        Whether the configured frame rate was explicitly verified by the user
+    discard_initial_value : float
+        Amount to discard from the beginning of each source sequence
+    discard_initial_unit : str
+        Unit for ``discard_initial_value`` (``"frames"`` or ``"seconds"``)
     threads : int
         Number of threads to use for analysis (default: 1)
     """
@@ -965,6 +971,9 @@ class ExtractionSettings(SQLModel, table=True):
     dff_window: float = DEFAULT_DFF_WINDOW  # seconds
     dff_percentile: int = DEFAULT_DFF_PERCENTILE  # percentile for ΔF/F baseline
     frame_rate: float = Field(default=DEFAULT_FRAME_RATE)  # frames per second
+    frame_rate_verified: bool = Field(default=False)
+    discard_initial_value: float = Field(default=0.0)
+    discard_initial_unit: str = Field(default="frames")
     pixel_size: float | None = None  # pixel size in micrometers (µm)
 
     threads: int = Field(default=1)
@@ -985,6 +994,9 @@ class ExtractionSettings(SQLModel, table=True):
             and self.dff_window == other.dff_window
             and self.dff_percentile == other.dff_percentile
             and self.frame_rate == other.frame_rate
+            and self.frame_rate_verified == other.frame_rate_verified
+            and self.discard_initial_value == other.discard_initial_value
+            and self.discard_initial_unit == other.discard_initial_unit
             and self.pixel_size == other.pixel_size
             and self.threads == other.threads
         )
@@ -1000,6 +1012,9 @@ class ExtractionSettings(SQLModel, table=True):
                 self.dff_window,
                 self.dff_percentile,
                 self.frame_rate,
+                self.frame_rate_verified,
+                self.discard_initial_value,
+                self.discard_initial_unit,
                 self.pixel_size,
                 self.threads,
             )
@@ -1040,13 +1055,16 @@ class ExtractionSettings(SQLModel, table=True):
         >>> latest = all_settings[-1]
         """
         if session is None:
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             our_session = session = Session(engine)
         else:
+            ensure_schema_current(
+                session.connection() if session.in_transaction() else session.get_bind()
+            )
             our_session = None
 
         try:
@@ -1310,17 +1328,17 @@ class AnalysisSettings(SQLModel, table=True):
         >>> latest = all_settings[-1]
         """
         if session is None:
-            engine = create_engine(
+            engine = create_cali_engine(
                 f"sqlite:///{db_path}",
                 connect_args={"timeout": 30.0, "check_same_thread": False},
                 pool_pre_ping=True,
             )
             # Migrate existing databases to add new columns if missing
-            from cali.sqlmodel._util import migrate_analysis_settings
-
-            migrate_analysis_settings(engine)
             our_session = session = Session(engine)
         else:
+            ensure_schema_current(
+                session.connection() if session.in_transaction() else session.get_bind()
+            )
             our_session = None
 
         try:
@@ -1682,6 +1700,16 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         Frame numbers or frame timestamps (milliseconds)
     x_axis_units : str | None
         Units for x_axis ("frames" or "ms")
+    source_start_frame : int
+        Zero-based index of the first retained frame in the source sequence
+    source_start_time_ms : float
+        Time of the first retained frame relative to the source start
+    original_frame_count : int | None
+        Number of frames in the source sequence before startup exclusion
+    discarded_duration_ms : float
+        Resolved duration excluded from the source sequence
+    discard_timing_source : str | None
+        Timing source used to resolve the startup exclusion
     roi : ROI
         Parent ROI
     analysis_result : CaliResult
@@ -1703,6 +1731,11 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis_units: str | None = Field(default=None)  # "frames" or "ms"
+    source_start_frame: int = Field(default=0)
+    source_start_time_ms: float = Field(default=0.0)
+    original_frame_count: int | None = Field(default=None)
+    discarded_duration_ms: float = Field(default=0.0)
+    discard_timing_source: str | None = Field(default=None)
 
     # Foreign keys - roi_id is no longer unique to allow multiple versions
     roi_id: int | None = Field(

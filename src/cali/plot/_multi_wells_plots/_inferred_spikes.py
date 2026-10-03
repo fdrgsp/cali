@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from cali.sqlmodel._engine import ensure_schema_current
+
 from ._util import (
     BarPlotData,
     _aggregate_fov_scalar_to_condition_stats,
@@ -56,6 +58,7 @@ def _query_burst_metrics_by_condition(
     from cali.sqlmodel._model import AnalysisSettings, CaliResult
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             stmt = (
                 select(FOVAnalysis, FOV, Well, AnalysisSettings)
@@ -385,6 +388,7 @@ def _query_fov_scalar_by_condition(
     from cali.sqlmodel import FOV, FOVAnalysis, Well
 
     try:
+        ensure_schema_current(engine)
         with Session(engine) as session:
             field_col = getattr(FOVAnalysis, field_name)
             stmt = (

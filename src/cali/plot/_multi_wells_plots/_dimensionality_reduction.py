@@ -11,8 +11,8 @@ The feature matrix has one row per FOV and includes:
 
 Usage
 -----
->>> from sqlalchemy import create_engine
->>> engine = create_engine("sqlite:///my.cali")
+>>> from cali.sqlmodel import create_cali_engine
+>>> engine = create_cali_engine("sqlite:///my.cali")
 >>> df = build_fov_feature_matrix(engine, run_id=1)
 >>> coords, pca = compute_pca(df)
 >>> # coords: np.ndarray shape (n_fovs, 2); color by df["condition"]
@@ -33,6 +33,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
+
+from cali.sqlmodel._engine import ensure_schema_current
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -90,6 +92,7 @@ def build_fov_feature_matrix(
 
     rows: list[dict] = []
 
+    ensure_schema_current(engine)
     with Session(engine) as session:
         # ------------------------------------------------------------------
         # 0.  Optionally look up experiment_type for stim-split labelling

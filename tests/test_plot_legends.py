@@ -156,8 +156,18 @@ def test_burst_plot_without_legend_parameter(qtbot: QtBot) -> None:
 # ============================================================================
 
 
-def test_evoked_roi_traces_legend_with_both_types(qtbot: QtBot) -> None:
+def test_evoked_roi_traces_legend_with_both_types(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test evoked ROI traces legend with stimulated and non-stimulated ROIs."""
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots.ensure_schema_current",
+        lambda _: None,
+    )
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots._add_led_stimulation_bands",
+        lambda *args, **kwargs: None,
+    )
     # Create mock widget
     mock_widget = MagicMock()
     plot_widget = pg.PlotWidget()
@@ -293,8 +303,18 @@ def test_evoked_roi_traces_legend_with_both_types(qtbot: QtBot) -> None:
         evoked_mod.Session = original_session
 
 
-def test_evoked_spike_traces_legend(qtbot: QtBot) -> None:
+def test_evoked_spike_traces_legend(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test evoked spike traces legend displays correctly."""
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots.ensure_schema_current",
+        lambda _: None,
+    )
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots._add_led_stimulation_bands",
+        lambda *args, **kwargs: None,
+    )
     # Create mock widget
     mock_widget = MagicMock()
     plot_widget = pg.PlotWidget()
@@ -433,8 +453,18 @@ def test_evoked_spike_traces_legend(qtbot: QtBot) -> None:
         evoked_mod.Session = original_session
 
 
-def test_evoked_spike_raster_legend(qtbot: QtBot) -> None:
+def test_evoked_spike_raster_legend(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test evoked spike raster legend displays correctly."""
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots.ensure_schema_current",
+        lambda _: None,
+    )
+    monkeypatch.setattr(
+        "cali.plot._single_wells_plots.evoked._plot_evoked_experiment_data_plots._add_led_stimulation_bands",
+        lambda *args, **kwargs: None,
+    )
     # Create mock widget
     mock_widget = MagicMock()
     plot_widget = pg.PlotWidget()

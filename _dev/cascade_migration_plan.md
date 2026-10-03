@@ -1,10 +1,60 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: plan only — no code changes yet
+**Status**: P1 and P2a implemented; startup-discard implementation partial; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
+
+## Implementation review — 2026-10-02
+
+Completed in the working tree:
+
+- **P1:** extraction now computes ROI DFFs, invokes `OasisBackend.infer_all()` once per FOV,
+  then finalizes results. The backend preserves the legacy calculation, both retries,
+  diagnostics, noise estimates, and the legacy effective frame rate. Cancellation is checked
+  between rows and phases; complete products are staged before attachment. Phase-A arrays
+  are released as each ROI is finalized. A saved pre-refactor fixture checks exact trace,
+  metric, and activity equality for estimated/fixed decay with neuropil correction.
+- **P2a:** `create_cali_engine()` centralizes production database opens. Engine-accepting
+  queries and externally supplied sessions ensure migration before ORM access. Ordered
+  SQLite migrations use `PRAGMA user_version`: v1 adds analysis gates, v2 brings the existing
+  startup-discard columns under version control. Explicit transactions include DDL and
+  version updates; tests cover rollback/retry, concurrent opens, newer-version rejection,
+  legacy direct loaders, GUI runs, exports, and preservation of a caller's pending work.
+  Compatibility migration aliases remain for existing callers. No new CASCADE mappings
+  have been introduced before this migration foundation.
+
+Validation for this milestone:
+
+- Full regression suite: **1544 passed, 1 skipped in 189.00 s** with the locked Cellpose 4
+  and test dependencies installed. GUI tests ran with display access outside the sandbox;
+  `PYTEST_RUNNING=1 QT_QPA_PLATFORM=offscreen` was used for the test environment.
+- Ruff lint and formatting pass. Mypy remains red on the branch baseline (364 diagnostics
+  in the restored environment); this working tree has 362 and adds no diagnostics.
+- GUI regressions include lazy creation of new database files, protection of uncommitted
+  session data, and connection disposal on both error paths and Qt window destruction.
+  The migration checks' changes to checked-in database fixtures were restored afterward.
+
+The startup-discard changes present at the start of this review are useful but **do not yet
+complete P2b/P2c**. They implement cropping, GUI/JSON settings, retained axes, and per-trace
+source offsets. The remaining requirements are:
+
+- Replace duplicated per-trace provenance with one persisted `ExtractionFrameWindow` per
+  result/FOV, including requested settings, conversion rule, original source time, and
+  retained count. Backfill exact zero-discard windows for historical data.
+- Finish the shared timing descriptor, including trusted explicit frame-period metadata;
+  preflight against DFF/OASIS and eventually the selected CASCADE model rather than only
+  requiring two retained samples. Include file/FOV and limiting counts in errors.
+- Normalize one-based pulse input consistently. Some evoked consumers still deliberately
+  retain the legacy zero-based convention, while plot bands use one-based conversion.
+  Complete shared interval clipping/marking, including pulses crossing the cutoff.
+- Include source offsets and source event indices in exports and plot metadata. Current
+  CSV products export cropped values without the source mapping.
+
+**Next landing step:** P2b normalized multi-output storage and verified legacy backfill,
+then completion of P2c. Follow the binding sequence in §9 for packaging, the reference
+oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
 
 ## 0. TL;DR
 
