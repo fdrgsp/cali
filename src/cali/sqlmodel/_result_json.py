@@ -122,6 +122,14 @@ def _validate_snapshot(obj: SQLModel) -> None:
             raise ValueError("Spike metrics are incompatible with the spike method.")
         for field in ("threshold", *oasis, *cascade):
             value = getattr(obj, field)
+            # Preserve the applied OASIS sparse-input disable-detection sentinel.
+            if (
+                field == "threshold"
+                and obj.method == "oasis"
+                and obj.threshold_mode == "multiplier"
+                and value == math.inf
+            ):
+                continue
             if value is not None and (not math.isfinite(value) or value < 0):
                 raise ValueError("Spike metrics must be finite and non-negative.")
     if isinstance(obj, (Traces, DataAnalysis, FOVAnalysis)):

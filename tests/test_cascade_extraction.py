@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from cali._cascade_models import CascadeModelError
 from cali._constants import CASCADE_EXPECTED_SPIKES_TRACES, INFERRED_SPIKES_TRACES
+from cali.analysis._roi_analysis import analyze_roi_traces
 from cali.extraction._extraction_runner import ExtractionRunner
 from cali.extraction._frame_window import StartupDiscardError
 from cali.extraction._spike_inference import OasisBackend
@@ -628,6 +629,8 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
     )
     modes = []
     oasis_spikes = []
+    roi_calcium = []
+    roi_spikes = []
     for methods in (("oasis",), ("cascade",), ("oasis", "cascade")):
         settings = ExtractionSettings(
             spike_methods=methods,
@@ -645,6 +648,35 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
         assert output == [fov]
         traces = [roi._new_traces[0] for roi in fov.rois]
         modes.append([(trace.den_dff, trace.calcium_noise) for trace in traces])
+        analysis_settings = AnalysisSettings(
+            frame_rate=30,
+            spike_settings=[SpikeAnalysisSettings(method=method) for method in methods],
+        )
+        analyses = [
+            analyze_roi_traces(
+                trace,
+                analysis_settings,
+                duration_s=(trace.x_axis[-1] - trace.x_axis[0]) / 1000,
+            )
+            for trace in traces
+        ]
+        roi_calcium.append(
+            [
+                analysis.model_dump(exclude={"id", "created_at", "spike_analyses"})
+                for analysis in analyses
+            ]
+        )
+        roi_spikes.append(
+            {
+                method: [
+                    analysis.get_spike_analysis(method).model_dump(
+                        exclude={"spike_trace", "id", "spike_trace_id"}
+                    )
+                    for analysis in analyses
+                ]
+                for method in methods
+            }
+        )
         if "oasis" in methods:
             oasis_spikes.append([trace.get_spike_values("oasis") for trace in traces])
         if "cascade" in methods:
@@ -674,3 +706,6 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
                 assert run.resolved_device == "cpu" and run.dtype == "float32"
     assert modes[0] == modes[1] == modes[2]
     assert oasis_spikes[0] == oasis_spikes[1]
+    assert roi_calcium[0] == roi_calcium[1] == roi_calcium[2]
+    assert roi_spikes[0]["oasis"] == roi_spikes[2]["oasis"]
+    assert roi_spikes[1]["cascade"] == roi_spikes[2]["cascade"]

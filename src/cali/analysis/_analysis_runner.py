@@ -10,25 +10,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-import numpy as np
-from oasis.functions import GetSn
 from tqdm import tqdm
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis, SpikeAnalysis
+from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
 from cali.sqlmodel._spike_settings import require_available_spike_methods
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import ROI, Traces
 from ._fov_metrics import get_overlap_roi_with_stimulated_area
-from ._trace_analysis import (
-    calculate_frequency,
-    calculate_inter_event_intervals,
-    compute_calcium_peak_detection_thresholds,
-    compute_inferred_spike_threshold,
-    count_thresholded_spike_events,
-    detect_peaks_in_trace,
-)
+from ._roi_analysis import AnalysisCancelled, analyze_roi_traces
 
 
 class AnalysisRunner:
@@ -78,9 +69,10 @@ class AnalysisRunner:
             ready to be saved to database
         """
         analysis_settings.validate_spike_settings()
-        require_available_spike_methods(
-            tuple(child.method for child in analysis_settings.spike_settings)
-        )
+        if analysis_settings.enable_spikes:
+            require_available_spike_methods(
+                tuple(child.method for child in analysis_settings.spike_settings)
+            )
         generator = self._run_generator(fovs, analysis_settings)
         return generator if as_generator else list(generator)
 
@@ -292,82 +284,19 @@ class AnalysisRunner:
         if self._check_for_abort_requested():
             return None
 
-        # Convert traces to numpy arrays
         elapsed_time_list = traces.x_axis
-        dff = np.array(traces.dff)
-        den_dff_array = np.array(traces.den_dff)
-        spikes_array = np.array(traces.get_spike_values("oasis"))
-
-        # Skip if no time axis data
         if elapsed_time_list is None or len(elapsed_time_list) < 2:
             cali_logger.warning("Traces missing time axis data, skipping analysis")
             return None
-
-        # Calculate total recording time
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000
-
-        # --- Calcium peak detection (gated by enable_calcium) ---
-        frequency = None
-        peaks_den_dff = np.array([], dtype=int)
-        peaks_amplitudes_den_dff: list[float] = []
-        iei: list[float] = []
-        peaks_prominence_den_dff = None
-        peaks_height_den_dff = None
-
-        if analysis_settings.enable_calcium:
-            # fmt: off
-            sn = (
-                traces.calcium_noise
-                if traces.calcium_noise is not None
-                else GetSn(dff, range_ff=[0.25, 0.5], method="median")
+        try:
+            data_analysis = analyze_roi_traces(
+                traces,
+                analysis_settings,
+                duration_s=tot_time_sec,
+                cancel=self._check_for_abort_requested,
             )
-            peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff_array, sn, analysis_settings)  # noqa E501
-            # fmt: on
-
-            if self._check_for_abort_requested():
-                return None
-
-            # Detect peaks - convert milliseconds to frames
-            min_distance_ms = analysis_settings.peaks_distance
-            min_distance_frames = max(
-                1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
-            )
-            peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
-                den_dff_array,
-                peaks_height_den_dff,
-                peaks_prominence_den_dff,
-                min_distance_frames,
-            )
-
-            if self._check_for_abort_requested():
-                return None
-
-            frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
-            iei_ms = calculate_inter_event_intervals(peaks_den_dff, elapsed_time_list)
-            iei = [x / 1000 for x in iei_ms]
-
-        # --- Inferred spike analysis (gated by enable_spikes) ---
-        spike_detection_threshold = None
-        inferred_spikes_freq = None
-        inferred_spikes_rising_edge_freq = None
-        num_thresholded_spikes = 0
-
-        if analysis_settings.enable_spikes:
-            # fmt: off
-            spike_detection_threshold = compute_inferred_spike_threshold(spikes_array, analysis_settings)  # noqa E501
-            # fmt: on
-            num_thresholded_spikes, num_rising_edges = count_thresholded_spike_events(
-                spikes_array, spike_detection_threshold
-            )
-            inferred_spikes_freq = calculate_frequency(
-                num_thresholded_spikes, tot_time_sec
-            )
-            if analysis_settings.enable_rising_edge_analysis:
-                inferred_spikes_rising_edge_freq = calculate_frequency(
-                    num_rising_edges, tot_time_sec
-                )
-
-        if self._check_for_abort_requested():
+        except AnalysisCancelled:
             return None
 
         # Check if the ROI is stimulated (evoked experiments only)
@@ -393,40 +322,11 @@ class AnalysisRunner:
                 # Consider the ROI stimulated if more than 10% overlaps
                 stimulated = roi_stimulation_overlap_ratio > 0.1
 
-        # Create DataAnalysis object
-        data_analysis = DataAnalysis(
-            total_recording_time_sec=tot_time_sec,
-            den_dff_frequency=frequency,
-            peaks_den_dff=peaks_den_dff.tolist() if len(peaks_den_dff) > 0 else None,
-            peaks_amplitudes_den_dff=peaks_amplitudes_den_dff or None,
-            iei=iei or None,
-            peaks_prominence_den_dff=peaks_prominence_den_dff,
-            peaks_height_den_dff=peaks_height_den_dff,
-            calcium_active=(
-                analysis_settings.enable_calcium and len(peaks_den_dff) > 0
-            ),
-            spike_analyses=[
-                SpikeAnalysis(
-                    spike_trace=traces.get_spike_trace("oasis"),
-                    threshold=spike_detection_threshold,
-                    threshold_mode=analysis_settings.get_spike_settings(
-                        "oasis"
-                    ).threshold_mode,
-                    suprathreshold_sample_rate_hz=inferred_spikes_freq,
-                    suprathreshold_rising_edge_rate_hz=inferred_spikes_rising_edge_freq,
-                    spike_active=num_thresholded_spikes > 0,
-                )
-            ]
-            if analysis_settings.enable_spikes
-            else [],
+        # Preserve the legacy summary until P6's FOV pillar selection lands.
+        active = (
+            bool(data_analysis.calcium_active)
+            if analysis_settings.enable_calcium
+            else any(child.spike_active for child in data_analysis.spike_analyses)
         )
-
-        # Determine active status based on enabled analyses
-        if analysis_settings.enable_calcium:
-            active = len(peaks_den_dff) > 0
-        elif analysis_settings.enable_spikes:
-            active = num_thresholded_spikes > 0
-        else:
-            active = False
 
         return (data_analysis, active, stimulated)

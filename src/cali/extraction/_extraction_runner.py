@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from cali._constants import EVENT_KEY
 from cali.analysis._fov_metrics import get_overlap_roi_with_stimulated_area
-from cali.analysis._trace_analysis import compute_inferred_spike_threshold
+from cali.analysis._roi_analysis import AnalysisCancelled, analyze_roi_traces
 from cali.logger import cali_logger
 from cali.readers import OMEZarrReader, TensorstoreZarrReader
 from cali.readers._tiff_collection_reader import TiffCollectionReader
@@ -28,7 +28,6 @@ from cali.sqlmodel._model import (
     ExtractionFrameWindow,
     ExtractionSettings,
     Mask,
-    SpikeAnalysis,
     SpikeInferenceRun,
     SpikeTrace,
     Traces,
@@ -1061,15 +1060,6 @@ class ExtractionRunner:
         stimulated = False
 
         if analysis_settings is not None:
-            # Import analysis functions
-            from cali.analysis._trace_analysis import (
-                calculate_frequency,
-                calculate_inter_event_intervals,
-                compute_calcium_peak_detection_thresholds,
-                count_thresholded_spike_events,
-                detect_peaks_in_trace,
-            )
-
             # check if the roi is stimulated
             roi_stimulation_overlap_ratio = 0.0
             stimulated_area_mask = analysis_settings.stimulated_mask_area()
@@ -1080,100 +1070,22 @@ class ExtractionRunner:
             # consider the roi stimulated if more than 10% of the roi overlaps
             stimulated = roi_stimulation_overlap_ratio > 0.1
 
-            # --- Calcium peak detection (gated by enable_calcium) ---
-            frequency = None
-            peaks_den_dff = np.array([], dtype=int)
-            peaks_amplitudes_den_dff: list[float] = []
-            iei: list[float] = []
-            peaks_prominence_den_dff = None
-            peaks_height_den_dff = None
-
-            if analysis_settings.enable_calcium:
-                # fmt: off
-                peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff, sn, analysis_settings)  # noqa E501
-                # fmt: on
-
-                if self._check_for_abort_requested():
-                    return None
-
-                min_distance_ms = analysis_settings.peaks_distance
-                min_distance_frames = max(
-                    1, int((min_distance_ms / 1000.0) * analysis_settings.frame_rate)
+            try:
+                data_analysis = analyze_roi_traces(
+                    traces,
+                    analysis_settings,
+                    duration_s=tot_time_sec,
+                    cancel=self._check_for_abort_requested,
                 )
-                peaks_den_dff, peaks_amplitudes_den_dff = detect_peaks_in_trace(
-                    den_dff,
-                    peaks_height_den_dff,
-                    peaks_prominence_den_dff,
-                    min_distance_frames,
-                )
+            except AnalysisCancelled:
+                return None
 
-                if self._check_for_abort_requested():
-                    return None
-
-                frequency = calculate_frequency(len(peaks_den_dff), tot_time_sec)
-                iei_ms = calculate_inter_event_intervals(
-                    peaks_den_dff, elapsed_time_list
-                )
-                iei = [x / 1000 for x in iei_ms]
-
-            # --- Inferred spike analysis (gated by enable_spikes) ---
-            spike_detection_threshold = None
-            inferred_spikes_freq = None
-            inferred_spikes_rising_edge_freq = None
-            num_thresholded_spikes = 0
-
-            if analysis_settings.enable_spikes:
-                # fmt: off
-                spike_detection_threshold = compute_inferred_spike_threshold(spikes, analysis_settings)  # noqa E501
-                # fmt: on
-                num_thresholded_spikes, num_rising_edges = (
-                    count_thresholded_spike_events(spikes, spike_detection_threshold)
-                )
-                inferred_spikes_freq = calculate_frequency(
-                    num_thresholded_spikes, tot_time_sec
-                )
-                if analysis_settings.enable_rising_edge_analysis:
-                    inferred_spikes_rising_edge_freq = calculate_frequency(
-                        num_rising_edges, tot_time_sec
-                    )
-
-            # Create DataAnalysis object (analysis product)
-            data_analysis = DataAnalysis(
-                total_recording_time_sec=tot_time_sec,
-                den_dff_frequency=frequency,
-                peaks_den_dff=(
-                    peaks_den_dff.tolist() if len(peaks_den_dff) > 0 else None
-                ),
-                peaks_amplitudes_den_dff=peaks_amplitudes_den_dff or None,
-                iei=iei or None,
-                peaks_prominence_den_dff=peaks_prominence_den_dff,
-                peaks_height_den_dff=peaks_height_den_dff,
-                calcium_active=(
-                    analysis_settings.enable_calcium and len(peaks_den_dff) > 0
-                ),
-                spike_analyses=[
-                    SpikeAnalysis(
-                        spike_trace=traces.get_spike_trace("oasis"),
-                        threshold=spike_detection_threshold,
-                        threshold_mode=analysis_settings.get_spike_settings(
-                            "oasis"
-                        ).threshold_mode,
-                        suprathreshold_sample_rate_hz=inferred_spikes_freq,
-                        suprathreshold_rising_edge_rate_hz=inferred_spikes_rising_edge_freq,
-                        spike_active=num_thresholded_spikes > 0,
-                    )
-                ]
-                if analysis_settings.enable_spikes
-                else [],
+            # Preserve the legacy summary until P6's FOV pillar selection lands.
+            active = (
+                bool(data_analysis.calcium_active)
+                if analysis_settings.enable_calcium
+                else any(child.spike_active for child in data_analysis.spike_analyses)
             )
-
-            # Determine active status based on enabled analyses
-            if analysis_settings.enable_calcium:
-                active = len(peaks_den_dff) > 0
-            elif analysis_settings.enable_spikes:
-                active = num_thresholded_spikes > 0
-            else:
-                active = False
 
         return (
             traces,

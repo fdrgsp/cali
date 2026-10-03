@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; real-plate performance, CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations and CASCADE ROI metrics implemented; method-bound FOV analysis, real-plate performance, consumer/comparison integration, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,8 +442,8 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6 method-specific CASCADE ROI/FOV spike analysis and consumer
-selection. Step 10's production codec now addresses the measured dense-JSON budget failure.
+**Next landing step:** P6b per-method FOV collections, activity membership and valid-interval
+population analysis, followed by method-aware consumers/comparison selection. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
 available, before release or GUI exposure.
@@ -753,6 +753,57 @@ were restored afterward. Measured migration details are recorded in
 P6 analysis semantics come next; real-plate/GPU acceptance, complete analysis timings,
 method-aware plot/comparison integration and GUI exposure remain pending. These storage
 results do not promote the experimental cached service to the default.
+
+P6a — shared ROI analysis and CASCADE spike semantics (2026-10-03):
+
+- Extraction finalization and analysis-only ROI calculations now call the same calcium
+  and method-bound spike helpers. The calcium path retains the existing noise fallback,
+  peak thresholds, distance conversion, inter-event intervals and timestamp duration.
+  The saved pre-refactor OASIS traces/metrics/activity fixture still agrees exactly.
+- The spike helper consumes one stored `SpikeTrace` and its matching settings. The
+  collection helper analyzes every retained method in canonical OASIS/CASCADE order,
+  requires matching settings, and stages the full ROI product before returning it.
+  Dual per-method ROI results equal their single-method results; retained spike selection
+  cannot alter shared calcium metrics.
+- CASCADE computes expected count as the float64 sum of valid stored samples and rate
+  as their mean times the persisted acquisition rate. Model and recording rates must
+  be present, positive and compatible within 1%. Re-analysis uses the eagerly loaded
+  base trace/window explicitly, avoiding lazy back-pointer access on detached children.
+  No optional inference package or model files are needed for these calculations.
+- CASCADE supports explicit global spikes/frame cutoffs and the exact sampled Gaussian
+  single-AP peak times the configured fraction, using persisted model rate/smoothing.
+  This is a plain cutoff without upstream dilation. The secondary excursion rate follows
+  `enable_rising_edge_analysis`; expected count/rate do not depend on that switch.
+  OASIS sample/rising-edge fields remain unset on CASCADE rows and vice versa.
+- Binary samples/onsets cover only the method's nonempty valid interval. CASCADE's first
+  valid sample contributes expected count, but cannot create a spurious onset. Full-length
+  OASIS preserves its historical first-sample convention and tiny negative numerical
+  residuals. Cropped OASIS suppresses the crop-boundary onset. Closely spaced smoothed
+  action potentials demonstrate two expected spikes but only one threshold excursion.
+- OASIS's existing sparse-input multiplier rule returns +infinity to disable detection.
+  That applied sentinel now survives normalized database and JSON writes, restricted to
+  OASIS/multiplier thresholds. Configured thresholds and all other metrics retain their
+  finite/nonnegative checks. A silent OASIS trace therefore no longer fails persistence.
+- Calcium-only `AnalysisRunner` re-analysis now accepts CASCADE settings: the public
+  spike-analysis gate is consulted only when spike analysis is enabled. Full CASCADE
+  plate spike analysis stays gated until P6b's FOV method/pillar collections land.
+  Per-pillar ROI flags are available, but the legacy `ROI.active` selection is retained
+  during this slice so existing FOV calcium membership cannot change prematurely.
+
+Tests cover golden pretrained values, both threshold modes, missing/invalid provenance,
+valid edges, optional excursion metrics, dual/single and inline/re-analysis parity,
+absence of model files, detached ORM graphs, snapshots, sparse OASIS persistence and
+cancellation between methods. The installed-wheel pretrained extraction test now also
+compares per-method ROI results and shared calcium results across all three outputs.
+The wheel CI job includes the new ROI tests. FOV membership, raster/burst/synchrony/CCG
+valid intervals, method-aware metrics/threshold exports and plot/comparison validation
+remain the next P6 work; this is completion of the ROI slice, not P6 as a whole.
+
+Validation: **81 passed in 1.94 s** in focused ROI/OASIS/settings/persistence checks;
+**1981 passed, 13 skipped in 234.06 s** in the full base/GUI suite; **184 passed in
+9.73 s** against the newly built and installed wheel with real pretrained models.
+Ruff lint/format pass. Mypy adds no diagnostics (352 existing versus 353 before this
+slice). Test-migrated tracked database fixtures were restored after all test jobs ended.
 
 ## 0. TL;DR
 

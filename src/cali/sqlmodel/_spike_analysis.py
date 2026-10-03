@@ -257,5 +257,13 @@ def normalize_spike_analyses(session: "Session", *_: Any) -> None:
             "suprathreshold_excursion_rate_hz",
         ):
             value = getattr(child, name)
+            # OASIS's sparse-input MULTIPLIER rule returns +inf to disable detection.
+            if (
+                name == "threshold"
+                and child.method == "oasis"
+                and child.threshold_mode == "multiplier"
+                and value == math.inf
+            ):
+                continue
             if value is not None and (not math.isfinite(value) or value < 0):
                 raise ValueError("Spike metrics must be finite and non-negative.")

@@ -16,11 +16,11 @@ from scipy.signal import find_peaks
 from cali._constants import GLOBAL_HEIGHT, GLOBAL_SPIKE_THRESHOLD
 
 if TYPE_CHECKING:
-    from cali.sqlmodel._model import AnalysisSettings
+    from cali.sqlmodel._model import AnalysisSettings, SpikeAnalysisSettings
 
 
 def compute_inferred_spike_threshold(
-    spikes: np.ndarray, settings: "AnalysisSettings"
+    spikes: np.ndarray, settings: "AnalysisSettings | SpikeAnalysisSettings"
 ) -> float:
     """Compute threshold for inferred spikes from OASIS deconvolution.
 
@@ -36,8 +36,18 @@ def compute_inferred_spike_threshold(
     float
         Threshold for spike detection
     """
-    spike_threshold_value = settings.spike_threshold_value
-    spike_threshold_mode = settings.spike_threshold_mode
+    from cali.sqlmodel._model import SpikeAnalysisSettings
+
+    if isinstance(settings, SpikeAnalysisSettings):
+        settings.validate_parameters()
+        if settings.method != "oasis":
+            raise ValueError("OASIS threshold calculation requires OASIS settings.")
+        spike_threshold_value = settings.threshold_value
+        spike_threshold_mode = settings.threshold_mode
+    else:
+        spike_threshold_value = settings.spike_threshold_value
+        spike_threshold_mode = settings.spike_threshold_mode
+    assert spike_threshold_value is not None
 
     # User-provided global threshold (absolute units)
     if spike_threshold_mode == GLOBAL_SPIKE_THRESHOLD:
