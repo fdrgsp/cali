@@ -240,7 +240,9 @@ class AnalysisRunner:
                 continue
 
             # Get the most recent traces (last in list)
-            traces = roi.traces_history[-1]
+            traces = getattr(roi, "_analysis_source_trace", None)
+            if traces is None:
+                traces = roi.traces_history[-1]
 
             # Analyze the traces
             analysis_data = self._analyze_roi_traces(

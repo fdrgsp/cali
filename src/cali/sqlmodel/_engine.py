@@ -5,15 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Connection
 
+from ._source_migration import migrate_source_links
 from ._trace_migration import migrate_trace_provenance
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _add_columns(
@@ -174,6 +175,7 @@ _MIGRATIONS = (
     _startup_discard,
     _method_settings,
     migrate_trace_provenance,
+    migrate_source_links,
 )
 
 
@@ -252,9 +254,19 @@ def ensure_schema_current(engine: Engine | Connection) -> None:
 def create_cali_engine(url: str | URL, **kwargs: Any) -> Engine:
     """Create a SQLAlchemy engine and migrate existing cali tables before use."""
     engine = create_engine(url, **kwargs)
+    if engine.dialect.name == "sqlite":
+        # Install before migration opens the first pooled connection. A listener
+        # added afterward misses that connection when the runner reuses it.
+        event.listen(engine, "connect", _enable_sqlite_foreign_keys)
     try:
         ensure_schema_current(engine)
     except BaseException:
         engine.dispose()
         raise
     return engine
+
+
+def _enable_sqlite_foreign_keys(connection: Any, _: Any) -> None:
+    cursor = connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()

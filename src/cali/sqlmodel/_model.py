@@ -203,6 +203,13 @@ class CaliResult(SQLModel, table=True):
     analysis_settings_id: int | None = Field(
         default=None, foreign_key="analysis_settings.id"
     )
+    source_extraction_result_id: int | None = Field(
+        default=None,
+        foreign_key="analysis_result.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    legacy_trace_resolution: str | None = None
 
     # Progressive tracking of pipeline stages
     positions_detected: list[int] | None = Field(default=None, sa_column=Column(JSON))
@@ -248,6 +255,7 @@ class CaliResult(SQLModel, table=True):
             and self.detection_settings_id == other.detection_settings_id
             and self.extraction_settings_id == other.extraction_settings_id
             and self.analysis_settings_id == other.analysis_settings_id
+            and self.source_extraction_result_id == other.source_extraction_result_id
             and self.positions_detected == other.positions_detected
             and self.positions_extracted == other.positions_extracted
             and self.positions_analyzed == other.positions_analyzed
@@ -266,6 +274,7 @@ class CaliResult(SQLModel, table=True):
                 self.detection_settings_id,
                 self.extraction_settings_id,
                 self.analysis_settings_id,
+                self.source_extraction_result_id,
                 tuple(self.positions_detected) if self.positions_detected else None,
                 tuple(self.positions_extracted) if self.positions_extracted else None,
                 tuple(self.positions_analyzed) if self.positions_analyzed else None,

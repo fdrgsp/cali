@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings and trace provenance implemented; method-bound results/source audits and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings, trace provenance, and initial source linking implemented; method-bound results/source-audit completion and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -71,16 +71,55 @@ P2b continuation — frame windows and method-bound trace provenance:
   traces before autoflush, and deleting a source result preserves provenance referenced by
   surviving copies. CASCADE execution remains blocked until its backend and analysis land.
 
-Still required in P2b: ROI/FOV spike result tables, explicit source-extraction linkage with
-migration audits, normalized trace JSON round trips, and the remaining result/export
-conversions. Provenance mutation/ownership audits and valid-interval consumers must be
-completed before enabling a second backend.
+Still required in P2b: ROI/FOV spike result tables, source-audit completion, normalized trace
+JSON round trips, and the remaining result/export conversions. Provenance mutation/ownership
+audits and valid-interval consumers must be completed before enabling a second backend.
 
 Validation for the trace-provenance continuation: **1594 passed, 1 skipped in 200.35 s**
 in the full suite against restored legacy fixtures, plus **12 passed** in the focused
 provenance module after adding source-deletion, existing-window-FK, and conflicting-window
 regressions. Ruff lint/format pass. Mypy has 355 existing diagnostics versus 362 at
 `5b5fa0e`, with no added diagnostics. Checked-in databases were restored after validation.
+
+Trace provenance committed as `d31847b`. P2b continuation — source pinning and audits:
+
+- `CaliResult.source_extraction_result_id` now records a common extraction source, with
+  `legacy_trace_resolution` describing how it was identified. Equality/hash include the
+  source. Combined extraction points to itself. Source references survive deletion by
+  becoming null while copied trace/inference metadata remain readable.
+- Schema v5 preserves existing trace provenance first. For historical analysis-only rows,
+  it resolves the unique latest compatible extraction at or before their creation time,
+  covering the analyzed positions. Copy arrays, spike values/intervals, and legacy source
+  coordinates are verified before rebinding windows/inference runs. Missing sources,
+  timestamp ties, and payload mismatches receive persistent `MigrationIssue` rows; the
+  database and stored results remain readable. Historical extracted-stage flags are labelled
+  `legacy_stage_inferred`, rather than presented as explicit user source selection.
+- Analysis-only computation now pins the trace once before ROI/FOV analysis and copies that
+  same object at persistence, fixing independent "latest trace" choices. The public runner
+  accepts `source_extraction_result_id` for exact selection and distinguishes result reuse
+  by source. A forced explicitly sourced analysis preserves the original extraction and
+  skips detection/re-extraction. Analysis-only work no longer claims newly extracted positions.
+- Implicit re-analysis of unresolved/mixed-source histories fails with an actionable source
+  selection error. The runs panel marks unresolved, mixed, or deleted sources while still
+  displaying stored results. Existing position-wise runs spanning extraction generations
+  retain per-trace provenance and an explicit multiple-source audit instead of overwriting
+  the result's common-source pointer.
+- The engine factory enables SQLite foreign keys before migrations open the first pooled
+  connection. Installing the listener later in the runner missed that existing connection;
+  the deletion regression now verifies nullable source/window/inference links and surviving
+  copied values through the migrated connection itself.
+
+This is an initial source-linking slice, not completion of the source audit requirements.
+Remaining: split future mixed-source work into separate result records, disambiguate legacy
+stage flags that historically counted copied traces as extracted, complete source-repair and
+comparison flows, and move unresolved ROI/FOV metrics onto the audited compatibility path
+when those tables are normalized. CASCADE remains gated.
+
+Validation for source pinning: **1608 passed, 1 skipped in 206.47 s** in the full suite
+with first-connection foreign-key enforcement and restored legacy fixtures; **12 passed**
+in the focused source module, including an additional column-DDL rollback/retry regression.
+Ruff lint/format pass. Mypy has 354 existing diagnostics versus 355 at `d31847b`, with
+no added diagnostics. Checked-in databases were restored afterward.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after

@@ -105,8 +105,11 @@ def compute_fov_analysis(
 
         # Get traces - prefer _new_traces if available
         traces = None
+        pinned_trace = getattr(roi, "_analysis_source_trace", None)
         if hasattr(roi, "_new_traces") and roi._new_traces:
             traces = roi._new_traces[-1]  # Most recent
+        elif pinned_trace is not None:
+            traces = pinned_trace
         elif roi.traces_history:
             traces = roi.traces_history[-1]
 

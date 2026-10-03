@@ -31,6 +31,7 @@ from ._model import (
     Well,
     WellCondition,
 )
+from ._source_provenance import MigrationIssue
 from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
     create_database_and_tables,
@@ -55,6 +56,7 @@ __all__ = [
     "ExtractionSettings",
     "FOVAnalysis",
     "Mask",
+    "MigrationIssue",
     "Plate",
     "SpikeAnalysisSettings",
     "SpikeInferenceRun",

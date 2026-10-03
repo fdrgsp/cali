@@ -620,6 +620,24 @@ class _RunsPanel(QGroupBox):
         )
 
         item = QListWidgetItem(item_text)
+        resolution = result.legacy_trace_resolution or ""
+        source_warning = ""
+        source_deleted = result.source_extraction_result_id is None and resolution in {
+            "source_selected",
+            "stored_provenance",
+            "latest_preceding_inferred",
+        }
+        if (
+            resolution.startswith("unresolved")
+            or resolution == "multiple_sources"
+            or source_deleted
+        ):
+            item.setText(item_text + "\n  ⚠️ Extraction source needs review")
+            source_warning = (
+                "Extraction source is unresolved or spans multiple runs. "
+                "Stored results remain available; select an extraction source "
+                "before re-analysis or comparison.\n"
+            )
         item.setData(Qt.ItemDataRole.UserRole, result.id)
 
         item.setToolTip(
@@ -632,6 +650,8 @@ class _RunsPanel(QGroupBox):
             f"Positions Detected: {len(result.positions_detected or [])}\n"
             f"Positions Extracted: {len(result.positions_extracted or [])}\n"
             f"Positions Analyzed: {len(result.positions_analyzed or [])}\n"
+            f"Source Extraction Run: {result.source_extraction_result_id}\n"
+            f"{source_warning}"
         )
 
         self._runs_list.addItem(item)
