@@ -4,11 +4,13 @@ Run after benchmark_cascade_storage.py, without competing measurement processes.
 All original databases/exports remain untouched. Database fingerprints replace only
 spike-array encoding with decoded float64 bytes; every original stored field is exact.
 Schema-12's added, unknown population coordinates are separately verified as NULL.
+Event exports may add threshold mode/units columns; all preexisting fields must match.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import inspect
 import json
@@ -76,6 +78,42 @@ def export_hashes(directory: Path) -> dict[str, str]:
     }
 
 
+def compare_exports(expected_dir: Path, actual_dir: Path) -> dict:
+    """Check exact exports, permitting only the additive event threshold columns."""
+    expected = export_hashes(expected_dir)
+    actual = export_hashes(actual_dir)
+    assert expected and actual.keys() == expected.keys(), "Exported files differ."
+    added_columns: list[str] = []
+    for name, digest in expected.items():
+        if actual[name] == digest:
+            continue
+        assert Path(name).name == "events.csv", f"Migrated export differs: {name}"
+        with (expected_dir / name).open(newline="") as original:
+            old_rows = list(csv.reader(original))
+        with (actual_dir / name).open(newline="") as migrated:
+            new_rows = list(csv.reader(migrated))
+        old_header, new_header = old_rows[0], new_rows[0]
+        assert len(set(new_header)) == len(new_header), "Duplicate event columns."
+        assert all(column in new_header for column in old_header)
+        added = [column for column in new_header if column not in old_header]
+        assert set(added) == {"threshold_mode", "threshold_units"}
+        assert all(len(row) == len(new_header) for row in new_rows[1:])
+        indices = [new_header.index(column) for column in old_header]
+        assert [[row[index] for index in indices] for row in new_rows] == old_rows
+        added_columns = added
+    return {
+        "all_csv_files_byte_identical": all(
+            actual[name] == digest
+            for name, digest in expected.items()
+            if Path(name).suffix == ".csv"
+        ),
+        "all_existing_csv_fields_exact": True,
+        "event_columns_added": added_columns,
+        "all_json_sidecar_contents_identical": True,
+        "exported_files": len(actual),
+    }
+
+
 def main() -> None:
     """Upgrade a copy, compare every field/export and record maintenance separately."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -115,9 +153,10 @@ def main() -> None:
     )
     export_s = time.perf_counter() - begin
     engine.dispose()
-    expected = export_hashes(args.source.with_name(args.source.stem + "_exports"))
-    actual = export_hashes(destination.with_name(destination.stem + "_exports"))
-    assert expected and actual == expected, "Migrated exports differ from original."
+    export_comparison = compare_exports(
+        args.source.with_name(args.source.stem + "_exports"),
+        destination.with_name(destination.stem + "_exports"),
+    )
     before_vacuum_bytes = destination.stat().st_size
     with sqlite3.connect(destination) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
@@ -148,9 +187,7 @@ def main() -> None:
         "schema_after": SCHEMA_VERSION,
         "database_fingerprint": before,
         "all_decoded_arrays_and_other_fields_exact": True,
-        "all_csv_files_byte_identical": True,
-        "all_json_sidecar_contents_identical": True,
-        "exported_files": len(actual),
+        **export_comparison,
         "source_bytes": args.source.stat().st_size,
         "migrated_bytes_before_vacuum": before_vacuum_bytes,
         "migrated_bytes_after_vacuum": destination.stat().st_size,

@@ -67,10 +67,10 @@ jobs:
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
         run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_extraction.py -k pretrained
-      - name: Verify installed-wheel trace codec, migration, and ROI/FOV semantics
+      - name: Verify installed-wheel trace codec, migration, ROI/FOV, and export semantics
         env:
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py tests/test_spike_export.py
 
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }} ${{ matrix.backend }}

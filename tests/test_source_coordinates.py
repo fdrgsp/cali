@@ -174,7 +174,7 @@ def _coordinate_database(path: Path) -> tuple:
                 stimulated=True,
             )
             spike = SpikeTrace(
-                values=[2, 3, 4, 0, 6, 0][:count],
+                values=[2, 3, 0, 4, 6, 0][:count],
                 valid_start=1,
                 valid_stop=4,
                 inference_run=inference,
@@ -240,9 +240,9 @@ def test_exports_preserve_ragged_traces_and_exact_source_coordinates(
         engine, tmp_path / "events.csv", run_id=result_id, position_indices=[0]
     )
     events = pd.read_csv(tmp_path / "events.csv")
-    assert events.retained_frame_0based.tolist() == [0, 3, 1]
-    assert events.source_frame_1based.tolist() == [3, 6, 4]
-    assert events.source_timestamp_ms.tolist() == [1200, 1500, 1300]
+    assert events.retained_frame_0based.tolist() == [0, 3, 3]
+    assert events.source_frame_1based.tolist() == [3, 6, 6]
+    assert events.source_timestamp_ms.tolist() == [1200, 1500, 1500]
     assert events.event_type.tolist() == [
         "calcium_peak",
         "calcium_peak",

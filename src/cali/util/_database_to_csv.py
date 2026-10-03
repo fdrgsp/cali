@@ -29,6 +29,7 @@ from cali._constants import (
     TraceDataType,
     natural_sort_key,
 )
+from cali.analysis._roi_analysis import valid_spike_events
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
     FOV,
@@ -37,6 +38,7 @@ from cali.sqlmodel._model import (
     FOVAnalysis,
     Traces,
 )
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -237,6 +239,7 @@ def export_inferred_spikes_raw_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export raw inferred spike traces to CSV.
 
@@ -256,6 +259,8 @@ def export_inferred_spikes_raw_to_csv(
     position_indices : list[int] | None, optional
         Position indices to filter exports. If provided, only exports data
         from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_trace_data(
         engine=engine,
@@ -264,6 +269,7 @@ def export_inferred_spikes_raw_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -274,6 +280,7 @@ def export_inferred_spikes_thresholded_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export thresholded inferred spike traces to CSV (binary).
 
@@ -294,6 +301,8 @@ def export_inferred_spikes_thresholded_to_csv(
     position_indices : list[int] | None, optional
         Position indices to filter exports. If provided, only exports data
         from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_trace_data(
         engine=engine,
@@ -302,6 +311,7 @@ def export_inferred_spikes_thresholded_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -312,6 +322,7 @@ def export_correlation_matrices_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_methods: tuple[SpikeMethod, ...] | None = None,
 ) -> None:
     """Export all correlation matrices to CSV files.
 
@@ -337,13 +348,25 @@ def export_correlation_matrices_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_methods : tuple | None
+        Stored spike methods to export separately; None selects every stored method.
     """
+    from ._spike_export import _selected_methods, available_spike_result_methods
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get run_id if not provided
     if run_id is None:
         run_id = _get_default_run_id(engine)
+
+    available = available_spike_result_methods(
+        engine,
+        run_id=run_id,
+        fov_name=fov_name,
+        position_indices=position_indices,
+    )
+    methods = _selected_methods(available, spike_methods)
 
     # Query FOV analysis data
     ensure_schema_current(engine)
@@ -379,16 +402,28 @@ def export_correlation_matrices_to_csv(
                 if metric.startswith("calcium_"):
                     matrix = getattr(fov_analysis, metric)
                     roi_labels = fov_analysis.calcium_active_roi_labels
+                    _export_ordered_fov_matrix(
+                        session,
+                        fov,
+                        matrix,
+                        roi_labels,
+                        output_dir / f"{fov_prefix}{filename}",
+                    )
                 else:
-                    matrix = fov_analysis.get_spike_metric("oasis", metric)
-                    roi_labels = fov_analysis.get_spike_roi_labels("oasis")
-                _export_ordered_fov_matrix(
-                    session,
-                    fov,
-                    matrix,
-                    roi_labels,
-                    output_dir / f"{fov_prefix}{filename}",
-                )
+                    for method in methods:
+                        qualified = (
+                            f"{method}_{filename}"
+                            if available != {"oasis"}
+                            else filename
+                        )
+                        _export_spike_fov_matrix(
+                            session,
+                            fov_analysis,
+                            fov,
+                            method,
+                            metric,
+                            output_dir / f"{fov_prefix}{qualified}",
+                        )
 
 
 def export_calcium_dff_correlation_to_csv(
@@ -466,6 +501,7 @@ def export_inferred_spikes_synchrony_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes synchrony matrix to CSV.
 
@@ -482,6 +518,8 @@ def export_inferred_spikes_synchrony_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -490,6 +528,7 @@ def export_inferred_spikes_synchrony_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -500,6 +539,7 @@ def export_inferred_spikes_cross_correlation_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes cross-correlation matrix to CSV.
 
@@ -516,6 +556,8 @@ def export_inferred_spikes_cross_correlation_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -524,6 +566,7 @@ def export_inferred_spikes_cross_correlation_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -534,6 +577,7 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes cross-correlation lags matrix to CSV.
 
@@ -550,6 +594,8 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -558,6 +604,7 @@ def export_inferred_spikes_cross_correlation_lags_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -568,6 +615,7 @@ def export_inferred_spikes_ccg_zscore_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes CCG z-score matrix to CSV.
 
@@ -584,6 +632,8 @@ def export_inferred_spikes_ccg_zscore_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -592,6 +642,7 @@ def export_inferred_spikes_ccg_zscore_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -602,6 +653,7 @@ def export_inferred_spikes_synchrony_rising_edges_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes synchrony matrix (rising edges) to CSV.
 
@@ -618,6 +670,8 @@ def export_inferred_spikes_synchrony_rising_edges_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -626,6 +680,7 @@ def export_inferred_spikes_synchrony_rising_edges_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -636,6 +691,7 @@ def export_inferred_spikes_cross_correlation_rising_edges_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes cross-correlation matrix (rising edges) to CSV.
 
@@ -652,6 +708,8 @@ def export_inferred_spikes_cross_correlation_rising_edges_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -660,6 +718,7 @@ def export_inferred_spikes_cross_correlation_rising_edges_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -670,6 +729,7 @@ def export_inferred_spikes_cross_correlation_lags_rising_edges_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes cross-correlation lags matrix (rising edges) to CSV.
 
@@ -686,6 +746,8 @@ def export_inferred_spikes_cross_correlation_lags_rising_edges_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -694,6 +756,7 @@ def export_inferred_spikes_cross_correlation_lags_rising_edges_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -704,6 +767,7 @@ def export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export inferred spikes CCG z-score matrix (rising edges) to CSV.
 
@@ -720,6 +784,8 @@ def export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
     _export_single_correlation_matrix(
         engine,
@@ -728,6 +794,7 @@ def export_inferred_spikes_ccg_zscore_rising_edges_to_csv(
         fov_name=fov_name,
         run_id=run_id,
         position_indices=position_indices,
+        spike_method=spike_method,
     )
 
 
@@ -822,6 +889,7 @@ def _export_single_correlation_matrix(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export a single correlation matrix type to CSV (internal helper).
 
@@ -840,7 +908,10 @@ def _export_single_correlation_matrix(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_method : {"oasis", "cascade"}
+        Stored output to export; each method uses its own population and threshold.
     """
+    canonical_spike_methods((spike_method,))
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -869,25 +940,29 @@ def _export_single_correlation_matrix(
             msg = "No FOV analysis data found"
             raise ValueError(msg)
 
+        if not matrix_attr.startswith("calcium_") and not any(
+            parent.get_spike_analysis(spike_method) is not None for parent, _ in results
+        ):
+            raise ValueError(f"No FOV spike analysis results for {spike_method}.")
         for fov_analysis, fov in results:
-            # Get matrix data
-            if matrix_attr.startswith("calcium_"):
-                matrix = getattr(fov_analysis, matrix_attr)
-                roi_labels = fov_analysis.calcium_active_roi_labels
-            else:
-                matrix = fov_analysis.get_spike_metric("oasis", matrix_attr)
-                roi_labels = fov_analysis.get_spike_roi_labels("oasis")
-            if not roi_labels or matrix is None:
-                continue
-
             fov_output_path = output_path.parent / f"{fov.name}_{output_path.name}"
-            _export_ordered_fov_matrix(
-                session,
-                fov,
-                matrix,
-                roi_labels,
-                fov_output_path,
-            )
+            if matrix_attr.startswith("calcium_"):
+                _export_ordered_fov_matrix(
+                    session,
+                    fov,
+                    getattr(fov_analysis, matrix_attr),
+                    fov_analysis.calcium_active_roi_labels,
+                    fov_output_path,
+                )
+            else:
+                _export_spike_fov_matrix(
+                    session,
+                    fov_analysis,
+                    fov,
+                    spike_method,
+                    matrix_attr,
+                    fov_output_path,
+                )
 
 
 def _get_condition_groups(
@@ -964,6 +1039,7 @@ def _export_trace_data(
     spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export trace data to CSV (internal helper)."""
+    canonical_spike_methods((spike_method,))
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1003,6 +1079,7 @@ def _export_trace_data(
 
         # Group by FOV and stimulation status
         fov_data: dict[str, dict[Literal["stim", "non_stim"], list]] = {}
+        applied_thresholds = []
 
         for roi, traces, data_analysis in results:
             trace_data: list[float] | None
@@ -1029,12 +1106,32 @@ def _export_trace_data(
                 )
                 if child is None or threshold is None:
                     continue
-                trace_data = [
-                    (1.0 if val >= threshold else 0.0)
-                    if child.valid_start <= index < child.resolved_valid_stop
-                    else math.nan
-                    for index, val in enumerate(child.values)
-                ]
+                metric = data_analysis.get_spike_analysis(spike_method)
+                assert metric is not None
+                if metric.provenance_source == "legacy_unresolved":
+                    continue
+                if (
+                    metric.spike_trace_id is not None
+                    and metric.spike_trace_id != child.id
+                ):
+                    raise ValueError("Binary export must use the analyzed spike trace.")
+                from ._spike_export import _threshold_record
+
+                applied_thresholds.append(
+                    {
+                        **_threshold_record(metric, roi.label_value),
+                        "fov_name": roi.fov.name,
+                        "spike_trace_id": child.id,
+                        "valid_start_frame_0based": child.valid_start,
+                        "valid_stop_frame_exclusive": child.resolved_valid_stop,
+                        "provenance": child.inference_run.model_dump(mode="json"),
+                    }
+                )
+                binary, _ = valid_spike_events(child, threshold)
+                trace_data = [math.nan] * len(child.values)
+                trace_data[child.valid_start : child.resolved_valid_stop] = (
+                    binary.tolist()
+                )
             else:
                 attr_name = trace_attr_map.get(trace_type)
                 trace_data = (
@@ -1132,6 +1229,18 @@ def _export_trace_data(
 
         # Save to CSV
         df.to_csv(output_path, index=False)
+        if trace_type == INFERRED_SPIKES_THRESHOLDED_BINARY:
+            from ._spike_export import write_spike_metadata
+
+            write_spike_metadata(
+                output_path.with_suffix(".metadata.json"),
+                {
+                    "schema_version": 1,
+                    "run_id": run_id,
+                    "method": spike_method,
+                    "thresholds": applied_thresholds,
+                },
+            )
 
 
 _COORDINATE_COLUMNS = [
@@ -1270,20 +1379,21 @@ def export_events_to_csv(
                     units="dF/F",
                     value=trace.den_dff[frame] if trace.den_dff else None,
                     threshold=analysis.peaks_height_den_dff,
+                    threshold_mode=None,
+                    threshold_units="dF/F",
                     valid_start_frame_0based=0,
                     valid_stop_frame_0based=trace.source_frame_transform().retained_frame_count,
                 )
                 rows.append(row)
-            for child in analysis.spike_analyses:
+            for child in sorted(
+                analysis.spike_analyses, key=lambda child: child.method != "oasis"
+            ):
                 spike = child.spike_trace
                 if spike is None or child.threshold is None:
                     continue
                 source_trace = spike.trace
-                values = np.asarray(
-                    spike.values[spike.valid_start : spike.resolved_valid_stop]
-                )
-                positive = values > child.threshold
-                starts = np.flatnonzero(positive & ~np.r_[False, positive[:-1]])
+                _, onsets = valid_spike_events(spike, child.threshold)
+                starts = np.flatnonzero(onsets)
                 for start in starts:
                     frame = int(start) + spike.valid_start
                     row = _coordinate_row(roi, source_trace, frame)
@@ -1293,6 +1403,8 @@ def export_events_to_csv(
                         units=child.units,
                         value=spike.values[frame],
                         threshold=child.threshold,
+                        threshold_mode=child.threshold_mode,
+                        threshold_units=child.units,
                         valid_start_frame_0based=spike.valid_start,
                         valid_stop_frame_0based=spike.resolved_valid_stop,
                     )
@@ -1306,6 +1418,8 @@ def export_events_to_csv(
         "units",
         "value",
         "threshold",
+        "threshold_mode",
+        "threshold_units",
         "valid_start_frame_0based",
         "valid_stop_frame_0based",
     ]
@@ -1509,6 +1623,23 @@ def export_traces_to_csv(
                 run_id=run_id,
                 position_indices=target_indices,
             )
+            from ._spike_export import (
+                available_spike_result_methods,
+                export_spike_results_to_csv,
+            )
+
+            if available_spike_result_methods(
+                engine,
+                run_id=run_id,
+                position_indices=target_indices,
+            ):
+                export_spike_results_to_csv(
+                    engine,
+                    target_dir,
+                    run_id=run_id,
+                    position_indices=target_indices,
+                    include_matrices=False,
+                )
         for trace_type, should_export in export_traces.items():
             if should_export and trace_type in export_map:
                 export_func, filename = export_map[trace_type]
@@ -1539,6 +1670,7 @@ def export_correlations_to_csv(
     db_path: Path,
     *,
     position_indices: list[int] | None = None,
+    spike_methods: tuple[SpikeMethod, ...] | None = None,
 ) -> None:
     """Export selected correlation data to CSV files.
 
@@ -1556,6 +1688,8 @@ def export_correlations_to_csv(
     position_indices : list[int] | None
         Optional list of position indices to filter exports.
         If provided, only exports data from these positions.
+    spike_methods : tuple | None
+        Stored methods to export; None exports all available methods separately.
     """
     from cali._constants import (
         CALCIUM_DEN_DFF_CORRELATION,
@@ -1623,6 +1757,48 @@ def export_correlations_to_csv(
         ),
     }
 
+    from ._spike_export import (
+        available_spike_result_methods,
+        export_spike_results_to_csv,
+    )
+
+    spike_attrs = {
+        INFERRED_SPIKES_SYNCHRONY: "spike_jitter_synchrony_matrix",
+        INFERRED_SPIKES_CROSS_CORRELATION: "spike_max_lag_correlation_matrix",
+        INFERRED_SPIKES_CROSS_CORRELATION_LAGS: "spike_max_lag_values_matrix",
+        INFERRED_SPIKES_CCG_ZSCORE: "spike_ccg_zscore_matrix",
+        INFERRED_SPIKES_SYNCHRONY_RISING_EDGES: (
+            "spike_jitter_synchrony_matrix_rising_edges"
+        ),
+        INFERRED_SPIKES_CROSS_CORRELATION_RISING_EDGES: (
+            "spike_max_lag_correlation_matrix_rising_edges"
+        ),
+        INFERRED_SPIKES_CROSS_CORRELATION_LAGS_RISING_EDGES: (
+            "spike_max_lag_values_matrix_rising_edges"
+        ),
+        INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES: "spike_ccg_zscore_matrix_rising_edges",
+    }
+    has_spike_exports = any(
+        selected and name in spike_attrs
+        for name, selected in export_correlations.items()
+    )
+    available = (
+        available_spike_result_methods(
+            engine, run_id=run_id, position_indices=position_indices
+        )
+        if has_spike_exports
+        else set()
+    )
+    methods = (
+        canonical_spike_methods(spike_methods)
+        if spike_methods is not None
+        else canonical_spike_methods(list(available))
+        if available
+        else ()
+    )
+    if has_spike_exports and spike_methods is not None and set(methods) - available:
+        raise ValueError("Requested spike export methods are not stored on this run.")
+
     # Create export directory next to database
     export_dir = db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}"
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -1650,25 +1826,94 @@ def export_correlations_to_csv(
     # Export each selected correlation type into each target directory
     # Note: Correlation exports create separate files per FOV
     for target_dir, target_indices in export_targets:
+        target_available = (
+            available_spike_result_methods(
+                engine, run_id=run_id, position_indices=target_indices
+            )
+            if has_spike_exports
+            else set()
+        )
+        target_methods = tuple(
+            method for method in methods if method in target_available
+        )
+        matrix_methods = (
+            available_spike_result_methods(
+                engine,
+                run_id=run_id,
+                position_indices=target_indices,
+                fov_only=True,
+            )
+            if target_methods
+            else set()
+        )
+        if target_methods:
+            export_spike_results_to_csv(
+                engine,
+                target_dir,
+                run_id=run_id,
+                spike_methods=target_methods,
+                position_indices=target_indices,
+                include_matrices=False,
+            )
         for corr_type, should_export in export_correlations.items():
-            if should_export and corr_type in export_map:
-                export_func, base_filename = export_map[corr_type]
-                output_path = target_dir / base_filename
+            if not should_export or corr_type not in export_map:
+                continue
+            export_func, base_filename = export_map[corr_type]
+            if corr_type in spike_attrs:
+                for method in target_methods:
+                    if method not in matrix_methods:
+                        continue
+                    filename = (
+                        f"{method}_{base_filename}"
+                        if available != {"oasis"}
+                        else base_filename
+                    )
+                    _export_single_correlation_matrix(
+                        engine,
+                        target_dir / filename,
+                        spike_attrs[corr_type],
+                        run_id=run_id,
+                        position_indices=target_indices,
+                        spike_method=method,
+                    )
+            else:
                 try:
-                    from cali.logger import cali_logger
-
-                    cali_logger.info(f"📊 Exporting {corr_type} to {output_path}...")
                     export_func(
                         engine,
-                        output_path,
+                        target_dir / base_filename,
                         run_id=run_id,
                         position_indices=target_indices,
                     )
-                    cali_logger.info(f"✅ Exported {corr_type} successfully")
-                except Exception as e:
+                except Exception as error:
                     from cali.logger import cali_logger
 
-                    cali_logger.error(f"❌ Failed to export {corr_type}: {e}")
+                    cali_logger.error(f"❌ Failed to export {corr_type}: {error}")
+
+
+def _export_spike_fov_matrix(
+    session: Session,
+    parent: FOVAnalysis,
+    fov: FOV,
+    method: SpikeMethod,
+    metric: str,
+    output_path: Path,
+) -> None:
+    """Write one method's matrix and its exact population/threshold metadata."""
+    from ._spike_export import fov_spike_metadata, write_spike_metadata
+
+    child = parent.get_spike_analysis(method)
+    if child is None or getattr(child, metric) is None or not child.active_roi_labels:
+        return
+    metadata = fov_spike_metadata(session, parent, fov, child)
+    metadata["matrix_metric"] = metric
+    metadata["exported_roi_labels"] = _export_ordered_fov_matrix(
+        session,
+        fov,
+        getattr(child, metric),
+        child.active_roi_labels,
+        output_path,
+    )
+    write_spike_metadata(output_path.with_suffix(".metadata.json"), metadata)
 
 
 def _export_ordered_fov_matrix(
@@ -1677,14 +1922,23 @@ def _export_ordered_fov_matrix(
     matrix: list[list[float]] | list[list[int]] | None,
     roi_labels: list[int] | None,
     output_path: Path,
-) -> None:
+) -> list[int]:
     """Keep a pillar/method's matrix aligned when sorting its labels for export."""
     if matrix is None or not roi_labels:
-        return
+        return []
+    if len(roi_labels) != len(set(roi_labels)) or np.asarray(matrix).shape != (
+        len(roi_labels),
+        len(roi_labels),
+    ):
+        raise ValueError(
+            "Matrix exports require unique labels and matching dimensions."
+        )
     rois = session.exec(
         select(ROI).where(ROI.fov_id == fov.id, col(ROI.label_value).in_(roi_labels))
     ).all()
     roi_dict = {roi.label_value: roi for roi in rois}
+    if set(roi_labels) - roi_dict.keys():
+        raise ValueError("Matrix export labels must belong to the selected FOV.")
     sorted_labels = sorted(
         roi_labels,
         key=lambda label: (not bool(roi_dict[label].stimulated), label),
@@ -1696,6 +1950,7 @@ def _export_ordered_fov_matrix(
         [f"ROI_{label}" for label in sorted_labels],
         output_path,
     )
+    return sorted_labels
 
 
 def _export_matrix_to_csv(

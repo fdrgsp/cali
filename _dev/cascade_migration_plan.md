@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations and CASCADE ROI metrics plus P6b method-bound FOV populations implemented; schema-12 population coordinates added; real-plate performance, consumer/comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations and P6c1 method-aware exports implemented; schema-12 population coordinates added; real-plate performance, plot/aggregation/comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,7 +442,7 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6c method-aware exports, plot/metric consumers and comparison selection,
+**Next landing step:** P6c2 method-aware plots, aggregation consumers and comparison selection,
 including per-pillar activity and population-array coordinate handling. Complete those checks before
 opening the full runner's CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
@@ -858,6 +858,52 @@ base/GUI suite; **212 passed in 12.95 s** against the rebuilt and installed whee
 with real pretrained models. Ruff lint/format pass and full-environment mypy adds
 no diagnostics (352 existing). Tracked database fixtures are restored after test
 processes stop; no migrated test databases are committed.
+
+P6c1 — method-aware result exports (2026-10-03):
+
+- `export_spike_results_to_csv()` exports normalized ROI/FOV metrics, population
+  samples, burst bounds and matrices from stored analyses. Default selection follows
+  available results; explicit unavailable methods fail. OASIS and CASCADE retain
+  separate rows, thresholds, active populations and matrix filenames. Inactive ROI
+  results remain exportable regardless of the legacy `ROI.active` summary.
+- Every bundle records method, input and metric units, applied per-ROI thresholds
+  and modes, source/inference provenance, frame windows and common valid intervals.
+  Population samples use their stored retained-frame origin; historical unknown
+  coordinates remain empty. Matrix metadata records exported row order after the
+  existing stimulation sorting reorders both axes. A file manifest identifies the
+  files produced by the current selection when exporting again into an existing folder.
+- Result bundles stage all selected methods before replacing destination files.
+  Invalid population lengths, matrix dimensions or labels leave existing bundle
+  files untouched. Standard JSON represents OASIS's allowed disabled multiplier
+  threshold as the explicit string `"+infinity"`; other nonfinite thresholds fail.
+- Trace exports also include method-specific metric/threshold bundles when analyses
+  exist. Binary exports use each selected method's applied cutoff with strict `>`,
+  preserve invalid padding as NaN and record threshold provenance in a sidecar.
+  Events share the analysis onset rule: a cropped left edge does not fabricate an
+  onset, while full-length OASIS preserves its first-positive-sample convention.
+  Event rows now include threshold mode and units.
+- Correlation exports and individual matrix helpers accept method selection.
+  Dual and CASCADE matrices have method-qualified names and metadata; OASIS-only
+  legacy names and calcium matrices remain compatible. Conditions missing a selected
+  method cannot substitute another method's results. Spike validation errors propagate.
+- Installed-wheel CI includes export semantics. The storage migration benchmark
+  still checks every old CSV field exactly and every JSON sidecar by content; it
+  permits only the two additive event threshold columns and reports whether CSV
+  bytes remain identical. An unchanged field failure is still rejected. Historical
+  measurements retain their original byte-equality results.
+
+Validation: **142 passed, 1 skipped in 10.58 s** in focused export, coordinate,
+runner and codec checks; **2034 passed, 13 skipped in 237.18 s** in the full
+base/GUI suite; **237 passed in 13.53 s** against the rebuilt and installed wheel
+with real pretrained models. Ruff lint/format pass; mypy adds no diagnostics
+(352 existing). The benchmark comparison smoke check covers identical exports,
+the additive event schema and rejection of a changed threshold. Tracked database
+fixtures were restored after all test processes stopped.
+
+P6c2 plot/aggregation consumers and comparison validation remain pending. Full
+CASCADE runner spike analysis remains gated until those consumers select the proper
+method and population. Stored-result exports require no optional inference packages
+or model files. This completes the export slice, not P6 or GUI exposure.
 
 ## 0. TL;DR
 
