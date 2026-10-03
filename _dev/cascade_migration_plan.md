@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b normalized settings/results/JSON, source audits, verified GUI/API repair, and runner source splitting implemented; startup-discard completion and later method-specific comparison/consumers pending; CASCADE not enabled
+**Status**: P1/P2a and the prerequisite P2b/P2c storage, source, timing, cropping, and coordinate paths implemented; next: pinned CASCADE package/model loader and P3a reference inference; later method-specific consumers/comparisons pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -329,8 +329,41 @@ Focused validation: **258 passed** across timing, migration, source repair, and 
 passes; mypy has no added diagnostics (354 existing). Full suite: **1745 passed, 1 skipped in
 234.79 s**, against restored legacy fixtures.
 
-**When CASCADE code starts:** the remaining P2c work is the shared stimulation/event coordinate
-transform and source-index exports. Then follow §9: pinned installable CascadeTorch dependency
+P2c completion — shared source coordinates and event exports (2026-10-03):
+
+- `SourceFrameTransform` now owns retained/source frames, relative/absolute time mapping, and
+  clipped source intervals. Extraction frame-window **semantic schema 3** declares one-based
+  source pulse inputs for every evoked consumer. The database schema stays v9: no new column or
+  rewritten historical row is needed. Older windows keep each consumer's historical convention,
+  including its window sampling, and analysis-only copies reuse that exact original transform.
+- Evoked peak classification, LED bands, and stimulation/non-stimulation correlation windows
+  use the shared transform. Native response windows crossing the cutoff are clipped, overlapping
+  windows are merged without counting samples twice, and their complement covers the remaining
+  trace exactly. Fully excluded intervals are omitted. LED tooltips identify clipped pulses;
+  single-well plot tooltips report the source prefix/timing and coordinate convention. Global
+  `AnalysisSettings.led_pulse_on_frames` remain unchanged.
+- Selected trace exports also write `frame_coordinates.csv` and `events.csv`, with explicit
+  retained/source frame bases, offsets, relative times, known acquisition timestamps, timing
+  source, and generation provenance. Synthetic periods/exposure/verified settings never invent an
+  absolute acquisition timestamp. Event rows distinguish calcium peaks from method-labelled
+  threshold excursion starts and respect the referenced spike trace's valid interval; these are
+  not discrete action-potential estimates. Unbound historical spike metrics remain unexported as
+  inferred events. Coordinate rows stream with one cached transform per trace, avoiding a growing
+  row buffer or repeated timestamp-vector copies per sample.
+- Wide trace exports preserve the equal-length legacy serialization and align unequal retained
+  lengths by retained index with empty trailing samples, so independently resolved seconds crops
+  can be exported together. The README now describes coordinates, timing, and these export files.
+
+Validation: **1759 passed, 1 skipped in 227.42 s** in the full suite, then **213 passed in 25.04 s**
+across every changed extraction/export/plot consumer after final streaming/timestamp refinements.
+The **17 new coordinate tests** cover frame/time round trips, irregular timestamp mapping, both
+cutoff boundaries, historical conventions, clipped plot metadata, method/valid-interval events,
+ragged exports, and exact source-generation preservation on analysis-only runs. The final timing
+and coordinate boundary set passed **67 tests**. Ruff passes; mypy adds no diagnostics (354
+existing). Checked-in legacy databases were restored after testing.
+
+**When CASCADE code starts:** P2c is complete for the existing pipeline. Follow §9 next:
+pinned installable CascadeTorch dependency
 (step 5), catalogue/model manifests and download path (step 6), and the direct upstream predictor
 (step 7/P3a). P3a is the first real CASCADE inference in cali's code. Optimized inference and
 runner wiring follow in steps 8–9/P3b/P5; method-specific analysis and GUI exposure remain gated
@@ -358,23 +391,21 @@ Validation for this milestone:
   session data, and connection disposal on both error paths and Qt window destruction.
   The migration checks' changes to checked-in database fixtures were restored afterward.
 
-The startup-discard changes present at the start of this review are useful but **do not yet
-complete P2b/P2c**. They implement cropping, GUI/JSON settings, retained axes, and per-trace
-source offsets. The remaining requirements are:
+The startup-discard changes present at the start of this review initially left P2b/P2c
+incomplete. The continuations above now cover those prerequisites:
 
 - The shared persisted `ExtractionFrameWindow` and historical backfill are now implemented.
-  Finish ownership/source audits alongside the remaining P2b result normalization.
+  Ownership/source audits and result normalization are implemented above.
 - Shared timing, explicit frame-period metadata, and DFF/OASIS retained-length preflight are now
   implemented. Connect the selected model's minimum length and rate validation when the CASCADE
   model manifest/backend lands.
-- Normalize one-based pulse input consistently. Some evoked consumers still deliberately
-  retain the legacy zero-based convention, while plot bands use one-based conversion.
-  Complete shared interval clipping/marking, including pulses crossing the cutoff.
-- Include source offsets and source event indices in exports and plot metadata. Current
-  CSV products export cropped values without the source mapping.
+- Native one-based pulse inputs, shared interval clipping/marking, and historical coordinate
+  compatibility are implemented above.
+- Source offsets and explicit source/retained event indices are now included in exports and plot
+  tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** finish P2b normalized multi-output storage and verified legacy backfill,
-then completion of P2c. Follow the binding sequence in §9 for packaging, the reference
+**Next landing step:** the pinned installable CASCADE package and model loader. Follow the
+binding sequence in §9 for packaging, the reference
 oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
 
 ## 0. TL;DR

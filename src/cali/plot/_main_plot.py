@@ -5,9 +5,13 @@ from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from sqlmodel import Session, col, select
 from typing_extensions import TypeAlias
 
 from cali._constants import EVOKED
+from cali.sqlmodel._engine import ensure_schema_current
+from cali.sqlmodel._model import FOV, ROI, Traces
+from cali.sqlmodel._trace_provenance import ExtractionFrameWindow
 
 from ._multi_wells_plots import (
     compute_burst_avg_duration_data,
@@ -1273,7 +1277,11 @@ def plot_single_well_data(
                 analyzer = cast("SingleWellAnalyzer", product.analyzer)
                 # Pass run_id as keyword argument to avoid positional conflicts
                 # with other keyword args in the analyzer functions
-                return analyzer(widget, engine, fov_name, rois, run_id=run_id)  # type: ignore[no-any-return]
+                analyzer(widget, engine, fov_name, rois, run_id=run_id)
+                widget.plot_item.setToolTip(
+                    _source_coordinate_tooltip(engine, fov_name, run_id, rois)
+                )
+                return
 
         # If we get here, analysis was not found
         cali_logger.warning(f"Analysis '{text}' not found in registry")
@@ -1281,6 +1289,47 @@ def plot_single_well_data(
     except Exception as e:
         cali_logger.error(f"Error plotting single well data for '{text}': {e}")
         raise
+
+
+def _source_coordinate_tooltip(
+    engine: Engine, fov_name: str, run_id: int | None, rois: list[int] | None
+) -> str:
+    """Describe the selected plot's stored source offset without guessing timing."""
+    ensure_schema_current(engine)
+    with Session(engine) as session:
+        stmt = (
+            select(
+                ExtractionFrameWindow.source_start_frame,
+                ExtractionFrameWindow.source_start_time_ms,
+                ExtractionFrameWindow.timing_source,
+                ExtractionFrameWindow.schema_version,
+            )
+            .join(
+                Traces,
+                col(Traces.extraction_frame_window_id) == col(ExtractionFrameWindow.id),
+            )
+            .join(ROI, col(Traces.roi_id) == col(ROI.id))
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
+            .where(FOV.name == fov_name)
+            .distinct()
+        )
+        if run_id is not None:
+            stmt = stmt.where(Traces.analysis_result_id == run_id)
+        if rois is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+        windows = session.exec(stmt).all()
+    details = ["Frame indices are relative to the retained trace (first frame = 0)."]
+    for start, time_ms, timing, coordinate_version in windows:
+        details.append(
+            f"Discarded source prefix: {start} frames ({time_ms:g} ms); "
+            f"timing: {timing or 'unknown'}; "
+            + (
+                "source pulse inputs are one-based."
+                if coordinate_version >= 3
+                else "historical pulse convention is preserved."
+            )
+        )
+    return "\n".join(details)
 
 
 def plot_multi_well_data(

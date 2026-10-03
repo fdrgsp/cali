@@ -326,6 +326,74 @@ def validate_model_timing(
     return observed_rate
 
 
+@dataclass(frozen=True)
+class SourceFrameTransform:
+    """Map one retained trace to its immutable source coordinates.
+
+    Frame indices inside cali are zero-based. User stimulation inputs and the
+    explicit ``source_frame_1based`` export use one-based source frames. Times
+    are relative to the source's first sample unless an absolute timestamp is
+    requested; an unknown historical timestamp origin stays unknown.
+    """
+
+    source_start_frame: int
+    retained_frame_count: int
+    source_start_time_ms: float = 0.0
+    source_time_origin_ms: float | None = None
+    retained_timestamps_ms: tuple[float, ...] = ()
+    source_one_based: bool = True
+
+    def to_retained(self, source_frame: float) -> float:
+        """Convert a source input frame to an unclipped retained index."""
+        return source_frame - int(self.source_one_based) - self.source_start_frame
+
+    def to_source(self, retained_frame: float, *, one_based: bool = True) -> float:
+        """Convert a retained index to an explicit source frame convention."""
+        return retained_frame + self.source_start_frame + int(one_based)
+
+    def clip_interval(
+        self, source_frame: float, duration_frames: float
+    ) -> tuple[float, float] | None:
+        """Intersect a half-open source interval with the retained recording."""
+        start = self.to_retained(source_frame)
+        stop = start + duration_frames
+        clipped_start = max(0.0, start)
+        clipped_stop = min(float(self.retained_frame_count), stop)
+        return (clipped_start, clipped_stop) if clipped_stop > clipped_start else None
+
+    def retained_time_to_source(self, time_ms: float) -> float:
+        """Convert a stored trace time to time relative to the source origin."""
+        axis_origin = (
+            self.retained_timestamps_ms[0] if self.retained_timestamps_ms else 0
+        )
+        return time_ms - axis_origin + self.source_start_time_ms
+
+    def source_time_to_retained(self, time_ms: float) -> float:
+        """Convert source-relative time to the stored trace's time axis."""
+        axis_origin = (
+            self.retained_timestamps_ms[0] if self.retained_timestamps_ms else 0
+        )
+        return time_ms - self.source_start_time_ms + axis_origin
+
+    def frame_times(
+        self, frame: int
+    ) -> tuple[float | None, float | None, float | None]:
+        """Return retained, source-relative, and absolute time for a sample."""
+        if not 0 <= frame < self.retained_frame_count:
+            raise ValueError("Event frame lies outside the retained recording.")
+        if not self.retained_timestamps_ms:
+            return None, None, None
+        stored_time = self.retained_timestamps_ms[frame]
+        retained_time = stored_time - self.retained_timestamps_ms[0]
+        source_time = self.retained_time_to_source(stored_time)
+        timestamp = (
+            source_time + self.source_time_origin_ms
+            if self.source_time_origin_ms is not None
+            else None
+        )
+        return retained_time, source_time, timestamp
+
+
 def source_frame_to_retained(
     source_frame: float,
     source_start_frame: int,
@@ -333,8 +401,9 @@ def source_frame_to_retained(
     one_based: bool = True,
 ) -> float:
     """Translate a source-file frame coordinate into a retained zero-based index."""
-    zero_based_source = source_frame - 1 if one_based else source_frame
-    return zero_based_source - source_start_frame
+    return SourceFrameTransform(
+        source_start_frame, 0, source_one_based=one_based
+    ).to_retained(source_frame)
 
 
 def source_interval_to_retained(
@@ -346,12 +415,6 @@ def source_interval_to_retained(
     one_based: bool = True,
 ) -> tuple[float, float] | None:
     """Translate, clip, or omit a source interval for a retained trace."""
-    start = source_frame_to_retained(
-        source_start_frame, retained_start_frame, one_based=one_based
-    )
-    stop = start + duration_frames
-    clipped_start = max(0.0, start)
-    clipped_stop = min(float(retained_frame_count), stop)
-    if clipped_stop <= clipped_start:
-        return None
-    return clipped_start, clipped_stop
+    return SourceFrameTransform(
+        retained_start_frame, retained_frame_count, source_one_based=one_based
+    ).clip_interval(source_start_frame, duration_frames)

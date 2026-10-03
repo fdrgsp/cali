@@ -91,6 +91,7 @@ from cali.sqlmodel._trace_provenance import (
 )
 
 if TYPE_CHECKING:
+    from cali.extraction._frame_window import SourceFrameTransform
     from cali.readers._ome_zarr_reader import OMEZarrReader
     from cali.readers._tensorstore_zarr_reader import TensorstoreZarrReader
 
@@ -2246,6 +2247,33 @@ class Traces(ResultJSON, table=True):  # type: ignore[call-arg]
         """Read source coordinates from the shared extraction frame window."""
         window = self.extraction_frame_window
         return window.source_start_frame if window is not None else 0
+
+    def source_frame_transform(
+        self, *, legacy_one_based: bool = False
+    ) -> "SourceFrameTransform":
+        """Build the shared transform, preserving historical pulse conventions.
+
+        Window schema 3 defines one-based source pulse inputs for every consumer.
+        Older generations retain the caller's documented legacy convention, so
+        re-analysis/plots do not reinterpret already stored historical settings.
+        """
+        from cali.extraction._frame_window import SourceFrameTransform
+
+        window = self.extraction_frame_window
+        times = tuple(self.x_axis or ()) if self.x_axis_units == "ms" else ()
+        return SourceFrameTransform(
+            source_start_frame=self.source_start_frame,
+            retained_frame_count=len(self.raw_trace or self.dff or self.x_axis or []),
+            source_start_time_ms=self.source_start_time_ms,
+            source_time_origin_ms=(
+                window.source_time_origin_ms
+                if window and window.timing_source == "runner_time"
+                else None
+            ),
+            retained_timestamps_ms=times,
+            source_one_based=bool(window and window.schema_version >= 3)
+            or legacy_one_based,
+        )
 
     @property
     def source_start_time_ms(self) -> float:

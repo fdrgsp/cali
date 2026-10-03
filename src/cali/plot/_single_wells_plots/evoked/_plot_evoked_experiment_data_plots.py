@@ -7,7 +7,6 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
-from cali.extraction._frame_window import source_interval_to_retained
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
@@ -1388,7 +1387,8 @@ def _add_led_stimulation_bands(
         if trace is None:
             return
 
-        retained_frame_count = len(trace.x_axis or trace.raw_trace or [])
+        transform = trace.source_frame_transform(legacy_one_based=True)
+        retained_frame_count = transform.retained_frame_count
         if retained_frame_count == 0:
             return
 
@@ -1397,11 +1397,8 @@ def _add_led_stimulation_bands(
 
         # Add vertical bands for each LED pulse
         for pulse_frame in settings.led_pulse_on_frames:
-            retained_interval = source_interval_to_retained(
-                pulse_frame,
-                pulse_duration_frames,
-                trace.source_start_frame,
-                retained_frame_count,
+            retained_interval = transform.clip_interval(
+                pulse_frame, pulse_duration_frames
             )
             if retained_interval is None:
                 continue
@@ -1416,6 +1413,17 @@ def _add_led_stimulation_bands(
                 brush=pg.mkBrush(*color),
                 pen=pg.mkPen(None),  # No border
                 movable=False,
+            )
+            clipped = (
+                retained_interval[0] != transform.to_retained(pulse_frame)
+                or retained_interval[1]
+                != transform.to_retained(pulse_frame) + pulse_duration_frames
+            )
+            region.setToolTip(
+                f"Source pulse frame {pulse_frame}; discarded prefix "
+                f"{transform.source_start_frame} frames "
+                f"({transform.source_start_time_ms:g} ms)"
+                + ("; pulse clipped to retained recording" if clipped else "")
             )
             plot.addItem(region)
 

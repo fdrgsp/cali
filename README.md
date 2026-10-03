@@ -396,13 +396,27 @@ Available multi-well visualizations include:
 Use **Discard at Start** to exclude rapid indicator bleaching or acquisition-settling
 artefacts at the beginning of every source position. Choose **Frames** to remove an
 exact number of samples or **Seconds** to resolve the cutoff from per-frame acquisition
-timestamps. If timestamps are unavailable, seconds mode requires confirmation that the
+timestamps or explicit frame-period metadata. If these are unavailable, seconds mode
+requires confirmation that the
 configured frame rate is the actual acquisition rate.
 
 The cutoff is applied before raw and neuropil traces, ΔF/F, OASIS, analysis, plots, and
 CSV export. ROI detection and masks are unchanged. Stored trace times are rebased to the
 first retained frame, while cali preserves the source-frame offset so stimulation frames
 remain aligned. The default, `0 frames`, preserves the previous behavior.
+
+Stimulation frames refer to the original source file: frame `1` is its first sample.
+New extractions apply this convention consistently to evoked responses and LED bands;
+historical extraction generations retain their recorded convention when re-analyzed.
+Bands crossing the cutoff are clipped and labelled, and plot tooltips show the discarded
+source offset. A cutoff that leaves too few samples fails before ROI extraction.
+
+Selected trace exports also write `frame_coordinates.csv` and `events.csv`. These
+include zero-based retained indices, both zero-based and one-based source indices,
+source offsets, and timing provenance. Absolute timestamps stay empty when unavailable;
+exposure-derived timing remains unverified. Event rows distinguish calcium peaks from
+method-labelled threshold excursion starts; excursions are not discrete action potentials.
+Trace CSVs align different retained lengths by row index and leave trailing missing samples empty.
 
 #### ΔF/F Calculation
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from sqlmodel import Session, col, select
 
-from cali.extraction._frame_window import source_frame_to_retained
+from cali._constants import MAX_FRAMES_AFTER_STIMULATION
 from cali.sqlmodel import (
     FOV,
     ROI,
@@ -94,23 +94,16 @@ def _query_evoked_amplitudes_by_condition(
             if not settings.led_pulse_on_frames or not settings.led_pulse_powers:
                 continue
 
-            # Build stimulations_frames_and_powers dict
-            # Convert frames to int first to handle float values from database
+            transform = traces.source_frame_transform()
+            # Keep the original onset for a response crossing the crop boundary;
+            # omit pulses whose complete response window has been discarded.
             stimulations_frames_and_powers = {
-                str(
-                    int(
-                        source_frame_to_retained(
-                            frame,
-                            traces.source_start_frame,
-                            # Preserve this legacy consumer's existing frame
-                            # convention while shifting the cropped prefix.
-                            one_based=False,
-                        )
-                    )
-                ): power
+                str(int(transform.to_retained(frame))): power
                 for frame, power in zip(
                     settings.led_pulse_on_frames, settings.led_pulse_powers
                 )
+                if transform.clip_interval(frame, MAX_FRAMES_AFTER_STIMULATION + 1)
+                is not None
             }
 
             # Get stimulated/non-stimulated amplitudes

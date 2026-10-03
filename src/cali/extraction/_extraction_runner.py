@@ -521,7 +521,7 @@ class ExtractionRunner:
             interval_jitter_fraction=retained_timing.interval_jitter_fraction,
             timing_validation=retained_timing.validation,
             provenance_source="extraction",
-            schema_version=2,
+            schema_version=3,
         )
         inference_run = SpikeInferenceRun(
             backend_version=version("oasis-deconv"),
@@ -801,6 +801,7 @@ class ExtractionRunner:
                 source_start_time_ms=frame_window.source_start_time_ms,
                 discarded_duration_ms=frame_window.discarded_duration_ms,
                 timing_source=frame_window.timing_source,
+                schema_version=3,
             )
         if inference_run is None:
             inference_run = SpikeInferenceRun(

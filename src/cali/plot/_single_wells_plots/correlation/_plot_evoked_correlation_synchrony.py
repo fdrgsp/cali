@@ -13,7 +13,7 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
-from cali.extraction._frame_window import source_frame_to_retained
+from cali.extraction._frame_window import SourceFrameTransform
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI
@@ -45,26 +45,43 @@ CMAP_NAME = "viridis"
 CMAP = pg.colormap.get(CMAP_NAME)
 
 
-def _retained_pulse_frames(
-    source_frames: list[int], source_start_frame: int, retained_frame_count: int
-) -> list[int]:
-    """Shift source pulse frames into this trace and omit discarded pulses."""
-    return sorted(
-        retained
+def _pulse_intervals(
+    source_frames: list[int], transform: SourceFrameTransform, radius: int
+) -> list[tuple[int, int]]:
+    """Clip and merge stimulation windows, including onsets before the cutoff."""
+    intervals = sorted(
+        (int(interval[0]), int(interval[1]))
         for source in source_frames
-        if 0
-        <= (
-            retained := int(
-                source_frame_to_retained(
-                    source,
-                    source_start_frame,
-                    # Preserve this consumer's existing convention at zero discard.
-                    one_based=False,
-                )
-            )
-        )
-        < retained_frame_count
+        if transform.source_one_based
+        or 0 <= transform.to_retained(source) < transform.retained_frame_count
+        if (interval := transform.clip_interval(source - radius, 2 * radius + 1))
+        is not None
     )
+    if not transform.source_one_based:
+        # Preserve historical window sampling (including repeated overlap samples).
+        return intervals
+    merged: list[tuple[int, int]] = []
+    for start, stop in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(stop, merged[-1][1]))
+        else:
+            merged.append((start, stop))
+    return merged
+
+
+def _outside_intervals(
+    intervals: list[tuple[int, int]], count: int
+) -> list[tuple[int, int]]:
+    """Return the complement of merged retained stimulation windows."""
+    result = []
+    cursor = 0
+    for start, stop in intervals:
+        if cursor < start:
+            result.append((cursor, start))
+        cursor = stop
+    if cursor < count:
+        result.append((cursor, count))
+    return result
 
 
 # =============================================================================
@@ -812,8 +829,7 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
 
         # Load all ROIs with their traces for this analysis run
         roi_data = {}
-        source_start_frame = 0
-        retained_frame_count = 0
+        transform = SourceFrameTransform(0, 0)
         for roi in fov.rois:
             if roi.label_value not in all_sorted:
                 continue
@@ -830,19 +846,14 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
                 continue
 
             roi_data[roi.label_value] = np.array(trace.den_dff)
-            source_start_frame = trace.source_start_frame
-            retained_frame_count = len(trace.den_dff)
+            transform = trace.source_frame_transform()
 
-        led_pulse_frames = _retained_pulse_frames(
-            source_led_pulse_frames,
-            source_start_frame,
-            retained_frame_count,
-        )
+        intervals = _pulse_intervals(source_led_pulse_frames, transform, window_frames)
 
     if len(roi_data) < 2:
         plot.setTitle("Windowed Correlation (Sorted - Insufficient trace data)")
         return
-    if not led_pulse_frames:
+    if not intervals:
         plot.setTitle("Windowed Correlation (Sorted - No retained LED pulses)")
         return
 
@@ -850,9 +861,7 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
     windowed_traces = {}
     for roi_label, full_trace in roi_data.items():
         segments = []
-        for pulse_frame in led_pulse_frames:
-            start_frame = max(0, pulse_frame - window_frames)
-            end_frame = min(len(full_trace), pulse_frame + window_frames + 1)
+        for start_frame, end_frame in intervals:
             segments.append(full_trace[start_frame:end_frame])
 
         # Concatenate all segments for this ROI
@@ -1064,8 +1073,7 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
 
         # Load all ROIs with their traces for this analysis run
         roi_data = {}
-        source_start_frame = 0
-        retained_frame_count = 0
+        transform = SourceFrameTransform(0, 0)
         for roi in fov.rois:
             if roi.label_value not in all_sorted:
                 continue
@@ -1082,13 +1090,11 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
                 continue
 
             roi_data[roi.label_value] = np.array(trace.den_dff)
-            source_start_frame = trace.source_start_frame
-            retained_frame_count = len(trace.den_dff)
+            transform = trace.source_frame_transform()
 
-        led_pulse_frames = _retained_pulse_frames(
-            source_led_pulse_frames,
-            source_start_frame,
-            retained_frame_count,
+        intervals = _pulse_intervals(source_led_pulse_frames, transform, window_frames)
+        outside_intervals = _outside_intervals(
+            intervals, transform.retained_frame_count
         )
 
     if len(roi_data) < 2:
@@ -1101,26 +1107,8 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
     windowed_traces = {}
     for roi_label, full_trace in roi_data.items():
         segments = []
-        trace_length = len(full_trace)
-
-        if not led_pulse_frames:
-            windowed_traces[roi_label] = full_trace
-            continue
-
-        # Segment before first pulse
-        if led_pulse_frames[0] - window_frames > 0:
-            segments.append(full_trace[0 : led_pulse_frames[0] - window_frames])
-
-        # Segments between pulses
-        for i in range(len(led_pulse_frames) - 1):
-            start_frame = led_pulse_frames[i] + window_frames + 1
-            end_frame = led_pulse_frames[i + 1] - window_frames
-            if start_frame < end_frame:
-                segments.append(full_trace[start_frame:end_frame])
-
-        # Segment after last pulse
-        if led_pulse_frames[-1] + window_frames + 1 < trace_length:
-            segments.append(full_trace[led_pulse_frames[-1] + window_frames + 1 :])
+        for start_frame, end_frame in outside_intervals:
+            segments.append(full_trace[start_frame:end_frame])
 
         # Concatenate all non-stim segments for this ROI
         if segments:

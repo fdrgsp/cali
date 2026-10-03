@@ -6,6 +6,8 @@ database to CSV format, including traces, correlation matrices, and more.
 
 from __future__ import annotations
 
+import csv
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -36,6 +38,8 @@ from cali.sqlmodel._model import (
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
+
+    from cali.extraction._frame_window import SourceFrameTransform
 
 
 def export_raw_traces_to_csv(
@@ -1090,10 +1094,199 @@ def _export_trace_data(
                 )
 
         # Create DataFrame with traces as columns
-        df = pd.DataFrame(np.array(all_data).T, columns=column_names)
+        # Seconds-mode discard can leave different lengths in different FOVs.
+        # Align retained row indices and leave missing trailing samples empty.
+        df = (
+            pd.DataFrame(np.array(all_data).T, columns=column_names)
+            if len({len(values) for values in all_data}) == 1
+            else pd.DataFrame(
+                {
+                    name: pd.Series(values)
+                    for name, values in zip(column_names, all_data)
+                }
+            )
+        )
 
         # Save to CSV
         df.to_csv(output_path, index=False)
+
+
+_COORDINATE_COLUMNS = [
+    "fov_name",
+    "position_index",
+    "roi_label",
+    "trace_id",
+    "extraction_result_id",
+    "coordinate_schema_version",
+    "retained_frame_0based",
+    "source_frame_0based",
+    "source_frame_1based",
+    "retained_time_ms",
+    "source_time_ms",
+    "source_timestamp_ms",
+    "source_start_frame",
+    "source_start_time_ms",
+    "timing_source",
+]
+
+
+def _coordinate_row(
+    roi: ROI, trace: Traces, frame: int, transform: SourceFrameTransform | None = None
+) -> dict[str, object]:
+    """Build an explicit, reversible sample coordinate without inferring timing."""
+    transform = transform or trace.source_frame_transform()
+    retained_time, source_time, timestamp = transform.frame_times(frame)
+    window = trace.extraction_frame_window
+    return dict(
+        zip(
+            _COORDINATE_COLUMNS,
+            (
+                roi.fov.name,
+                roi.fov.position_index,
+                roi.label_value,
+                trace.id,
+                window.extraction_result_id if window else None,
+                window.schema_version if window else None,
+                frame,
+                int(transform.to_source(frame, one_based=False)),
+                int(transform.to_source(frame)),
+                retained_time,
+                source_time,
+                timestamp,
+                transform.source_start_frame,
+                transform.source_start_time_ms,
+                window.timing_source if window else None,
+            ),
+        )
+    )
+
+
+def export_frame_coordinates_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    run_id: int,
+    fov_name: str | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export each trace's retained/source indices, offsets, and known timing.
+
+    Unknown historical absolute timestamps remain empty. The existing wide trace
+    CSV row number is ``retained_frame_0based``; source frames have both explicit
+    bases so the file can be joined to one-based acquisition/stimulation inputs.
+    """
+    ensure_schema_current(engine)
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces)
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
+            .join(Traces, col(Traces.roi_id) == col(ROI.id))
+            .where(Traces.analysis_result_id == run_id)
+            .order_by(col(FOV.name), col(ROI.label_value))
+        )
+        if fov_name is not None:
+            stmt = stmt.where(FOV.name == fov_name)
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
+        with path.open("w", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=_COORDINATE_COLUMNS)
+            writer.writeheader()
+            for roi, trace in session.exec(stmt):
+                transform = trace.source_frame_transform()
+                writer.writerows(
+                    _coordinate_row(roi, trace, frame, transform)
+                    for frame in range(transform.retained_frame_count)
+                )
+
+
+def export_events_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    run_id: int,
+    fov_name: str | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export calcium peaks and threshold excursions with exact source coordinates.
+
+    Excursion starts are threshold events, not discrete inferred action potentials.
+    They use the applied method threshold and only that spike trace's valid interval.
+    Unresolved historical spike metrics have no trace binding and are omitted.
+    """
+    ensure_schema_current(engine)
+    rows: list[dict[str, object]] = []
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces, DataAnalysis)
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
+            .join(Traces, col(Traces.roi_id) == col(ROI.id))
+            .join(DataAnalysis, col(DataAnalysis.roi_id) == col(ROI.id))
+            .where(
+                Traces.analysis_result_id == run_id,
+                DataAnalysis.analysis_result_id == run_id,
+            )
+            .order_by(col(FOV.name), col(ROI.label_value))
+        )
+        if fov_name is not None:
+            stmt = stmt.where(FOV.name == fov_name)
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
+        for roi, trace, analysis in session.exec(stmt).all():
+            for peak in analysis.peaks_den_dff or []:
+                if not math.isfinite(peak) or not float(peak).is_integer():
+                    raise ValueError(
+                        "Calcium event indices must be finite whole frames."
+                    )
+                frame = int(peak)
+                row = _coordinate_row(roi, trace, frame)
+                row.update(
+                    event_type="calcium_peak",
+                    method="oasis_denoising",
+                    units="dF/F",
+                    value=trace.den_dff[frame] if trace.den_dff else None,
+                    threshold=analysis.peaks_height_den_dff,
+                    valid_start_frame_0based=0,
+                    valid_stop_frame_0based=trace.source_frame_transform().retained_frame_count,
+                )
+                rows.append(row)
+            for child in analysis.spike_analyses:
+                spike = child.spike_trace
+                if spike is None or child.threshold is None:
+                    continue
+                source_trace = spike.trace
+                values = np.asarray(
+                    spike.values[spike.valid_start : spike.resolved_valid_stop]
+                )
+                positive = values > child.threshold
+                starts = np.flatnonzero(positive & ~np.r_[False, positive[:-1]])
+                for start in starts:
+                    frame = int(start) + spike.valid_start
+                    row = _coordinate_row(roi, source_trace, frame)
+                    row.update(
+                        event_type="threshold_excursion_start",
+                        method=child.method,
+                        units=child.units,
+                        value=spike.values[frame],
+                        threshold=child.threshold,
+                        valid_start_frame_0based=spike.valid_start,
+                        valid_stop_frame_0based=spike.resolved_valid_stop,
+                    )
+                    rows.append(row)
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    columns = [
+        *_COORDINATE_COLUMNS,
+        "event_type",
+        "method",
+        "units",
+        "value",
+        "threshold",
+        "valid_start_frame_0based",
+        "valid_stop_frame_0based",
+    ]
+    pd.DataFrame(rows, columns=columns).to_csv(path, index=False)
 
 
 def export_traces_to_csv(
@@ -1172,6 +1365,19 @@ def export_traces_to_csv(
 
     # Export each selected trace type into each target directory
     for target_dir, target_indices in export_targets:
+        if any(export_traces.values()):
+            export_frame_coordinates_to_csv(
+                engine,
+                target_dir / "frame_coordinates.csv",
+                run_id=run_id,
+                position_indices=target_indices,
+            )
+            export_events_to_csv(
+                engine,
+                target_dir / "events.csv",
+                run_id=run_id,
+                position_indices=target_indices,
+            )
         for trace_type, should_export in export_traces.items():
             if should_export and trace_type in export_map:
                 export_func, filename = export_map[trace_type]
