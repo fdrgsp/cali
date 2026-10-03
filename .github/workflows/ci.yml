@@ -21,6 +21,33 @@ jobs:
       - uses: actions/checkout@v6
       - run: pipx run check-manifest
 
+  cascade-smoke:
+    name: CASCADE installed wheel py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.13']
+    env:
+      PYTEST_RUNNING: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Build cali wheel
+        run: uv build --wheel
+      - name: Install wheel with optional CASCADE dependency
+        run: |
+          uv venv .cascade-smoke
+          uv pip install --python .cascade-smoke/bin/python torch --index https://download.pytorch.org/whl/cpu
+          for cali_wheel in dist/cali-*.whl; do
+            uv pip install --python .cascade-smoke/bin/python "${cali_wheel}[cascade]" pytest
+          done
+      - name: Test installed package, source pin, and upstream prediction
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_package.py tests/test_spike_inference.py
+
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }} ${{ matrix.backend }}
     runs-on: ${{ matrix.platform }}
@@ -65,4 +92,3 @@ jobs:
           files: ./coverage.xml
           flags: ${{ matrix.platform }}-py${{ matrix.python-version }}
           fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
-

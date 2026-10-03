@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and the prerequisite P2b/P2c storage, source, timing, cropping, and coordinate paths implemented; next: pinned CASCADE package/model loader and P3a reference inference; later method-specific consumers/comparisons pending; CASCADE not enabled
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, lazy source-verified loader, and clean-wheel CI added; next: P4 model catalogue/manifest/download, then P3a reference inference; later method-specific consumers/comparisons pending; production CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -362,9 +362,47 @@ ragged exports, and exact source-generation preservation on analysis-only runs. 
 and coordinate boundary set passed **67 tests**. Ruff passes; mypy adds no diagnostics (354
 existing). Checked-in legacy databases were restored after testing.
 
-**When CASCADE code starts:** P2c is complete for the existing pipeline. Follow §9 next:
-pinned installable CascadeTorch dependency
-(step 5), catalogue/model manifests and download path (step 6), and the direct upstream predictor
+Step 5 — pinned CASCADE package and warning-clean installation (2026-10-03):
+
+- Created the separate GPL fork [fdrgsp/CascadeTorch](https://github.com/fdrgsp/CascadeTorch)
+  and published the minimal packaging commit
+  [`95ea3cac2d5719583f4a9eb03d68c78bcbc20d08`](https://github.com/fdrgsp/CascadeTorch/commit/95ea3cac2d5719583f4a9eb03d68c78bcbc20d08),
+  based on the previously inspected upstream `c6978d5`. The user's original CascadeTorch checkout
+  remains unchanged. The patch adds the missing package initializer, defers plotting imports,
+  replaces deprecated SciPy import paths, fixes a Python 3.13 regex escape warning, and removes an
+  undeclared `pip` import/runtime installer from config reading/writing. Inference algorithms,
+  model definitions, and the declared runtime dependency list are unchanged.
+- `cali[cascade]` now pins that full SHA, with Hatch direct references enabled. The lazy package
+  loader verifies all six installed source files against hashes from the pin (normalizing Windows
+  Git line endings), returns exact package/source provenance, and reports actionable installation
+  errors for absent, incomplete, modified, or incompatible installations. Root cali imports do
+  not load Torch/CASCADE, and there is no OASIS substitution on a CASCADE dependency failure.
+- A new Ubuntu Python 3.11/3.13 CI job builds cali's wheel, installs that wheel with `[cascade]`
+  and CPU Torch in a fresh environment, and checks package discovery, lazy imports, source identity,
+  YAML config loading, and an upstream prediction from a generated two-member test ensemble.
+  Padding and ensemble averaging are checked exactly. This is a packaging smoke fixture, not the
+  pretrained scientific numerical oracle required by P3a. The job also runs the exact OASIS
+  extraction fixtures; its first remote execution remains pending a cali push.
+- Clean installation exposed OASIS 0.2.0's build incompatibility with current Cython. uv now
+  forces its source build and constrains **only OASIS's build environment** to Cython 3.0
+  (`>=3.0,<3.1`); runtime dependencies and its source stay unchanged. Cython 0.29 cannot compile
+  against Python 3.13, while current Cython rejects implicit numeric conversions. The existing documented
+  macOS SDK settings were used locally. The per-package uv configuration itself was verified,
+  without a temporary global constraint file.
+
+Validation: **60 passed, 5 skipped** in the base environment (optional package absent), including
+ten new dependency/source-integrity tests and the existing OASIS/settings regressions. A separate
+fresh Python 3.13 environment installed the built cali wheel and its pinned Git dependency and
+passed **14 tests in 37.43 s**, including all five optional package tests and exact legacy OASIS
+traces/metrics. The package-only clean import also passes with every Python warning treated as an
+error. Ruff and TOML validation pass; mypy adds no diagnostics (354 existing). The README documents
+installation, GPL dependency separation, and the remaining execution gates. Upstream PR submission
+and project licensing review before distribution remain separate follow-ups; neither delays use of
+the pinned maintained fork for development.
+
+**When production CASCADE starts:** package code is now implemented and upstream prediction runs
+in the installation smoke test. Follow §9 next: catalogue/model manifests and download path
+(step 6), then the direct upstream predictor
 (step 7/P3a). P3a is the first real CASCADE inference in cali's code. Optimized inference and
 runner wiring follow in steps 8–9/P3b/P5; method-specific analysis and GUI exposure remain gated
 until their later acceptance checks pass. No further storage/source-repair milestone is planned
@@ -404,7 +442,7 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** the pinned installable CASCADE package and model loader. Follow the
+**Next landing step:** P4's pinned model catalogue, verified manifests, and download CLI. Follow the
 binding sequence in §9 for packaging, the reference
 oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
 

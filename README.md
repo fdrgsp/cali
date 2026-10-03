@@ -140,6 +140,29 @@ export LDFLAGS="-L${SDKROOT}/usr/lib"
 
 Then run your installation command.
 
+##### Optional CASCADE dependency (migration branch)
+
+From a checkout, install the optional inference package with:
+
+```bash
+uv sync --extra cascade
+```
+
+This can be combined with `--extra cp4` or `--extra cp3`. The extra pins
+[the maintained CascadeTorch fork](https://github.com/fdrgsp/CascadeTorch/commit/95ea3cac2d5719583f4a9eb03d68c78bcbc20d08)
+to an immutable commit. The fork fixes package discovery and warning-producing imports;
+its inference algorithm and declared runtime dependencies remain unchanged. cali loads
+the optional package only on use and verifies its source files against that pin.
+
+OASIS 0.2.0 still provides calcium denoising. The checkout's uv configuration builds it
+from source with Cython 3.0, which supports Python 3.13 and compiles the unchanged source.
+The macOS SDK settings above still apply when needed. CascadeTorch and OASIS are separate
+GPL-3.0 dependencies; cali does not vendor their source into its BSD-licensed package.
+
+This step installs and tests CASCADE's package; production inference and GUI selection
+remain gated by the model, numerical-reference, and method-specific analysis checks in
+[_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
+
 <br>
 
 ---

@@ -7,8 +7,8 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "vcs"
 
-# [tool.hatch.metadata]
-# allow-direct-references = true
+[tool.hatch.metadata]
+allow-direct-references = true
 
 # https://peps.python.org/pep-0621/
 [project]
@@ -61,14 +61,23 @@ dependencies = [
 # Cellpose is optional - choose the version that fits your Python version
 cp3 = ["cellpose>=3.0.0,<4.0.0"]
 cp4 = ["cellpose>=4.0.0"]
+cascade = [
+    "CascadeTorch @ git+https://github.com/fdrgsp/CascadeTorch@95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+]
 
 [tool.uv]
+no-binary-package = ["oasis-deconv"]
 conflicts = [
     [
       { extra = "cp3" },
       { extra = "cp4" },
     ],
 ]
+
+[tool.uv.extra-build-dependencies]
+# OASIS 0.2.0 compiles unchanged with Cython 3.0; current Cython rejects its
+# implicit numeric conversions, while 0.29 cannot compile against Python 3.13.
+oasis-deconv = ["Cython>=3.0,<3.1"]
 
 [dependency-groups]
 test = ["pytest>=6.0", "pytest-cov", "pytest-qt"]
