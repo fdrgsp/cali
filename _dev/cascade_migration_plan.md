@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; dense JSON fails the storage release gate, so a versioned lossless trace-array codec is next; real-plate performance, CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; real-plate performance, CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,9 +442,9 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** Step 10's production versioned lossless trace-array codec, triggered
-by the measured dense-JSON budget failure below. Controlled cold/warm extraction, calcium
-analysis and persistence measurements are now recorded; independent real-plate performance
+**Next landing step:** P6 method-specific CASCADE ROI/FOV spike analysis and consumer
+selection. Step 10's production codec now addresses the measured dense-JSON budget failure.
+Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
 available, before release or GUI exposure.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
@@ -713,6 +713,46 @@ suite passes **1901 tests, 13 skipped in 240.28 s**. A freshly built and install
 both new regressions. Ruff passes; mypy remains at 353 existing diagnostics with no additions.
 Test-migrated database fixtures were restored after validation. Remote CI, GPU and independent
 real-plate acceptance remain pending; no production codec or CASCADE spike analysis is implied.
+
+Step 10b — production lossless spike-array codec (2026-10-03):
+
+- `SpikeTrace.values` now uses one SQLAlchemy decoding boundary for legacy numeric JSON
+  and versioned compressed BLOBs. Python accessors, analysis/plot consumers, CSV exports
+  and portable JSON snapshots retain numeric lists. The format embeds codec version,
+  little-endian dtype, one-dimensional shape, zlib payload and SHA-256 covering both
+  metadata and uncompressed bytes. No pickle or quantization is used.
+- Float32 is selected only when every value round-trips exactly through float32;
+  already-float32 CASCADE values remain exact, while OASIS/imported doubles that require
+  float64 retain it. Historical nonfinite JSON numbers stay float64. Physical encoding
+  dtype does not overwrite the inference provenance's declared dtype.
+- Schema 11 streams canonical arrays one row at a time inside the existing migration
+  transaction, verifies decoded values and advances the version atomically. Invalid
+  payloads or interruption roll back all writes; repaired files retry successfully.
+  Earlier migrations remain frozen and JSON-only. Physical legacy OASIS copies and
+  unknown provenance fields remain unchanged. Older application versions reject v11.
+- Integrity checks reject unknown versions/dtypes, invalid or duplicate metadata,
+  checksum changes, truncated/concatenated compressed streams and length mismatches.
+  Decoded size is bounded before allocation. Tests cover raw-byte precision, valid
+  intervals, mixed JSON/BLOB rows, ORM replacement, dual accessors, JSON and actual CSV.
+- `benchmark_cascade_storage.py --storage codec` now measures the actual application
+  format, verifies every ORM array against its source and preserves true legacy JSON
+  duplication. The long controlled workload projects to **204.03 MiB** for dual arrays
+  and **504.22 MiB** including legacy duplication, within the 512 MiB spike budget with
+  zero sample/sum/rate/threshold error. Narrow compatibility headroom still requires
+  an independent plate. Historical JSON/prototype results remain separately recorded.
+- A copied schema-10 dual/legacy workload is upgraded using the production engine;
+  every decoded array and other stored field is fingerprinted before/after, and all
+  CSV bytes and JSON provenance contents are compared exactly. Migration does not run
+  `VACUUM` inside its transaction; reclaiming freed SQLite space is separate maintenance.
+
+Validation: **1944 passed, 13 skipped in 237.55 s** in the full base/GUI suite;
+**138 passed in 9.18 s** against the newly installed wheel with pretrained models.
+Ruff passes; mypy adds no diagnostics (353 existing). Tracked database fixtures
+were restored afterward. Measured migration details are recorded in
+`cascade_release_benchmarks.md` and `cascade_trace_codec_cpu_benchmark.json`.
+P6 analysis semantics come next; real-plate/GPU acceptance, complete analysis timings,
+method-aware plot/comparison integration and GUI exposure remain pending. These storage
+results do not promote the experimental cached service to the default.
 
 ## 0. TL;DR
 

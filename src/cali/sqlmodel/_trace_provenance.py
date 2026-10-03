@@ -7,6 +7,7 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel, select
 
 from ._result_json import ResultJSON
+from ._trace_array_codec import TraceArrayType
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -127,7 +128,7 @@ class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignor
         ondelete="CASCADE",
     )
     values: list[float] = Field(
-        default_factory=list, sa_column=Column(JSON, nullable=False)
+        default_factory=list, sa_column=Column(TraceArrayType(), nullable=False)
     )
     valid_start: int = 0
     valid_stop: int | None = None

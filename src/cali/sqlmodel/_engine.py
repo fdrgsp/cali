@@ -12,12 +12,13 @@ from ._source_audit_migration import audit_legacy_stage_sources
 from ._source_migration import migrate_source_links
 from ._spike_analysis_migration import migrate_spike_analyses
 from ._spike_fov_analysis_migration import migrate_spike_fov_analyses
+from ._trace_array_migration import migrate_trace_arrays
 from ._trace_migration import migrate_trace_provenance
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _add_columns(
@@ -206,6 +207,7 @@ _MIGRATIONS = (
     audit_legacy_stage_sources,
     _acquisition_timing,
     _calcium_noise,
+    migrate_trace_arrays,
 )
 
 

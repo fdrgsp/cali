@@ -43,6 +43,8 @@ from cali.sqlmodel import (
 from cali.sqlmodel._visualize_experiment import _add_trace_provenance_to_tree
 from cali.util._database_to_csv import export_traces_to_csv
 
+from ._legacy_spike_json import write_legacy_spike_json
+
 # Reuse the pinned-package fakes used by the independent backend contract tests.
 from .test_cascade_cached import toy_package as cached_fixture
 from .test_cascade_reference import fake_reference as reference_fixture
@@ -596,6 +598,7 @@ def test_calcium_noise_migration_leaves_historical_values_unknown(
         session.commit()
     with engine.begin() as connection:
         connection.exec_driver_sql("ALTER TABLE trace DROP COLUMN calcium_noise")
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql("PRAGMA user_version = 9")
     ensure_schema_current(engine)
     ensure_schema_current(engine)

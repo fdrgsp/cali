@@ -1,0 +1,866 @@
+{
+  "schema": 1,
+  "scope": "Production schema-11 codec; controlled repeated traces/FOVs, CPU only; not independent plate acceptance",
+  "environment": {
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "python": "3.13.0 (main, Oct 16 2024, 08:05:40) [Clang 18.1.8 ]",
+    "packages": {
+      "numpy": "2.5.3",
+      "sqlalchemy": "2.0.54",
+      "sqlmodel": "0.0.33",
+      "scipy": "1.16.3",
+      "torch": "2.14.1"
+    }
+  },
+  "scripts_sha256": {
+    "benchmark_cascade_storage.py": "2a1c58ada44c2ddc71688a2fe021671e62ec55e696fb760f78cb45ff74b7dd52",
+    "benchmark_trace_array_migration.py": "8c0364d0140de7e5e84e43b186840020c7e0c31696facd544962446921f622b2"
+  },
+  "short": {
+    "schema": 2,
+    "storage": "codec",
+    "script_sha256": "2a1c58ada44c2ddc71688a2fe021671e62ec55e696fb760f78cb45ff74b7dd52",
+    "helper_script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+    "runtime_source_sha256": {
+      "spike_trace": "d23ddd38b61d25f0329302c5ac6028e417993276cd5d89037bf29aae982a8fb4",
+      "trace_array_codec": "e15b87f69614e4cab5fe78464b0505a5b0838e82c967903b0d45badf641f2aa5",
+      "trace_array_migration": "0a45d4d4fb00a7a4c571dc370aed4bc1e27434a2551e5ffe61974f78c19ae0b8",
+      "cali_runner": "5e031d1bd2b4d85e1eedbe7aaa88c42b94d28f75d8ecc381ec1aed20c6184c21",
+      "export_traces": "c369431f538ab699750889a598b6c5db0f679cd7f3c9fa3aac3a08566528f516"
+    },
+    "results": [
+      {
+        "mode": "oasis",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 400
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "short",
+        "source": {
+          "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+          "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+          "valid_interval": [
+            32,
+            224
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 256,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "oasis": 102200
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.73828125,
+          "oasis": 0.033203125
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 8663040,
+        "write_s": 0.332297750050202,
+        "legacy_write_s": 0,
+        "maintenance_s": 0.13645233307033777,
+        "orm_read_s": 0.009101832984015346,
+        "export_s": 1.3127801660448313,
+        "plot_array_preparation_s": 0.0020857499912381172,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 97400
+          },
+          "database_bytes": 8658944,
+          "encode_verify_write_s": 0.02246116695459932,
+          "maintenance_s": 0.04207058297470212,
+          "sql_read_decode_s": 0.00238995801191777,
+          "compare_to_original_values_s": 0.01425954105798155,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.982409477233968e-07,
+          "max_roi_sum_abs_error": 3.7728109694157297e-06,
+          "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.004595117966716302,
+            "changed_samples": 50
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 2452800.0,
+        "projection_96_fov_candidate_payload_bytes": 2337600.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 2337600.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 2452800.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 419.65625
+      },
+      {
+        "mode": "cascade",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "cascade/v1/<f4": 400
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "short",
+        "source": {
+          "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+          "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+          "valid_interval": [
+            32,
+            224
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 256,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 353800
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.73828125,
+          "oasis": 0.033203125
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 8953856,
+        "write_s": 0.33800016692839563,
+        "legacy_write_s": 0,
+        "maintenance_s": 0.04429237497970462,
+        "orm_read_s": 0.011061166995204985,
+        "export_s": 1.2555593750439584,
+        "plot_array_preparation_s": 0.0023398749763146043,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "cascade": 349000
+          },
+          "database_bytes": 8953856,
+          "encode_verify_write_s": 0.03172041603829712,
+          "maintenance_s": 0.047660207957960665,
+          "sql_read_decode_s": 0.003946417011320591,
+          "compare_to_original_values_s": 0.015196416061371565,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.982409477233968e-07,
+          "max_roi_sum_abs_error": 3.7728109694157297e-06,
+          "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.004595117966716302,
+            "changed_samples": 50
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 8491200.0,
+        "projection_96_fov_candidate_payload_bytes": 8376000.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 8376000.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 8491200.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 419.140625
+      },
+      {
+        "mode": "dual",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 400,
+          "cascade/v1/<f4": 400
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "short",
+        "source": {
+          "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+          "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+          "valid_interval": [
+            32,
+            224
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 256,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 353800,
+          "oasis": 102200
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.73828125,
+          "oasis": 0.033203125
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 9097216,
+        "write_s": 0.41755158302839845,
+        "legacy_write_s": 0,
+        "maintenance_s": 0.04286341601982713,
+        "orm_read_s": 0.018279874930158257,
+        "export_s": 1.5633800419745967,
+        "plot_array_preparation_s": 0.004245292046107352,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 97400,
+            "cascade": 349000
+          },
+          "database_bytes": 9097216,
+          "encode_verify_write_s": 0.055486583965830505,
+          "maintenance_s": 0.047452792059630156,
+          "sql_read_decode_s": 0.005564499995671213,
+          "compare_to_original_values_s": 0.02988041704520583,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.982409477233968e-07,
+          "max_roi_sum_abs_error": 3.7728109694157297e-06,
+          "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.004595117966716302,
+            "changed_samples": 50
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 10944000.0,
+        "projection_96_fov_candidate_payload_bytes": 10713600.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 10713600.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 10944000.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 432.0
+      },
+      {
+        "mode": "dual-legacy-duplication",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 400,
+          "cascade/v1/<f4": 400
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "short",
+        "source": {
+          "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+          "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+          "valid_interval": [
+            32,
+            224
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 256,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 353800,
+          "oasis": 102200
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.73828125,
+          "oasis": 0.033203125
+        },
+        "legacy_duplicate_bytes": 570200,
+        "database_bytes": 9506816,
+        "write_s": 0.39584029105026275,
+        "legacy_write_s": 0.04120883299037814,
+        "maintenance_s": 0.05121441709343344,
+        "orm_read_s": 0.01672108401544392,
+        "export_s": 1.6110620830440894,
+        "plot_array_preparation_s": 0.004276124993339181,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 97400,
+            "cascade": 349000
+          },
+          "database_bytes": 9506816,
+          "encode_verify_write_s": 0.05194216605741531,
+          "maintenance_s": 0.050445750006474555,
+          "sql_read_decode_s": 0.00541841599624604,
+          "compare_to_original_values_s": 0.02857700001914054,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.982409477233968e-07,
+          "max_roi_sum_abs_error": 3.7728109694157297e-06,
+          "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.004595117966716302,
+            "changed_samples": 50
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 10944000.0,
+        "projection_96_fov_candidate_payload_bytes": 10713600.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 24398400.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 24628800.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 430.109375
+      }
+    ],
+    "size_budget": "512 MiB for spike arrays including compatibility duplication at 96 FOVs x 100 ROIs x 6000 frames; base traces, indices and analyses are additional.",
+    "numerical_budget": "Zero additional error relative to stored CASCADE float32 and OASIS float64; no quantization.",
+    "release_gate": "controlled workload passes storage/numerical budget; independent real plate and remaining extraction/analysis gates pending"
+  },
+  "long": {
+    "schema": 2,
+    "storage": "codec",
+    "script_sha256": "2a1c58ada44c2ddc71688a2fe021671e62ec55e696fb760f78cb45ff74b7dd52",
+    "helper_script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+    "runtime_source_sha256": {
+      "spike_trace": "d23ddd38b61d25f0329302c5ac6028e417993276cd5d89037bf29aae982a8fb4",
+      "trace_array_codec": "e15b87f69614e4cab5fe78464b0505a5b0838e82c967903b0d45badf641f2aa5",
+      "trace_array_migration": "0a45d4d4fb00a7a4c571dc370aed4bc1e27434a2551e5ffe61974f78c19ae0b8",
+      "cali_runner": "5e031d1bd2b4d85e1eedbe7aaa88c42b94d28f75d8ecc381ec1aed20c6184c21",
+      "export_traces": "c369431f538ab699750889a598b6c5db0f679cd7f3c9fa3aac3a08566528f516"
+    },
+    "results": [
+      {
+        "mode": "oasis",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 372,
+          "oasis/v1/<f4": 28
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "long",
+        "source": {
+          "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+          "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "valid_interval": [
+            32,
+            5968
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 6000,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "oasis": 648708
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.9274633333333333,
+          "oasis": 0.027418333333333333
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 187506688,
+        "write_s": 4.121238874970004,
+        "legacy_write_s": 0,
+        "maintenance_s": 1.1330166660482064,
+        "orm_read_s": 0.051780125009827316,
+        "export_s": 21.000654499977827,
+        "plot_array_preparation_s": 0.043105582939460874,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 644580
+          },
+          "database_bytes": 187506688,
+          "encode_verify_write_s": 0.21727995807304978,
+          "maintenance_s": 1.147401791997254,
+          "sql_read_decode_s": 0.017419124953448772,
+          "compare_to_original_values_s": 0.11210820800624788,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.999993741513012e-07,
+          "max_roi_sum_abs_error": 6.133184731993424e-05,
+          "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.013883117363899246,
+            "changed_samples": 3
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 15568992.0,
+        "projection_96_fov_candidate_payload_bytes": 15469920.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 15469920.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 15568992.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 1459.5
+      },
+      {
+        "mode": "cascade",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "cascade/v1/<f4": 400
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "long",
+        "source": {
+          "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+          "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "valid_interval": [
+            32,
+            5968
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 6000,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 8265600
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.9274633333333333,
+          "oasis": 0.027418333333333333
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 195092480,
+        "write_s": 4.299275333993137,
+        "legacy_write_s": 0,
+        "maintenance_s": 1.084415707970038,
+        "orm_read_s": 0.06987837492488325,
+        "export_s": 25.04106825008057,
+        "plot_array_preparation_s": 0.04459362500347197,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "cascade": 8260800
+          },
+          "database_bytes": 195092480,
+          "encode_verify_write_s": 0.3900138330645859,
+          "maintenance_s": 1.0104485829360783,
+          "sql_read_decode_s": 0.030269167036749423,
+          "compare_to_original_values_s": 0.11897062498610467,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.999993741513012e-07,
+          "max_roi_sum_abs_error": 6.133184731993424e-05,
+          "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.013883117363899246,
+            "changed_samples": 3
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 198374400.0,
+        "projection_96_fov_candidate_payload_bytes": 198259200.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 198259200.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 198374400.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 1325.4375
+      },
+      {
+        "mode": "dual",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 372,
+          "cascade/v1/<f4": 400,
+          "oasis/v1/<f4": 28
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "long",
+        "source": {
+          "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+          "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "valid_interval": [
+            32,
+            5968
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 6000,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 8265600,
+          "oasis": 648708
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.9274633333333333,
+          "oasis": 0.027418333333333333
+        },
+        "legacy_duplicate_bytes": 0,
+        "database_bytes": 196096000,
+        "write_s": 5.6039526669774204,
+        "legacy_write_s": 0,
+        "maintenance_s": 1.0453697920311242,
+        "orm_read_s": 0.1212715000147,
+        "export_s": 28.33537895802874,
+        "plot_array_preparation_s": 0.08735858299769461,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 644580,
+            "cascade": 8260800
+          },
+          "database_bytes": 196079616,
+          "encode_verify_write_s": 0.6189662090037018,
+          "maintenance_s": 1.0079045420279726,
+          "sql_read_decode_s": 0.049927083076909184,
+          "compare_to_original_values_s": 0.2493433749768883,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.999993741513012e-07,
+          "max_roi_sum_abs_error": 6.133184731993424e-05,
+          "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.013883117363899246,
+            "changed_samples": 3
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 213943392.0,
+        "projection_96_fov_candidate_payload_bytes": 213729120.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 213729120.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 213943392.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 1701.5
+      },
+      {
+        "mode": "dual-legacy-duplication",
+        "storage": "codec",
+        "storage_metadata_row_counts": {
+          "oasis/v1/<f8": 372,
+          "cascade/v1/<f4": 400,
+          "oasis/v1/<f4": 28
+        },
+        "source_comparison": {
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "workload": "long",
+        "source": {
+          "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+          "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+          "valid_interval": [
+            32,
+            5968
+          ]
+        },
+        "scope": "actual ORM/SQLite codec and CSV export; repeated input traces/FOVs, no inference timings",
+        "rois_per_fov": 100,
+        "frames": 6000,
+        "fovs": 4,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "oasis_decay_constant_s": 1.0,
+        "spike_payload_bytes": {
+          "cascade": 8265600,
+          "oasis": 648708
+        },
+        "nonzero_sample_fraction": {
+          "cascade": 0.9274633333333333,
+          "oasis": 0.027418333333333333
+        },
+        "legacy_duplicate_bytes": 13115564,
+        "database_bytes": 209207296,
+        "write_s": 5.198208290967159,
+        "legacy_write_s": 0.8411713750101626,
+        "maintenance_s": 1.0703852080041543,
+        "orm_read_s": 0.11893783300183713,
+        "export_s": 28.53378012496978,
+        "plot_array_preparation_s": 0.08847529208287597,
+        "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+        "candidate": {
+          "status": "benchmark-only BLOB sidecar, not an application-readable database",
+          "spike_payload_bytes_including_metadata": {
+            "oasis": 644580,
+            "cascade": 8260800
+          },
+          "database_bytes": 209190912,
+          "encode_verify_write_s": 0.6031425420660526,
+          "maintenance_s": 1.0820756249595433,
+          "sql_read_decode_s": 0.047748624929226935,
+          "compare_to_original_values_s": 0.2265231249621138,
+          "max_sample_error": 0,
+          "max_sum_error": 0,
+          "mean_rate_error": 0,
+          "changed_threshold_crossings": 0
+        },
+        "six_decimal_rounding": {
+          "decimal_places": 6,
+          "max_sample_abs_error": 4.999993741513012e-07,
+          "max_roi_sum_abs_error": 6.133184731993424e-05,
+          "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+          "changed_ap_threshold_samples": {
+            "0.1": 0,
+            "0.2": 0,
+            "0.5": 0,
+            "1.0": 0
+          },
+          "demonstrated_sensitive_ap_threshold": {
+            "fraction": 0.013883117363899246,
+            "changed_samples": 3
+          },
+          "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+        },
+        "projection_96_fov_spike_payload_bytes": 213943392.0,
+        "projection_96_fov_candidate_payload_bytes": 213729120.0,
+        "projection_96_fov_candidate_with_legacy_bytes": 528502656.0,
+        "spike_payload_budget_96_fovs_bytes": 536870912,
+        "projection_96_fov_payload_with_legacy_bytes": 528716928.0,
+        "within_storage_budget": true,
+        "peak_rss_mib": 1807.671875
+      }
+    ],
+    "size_budget": "512 MiB for spike arrays including compatibility duplication at 96 FOVs x 100 ROIs x 6000 frames; base traces, indices and analyses are additional.",
+    "numerical_budget": "Zero additional error relative to stored CASCADE float32 and OASIS float64; no quantization.",
+    "release_gate": "controlled workload passes storage/numerical budget; independent real plate and remaining extraction/analysis gates pending"
+  },
+  "migration": {
+    "source": "/tmp/cali-storage-long-release/long-dual-legacy-duplication.cali",
+    "source_sha256": "cd52109f120502378c64566c00c5294eece0385a4203984c540a81c69d871e63",
+    "migration_source_sha256": "0a45d4d4fb00a7a4c571dc370aed4bc1e27434a2551e5ffe61974f78c19ae0b8",
+    "rows": 800,
+    "schema_before": 10,
+    "schema_after": 11,
+    "database_fingerprint": "6832f59902e62deb33fd7f7ba7d256cf2c7abd8ce414fa9fa3818bea8e06730c",
+    "all_decoded_arrays_and_other_fields_exact": true,
+    "all_csv_files_byte_identical": true,
+    "all_json_sidecar_contents_identical": true,
+    "exported_files": 6,
+    "source_bytes": 263426048,
+    "migrated_bytes_before_vacuum": 263426048,
+    "migrated_bytes_after_vacuum": 209207296,
+    "migration_s": 7.305938916048035,
+    "orm_read_s": 0.18541658308822662,
+    "export_s": 28.611642333096825,
+    "vacuum_s": 1.1569786249892786
+  },
+  "json_baseline_binding_smoke": {
+    "mode": "cascade",
+    "storage": "json",
+    "storage_metadata_row_counts": {
+      "cascade/v0/json": 2
+    },
+    "source_comparison": {
+      "max_sample_error": 0,
+      "max_sum_error": 0,
+      "mean_rate_error": 0,
+      "changed_threshold_crossings": 0
+    },
+    "workload": "short",
+    "source": {
+      "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+      "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+      "valid_interval": [
+        32,
+        224
+      ]
+    },
+    "scope": "actual ORM/SQLite json and CSV export; repeated input traces/FOVs, no inference timings",
+    "rois_per_fov": 2,
+    "frames": 256,
+    "fovs": 1,
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "oasis_decay_constant_s": 1.0,
+    "spike_payload_bytes": {
+      "cascade": 9079
+    },
+    "nonzero_sample_fraction": {
+      "cascade": 0.73828125,
+      "oasis": 0.033203125
+    },
+    "legacy_duplicate_bytes": 0,
+    "database_bytes": 356352,
+    "write_s": 0.006948958965949714,
+    "legacy_write_s": 0,
+    "maintenance_s": 0.0043388750636950135,
+    "orm_read_s": 0.0016990419244393706,
+    "export_s": 0.24836862506344914,
+    "plot_array_preparation_s": 1.4542019926011562e-05,
+    "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+    "candidate": {
+      "status": "benchmark-only BLOB sidecar, not an application-readable database",
+      "spike_payload_bytes_including_metadata": {
+        "cascade": 1745
+      },
+      "database_bytes": 348160,
+      "encode_verify_write_s": 0.0013003329513594508,
+      "maintenance_s": 0.0037729169707745314,
+      "sql_read_decode_s": 0.0005025839200243354,
+      "compare_to_original_values_s": 0.0003530000103637576,
+      "max_sample_error": 0,
+      "max_sum_error": 0,
+      "mean_rate_error": 0,
+      "changed_threshold_crossings": 0
+    },
+    "six_decimal_rounding": {
+      "decimal_places": 6,
+      "max_sample_abs_error": 4.982409477233968e-07,
+      "max_roi_sum_abs_error": 3.7728109694157297e-06,
+      "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+      "changed_ap_threshold_samples": {
+        "0.1": 0,
+        "0.2": 0,
+        "0.5": 0,
+        "1.0": 0
+      },
+      "demonstrated_sensitive_ap_threshold": {
+        "fraction": 0.004595117966716302,
+        "changed_samples": 1
+      },
+      "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+    },
+    "projection_96_fov_spike_payload_bytes": 871584.0,
+    "projection_96_fov_candidate_payload_bytes": 167520.0,
+    "projection_96_fov_candidate_with_legacy_bytes": 167520.0,
+    "spike_payload_budget_96_fovs_bytes": 536870912,
+    "projection_96_fov_payload_with_legacy_bytes": 871584.0,
+    "within_storage_budget": true,
+    "peak_rss_mib": 324.09375
+  },
+  "decision": "Controlled native codec storage and exact-value budget passed. P6 method-specific analysis is next. Independent plate, GPU, complete extraction/analysis timings and GUI exposure remain pending; cached inference remains experimental.",
+  "validation": {
+    "full_base_gui_suite": {
+      "passed": 1944,
+      "skipped": 13,
+      "seconds": 237.55
+    },
+    "installed_wheel_with_pretrained_models": {
+      "passed": 138,
+      "seconds": 9.18
+    },
+    "mypy_existing_diagnostics": 353,
+    "mypy_added_diagnostics": 0,
+    "ruff_lint_and_format": "passed",
+    "tracked_database_fixtures": "restored after test processes completed"
+  }
+}

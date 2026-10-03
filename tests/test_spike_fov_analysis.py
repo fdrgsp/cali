@@ -31,6 +31,8 @@ from cali.sqlmodel._spike_fov_analysis_migration import (
     migrate_spike_fov_analyses,
 )
 
+from ._legacy_spike_json import write_legacy_spike_json
+
 
 def _metrics() -> dict:
     values = {}
@@ -104,6 +106,7 @@ def _legacy(path: Path, unresolved: bool = False) -> None:
                 f"UPDATE fov_analysis SET {name}=?",
                 (json.dumps(value) if kind == "JSON" else value,),
             )
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql("PRAGMA user_version=6")
     engine.dispose()
 

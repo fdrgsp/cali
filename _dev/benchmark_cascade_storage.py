@@ -1,10 +1,11 @@
-"""Measure current JSON storage and a lossless BLOB candidate, without migrating.
+"""Measure legacy JSON and the application's versioned lossless spike codec.
 
 Short inputs are the real upstream golden excerpt, repeated to the requested ROI
 count. Long inputs reuse the verified 100 x 6000 P3b predictions and reconstruct
 their seeded DFF. Repeated FOVs are controlled storage workloads, not a real plate.
-Each mode runs in a fresh process. Candidate BLOB files are benchmark artifacts;
-the application cannot read them until a versioned codec migration is implemented.
+Each mode runs in a fresh process. JSON mode uses the historical SQLAlchemy JSON
+binding for a controlled baseline. Codec mode uses the production ORM boundary.
+The earlier prototype sidecars remain benchmark artifacts, not readable databases.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 from benchmark_cascade_extraction import MANIFEST, MODEL, make_fov, peak_mib
+from sqlalchemy import JSON
 from sqlmodel import Session, select
 
 from cali._constants import CASCADE_EXPECTED_SPIKES_TRACES, INFERRED_SPIKES_TRACES
@@ -42,6 +44,12 @@ from cali.sqlmodel import (
     create_cali_engine,
     create_database_and_tables,
 )
+from cali.sqlmodel._trace_array_codec import (
+    decode_trace_array,
+    encode_trace_array,
+    trace_array_storage_info,
+)
+from cali.sqlmodel._trace_array_migration import migrate_trace_arrays
 from cali.util._database_to_csv import export_traces_to_csv
 
 MODES = ("oasis", "cascade", "dual", "dual-legacy-duplication")
@@ -179,7 +187,10 @@ def rounding_errors(spikes: np.ndarray, start: int, stop: int) -> dict:
 
 
 def run_case(args: argparse.Namespace) -> dict:
-    """Write/read/export actual ORM JSON graphs; measure the candidate separately."""
+    """Write/read/export actual ORM graphs and verify every decoded source array."""
+    if args.storage == "json":
+        # Isolated benchmark process only: reproduce the pre-v11 ORM binding.
+        SpikeTrace.__table__.c["values"].type = JSON()
     dff, cascade, source = inputs(args)
     count, frames = dff.shape
     start, stop = source["valid_interval"]
@@ -270,12 +281,15 @@ def run_case(args: argparse.Namespace) -> dict:
     with sqlite3.connect(database) as connection:
         if args.mode == "dual-legacy-duplication":
             begin = time.perf_counter()
-            connection.execute(
-                'UPDATE trace SET inferred_spikes = (SELECT s."values" '
-                "FROM spike_trace s JOIN spike_inference_run r "
-                "ON r.id=s.spike_inference_run_id "
-                "WHERE s.trace_id=trace.id AND r.method='oasis')"
-            )
+            for trace_id, payload in connection.execute(
+                'SELECT s.trace_id,s."values" FROM spike_trace s '
+                "JOIN spike_inference_run r ON r.id=s.spike_inference_run_id "
+                "WHERE r.method='oasis'"
+            ):
+                connection.execute(
+                    "UPDATE trace SET inferred_spikes=? WHERE id=?",
+                    (json.dumps(decode_trace_array(payload)), trace_id),
+                )
             connection.commit()
             legacy_write_s = time.perf_counter() - begin
         # Canonical file size after checkpoint/vacuum, with maintenance cost separate.
@@ -293,6 +307,14 @@ def run_case(args: argparse.Namespace) -> dict:
             "SELECT COALESCE(SUM(length(CAST(inferred_spikes AS BLOB))),0) "
             "FROM trace WHERE inferred_spikes != 'null'"
         ).fetchone()[0]
+        storage_metadata = {}
+        for method, payload in connection.execute(
+            'SELECT r.method,s."values" FROM spike_trace s '
+            "JOIN spike_inference_run r ON r.id=s.spike_inference_run_id"
+        ):
+            metadata = trace_array_storage_info(payload)
+            key = f"{method}/v{metadata['version']}/{metadata.get('dtype', 'json')}"
+            storage_metadata[key] = storage_metadata.get(key, 0) + 1
     engine = create_cali_engine(f"sqlite:///{database}")
     begin = time.perf_counter()
     with Session(engine) as session:
@@ -306,6 +328,13 @@ def run_case(args: argparse.Namespace) -> dict:
         plot_preparation_s = time.perf_counter() - begin
         assert sum(len(array) for array in arrays) > 0
         methods_by_id = {row.id: row.inference_run.method for row in rows}
+        for row in rows:
+            index = row.trace.roi.label_value - 1
+            source_values = (
+                cascade if row.inference_run.method == "cascade" else oasis.spikes
+            )[index]
+            np.testing.assert_array_equal(row.values, source_values.astype(np.float64))
+
     begin = time.perf_counter()
     export_traces_to_csv(
         engine,
@@ -332,7 +361,7 @@ def run_case(args: argparse.Namespace) -> dict:
             'SELECT id,"values" FROM spike_trace'
         ):
             method = methods_by_id[identifier]
-            payload, metadata = encode_candidate(json.loads(encoded), method)
+            payload, metadata = encode_candidate(decode_trace_array(encoded), method)
             candidate_bytes[method] += len(payload) + len(metadata.encode())
             candidate.execute(
                 "UPDATE spike_trace SET \"values\"='[]',values_blob=?,"
@@ -353,7 +382,7 @@ def run_case(args: argparse.Namespace) -> dict:
         candidate_sql_read_decode_s = time.perf_counter() - begin
         begin = time.perf_counter()
         for identifier, decoded in decoded_arrays.items():
-            original_values = json.loads(
+            original_values = decode_trace_array(
                 original.execute(
                     'SELECT "values" FROM spike_trace WHERE id=?', (identifier,)
                 ).fetchone()[0]
@@ -363,10 +392,18 @@ def run_case(args: argparse.Namespace) -> dict:
     projection = sum(payload_bytes.values()) / args.fovs * PLATE_FOVS
     return {
         "mode": args.mode,
+        "storage": args.storage,
+        "storage_metadata_row_counts": storage_metadata,
+        "source_comparison": {
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0,
+        },
         "workload": args.workload,
         "source": source,
         "scope": (
-            "actual ORM/SQLite JSON and CSV export; "
+            f"actual ORM/SQLite {args.storage} and CSV export; "
             "repeated input traces/FOVs, no inference timings"
         ),
         "rois_per_fov": count,
@@ -401,7 +438,7 @@ def run_case(args: argparse.Namespace) -> dict:
             "encode_verify_write_s": candidate_encode_write_s,
             "maintenance_s": candidate_maintenance_s,
             "sql_read_decode_s": candidate_sql_read_decode_s,
-            "compare_to_original_json_s": candidate_read_verify_s,
+            "compare_to_original_values_s": candidate_read_verify_s,
             "max_sample_error": 0,
             "max_sum_error": 0,
             "mean_rate_error": 0,
@@ -418,7 +455,12 @@ def run_case(args: argparse.Namespace) -> dict:
         / args.fovs
         * PLATE_FOVS,
         "spike_payload_budget_96_fovs_bytes": SPIKE_PAYLOAD_BUDGET_BYTES,
-        "within_json_budget": projection + legacy_bytes / args.fovs * PLATE_FOVS
+        "projection_96_fov_payload_with_legacy_bytes": (
+            sum(payload_bytes.values()) + legacy_bytes
+        )
+        / args.fovs
+        * PLATE_FOVS,
+        "within_storage_budget": projection + legacy_bytes / args.fovs * PLATE_FOVS
         <= SPIKE_PAYLOAD_BUDGET_BYTES,
         "peak_rss_mib": peak_mib(),
     }
@@ -428,6 +470,7 @@ def main() -> None:
     """Isolate modes and store the measured release decision."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("all", *MODES), default="all")
+    parser.add_argument("--storage", choices=("json", "codec"), default="json")
     parser.add_argument("--workload", choices=("short", "long"), required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--prediction", type=Path)
@@ -451,6 +494,8 @@ def main() -> None:
             str(Path(__file__).resolve()),
             "--mode",
             mode,
+            "--storage",
+            args.storage,
             "--workload",
             args.workload,
             "--output-dir",
@@ -473,7 +518,8 @@ def main() -> None:
         )
         print(f"Completed {args.workload}/{mode}", flush=True)
     report = {
-        "schema": 1,
+        "schema": 2,
+        "storage": args.storage,
         "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "helper_script_sha256": hashlib.sha256(
             Path(__file__).with_name("benchmark_cascade_extraction.py").read_bytes()
@@ -482,6 +528,8 @@ def main() -> None:
             name: hashlib.sha256(Path(inspect.getfile(value)).read_bytes()).hexdigest()
             for name, value in (
                 ("spike_trace", SpikeTrace),
+                ("trace_array_codec", encode_trace_array),
+                ("trace_array_migration", migrate_trace_arrays),
                 ("cali_runner", CaliRunner),
                 ("export_traces", export_traces_to_csv),
             )
@@ -496,14 +544,11 @@ def main() -> None:
             "Zero additional error relative to stored CASCADE float32 "
             "and OASIS float64; no quantization."
         ),
-        "release_gate": (
-            "blocked: implement a versioned lossless trace-array codec "
-            "with legacy JSON reads"
-        )
-        if not all(row["within_json_budget"] for row in reports)
+        "release_gate": ("controlled workload exceeds spike payload budget")
+        if not all(row["within_storage_budget"] for row in reports)
         else (
-            "workload within size budget; "
-            "long workload and real plate acceptance still required"
+            "controlled workload passes storage/numerical budget; "
+            "independent real plate and remaining extraction/analysis gates pending"
         ),
     }
     (args.output_dir / f"{args.workload}-report.json").write_text(

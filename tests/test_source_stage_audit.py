@@ -30,6 +30,9 @@ from cali.sqlmodel import (
     select_legacy_result_source,
 )
 from cali.sqlmodel._source_audit_migration import audit_legacy_stage_sources
+from cali.sqlmodel._trace_array_codec import decode_trace_array
+
+from ._legacy_spike_json import write_legacy_spike_json
 
 
 def _legacy(path: Path, variation: str = "identical") -> tuple[int, int, int]:
@@ -177,6 +180,7 @@ def _legacy(path: Path, variation: str = "identical") -> tuple[int, int, int]:
                 "UPDATE analysis_result SET source_extraction_result_id = NULL, "
                 "legacy_trace_resolution = NULL"
             )
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql(
             f"PRAGMA user_version = {4 if variation == 'v4' else 7}"
         )
@@ -270,7 +274,13 @@ def test_audit_changes_only_ownership_and_provenance_fields(tmp_path: Path) -> N
         with engine.connect() as connection:
             return {
                 table: [
-                    {key: value for key, value in row.items() if key not in excluded}
+                    {
+                        key: decode_trace_array(value)
+                        if table == "spike_trace" and key == "values"
+                        else value
+                        for key, value in row.items()
+                        if key not in excluded
+                    }
                     for row in connection.exec_driver_sql(
                         f"SELECT * FROM {table} ORDER BY id"
                     ).mappings()

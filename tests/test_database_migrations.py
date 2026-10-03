@@ -22,6 +22,8 @@ from cali.sqlmodel import (
 from cali.sqlmodel._engine import SCHEMA_VERSION
 from cali.util._database_to_csv import _get_default_run_id
 
+from ._legacy_spike_json import write_legacy_spike_json
+
 
 def _legacy_database(path: Path) -> None:
     engine = create_engine(f"sqlite:///{path}")
@@ -62,6 +64,7 @@ def _legacy_database(path: Path) -> None:
             conn.exec_driver_sql(f"ALTER TABLE trace DROP COLUMN {name}")
         for name in ("enable_calcium", "enable_spikes"):
             conn.exec_driver_sql(f"ALTER TABLE analysis_settings DROP COLUMN {name}")
+        write_legacy_spike_json(conn)
         conn.exec_driver_sql("PRAGMA user_version = 0")
     engine.dispose()
 

@@ -1,7 +1,9 @@
 # CASCADE extraction and storage measurements
 
-These are controlled CPU measurements for Step 10, not a completed release gate.
-The machine-readable results are in `cascade_full_mode_cpu_benchmark.json`.
+These are controlled CPU measurements for Step 10, not completed release acceptance.
+The historical JSON/prototype results are in `cascade_full_mode_cpu_benchmark.json`
+(commit `0ed3443`); the production codec measurements are in
+`cascade_trace_codec_cpu_benchmark.json`.
 The upstream reference remains the default; the cached service is experimental.
 
 ## Scope and reproduction
@@ -122,9 +124,9 @@ the earlier 256 MiB incremental-RSS target on these workloads; the longer refere
 exceeds it. This is useful partial evidence, not a material full-plate speedup or
 the required 100-ROI/6000-frame extraction acceptance.
 
-## Storage decision and remaining gates
+## Historical JSON/prototype storage decision
 
-The storage benchmark writes actual `SpikeTrace.values` JSON through SQLModel,
+The original storage benchmark at `0ed3443` writes `SpikeTrace.values` JSON through SQLModel,
 measures payload bytes with SQLite, records vacuumed `.cali` sizes and maintenance
 cost separately, then measures ORM reads, actual raw CSV/metadata exports and
 NumPy conversion/valid-interval slicing. The plot timing is data preparation only;
@@ -197,3 +199,82 @@ Validation: **1901 passed, 13 skipped** in the full base/GUI suite; **95 passed*
 against a freshly built and installed wheel with actual pretrained CASCADE tests
 enabled. Ruff passes, and mypy remains at 353 pre-existing diagnostics with no
 additions. The two test-migrated database fixtures were restored after the suite.
+
+
+## Production codec storage and migration
+
+Schema 11 now uses the production lossless codec for `SpikeTrace.values`. Its inline
+BLOB header carries version, dtype, shape and a checksum covering metadata plus raw
+array bytes, followed by zlib-compressed data. Every ORM consumer receives a numeric
+list through the same decoding boundary; portable JSON snapshots stay ordinary lists.
+Legacy JSON reads remain supported. Float32 is used only when every sample round-trips
+exactly; doubles that need float64 and historical nonfinite values retain float64.
+The inference provenance's dtype remains unchanged by the physical storage decision.
+
+The table measures the actual codec through SQLModel, normal FOV commit, ORM reads,
+CSV/sidecar export and valid-interval NumPy preparation. All source samples are checked
+exactly in every FOV. These are single CPU samples on the same environment/workload as
+above, without confidence intervals. Projections include legacy copies when present;
+base calcium arrays and other records are additional.
+
+| Output | Codec payload, 96 FOVs MiB | Actual 4-FOV DB MiB | Write s | ORM read s | CSV export s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| OASIS | 14.85 | 178.82 | 4.121 | 0.052 | 21.001 |
+| CASCADE | 189.18 | 186.05 | 4.299 | 0.070 | 25.041 |
+| dual | 204.03 | 187.01 | 5.604 | 0.121 | 28.335 |
+| dual + legacy OASIS JSON | 504.22 | 199.52 | 5.198 | 0.119 | 28.534 |
+
+The codec passes the controlled **512 MiB** spike-payload budget with **zero** added
+sample, sum, rate or threshold-crossing error. All 400 CASCADE rows use float32. Of
+400 OASIS rows, 372 require float64 and 28 round-trip exactly as float32. Canonical
+writes take longer than the historical JSON samples because compression/validation
+cost is included; dual ORM reads fall from 0.565 s to 0.121 s in these samples. CSV
+export still emits numeric text and remains a substantial cost. Array preparation
+is 0.043–0.088 s after ORM loading. Short workload measurements also pass and appear
+in the artifact. The compatibility case leaves only **7.78 MiB** of payload headroom;
+independent input sparsity/compressibility must still be checked.
+
+The migration measurement copies the real schema-10 controlled dual/legacy database
+from the earlier benchmark and opens the copy through `create_cali_engine()`. The
+800 canonical spike rows upgrade in **7.31 s**, with the version update in the same
+transaction. Fingerprints normalize only array encoding and require all decoded
+float64 bytes and every other stored field—including physical legacy JSON and
+unknown provenance—to match exactly. All four CSV files match byte-for-byte, and
+both JSON sidecars have identical content (object key ordering is immaterial).
+Migration does not shrink the file immediately: freed SQLite pages are reusable.
+A separately timed `VACUUM` takes **1.16 s** and reduces the file to **199.52 MiB**.
+Original schema-10 inputs and exports remain untouched.
+
+Reproduce after the setup above, using fresh output directories and sequential runs:
+
+```sh
+"$cascade_bench_python" _dev/benchmark_cascade_storage.py \
+  --storage codec --workload short --output-dir /tmp/cali-codec-storage-short --fovs 4
+
+"$cascade_bench_python" _dev/benchmark_cascade_storage.py \
+  --storage codec --workload long --output-dir /tmp/cali-codec-storage-long --fovs 4 \
+  --prediction /tmp/cali-cascade-p3b-benchmark/service-prediction.npz \
+  --reference-prediction /tmp/cali-cascade-p3b-benchmark/reference-prediction.npz
+
+"$cascade_bench_python" _dev/benchmark_trace_array_migration.py \
+  /tmp/cali-storage-long-release/long-dual-legacy-duplication.cali \
+  --output-dir /tmp/cali-codec-migrated-long-verified
+```
+
+`--storage json` (the benchmark default) selects the historical JSON binding in an
+isolated benchmark process, so the earlier JSON reproduction commands still work.
+The application always writes the production codec. Prototype candidate sidecars
+are retained only for comparison and remain application-unreadable artifacts.
+The migration command requires an actual v10 file and its earlier export directory.
+
+Tests cover version/dtype/shape and metadata integrity, bounded decompression,
+corrupt/truncated/concatenated streams, precision, interrupted migration rollback
+and repair/retry, mixed encodings, ORM writes, snapshots and exports. The optional
+installed-wheel CI job now includes the codec/consumer tests. Remaining release
+gates above still apply; P6 method-specific CASCADE spike analysis is the next step.
+
+Validation: the full base/GUI suite passes **1944 tests, 13 skipped in 237.55 s**.
+A freshly built and installed wheel passes **138 tests in 9.18 s**, including
+codec/migration/consumer tests and real pretrained reference/cache/extraction
+acceptance. Ruff lint/format pass; mypy remains at 353 existing diagnostics with
+no additions. Both test-migrated tracked database fixtures were restored afterward.

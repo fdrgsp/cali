@@ -180,7 +180,7 @@ compatible model, pass settings such as these to the runner:
 from cali.sqlmodel import ExtractionSettings
 
 settings = ExtractionSettings(
-    spike_methods=("oasis", "cascade"),  # Use ("cascade",) to retain only CASCADE spikes.
+    spike_methods=("oasis", "cascade"),  # Both outputs.
     cascade_model="Global_EXC_30Hz_smoothing25ms",
     cascade_device="cpu",
     frame_rate=30,
@@ -193,6 +193,14 @@ trusted acquisition timestamps, explicit frame-period metadata, or a user-verifi
 acquisition rate; exposure alone is insufficient. Selected backend failures propagate,
 and a FOV stores neither spike output when its inference or finalization fails.
 CASCADE CSV exports leave invalid model edges empty and include stored provenance.
+
+Spike arrays use a versioned, checksummed, lossless compressed BLOB format while
+Python accessors and JSON snapshots continue to expose numeric lists. Opening an
+older database transactionally upgrades its canonical spike arrays to schema 11;
+legacy physical copies and inference provenance remain unchanged. Existing JSON
+arrays remain readable. Older cali versions reject schema 11. Migration reuses
+SQLite pages; reclaiming unused file space requires a separate `VACUUM` after
+closing application connections.
 
 Without `--model-dir`, the cache uses `CALI_CASCADE_MODELS` or
 `~/.cali/cascade_models`. The command verifies the pinned catalogue, installs

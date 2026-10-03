@@ -27,6 +27,8 @@ from cali.sqlmodel import (
 )
 from cali.sqlmodel._spike_analysis_migration import migrate_spike_analyses
 
+from ._legacy_spike_json import write_legacy_spike_json
+
 
 def _records(session: Session) -> tuple[CaliResult, ROI, Traces, DataAnalysis]:
     experiment = Experiment(name="spike metrics")
@@ -88,6 +90,7 @@ def _legacy(path: Path, unresolved: bool = False) -> None:
             "inferred_spikes_frequency = 0.5, "
             "inferred_spikes_rising_edge_frequency = 0.25"
         )
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql("PRAGMA user_version = 5")
     engine.dispose()
 
@@ -370,6 +373,7 @@ def test_conflicting_partial_roi_backfill_does_not_advance_version(
             "inferred_spikes_frequency=0.5, inferred_spikes_rising_edge_frequency=0.25"
         )
         connection.exec_driver_sql("UPDATE spike_analysis SET spike_trace_id=NULL")
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql("PRAGMA user_version=5")
     with pytest.raises(ValueError, match="source verification"):
         ensure_schema_current(engine)

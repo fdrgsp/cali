@@ -30,6 +30,8 @@ from cali.sqlmodel import (
 from cali.sqlmodel._source_migration import migrate_source_links
 from cali.sqlmodel._source_provenance import record_result_sources
 
+from ._legacy_spike_json import write_legacy_spike_json
+
 
 def _graph(
     session: Session,
@@ -123,6 +125,7 @@ def _legacy(path: Path, kind: str) -> tuple[int, int]:
                 "UPDATE analysis_result SET positions_extracted = NULL"
             )
         connection.exec_driver_sql("DROP TABLE migration_issue")
+        write_legacy_spike_json(connection)
         connection.exec_driver_sql("PRAGMA user_version = 4")
     engine.dispose()
     return source_id, copy_id
@@ -419,7 +422,9 @@ def test_source_column_ddl_rolls_back_with_version(tmp_path: Path) -> None:
             "CREATE TABLE extraction_frame_window "
             "(id INTEGER PRIMARY KEY, extraction_result_id INTEGER)"
         )
-        connection.exec_driver_sql("CREATE TABLE spike_trace (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql(
+            'CREATE TABLE spike_trace (id INTEGER PRIMARY KEY, "values" JSON NOT NULL)'
+        )
         connection.exec_driver_sql("PRAGMA user_version = 4")
 
     def interrupted(connection: object) -> None:
