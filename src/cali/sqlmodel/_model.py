@@ -19,8 +19,17 @@ from typing import TYPE_CHECKING, Any, Optional, Self, cast
 
 import numpy as np
 import useq
-from pydantic import BaseModel
-from sqlalchemy import TypeDecorator, UniqueConstraint
+from pydantic import BaseModel, model_serializer, model_validator
+from sqlalchemy import (
+    Boolean,
+    Float,
+    Integer,
+    String,
+    TypeDecorator,
+    UniqueConstraint,
+    event,
+)
+from sqlalchemy.orm import Session as SASession
 from sqlalchemy.orm import selectinload
 from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, desc, select
 
@@ -46,6 +55,13 @@ from cali._constants import (
 )
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
+from cali.sqlmodel._spike_settings import (
+    LEGACY_SPIKE_SETTING_NAMES,
+    ExtractionOutputSettings,
+    SpikeAnalysisParameters,
+    SpikeMethod,
+    canonical_spike_methods,
+)
 
 if TYPE_CHECKING:
     from cali.readers._ome_zarr_reader import OMEZarrReader
@@ -90,7 +106,37 @@ class PydanticJSON(TypeDecorator):
         return self.pydantic_type.model_validate(value)
 
 
+class SpikeMethodsJSON(TypeDecorator):
+    """Store output methods as JSON while exposing canonical tuples on load."""
+
+    impl = JSON
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> list[str]:
+        return list(canonical_spike_methods(value))
+
+    def process_result_value(self, value: Any, dialect: Any) -> tuple[SpikeMethod, ...]:
+        return canonical_spike_methods(value)
+
+
 # ==================== Core Models ====================
+
+
+class _ValidatedSettings(SQLModel):
+    """Route JSON parsing through SQLModel's instrumented validation path."""
+
+    @classmethod
+    def model_validate_json(
+        cls,
+        json_data: str | bytes | bytearray,
+        *,
+        strict: bool | None = None,
+        context: Any = None,
+    ) -> Self:
+        validated: Self = cls.model_validate(
+            json.loads(json_data), strict=strict, context=context
+        )
+        return validated
 
 
 class CaliResult(SQLModel, table=True):
@@ -921,7 +967,7 @@ class DetectionSettings(SQLModel, table=True):
                 engine.dispose(close=True)
 
 
-class ExtractionSettings(SQLModel, table=True):
+class ExtractionSettings(_ValidatedSettings, table=True):
     """Trace extraction parameter settings.
 
     Stores the trace extraction parameters used for a specific extraction run.
@@ -974,9 +1020,44 @@ class ExtractionSettings(SQLModel, table=True):
     frame_rate_verified: bool = Field(default=False)
     discard_initial_value: float = Field(default=0.0)
     discard_initial_unit: str = Field(default="frames")
+    spike_methods: tuple[SpikeMethod, ...] = Field(
+        default=("oasis",), sa_column=Column(SpikeMethodsJSON, nullable=False)
+    )
+    cascade_model: str | None = None
+    cascade_device: str = "auto"
     pixel_size: float | None = None  # pixel size in micrometers (µm)
 
     threads: int = Field(default=1)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "spike_methods":
+            value = canonical_spike_methods(value)
+        super().__setattr__(name, value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_output_settings(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            normalized = ExtractionOutputSettings.model_validate(data)
+            return {**data, **normalized.model_dump()}
+        return data
+
+    def model_post_init(self, context: Any) -> None:
+        self.validate_output_settings()
+
+    def validate_output_settings(self) -> None:
+        """Validate even SQLModel table construction and later in-place edits."""
+        selection = ExtractionOutputSettings.model_validate(
+            {
+                name: getattr(self, name)
+                for name in ExtractionOutputSettings.model_fields
+            }
+        )
+        for name, value in selection:
+            if "_sa_instance_state" in self.__dict__:
+                setattr(self, name, value)
+            else:
+                self.__dict__[name] = value
 
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
@@ -997,6 +1078,9 @@ class ExtractionSettings(SQLModel, table=True):
             and self.frame_rate_verified == other.frame_rate_verified
             and self.discard_initial_value == other.discard_initial_value
             and self.discard_initial_unit == other.discard_initial_unit
+            and self.spike_methods == other.spike_methods
+            and self.cascade_model == other.cascade_model
+            and self.cascade_device == other.cascade_device
             and self.pixel_size == other.pixel_size
             and self.threads == other.threads
         )
@@ -1015,6 +1099,9 @@ class ExtractionSettings(SQLModel, table=True):
                 self.frame_rate_verified,
                 self.discard_initial_value,
                 self.discard_initial_unit,
+                self.spike_methods,
+                self.cascade_model,
+                self.cascade_device,
                 self.pixel_size,
                 self.threads,
             )
@@ -1092,7 +1179,7 @@ class ExtractionSettings(SQLModel, table=True):
                 engine.dispose(close=True)
 
 
-class AnalysisSettings(SQLModel, table=True):
+class AnalysisSettings(_ValidatedSettings, table=True):
     """Analysis parameter settings for an experiment.
 
     Stores the analysis parameters used for a specific analysis run.
@@ -1174,18 +1261,9 @@ class AnalysisSettings(SQLModel, table=True):
     peaks_distance: float = 200.0  # milliseconds (2 frames at 10fps)
     peaks_prominence_multiplier: float = 1.0
 
-    spike_threshold_value: float = DEFAULT_SPIKE_THRESHOLD
-    spike_threshold_mode: str = MULTIPLIER
-    burst_threshold: float = DEFAULT_BURST_THRESHOLD
-    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION
-    burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
     calcium_burst_threshold: float = DEFAULT_CALCIUM_BURST_THRESHOLD
     calcium_burst_min_duration: float = DEFAULT_MIN_BURST_DURATION
     calcium_burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
-    spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG  # ms
-    spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # ms
-    ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
-    enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
 
     # Cluster analysis settings
     cluster_method: str = DEFAULT_CLUSTER_METHOD
@@ -1217,6 +1295,191 @@ class AnalysisSettings(SQLModel, table=True):
         }
     )
 
+    spike_settings: list["SpikeAnalysisSettings"] = Relationship(
+        back_populates="analysis_settings",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
+
+    def __init__(self, **data: Any) -> None:
+        legacy = {
+            name: data.pop(name) for name in LEGACY_SPIKE_SETTING_NAMES if name in data
+        }
+        children = data.pop("spike_settings", None)
+        super().__init__(**data)
+        if "id" in self.__dict__:
+            # model_validate first creates an instrumented, uninitialized object.
+            self._set_spike_settings(children, legacy)
+
+    def _set_spike_settings(self, children: Any, legacy: dict[str, Any]) -> None:
+        if children is None:
+            children = [
+                SpikeAnalysisSettings(
+                    **{
+                        LEGACY_SPIKE_SETTING_NAMES[name]: value
+                        for name, value in legacy.items()
+                    }
+                )
+            ]
+        elif legacy:
+            raise ValueError("Use spike_settings or legacy OASIS settings, not both.")
+        self.spike_settings = [
+            SpikeAnalysisSettings(**child) if isinstance(child, dict) else child
+            for child in children
+        ]
+        self.validate_spike_settings()
+
+    @classmethod
+    def model_validate(
+        cls,
+        obj: Any,
+        *,
+        strict: bool | None = None,
+        from_attributes: bool | None = None,
+        context: Any = None,
+        update: dict[str, Any] | None = None,
+    ) -> Self:
+        source_mask = None
+        if isinstance(obj, cls):
+            # SQLModel assigns source relationships to its new instance. Copy the
+            # child data first so validation cannot reparent the source's children.
+            source_mask = obj.stimulation_mask
+            obj = obj.model_dump()
+        result: Self = super().model_validate(
+            obj,
+            strict=strict,
+            from_attributes=from_attributes,
+            context=context,
+            update=update,
+        )
+        if isinstance(obj, dict):
+            data = {**obj, **(update or {})}
+            result._set_spike_settings(
+                data.get("spike_settings"),
+                {
+                    name: data[name]
+                    for name in LEGACY_SPIKE_SETTING_NAMES
+                    if name in data
+                },
+            )
+        else:
+            result.validate_spike_settings()
+        if source_mask is not None:
+            result.stimulation_mask = source_mask
+        return result
+
+    @model_serializer(mode="wrap")
+    def serialize_settings(self, handler: Any) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        data["spike_settings"] = [
+            child.model_dump(mode="json") for child in self.spike_settings
+        ]
+        return data
+
+    def validate_spike_settings(self, methods: Sequence[str] | None = None) -> None:
+        """Require one independent configuration for every analyzed method."""
+        seen = set()
+        if not self.spike_settings:
+            raise ValueError("At least one spike settings configuration is required.")
+        for child in self.spike_settings:
+            if not isinstance(child, SpikeAnalysisSettings):
+                raise ValueError("spike_settings must contain SpikeAnalysisSettings.")
+            child.validate_parameters()
+            if child.method in seen:
+                raise ValueError(f"Duplicate spike settings for {child.method}.")
+            seen.add(child.method)
+        if methods is not None and set(methods) != seen:
+            raise ValueError("Spike settings must match the methods being analyzed.")
+
+    def get_spike_settings(self, method: SpikeMethod) -> "SpikeAnalysisSettings":
+        matches = [child for child in self.spike_settings if child.method == method]
+        if len(matches) != 1:
+            raise ValueError(f"Expected exactly one spike settings row for {method}.")
+        return matches[0]
+
+    @property
+    def spike_threshold_value(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return cast("float", self.get_spike_settings("oasis").threshold_value)
+
+    @spike_threshold_value.setter
+    def spike_threshold_value(self, value: float) -> None:
+        self.get_spike_settings("oasis").threshold_value = value
+
+    @property
+    def spike_threshold_mode(self) -> str:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").threshold_mode
+
+    @spike_threshold_mode.setter
+    def spike_threshold_mode(self, value: str) -> None:
+        self.get_spike_settings("oasis").threshold_mode = value
+
+    @property
+    def burst_threshold(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").burst_threshold
+
+    @burst_threshold.setter
+    def burst_threshold(self, value: float) -> None:
+        self.get_spike_settings("oasis").burst_threshold = value
+
+    @property
+    def burst_min_duration(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").burst_min_duration
+
+    @burst_min_duration.setter
+    def burst_min_duration(self, value: float) -> None:
+        self.get_spike_settings("oasis").burst_min_duration = value
+
+    @property
+    def burst_gaussian_sigma(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").burst_gaussian_sigma
+
+    @burst_gaussian_sigma.setter
+    def burst_gaussian_sigma(self, value: float) -> None:
+        self.get_spike_settings("oasis").burst_gaussian_sigma = value
+
+    @property
+    def spikes_sync_cross_corr_lag(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").spikes_sync_cross_corr_lag
+
+    @spikes_sync_cross_corr_lag.setter
+    def spikes_sync_cross_corr_lag(self, value: float) -> None:
+        self.get_spike_settings("oasis").spikes_sync_cross_corr_lag = value
+
+    @property
+    def spikes_sync_jitter_window(self) -> float:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").spikes_sync_jitter_window
+
+    @spikes_sync_jitter_window.setter
+    def spikes_sync_jitter_window(self, value: float) -> None:
+        self.get_spike_settings("oasis").spikes_sync_jitter_window = value
+
+    @property
+    def ccg_n_shuffles(self) -> int:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").ccg_n_shuffles
+
+    @ccg_n_shuffles.setter
+    def ccg_n_shuffles(self, value: int) -> None:
+        self.get_spike_settings("oasis").ccg_n_shuffles = value
+
+    @property
+    def enable_rising_edge_analysis(self) -> bool:
+        """OASIS compatibility accessor; use get_spike_settings for method selection."""
+        return self.get_spike_settings("oasis").enable_rising_edge_analysis
+
+    @enable_rising_edge_analysis.setter
+    def enable_rising_edge_analysis(self, value: bool) -> None:
+        self.get_spike_settings("oasis").enable_rising_edge_analysis = value
+
+    def _spike_settings_key(self) -> tuple:
+        return tuple(sorted(child.semantic_key() for child in self.spike_settings))
+
     def __eq__(self, other: object) -> bool:
         """Custom equality that excludes id and created_at for semantic comparison.
 
@@ -1228,22 +1491,14 @@ class AnalysisSettings(SQLModel, table=True):
         return (
             self.enable_calcium == other.enable_calcium
             and self.enable_spikes == other.enable_spikes
+            and self._spike_settings_key() == other._spike_settings_key()
             and self.peaks_height_value == other.peaks_height_value
             and self.peaks_height_mode == other.peaks_height_mode
             and self.peaks_distance == other.peaks_distance
             and self.peaks_prominence_multiplier == other.peaks_prominence_multiplier
-            and self.spike_threshold_value == other.spike_threshold_value
-            and self.spike_threshold_mode == other.spike_threshold_mode
-            and self.burst_threshold == other.burst_threshold
-            and self.burst_min_duration == other.burst_min_duration
-            and self.burst_gaussian_sigma == other.burst_gaussian_sigma
             and self.calcium_burst_threshold == other.calcium_burst_threshold
             and self.calcium_burst_min_duration == other.calcium_burst_min_duration
             and self.calcium_burst_gaussian_sigma == other.calcium_burst_gaussian_sigma
-            and self.spikes_sync_cross_corr_lag == other.spikes_sync_cross_corr_lag
-            and self.spikes_sync_jitter_window == other.spikes_sync_jitter_window
-            and self.ccg_n_shuffles == other.ccg_n_shuffles
-            and self.enable_rising_edge_analysis == other.enable_rising_edge_analysis
             and self.cluster_method == other.cluster_method
             and self.cluster_n_clusters == other.cluster_n_clusters
             and self.cluster_max_k == other.cluster_max_k
@@ -1263,22 +1518,14 @@ class AnalysisSettings(SQLModel, table=True):
             (
                 self.enable_calcium,
                 self.enable_spikes,
+                self._spike_settings_key(),
                 self.peaks_height_value,
                 self.peaks_height_mode,
                 self.peaks_distance,
                 self.peaks_prominence_multiplier,
-                self.spike_threshold_value,
-                self.spike_threshold_mode,
-                self.burst_threshold,
-                self.burst_min_duration,
-                self.burst_gaussian_sigma,
                 self.calcium_burst_threshold,
                 self.calcium_burst_min_duration,
                 self.calcium_burst_gaussian_sigma,
-                self.spikes_sync_cross_corr_lag,
-                self.spikes_sync_jitter_window,
-                self.ccg_n_shuffles,
-                self.enable_rising_edge_analysis,
                 self.cluster_method,
                 self.cluster_n_clusters,
                 self.cluster_max_k,
@@ -1387,6 +1634,115 @@ class AnalysisSettings(SQLModel, table=True):
                 (stim_mask.height, stim_mask.width),
             )
         return None
+
+
+class SpikeAnalysisSettings(_ValidatedSettings, table=True):  # type: ignore[call-arg, unused-ignore]
+    """Method-bound spike settings, independent of shared calcium parameters."""
+
+    __tablename__ = "spike_analysis_settings"
+    __table_args__ = (UniqueConstraint("analysis_settings_id", "method"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    analysis_settings_id: int | None = Field(
+        default=None,
+        foreign_key="analysis_settings.id",
+        ondelete="CASCADE",
+        nullable=False,
+    )
+    method: str = "oasis"
+    threshold_mode: str = MULTIPLIER
+    threshold_value: float | None = DEFAULT_SPIKE_THRESHOLD
+    cascade_ap_threshold_fraction: float | None = None
+    burst_threshold: float = DEFAULT_BURST_THRESHOLD
+    burst_min_duration: float = DEFAULT_MIN_BURST_DURATION
+    burst_gaussian_sigma: float = DEFAULT_BURST_GAUSS_SIGMA
+    spikes_sync_cross_corr_lag: float = DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
+    spikes_sync_jitter_window: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW
+    ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
+    enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
+
+    analysis_settings: "AnalysisSettings" = Relationship(
+        back_populates="spike_settings"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def parameter_defaults(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {**data, **SpikeAnalysisParameters.model_validate(data).model_dump()}
+        return data
+
+    def model_post_init(self, context: Any) -> None:
+        # SQLModel table constructors bypass Pydantic field/model validators.
+        parameters = SpikeAnalysisParameters.model_validate(
+            {
+                name: getattr(self, name)
+                for name in SpikeAnalysisParameters.model_fields
+                if name in self.model_fields_set
+            }
+        )
+        for name, value in parameters:
+            if "_sa_instance_state" in self.__dict__:
+                setattr(self, name, value)
+            else:
+                self.__dict__[name] = value
+
+    def validate_parameters(self) -> None:
+        parameters = SpikeAnalysisParameters.model_validate(
+            {name: getattr(self, name) for name in SpikeAnalysisParameters.model_fields}
+        )
+        for name, value in parameters:
+            if "_sa_instance_state" in self.__dict__:
+                setattr(self, name, value)
+            else:
+                self.__dict__[name] = value
+
+    def semantic_key(self) -> tuple:
+        return tuple(
+            getattr(self, name) for name in SpikeAnalysisParameters.model_fields
+        )
+
+
+# Keep legacy physical columns for one compatibility release. They are deliberately
+# unmapped: effective settings are written only to the method-bound children.
+# Inserts supply inert defaults to satisfy NOT NULL columns in older databases.
+for _legacy_name, _parameter_name in LEGACY_SPIKE_SETTING_NAMES.items():
+    _default = SpikeAnalysisParameters.model_fields[_parameter_name].default
+    _type = (
+        Boolean
+        if isinstance(_default, bool)
+        else Integer
+        if isinstance(_default, int)
+        else String
+        if isinstance(_default, str)
+        else Float
+    )
+    SQLModel.metadata.tables["analysis_settings"].append_column(
+        Column(
+            _legacy_name,
+            _type,
+            nullable=False,
+            default=_default,
+            server_default=str(int(_default))
+            if isinstance(_default, bool)
+            else str(_default),
+        )
+    )
+
+
+def _validate_method_settings(
+    session: SASession, flush_context: Any, instances: Any
+) -> None:
+    for obj in session.new.union(session.dirty):
+        if isinstance(obj, ExtractionSettings):
+            obj.validate_output_settings()
+        elif isinstance(obj, AnalysisSettings):
+            obj.validate_spike_settings()
+        elif isinstance(obj, SpikeAnalysisSettings):
+            obj.validate_parameters()
+
+
+event.listen(SASession, "before_flush", _validate_method_settings)
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]

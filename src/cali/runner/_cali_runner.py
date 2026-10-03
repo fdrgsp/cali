@@ -325,6 +325,14 @@ class CaliRunner:
                     extraction_settings_obj = self._get_or_create_extraction_settings(
                         session, extraction_settings
                     )
+                    from cali.sqlmodel._spike_settings import (
+                        require_available_spike_methods,
+                    )
+
+                    extraction_settings_obj.validate_output_settings()
+                    require_available_spike_methods(
+                        extraction_settings_obj.spike_methods
+                    )
                     extraction_settings_id = extraction_settings_obj.id
                     extraction_threads = extraction_settings_obj.threads
                     if extraction_settings_id is None:  # pragma: no cover
@@ -338,6 +346,10 @@ class CaliRunner:
                 if analysis_settings is not None:
                     analysis_settings_obj = self._get_or_create_analysis_settings(
                         session, analysis_settings
+                    )
+                    assert extraction_settings_obj is not None
+                    analysis_settings_obj.validate_spike_settings(
+                        extraction_settings_obj.spike_methods
                     )
                     analysis_settings_id = analysis_settings_obj.id
                     if analysis_settings_id is None:  # pragma: no cover

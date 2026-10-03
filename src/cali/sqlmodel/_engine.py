@@ -11,7 +11,7 @@ from sqlalchemy.engine import Connection
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _add_columns(
@@ -65,7 +65,109 @@ def _startup_discard(connection: Connection) -> None:
     )
 
 
-_MIGRATIONS = (_analysis_gates, _startup_discard)
+def _method_settings(connection: Connection) -> None:
+    """Normalize method selection and preserve legacy OASIS configuration exactly."""
+    # Some historical files predate CCG/rising-edge settings. Known missing fields
+    # receive the defaults used by the OASIS pipeline; existing values are untouched.
+    _add_columns(
+        connection,
+        "analysis_settings",
+        (
+            ("spike_threshold_mode", "VARCHAR DEFAULT 'multiplier' NOT NULL"),
+            ("spike_threshold_value", "FLOAT DEFAULT 3.0 NOT NULL"),
+            ("burst_threshold", "FLOAT DEFAULT 65.0 NOT NULL"),
+            ("burst_min_duration", "FLOAT DEFAULT 500.0 NOT NULL"),
+            ("burst_gaussian_sigma", "FLOAT DEFAULT 0.3 NOT NULL"),
+            ("spikes_sync_cross_corr_lag", "FLOAT DEFAULT 500.0 NOT NULL"),
+            ("spikes_sync_jitter_window", "FLOAT DEFAULT 200.0 NOT NULL"),
+            ("ccg_n_shuffles", "INTEGER DEFAULT 20 NOT NULL"),
+            ("enable_rising_edge_analysis", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ),
+    )
+    _add_columns(
+        connection,
+        "extraction_settings",
+        (
+            ("spike_methods", "JSON DEFAULT '[\"oasis\"]' NOT NULL"),
+            ("cascade_model", "VARCHAR"),
+            ("cascade_device", "VARCHAR DEFAULT 'auto' NOT NULL"),
+        ),
+    )
+    connection.exec_driver_sql(
+        """CREATE TABLE IF NOT EXISTS spike_analysis_settings (
+            id INTEGER NOT NULL PRIMARY KEY,
+            analysis_settings_id INTEGER NOT NULL
+                REFERENCES analysis_settings(id) ON DELETE CASCADE,
+            method VARCHAR NOT NULL,
+            threshold_mode VARCHAR NOT NULL,
+            threshold_value FLOAT,
+            cascade_ap_threshold_fraction FLOAT,
+            burst_threshold FLOAT NOT NULL,
+            burst_min_duration FLOAT NOT NULL,
+            burst_gaussian_sigma FLOAT NOT NULL,
+            spikes_sync_cross_corr_lag FLOAT NOT NULL,
+            spikes_sync_jitter_window FLOAT NOT NULL,
+            ccg_n_shuffles INTEGER NOT NULL,
+            enable_rising_edge_analysis BOOLEAN NOT NULL,
+            UNIQUE (analysis_settings_id, method)
+        )"""
+    )
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql("PRAGMA table_info(analysis_settings)")
+    }
+    if not columns:
+        return
+    pairs = (
+        ("spike_threshold_mode", "threshold_mode"),
+        ("spike_threshold_value", "threshold_value"),
+        ("burst_threshold", "burst_threshold"),
+        ("burst_min_duration", "burst_min_duration"),
+        ("burst_gaussian_sigma", "burst_gaussian_sigma"),
+        ("spikes_sync_cross_corr_lag", "spikes_sync_cross_corr_lag"),
+        ("spikes_sync_jitter_window", "spikes_sync_jitter_window"),
+        ("ccg_n_shuffles", "ccg_n_shuffles"),
+        ("enable_rising_edge_analysis", "enable_rising_edge_analysis"),
+    )
+    missing = {source for source, _ in pairs} - columns
+    if missing:
+        raise ValueError(
+            f"Cannot migrate spike settings: missing columns {sorted(missing)}."
+        )
+    targets = ", ".join(target for _, target in pairs)
+    sources = ", ".join(f"a.{source}" for source, _ in pairs)
+    connection.exec_driver_sql(
+        "INSERT INTO spike_analysis_settings "
+        f"(analysis_settings_id, method, {targets}) "
+        f"SELECT a.id, 'oasis', {sources} FROM analysis_settings a "
+        "WHERE NOT EXISTS (SELECT 1 FROM spike_analysis_settings s "
+        "WHERE s.analysis_settings_id = a.id AND s.method = 'oasis')"
+    )
+    # Exact SQL comparisons cover every legacy value, including non-default settings.
+    different = " OR ".join(f"s.{target} IS NOT a.{source}" for source, target in pairs)
+    mismatches = connection.exec_driver_sql(
+        "SELECT COUNT(*) FROM analysis_settings a LEFT JOIN spike_analysis_settings s "
+        "ON s.analysis_settings_id = a.id AND s.method = 'oasis' "
+        f"WHERE s.id IS NULL OR {different}"
+    ).scalar_one()
+    if mismatches:
+        raise ValueError("Spike settings backfill failed exact-value verification.")
+    duplicates = connection.exec_driver_sql(
+        "SELECT 1 FROM spike_analysis_settings "
+        "GROUP BY analysis_settings_id, method HAVING COUNT(*) > 1 LIMIT 1"
+    ).first()
+    if duplicates:
+        raise ValueError("Spike settings backfill contains duplicate method rows.")
+    orphaned = connection.exec_driver_sql(
+        "SELECT COUNT(*) FROM spike_analysis_settings s "
+        "LEFT JOIN analysis_settings a ON a.id = s.analysis_settings_id "
+        "WHERE s.analysis_settings_id IS NOT NULL AND a.id IS NULL"
+    ).scalar_one()
+    if orphaned:
+        raise ValueError("Spike settings backfill contains orphaned parent references.")
+
+
+_MIGRATIONS = (_analysis_gates, _startup_discard, _method_settings)
 
 
 def migrate_database(engine: Engine) -> None:

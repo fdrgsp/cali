@@ -26,6 +26,7 @@ from cali.sqlmodel._model import (
     Mask,
     Traces,
 )
+from cali.sqlmodel._spike_settings import require_available_spike_methods
 from cali.util import coordinates_to_mask, mask_to_coordinates
 from cali.util._util import _NUMBA_LOCK
 
@@ -115,6 +116,10 @@ class ExtractionRunner:
         ValueError
             If run_analysis=True but analysis_settings is None
         """
+        extraction_settings.validate_output_settings()
+        require_available_spike_methods(extraction_settings.spike_methods)
+        if analysis_settings is not None:
+            analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
         generator = self._run_generator(
             dataset, extraction_settings, analysis_settings, fovs
         )
@@ -322,6 +327,11 @@ class ExtractionRunner:
         # if runner._data is None or runner._check_for_abort_requested():
         if self._check_for_abort_requested():
             return None
+
+        extraction_settings.validate_output_settings()
+        require_available_spike_methods(extraction_settings.spike_methods)
+        if analysis_settings is not None:
+            analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
 
         global_pos_idx = fov_to_analyze.position_index
 

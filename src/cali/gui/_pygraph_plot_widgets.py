@@ -37,7 +37,15 @@ from cali.plot._main_plot import (
     plot_single_well_data,
     requires_active_rois,
 )
-from cali.sqlmodel import FOV, ROI, AnalysisSettings, CaliResult, DataAnalysis, Traces
+from cali.sqlmodel import (
+    FOV,
+    ROI,
+    AnalysisSettings,
+    CaliResult,
+    DataAnalysis,
+    SpikeAnalysisSettings,
+    Traces,
+)
 from cali.sqlmodel._engine import ensure_schema_current
 
 if TYPE_CHECKING:
@@ -816,9 +824,11 @@ class _MultilWellGraphWidget(QWidget):
         if self._engine is not None and self._run_id is not None:
             with Session(self._engine) as session:
                 stmt = (
-                    select(AnalysisSettings.enable_rising_edge_analysis)
+                    select(SpikeAnalysisSettings.enable_rising_edge_analysis)
+                    .join(AnalysisSettings)
                     .join(CaliResult)
                     .where(col(CaliResult.id) == self._run_id)
+                    .where(SpikeAnalysisSettings.method == "oasis")
                 )
                 result = session.exec(stmt).first()
                 if result is not None:

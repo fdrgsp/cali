@@ -1,14 +1,14 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1 and P2a implemented; startup-discard implementation partial; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings implemented; normalized trace/result provenance and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
 
 ## Implementation review — 2026-10-02
 
-Completed in the working tree:
+Committed as `43fe9c4`:
 
 - **P1:** extraction now computes ROI DFFs, invokes `OasisBackend.infer_all()` once per FOV,
   then finalizes results. The backend preserves the legacy calculation, both retries,
@@ -24,6 +24,42 @@ Completed in the working tree:
   legacy direct loaders, GUI runs, exports, and preservation of a caller's pending work.
   Compatibility migration aliases remain for existing callers. No new CASCADE mappings
   have been introduced before this migration foundation.
+
+P2b continuation — method-bound settings:
+
+- `ExtractionSettings.spike_methods` now accepts nonempty list/tuple selections, removes
+  duplicates, and exposes canonical immutable tuples, including after database and JSON
+  loading. CASCADE selection requires an explicit model and supported device; unused
+  CASCADE inputs are cleared for OASIS-only settings. Discard values/units are validated
+  at construction; source-dependent seconds-mode timing checks remain in extraction.
+- `SpikeAnalysisSettings` is a normalized child table with one configuration per parent
+  and method. Bare headless settings create an OASIS child; CASCADE uses `cascade_ap` and
+  `1/e` by default. Illegal method/mode combinations and implicit CASCADE global thresholds
+  are rejected. Parent equality/hash include all child semantic fields in canonical order.
+  Relationships load eagerly for detached settings, and normalized JSON round trips work.
+- Schema v3 backfills every legacy OASIS threshold, burst, synchrony, and CCG setting,
+  verifies exact values, uniqueness, and parent references before advancing the version,
+  and rolls back DDL/backfill together on interruption. Historical missing columns receive
+  fixed legacy defaults. Effective settings are now written only to child rows; old Python
+  scalar accessors explicitly address the OASIS child. Legacy physical settings columns
+  remain unmapped and unchanged on updates; new inserts supply inert defaults where old
+  databases still impose `NOT NULL` constraints.
+- The PCA dialog queries the OASIS child. Runner preflight validates selected methods and
+  their configurations, and explicitly rejects CASCADE execution until the backend and
+  method-bound analysis are enabled. Persisting a future selection cannot silently label
+  an OASIS computation as CASCADE.
+
+This completes the settings portion of P2b, **not P2b as a whole**. Still required: frame
+windows, inference runs/traces, ROI/FOV spike result tables, explicit source-extraction
+linkage with migration audits, and the corresponding read/write/export conversions.
+
+Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
+full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
+adding a regression and fix for validation copying an existing settings object without
+reparenting its source children. Ruff passes; mypy reports the same 362 diagnostics as
+`43fe9c4`, with no added diagnostics. The new settings test module covers canonical
+selection, independent method thresholds, equality/hash, detached/JSON round trips,
+constraints, exact legacy values, rollback/retry, conflicting backfills, and execution gates.
 
 Validation for this milestone:
 
@@ -52,7 +88,7 @@ source offsets. The remaining requirements are:
 - Include source offsets and source event indices in exports and plot metadata. Current
   CSV products export cropped values without the source mapping.
 
-**Next landing step:** P2b normalized multi-output storage and verified legacy backfill,
+**Next landing step:** finish P2b normalized multi-output storage and verified legacy backfill,
 then completion of P2c. Follow the binding sequence in §9 for packaging, the reference
 oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
 

@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
+from cali.sqlmodel._spike_settings import require_available_spike_methods
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import ROI, Traces
@@ -76,6 +77,10 @@ class AnalysisRunner:
             FOV objects with ROIs containing DataAnalysis results,
             ready to be saved to database
         """
+        analysis_settings.validate_spike_settings()
+        require_available_spike_methods(
+            tuple(child.method for child in analysis_settings.spike_settings)
+        )
         generator = self._run_generator(fovs, analysis_settings)
         return generator if as_generator else list(generator)
 
