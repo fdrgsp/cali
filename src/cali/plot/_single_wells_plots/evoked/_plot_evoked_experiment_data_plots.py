@@ -771,7 +771,8 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     total_frames = 0
 
     for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.inferred_spikes is not None and data_analysis:
+        spike_values = trace_obj.get_spike_values("oasis") if trace_obj else None
+        if trace_obj and spike_values is not None and data_analysis:
             active_roi_labels.append(roi_model.label_value)
             if roi_model.stimulated:
                 stimulated_rois.append((roi_model, trace_obj, data_analysis))
@@ -781,7 +782,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             if data_analysis.total_recording_time_sec is not None:
                 rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-            total_frames = max(total_frames, len(trace_obj.inferred_spikes))
+            total_frames = max(total_frames, len(spike_values))
 
     if not stimulated_rois and not non_stimulated_rois:
         plot.setTitle("Spike Raster\nNo spike data available.")
@@ -803,7 +804,7 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
         Uses rising edge detection to show discrete spike events, matching
         standard spike raster convention (one tick per event onset).
         """
-        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
         if spikes.size == 0:
             return False
 
@@ -1216,7 +1217,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.inferred_spikes:
+        if trace_obj and trace_obj.get_spike_values("oasis"):
             if roi_model.stimulated:
                 stimulated_data.append((roi_model, trace_obj, data_analysis))
             else:
@@ -1239,7 +1240,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
 
     # Stim traces - show continuous spike amplitudes
     for roi_model, trace_obj, _data_analysis in stimulated_data:
-        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
         offset = count * 1.1
         y = spikes + offset
         x = np.arange(y.size, dtype=float)
@@ -1257,7 +1258,7 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
 
     # Non-stim traces - show continuous spike amplitudes
     for roi_model, trace_obj, _data_analysis in non_stimulated_data:
-        spikes = np.asarray(trace_obj.inferred_spikes, dtype=float)
+        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
         offset = count * 1.1
         y = spikes + offset
         x = np.arange(y.size, dtype=float)

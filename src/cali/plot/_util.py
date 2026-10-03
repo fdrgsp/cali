@@ -242,7 +242,7 @@ def _get_spikes_over_threshold(
     da = roi.data_analysis_history[0]
     trace = roi.traces_history[0]
 
-    inferred_spikes = trace.inferred_spikes
+    inferred_spikes = trace.get_spike_values("oasis")
     inferred_spikes_threshold = da.inferred_spikes_threshold
 
     if inferred_spikes is None or inferred_spikes_threshold is None:

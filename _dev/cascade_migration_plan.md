@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings implemented; normalized trace/result provenance and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings and trace provenance implemented; method-bound results/source audits and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -49,9 +49,38 @@ P2b continuation — method-bound settings:
   method-bound analysis are enabled. Persisting a future selection cannot silently label
   an OASIS computation as CASCADE.
 
-This completes the settings portion of P2b, **not P2b as a whole**. Still required: frame
-windows, inference runs/traces, ROI/FOV spike result tables, explicit source-extraction
-linkage with migration audits, and the corresponding read/write/export conversions.
+Settings committed as `5b5fa0e`. This completes the settings portion of P2b,
+**not P2b as a whole**.
+
+P2b continuation — frame windows and method-bound trace provenance:
+
+- Schema v4 adds `ExtractionFrameWindow`, `SpikeInferenceRun`, and `SpikeTrace`, with
+  shared extraction/FOV and extraction/method uniqueness constraints. Traces eagerly load
+  windows, spike children, and inference provenance for detached use. New extraction writes
+  store requested/resolved crop information, original source timestamps when available,
+  backend version/device/dtype, per-ROI noise, AR coefficients, and valid intervals.
+- The transactional, model-free backfill copies legacy spike arrays exactly, shares
+  consistent windows/runs, rejects conflicting lengths/offsets, and validates foreign keys
+  before advancing the schema. Large trace payloads are streamed. Historical backend
+  versions and unavailable original timestamps remain unknown; unresolved analysis copies
+  keep synthetic provenance and their legacy owner for the later source-resolution audit.
+- Production analysis, plotting, and CSV readers now select OASIS explicitly. The deprecated
+  singular spike accessor is read-only and raises on dual outputs. Legacy physical spike
+  and source columns remain unmapped; normalized writes use child rows/shared windows.
+- Analysis copies reuse original windows/inference records. FOV commits attach all staged
+  traces before autoflush, and deleting a source result preserves provenance referenced by
+  surviving copies. CASCADE execution remains blocked until its backend and analysis land.
+
+Still required in P2b: ROI/FOV spike result tables, explicit source-extraction linkage with
+migration audits, normalized trace JSON round trips, and the remaining result/export
+conversions. Provenance mutation/ownership audits and valid-interval consumers must be
+completed before enabling a second backend.
+
+Validation for the trace-provenance continuation: **1594 passed, 1 skipped in 200.35 s**
+in the full suite against restored legacy fixtures, plus **12 passed** in the focused
+provenance module after adding source-deletion, existing-window-FK, and conflicting-window
+regressions. Ruff lint/format pass. Mypy has 355 existing diagnostics versus 362 at
+`5b5fa0e`, with no added diagnostics. Checked-in databases were restored after validation.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
@@ -76,9 +105,8 @@ The startup-discard changes present at the start of this review are useful but *
 complete P2b/P2c**. They implement cropping, GUI/JSON settings, retained axes, and per-trace
 source offsets. The remaining requirements are:
 
-- Replace duplicated per-trace provenance with one persisted `ExtractionFrameWindow` per
-  result/FOV, including requested settings, conversion rule, original source time, and
-  retained count. Backfill exact zero-discard windows for historical data.
+- The shared persisted `ExtractionFrameWindow` and historical backfill are now implemented.
+  Finish ownership/source audits alongside the remaining P2b result normalization.
 - Finish the shared timing descriptor, including trusted explicit frame-period metadata;
   preflight against DFF/OASIS and eventually the selected CASCADE model rather than only
   requiring two retained samples. Include file/FOV and limiting counts in errors.

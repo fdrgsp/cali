@@ -1060,7 +1060,7 @@ def _export_trace_data(
             # Get trace data
             if trace_type == INFERRED_SPIKES_THRESHOLDED_BINARY:
                 # Binarize inferred spikes based on threshold
-                trace_data = traces.inferred_spikes
+                trace_data = traces.get_spike_values("oasis")
                 if trace_data is not None and data_analysis.inferred_spikes_threshold:
                     trace_data = [
                         1.0 if val >= data_analysis.inferred_spikes_threshold else 0.0
@@ -1068,7 +1068,13 @@ def _export_trace_data(
                     ]
             else:
                 attr_name = trace_attr_map.get(trace_type)
-                trace_data = getattr(traces, attr_name, None) if attr_name else None
+                trace_data = (
+                    traces.get_spike_values("oasis")
+                    if attr_name == "inferred_spikes"
+                    else getattr(traces, attr_name, None)
+                    if attr_name
+                    else None
+                )
 
             if trace_data is None:
                 continue

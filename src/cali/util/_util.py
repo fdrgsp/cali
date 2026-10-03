@@ -242,109 +242,112 @@ def commit_fov_result(
             # ANALYSIS MODE: Don't create new ROIs, only attach traces/analysis
             # to existing ROIs
             # Match ROIs by label_value and detection_settings_id
-            for new_roi in fov_result.rois:
-                # Find matching existing ROI by label_value and detection_settings_id
-                matching_roi = None
-                for existing_roi in existing_fov.rois:
-                    if (
-                        existing_roi.label_value == new_roi.label_value
-                        and existing_roi.detection_settings_id
-                        == new_roi.detection_settings_id
-                    ):
-                        matching_roi = existing_roi
-                        break
+            # Shared inference rows already reference all staged spike children.
+            # Attach the whole FOV before any lazy query may trigger a flush.
+            with session.no_autoflush:
+                for new_roi in fov_result.rois:
+                    # Match existing ROI by label and detection settings.
+                    matching_roi = None
+                    for existing_roi in existing_fov.rois:
+                        if (
+                            existing_roi.label_value == new_roi.label_value
+                            and existing_roi.detection_settings_id
+                            == new_roi.detection_settings_id
+                        ):
+                            matching_roi = existing_roi
+                            break
 
-                if matching_roi:
-                    # Update ROI properties from analysis
-                    matching_roi.active = new_roi.active
-                    matching_roi.stimulated = new_roi.stimulated
-                    matching_roi.cell_size = new_roi.cell_size
-                    matching_roi.cell_size_units = new_roi.cell_size_units
+                    if matching_roi:
+                        # Update ROI properties from analysis
+                        matching_roi.active = new_roi.active
+                        matching_roi.stimulated = new_roi.stimulated
+                        matching_roi.cell_size = new_roi.cell_size
+                        matching_roi.cell_size_units = new_roi.cell_size_units
 
-                    # Check if traces/analysis already exist for this analysis_result_id
-                    # to avoid duplicates if analysis is run multiple times
-                    existing_analysis_ids = set()
-                    for trace in new_roi.traces_history:
-                        if trace.analysis_result_id is not None:
-                            # Check if trace with this analysis_result_id already exists
-                            existing_trace = next(
-                                (
-                                    t
-                                    for t in matching_roi.traces_history
-                                    if t.analysis_result_id == trace.analysis_result_id
-                                ),
-                                None,
-                            )
-                            if existing_trace:
-                                # Skip - trace already exists
-                                existing_analysis_ids.add(trace.analysis_result_id)
-                                continue
+                        # Avoid duplicating products when re-running this analysis.
+                        existing_analysis_ids = set()
+                        for trace in new_roi.traces_history:
+                            if trace.analysis_result_id is not None:
+                                # Check whether this run already has a trace.
+                                existing_trace = next(
+                                    (
+                                        t
+                                        for t in matching_roi.traces_history
+                                        if t.analysis_result_id
+                                        == trace.analysis_result_id
+                                    ),
+                                    None,
+                                )
+                                if existing_trace:
+                                    # Skip - trace already exists
+                                    existing_analysis_ids.add(trace.analysis_result_id)
+                                    continue
 
-                        # Clear the trace's ROI reference first to avoid cascading the
-                        # wrong ROI
-                        # (trace.roi might point to new_roi which has same ID as
-                        # matching_roi)
-                        trace.roi = None  # type: ignore[assignment]
-                        trace.roi_id = None
+                            # Clear the trace's ROI reference to avoid cascading the
+                            # wrong ROI
+                            # (trace.roi might point to new_roi which has same ID as
+                            # matching_roi)
+                            trace.roi = None  # type: ignore[assignment]
+                            trace.roi_id = None
 
-                        # Check if trace with this ID already exists in session
-                        # (avoids "already present in this session" error)
-                        if trace.id is not None:
-                            existing_in_session = session.get(Traces, trace.id)
-                            if existing_in_session is not None:
-                                # Use existing trace from session instead
-                                trace = existing_in_session
-                        else:
-                            # New trace without ID - add to session
-                            session.add(trace)
+                            # Check if trace with this ID already exists in session
+                            # (avoids "already present in this session" error)
+                            if trace.id is not None:
+                                existing_in_session = session.get(Traces, trace.id)
+                                if existing_in_session is not None:
+                                    # Use existing trace from session instead
+                                    trace = existing_in_session
+                            else:
+                                # New trace without ID - add to session
+                                session.add(trace)
 
-                        # Now set to the correct matching_roi
-                        trace.roi_id = matching_roi.id
-                        matching_roi.traces_history.append(trace)
+                            # Now set to the correct matching_roi
+                            trace.roi_id = matching_roi.id
+                            matching_roi.traces_history.append(trace)
 
-                    # Only add new data_analysis if not already exists
-                    for data_analysis in new_roi.data_analysis_history:
-                        if data_analysis.analysis_result_id is not None:
-                            existing_data_analysis = next(
-                                (
-                                    da
-                                    for da in matching_roi.data_analysis_history
-                                    if da.analysis_result_id
-                                    == data_analysis.analysis_result_id
-                                ),
-                                None,
-                            )
-                            if existing_data_analysis:
-                                # Skip - data_analysis already exists
-                                continue
+                        # Only add new data_analysis if not already exists
+                        for data_analysis in new_roi.data_analysis_history:
+                            if data_analysis.analysis_result_id is not None:
+                                existing_data_analysis = next(
+                                    (
+                                        da
+                                        for da in matching_roi.data_analysis_history
+                                        if da.analysis_result_id
+                                        == data_analysis.analysis_result_id
+                                    ),
+                                    None,
+                                )
+                                if existing_data_analysis:
+                                    # Skip - data_analysis already exists
+                                    continue
 
-                        # Clear the data_analysis's ROI reference first to avoid
-                        # cascading the wrong ROI
-                        data_analysis.roi = None  # type: ignore[assignment]
-                        data_analysis.roi_id = None
+                            # Clear the data_analysis's ROI reference first to avoid
+                            # cascading the wrong ROI
+                            data_analysis.roi = None  # type: ignore[assignment]
+                            data_analysis.roi_id = None
 
-                        # Check if data_analysis with this ID already exists in session
-                        # (avoids "already present in this session" error)
-                        if data_analysis.id is not None:
-                            existing_in_session = session.get(
-                                DataAnalysis, data_analysis.id
-                            )
-                            if existing_in_session is not None:
-                                # Use existing data_analysis from session instead
-                                data_analysis = existing_in_session
-                        else:
-                            # New data_analysis without ID - add to session
-                            session.add(data_analysis)
+                            # Check for this analysis ID in the session.
+                            # (avoids "already present in this session" error)
+                            if data_analysis.id is not None:
+                                existing_in_session = session.get(
+                                    DataAnalysis, data_analysis.id
+                                )
+                                if existing_in_session is not None:
+                                    # Use existing data_analysis from session instead
+                                    data_analysis = existing_in_session
+                            else:
+                                # New data_analysis without ID - add to session
+                                session.add(data_analysis)
 
-                        # Now set to the correct matching_roi
-                        data_analysis.roi_id = matching_roi.id
-                        matching_roi.data_analysis_history.append(data_analysis)
-                else:
-                    cali_logger.warning(
-                        f"No matching ROI found for label={new_roi.label_value} "
-                        f"detection_settings_id={new_roi.detection_settings_id} "
-                        f"in FOV {existing_fov.name}"
-                    )
+                            # Now set to the correct matching_roi
+                            data_analysis.roi_id = matching_roi.id
+                            matching_roi.data_analysis_history.append(data_analysis)
+                    else:
+                        cali_logger.warning(
+                            f"No matching ROI found for label={new_roi.label_value} "
+                            f"detection_settings_id={new_roi.detection_settings_id} "
+                            f"in FOV {existing_fov.name}"
+                        )
     else:
         # New FOV - link to well and add
         # Set detection_settings_id on each ROI if provided (detection mode)

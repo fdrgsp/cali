@@ -294,7 +294,7 @@ class AnalysisRunner:
         elapsed_time_list = traces.x_axis
         dff = np.array(traces.dff)
         den_dff_array = np.array(traces.den_dff)
-        spikes_array = np.array(traces.inferred_spikes)
+        spikes_array = np.array(traces.get_spike_values("oasis"))
 
         # Skip if no time axis data
         if elapsed_time_list is None or len(elapsed_time_list) < 2:

@@ -17,7 +17,7 @@ from cali.logger import cali_logger
 from cali.readers._tiff_collection_reader import TiffCollectionReader
 from cali.sqlmodel import save_experiment_to_database
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
-from cali.sqlmodel._model import FOV, ROI, CaliResult, Traces
+from cali.sqlmodel._model import FOV, ROI, CaliResult, SpikeTrace, Traces
 from cali.util import commit_fov_result, load_data_from_path
 
 if TYPE_CHECKING:
@@ -1525,14 +1525,21 @@ class CaliRunner:
                         neuropil_trace=source_trace.neuropil_trace,
                         dff=source_trace.dff,
                         den_dff=source_trace.den_dff,
-                        inferred_spikes=source_trace.inferred_spikes,
+                        spike_traces=[
+                            SpikeTrace(
+                                values=list(child.values),
+                                valid_start=child.valid_start,
+                                valid_stop=child.valid_stop,
+                                noise=child.noise,
+                                selected_noise_level=child.selected_noise_level,
+                                ar_coefficients=child.ar_coefficients,
+                                inference_run=child.inference_run,
+                            )
+                            for child in source_trace.spike_traces
+                        ],
+                        extraction_frame_window=source_trace.extraction_frame_window,
                         x_axis=source_trace.x_axis,
                         x_axis_units=source_trace.x_axis_units,
-                        source_start_frame=source_trace.source_start_frame,
-                        source_start_time_ms=source_trace.source_start_time_ms,
-                        original_frame_count=source_trace.original_frame_count,
-                        discarded_duration_ms=source_trace.discarded_duration_ms,
-                        discard_timing_source=source_trace.discard_timing_source,
                         roi_id=roi.id,
                         analysis_result_id=analysis_result_id,
                         neuropil_mask_id=source_trace.neuropil_mask_id,

@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Connection
 
+from ._trace_migration import migrate_trace_provenance
+
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _add_columns(
@@ -167,7 +169,12 @@ def _method_settings(connection: Connection) -> None:
         raise ValueError("Spike settings backfill contains orphaned parent references.")
 
 
-_MIGRATIONS = (_analysis_gates, _startup_discard, _method_settings)
+_MIGRATIONS = (
+    _analysis_gates,
+    _startup_discard,
+    _method_settings,
+    migrate_trace_provenance,
+)
 
 
 def migrate_database(engine: Engine) -> None:

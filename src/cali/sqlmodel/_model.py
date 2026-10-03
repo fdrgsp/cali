@@ -62,6 +62,18 @@ from cali.sqlmodel._spike_settings import (
     SpikeMethod,
     canonical_spike_methods,
 )
+from cali.sqlmodel._trace_provenance import (
+    ExtractionFrameWindow as ExtractionFrameWindow,
+)
+from cali.sqlmodel._trace_provenance import (
+    SpikeInferenceRun as SpikeInferenceRun,
+)
+from cali.sqlmodel._trace_provenance import (
+    SpikeTrace as SpikeTrace,
+)
+from cali.sqlmodel._trace_provenance import (
+    normalize_trace_provenance,
+)
 
 if TYPE_CHECKING:
     from cali.readers._ome_zarr_reader import OMEZarrReader
@@ -199,6 +211,15 @@ class CaliResult(SQLModel, table=True):
 
     # Relationships
     traces: list["Traces"] = Relationship(back_populates="analysis_result")
+    spike_inference_runs: list["SpikeInferenceRun"] = Relationship(
+        back_populates="extraction_result",
+        sa_relationship_kwargs={
+            "foreign_keys": "[SpikeInferenceRun.extraction_result_id]",
+            "cascade": "save-update, merge",
+            "passive_deletes": True,
+            "lazy": "selectin",
+        },
+    )
     data_analysis_results: list["DataAnalysis"] = Relationship(
         back_populates="analysis_result"
     )
@@ -1743,6 +1764,7 @@ def _validate_method_settings(
 
 
 event.listen(SASession, "before_flush", _validate_method_settings)
+event.listen(SASession, "before_flush", normalize_trace_provenance)
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
@@ -2084,14 +2106,8 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     neuropil_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
     den_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
-    inferred_spikes: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis_units: str | None = Field(default=None)  # "frames" or "ms"
-    source_start_frame: int = Field(default=0)
-    source_start_time_ms: float = Field(default=0.0)
-    original_frame_count: int | None = Field(default=None)
-    discarded_duration_ms: float = Field(default=0.0)
-    discard_timing_source: str | None = Field(default=None)
 
     # Foreign keys - roi_id is no longer unique to allow multiple versions
     roi_id: int | None = Field(
@@ -2104,7 +2120,18 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, foreign_key="mask.id", index=True
     )
 
+    extraction_frame_window_id: int | None = Field(
+        default=None, foreign_key="extraction_frame_window.id", index=True
+    )
+
     # Relationships
+    extraction_frame_window: Optional["ExtractionFrameWindow"] = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"}
+    )
+    spike_traces: list["SpikeTrace"] = Relationship(
+        back_populates="trace",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
     roi: "ROI" = Relationship(back_populates="traces_history")
     analysis_result: "CaliResult" = Relationship(back_populates="traces")
     neuropil_mask: Optional["Mask"] = Relationship(
@@ -2113,6 +2140,122 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
             "lazy": "selectin",
         }
     )
+
+    def __init__(self, **data: Any) -> None:
+        spikes = data.pop("inferred_spikes", None)
+        legacy_window = {
+            name: data.pop(name)
+            for name in (
+                "source_start_frame",
+                "source_start_time_ms",
+                "original_frame_count",
+                "discarded_duration_ms",
+                "discard_timing_source",
+            )
+            if name in data
+        }
+        if spikes is not None and "spike_traces" in data:
+            raise ValueError("Use spike_traces or legacy inferred_spikes, not both.")
+        if legacy_window and "extraction_frame_window" in data:
+            raise ValueError("Use a frame window or legacy source fields, not both.")
+        super().__init__(**data)
+        if "id" not in self.__dict__:
+            return
+        if spikes is not None:
+            self.spike_traces = [
+                SpikeTrace(values=list(spikes), inference_run=SpikeInferenceRun())
+            ]
+        if (
+            self.extraction_frame_window is None
+            and self.extraction_frame_window_id is None
+        ):
+            arrays = (self.raw_trace, self.dff, self.den_dff, self.x_axis, spikes)
+            retained = next((len(array) for array in arrays if array is not None), None)
+            start = legacy_window.get("source_start_frame", 0)
+            original = legacy_window.get("original_frame_count")
+            if original is None and retained is not None:
+                original = retained + start
+            self.extraction_frame_window = ExtractionFrameWindow(
+                source_start_frame=start,
+                source_start_time_ms=legacy_window.get("source_start_time_ms", 0.0),
+                original_frame_count=original,
+                retained_frame_count=retained,
+                discarded_duration_ms=legacy_window.get("discarded_duration_ms", 0.0),
+                timing_source=legacy_window.get("discard_timing_source"),
+            )
+
+    def get_spike_trace(self, method: SpikeMethod) -> SpikeTrace | None:
+        """Resolve one explicitly selected method, rejecting duplicated outputs."""
+        matches = [
+            child for child in self.spike_traces if child.inference_run.method == method
+        ]
+        if len(matches) > 1:
+            raise ValueError(f"Duplicate spike traces for {method}.")
+        return matches[0] if matches else None
+
+    def get_spike_values(self, method: SpikeMethod) -> list[float] | None:
+        """Read a method's values without an implicit backend choice."""
+        child = self.get_spike_trace(method)
+        return child.values if child is not None else None
+
+    @property
+    def inferred_spikes(self) -> list[float] | None:
+        """Deprecated read-only accessor, available only for a single output."""
+        if len(self.spike_traces) > 1:
+            raise ValueError("Multiple spike outputs: use get_spike_trace(method).")
+        return self.spike_traces[0].values if self.spike_traces else None
+
+    @property
+    def source_start_frame(self) -> int:
+        """Read source coordinates from the shared extraction frame window."""
+        window = self.extraction_frame_window
+        return window.source_start_frame if window is not None else 0
+
+    @property
+    def source_start_time_ms(self) -> float:
+        """Read source coordinates from the shared extraction frame window."""
+        window = self.extraction_frame_window
+        return window.source_start_time_ms if window is not None else 0.0
+
+    @property
+    def original_frame_count(self) -> int | None:
+        """Read source coordinates from the shared extraction frame window."""
+        window = self.extraction_frame_window
+        return window.original_frame_count if window is not None else None
+
+    @property
+    def discarded_duration_ms(self) -> float:
+        """Read source coordinates from the shared extraction frame window."""
+        window = self.extraction_frame_window
+        return window.discarded_duration_ms if window is not None else 0.0
+
+    @property
+    def discard_timing_source(self) -> str | None:
+        """Read source coordinates from the shared extraction frame window."""
+        window = self.extraction_frame_window
+        return window.timing_source if window is not None else None
+
+
+# Physical legacy columns stay read-only for a compatibility release. Only defaults
+# are supplied on inserts to satisfy historical NOT NULL source-coordinate fields.
+SQLModel.metadata.tables["trace"].append_column(
+    Column("inferred_spikes", JSON, nullable=True, default=None)
+)
+SQLModel.metadata.tables["trace"].append_column(
+    Column("source_start_frame", Integer, nullable=False, default=0)
+)
+SQLModel.metadata.tables["trace"].append_column(
+    Column("source_start_time_ms", Float, nullable=False, default=0.0)
+)
+SQLModel.metadata.tables["trace"].append_column(
+    Column("original_frame_count", Integer, nullable=True, default=None)
+)
+SQLModel.metadata.tables["trace"].append_column(
+    Column("discarded_duration_ms", Float, nullable=False, default=0.0)
+)
+SQLModel.metadata.tables["trace"].append_column(
+    Column("discard_timing_source", String, nullable=True, default=None)
+)
 
 
 class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]

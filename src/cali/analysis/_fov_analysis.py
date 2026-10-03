@@ -144,8 +144,8 @@ def compute_fov_analysis(
             peak_events_dict[str(roi.label_value)] = peak_array.tolist()
 
         # Build spike data for inferred spikes
-        if traces.inferred_spikes is not None:
-            spikes = np.asarray(traces.inferred_spikes, dtype=float)
+        if traces.get_spike_values("oasis") is not None:
+            spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
             # Create binary spike trains for CCG, jitter synchrony, and bursts
             spike_threshold = (

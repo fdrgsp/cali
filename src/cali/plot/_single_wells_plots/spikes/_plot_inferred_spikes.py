@@ -175,9 +175,9 @@ def _plot_inferred_spikes(
     if normalize:
         all_values: list[float] = []
         for _roi, traces, data_analysis in roi_data:
-            if data_analysis and traces.inferred_spikes:
-                spike_data = traces.inferred_spikes
-                all_values.extend([float(s) for s in spike_data])
+            spike_values = traces.get_spike_values("oasis")
+            if data_analysis and spike_values:
+                all_values.extend([float(s) for s in spike_values])
 
         if all_values:
             p1, p2 = map(float, np.percentile(all_values, [5, 100]))
@@ -192,14 +192,15 @@ def _plot_inferred_spikes(
     n_rois = len(roi_data)
 
     for roi, traces, data_analysis in roi_data:
-        if data_analysis is None or not traces.inferred_spikes:
+        spike_values = traces.get_spike_values("oasis")
+        if data_analysis is None or not spike_values:
             continue
 
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
         # Get spike data as continuous values
-        spike_data = np.asarray(traces.inferred_spikes, dtype=float)
+        spike_data = np.asarray(spike_values, dtype=float)
 
         # x-axis = frames
         x = np.arange(spike_data.size, dtype=float)
@@ -282,7 +283,7 @@ def _plot_inferred_spikes(
                         pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
                     )
 
-        last_trace = list(traces.inferred_spikes)
+        last_trace = list(spike_values)
         count += 1
 
     _set_graph_title_and_labels_pg(

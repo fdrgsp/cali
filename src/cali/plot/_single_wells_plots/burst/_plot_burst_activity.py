@@ -410,10 +410,10 @@ def _get_population_spike_data(
 
     for roi in roi_results:
         traces = _get_traces_for_run(roi, run_id)
-        if traces is None or not traces.inferred_spikes:
+        if traces is None or not traces.get_spike_values("oasis"):
             continue
 
-        spikes = np.asarray(traces.inferred_spikes, dtype=float)
+        spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         data_analysis = _get_data_analysis_for_run(roi, run_id)
         threshold = data_analysis.inferred_spikes_threshold if data_analysis else 0.0

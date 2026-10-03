@@ -104,11 +104,11 @@ def _generate_spike_raster_plot(
     sample_trace: list[float] | None = None
 
     for roi, traces, data_analysis in roi_data:
-        if data_analysis is None or not traces.inferred_spikes:
+        if data_analysis is None or not traces.get_spike_values("oasis"):
             continue
 
         threshold = data_analysis.inferred_spikes_threshold or 0.0
-        inferred = np.asarray(traces.inferred_spikes, dtype=float)
+        inferred = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         # Thresholded spikes
         above_the = inferred > threshold
@@ -132,8 +132,8 @@ def _generate_spike_raster_plot(
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        if sample_trace is None and traces.inferred_spikes is not None:
-            sample_trace = traces.inferred_spikes
+        if sample_trace is None and traces.get_spike_values("oasis") is not None:
+            sample_trace = traces.get_spike_values("oasis")
 
     if not event_data:
         cali_logger.warning(
@@ -356,10 +356,10 @@ def _generate_spike_intensity_heatmap(
     rois_rec_time: list[float] = []
 
     for roi, traces, data_analysis in roi_data:
-        if traces is None or traces.inferred_spikes is None:
+        if traces is None or traces.get_spike_values("oasis") is None:
             continue
 
-        spike_trace = np.asarray(traces.inferred_spikes, dtype=float)
+        spike_trace = np.asarray(traces.get_spike_values("oasis"), dtype=float)
         if spike_trace.size == 0:
             continue
 
@@ -559,11 +559,11 @@ def _generate_spike_intensity_heatmap_thresholded(
     rois_rec_time: list[float] = []
 
     for roi, traces, data_analysis in roi_data:
-        if traces is None or traces.inferred_spikes is None:
+        if traces is None or traces.get_spike_values("oasis") is None:
             continue
 
         threshold = data_analysis.inferred_spikes_threshold or 0.0
-        spike_signal = np.asarray(traces.inferred_spikes, dtype=float)
+        spike_signal = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         # Apply threshold: keep amplitudes above threshold, set rest to 0
         thresholded_signal = np.where(spike_signal > threshold, spike_signal, 0.0)

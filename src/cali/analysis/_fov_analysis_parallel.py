@@ -170,8 +170,8 @@ def _extract_fov_data(
             calcium_peak_events.append(peak_array)
 
         # Build spike data
-        if traces.inferred_spikes is not None:
-            spikes = np.asarray(traces.inferred_spikes, dtype=float)
+        if traces.get_spike_values("oasis") is not None:
+            spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
             spike_threshold = (
                 data_analysis.inferred_spikes_threshold
                 if data_analysis is not None

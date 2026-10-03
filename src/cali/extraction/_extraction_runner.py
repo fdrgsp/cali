@@ -7,6 +7,7 @@ from collections.abc import Generator, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
+from importlib.metadata import version
 from typing import Callable, cast
 
 import numpy as np
@@ -22,8 +23,11 @@ from cali.sqlmodel._model import (
     FOV,
     AnalysisSettings,
     DataAnalysis,
+    ExtractionFrameWindow,
     ExtractionSettings,
     Mask,
+    SpikeInferenceRun,
+    SpikeTrace,
     Traces,
 )
 from cali.sqlmodel._spike_settings import require_available_spike_methods
@@ -31,7 +35,9 @@ from cali.util import coordinates_to_mask, mask_to_coordinates
 from cali.util._util import _NUMBA_LOCK
 
 from ._frame_window import (
-    ExtractionFrameWindow,
+    ExtractionFrameWindow as ResolvedFrameWindow,
+)
+from ._frame_window import (
     StartupDiscardError,
     build_timing_descriptor,
     resolve_initial_frame_window,
@@ -463,6 +469,40 @@ class ExtractionRunner:
                 return None
             del dff_matrix
 
+        # One persisted transform per FOV; all base traces reference this row.
+        origin = float(timing.timestamps_ms[0]) if timing.timestamps_ms else None
+        stored_window = ExtractionFrameWindow(
+            fov_id=fov_to_analyze.id,
+            requested_discard_value=extraction_settings.discard_initial_value,
+            requested_discard_unit=extraction_settings.discard_initial_unit,
+            timing_source=frame_window.timing_source,
+            conversion_rule=(
+                "frames"
+                if extraction_settings.discard_initial_unit == "frames"
+                else "timestamps"
+                if timing.trusted
+                else "verified_frame_rate"
+            ),
+            original_frame_count=frame_window.original_frame_count,
+            retained_frame_count=frame_window.retained_frame_count,
+            source_start_frame=frame_window.source_start_frame,
+            source_start_time_ms=frame_window.source_start_time_ms,
+            source_time_origin_ms=origin,
+            source_start_timestamp_ms=(
+                origin + frame_window.source_start_time_ms
+                if origin is not None
+                else None
+            ),
+            discarded_duration_ms=frame_window.discarded_duration_ms,
+            provenance_source="extraction",
+        )
+        inference_run = SpikeInferenceRun(
+            backend_version=version("oasis-deconv"),
+            resolved_device="cpu",
+            dtype="float64",
+            provenance_source="oasis_inference",
+        )
+
         # Phase C: stage complete products before attaching anything to the FOV.
         finalized = []
         for index in range(len(parts_by_roi)):
@@ -479,6 +519,9 @@ class ExtractionRunner:
                 elapsed_time_list,
                 "ms",
                 frame_window,
+                stored_window=stored_window,
+                inference_run=inference_run,
+                ar_coefficients=oasis.g_by_roi[index].tolist(),
             )
             if trace_data is None:
                 return None
@@ -707,7 +750,11 @@ class ExtractionRunner:
         tot_time_sec: float,
         elapsed_time_list: list[float],
         x_unit: str,
-        frame_window: ExtractionFrameWindow,
+        frame_window: ResolvedFrameWindow,
+        *,
+        stored_window: ExtractionFrameWindow | None = None,
+        inference_run: SpikeInferenceRun | None = None,
+        ar_coefficients: list[float] | None = None,
     ) -> tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None:
         """Build trace and optional analysis products from completed inference."""
         if self._check_for_abort_requested():
@@ -719,6 +766,22 @@ class ExtractionRunner:
             if parts.corrected is not None
             else None
         )
+        if stored_window is None:
+            stored_window = ExtractionFrameWindow(
+                original_frame_count=frame_window.original_frame_count,
+                retained_frame_count=frame_window.retained_frame_count,
+                source_start_frame=frame_window.source_start_frame,
+                source_start_time_ms=frame_window.source_start_time_ms,
+                discarded_duration_ms=frame_window.discarded_duration_ms,
+                timing_source=frame_window.timing_source,
+            )
+        if inference_run is None:
+            inference_run = SpikeInferenceRun(
+                backend_version=version("oasis-deconv"),
+                resolved_device="cpu",
+                dtype="float64",
+                provenance_source="oasis_inference",
+            )
         traces = Traces(
             raw_trace=cast("list[float]", parts.raw.tolist()),
             corrected_trace=corrected_trace,
@@ -729,14 +792,18 @@ class ExtractionRunner:
             ),
             dff=cast("list[float]", parts.dff.tolist()),
             den_dff=den_dff.tolist(),
-            inferred_spikes=spikes.tolist(),
+            spike_traces=[
+                SpikeTrace(
+                    values=spikes.tolist(),
+                    valid_stop=len(spikes),
+                    noise=sn,
+                    ar_coefficients=ar_coefficients,
+                    inference_run=inference_run,
+                )
+            ],
+            extraction_frame_window=stored_window,
             x_axis=elapsed_time_list,
             x_axis_units=x_unit,
-            source_start_frame=frame_window.source_start_frame,
-            source_start_time_ms=frame_window.source_start_time_ms,
-            original_frame_count=frame_window.original_frame_count,
-            discarded_duration_ms=frame_window.discarded_duration_ms,
-            discard_timing_source=frame_window.timing_source,
         )
 
         # Optionally perform analysis (peak detection, IEI, frequency)
