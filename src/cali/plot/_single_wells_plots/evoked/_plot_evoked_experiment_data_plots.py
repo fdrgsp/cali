@@ -809,8 +809,8 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
             return False
 
         threshold = (
-            float(data_analysis.inferred_spikes_threshold)
-            if data_analysis and data_analysis.inferred_spikes_threshold is not None
+            float(data_analysis.get_spike_metric("oasis", "threshold") or 0)
+            if data_analysis
             else 0.0
         )
 

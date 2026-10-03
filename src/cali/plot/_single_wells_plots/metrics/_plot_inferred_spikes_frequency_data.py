@@ -108,9 +108,9 @@ def _plot_inferred_spikes_frequency_data(
     for idx, (roi, da) in enumerate(roi_data):
         # Get the appropriate frequency based on rising_edge flag
         if rising_edge:
-            freq = da.inferred_spikes_rising_edge_frequency
+            freq = da.get_spike_metric("oasis", "suprathreshold_rising_edge_rate_hz")
         else:
-            freq = da.inferred_spikes_frequency
+            freq = da.get_spike_metric("oasis", "suprathreshold_sample_rate_hz")
 
         if freq is None:
             continue

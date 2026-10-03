@@ -55,6 +55,13 @@ from cali._constants import (
 )
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
+from cali.sqlmodel._spike_analysis import (
+    LEGACY_SPIKE_METRICS,
+    normalize_spike_analyses,
+)
+from cali.sqlmodel._spike_analysis import (
+    SpikeAnalysis as SpikeAnalysis,
+)
 from cali.sqlmodel._spike_settings import (
     LEGACY_SPIKE_SETTING_NAMES,
     ExtractionOutputSettings,
@@ -1774,6 +1781,7 @@ def _validate_method_settings(
 
 event.listen(SASession, "before_flush", _validate_method_settings)
 event.listen(SASession, "before_flush", normalize_trace_provenance)
+event.listen(SASession, "before_flush", normalize_spike_analyses)
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
@@ -2332,13 +2340,85 @@ class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSON)
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
-    inferred_spikes_threshold: float | None = None
-    inferred_spikes_frequency: float | None = None
-    inferred_spikes_rising_edge_frequency: float | None = None
+    calcium_active: bool | None = None
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
     analysis_result: "CaliResult" = Relationship(back_populates="data_analysis_results")
+    spike_analyses: list["SpikeAnalysis"] = Relationship(
+        back_populates="data_analysis",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
+
+    def __init__(self, **data: Any) -> None:
+        legacy = {name: data.pop(name) for name in LEGACY_SPIKE_METRICS if name in data}
+        if legacy and "spike_analyses" in data:
+            raise ValueError("Use spike_analyses or legacy spike metrics, not both.")
+        super().__init__(**data)
+        if "id" not in self.__dict__:
+            return
+        if any(value is not None for value in legacy.values()):
+            self.spike_analyses = [
+                SpikeAnalysis(
+                    **{
+                        LEGACY_SPIKE_METRICS[name]: value
+                        for name, value in legacy.items()
+                    },
+                    provenance_source="synthetic_legacy_api",
+                )
+            ]
+
+    def get_spike_analysis(self, method: SpikeMethod) -> SpikeAnalysis | None:
+        """Select a method explicitly, rejecting duplicate results."""
+        matches = [child for child in self.spike_analyses if child.method == method]
+        if len(matches) > 1:
+            raise ValueError(f"Duplicate spike analyses for {method}.")
+        return matches[0] if matches else None
+
+    def get_spike_metric(self, method: SpikeMethod, metric: str) -> float | None:
+        """Resolve a legacy metric name or normalized metric for one method."""
+        child = self.get_spike_analysis(method)
+        name = LEGACY_SPIKE_METRICS.get(metric, metric)
+        if name not in {
+            "threshold",
+            "suprathreshold_sample_rate_hz",
+            "suprathreshold_rising_edge_rate_hz",
+            "expected_spike_rate_hz",
+            "expected_spike_count",
+            "suprathreshold_excursion_rate_hz",
+        }:
+            raise ValueError(f"Unknown spike metric: {metric}.")
+        value: float | None = getattr(child, name) if child is not None else None
+        return value
+
+    def _single_spike_metric(self, name: str) -> float | None:
+        if len(self.spike_analyses) > 1:
+            raise ValueError("Multiple spike results: use get_spike_analysis(method).")
+        value: float | None = (
+            getattr(self.spike_analyses[0], name) if self.spike_analyses else None
+        )
+        return value
+
+    @property
+    def inferred_spikes_threshold(self) -> float | None:
+        """Deprecated, read-only singular metric; rejects dual results."""
+        return self._single_spike_metric("threshold")
+
+    @property
+    def inferred_spikes_frequency(self) -> float | None:
+        """Deprecated, read-only singular metric; rejects dual results."""
+        return self._single_spike_metric("suprathreshold_sample_rate_hz")
+
+    @property
+    def inferred_spikes_rising_edge_frequency(self) -> float | None:
+        """Deprecated, read-only singular metric; rejects dual results."""
+        return self._single_spike_metric("suprathreshold_rising_edge_rate_hz")
+
+
+for _legacy_metric in LEGACY_SPIKE_METRICS:
+    SQLModel.metadata.tables["data_analysis"].append_column(
+        Column(_legacy_metric, Float, nullable=True, default=None)
+    )
 
 
 class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]

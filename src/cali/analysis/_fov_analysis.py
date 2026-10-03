@@ -152,7 +152,7 @@ def compute_fov_analysis(
 
             # Create binary spike trains for CCG, jitter synchrony, and bursts
             spike_threshold = (
-                data_analysis.inferred_spikes_threshold
+                data_analysis.get_spike_metric("oasis", "threshold")
                 if data_analysis is not None
                 else None
             )

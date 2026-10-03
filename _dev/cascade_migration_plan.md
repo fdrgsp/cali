@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings, trace provenance, and initial source linking implemented; method-bound results/source-audit completion and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, and ROI spike results implemented; FOV results/source-audit completion and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -120,6 +120,36 @@ with first-connection foreign-key enforcement and restored legacy fixtures; **12
 in the focused source module, including an additional column-DDL rollback/retry regression.
 Ruff lint/format pass. Mypy has 354 existing diagnostics versus 355 at `d31847b`, with
 no added diagnostics. Checked-in databases were restored afterward.
+
+P2b continuation — method-bound ROI results (2026-10-03):
+
+- `SpikeAnalysis` stores one result per spike trace and analysis run, with an additional
+  parent/method uniqueness constraint. Thresholds, threshold modes, units, method-specific
+  rates/counts, and `spike_active` now live in child rows. `DataAnalysis` retains calcium
+  metrics and adds `calcium_active`; extraction and re-analysis write both activity flags
+  independently while retaining the existing UI/FOV activity selection until P6.
+- Schema v6 copies the three legacy OASIS metrics exactly, binds only a unique provable
+  trace for the same ROI/run, and infers activity from stored calcium/spike evidence.
+  Unresolved or duplicate ownership produces read-only `legacy_unresolved` children and
+  a `MigrationIssue`; arrays and historical metrics remain readable. Such histories cannot
+  be selected implicitly for re-analysis. No missing trace is fabricated.
+- Production readers explicitly select OASIS metrics. Deprecated singular metric properties
+  are read-only and reject dual results. Legacy physical columns stay unmapped and unchanged;
+  new writes leave them NULL. Metric-only legacy constructor inputs retain explicit synthetic
+  provenance and bind to a trace only when unambiguous.
+- Analysis copies bind metrics to the newly stored spike child while sharing original
+  inference provenance. Eager loading preserves detached dual results. Write validation
+  checks ROI/run ownership, method/units, legal threshold modes, and method-specific metrics.
+
+This completes the ROI result slice, not P2b. FOV spike results, normalized result/trace JSON,
+remaining source repair/splitting, and method-specific consumer selection remain pending.
+CASCADE execution remains gated.
+
+Validation for ROI result normalization: **1620 passed, 1 skipped in 207.63 s** in the
+full suite, plus focused migration/source checks after adding conflicting partial-backfill
+verification. The ROI module covers copied-result ownership and source deletion, dual detached
+reads, independent activity, quarantine/read-only behavior, and DDL rollback/retry. Ruff passes;
+mypy remains at 354 existing diagnostics with no added diagnostics. Legacy fixtures were restored.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after

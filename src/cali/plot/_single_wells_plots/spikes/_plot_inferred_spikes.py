@@ -207,7 +207,7 @@ def _plot_inferred_spikes(
 
         # For thresholded or rising_edges plots, compute binary data
         if thresholded or rising_edges:
-            threshold = data_analysis.inferred_spikes_threshold
+            threshold = data_analysis.get_spike_metric("oasis", "threshold")
             if threshold is None or threshold <= 0:
                 # Skip this ROI if no valid threshold
                 continue
@@ -259,7 +259,7 @@ def _plot_inferred_spikes(
                 p1=p1,
                 p2=p2,
                 thresholds=thresholds,
-                spikes_threshold=data_analysis.inferred_spikes_threshold,
+                spikes_threshold=data_analysis.get_spike_metric("oasis", "threshold"),
             )
             if curve is not None:
                 curves.append(curve)

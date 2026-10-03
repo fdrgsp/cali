@@ -159,14 +159,18 @@ def build_fov_feature_matrix(
                 d["mean_iei"].append(float(np.mean(analysis.iei)))
 
             # spike frequency (thresholded)
-            if analysis.inferred_spikes_frequency is not None:
-                d["mean_spike_freq"].append(float(analysis.inferred_spikes_frequency))
+            spike_rate = analysis.get_spike_metric(
+                "oasis", "suprathreshold_sample_rate_hz"
+            )
+            if spike_rate is not None:
+                d["mean_spike_freq"].append(float(spike_rate))
 
             # spike frequency (rising edges)
-            if analysis.inferred_spikes_rising_edge_frequency is not None:
-                d["mean_spike_freq_edges"].append(
-                    float(analysis.inferred_spikes_rising_edge_frequency)
-                )
+            edge_rate = analysis.get_spike_metric(
+                "oasis", "suprathreshold_rising_edge_rate_hz"
+            )
+            if edge_rate is not None:
+                d["mean_spike_freq_edges"].append(float(edge_rate))
 
             # cell size
             if roi.cell_size is not None:

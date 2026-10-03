@@ -1614,6 +1614,12 @@ class CaliRunner:
                         neuropil_mask_id=source_trace.neuropil_mask_id,
                     )
                     session.add(new_trace)
+                    # Results belong to the stored copy for this analysis run.
+                    for data_analysis in getattr(roi, "_new_data_analysis", []):
+                        for spike_analysis in data_analysis.spike_analyses:
+                            spike_analysis.spike_trace = new_trace.get_spike_trace(
+                                cast("Any", spike_analysis.method)
+                            )
                 if hasattr(roi, "_analysis_source_trace"):
                     delattr(roi, "_analysis_source_trace")
 
@@ -1669,6 +1675,15 @@ class CaliRunner:
                     or window.extraction_result_id is None
                     or (resolution or "").startswith("unresolved")
                     or resolution == "multiple_sources"
+                    or (
+                        owner is not None
+                        and any(
+                            child.provenance_source == "legacy_unresolved"
+                            for analysis in owner.data_analysis_results
+                            if analysis.roi_id == roi.id
+                            for child in analysis.spike_analyses
+                        )
+                    )
                 ):
                     raise ValueError(
                         f"FOV {fov.name}, ROI {roi.label_value}: extraction source "

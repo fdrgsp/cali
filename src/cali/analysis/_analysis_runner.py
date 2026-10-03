@@ -15,7 +15,7 @@ from oasis.functions import GetSn
 from tqdm import tqdm
 
 from cali.logger import cali_logger
-from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
+from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis, SpikeAnalysis
 from cali.sqlmodel._spike_settings import require_available_spike_methods
 
 if TYPE_CHECKING:
@@ -398,9 +398,23 @@ class AnalysisRunner:
             iei=iei or None,
             peaks_prominence_den_dff=peaks_prominence_den_dff,
             peaks_height_den_dff=peaks_height_den_dff,
-            inferred_spikes_threshold=spike_detection_threshold,
-            inferred_spikes_frequency=inferred_spikes_freq,
-            inferred_spikes_rising_edge_frequency=inferred_spikes_rising_edge_freq,
+            calcium_active=(
+                analysis_settings.enable_calcium and len(peaks_den_dff) > 0
+            ),
+            spike_analyses=[
+                SpikeAnalysis(
+                    spike_trace=traces.get_spike_trace("oasis"),
+                    threshold=spike_detection_threshold,
+                    threshold_mode=analysis_settings.get_spike_settings(
+                        "oasis"
+                    ).threshold_mode,
+                    suprathreshold_sample_rate_hz=inferred_spikes_freq,
+                    suprathreshold_rising_edge_rate_hz=inferred_spikes_rising_edge_freq,
+                    spike_active=num_thresholded_spikes > 0,
+                )
+            ]
+            if analysis_settings.enable_spikes
+            else [],
         )
 
         # Determine active status based on enabled analyses

@@ -302,7 +302,16 @@ def _query_roi_parameter_by_condition(
         data: dict[str, dict[str, dict[str, list[float]]]] = {}
         for analysis, roi, fov, well in results:
             # Get value for this ROI
-            value = getattr(analysis, parameter, None)
+            value = (
+                analysis.get_spike_metric("oasis", parameter)
+                if parameter
+                in {
+                    "inferred_spikes_threshold",
+                    "inferred_spikes_frequency",
+                    "inferred_spikes_rising_edge_frequency",
+                }
+                else getattr(analysis, parameter, None)
+            )
             if value is None:
                 continue
 

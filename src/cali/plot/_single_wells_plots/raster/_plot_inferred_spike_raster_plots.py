@@ -107,7 +107,7 @@ def _generate_spike_raster_plot(
         if data_analysis is None or not traces.get_spike_values("oasis"):
             continue
 
-        threshold = data_analysis.inferred_spikes_threshold or 0.0
+        threshold = data_analysis.get_spike_metric("oasis", "threshold") or 0.0
         inferred = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         # Thresholded spikes
@@ -562,7 +562,7 @@ def _generate_spike_intensity_heatmap_thresholded(
         if traces is None or traces.get_spike_values("oasis") is None:
             continue
 
-        threshold = data_analysis.inferred_spikes_threshold or 0.0
+        threshold = data_analysis.get_spike_metric("oasis", "threshold") or 0.0
         spike_signal = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         # Apply threshold: keep amplitudes above threshold, set rest to 0

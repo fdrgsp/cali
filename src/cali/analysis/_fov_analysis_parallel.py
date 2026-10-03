@@ -176,7 +176,7 @@ def _extract_fov_data(
         if traces.get_spike_values("oasis") is not None:
             spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
             spike_threshold = (
-                data_analysis.inferred_spikes_threshold
+                data_analysis.get_spike_metric("oasis", "threshold")
                 if data_analysis is not None
                 else None
             )

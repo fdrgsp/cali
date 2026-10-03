@@ -416,7 +416,11 @@ def _get_population_spike_data(
         spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
 
         data_analysis = _get_data_analysis_for_run(roi, run_id)
-        threshold = data_analysis.inferred_spikes_threshold if data_analysis else 0.0
+        threshold = (
+            data_analysis.get_spike_metric("oasis", "threshold")
+            if data_analysis
+            else 0.0
+        )
         if threshold is None:
             threshold = 0.0
 
