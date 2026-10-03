@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "model_name": "Global_EXC_30Hz_smoothing25ms",
+  "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+  "catalogue_revision": "c6978d5ff33edad8792c76e040412f0636913092",
+  "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+  "package_source_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+  "source_url": "https://github.com/PTRRupprecht/CascadeTorch/blob/c6978d5ff33edad8792c76e040412f0636913092/Example_datasets/Allen-Brain-Observatory-Visual-Coding-30Hz/Experiment_552195520_excerpt.mat",
+  "source_sha256": "ba82413d65fc3dfac622da559fdef0e379f7ed072316b08b1980c7c7d4739f3b",
+  "source_array": "dF_traces",
+  "roi_slice": [
+    0,
+    2
+  ],
+  "frame_slice": [
+    0,
+    256
+  ],
+  "sampling_rate_hz": 30.0,
+  "valid_interval": [
+    32,
+    224
+  ],
+  "fixture_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+  "device": "cpu",
+  "input_dtype": "float32",
+  "prediction_dtype": "float64",
+  "numpy_version": "2.5.3",
+  "scipy_version": "1.16.3",
+  "torch_version": "2.14.1",
+  "torch_threads": 1,
+  "threshold": 0,
+  "padding": 0
+}

@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package and P4 catalogue/verified model cache/download CLI implemented; next: P3a reference inference; later method-specific consumers/comparisons pending; production CASCADE not enabled
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, and P3a pretrained upstream reference adapter implemented; next: P3b cached/chunked inference service; later runner/consumer/comparison integration pending; production CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -442,7 +442,7 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P3a's once-per-FOV reference adapter and pretrained numerical oracle. Follow the
+**Next landing step:** P3b's cached/chunked inference service and equivalence/memory checks. Follow the
 binding sequence in §9 for packaging, the reference
 oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
 
@@ -475,6 +475,45 @@ successfully to a temporary cache and contains **35 weights**, with configured n
 Its manifest is `5ea5fce55ff49cebf093f4c749cf1f5843aea39b6eb803ef1ce943223c736344`.
 The built cali wheel's command reuses that verified model offline with the required manifest;
 metadata-only imports pass warnings-as-errors without importing Torch/CASCADE.
+
+Step 7 — direct upstream reference adapter and pretrained oracle (2026-10-03):
+
+- `CascadeReferenceBackend.infer_all()` now runs actual pretrained CASCADE via exactly one
+  upstream `predict()` call per complete FOV, with `threshold=0`, `padding=0`, and explicit
+  noise estimated by upstream at the **model's** configured sampling rate. There is no custom
+  neural implementation, copied GPL source, or OASIS substitution in this path.
+- The adapter rejects empty/non-2D/non-finite/too-short DFF inputs, retained timing-length
+  mismatches, exposure-only/untrusted timing, irregular acquisition intervals, and settings/model
+  rate mismatches before prediction. Every call rechecks the model manifest fixed at backend
+  construction. Automatic device selection resolves once (CUDA, then MPS, then CPU); an explicitly
+  unavailable device raises. Cancellation before/after the direct call discards the entire result;
+  prompt cancellation inside prediction remains P3b's chunking responsibility.
+- Structured results contain float32 expected spikes/frame, upstream valid edges, per-ROI noise,
+  selected noise ensembles, coverage diagnostics, verified config/model/package identities,
+  resolved device, and observed acquisition rate. Noise outside the configured range is recorded
+  and logged; this does not permit selecting a different-rate model. Invalid upstream shapes,
+  non-finite/negative results, or nonzero padded edges fail clearly.
+- Captured a **4.4 KB** golden fixture from the first two ROIs/256 frames of the pinned real
+  Allen Brain Observatory upstream example. Its source MAT SHA, slice, exact 30 Hz model manifest,
+  package pin, CPU environment, raw upstream output, and fixture checksum are documented beside
+  the fixture. A regeneration script independently calls external APIs, never the cali adapter.
+- Dedicated installed-wheel CI now downloads/caches the exact pretrained model and runs the
+  real/synthetic golden comparison. Explicit-noise adapter output and upstream implicit-noise
+  prediction agree **exactly after float32 conversion** in the tested CPU environment. Both
+  compare with the real recorded oracle at `rtol=1e-5, atol=1e-6`; synthetic inputs exercise
+  different noise ensembles. The base suite remains network-free and tests the adapter contracts
+  with fakes; opting into the pretrained job makes missing dependencies/models fail, not skip.
+- Extraction's public runner export is now lazy, so importing an inference backend does not
+  initialize image readers, GUI dependencies, Torch, or CASCADE. This also avoids the unrelated
+  old Numcodecs shutdown deprecation in the warnings-as-errors pretrained job; no warning
+  suppression was added. Existing `from cali.extraction import ExtractionRunner` remains valid.
+
+Validation: **103 passed, 1 skipped** in focused base regressions; **3 passed, 32 deselected**
+from the installed wheel in the dedicated pretrained/import check under warnings-as-errors.
+Full regression validation: **1847 passed, 7 skipped in 237.41 s**, including GUI, legacy database,
+and existing extraction paths. Ruff passes, and mypy adds no diagnostics (354 existing).
+The first actual CASCADE inference step in cali is complete;
+runner/GUI exposure remains gated by the binding steps 8–12.
 
 ## 0. TL;DR
 

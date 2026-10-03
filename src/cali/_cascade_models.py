@@ -72,6 +72,7 @@ class CascadeModel:
     noise_levels: tuple[int, ...]
     ensemble_size: int
     weight_files: tuple[str, ...]
+    config_sha256: str
 
     @property
     def valid_start(self) -> int:
@@ -374,6 +375,7 @@ def load_cascade_model(
         tuple(cfg["noise_levels"]),
         int(cfg["ensemble_size"]),
         tuple(file["path"] for file in body["files"][1:]),
+        body["files"][0]["sha256"],
     )
 
 

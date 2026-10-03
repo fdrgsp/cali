@@ -22,7 +22,7 @@ jobs:
       - run: pipx run check-manifest
 
   cascade-smoke:
-    name: CASCADE installed wheel py${{ matrix.python-version }}
+    name: CASCADE wheel and pretrained oracle py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -30,6 +30,9 @@ jobs:
         python-version: ['3.11', '3.13']
     env:
       PYTEST_RUNNING: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      CALI_CASCADE_MODELS: ${{ github.workspace }}/.cascade-models
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -47,6 +50,17 @@ jobs:
           done
       - name: Test installed package, source pin, and upstream prediction
         run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_package.py tests/test_spike_inference.py
+      - name: Cache exact pretrained model
+        uses: actions/cache@v5
+        with:
+          path: .cascade-models
+          key: cascade-model-ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184
+      - name: Download or verify pinned pretrained model
+        run: .cascade-smoke/bin/python -I -m cali cascade-download Global_EXC_30Hz_smoothing25ms --expected-manifest ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184
+      - name: Compare installed adapter with upstream and real golden fixture
+        env:
+          CALI_CASCADE_REFERENCE_TESTS: '1'
+        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_reference.py -k 'pretrained or backend_import'
 
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }} ${{ matrix.backend }}

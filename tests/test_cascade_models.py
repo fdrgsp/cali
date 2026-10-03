@@ -113,6 +113,7 @@ def test_atomic_download_manifest_and_offline_reuse(
         model.valid_interval(64)
     manifest = json.loads((model.directory / "manifest.json").read_text())
     assert manifest["files"][0]["path"] == "config.yaml"
+    assert manifest["files"][0]["sha256"] == model.config_sha256
     assert [entry["path"] for entry in manifest["files"][1:]] == list(
         model.weight_files
     )

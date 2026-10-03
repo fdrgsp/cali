@@ -159,8 +159,9 @@ from source with Cython 3.0, which supports Python 3.13 and compiles the unchang
 The macOS SDK settings above still apply when needed. CascadeTorch and OASIS are separate
 GPL-3.0 dependencies; cali does not vendor their source into its BSD-licensed package.
 
-This step installs and tests CASCADE's package; production inference and GUI selection
-remain gated by the model, numerical-reference, and method-specific analysis checks in
+The private reference adapter now runs real pretrained CASCADE inference and passes
+the upstream numerical comparison. Production extraction and GUI selection remain
+gated by the cached-inference, runner, and method-specific analysis checks in
 [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
 
 Download an explicitly chosen model with:
