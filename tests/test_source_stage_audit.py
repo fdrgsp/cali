@@ -27,6 +27,7 @@ from cali.sqlmodel import (
     create_cali_engine,
     create_database_and_tables,
     ensure_schema_current,
+    select_legacy_result_source,
 )
 from cali.sqlmodel._source_audit_migration import audit_legacy_stage_sources
 
@@ -394,4 +395,169 @@ def test_quarantined_metrics_are_read_only_and_clean_source_can_be_selected(
             with pytest.raises(ValueError, match="read-only"):
                 session.flush()
             session.rollback()
+    engine.dispose()
+
+
+def test_explicit_source_repair_preserves_results_and_dependent_quarantine(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "repair.cali"
+    source_id, guessed_id, dependent_id = _legacy(path)
+    engine = create_cali_engine(f"sqlite:///{path}")
+    with Session(engine) as session:
+        target = session.get(CaliResult, guessed_id)
+        old_window = target.traces[0].extraction_frame_window
+        old_run = target.traces[0].get_spike_trace("oasis").inference_run
+        repaired = select_legacy_result_source(session, guessed_id, source_id)
+        assert repaired is target
+        session.commit()
+        source = session.get(CaliResult, source_id)
+        assert repaired.source_extraction_result_id == source_id
+        assert repaired.legacy_trace_resolution == "source_selected"
+        assert repaired.positions_extracted is None
+        assert repaired.positions_analyzed == [0]
+        trace = repaired.traces[0]
+        original = source.traces[0]
+        assert trace.raw_trace == [1, 2, 1]
+        assert trace.extraction_frame_window is original.extraction_frame_window
+        assert trace.get_spike_values("oasis") == [0, 0.5, 0]
+        assert (
+            trace.get_spike_trace("oasis").inference_run
+            is original.get_spike_trace("oasis").inference_run
+        )
+        roi_metric = repaired.data_analysis_results[0].get_spike_analysis("oasis")
+        assert roi_metric.spike_trace is trace.get_spike_trace("oasis")
+        assert roi_metric.threshold == 0.25
+        assert roi_metric.suprathreshold_sample_rate_hz == 3.3
+        fov_metric = repaired.fov_analysis_results[0].get_spike_analysis("oasis")
+        assert (
+            fov_metric.inference_run is original.get_spike_trace("oasis").inference_run
+        )
+        assert fov_metric.spike_burst_count == 2
+        assert fov_metric.active_roi_labels == [1]
+        assert (
+            roi_metric.provenance_source
+            == fov_metric.provenance_source
+            == "legacy_source_selected"
+        )
+        dependent = session.get(CaliResult, dependent_id)
+        assert dependent.legacy_trace_resolution == "unresolved_stage_flags"
+        assert dependent.traces[0].extraction_frame_window is old_window
+        assert dependent.traces[0].get_spike_trace("oasis").inference_run is old_run
+        assert old_window.extraction_result_id is None
+        assert old_run.extraction_result_id is None
+        issues = session.exec(
+            select(MigrationIssue).where(
+                MigrationIssue.analysis_result_id == guessed_id
+            )
+        ).all()
+        assert len(issues) == 4 and all(issue.resolved for issue in issues)
+        selection = next(
+            issue for issue in issues if issue.code == "legacy_source_selected"
+        )
+        assert selection.details["previous_positions_extracted"] == [0]
+        assert selection.details["selected_source_result_id"] == source_id
+        assert (
+            selection.details["trace_pairs"][0]["previous_window_id"] == old_window.id
+        )
+        with pytest.raises(ValueError, match="resolved extraction"):
+            select_legacy_result_source(session, guessed_id, source_id)
+        session.rollback()
+    with Session(engine) as session:
+        repaired = session.get(CaliResult, guessed_id)
+        assert repaired.source_extraction_result_id == source_id
+        assert (
+            repaired.data_analysis_results[0].get_spike_analysis("oasis").spike_trace_id
+            is not None
+        )
+        runner = CaliRunner()
+        fov = session.exec(select(FOV)).one()
+        runner._pin_analysis_source_traces(
+            session,
+            [fov],
+            repaired.extraction_settings_id,
+            repaired.detection_settings_id,
+            source_id,
+        )
+        assert fov.rois[0]._analysis_source_trace.analysis_result_id == source_id
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "variation", ["payload", "window", "ordering", "missing_roi", "threshold", "source"]
+)
+def test_incompatible_source_repair_changes_nothing(
+    tmp_path: Path, variation: str
+) -> None:
+    path = tmp_path / "invalid_repair.cali"
+    source_id, guessed_id, dependent_id = _legacy(path)
+    engine = create_cali_engine(f"sqlite:///{path}")
+    with engine.begin() as connection:
+        if variation == "payload":
+            connection.exec_driver_sql(
+                "UPDATE trace SET dff = '[0,9,0]' WHERE analysis_result_id = ?",
+                (guessed_id,),
+            )
+        elif variation == "window":
+            connection.exec_driver_sql(
+                "UPDATE extraction_frame_window SET source_start_frame = 5 "
+                "WHERE legacy_owner_result_id = ?",
+                (guessed_id,),
+            )
+        elif variation == "ordering":
+            connection.exec_driver_sql(
+                "UPDATE spike_fov_analysis SET active_roi_labels = '[9]' "
+                "WHERE analysis_result_id = ?",
+                (guessed_id,),
+            )
+        elif variation == "missing_roi":
+            connection.exec_driver_sql(
+                "UPDATE data_analysis SET roi_id = NULL WHERE analysis_result_id = ?",
+                (guessed_id,),
+            )
+        elif variation == "threshold":
+            connection.exec_driver_sql(
+                "UPDATE spike_analysis SET threshold = -1 WHERE analysis_result_id = ?",
+                (guessed_id,),
+            )
+    with Session(engine) as session:
+        before = session.get(CaliResult, guessed_id)
+        prior_window = before.traces[0].extraction_frame_window_id
+        with pytest.raises(ValueError):
+            select_legacy_result_source(
+                session,
+                guessed_id,
+                dependent_id if variation == "source" else source_id,
+            )
+        assert not session.new and not session.dirty and not session.deleted
+        assert before.legacy_trace_resolution == "unresolved_stage_flags"
+        assert before.traces[0].extraction_frame_window_id == prior_window
+        assert not session.exec(
+            select(MigrationIssue).where(MigrationIssue.resolved)
+        ).all()
+    engine.dispose()
+
+
+def test_source_repair_is_owned_by_callers_transaction(tmp_path: Path) -> None:
+    path = tmp_path / "rollback_repair.cali"
+    source_id, guessed_id, _ = _legacy(path)
+    engine = create_cali_engine(f"sqlite:///{path}")
+    with Session(engine) as session:
+        experiment = session.exec(select(Experiment)).one()
+        experiment.name = "pending unrelated work"
+        select_legacy_result_source(session, guessed_id, source_id)
+        session.flush()
+        session.rollback()
+    with Session(engine) as session:
+        target = session.get(CaliResult, guessed_id)
+        assert target.legacy_trace_resolution == "unresolved_stage_flags"
+        assert target.traces[0].extraction_frame_window.extraction_result_id is None
+        assert (
+            target.data_analysis_results[0].get_spike_analysis("oasis").spike_trace_id
+            is None
+        )
+        assert session.exec(select(Experiment)).one().name == "legacy stage audit"
+        assert not session.exec(
+            select(MigrationIssue).where(MigrationIssue.resolved)
+        ).all()
     engine.dispose()

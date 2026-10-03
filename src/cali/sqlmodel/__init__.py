@@ -34,6 +34,7 @@ from ._model import (
     WellCondition,
 )
 from ._source_provenance import MigrationIssue
+from ._source_repair import select_legacy_result_source
 from ._useq_plate_to_db import useq_plate_plan_to_db, useq_plate_to_db
 from ._util import (
     create_database_and_tables,
@@ -82,6 +83,7 @@ __all__ = [
     "migrate_startup_discard",
     "print_cali_results",
     "save_experiment_to_database",
+    "select_legacy_result_source",
     "useq_plate_plan_to_db",
     "useq_plate_to_db",
 ]

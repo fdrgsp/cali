@@ -224,6 +224,25 @@ selection of a clean source. Ruff passes; mypy has 354 existing diagnostics and 
 Checked-in database fixtures were restored. Source repair/comparison flows and splitting future
 mixed-source workloads remain pending; CASCADE remains gated.
 
+P2b continuation — explicit legacy source repair (2026-10-03):
+
+- The public `select_legacy_result_source(session, result_id, source_id)` stages a repair only
+  after explicit source selection. It verifies experiment/settings, unique ROI trace ownership,
+  stored calcium/spike payloads and coordinates, method/units and cached threshold semantics,
+  and FOV ordering/coverage before changing links. Incompatible selections require fresh analysis
+  and leave the session unchanged.
+- Repair reuses the chosen extraction's metadata, binds ROI metrics to this result's own copied
+  spike children, and restores FOV inference links. It preserves scientific values and previous
+  audit evidence, records the explicit selection and old coordinates, and clears the misleading
+  extracted-stage claim. Dependent results and their shared unresolved records remain quarantined
+  until selected separately. The caller owns commit/rollback; unrelated pending work is preserved.
+
+Validation: **1682 passed, 1 skipped in 221.17 s** in the full suite; **97 passed** in focused
+storage/source/JSON checks and **26 passed** after final typing cleanup. Ruff passes; mypy remains
+at 354 existing diagnostics with no additions. Fixtures were restored. This is the headless repair
+API; GUI repair/comparison controls and future mixed-source workload splitting remain pending
+before P2b can be marked complete. CASCADE remains gated.
+
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
 adding a regression and fix for validation copying an existing settings object without
