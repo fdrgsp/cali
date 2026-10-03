@@ -159,11 +159,12 @@ from source with Cython 3.0, which supports Python 3.13 and compiles the unchang
 The macOS SDK settings above still apply when needed. CascadeTorch and OASIS are separate
 GPL-3.0 dependencies; cali does not vendor their source into its BSD-licensed package.
 
-The private reference adapter and cached inference service now run real pretrained
-CASCADE inference and pass the upstream numerical comparison on CPU. The service
-reuses model ensembles and bounds prediction-window allocations. Production extraction
-and GUI selection remain gated by the runner, full extraction performance, and
-method-specific analysis checks in
+Headless extraction now supports OASIS, CASCADE, or both, while OASIS always produces
+the denoised calcium trace and its noise diagnostic. The default CASCADE path uses
+the verified upstream reference adapter. The cached service is available through
+`ExtractionRunner(experimental_cascade_cache=True)` or the same option on `CaliRunner`;
+its full extraction performance release gates remain pending. CASCADE spike analysis
+and GUI selection remain gated by the method-specific analysis checks in
 [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
 
 Download an explicitly chosen model with:
@@ -171,6 +172,27 @@ Download an explicitly chosen model with:
 ```bash
 cali cascade-download <exact-model-name> --model-dir /path/to/model-cache
 ```
+
+For a recording with verified 30 Hz acquisition timing and an explicitly chosen
+compatible model, pass settings such as these to the runner:
+
+```python
+from cali.sqlmodel import ExtractionSettings
+
+settings = ExtractionSettings(
+    spike_methods=("oasis", "cascade"),  # Use ("cascade",) to retain only CASCADE spikes.
+    cascade_model="Global_EXC_30Hz_smoothing25ms",
+    cascade_device="cpu",
+    frame_rate=30,
+)
+```
+
+Use `analysis_settings=None` for extraction-only runs. Inline calcium analysis is
+also supported with `enable_spikes=False` and matching method settings. CASCADE requires
+trusted acquisition timestamps, explicit frame-period metadata, or a user-verified
+acquisition rate; exposure alone is insufficient. Selected backend failures propagate,
+and a FOV stores neither spike output when its inference or finalization fails.
+CASCADE CSV exports leave invalid model edges empty and include stored provenance.
 
 Without `--model-dir`, the cache uses `CALI_CASCADE_MODELS` or
 `~/.cali/cascade_models`. The command verifies the pinned catalogue, installs

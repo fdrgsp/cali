@@ -2141,6 +2141,7 @@ class Traces(ResultJSON, table=True):  # type: ignore[call-arg]
     neuropil_trace: list[float] | None = Field(default=None, sa_column=Column(JSON))
     dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
     den_dff: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    calcium_noise: float | None = Field(default=None)
     x_axis: list[float] | None = Field(default=None, sa_column=Column(JSON))
     x_axis_units: str | None = Field(default=None)  # "frames" or "ms"
 

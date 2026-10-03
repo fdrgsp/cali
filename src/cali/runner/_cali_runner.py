@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -95,13 +96,15 @@ class CaliRunner:
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, experimental_cascade_cache: bool = False) -> None:
         """Initialize the unified runner."""
         self._db_path: Path | None = None
 
         # Internal runners
         self._detection_runner = DetectionRunner()
-        self._extraction_runner = ExtractionRunner()
+        self._extraction_runner = ExtractionRunner(
+            experimental_cascade_cache=experimental_cascade_cache
+        )
 
     @property
     def database_path(self) -> str | None:
@@ -315,7 +318,7 @@ class CaliRunner:
 
         try:
             ensure_schema_current(engine)
-            with Session(engine) as session:
+            with Session(engine) as session, ExitStack() as inference_stack:
                 # 3. Deduplicate and persist settings
                 detection_settings = self._get_or_create_detection_settings(
                     session, detection_settings
@@ -338,14 +341,7 @@ class CaliRunner:
                     extraction_settings_obj = self._get_or_create_extraction_settings(
                         session, extraction_settings
                     )
-                    from cali.sqlmodel._spike_settings import (
-                        require_available_spike_methods,
-                    )
-
                     extraction_settings_obj.validate_output_settings()
-                    require_available_spike_methods(
-                        extraction_settings_obj.spike_methods
-                    )
                     extraction_settings_id = extraction_settings_obj.id
                     extraction_threads = extraction_settings_obj.threads
                     if extraction_settings_id is None:  # pragma: no cover
@@ -361,8 +357,8 @@ class CaliRunner:
                         session, analysis_settings
                     )
                     assert extraction_settings_obj is not None
-                    analysis_settings_obj.validate_spike_settings(
-                        extraction_settings_obj.spike_methods
+                    self._extraction_runner.validate_settings(
+                        extraction_settings_obj, analysis_settings_obj
                     )
                     analysis_settings_id = analysis_settings_obj.id
                     if analysis_settings_id is None:  # pragma: no cover
@@ -371,6 +367,13 @@ class CaliRunner:
                         raise ValueError(msg)
                 else:
                     analysis_settings_id = None
+
+                if extraction_settings_obj is not None:
+                    inference_stack.enter_context(
+                        self._extraction_runner.inference_session(
+                            extraction_settings_obj, analysis_settings_obj
+                        )
+                    )
 
                 det_id = detection_settings.id
                 if det_id is None:  # pragma: no cover
@@ -1618,6 +1621,26 @@ class CaliRunner:
         source_extraction_settings_id: int | None = None,
         source_detection_settings_id: int | None = None,
     ) -> None:
+        """Attach the entire staged FOV graph before any automatic flush."""
+        with session.no_autoflush:
+            self._stage_fov_results(
+                fov,
+                session,
+                analysis_result_id,
+                include_traces,
+                source_extraction_settings_id,
+                source_detection_settings_id,
+            )
+
+    def _stage_fov_results(
+        self,
+        fov: FOV,
+        session: Session,
+        analysis_result_id: int | None,
+        include_traces: bool,
+        source_extraction_settings_id: int | None = None,
+        source_detection_settings_id: int | None = None,
+    ) -> None:
         """Process FOV results by moving temporary data to permanent collections.
 
         Parameters
@@ -1677,6 +1700,7 @@ class CaliRunner:
                         neuropil_trace=source_trace.neuropil_trace,
                         dff=source_trace.dff,
                         den_dff=source_trace.den_dff,
+                        calcium_noise=source_trace.calcium_noise,
                         spike_traces=[
                             SpikeTrace(
                                 values=list(child.values),

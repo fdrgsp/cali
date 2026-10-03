@@ -165,6 +165,13 @@ class CachedCascadePredictor(CascadeReferenceBackend):
             raise RuntimeError("CASCADE predictor is closed.")
         return super().infer_all(dff, frame_rate, timing=timing, cancel=cancel)
 
+    def prepare(self, frame_rate: float) -> None:
+        """Resolve optional package/device on the same owner as inference."""
+        self._claim_owner()
+        if self._closed:
+            raise RuntimeError("CASCADE predictor is closed.")
+        super().prepare(frame_rate)
+
     def clear_cache(self) -> None:
         """Release every cached module on the owning worker."""
         self._claim_owner()

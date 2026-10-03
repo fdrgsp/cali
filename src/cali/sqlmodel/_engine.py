@@ -17,7 +17,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _add_columns(
@@ -186,6 +186,15 @@ def _acquisition_timing(connection: Connection) -> None:
     )
 
 
+def _calcium_noise(connection: Connection) -> None:
+    """Keep OASIS calcium noise independent of retained spike outputs.
+
+    Historical values remain unknown: re-analysis must keep its legacy noise
+    estimator rather than treating the spike diagnostics as calcium provenance.
+    """
+    _add_columns(connection, "trace", (("calcium_noise", "FLOAT"),))
+
+
 _MIGRATIONS = (
     _analysis_gates,
     _startup_discard,
@@ -196,6 +205,7 @@ _MIGRATIONS = (
     migrate_spike_fov_analyses,
     audit_legacy_stage_sources,
     _acquisition_timing,
+    _calcium_noise,
 )
 
 

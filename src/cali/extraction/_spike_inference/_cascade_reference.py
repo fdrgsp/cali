@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -85,11 +87,29 @@ class CascadeReferenceBackend:
         )
         self._requested_device = device
         self._resolved_device: str | None = None
+        self._prediction_lock = threading.Lock()
 
     @property
     def minimum_frames(self) -> int:
         """Expose the selected model's receptive-field preflight requirement."""
         return self.model.minimum_frames
+
+    def prepare(self, frame_rate: float) -> None:
+        """Check package/device and configured rate before any ROI work."""
+        if (
+            not math.isfinite(frame_rate)
+            or frame_rate <= 0
+            or abs(frame_rate - self.model.sampling_rate) / self.model.sampling_rate
+            > 0.01
+        ):
+            raise CascadeModelError(
+                f"Extraction rate {frame_rate:g} Hz does not match CASCADE model "
+                f"rate {self.model.sampling_rate:g} Hz (allowed 1%)."
+            )
+        if self._resolved_device is None:
+            self._resolved_device = resolve_cascade_device(
+                load_cascade_package(), self._requested_device
+            )
 
     def infer_all(
         self,
@@ -193,15 +213,25 @@ class CascadeReferenceBackend:
         cancel: Callable[[], bool] | None,
     ) -> np.ndarray:
         """Keep upstream prediction as the oracle behind shared input validation."""
-        return np.asarray(
-            package.cascade.predict(
-                model.name,
-                dff,
-                model_folder=str(model.directory.parent),
-                threshold=0,
-                padding=0,
-                trace_noise_levels=noise,
-                verbosity=0,
-                device=package.torch.device(device),
+        # The reference fallback serializes Torch calls across the FOV pool.
+        # Waiting callers can still cancel; upstream itself is not interruptible.
+        while not self._prediction_lock.acquire(timeout=0.05):
+            if cancel is not None and cancel():
+                raise InferenceCancelled("CASCADE reference submission cancelled.")
+        try:
+            if cancel is not None and cancel():
+                raise InferenceCancelled("CASCADE reference submission cancelled.")
+            return np.asarray(
+                package.cascade.predict(
+                    model.name,
+                    dff,
+                    model_folder=str(model.directory.parent),
+                    threshold=0,
+                    padding=0,
+                    trace_noise_levels=noise,
+                    verbosity=0,
+                    device=package.torch.device(device),
+                )
             )
-        )
+        finally:
+            self._prediction_lock.release()

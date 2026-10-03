@@ -22,6 +22,7 @@ from ._model import (
     Experiment,
     ExtractionSettings,
     Plate,
+    Traces,
     Well,
 )
 
@@ -171,6 +172,8 @@ def print_cali_results(
                     )
 
             # Analysis settings
+            if show_settings:
+                _add_trace_provenance_to_tree(result_tree, result.traces)
             settings = session.exec(
                 select(AnalysisSettings).where(
                     AnalysisSettings.id == result.analysis_settings_id
@@ -193,6 +196,41 @@ def print_cali_results(
                 )
 
         console.print(main_tree)
+
+
+def _add_trace_provenance_to_tree(parent_node: Tree, traces: list[Traces]) -> None:
+    """Print actual retained products, independent of current settings defaults."""
+    fov_nodes = {}
+    seen_outputs = set()
+    for trace in traces:
+        if trace.roi is None or trace.roi.fov is None:
+            continue
+        fov = trace.roi.fov
+        window = trace.extraction_frame_window
+        key = (fov.id, trace.extraction_frame_window_id)
+        if key not in fov_nodes:
+            node = parent_node.add(f"Stored extraction: {fov.name}")
+            fov_nodes[key] = node
+            if window is not None:
+                node.add(
+                    f"Discard requested: {window.requested_discard_value:g} "
+                    f"{window.requested_discard_unit}; source start: "
+                    f"{window.source_start_frame}; "
+                    f"retained: {window.retained_frame_count}; "
+                    f"timing: {window.timing_source}"
+                )
+        for child in trace.spike_traces:
+            run = child.inference_run
+            output_key = (key, run.method, child.valid_start, child.resolved_valid_stop)
+            if output_key in seen_outputs:
+                continue
+            seen_outputs.add(output_key)
+            fov_nodes[key].add(
+                f"{run.method}: {run.units}; model: {run.resolved_model or 'none'}; "
+                f"manifest: {run.weights_manifest_sha256 or 'unknown'}; "
+                f"device: {run.resolved_device or 'unknown'}; "
+                f"valid interval: [{child.valid_start}, {child.resolved_valid_stop})"
+            )
 
 
 def _add_detection_settings_to_tree(
@@ -259,6 +297,9 @@ def _add_extraction_settings_to_tree(
         processing_node.add(f"ΔF/F window: {settings.dff_window}")
         processing_node.add(f"Decay constant: {settings.decay_constant}")
         processing_node.add(
+            f"Retained spike outputs: {', '.join(settings.spike_methods)}"
+        )
+        processing_node.add(
             f"Discard at start: {settings.discard_initial_value:g} "
             f"{settings.discard_initial_unit}"
         )
@@ -304,22 +345,22 @@ def _add_analysis_settings_to_tree(
         peaks_node.add(f"Distance: {settings.peaks_distance} ms")
         peaks_node.add(f"Prominence multiplier: {settings.peaks_prominence_multiplier}")
 
-        # Spike detection
-        spike_node = settings_node.add("⚡ [green]Spike Detection[/green]")
-        spike_node.add(
-            f"Threshold: {settings.spike_threshold_value} "
-            f"({settings.spike_threshold_mode})"
-        )
-
-        # Burst analysis
-        burst_node = settings_node.add("💥 [green]Burst Analysis[/green]")
-        burst_node.add(f"Threshold: {settings.burst_threshold}%")
-        burst_node.add(f"Min duration: {settings.burst_min_duration}ms")
-        burst_node.add(f"Gaussian sigma: {settings.burst_gaussian_sigma}s")
-
-        # Synchrony
-        sync_node = settings_node.add("🔗 [green]Synchrony Analysis[/green]")
-        sync_node.add(f"Spike synchrony lag: {settings.spikes_sync_cross_corr_lag}ms")
+        for child in settings.spike_settings:
+            spike_node = settings_node.add(
+                f"⚡ [green]{child.method} Spike Detection[/green] "
+                f"(enabled: {settings.enable_spikes})"
+            )
+            threshold = (
+                child.cascade_ap_threshold_fraction
+                if child.threshold_mode == "cascade_ap"
+                else child.threshold_value
+            )
+            spike_node.add(f"Threshold: {threshold} ({child.threshold_mode})")
+            burst_node = spike_node.add("💥 [green]Burst Analysis[/green]")
+            burst_node.add(f"Threshold: {child.burst_threshold}%")
+            burst_node.add(f"Min duration: {child.burst_min_duration}ms")
+            burst_node.add(f"Gaussian sigma: {child.burst_gaussian_sigma}s")
+            spike_node.add(f"Spike synchrony lag: {child.spikes_sync_cross_corr_lag}ms")
 
         # Peak detection
         peak_node = settings_node.add("📊 [green]Peak Detection[/green]")

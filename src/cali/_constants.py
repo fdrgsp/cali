@@ -127,6 +127,7 @@ TraceDataType = Literal[
     "ΔF/F Traces",  # DFF_TRACES
     "OASIS Denoised ΔF/F Traces",  # DEN_DFF_TRACES
     "OASIS Inferred Spikes Traces",  # INFERRED_SPIKES_TRACES
+    "CASCADE Expected Spikes Traces",  # CASCADE_EXPECTED_SPIKES_TRACES
     "OASIS Thresholded Inferred Spikes (Binary)",  # INFERRED_SPIKES_THRESHOLDED_BINARY
 ]
 
@@ -156,6 +157,7 @@ NEUROPIL_CORRECTED_TRACES: TraceDataType = "Neuropil Corrected Traces"
 DFF_TRACES: TraceDataType = "ΔF/F Traces"
 DEN_DFF_TRACES: TraceDataType = "OASIS Denoised ΔF/F Traces"
 INFERRED_SPIKES_TRACES: TraceDataType = "OASIS Inferred Spikes Traces"
+CASCADE_EXPECTED_SPIKES_TRACES: TraceDataType = "CASCADE Expected Spikes Traces"
 INFERRED_SPIKES_THRESHOLDED_BINARY: TraceDataType = "OASIS Thresholded Inferred Spikes (Binary)"  # noqa: E501
 # CALCIUM_PEAKS = "Calcium Peaks"
 

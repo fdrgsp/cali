@@ -7,6 +7,7 @@ database to CSV format, including traces, correlation matrices, and more.
 from __future__ import annotations
 
 import csv
+import json
 import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -16,6 +17,7 @@ import pandas as pd
 from sqlmodel import Session, col, select
 
 from cali._constants import (
+    CASCADE_EXPECTED_SPIKES_TRACES,
     DEN_DFF_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.extraction._frame_window import SourceFrameTransform
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 
 def export_raw_traces_to_csv(
@@ -958,6 +961,7 @@ def _export_trace_data(
     fov_name: str | None = None,
     run_id: int | None = None,
     position_indices: list[int] | None = None,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Export trace data to CSV (internal helper)."""
     output_path = Path(output_path)
@@ -977,10 +981,10 @@ def _export_trace_data(
                 Traces,
                 (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-            .join(
+            .outerjoin(
                 DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
+                (col(DataAnalysis.roi_id) == col(ROI.id))
+                & (col(DataAnalysis.analysis_result_id) == run_id),
             )
         )
 
@@ -1001,6 +1005,7 @@ def _export_trace_data(
         fov_data: dict[str, dict[Literal["stim", "non_stim"], list]] = {}
 
         for roi, traces, data_analysis in results:
+            trace_data: list[float] | None
             # Map display names to Traces model attribute names
             trace_attr_map = {
                 RAW_CALCIUM_TRACES: "raw_trace",
@@ -1009,22 +1014,31 @@ def _export_trace_data(
                 DFF_TRACES: "dff",
                 DEN_DFF_TRACES: "den_dff",
                 INFERRED_SPIKES_TRACES: "inferred_spikes",
+                CASCADE_EXPECTED_SPIKES_TRACES: "inferred_spikes",
                 INFERRED_SPIKES_THRESHOLDED_BINARY: "inferred_spikes",
             }
 
             # Get trace data
             if trace_type == INFERRED_SPIKES_THRESHOLDED_BINARY:
                 # Binarize inferred spikes based on threshold
-                trace_data = traces.get_spike_values("oasis")
-                threshold = data_analysis.get_spike_metric("oasis", "threshold")
-                if trace_data is not None and threshold:
-                    trace_data = [
-                        1.0 if val >= threshold else 0.0 for val in trace_data
-                    ]
+                child = traces.get_spike_trace(spike_method)
+                threshold = (
+                    data_analysis.get_spike_metric(spike_method, "threshold")
+                    if data_analysis is not None
+                    else None
+                )
+                if child is None or threshold is None:
+                    continue
+                trace_data = [
+                    (1.0 if val >= threshold else 0.0)
+                    if child.valid_start <= index < child.resolved_valid_stop
+                    else math.nan
+                    for index, val in enumerate(child.values)
+                ]
             else:
                 attr_name = trace_attr_map.get(trace_type)
                 trace_data = (
-                    traces.get_spike_values("oasis")
+                    traces.get_spike_values(spike_method)
                     if attr_name == "inferred_spikes"
                     else getattr(traces, attr_name, None)
                     if attr_name
@@ -1033,6 +1047,15 @@ def _export_trace_data(
 
             if trace_data is None:
                 continue
+            if trace_type in (INFERRED_SPIKES_TRACES, CASCADE_EXPECTED_SPIKES_TRACES):
+                child = traces.get_spike_trace(spike_method)
+                assert child is not None
+                trace_data = [
+                    value
+                    if child.valid_start <= index < child.resolved_valid_stop
+                    else math.nan
+                    for index, value in enumerate(trace_data)
+                ]
 
             # Determine FOV key
             fov_key = roi.fov.name
@@ -1289,6 +1312,104 @@ def export_events_to_csv(
     pd.DataFrame(rows, columns=columns).to_csv(path, index=False)
 
 
+def export_cascade_expected_spikes_to_csv(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    fov_name: str | None = None,
+    run_id: int | None = None,
+    position_indices: list[int] | None = None,
+) -> None:
+    """Export stored CASCADE spikes/frame, leaving invalid edge samples empty."""
+    _export_trace_data(
+        engine,
+        output_path,
+        CASCADE_EXPECTED_SPIKES_TRACES,
+        fov_name=fov_name,
+        run_id=run_id,
+        position_indices=position_indices,
+        spike_method="cascade",
+    )
+    export_trace_metadata(
+        engine,
+        Path(output_path).with_suffix(".metadata.json"),
+        run_id=run_id,
+        fov_name=fov_name,
+        position_indices=position_indices,
+    )
+
+
+def export_trace_metadata(
+    engine: Engine,
+    output_path: str | Path,
+    *,
+    run_id: int | None = None,
+    fov_name: str | None = None,
+    position_indices: list[int] | None = None,
+) -> set[str]:
+    """Write stored provenance/coordinates and return the retained method IDs."""
+    ensure_schema_current(engine)
+    if run_id is None:
+        run_id = _get_default_run_id(engine)
+    records = []
+    methods: set[str] = set()
+    with Session(engine) as session:
+        stmt = (
+            select(ROI, Traces)
+            .join(FOV, col(ROI.fov_id) == col(FOV.id))
+            .join(Traces, col(Traces.roi_id) == col(ROI.id))
+            .where(col(Traces.analysis_result_id) == run_id)
+            .order_by(col(FOV.position_index), col(ROI.label_value), col(Traces.id))
+        )
+        if fov_name is not None:
+            stmt = stmt.where(col(FOV.name) == fov_name)
+        if position_indices is not None:
+            stmt = stmt.where(col(FOV.position_index).in_(position_indices))
+        for roi, trace in session.exec(stmt):
+            methods.update(child.inference_run.method for child in trace.spike_traces)
+            window = trace.extraction_frame_window
+            records.append(
+                {
+                    "trace_id": trace.id,
+                    "fov_name": roi.fov.name,
+                    "position_index": roi.fov.position_index,
+                    "roi_label": roi.label_value,
+                    "calcium_method": "oasis_denoising",
+                    "calcium_noise": trace.calcium_noise,
+                    "x_axis_units": trace.x_axis_units,
+                    "frame_window": window.model_dump(mode="json") if window else None,
+                    "spike_outputs": [
+                        {
+                            "spike_trace_id": child.id,
+                            "provenance": child.inference_run.model_dump(mode="json"),
+                            "valid_start_frame_0based": child.valid_start,
+                            "valid_stop_frame_exclusive": child.resolved_valid_stop,
+                            "noise": child.noise,
+                            "selected_noise_level": child.selected_noise_level,
+                        }
+                        for child in sorted(
+                            trace.spike_traces,
+                            key=lambda child: (
+                                child.inference_run.method != "oasis",
+                                child.id or 0,
+                            ),
+                        )
+                    ],
+                }
+            )
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"schema_version": 1, "run_id": run_id, "traces": records},
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+    return methods
+
+
 def export_traces_to_csv(
     engine: Engine,
     export_traces: dict[TraceDataType, bool],
@@ -1331,6 +1452,10 @@ def export_traces_to_csv(
             export_inferred_spikes_raw_to_csv,
             "inferred_spikes_raw.csv",
         ),
+        CASCADE_EXPECTED_SPIKES_TRACES: (
+            export_cascade_expected_spikes_to_csv,
+            "cascade_expected_spikes.csv",
+        ),
         INFERRED_SPIKES_THRESHOLDED_BINARY: (
             export_inferred_spikes_thresholded_to_csv,
             "inferred_spikes_thresholded.csv",
@@ -1366,6 +1491,12 @@ def export_traces_to_csv(
     # Export each selected trace type into each target directory
     for target_dir, target_indices in export_targets:
         if any(export_traces.values()):
+            stored_methods = export_trace_metadata(
+                engine,
+                target_dir / "trace_metadata.json",
+                run_id=run_id,
+                position_indices=target_indices,
+            )
             export_frame_coordinates_to_csv(
                 engine,
                 target_dir / "frame_coordinates.csv",
@@ -1381,6 +1512,8 @@ def export_traces_to_csv(
         for trace_type, should_export in export_traces.items():
             if should_export and trace_type in export_map:
                 export_func, filename = export_map[trace_type]
+                if trace_type == INFERRED_SPIKES_TRACES and "cascade" in stored_methods:
+                    filename = "oasis_inferred_spikes_raw.csv"
                 output_path = target_dir / filename
                 try:
                     from cali.logger import cali_logger

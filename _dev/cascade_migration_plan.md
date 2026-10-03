@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained upstream reference adapter, and private experimental P3b cached/chunked inference service implemented; next: P5 runner integration and full extraction performance gates; later consumer/comparison integration pending; production CASCADE not enabled
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; next: full extraction performance/storage release gates; CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,10 +442,11 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P5 runner integration: batched OASIS/CASCADE/dual outputs, unchanged
-OASIS calcium/noise results, complete-FOV atomic persistence, and full extraction performance
-checks. Follow the binding sequence in §9 for analysis semantics and CASCADE GUI exposure.
-CASCADE is not yet available in production extraction.
+**Next landing step:** Step 10's complete-mode performance and DB storage/codec release gates:
+cold/warm OASIS-only, CASCADE-only, and dual runs, including persistence and analysis costs.
+Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
+Headless extraction is now available through the upstream reference path; the cached service
+remains an explicit experimental option.
 
 Step 6 — pinned catalogue, verified model cache, and download CLI (2026-10-03):
 
@@ -580,6 +581,74 @@ Validation: **1875 passed, 11 skipped in 294.23 s** in the full base suite; **66
 enabled and warnings-as-errors. The deselected test intentionally imports the public image
 runner, which initializes the unrelated legacy Numcodecs stack. Ruff passes; mypy adds no
 diagnostics (354 existing). Test-migrated database fixtures were restored after validation.
+
+Step 9 — headless runner, atomic selected outputs, and provenance exports (2026-10-03):
+
+- Headless `ExtractionRunner` and `CaliRunner` now accept OASIS-only, CASCADE-only, or dual
+  extraction. OASIS always runs once per FOV and produces `den_dff` and calcium noise; its spikes
+  are retained only when selected. Selected CASCADE runs exactly once on the same fractional
+  DFF matrix, in the same ROI order, after startup cropping. OASIS keeps its legacy duration-based
+  inference rate, while CASCADE validates trusted acquisition timing against the configured
+  model rate. No backend substitution or resampling was added.
+- Before detection/ROI work, preflight checks the explicit model/manifest, optional package,
+  configured rate, and requested device. Each FOV checks its retained length, trusted timing,
+  rate, and jitter before calculating ROI traces. Per-call model verification remains active,
+  so changed files cannot reuse the prepared identity. Errors in a selected CASCADE FOV propagate
+  from the thread pool and stop outstanding work instead of being logged as a successful run.
+- The default dispatch uses the upstream reference adapter, serializing its Torch predictions
+  across FOV threads with cancellable lock waiting. `experimental_cascade_cache=True` on either
+  runner selects the bounded worker service explicitly. `CaliRunner` owns one inference session
+  across all plate batches; three separate batch calls reuse the same ensembles without additional
+  checkpoint loads. Normal completion, errors, cancellation, and generator close release the
+  service. A changed selection/model/device/rate cannot borrow an existing session accidentally.
+- Phase C creates one base trace and one `SpikeTrace` per selected method, with shared method
+  provenance, valid interval, per-ROI noise, and selected model noise level. CASCADE provenance
+  includes the package version/revision, catalogue revision, config/weights manifest, model rate,
+  smoothing, causal/acausal kernel, actual device, dtype, and spikes/frame units. Neuropil mask
+  conversion is staged too. Inference/finalization failures or cancellation publish no ROI's new
+  traces, analyses, flags, or cell size. Persistence attaches the complete FOV graph under
+  `session.no_autoflush` before source recording/flush, preventing partial shared-run insertion.
+- Schema **10** adds nullable `Traces.calcium_noise`, independent of spike output selection.
+  New extraction stores OASIS's actual noise; source copies preserve it and re-analysis uses it.
+  Historical traces remain unknown and use the existing estimator, without inventing provenance.
+  The versioned migration is idempotent and preserves historical arrays. An older timing test now
+  asserts the current schema version instead of hard-coding version 9.
+- Extraction-only CSV queries now work without a `DataAnalysis` row. The headless export key
+  `CASCADE_EXPECTED_SPIKES_TRACES` and `export_cascade_expected_spikes_to_csv()` export the stored
+  CASCADE values with empty invalid-edge samples. Explicit dual exports use separate deterministic
+  `oasis_inferred_spikes_raw.csv` and `cascade_expected_spikes.csv` files, even if only one of
+  a stored dual result's outputs is exported; the legacy OASIS-only
+  filename remains supported. Thresholded exports require an applied method threshold and also
+  mask invalid edges. `trace_metadata.json` records trace IDs, all retained method provenance,
+  units/model/manifest/valid intervals, noise, and the complete requested/resolved frame window.
+  Existing coordinate/event exports accompany it. The experiment tree prints every stored method
+  and each FOV's source start, retained length, and timing; settings display iterates method rows.
+- Detached-settings tests read all dispatch/rate/discard columns after `session.expunge()` and
+  execute extraction with them. No eager-access workaround was added: ordinary scalar columns
+  are already loaded. Integration tests exercise real Phase A, exact OASIS results across all
+  selections with/without cropping and calcium analysis, complete-FOV failures/cancellation,
+  preflight failures before image/ROI work, actual normalized persistence, extraction-only dual
+  exports, shared-cache batch reuse, and generator-close cleanup. Installed-wheel tests use actual
+  pretrained weights for all three modes and both reference/experimental dispatch, comparing
+  stored CASCADE output with direct upstream at `rtol=1e-5, atol=1e-6`.
+
+CASCADE **spike analysis** remains blocked until P6; inline calcium-only analysis can run with
+matching method settings and `enable_spikes=False`. The GUI still exposes OASIS only. The default
+reference path can extract and retain CASCADE today; this does not certify the experimental cache
+for release. Step 10 still needs complete-mode/representative-plate timings and storage/codec
+measurements, and P6 still needs method-specific analysis equivalence, padding-safe consumers,
+and comparison products. GPU acceptance remains pending.
+
+Validation: **1899 passed, 13 skipped in 287.35 s** in the full base suite, including GUI,
+legacy database, runner, export, and existing extraction regressions. GUI checks require macOS
+display access outside the sandbox; the sandbox's screen-size query returned zero. **25 passed
+in 4.59 s** against the final freshly installed wheel with pretrained extraction tests enabled,
+including both dispatch paths and actual upstream comparisons. Ruff passes; mypy adds no
+diagnostics (353 existing, one fewer after correcting an export join annotation). A final
+stored-method filename check passes **60 focused extraction/export tests, 3 skipped**; the
+installed-wheel reference/cache contracts pass **67 tests** under warnings-as-errors.
+Test-migrated database fixtures were restored after validation. Remote CI and GPU checks
+remain pending.
 
 ## 0. TL;DR
 

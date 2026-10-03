@@ -33,11 +33,11 @@ def canonical_spike_methods(value: Any) -> tuple[SpikeMethod, ...]:
 
 
 def require_available_spike_methods(methods: Any) -> None:
-    """Keep stored CASCADE selections from running through the OASIS-only pipeline."""
+    """Gate CASCADE spike consumers until method-bound analysis lands in P6."""
     if "cascade" in canonical_spike_methods(methods):
         raise NotImplementedError(
-            "CASCADE execution is not available yet. Select OASIS until the "
-            "CASCADE backend and method-bound analysis are enabled."
+            "CASCADE spike analysis is not available yet. Extract without spike "
+            "analysis until the method-bound analysis checks pass."
         )
 
 

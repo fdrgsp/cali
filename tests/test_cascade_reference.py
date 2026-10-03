@@ -165,17 +165,17 @@ def test_noise_selection_ties_and_coverage_warning(
     assert "2/3 ROI noise estimates are outside model coverage" in caplog.text
 
 
-@pytest.mark.parametrize("stage", [0, 1, 2])
+@pytest.mark.parametrize("stage", [0, 1, 2, 3])
 def test_reference_cancellation_discards_complete_result(
     stage: int, fake_reference: tuple
 ) -> None:
     backend, _, calls = fake_reference
-    checks = iter(index == stage for index in range(3))
+    checks = iter(index == stage for index in range(4))
     with pytest.raises(InferenceCancelled):
         backend.infer_all(
             np.zeros((1, 96)), 10, timing=_timing(), cancel=lambda: next(checks)
         )
-    assert sum(call[0] == "predict" for call in calls) == (stage == 2)
+    assert sum(call[0] == "predict" for call in calls) == (stage == 3)
 
 
 def test_modified_manifest_refuses_inference(

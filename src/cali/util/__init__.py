@@ -3,6 +3,7 @@
 from ._database_to_csv import (
     export_calcium_den_dff_correlation_to_csv,
     export_calcium_dff_correlation_to_csv,
+    export_cascade_expected_spikes_to_csv,
     export_cluster_labels_to_csv,
     export_correlation_matrices_to_csv,
     export_denoised_dff_traces_to_csv,
@@ -24,6 +25,7 @@ from ._database_to_csv import (
     export_neuropil_corrected_traces_to_csv,
     export_neuropil_traces_to_csv,
     export_raw_traces_to_csv,
+    export_trace_metadata,
 )
 from ._util import (
     commit_fov_result,
@@ -42,6 +44,7 @@ __all__ = [
     "coordinates_to_mask",
     "export_calcium_den_dff_correlation_to_csv",
     "export_calcium_dff_correlation_to_csv",
+    "export_cascade_expected_spikes_to_csv",
     "export_cluster_labels_to_csv",
     "export_correlation_matrices_to_csv",
     "export_denoised_dff_traces_to_csv",
@@ -63,6 +66,7 @@ __all__ = [
     "export_neuropil_corrected_traces_to_csv",
     "export_neuropil_traces_to_csv",
     "export_raw_traces_to_csv",
+    "export_trace_metadata",
     "import_labels_to_database",
     "load_data_from_path",
     "load_fovs_from_database",

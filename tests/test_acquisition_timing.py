@@ -336,7 +336,10 @@ def test_timing_migration_preserves_unknown_historical_sampling_and_is_idempoten
                 "FROM extraction_frame_window"
             ).one()
         ) == (2, "exposure", None, None, None)
-        assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 9
+        assert (
+            connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+            == _engine.SCHEMA_VERSION
+        )
     engine.dispose()
 
 

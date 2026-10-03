@@ -316,7 +316,11 @@ class AnalysisRunner:
 
         if analysis_settings.enable_calcium:
             # fmt: off
-            sn = GetSn(dff, range_ff=[0.25, 0.5], method="median")
+            sn = (
+                traces.calcium_noise
+                if traces.calcium_noise is not None
+                else GetSn(dff, range_ff=[0.25, 0.5], method="median")
+            )
             peaks_height_den_dff, peaks_prominence_den_dff = compute_calcium_peak_detection_thresholds(den_dff_array, sn, analysis_settings)  # noqa E501
             # fmt: on
 

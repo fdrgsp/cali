@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     import numpy as np
 
+    from cali._cascade_models import CascadeModel
     from cali.extraction._frame_window import TimingDescriptor
 
     from ._cascade_reference import CascadeResult
@@ -32,6 +33,7 @@ class _Request:
     timing: TimingDescriptor | None = None
     cancel: Callable[[], bool] | None = None
     aborted: threading.Event = field(default_factory=threading.Event)
+    prepare: bool = False
 
 
 class CascadeInferenceService:
@@ -73,6 +75,15 @@ class CascadeInferenceService:
     def minimum_frames(self) -> int:
         """Expose model preflight without involving the worker or Torch."""
         return self._predictor.minimum_frames
+
+    @property
+    def model(self) -> CascadeModel:
+        """Expose immutable verified metadata without touching Torch."""
+        return self._predictor.model
+
+    def prepare(self, frame_rate: float) -> None:
+        """Preflight package/device on the worker before Phase A starts."""
+        self._submit(_Request(Future(), frame_rate=frame_rate, prepare=True))
 
     @property
     def stats(self) -> CascadeCacheStats:
@@ -165,7 +176,9 @@ class CascadeInferenceService:
                     try:
                         if self._cancelled(request):
                             raise InferenceCancelled("CASCADE queued batch cancelled.")
-                        if request.dff is None:
+                        if request.prepare:
+                            self._predictor.prepare(request.frame_rate)
+                        elif request.dff is None:
                             self._predictor.clear_cache()
                             result = None
                         else:

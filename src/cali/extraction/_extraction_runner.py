@@ -5,10 +5,12 @@ import warnings
 from collections import deque
 from collections.abc import Generator, Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from importlib.metadata import version
-from typing import Callable, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -43,12 +45,19 @@ from ._frame_window import (
     build_timing_descriptor,
     preflight_retained_timing,
     resolve_initial_frame_window,
+    validate_model_timing,
 )
 from ._neuropil import create_neuropil_from_dilation
 from ._spike_inference import InferenceCancelled, OasisBackend
 from ._util import calculate_dff
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+if TYPE_CHECKING:
+    from ._spike_inference._cascade_reference import CascadeReferenceBackend
+    from ._spike_inference._cascade_service import CascadeInferenceService
+
+    CascadeBackend = CascadeReferenceBackend | CascadeInferenceService
 
 
 @dataclass
@@ -66,11 +75,105 @@ class _RoiParts:
 
 
 class ExtractionRunner:
-    def __init__(self) -> None:
+    def __init__(self, *, experimental_cascade_cache: bool = False) -> None:
         super().__init__()
 
         # Use threading.Event for cancellation control
         self._cancellation_event = threading.Event()
+        self._experimental_cascade_cache = experimental_cascade_cache
+        self._active_cascade_backend: CascadeBackend | None = None
+        self._active_cascade_settings: tuple | None = None
+
+    @staticmethod
+    def validate_settings(
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None = None,
+    ) -> None:
+        """Validate dispatch and keep CASCADE spike analysis gated until P6."""
+        extraction_settings.validate_output_settings()
+        if analysis_settings is not None:
+            analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
+            if analysis_settings.enable_spikes:
+                require_available_spike_methods(extraction_settings.spike_methods)
+
+    @contextmanager
+    def _cascade_context(
+        self, extraction_settings: ExtractionSettings
+    ) -> Generator["CascadeBackend | None", None, None]:
+        """Own one prepared backend for the complete FOV pool/generator lifetime."""
+        if "cascade" not in extraction_settings.spike_methods:
+            yield None
+            return
+        if self._active_cascade_backend is not None:
+            if self._active_cascade_settings != self._cascade_settings_key(
+                extraction_settings
+            ):
+                raise RuntimeError(
+                    "Extraction settings changed inside a CASCADE session."
+                )
+            yield self._active_cascade_backend
+            return
+        from ._spike_inference._cascade_reference import CascadeReferenceBackend
+        from ._spike_inference._cascade_service import CascadeInferenceService
+
+        assert extraction_settings.cascade_model is not None
+        backend: CascadeBackend = (
+            CascadeInferenceService(
+                extraction_settings.cascade_model,
+                device=extraction_settings.cascade_device,
+            )
+            if self._experimental_cascade_cache
+            else CascadeReferenceBackend(
+                extraction_settings.cascade_model,
+                device=extraction_settings.cascade_device,
+            )
+        )
+        try:
+            backend.prepare(extraction_settings.frame_rate)
+            yield backend
+        finally:
+            if isinstance(backend, CascadeInferenceService):
+                backend.close()
+
+    @staticmethod
+    def _cascade_settings_key(settings: ExtractionSettings) -> tuple:
+        return (
+            settings.spike_methods,
+            settings.cascade_model,
+            settings.cascade_device,
+            settings.frame_rate,
+        )
+
+    @contextmanager
+    def inference_session(
+        self,
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None = None,
+    ) -> Generator[None, None, None]:
+        """Reuse one prepared backend across the unified runner's FOV batches."""
+        self.validate_settings(extraction_settings, analysis_settings)
+        if self._active_cascade_backend is not None:
+            raise RuntimeError("A CASCADE extraction session is already active.")
+        with self._cascade_context(extraction_settings) as backend:
+            self._active_cascade_backend = backend
+            self._active_cascade_settings = self._cascade_settings_key(
+                extraction_settings
+            )
+            try:
+                yield
+            finally:
+                self._active_cascade_backend = None
+                self._active_cascade_settings = None
+
+    def preflight(
+        self,
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None = None,
+    ) -> None:
+        """Fail before plate/detection work for unavailable selected components."""
+        self.validate_settings(extraction_settings, analysis_settings)
+        with self._cascade_context(extraction_settings):
+            pass
 
     # -------------------------PUBLIC METHODS-----------------------------------
 
@@ -123,10 +226,7 @@ class ExtractionRunner:
         ValueError
             If run_analysis=True but analysis_settings is None
         """
-        extraction_settings.validate_output_settings()
-        require_available_spike_methods(extraction_settings.spike_methods)
-        if analysis_settings is not None:
-            analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
+        self.validate_settings(extraction_settings, analysis_settings)
         generator = self._run_generator(
             dataset, extraction_settings, analysis_settings, fovs
         )
@@ -166,21 +266,32 @@ class ExtractionRunner:
         # Collect FOVs that need FOV-level analysis
         fovs_for_analysis: list[FOV] = []
 
-        for fov_result in self._exec_in_threadpool(
-            analyze=self._analyze_position,
-            dataset=dataset,
-            cancel_event=self._cancellation_event,
-            fovs=fovs,
-            extraction_settings=extraction_settings,
-            analysis_settings=analysis_settings,
-            max_workers=extraction_settings.threads,
-        ):
-            if fov_result is not None:
-                # Check if FOV needs analysis
-                if hasattr(fov_result, "_pending_analysis_settings"):
-                    fovs_for_analysis.append(fov_result)
-                else:
-                    yield fov_result
+        with self._cascade_context(extraction_settings) as cascade_backend:
+            with closing(
+                self._exec_in_threadpool(
+                    analyze=partial(
+                        self._analyze_position, cascade_backend=cascade_backend
+                    ),
+                    dataset=dataset,
+                    cancel_event=self._cancellation_event,
+                    fovs=fovs,
+                    extraction_settings=extraction_settings,
+                    analysis_settings=analysis_settings,
+                    max_workers=extraction_settings.threads,
+                )
+            ) as results:
+                try:
+                    for fov_result in results:
+                        if fov_result is not None:
+                            if hasattr(fov_result, "_pending_analysis_settings"):
+                                fovs_for_analysis.append(fov_result)
+                            else:
+                                yield fov_result
+                except BaseException:
+                    # A closing consumer must cancel active FOVs before joining
+                    # their executor and releasing the inference service.
+                    self._cancellation_event.set()
+                    raise
 
         # Phase 2: Compute FOV-level analysis SEQUENTIALLY
         # This uses multiprocessing internally for CCG pairs, which is much faster
@@ -240,7 +351,7 @@ class ExtractionRunner:
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         max_workers: int | None = None,
-    ) -> Iterable[FOV]:
+    ) -> Generator[FOV, None, None]:
         """Execute extraction in parallel and yield FOV results."""
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Check for cancellation before submitting futures
@@ -295,6 +406,11 @@ class ExtractionRunner:
                             pending.cancel()
                         raise
                     except Exception:
+                        if "cascade" in extraction_settings.spike_methods:
+                            self._cancellation_event.set()
+                            for pending in futures:
+                                pending.cancel()
+                            raise
                         import traceback
 
                         full_tb = traceback.format_exc()
@@ -306,6 +422,8 @@ class ExtractionRunner:
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov: FOV,
+        *,
+        cascade_backend: "CascadeBackend | None" = None,
     ) -> FOV | None:
         """Extract the roi traces for the given position and return result objects.
 
@@ -317,6 +435,7 @@ class ExtractionRunner:
             extraction_settings,
             analysis_settings,
             fov,
+            cascade_backend=cascade_backend,
         )
 
     def _extract_trace_data_per_position(
@@ -325,6 +444,36 @@ class ExtractionRunner:
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None,
         fov_to_analyze: FOV,
+        *,
+        cascade_backend: "CascadeBackend | None" = None,
+    ) -> FOV | None:
+        """Prepare standalone calls, or reuse the pool's already prepared backend."""
+        self.validate_settings(extraction_settings, analysis_settings)
+        if cascade_backend is None and "cascade" in extraction_settings.spike_methods:
+            with self._cascade_context(extraction_settings) as backend:
+                return self._extract_position(
+                    dataset,
+                    extraction_settings,
+                    analysis_settings,
+                    fov_to_analyze,
+                    cascade_backend=backend,
+                )
+        return self._extract_position(
+            dataset,
+            extraction_settings,
+            analysis_settings,
+            fov_to_analyze,
+            cascade_backend=cascade_backend,
+        )
+
+    def _extract_position(
+        self,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None,
+        fov_to_analyze: FOV,
+        *,
+        cascade_backend: "CascadeBackend | None",
     ) -> FOV | None:
         """Extract trace data for a position and return FOV objects (not committed).
 
@@ -334,11 +483,6 @@ class ExtractionRunner:
         # if runner._data is None or runner._check_for_abort_requested():
         if self._check_for_abort_requested():
             return None
-
-        extraction_settings.validate_output_settings()
-        require_available_spike_methods(extraction_settings.spike_methods)
-        if analysis_settings is not None:
-            analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
 
         global_pos_idx = fov_to_analyze.position_index
 
@@ -370,8 +514,19 @@ class ExtractionRunner:
                     "ΔF/F baseline": 1,
                     "calcium duration": 2,
                     "OASIS noise estimation": OasisBackend.minimum_frames,
+                    **(
+                        {"CASCADE model": cascade_backend.minimum_frames}
+                        if cascade_backend is not None
+                        else {}
+                    ),
                 },
             )
+            if cascade_backend is not None:
+                validate_model_timing(
+                    retained_timing,
+                    settings_frame_rate=extraction_settings.frame_rate,
+                    model_frame_rate=cascade_backend.model.sampling_rate,
+                )
         except StartupDiscardError as error:
             source = meta[0].get("file_path") if meta else None
             source = source or str(dataset.path)
@@ -471,10 +626,11 @@ class ExtractionRunner:
             if parts is not None:
                 parts_by_roi.append(parts)
 
-        # Phase B: exactly one backend invocation per FOV. The legacy rate is
+        # Phase B: one OASIS batch plus the selected CASCADE batch. The legacy rate is
         # deliberately retained here to preserve OASIS AR(1) numerics.
         if self._check_for_abort_requested():
             return None
+        cascade = None
         if parts_by_roi:
             dff_matrix = np.vstack([parts.dff for parts in parts_by_roi])
             try:
@@ -485,6 +641,16 @@ class ExtractionRunner:
                     roi_labels=[parts.label_value for parts in parts_by_roi],
                     fov_name=fov_name,
                     cancel=self._check_for_abort_requested,
+                )
+                cascade = (
+                    cascade_backend.infer_all(
+                        dff_matrix,
+                        extraction_settings.frame_rate,
+                        timing=retained_timing,
+                        cancel=self._check_for_abort_requested,
+                    )
+                    if cascade_backend is not None
+                    else None
                 )
             except InferenceCancelled:
                 return None
@@ -529,6 +695,31 @@ class ExtractionRunner:
             dtype="float64",
             provenance_source="oasis_inference",
         )
+        cascade_run = (
+            SpikeInferenceRun(
+                method="cascade",
+                units=cascade.units,
+                backend_package="CascadeTorch",
+                backend_version=cascade.package_version,
+                backend_revision=cascade.package_revision,
+                resolved_model=cascade.model.name,
+                catalogue_revision=cascade.model.catalogue_revision,
+                config_sha256=cascade.model.config_sha256,
+                weights_manifest_sha256=cascade.model.manifest_sha256,
+                resolved_device=cascade.resolved_device,
+                dtype=cascade.dtype,
+                model_sampling_rate_hz=cascade.model.sampling_rate,
+                smoothing_sigma=cascade.model.smoothing,
+                kernel_type="causal" if cascade.model.causal_kernel else "acausal",
+                provenance_source=(
+                    "cascade_cached_inference"
+                    if self._experimental_cascade_cache
+                    else "cascade_reference_inference"
+                ),
+            )
+            if parts_by_roi and cascade is not None
+            else None
+        )
 
         # Phase C: stage complete products before attaching anything to the FOV.
         finalized = []
@@ -549,9 +740,53 @@ class ExtractionRunner:
                 stored_window=stored_window,
                 inference_run=inference_run,
                 ar_coefficients=oasis.g_by_roi[index].tolist(),
+                spike_traces=[
+                    *(
+                        [
+                            SpikeTrace(
+                                values=oasis.spikes[index].tolist(),
+                                valid_stop=len(oasis.spikes[index]),
+                                noise=float(oasis.sn_by_roi[index]),
+                                ar_coefficients=oasis.g_by_roi[index].tolist(),
+                                inference_run=inference_run,
+                            )
+                        ]
+                        if "oasis" in extraction_settings.spike_methods
+                        else []
+                    ),
+                    *(
+                        [
+                            SpikeTrace(
+                                values=cascade.spikes[index].tolist(),
+                                valid_start=cascade.valid_start,
+                                valid_stop=cascade.valid_stop,
+                                noise=float(cascade.noise_by_roi[index]),
+                                selected_noise_level=float(
+                                    cascade.selected_noise_levels_by_roi[index]
+                                ),
+                                inference_run=cascade_run,
+                            )
+                        ]
+                        if cascade_run is not None and cascade is not None
+                        else []
+                    ),
+                ],
             )
             if trace_data is None:
                 return None
+            # Mask conversion can fail too; stage it before touching any ROI.
+            neuropil_mask_array = neuropil_masks_dict.get(parts.label_value)
+            if neuropil_mask_array is not None and neuropil_mask_array.any():
+                neuropil_coords, neuropil_shape = mask_to_coordinates(
+                    neuropil_mask_array
+                )
+                trace_data[0].neuropil_mask = Mask(
+                    coords_y=neuropil_coords[0],
+                    coords_x=neuropil_coords[1],
+                    height=neuropil_shape[0],
+                    width=neuropil_shape[1],
+                    mask_type="neuropil",
+                )
             finalized.append((parts.label_value, trace_data))
             # Release Phase-A traces immediately after conversion to stored lists.
             del parts
@@ -572,24 +807,6 @@ class ExtractionRunner:
             # This ensures the value is always populated even if initially None
             existing_roi.cell_size = roi_size
             existing_roi.cell_size_units = roi_size_units
-
-            # Save neuropil mask to the Traces object if it exists for this ROI
-            neuropil_mask_array = neuropil_masks_dict.get(label_value)
-            if neuropil_mask_array is not None and neuropil_mask_array.any():
-                # Convert mask to sparse coordinates
-                neuropil_coords, neuropil_shape = mask_to_coordinates(
-                    neuropil_mask_array
-                )
-                # Create Mask object
-                neuropil_mask_obj = Mask(
-                    coords_y=neuropil_coords[0],
-                    coords_x=neuropil_coords[1],
-                    height=neuropil_shape[0],
-                    width=neuropil_shape[1],
-                    mask_type="neuropil",
-                )
-                # Assign to Traces (will be saved via relationship cascade)
-                traces.neuropil_mask = neuropil_mask_obj
 
             # Store new traces/analysis in temporary list on ROI
             # This avoids SQLAlchemy warnings about modifying collections
@@ -782,6 +999,7 @@ class ExtractionRunner:
         stored_window: ExtractionFrameWindow | None = None,
         inference_run: SpikeInferenceRun | None = None,
         ar_coefficients: list[float] | None = None,
+        spike_traces: list[SpikeTrace] | None = None,
     ) -> tuple[Traces, DataAnalysis | None, bool, bool, float, str] | None:
         """Build trace and optional analysis products from completed inference."""
         if self._check_for_abort_requested():
@@ -820,7 +1038,10 @@ class ExtractionRunner:
             ),
             dff=cast("list[float]", parts.dff.tolist()),
             den_dff=den_dff.tolist(),
-            spike_traces=[
+            calcium_noise=sn,
+            spike_traces=spike_traces
+            if spike_traces is not None
+            else [
                 SpikeTrace(
                     values=spikes.tolist(),
                     valid_stop=len(spikes),
