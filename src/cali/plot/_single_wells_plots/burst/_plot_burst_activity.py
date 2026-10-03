@@ -151,18 +151,28 @@ def _plot_inferred_spike_burst_activity(
     fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
 
     # Check if pre-computed population activity data exists (regardless of burst count)
-    if fov_analysis is not None and fov_analysis.spike_population_activity is not None:
+    if (
+        fov_analysis is not None
+        and fov_analysis.get_spike_metric("oasis", "spike_population_activity")
+        is not None
+    ):
         # Use stored burst data - much faster!
-        burst_starts = fov_analysis.spike_burst_starts or []
-        burst_ends = fov_analysis.spike_burst_ends or []
-        population_activity_list = fov_analysis.spike_population_activity
+        burst_starts = (
+            fov_analysis.get_spike_metric("oasis", "spike_burst_starts") or []
+        )
+        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
+        population_activity_list = fov_analysis.get_spike_metric(
+            "oasis", "spike_population_activity"
+        )
 
         if population_activity_list:
             # spike_population_activity contains smoothed fraction active [0,1]
             population_activity = np.array(population_activity_list)
 
             # Get raw activity if available
-            population_activity_raw_list = fov_analysis.spike_population_activity_raw
+            population_activity_raw_list = fov_analysis.get_spike_metric(
+                "oasis", "spike_population_activity_raw"
+            )
             population_activity_raw = (
                 np.array(population_activity_raw_list)
                 if population_activity_raw_list
@@ -700,10 +710,13 @@ def _plot_inferred_spikes_normalized_with_bursts(
     fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
 
     bursts: list[tuple[int, int]] = []
-    if fov_analysis is not None and fov_analysis.spike_burst_starts is not None:
+    if (
+        fov_analysis is not None
+        and fov_analysis.get_spike_metric("oasis", "spike_burst_starts") is not None
+    ):
         # Use stored burst data
-        burst_starts = fov_analysis.spike_burst_starts
-        burst_ends = fov_analysis.spike_burst_ends or []
+        burst_starts = fov_analysis.get_spike_metric("oasis", "spike_burst_starts")
+        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
         bursts = list(zip(burst_starts, burst_ends))
 
     # -------------------- Plot normalized spikes (subset) -------------------#
@@ -802,10 +815,13 @@ def _plot_inferred_spike_raster_with_bursts(
     fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
 
     bursts: list[tuple[int, int]] = []
-    if fov_analysis is not None and fov_analysis.spike_burst_starts is not None:
+    if (
+        fov_analysis is not None
+        and fov_analysis.get_spike_metric("oasis", "spike_burst_starts") is not None
+    ):
         # Use stored burst data
-        burst_starts = fov_analysis.spike_burst_starts
-        burst_ends = fov_analysis.spike_burst_ends or []
+        burst_starts = fov_analysis.get_spike_metric("oasis", "spike_burst_starts")
+        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
         bursts = list(zip(burst_starts, burst_ends))
 
     # -------------------- Plot raster (subset) -------------------#

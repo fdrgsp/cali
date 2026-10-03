@@ -259,18 +259,20 @@ def build_fov_feature_matrix(
                 fa = fov_analysis_map.get(fov_id)
                 if fa is not None:
                     row["burst_count"] = (
-                        float(fa.spike_burst_count)
-                        if fa.spike_burst_count is not None
+                        float(fa.get_spike_metric("oasis", "spike_burst_count"))
+                        if fa.get_spike_metric("oasis", "spike_burst_count") is not None
                         else float("nan")
                     )
                     row["burst_avg_duration_s"] = (
-                        float(fa.spike_burst_avg_duration)
-                        if fa.spike_burst_avg_duration is not None
+                        float(fa.get_spike_metric("oasis", "spike_burst_avg_duration"))
+                        if fa.get_spike_metric("oasis", "spike_burst_avg_duration")
+                        is not None
                         else float("nan")
                     )
                     row["burst_avg_interval_s"] = (
-                        float(fa.spike_burst_avg_interval)
-                        if fa.spike_burst_avg_interval is not None
+                        float(fa.get_spike_metric("oasis", "spike_burst_avg_interval"))
+                        if fa.get_spike_metric("oasis", "spike_burst_avg_interval")
+                        is not None
                         else float("nan")
                     )
                 else:

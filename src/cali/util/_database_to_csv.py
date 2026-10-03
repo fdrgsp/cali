@@ -362,61 +362,26 @@ def export_correlation_matrices_to_csv(
         for fov_analysis, fov in results:
             fov_prefix = f"{fov.name}_" if len(results) > 1 else ""
 
-            # Get ROI labels to check if evoked experiment
-            roi_labels = fov_analysis.active_roi_labels
-            if not roi_labels:
-                continue
-
-            # Query ROIs to get stimulation status
-            roi_stmt = (
-                select(ROI)
-                .where(ROI.fov_id == fov.id)
-                .where(col(ROI.label_value).in_(roi_labels))
-            )
-            rois = session.exec(roi_stmt).all()
-
-            # Sort ROIs: stimulated first, then non-stimulated
-            roi_dict = {roi.label_value: roi for roi in rois}
-            sorted_labels = sorted(
-                roi_labels,
-                key=lambda lbl: (
-                    (not roi_dict[lbl].stimulated, lbl)
-                    if roi_dict[lbl].stimulated is not None
-                    else (False, lbl)
-                ),
-            )
-            sorted_roi_names = [f"ROI_{lbl}" for lbl in sorted_labels]
-
-            # Export each correlation matrix
-            _export_matrix_to_csv(
-                fov_analysis.calcium_dff_correlation_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}calcium_dff_correlation.csv",
-            )
-
-            _export_matrix_to_csv(
-                fov_analysis.calcium_den_dff_corr_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}calcium_den_dff_correlation.csv",
-            )
-
-            _export_matrix_to_csv(
-                fov_analysis.spike_max_lag_correlation_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}spike_max_lag_correlation.csv",
-            )
-
-            _export_matrix_to_csv(
-                fov_analysis.spike_max_lag_values_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}spike_max_lag_values.csv",
-            )
-
-            _export_matrix_to_csv(
-                fov_analysis.spike_jitter_synchrony_matrix,
-                sorted_roi_names,
-                output_dir / f"{fov_prefix}spike_jitter_synchrony.csv",
-            )
+            for metric, filename in (
+                ("calcium_dff_correlation_matrix", "calcium_dff_correlation.csv"),
+                ("calcium_den_dff_corr_matrix", "calcium_den_dff_correlation.csv"),
+                ("spike_max_lag_correlation_matrix", "spike_max_lag_correlation.csv"),
+                ("spike_max_lag_values_matrix", "spike_max_lag_values.csv"),
+                ("spike_jitter_synchrony_matrix", "spike_jitter_synchrony.csv"),
+            ):
+                if metric.startswith("calcium_"):
+                    matrix = getattr(fov_analysis, metric)
+                    roi_labels = fov_analysis.calcium_active_roi_labels
+                else:
+                    matrix = fov_analysis.get_spike_metric("oasis", metric)
+                    roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+                _export_ordered_fov_matrix(
+                    session,
+                    fov,
+                    matrix,
+                    roi_labels,
+                    output_dir / f"{fov_prefix}{filename}",
+                )
 
 
 def export_calcium_dff_correlation_to_csv(
@@ -814,11 +779,11 @@ def export_cluster_labels_to_csv(
     for fov_analysis, fov in results:
         if (
             fov_analysis.cluster_labels is None
-            or fov_analysis.active_roi_labels is None
+            or fov_analysis.calcium_active_roi_labels is None
         ):
             continue
         for roi_label, cluster_label in zip(
-            fov_analysis.active_roi_labels, fov_analysis.cluster_labels
+            fov_analysis.calcium_active_roi_labels, fov_analysis.cluster_labels
         ):
             rows.append(
                 {
@@ -899,37 +864,23 @@ def _export_single_correlation_matrix(
 
         for fov_analysis, fov in results:
             # Get matrix data
-            matrix = getattr(fov_analysis, matrix_attr)
-            roi_labels = fov_analysis.active_roi_labels
+            if matrix_attr.startswith("calcium_"):
+                matrix = getattr(fov_analysis, matrix_attr)
+                roi_labels = fov_analysis.calcium_active_roi_labels
+            else:
+                matrix = fov_analysis.get_spike_metric("oasis", matrix_attr)
+                roi_labels = fov_analysis.get_spike_roi_labels("oasis")
             if not roi_labels or matrix is None:
                 continue
 
-            # Query ROIs to get stimulation status
-            roi_stmt = (
-                select(ROI)
-                .where(ROI.fov_id == fov.id)
-                .where(col(ROI.label_value).in_(roi_labels))
-            )
-            rois = session.exec(roi_stmt).all()
-
-            # Sort ROIs: stimulated first, then non-stimulated
-            roi_dict = {roi.label_value: roi for roi in rois}
-            sorted_labels = sorted(
-                roi_labels,
-                key=lambda lbl: (
-                    (not roi_dict[lbl].stimulated, lbl)
-                    if roi_dict[lbl].stimulated is not None
-                    else (False, lbl)
-                ),
-            )
-            sorted_roi_names = [f"ROI_{lbl}" for lbl in sorted_labels]
-
-            # Always add FOV prefix to correlation matrix filenames
-            # Each FOV gets its own correlation matrix file
             fov_output_path = output_path.parent / f"{fov.name}_{output_path.name}"
-
-            # Export matrix
-            _export_matrix_to_csv(matrix, sorted_roi_names, fov_output_path)
+            _export_ordered_fov_matrix(
+                session,
+                fov,
+                matrix,
+                roi_labels,
+                fov_output_path,
+            )
 
 
 def _get_condition_groups(
@@ -1379,6 +1330,33 @@ def export_correlations_to_csv(
                     from cali.logger import cali_logger
 
                     cali_logger.error(f"❌ Failed to export {corr_type}: {e}")
+
+
+def _export_ordered_fov_matrix(
+    session: Session,
+    fov: FOV,
+    matrix: list[list[float]] | list[list[int]] | None,
+    roi_labels: list[int] | None,
+    output_path: Path,
+) -> None:
+    """Keep a pillar/method's matrix aligned when sorting its labels for export."""
+    if matrix is None or not roi_labels:
+        return
+    rois = session.exec(
+        select(ROI).where(ROI.fov_id == fov.id, col(ROI.label_value).in_(roi_labels))
+    ).all()
+    roi_dict = {roi.label_value: roi for roi in rois}
+    sorted_labels = sorted(
+        roi_labels,
+        key=lambda label: (not bool(roi_dict[label].stimulated), label),
+    )
+    order = [roi_labels.index(label) for label in sorted_labels]
+    ordered_matrix = np.asarray(matrix)[np.ix_(order, order)].tolist()
+    _export_matrix_to_csv(
+        ordered_matrix,
+        [f"ROI_{label}" for label in sorted_labels],
+        output_path,
+    )
 
 
 def _export_matrix_to_csv(

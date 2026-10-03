@@ -76,17 +76,24 @@ def _get_spike_synchrony_matrix_from_db(
 
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
-                sync_matrix_data = (
-                    fov_analysis.spike_jitter_synchrony_matrix_rising_edges
+                sync_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_jitter_synchrony_matrix_rising_edges"
                 )
-                global_sync = fov_analysis.global_spike_jitter_synchrony_rising_edges
+                global_sync = fov_analysis.get_spike_metric(
+                    "oasis", "global_spike_jitter_synchrony_rising_edges"
+                )
                 matrix_type = "rising edges"
             else:
-                sync_matrix_data = fov_analysis.spike_jitter_synchrony_matrix
-                global_sync = fov_analysis.global_spike_jitter_synchrony
+                sync_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_jitter_synchrony_matrix"
+                )
+                global_sync = fov_analysis.get_spike_metric(
+                    "oasis", "global_spike_jitter_synchrony"
+                )
                 matrix_type = "thresholded binary"
 
-            if sync_matrix_data is None or fov_analysis.active_roi_labels is None:
+            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            if sync_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike synchrony matrix "
                     f"({matrix_type})"
@@ -108,7 +115,7 @@ def _get_spike_synchrony_matrix_from_db(
                     jitter_window_ms = analysis_settings.spikes_sync_jitter_window
 
             sync_matrix = np.asarray(sync_matrix_data, dtype=float)
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(spike_roi_labels)
 
             return sync_matrix, roi_labels, global_sync, jitter_window_ms
     except OperationalError:

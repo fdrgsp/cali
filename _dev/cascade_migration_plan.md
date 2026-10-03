@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, and ROI spike results implemented; FOV results/source-audit completion and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, and ROI/FOV spike results implemented; JSON/source-audit completion and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -150,6 +150,42 @@ full suite, plus focused migration/source checks after adding conflicting partia
 verification. The ROI module covers copied-result ownership and source deletion, dual detached
 reads, independent activity, quarantine/read-only behavior, and DDL rollback/retry. Ruff passes;
 mypy remains at 354 existing diagnostics with no added diagnostics. Legacy fixtures were restored.
+
+P2b continuation — method-bound FOV results (2026-10-03):
+
+- `SpikeFOVAnalysis` owns all spike correlation/lag/CCG/synchrony matrices, global scalars,
+  population bursts, and its own active-ROI ordering. Uniqueness covers FOV/inference/analysis
+  and parent/method. `FOVAnalysis` retains calcium correlations/bursts/clustering and stores
+  `calcium_active_roi_labels`. Deprecated singular spike aliases reject dual results.
+- Schema v7 copies every legacy spike metric and its stored ordering exactly, verifies
+  ownership against the OASIS traces represented by that ordering, and checks normalized
+  references. Missing ordering, duplicate coverage, mixed/unresolved sources, unresolved ROI
+  metrics, or orphaned FOVs produce read-only audited compatibility children without invented
+  labels or inference records. DDL, backfill, and version advancement roll back together.
+- Both serial and parallel FOV producers write OASIS children with unchanged calculations.
+  Before-flush binding selects the canonical inference record from the stored traces for the
+  same FOV/result and rejects mismatched or mixed records. Pending equal inference rows are
+  removed from reverse collections by identity, fixing canonical-row detachment during dedup.
+- FOV rows stay staged until all ROI products are attached. Forced reruns replace the previous
+  FOV result for the same analysis run before inserting constrained children. Manual imports
+  merge/flush one complete FOV at a time to reuse shared provenance IDs; standalone analysis
+  records its actual selected inference source. ORM run ownership deletes normalized metrics
+  even when a caller supplies an engine without SQLite foreign-key enforcement.
+- Plotting, aggregation, and exports select OASIS metrics and its stored ordering explicitly;
+  calcium consumers use the calcium ordering. CSV sorting now applies the same permutation to
+  matrix rows/columns and their labels. GUI runs flag unresolved ROI/FOV metric audits, and
+  re-analysis rejects those sources while stored results remain readable.
+
+The FOV storage slice still preserves legacy activity selection. Independent pillar/method
+input selection, valid intervals, and CASCADE metric semantics remain P6 work behind the gate.
+P2b also still needs normalized JSON round trips and the remaining source-audit repair/splitting.
+
+Validation for FOV storage: **1635 passed, 1 skipped in 214.34 s** in the full suite
+against restored legacy fixtures. Focused tests cover every migrated FOV metric, rollback/retry,
+conflicting partial backfill, unresolved/orphaned ordering, dual detached reads, method-aware CSV
+labels/permutations, copied provenance after deletion, and ORM deletion with an external engine.
+Runner force/recreation and standalone/manual pipeline routes also pass. Ruff passes; mypy has
+354 existing diagnostics and no added diagnostics. Checked-in database fixtures were restored.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after

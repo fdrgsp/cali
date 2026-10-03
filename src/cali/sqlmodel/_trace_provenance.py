@@ -270,6 +270,15 @@ def normalize_trace_provenance(session: "Session", *_: Any) -> None:
     for obj in new_objects:
         if id(obj) in replaced and obj in session.new:
             if isinstance(obj, SpikeInferenceRun):
+                unused_owner = obj.extraction_result
+                if unused_owner is not None:
+                    # Equal pending SQLModel rows compare by values. Remove by
+                    # identity so list.remove cannot detach the canonical run.
+                    unused_owner.spike_inference_runs = [
+                        run
+                        for run in unused_owner.spike_inference_runs
+                        if run is not obj
+                    ]
                 obj.extraction_result = None
             session.expunge(obj)
     for obj in list(session.new) + list(session.dirty):

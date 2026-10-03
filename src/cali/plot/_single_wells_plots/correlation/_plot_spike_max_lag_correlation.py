@@ -75,15 +75,18 @@ def _get_spike_max_lag_correlation_matrix_from_db(
 
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
-                corr_matrix_data = (
-                    fov_analysis.spike_max_lag_correlation_matrix_rising_edges
+                corr_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_max_lag_correlation_matrix_rising_edges"
                 )
                 matrix_type = "rising edges"
             else:
-                corr_matrix_data = fov_analysis.spike_max_lag_correlation_matrix
+                corr_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_max_lag_correlation_matrix"
+                )
                 matrix_type = "thresholded binary"
 
-            if corr_matrix_data is None or fov_analysis.active_roi_labels is None:
+            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            if corr_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike max-lag "
                     f"correlation matrix ({matrix_type})"
@@ -91,7 +94,7 @@ def _get_spike_max_lag_correlation_matrix_from_db(
                 return None, None
 
             corr_matrix = np.asarray(corr_matrix_data, dtype=float)
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(spike_roi_labels)
 
             return corr_matrix, roi_labels
     except OperationalError:
@@ -378,13 +381,18 @@ def _get_ccg_zscore_matrix_from_db(
 
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
-                zscore_matrix_data = fov_analysis.spike_ccg_zscore_matrix_rising_edges
+                zscore_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_ccg_zscore_matrix_rising_edges"
+                )
                 matrix_type = "rising edges"
             else:
-                zscore_matrix_data = fov_analysis.spike_ccg_zscore_matrix
+                zscore_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_ccg_zscore_matrix"
+                )
                 matrix_type = "thresholded binary"
 
-            if zscore_matrix_data is None or fov_analysis.active_roi_labels is None:
+            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            if zscore_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no CCG z-score "
                     f"matrix ({matrix_type})"
@@ -392,7 +400,7 @@ def _get_ccg_zscore_matrix_from_db(
                 return None, None
 
             zscore_matrix = np.asarray(zscore_matrix_data, dtype=float)
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(spike_roi_labels)
 
             return zscore_matrix, roi_labels
     except OperationalError:

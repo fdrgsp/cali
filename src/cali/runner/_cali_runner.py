@@ -1635,8 +1635,8 @@ class CaliRunner:
             for fov_analysis in fov._new_fov_analysis:
                 fov_analysis.analysis_result_id = analysis_result_id
                 fov_analysis.fov_id = fov.id
-                session.add(fov_analysis)
-            delattr(fov, "_new_fov_analysis")
+            # Keep these staged until commit_fov_result attaches all ROI traces.
+            # Autoflush here would validate a FOV before its source graph exists.
 
         result = session.get(CaliResult, analysis_result_id)
         if result is not None:
@@ -1681,6 +1681,15 @@ class CaliRunner:
                             child.provenance_source == "legacy_unresolved"
                             for analysis in owner.data_analysis_results
                             if analysis.roi_id == roi.id
+                            for child in analysis.spike_analyses
+                        )
+                    )
+                    or (
+                        owner is not None
+                        and any(
+                            child.provenance_source == "legacy_unresolved"
+                            for analysis in owner.fov_analysis_results
+                            if analysis.fov_id == fov.id
                             for child in analysis.spike_analyses
                         )
                     )

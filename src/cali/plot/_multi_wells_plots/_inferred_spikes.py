@@ -77,7 +77,9 @@ def _query_burst_metrics_by_condition(
             data: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
 
             for fa, fov, well, settings in results:
-                if not fa.spike_burst_count:  # skip None and 0
+                if not fa.get_spike_metric(
+                    "oasis", "spike_burst_count"
+                ):  # skip None and 0
                     continue
 
                 cond_label = _get_condition_label(well)
@@ -85,22 +87,32 @@ def _query_burst_metrics_by_condition(
 
                 # Compute burst rate from stored population activity length
                 rate_per_min = 0.0
-                if fa.spike_population_activity and settings.frame_rate:
-                    n_frames = len(fa.spike_population_activity)
+                if (
+                    fa.get_spike_metric("oasis", "spike_population_activity")
+                    and settings.frame_rate
+                ):
+                    n_frames = len(
+                        fa.get_spike_metric("oasis", "spike_population_activity")
+                    )
                     duration_min = n_frames / settings.frame_rate / 60.0
                     if duration_min > 0:
-                        rate_per_min = fa.spike_burst_count / duration_min
+                        rate_per_min = (
+                            fa.get_spike_metric("oasis", "spike_burst_count")
+                            / duration_min
+                        )
 
                 data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = {
-                    "count": float(fa.spike_burst_count),
+                    "count": float(fa.get_spike_metric("oasis", "spike_burst_count")),
                     "avg_duration_sec": (
-                        float(fa.spike_burst_avg_duration)
-                        if fa.spike_burst_avg_duration is not None
+                        float(fa.get_spike_metric("oasis", "spike_burst_avg_duration"))
+                        if fa.get_spike_metric("oasis", "spike_burst_avg_duration")
+                        is not None
                         else 0.0
                     ),
                     "avg_interval_sec": (
-                        float(fa.spike_burst_avg_interval)
-                        if fa.spike_burst_avg_interval is not None
+                        float(fa.get_spike_metric("oasis", "spike_burst_avg_interval"))
+                        if fa.get_spike_metric("oasis", "spike_burst_avg_interval")
+                        is not None
                         else 0.0
                     ),
                     "rate_per_min": rate_per_min,
@@ -385,18 +397,28 @@ def _query_fov_scalar_by_condition(
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
 
-    from cali.sqlmodel import FOV, FOVAnalysis, Well
+    from cali.sqlmodel import FOV, FOVAnalysis, SpikeFOVAnalysis, Well
+    from cali.sqlmodel._spike_fov_analysis import SPIKE_FOV_METRICS
 
     try:
         ensure_schema_current(engine)
         with Session(engine) as session:
-            field_col = getattr(FOVAnalysis, field_name)
+            is_spike_metric = field_name in SPIKE_FOV_METRICS
+            field_col = getattr(
+                SpikeFOVAnalysis if is_spike_metric else FOVAnalysis, field_name
+            )
             stmt = (
                 select(FOVAnalysis, FOV, Well)
                 .join(FOV, FOVAnalysis.fov_id == FOV.id)
                 .join(Well, FOV.well_id == Well.id)
-                .where(col(field_col).is_not(None))
             )
+            if is_spike_metric:
+                stmt = stmt.join(
+                    SpikeFOVAnalysis,
+                    col(SpikeFOVAnalysis.fov_analysis_id) == FOVAnalysis.id,
+                ).where(SpikeFOVAnalysis.method == "oasis", col(field_col).is_not(None))
+            else:
+                stmt = stmt.where(col(field_col).is_not(None))
 
             if run_id is not None:
                 stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
@@ -405,12 +427,21 @@ def _query_fov_scalar_by_condition(
 
             data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             for fov_analysis, fov, well in results:
-                value = getattr(fov_analysis, field_name)
+                value = (
+                    fov_analysis.get_spike_metric("oasis", field_name)
+                    if is_spike_metric
+                    else getattr(fov_analysis, field_name)
+                )
                 if value is None:
                     continue  # pragma: no cover
 
-                if use_n_pairs_weight and fov_analysis.active_roi_labels:
-                    n_rois = len(fov_analysis.active_roi_labels)
+                roi_labels = (
+                    fov_analysis.get_spike_roi_labels("oasis")
+                    if is_spike_metric
+                    else fov_analysis.calcium_active_roi_labels
+                )
+                if use_n_pairs_weight and roi_labels:
+                    n_rois = len(roi_labels)
                     weight = max(1, n_rois * (n_rois - 1) // 2)
                 else:
                     weight = 1

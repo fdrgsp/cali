@@ -18,6 +18,7 @@ from cali.sqlmodel._model import (
     DataAnalysis,
     DetectionSettings,
     Experiment,
+    FOVAnalysis,
     Mask,
     Plate,
     Traces,
@@ -357,6 +358,28 @@ def commit_fov_result(
         fov_result.well_id = well.id
         session.add(fov_result)
 
+    if hasattr(fov_result, "_new_fov_analysis"):
+        target_fov = existing_fov if existing_fov is not None else fov_result
+        for analysis in fov_result._new_fov_analysis:
+            if analysis.analysis_result_id is not None and target_fov.id is not None:
+                # A forced rerun replaces this FOV's result for the same run.
+                # Delete/flush first so normalized children keep their uniqueness.
+                with session.no_autoflush:
+                    previous = session.exec(
+                        select(FOVAnalysis).where(
+                            FOVAnalysis.fov_id == target_fov.id,
+                            FOVAnalysis.analysis_result_id
+                            == analysis.analysis_result_id,
+                        )
+                    ).all()
+                    for old_analysis in previous:
+                        session.delete(old_analysis)
+                if previous:
+                    session.flush()
+            analysis.fov = target_fov
+            session.add(analysis)
+        delattr(fov_result, "_new_fov_analysis")
+
     if commit:
         session.commit()
 
@@ -405,56 +428,59 @@ def update_fovs_in_database(
         ensure_schema_current(engine)
         with Session(engine) as session:
             for fov in fov_list:
-                # Load existing FOV from database by position_index to get the ID
-                from sqlmodel import select
+                with session.no_autoflush:
+                    # Load existing FOV from database by position_index to get the ID
+                    from sqlmodel import select
 
-                db_fov = session.exec(
-                    select(FOV).where(FOV.position_index == fov.position_index)
-                ).first()
+                    db_fov = session.exec(
+                        select(FOV).where(FOV.position_index == fov.position_index)
+                    ).first()
 
-                if db_fov:
-                    # Update existing - set the ID so merge updates instead of inserting
-                    fov.id = db_fov.id
-                    fov.well_id = db_fov.well_id
+                    if db_fov:
+                        # Reuse IDs so merge updates existing rows.
+                        fov.id = db_fov.id
+                        fov.well_id = db_fov.well_id
 
-                    # Match and update ROIs by label_value
+                        # Match and update ROIs by label_value
+                        for roi in fov.rois:
+                            db_roi = next(
+                                (
+                                    r
+                                    for r in db_fov.rois
+                                    if r.label_value == roi.label_value
+                                ),
+                                None,
+                            )
+                            if db_roi:
+                                roi.id = db_roi.id
+                                roi.fov_id = db_roi.fov_id
+
+                    # Transfer temporary attributes to relationships
+                    # (ExtractionRunner stores traces in _new_traces temporarily)
                     for roi in fov.rois:
-                        db_roi = next(
-                            (
-                                r
-                                for r in db_fov.rois
-                                if r.label_value == roi.label_value
-                            ),
-                            None,
-                        )
-                        if db_roi:
-                            roi.id = db_roi.id
-                            roi.fov_id = db_roi.fov_id
+                        if hasattr(roi, "_new_traces"):
+                            for trace in roi._new_traces:
+                                roi.traces_history.append(trace)
+                            delattr(roi, "_new_traces")
 
-                # Transfer temporary attributes to relationships
-                # (ExtractionRunner stores traces in _new_traces temporarily)
-                for roi in fov.rois:
-                    if hasattr(roi, "_new_traces"):
-                        for trace in roi._new_traces:
-                            roi.traces_history.append(trace)
-                        delattr(roi, "_new_traces")
+                        if hasattr(roi, "_new_data_analysis"):
+                            for data_analysis in roi._new_data_analysis:
+                                roi.data_analysis_history.append(data_analysis)
+                            delattr(roi, "_new_data_analysis")
 
-                    if hasattr(roi, "_new_data_analysis"):
-                        for data_analysis in roi._new_data_analysis:
-                            roi.data_analysis_history.append(data_analysis)
-                        delattr(roi, "_new_data_analysis")
+                    # Process temporary new FOV analysis
+                    # Add directly to the session instead of using relationship
+                    # (avoids DetachedInstanceError when fov isn't in session)
+                    if hasattr(fov, "_new_fov_analysis"):
+                        for fov_analysis in fov._new_fov_analysis:
+                            # Set the fov_id directly since we now know the ID
+                            fov_analysis.fov_id = fov.id
+                            session.add(fov_analysis)
+                        delattr(fov, "_new_fov_analysis")
 
-                # Process temporary new FOV analysis
-                # Add directly to the session instead of using relationship
-                # (avoids DetachedInstanceError when fov isn't in session)
-                if hasattr(fov, "_new_fov_analysis"):
-                    for fov_analysis in fov._new_fov_analysis:
-                        # Set the fov_id directly since we now know the ID
-                        fov_analysis.fov_id = fov.id
-                        session.add(fov_analysis)
-                    delattr(fov, "_new_fov_analysis")
-
-                session.merge(fov)
+                    session.merge(fov)
+                # The next merge must see shared provenance IDs as persistent rows.
+                session.flush()
             session.commit()
     finally:
         if should_dispose:

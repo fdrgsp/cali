@@ -59,7 +59,9 @@ class SpikeAnalysis(SQLModel, table=True):  # type: ignore[call-arg, unused-igno
     provenance_source: str = "analysis"
 
     data_analysis: "DataAnalysis" = Relationship(back_populates="spike_analyses")
-    analysis_result: Optional["CaliResult"] = Relationship()
+    analysis_result: Optional["CaliResult"] = Relationship(
+        back_populates="spike_analysis_results"
+    )
     spike_trace: Optional["SpikeTrace"] = Relationship(
         sa_relationship_kwargs={"lazy": "selectin"}
     )

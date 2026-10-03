@@ -71,7 +71,7 @@ def _get_dff_correlation_matrix_from_db(
 
             if (
                 fov_analysis.calcium_dff_correlation_matrix is None
-                or fov_analysis.active_roi_labels is None
+                or fov_analysis.calcium_active_roi_labels is None
             ):
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no DF/F correlation matrix"
@@ -81,7 +81,7 @@ def _get_dff_correlation_matrix_from_db(
             corr_matrix = np.asarray(
                 fov_analysis.calcium_dff_correlation_matrix, dtype=float
             )
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(fov_analysis.calcium_active_roi_labels)
 
             return corr_matrix, roi_labels
     except OperationalError:
@@ -134,7 +134,7 @@ def _get_den_dff_correlation_matrix_from_db(
 
             if (
                 fov_analysis.calcium_den_dff_corr_matrix is None
-                or fov_analysis.active_roi_labels is None
+                or fov_analysis.calcium_active_roi_labels is None
             ):
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} "
@@ -145,7 +145,7 @@ def _get_den_dff_correlation_matrix_from_db(
             corr_matrix = np.asarray(
                 fov_analysis.calcium_den_dff_corr_matrix, dtype=float
             )
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(fov_analysis.calcium_active_roi_labels)
 
             return corr_matrix, roi_labels
     except OperationalError:

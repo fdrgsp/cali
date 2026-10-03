@@ -75,13 +75,18 @@ def _get_spike_max_lag_values_matrix_from_db(
 
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
-                lag_matrix_data = fov_analysis.spike_max_lag_values_matrix_rising_edges
+                lag_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_max_lag_values_matrix_rising_edges"
+                )
                 matrix_type = "rising edges"
             else:
-                lag_matrix_data = fov_analysis.spike_max_lag_values_matrix
+                lag_matrix_data = fov_analysis.get_spike_metric(
+                    "oasis", "spike_max_lag_values_matrix"
+                )
                 matrix_type = "thresholded binary"
 
-            if lag_matrix_data is None or fov_analysis.active_roi_labels is None:
+            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            if lag_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike max-lag values "
                     f"matrix ({matrix_type})"
@@ -89,7 +94,7 @@ def _get_spike_max_lag_values_matrix_from_db(
                 return None, None, None
 
             lag_matrix = np.asarray(lag_matrix_data, dtype=int)
-            roi_labels = list(fov_analysis.active_roi_labels)
+            roi_labels = list(spike_roi_labels)
 
             # Get max_lag from analysis settings
             max_lag_frames = None

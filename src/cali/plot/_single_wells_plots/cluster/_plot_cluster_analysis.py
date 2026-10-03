@@ -152,7 +152,7 @@ def _get_cluster_data_from_db(
 
             if (
                 fov_analysis.cluster_labels is None
-                or fov_analysis.active_roi_labels is None
+                or fov_analysis.calcium_active_roi_labels is None
             ):
                 return None, None, None, None, None, None, None
 
@@ -164,7 +164,7 @@ def _get_cluster_data_from_db(
 
             return (
                 corr_matrix,
-                list(fov_analysis.active_roi_labels),
+                list(fov_analysis.calcium_active_roi_labels),
                 list(fov_analysis.cluster_labels),
                 (
                     list(fov_analysis.cluster_order)

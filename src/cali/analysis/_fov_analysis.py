@@ -27,6 +27,7 @@ from cali.analysis._trace_analysis import (
 )
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOVAnalysis
+from cali.sqlmodel._spike_fov_analysis import SpikeFOVAnalysis, bind_fov_spike_source
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import FOV, ROI, AnalysisSettings
@@ -396,110 +397,80 @@ def compute_fov_analysis(
 
     # Create FOVAnalysis object with all measurements
     fov_analysis = FOVAnalysis(
-        active_roi_labels=roi_labels,
-        # Calcium metrics
-        calcium_dff_correlation_matrix=(
-            calcium_dff_corr_matrix.tolist()
-            if calcium_dff_corr_matrix is not None
-            else None
-        ),
-        calcium_den_dff_corr_matrix=(
-            calcium_den_dff_corr_matrix.tolist()
-            if calcium_den_dff_corr_matrix is not None
-            else None
-        ),
+        calcium_active_roi_labels=roi_labels,
+        calcium_dff_correlation_matrix=calcium_dff_corr_matrix.tolist()
+        if calcium_dff_corr_matrix is not None
+        else None,
+        calcium_den_dff_corr_matrix=calcium_den_dff_corr_matrix.tolist()
+        if calcium_den_dff_corr_matrix is not None
+        else None,
         global_calcium_dff_correlation=global_calcium_dff_corr,
         global_calcium_den_dff_correlation=global_calcium_den_dff_corr,
-        # Spike metrics
-        spike_max_lag_correlation_matrix=(
-            spike_max_lag_corr_matrix.tolist()
-            if spike_max_lag_corr_matrix is not None
-            else None
-        ),
-        global_spike_max_lag_correlation=global_spike_max_lag_corr,
-        spike_max_lag_values_matrix=(
-            spike_max_lag_values_matrix.tolist()
-            if spike_max_lag_values_matrix is not None
-            else None
-        ),
-        spike_max_lag_correlation_matrix_rising_edges=(
-            spike_max_lag_corr_matrix_rising_edges.tolist()
-            if spike_max_lag_corr_matrix_rising_edges is not None
-            else None
-        ),
-        global_spike_max_lag_correlation_rising_edges=(
-            global_spike_max_lag_corr_rising_edges
-        ),
-        spike_max_lag_values_matrix_rising_edges=(
-            spike_max_lag_values_matrix_rising_edges.tolist()
-            if spike_max_lag_values_matrix_rising_edges is not None
-            else None
-        ),
-        # Z-score matrices for CCG significance (baseline-corrected)
-        spike_ccg_zscore_matrix=(
-            spike_ccg_zscore_matrix.tolist()
-            if spike_ccg_zscore_matrix is not None
-            else None
-        ),
-        spike_ccg_zscore_matrix_rising_edges=(
-            spike_ccg_zscore_matrix_rising_edges.tolist()
-            if spike_ccg_zscore_matrix_rising_edges is not None
-            else None
-        ),
-        fraction_significant_ccg_pairs=frac_sig_ccg_pairs,
-        fraction_significant_ccg_pairs_rising_edges=(frac_sig_ccg_pairs_rising_edges),
-        spike_jitter_synchrony_matrix=(
-            spike_jitter_sync_matrix.tolist()
-            if spike_jitter_sync_matrix is not None
-            else None
-        ),
-        global_spike_jitter_synchrony=global_spike_jitter_sync,
-        spike_jitter_synchrony_matrix_rising_edges=(
-            spike_jitter_sync_matrix_rising_edges.tolist()
-            if spike_jitter_sync_matrix_rising_edges is not None
-            else None
-        ),
-        global_spike_jitter_synchrony_rising_edges=(
-            global_spike_jitter_sync_rising_edges
-        ),
-        # Population burst metrics (spike-based)
-        spike_burst_count=spike_burst_count,
-        spike_burst_avg_duration=spike_burst_avg_duration,
-        spike_burst_avg_interval=spike_burst_avg_interval,
-        spike_burst_starts=spike_burst_starts if spike_burst_starts else None,
-        spike_burst_ends=spike_burst_ends if spike_burst_ends else None,
-        spike_population_activity=(
-            spike_population_activity.tolist()
-            if spike_population_activity is not None
-            else None
-        ),
-        spike_population_activity_raw=(
-            spike_population_activity_raw.tolist()
-            if spike_population_activity_raw is not None
-            else None
-        ),
-        # Population burst metrics (calcium-based)
         calcium_burst_count=calcium_burst_count,
         calcium_burst_avg_duration=calcium_burst_avg_duration,
         calcium_burst_avg_interval=calcium_burst_avg_interval,
         calcium_burst_starts=calcium_burst_starts if calcium_burst_starts else None,
         calcium_burst_ends=calcium_burst_ends if calcium_burst_ends else None,
-        calcium_population_activity=(
-            calcium_population_activity.tolist()
-            if calcium_population_activity is not None
-            else None
-        ),
-        calcium_population_activity_raw=(
-            calcium_population_activity_raw.tolist()
-            if calcium_population_activity_raw is not None
-            else None
-        ),
-        # Cluster analysis results
+        calcium_population_activity=calcium_population_activity.tolist()
+        if calcium_population_activity is not None
+        else None,
+        calcium_population_activity_raw=calcium_population_activity_raw.tolist()
+        if calcium_population_activity_raw is not None
+        else None,
         cluster_labels=cluster_labels,
         cluster_method=cluster_method_used,
         cluster_n_clusters=cluster_n,
         cluster_silhouette_score=cluster_silhouette,
         cluster_order=cluster_order,
+        spike_analyses=[
+            SpikeFOVAnalysis(
+                active_roi_labels=roi_labels,
+                spike_max_lag_correlation_matrix=spike_max_lag_corr_matrix.tolist()
+                if spike_max_lag_corr_matrix is not None
+                else None,
+                global_spike_max_lag_correlation=global_spike_max_lag_corr,
+                spike_max_lag_values_matrix=spike_max_lag_values_matrix.tolist()
+                if spike_max_lag_values_matrix is not None
+                else None,
+                spike_max_lag_correlation_matrix_rising_edges=spike_max_lag_corr_matrix_rising_edges.tolist()
+                if spike_max_lag_corr_matrix_rising_edges is not None
+                else None,
+                global_spike_max_lag_correlation_rising_edges=global_spike_max_lag_corr_rising_edges,
+                spike_max_lag_values_matrix_rising_edges=spike_max_lag_values_matrix_rising_edges.tolist()
+                if spike_max_lag_values_matrix_rising_edges is not None
+                else None,
+                spike_ccg_zscore_matrix=spike_ccg_zscore_matrix.tolist()
+                if spike_ccg_zscore_matrix is not None
+                else None,
+                spike_ccg_zscore_matrix_rising_edges=spike_ccg_zscore_matrix_rising_edges.tolist()
+                if spike_ccg_zscore_matrix_rising_edges is not None
+                else None,
+                fraction_significant_ccg_pairs=frac_sig_ccg_pairs,
+                fraction_significant_ccg_pairs_rising_edges=frac_sig_ccg_pairs_rising_edges,
+                spike_jitter_synchrony_matrix=spike_jitter_sync_matrix.tolist()
+                if spike_jitter_sync_matrix is not None
+                else None,
+                global_spike_jitter_synchrony=global_spike_jitter_sync,
+                spike_jitter_synchrony_matrix_rising_edges=spike_jitter_sync_matrix_rising_edges.tolist()
+                if spike_jitter_sync_matrix_rising_edges is not None
+                else None,
+                global_spike_jitter_synchrony_rising_edges=global_spike_jitter_sync_rising_edges,
+                spike_burst_count=spike_burst_count,
+                spike_burst_avg_duration=spike_burst_avg_duration,
+                spike_burst_avg_interval=spike_burst_avg_interval,
+                spike_burst_starts=spike_burst_starts if spike_burst_starts else None,
+                spike_burst_ends=spike_burst_ends if spike_burst_ends else None,
+                spike_population_activity=spike_population_activity.tolist()
+                if spike_population_activity is not None
+                else None,
+                spike_population_activity_raw=spike_population_activity_raw.tolist()
+                if spike_population_activity_raw is not None
+                else None,
+            )
+        ]
+        if analysis_settings.enable_spikes
+        else [],
     )
 
+    bind_fov_spike_source(fov_analysis, fov)
     return fov_analysis

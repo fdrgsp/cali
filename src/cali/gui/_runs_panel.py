@@ -23,7 +23,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import col, select
 from superqt import QIconifyIcon
 from superqt.utils import signals_blocked
 
@@ -31,6 +31,7 @@ from cali._constants import RED
 from cali.logger import cali_logger
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
 from cali.sqlmodel._model import AnalysisSettings, CaliResult, DetectionSettings
+from cali.sqlmodel._source_provenance import MigrationIssue
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -240,13 +241,30 @@ class _RunsPanel(QGroupBox):
                 ensure_schema_current(engine)
                 with Session(engine) as session:
                     # Runs
+                    unresolved_metrics = set(
+                        session.exec(
+                            select(MigrationIssue.analysis_result_id).where(
+                                col(MigrationIssue.resolved).is_(False),
+                                col(MigrationIssue.code).in_(
+                                    [
+                                        "unresolved_spike_analysis",
+                                        "unresolved_spike_fov_analysis",
+                                    ]
+                                ),
+                            )
+                        ).all()
+                    )
                     stmt = (
                         select(CaliResult, DetectionSettings)
                         .where(CaliResult.detection_settings_id == DetectionSettings.id)
                         .order_by(CaliResult.created_at)
                     )
                     for result, detection_settings in session.exec(stmt).all():
-                        self._add_run_item(result, detection_settings)
+                        self._add_run_item(
+                            result,
+                            detection_settings,
+                            unresolved_metrics=result.id in unresolved_metrics,
+                        )
 
                     # Saved segmentations have no referencing CaliResult.
                     used_ids_stmt = select(CaliResult.detection_settings_id).where(
@@ -578,7 +596,11 @@ class _RunsPanel(QGroupBox):
             return 0
 
     def _add_run_item(
-        self, result: CaliResult, detection_settings: DetectionSettings
+        self,
+        result: CaliResult,
+        detection_settings: DetectionSettings,
+        *,
+        unresolved_metrics: bool = False,
     ) -> None:
         """Add a run item to the list."""
         created_at = result.created_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -631,6 +653,7 @@ class _RunsPanel(QGroupBox):
             resolution.startswith("unresolved")
             or resolution == "multiple_sources"
             or source_deleted
+            or unresolved_metrics
         ):
             item.setText(item_text + "\n  ⚠️ Extraction source needs review")
             source_warning = (
@@ -638,6 +661,8 @@ class _RunsPanel(QGroupBox):
                 "Stored results remain available; select an extraction source "
                 "before re-analysis or comparison.\n"
             )
+            if unresolved_metrics:
+                source_warning += "Historical spike metric ownership needs review.\n"
         item.setData(Qt.ItemDataRole.UserRole, result.id)
 
         item.setToolTip(

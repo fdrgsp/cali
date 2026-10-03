@@ -62,6 +62,13 @@ from cali.sqlmodel._spike_analysis import (
 from cali.sqlmodel._spike_analysis import (
     SpikeAnalysis as SpikeAnalysis,
 )
+from cali.sqlmodel._spike_fov_analysis import (
+    SPIKE_FOV_METRICS,
+    normalize_spike_fov_analyses,
+)
+from cali.sqlmodel._spike_fov_analysis import (
+    SpikeFOVAnalysis as SpikeFOVAnalysis,
+)
 from cali.sqlmodel._spike_settings import (
     LEGACY_SPIKE_SETTING_NAMES,
     ExtractionOutputSettings,
@@ -239,6 +246,14 @@ class CaliResult(SQLModel, table=True):
     )
     fov_analysis_results: list["FOVAnalysis"] = Relationship(
         back_populates="analysis_result"
+    )
+    spike_analysis_results: list["SpikeAnalysis"] = Relationship(
+        back_populates="analysis_result",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    spike_fov_analysis_results: list["SpikeFOVAnalysis"] = Relationship(
+        back_populates="analysis_result",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
 
     def __eq__(self, other: object) -> bool:
@@ -1782,6 +1797,7 @@ def _validate_method_settings(
 event.listen(SASession, "before_flush", _validate_method_settings)
 event.listen(SASession, "before_flush", normalize_trace_provenance)
 event.listen(SASession, "before_flush", normalize_spike_analyses)
+event.listen(SASession, "before_flush", normalize_spike_fov_analyses)
 
 
 class Plate(SQLModel, table=True):  # type: ignore[call-arg]
@@ -2549,7 +2565,9 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     # ROI ordering for matrix interpretation
-    active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    calcium_active_roi_labels: list[int] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
 
     # Calcium peaks metrics (from den_dff traces and peak events)
     # 0. Zero-lag correlation on ΔF/F traces
@@ -2566,58 +2584,171 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Spike metrics (from inferred spikes)
     # 1. Max lag correlation on spikes (thresholded binary)
-    spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_spike_max_lag_correlation: float | None = None
+    @property
+    def spike_max_lag_correlation_matrix(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_max_lag_correlation_matrix"
+        )
+        return value
+
+    @property
+    def global_spike_max_lag_correlation(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric(
+            "global_spike_max_lag_correlation"
+        )
+        return value
+
     # 2a. Lag values at max correlation for spikes (thresholded binary)
-    spike_max_lag_values_matrix: list[list[int]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
+    @property
+    def spike_max_lag_values_matrix(self) -> list[list[int]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[int]] | None = self._single_spike_metric(
+            "spike_max_lag_values_matrix"
+        )
+        return value
+
     # 2b. Max lag correlation on spikes (thresholded rising edges)
-    spike_max_lag_correlation_matrix_rising_edges: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_spike_max_lag_correlation_rising_edges: float | None = None
+    @property
+    def spike_max_lag_correlation_matrix_rising_edges(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_max_lag_correlation_matrix_rising_edges"
+        )
+        return value
+
+    @property
+    def global_spike_max_lag_correlation_rising_edges(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric(
+            "global_spike_max_lag_correlation_rising_edges"
+        )
+        return value
+
     # 2c. Lag values at max correlation for spikes (thresholded rising edges)
-    spike_max_lag_values_matrix_rising_edges: list[list[int]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
+    @property
+    def spike_max_lag_values_matrix_rising_edges(self) -> list[list[int]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[int]] | None = self._single_spike_metric(
+            "spike_max_lag_values_matrix_rising_edges"
+        )
+        return value
+
     # 2d. Z-score matrices for CCG significance (baseline-corrected)
     # Z-score = (CCG_raw - baseline_mean) / baseline_std at the max-lag position
     # |z| > 2 suggests significant functional connectivity
-    spike_ccg_zscore_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    spike_ccg_zscore_matrix_rising_edges: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
+    @property
+    def spike_ccg_zscore_matrix(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_ccg_zscore_matrix"
+        )
+        return value
+
+    @property
+    def spike_ccg_zscore_matrix_rising_edges(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_ccg_zscore_matrix_rising_edges"
+        )
+        return value
+
     # 2e. Fraction of significant CCG pairs (|z| > 2)
-    fraction_significant_ccg_pairs: float | None = None
-    fraction_significant_ccg_pairs_rising_edges: float | None = None
+    @property
+    def fraction_significant_ccg_pairs(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric(
+            "fraction_significant_ccg_pairs"
+        )
+        return value
+
+    @property
+    def fraction_significant_ccg_pairs_rising_edges(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric(
+            "fraction_significant_ccg_pairs_rising_edges"
+        )
+        return value
+
     # 3. Jitter synchrony on spikes (thresholded binary)
-    spike_jitter_synchrony_matrix: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_spike_jitter_synchrony: float | None = None
+    @property
+    def spike_jitter_synchrony_matrix(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_jitter_synchrony_matrix"
+        )
+        return value
+
+    @property
+    def global_spike_jitter_synchrony(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric("global_spike_jitter_synchrony")
+        return value
+
     # 4. Jitter synchrony on spikes (thresholded rising edges)
-    spike_jitter_synchrony_matrix_rising_edges: list[list[float]] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    global_spike_jitter_synchrony_rising_edges: float | None = None
+    @property
+    def spike_jitter_synchrony_matrix_rising_edges(self) -> list[list[float]] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[list[float]] | None = self._single_spike_metric(
+            "spike_jitter_synchrony_matrix_rising_edges"
+        )
+        return value
+
+    @property
+    def global_spike_jitter_synchrony_rising_edges(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric(
+            "global_spike_jitter_synchrony_rising_edges"
+        )
+        return value
 
     # Population burst metrics (spike-based)
-    spike_burst_count: int | None = None
-    spike_burst_avg_duration: float | None = None
-    spike_burst_avg_interval: float | None = None
-    spike_burst_starts: list[int] | None = Field(default=None, sa_column=Column(JSON))
-    spike_burst_ends: list[int] | None = Field(default=None, sa_column=Column(JSON))
-    spike_population_activity: list[float] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
-    spike_population_activity_raw: list[float] | None = Field(
-        default=None, sa_column=Column(JSON)
-    )
+    @property
+    def spike_burst_count(self) -> int | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: int | None = self._single_spike_metric("spike_burst_count")
+        return value
+
+    @property
+    def spike_burst_avg_duration(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric("spike_burst_avg_duration")
+        return value
+
+    @property
+    def spike_burst_avg_interval(self) -> float | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: float | None = self._single_spike_metric("spike_burst_avg_interval")
+        return value
+
+    @property
+    def spike_burst_starts(self) -> list[int] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[int] | None = self._single_spike_metric("spike_burst_starts")
+        return value
+
+    @property
+    def spike_burst_ends(self) -> list[int] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[int] | None = self._single_spike_metric("spike_burst_ends")
+        return value
+
+    @property
+    def spike_population_activity(self) -> list[float] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[float] | None = self._single_spike_metric(
+            "spike_population_activity"
+        )
+        return value
+
+    @property
+    def spike_population_activity_raw(self) -> list[float] | None:
+        """Deprecated singular spike result; rejects dual methods."""
+        value: list[float] | None = self._single_spike_metric(
+            "spike_population_activity_raw"
+        )
+        return value
 
     # Population burst metrics (calcium-based)
     calcium_burst_count: int | None = None
@@ -2642,6 +2773,77 @@ class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
     # Relationships
     fov: "FOV" = Relationship(back_populates="fov_analysis_history")
     analysis_result: "CaliResult" = Relationship(back_populates="fov_analysis_results")
+
+    spike_analyses: list["SpikeFOVAnalysis"] = Relationship(
+        back_populates="fov_analysis",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
+
+    def __init__(self, **data: Any) -> None:
+        legacy = {name: data.pop(name) for name in SPIKE_FOV_METRICS if name in data}
+        labels = data.pop("active_roi_labels", None)
+        if labels is not None:
+            if "calcium_active_roi_labels" in data:
+                raise ValueError("Specify only one calcium ROI ordering.")
+            data["calcium_active_roi_labels"] = labels
+        if legacy and "spike_analyses" in data:
+            raise ValueError("Use spike_analyses or legacy FOV metrics, not both.")
+        super().__init__(**data)
+        if "id" not in self.__dict__:
+            return
+        if any(value is not None for value in legacy.values()):
+            self.spike_analyses = [
+                SpikeFOVAnalysis(
+                    **legacy,
+                    active_roi_labels=labels,
+                    provenance_source="synthetic_legacy_api",
+                )
+            ]
+
+    def get_spike_analysis(self, method: SpikeMethod) -> SpikeFOVAnalysis | None:
+        """Select one method's FOV results explicitly."""
+        matches = [child for child in self.spike_analyses if child.method == method]
+        if len(matches) > 1:
+            raise ValueError(f"Duplicate FOV spike analyses for {method}.")
+        return matches[0] if matches else None
+
+    def get_spike_roi_labels(self, method: SpikeMethod) -> list[int] | None:
+        """Return the ordering belonging to the selected method's matrices."""
+        child = self.get_spike_analysis(method)
+        return child.active_roi_labels if child is not None else None
+
+    def get_spike_metric(self, method: SpikeMethod, metric: str) -> Any:
+        """Read a named spike metric for an explicit method."""
+        if metric not in SPIKE_FOV_METRICS:
+            raise ValueError(f"Unknown FOV spike metric: {metric}.")
+        child = self.get_spike_analysis(method)
+        return getattr(child, metric) if child is not None else None
+
+    def _single_spike_metric(self, metric: str) -> Any:
+        if len(self.spike_analyses) > 1:
+            raise ValueError("Multiple spike FOV results: select a method.")
+        return getattr(self.spike_analyses[0], metric) if self.spike_analyses else None
+
+    @property
+    def active_roi_labels(self) -> list[int] | None:
+        """Deprecated calcium ordering; spike results carry their own ordering."""
+        return self.calcium_active_roi_labels
+
+
+for _legacy_metric in (*SPIKE_FOV_METRICS, "active_roi_labels"):
+    _child_column = (
+        SQLModel.metadata.tables["spike_fov_analysis"].c[_legacy_metric]
+        if _legacy_metric != "active_roi_labels"
+        else None
+    )
+    SQLModel.metadata.tables["fov_analysis"].append_column(
+        Column(
+            _legacy_metric,
+            _child_column.type.copy() if _child_column is not None else JSON,
+            nullable=True,
+            default=None,
+        )
+    )
 
 
 class Mask(SQLModel, table=True):  # type: ignore[call-arg]
