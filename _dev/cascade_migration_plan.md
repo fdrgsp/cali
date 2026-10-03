@@ -203,6 +203,27 @@ focused JSON module. Ruff passes; mypy remains at 354 existing diagnostics with 
 diagnostics. Legacy database fixtures were restored. Source repair/splitting and legacy stage
 flag audits remain pending in P2b; CASCADE execution remains gated.
 
+P2b continuation — legacy extracted-stage audit (2026-10-03):
+
+- Schema v8 audits backfilled `legacy_stage_inferred` analysis runs whose trace payloads and
+  frame windows match an earlier compatible extraction. Historical stage flags cannot distinguish
+  copying from deterministic re-extraction, so such matches withdraw guessed ownership rather
+  than selecting a new source automatically. The audit stores candidate result/trace IDs and
+  the previous source/resolution, preserving every scientific payload exactly.
+- Later results sharing the guessed windows/inference records are audited as well. Affected
+  ROI/FOV spike metrics retain their values and ordering on the read-only compatibility path;
+  original provenance records retain the legacy owner. Explicit/current provenance, distinct
+  payloads/windows/settings, future candidates, and extraction-only runs remain unchanged.
+- A partial-copy regression also fixed reuse of an existing frame window when adding a new ROI
+  to a persisted FOV: lookup now uses the FOV relationship ID before the ROI FK is synchronized.
+
+Validation: **1674 passed, 1 skipped in 227.43 s** in the full suite; **89 passed** in focused
+storage/source/JSON checks. Regressions cover old-schema upgrades, timestamp ties, partial copies,
+exact payload preservation, idempotence, atomic rollback/retry, read-only metrics, and explicit
+selection of a clean source. Ruff passes; mypy has 354 existing diagnostics and no additions.
+Checked-in database fixtures were restored. Source repair/comparison flows and splitting future
+mixed-source workloads remain pending; CASCADE remains gated.
+
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after
 adding a regression and fix for validation copying an existing settings object without

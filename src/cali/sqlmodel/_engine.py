@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Connection
 
+from ._source_audit_migration import audit_legacy_stage_sources
 from ._source_migration import migrate_source_links
 from ._spike_analysis_migration import migrate_spike_analyses
 from ._spike_fov_analysis_migration import migrate_spike_fov_analyses
@@ -16,7 +17,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _add_columns(
@@ -180,6 +181,7 @@ _MIGRATIONS = (
     migrate_source_links,
     migrate_spike_analyses,
     migrate_spike_fov_analyses,
+    audit_legacy_stage_sources,
 )
 
 

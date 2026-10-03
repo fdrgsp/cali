@@ -179,7 +179,13 @@ def normalize_trace_provenance(session: "Session", *_: Any) -> None:
                 and window.retained_frame_count not in (None, 0)
             ):
                 window.fov = roi.fov
-                window.fov_id = roi.fov_id
+                window.fov_id = (
+                    roi.fov_id
+                    if roi.fov_id is not None
+                    else roi.fov.id
+                    if roi.fov is not None
+                    else None
+                )
             result_key = window.extraction_result_id or (
                 id(window.extraction_result)
                 if window.extraction_result is not None
