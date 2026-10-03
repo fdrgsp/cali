@@ -85,6 +85,7 @@ dev = [
     "black",
     "ipython",
     "mypy",
+    "types-PyYAML",
     "pre-commit",
     "pytest-cov",
     "pytest",

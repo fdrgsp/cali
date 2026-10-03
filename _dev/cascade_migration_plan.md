@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, lazy source-verified loader, and clean-wheel CI added; next: P4 model catalogue/manifest/download, then P3a reference inference; later method-specific consumers/comparisons pending; production CASCADE not enabled
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package and P4 catalogue/verified model cache/download CLI implemented; next: P3a reference inference; later method-specific consumers/comparisons pending; production CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -442,9 +442,39 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P4's pinned model catalogue, verified manifests, and download CLI. Follow the
+**Next landing step:** P3a's once-per-FOV reference adapter and pretrained numerical oracle. Follow the
 binding sequence in §9 for packaging, the reference
 oracle, analysis semantics, and CASCADE GUI exposure. CASCADE is not yet available.
+
+Step 6 — pinned catalogue, verified model cache, and download CLI (2026-10-03):
+
+- The 156-model catalogue is pinned to upstream revision
+  `c6978d5ff33edad8792c76e040412f0636913092` and raw-file SHA-256
+  `8a1545a44d5b8feec4513e119992eaa81a0b371a37dba9d56afa1addb8dc74b9`.
+  Model selection is explicit; rate-hint filtering excludes incompatible/unknown rates and
+  never chooses a nearest model. Downloaded config supplies authoritative inference metadata.
+- `cali cascade-download <name> --model-dir <path>` is now implemented. The default cache
+  respects `CALI_CASCADE_MODELS`, otherwise `~/.cali/cascade_models`. HTTPS downloads have
+  socket/deadline and stream/extraction size limits. Model installation stages config/weights,
+  rejects unsafe paths/symlinks/duplicates, verifies the noise/ensemble coverage, and atomically
+  renames only complete verified models. Interrupted/failed downloads clean up their staging
+  directories. Existing caches are verified and never silently overwritten.
+- Ordered config/weight manifests record individual SHA-256 hashes, catalogue identity, and an
+  aggregate manifest hash. Every offline load rechecks all files; `--expected-manifest` pins a
+  previously reviewed model across machines. Missing/offline models give the exact retry
+  command. No automatic inference-time downloads or Torch imports are introduced.
+- Model metadata now exposes the upstream prediction padding interval and minimum retained
+  length (65 frames for a symmetric 64-frame model), ready for P3a's timing preflight.
+  Runner/GUI execution remains gated until the later inference/analysis checks pass.
+
+Validation: **69 passed in 1.76 s**, covering download/model failures, CLI/tree regressions,
+lazy package loading, and exact OASIS results. Ruff passes and mypy adds no diagnostics
+(354 existing). The real `Global_EXC_10Hz_smoothing200ms` validation candidate downloaded
+successfully to a temporary cache and contains **35 weights**, with configured noise levels
+**2–8**; these are read from config, not inferred from the plan's illustrative coverage.
+Its manifest is `5ea5fce55ff49cebf093f4c749cf1f5843aea39b6eb803ef1ce943223c736344`.
+The built cali wheel's command reuses that verified model offline with the required manifest;
+metadata-only imports pass warnings-as-errors without importing Torch/CASCADE.
 
 ## 0. TL;DR
 

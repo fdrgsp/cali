@@ -163,6 +163,20 @@ This step installs and tests CASCADE's package; production inference and GUI sel
 remain gated by the model, numerical-reference, and method-specific analysis checks in
 [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
 
+Download an explicitly chosen model with:
+
+```bash
+cali cascade-download <exact-model-name> --model-dir /path/to/model-cache
+```
+
+Without `--model-dir`, the cache uses `CALI_CASCADE_MODELS` or
+`~/.cali/cascade_models`. The command verifies the pinned catalogue, installs
+the model atomically, and prints its sampling rate and manifest SHA-256.
+`--expected-manifest <sha256>` requires the same config and ordered weights on
+another machine. Cached models are verified on every load and work offline;
+inference never downloads a missing model automatically. Choose the model's rate,
+family, and smoothing deliberately for the recording; no model is selected by default.
+
 <br>
 
 ---

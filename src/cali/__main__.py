@@ -106,6 +106,23 @@ def main(args: Sequence[str] | None = None) -> None:
         help="Show analysis settings in the tree (default: True)",
     )
 
+    download_parser = subparsers.add_parser(
+        "cascade-download",
+        help="Download and verify an explicitly selected CASCADE model",
+    )
+    download_parser.add_argument(
+        "name", help="Exact name in the pinned model catalogue"
+    )
+    download_parser.add_argument(
+        "--model-dir",
+        type=Path,
+        help="Model cache (default: CALI_CASCADE_MODELS or ~/.cali/cascade_models)",
+    )
+    download_parser.add_argument(
+        "--expected-manifest",
+        help="Require this SHA-256 model manifest before installing",
+    )
+
     parsed_args = parser.parse_args(args)
 
     # Set logger level
@@ -115,6 +132,23 @@ def main(args: Sequence[str] | None = None) -> None:
 
     if parsed_args.command == "tree":
         _tree_command(parsed_args)
+        return
+
+    if parsed_args.command == "cascade-download":
+        from cali._cascade_models import CascadeModelError, download_cascade_model
+
+        try:
+            model = download_cascade_model(
+                parsed_args.name,
+                parsed_args.model_dir,
+                expected_manifest=parsed_args.expected_manifest,
+            )
+        except (CascadeModelError, OSError) as error:
+            parser.exit(1, f"CASCADE model error: {error}\n")
+        print(f"Model: {model.name}")
+        print(f"Directory: {model.directory.resolve()}")
+        print(f"Sampling rate: {model.sampling_rate:g} Hz")
+        print(f"Manifest SHA-256: {model.manifest_sha256}")
         return
 
     cali_logger.info(f"Logger level set to {parsed_args.logger.upper()}")
