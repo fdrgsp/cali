@@ -150,11 +150,13 @@ class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignor
 def normalize_trace_provenance(session: "Session", *_: Any) -> None:
     """Bind/deduplicate provenance before insertion, including headless ORM writes."""
     from ._model import ROI, CaliResult, Traces
+    from ._spike_fov_analysis import SpikeFOVAnalysis
 
     new_objects = list(session.new)
     runs: dict[tuple, SpikeInferenceRun] = {}
     windows: dict[tuple, ExtractionFrameWindow] = {}
     replaced: set[int] = set()
+    run_aliases: dict[int, SpikeInferenceRun] = {}
     for trace in (obj for obj in new_objects if isinstance(obj, Traces)):
         owner = trace.analysis_result
         if owner is None and trace.analysis_result_id is not None:
@@ -273,10 +275,19 @@ def normalize_trace_provenance(session: "Session", *_: Any) -> None:
                             "extraction/method."
                         )
                 child.inference_run = existing_run
+                run_aliases[id(run)] = existing_run
                 replaced.add(id(run))
             else:
                 existing_run = run
             runs[run_key] = existing_run
+
+    # FOV calculations can precede the cross-FOV persistence merge. Keep their
+    # explicit source pointer on the same canonical run as the stored arrays.
+    for obj in new_objects + list(session.dirty):
+        if isinstance(obj, SpikeFOVAnalysis) and obj.inference_run is not None:
+            canonical = run_aliases.get(id(obj.inference_run))
+            if canonical is not None:
+                obj.inference_run = canonical
 
     # Relationship reassignment leaves unused transient rows in session.new.
     for obj in new_objects:

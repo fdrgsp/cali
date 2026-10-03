@@ -1,184 +1,29 @@
-"""FOV-level analysis functions for computing correlation and synchrony matrices.
-
-This module provides functions to compute pairwise correlation and synchrony
-matrices across all active ROIs in a FOV, as well as population-level burst
-detection. These metrics are computed once during analysis and stored in the
-FOVAnalysis table for efficient retrieval.
-"""
+"""Independent calcium and per-method FOV correlation, synchrony and bursts."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from cali.analysis._cluster_analysis import compute_cluster_analysis
 from cali.analysis._fov_metrics import (
     _compute_zero_lag_corr_matrix,
     _detect_calcium_population_bursts,
-    _detect_spikes_population_bursts,
-    _get_fraction_significant_pairs,
     _get_global_pairwise_score,
-    _get_spike_correlations_matrix,
 )
-from cali.analysis._trace_analysis import (
-    compute_rising_edges,
-    threshold_spike_train,
-)
-from cali.logger import cali_logger
-from cali.sqlmodel._model import FOVAnalysis
-from cali.sqlmodel._spike_fov_analysis import SpikeFOVAnalysis, bind_fov_spike_source
+from cali.sqlmodel import FOVAnalysis
+from cali.sqlmodel._spike_settings import canonical_spike_methods
+
+from ._fov_inputs import CalciumPopulation, collect_calcium, collect_spikes
 
 if TYPE_CHECKING:
-    from cali.sqlmodel._model import FOV, ROI, AnalysisSettings
+    import numpy as np
+
+    from cali.sqlmodel import FOV, AnalysisSettings
 
 
-def compute_fov_analysis(
-    fov: FOV,
-    analysis_settings: AnalysisSettings,
-) -> FOVAnalysis | None:
-    """Compute FOV-level correlation and synchrony analysis.
-
-    This function calculates 5 pairwise metrics for all active ROIs in a FOV:
-
-    DF/F and Denoised DF/F Calcium Traces
-    -------------------
-    1. Zero-lag Pearson correlation on ΔF/F traces
-    2. Zero-lag Pearson correlation on denoised ΔF/F traces
-
-    Inferred Spikes
-    ---------------
-    3. Max-lag CCG-like correlation on binary spike trains (within ± max_lag)
-    4. Jitter synchrony on binary spike trains (± jitter window)
-
-    Burst Detection
-    ---------------
-    5. Additionally, population-level burst detection is performed on both the
-    inferred spike trains and denoised ΔF/F traces, yielding metrics such as
-    burst count, average duration, average interval, and population activity traces.
-
-    It requires that ROIs have traces and data_analysis attached
-    (either via history or _new_* attributes).
-
-    Parameters
-    ----------
-    fov : FOV
-        FOV containing ROIs with traces and analysis data
-    analysis_settings : AnalysisSettings
-        Settings containing jitter_window and max_lag parameters
-
-    Returns
-    -------
-    FOVAnalysis | None
-        FOVAnalysis object with computed matrices, or None if insufficient data
-    """
-    # Collect active ROIs with their traces and analysis data
-    active_rois: list[ROI] = []
-    for roi in fov.rois:
-        if not roi.active:
-            continue
-        active_rois.append(roi)
-
-    if len(active_rois) < 2:
-        cali_logger.info(
-            f"FOV {fov.name}: Not enough active ROIs ({len(active_rois)}) "
-            "for correlation/synchrony analysis. Need at least 2."
-        )
-        return None
-
-    # Get traces and analysis data for active ROIs
-    # Use _new_traces/_new_data_analysis if available (during extraction/analysis)
-    # Otherwise fall back to traces_history/data_analysis_history
-    roi_labels: list[int] = []
-    dff_traces: list[np.ndarray] = []
-    den_dff_traces: list[np.ndarray] = []
-    spike_trains: list[np.ndarray] = []  # Binary (thresholded) for CCG/jitter/bursts
-    calcium_peak_events: list[
-        np.ndarray
-    ] = []  # Binary calcium peaks for burst detection
-    peak_events_dict: dict[str, list[float]] = {}
-    spike_data_dict: dict[str, list[float]] = {}
-    spike_data_dict_rising_edges: dict[str, list[float]] = {}
-
-    for roi in active_rois:
-        if roi.label_value is None:
-            continue
-
-        # Get traces - prefer _new_traces if available
-        traces = None
-        pinned_trace = getattr(roi, "_analysis_source_trace", None)
-        if hasattr(roi, "_new_traces") and roi._new_traces:
-            traces = roi._new_traces[-1]  # Most recent
-        elif pinned_trace is not None:
-            traces = pinned_trace
-        elif roi.traces_history:
-            traces = roi.traces_history[-1]
-
-        if traces is None or traces.den_dff is None:
-            continue
-
-        # Get analysis data - prefer _new_data_analysis if available
-        data_analysis = None
-        if hasattr(roi, "_new_data_analysis") and roi._new_data_analysis:
-            data_analysis = roi._new_data_analysis[-1]
-        elif roi.data_analysis_history:
-            data_analysis = roi.data_analysis_history[-1]
-
-        dff = np.asarray(traces.dff, dtype=float)
-        if dff.ndim != 1 or dff.size == 0:
-            continue
-
-        den_dff = np.asarray(traces.den_dff, dtype=float)
-        if den_dff.ndim != 1 or den_dff.size == 0:
-            continue
-
-        roi_labels.append(int(roi.label_value))
-        dff_traces.append(dff)
-        den_dff_traces.append(den_dff)
-
-        # Build peak event binary arrays
-        if data_analysis is not None and data_analysis.peaks_den_dff is not None:
-            # Create binary peak event array
-            peak_indices = [int(p) for p in data_analysis.peaks_den_dff]
-            peak_array = np.zeros(len(den_dff), dtype=float)
-            for idx in peak_indices:
-                if 0 <= idx < len(peak_array):
-                    peak_array[idx] = 1.0
-            calcium_peak_events.append(peak_array)  # For burst detection
-            peak_events_dict[str(roi.label_value)] = peak_array.tolist()
-
-        # Build spike data for inferred spikes
-        if traces.get_spike_values("oasis") is not None:
-            spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
-
-            # Create binary spike trains for CCG, jitter synchrony, and bursts
-            spike_threshold = (
-                data_analysis.get_spike_metric("oasis", "threshold")
-                if data_analysis is not None
-                else None
-            )
-
-            if spike_threshold is not None:
-                # Threshold and binarize
-                spike_train = threshold_spike_train(spikes, spike_threshold)
-                # Always append spike train, even if sum == 0
-                # This ensures spike matrices have same dimensions as active_roi_labels
-                spike_trains.append(spike_train)
-                spike_data_dict[str(roi.label_value)] = spike_train.tolist()
-
-                # Compute rising edges for this spike train
-                spike_train_rising_edges = compute_rising_edges(spike_train)
-                spike_data_dict_rising_edges[str(roi.label_value)] = (
-                    spike_train_rising_edges.tolist()
-                )
-
-    if len(roi_labels) < 2:
-        cali_logger.info(
-            f"FOV {fov.name}: Not enough ROIs with valid traces "
-            f"({len(roi_labels)}) for correlation analysis."
-        )
-        return None
-
+def _compute_calcium_population(
+    population: CalciumPopulation, analysis_settings: AnalysisSettings
+) -> FOVAnalysis:
     # Calcium trace metrics (gated by enable_calcium)
     calcium_dff_corr_matrix = None
     calcium_den_dff_corr_matrix = None
@@ -186,8 +31,8 @@ def compute_fov_analysis(
     global_calcium_den_dff_corr = None
 
     if analysis_settings.enable_calcium:
-        calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(dff_traces)
-        calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(den_dff_traces)
+        calcium_dff_corr_matrix = _compute_zero_lag_corr_matrix(population.dff)
+        calcium_den_dff_corr_matrix = _compute_zero_lag_corr_matrix(population.den_dff)
 
         global_calcium_dff_corr = (
             _get_global_pairwise_score(calcium_dff_corr_matrix)
@@ -207,7 +52,7 @@ def compute_fov_analysis(
     cluster_silhouette = None
     cluster_order = None
 
-    if calcium_den_dff_corr_matrix is not None and len(roi_labels) >= 3:
+    if calcium_den_dff_corr_matrix is not None and len(population.labels) >= 3:
         cluster_result = compute_cluster_analysis(
             corr_matrix=calcium_den_dff_corr_matrix,
             method=analysis_settings.cluster_method,
@@ -221,155 +66,6 @@ def compute_fov_analysis(
             cluster_silhouette = cluster_result.silhouette_score
             cluster_order = cluster_result.order
 
-    # Convert milliseconds to frames using frame_rate
-    frame_rate = analysis_settings.frame_rate  # frames per second
-
-    # Helper function to convert ms to frames
-    def ms_to_frames(ms: float) -> int:
-        """Convert milliseconds to frames based on frame rate.
-
-        Returns integer number of frames, minimum 0.
-
-        Note: If ms is smaller than one frame period, this returns 0, which is
-        intentional and mathematically sound:
-        - For jitter_window=0: Only exact frame coincidence is counted
-        - For max_lag=0: Only zero-lag correlation is computed (standard Pearson)
-
-        This provides a graceful fallback for small time windows at high frame rates.
-        """
-        # ms / 1000 = seconds
-        # seconds * fps = frames
-        return max(0, int((ms / 1000.0) * frame_rate))
-
-    # 3. Max lag correlation on spikes (standard CCG with baseline correction)
-    spike_max_lag_corr_matrix = None
-    spike_max_lag_values_matrix = None
-    global_spike_max_lag_corr = None
-    spike_ccg_zscore_matrix = None
-    frac_sig_ccg_pairs = None
-    # 3b. Max lag correlation on spikes (rising edges)
-    spike_max_lag_corr_matrix_rising_edges = None
-    spike_max_lag_values_matrix_rising_edges = None
-    global_spike_max_lag_corr_rising_edges = None
-    spike_ccg_zscore_matrix_rising_edges = None
-    frac_sig_ccg_pairs_rising_edges = None
-    # 4. Jitter synchrony on spikes (thresholded binary)
-    spike_jitter_sync_matrix = None
-    global_spike_jitter_sync = None
-    # 4b. Jitter synchrony on spikes (rising edges)
-    spike_jitter_sync_matrix_rising_edges = None
-    global_spike_jitter_sync_rising_edges = None
-
-    if analysis_settings.enable_spikes and len(spike_data_dict) >= 2:
-        # 3a. Max lag correlation on spikes (thresholded binary)
-        # Using standard CCG methodology with:
-        # - Per-trigger probability normalization (trigger_prob)
-        # - Border correction for unbiased estimates at large lags
-        # - Baseline correction using shift predictor
-        max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
-        max_lag_frames = ms_to_frames(max_lag_ms)
-        n_shuffles = analysis_settings.ccg_n_shuffles
-        (
-            spike_max_lag_corr_matrix,
-            spike_max_lag_values_matrix,
-            spike_ccg_zscore_matrix,
-        ) = _get_spike_correlations_matrix(
-            spike_data_dict,
-            method="cross_correlation",
-            max_lag=max_lag_frames,
-            n_shuffles=n_shuffles,
-        )
-        if spike_max_lag_corr_matrix is not None:
-            global_spike_max_lag_corr = _get_global_pairwise_score(
-                spike_max_lag_corr_matrix
-            )
-        if spike_ccg_zscore_matrix is not None:
-            frac_sig_ccg_pairs = _get_fraction_significant_pairs(
-                spike_ccg_zscore_matrix
-            )
-
-        # 3b. Max lag correlation on spikes (thresholded rising edges)
-        # Only compute if enabled (approximately doubles CCG computation time)
-        if (
-            analysis_settings.enable_rising_edge_analysis
-            and len(spike_data_dict_rising_edges) >= 2
-        ):
-            (
-                spike_max_lag_corr_matrix_rising_edges,
-                spike_max_lag_values_matrix_rising_edges,
-                spike_ccg_zscore_matrix_rising_edges,
-            ) = _get_spike_correlations_matrix(
-                spike_data_dict_rising_edges,
-                method="cross_correlation",
-                max_lag=max_lag_frames,
-                n_shuffles=n_shuffles,
-            )
-            if spike_max_lag_corr_matrix_rising_edges is not None:
-                global_spike_max_lag_corr_rising_edges = _get_global_pairwise_score(
-                    spike_max_lag_corr_matrix_rising_edges
-                )
-            if spike_ccg_zscore_matrix_rising_edges is not None:
-                frac_sig_ccg_pairs_rising_edges = _get_fraction_significant_pairs(
-                    spike_ccg_zscore_matrix_rising_edges
-                )
-
-        # 4. Jitter synchrony on spikes (thresholded binary)
-        jitter_window_ms = analysis_settings.spikes_sync_jitter_window
-        jitter_window_frames = ms_to_frames(jitter_window_ms)
-        spike_jitter_sync_matrix, _, _ = _get_spike_correlations_matrix(
-            spike_data_dict,
-            method="jitter_window",
-            jitter_window=jitter_window_frames,
-        )
-        if spike_jitter_sync_matrix is not None:
-            global_spike_jitter_sync = _get_global_pairwise_score(
-                spike_jitter_sync_matrix
-            )
-
-        # 4b. Jitter synchrony on spikes (thresholded rising edges)
-        if (
-            analysis_settings.enable_rising_edge_analysis
-            and len(spike_data_dict_rising_edges) >= 2
-        ):
-            spike_jitter_sync_matrix_rising_edges, _, _ = (
-                _get_spike_correlations_matrix(
-                    spike_data_dict_rising_edges,
-                    method="jitter_window",
-                    jitter_window=jitter_window_frames,
-                )
-            )
-            if spike_jitter_sync_matrix_rising_edges is not None:
-                global_spike_jitter_sync_rising_edges = _get_global_pairwise_score(
-                    spike_jitter_sync_matrix_rising_edges
-                )
-
-    # 5. Burst detection on population spike activity
-    spike_burst_count: int | None = None
-    spike_burst_avg_duration: float | None = None
-    spike_burst_avg_interval: float | None = None
-    spike_burst_starts: list[int] = []
-    spike_burst_ends: list[int] = []
-    spike_population_activity: np.ndarray | None = None
-    spike_population_activity_raw: np.ndarray | None = None
-
-    if analysis_settings.enable_spikes and len(spike_trains) >= 2:
-        (
-            spike_burst_count,
-            spike_burst_avg_duration,
-            spike_burst_avg_interval,
-            spike_burst_starts,
-            spike_burst_ends,
-            spike_population_activity_raw,
-            spike_population_activity,
-        ) = _detect_spikes_population_bursts(
-            spike_trains=spike_trains,
-            frame_rate=analysis_settings.frame_rate,
-            burst_threshold_percent=analysis_settings.burst_threshold,
-            min_duration_ms=analysis_settings.burst_min_duration,
-            gaussian_sigma_sec=analysis_settings.burst_gaussian_sigma,
-        )
-
-    # Burst detection on population calcium activity
     calcium_burst_count: int | None = None
     calcium_burst_avg_duration: float | None = None
     calcium_burst_avg_interval: float | None = None
@@ -378,7 +74,7 @@ def compute_fov_analysis(
     calcium_population_activity: np.ndarray | None = None
     calcium_population_activity_raw: np.ndarray | None = None
 
-    if analysis_settings.enable_calcium and len(calcium_peak_events) >= 2:
+    if analysis_settings.enable_calcium and len(population.peaks) >= 2:
         (
             calcium_burst_count,
             calcium_burst_avg_duration,
@@ -388,7 +84,7 @@ def compute_fov_analysis(
             calcium_population_activity_raw,
             calcium_population_activity,
         ) = _detect_calcium_population_bursts(
-            peak_events=calcium_peak_events,
+            peak_events=population.peaks,
             frame_rate=analysis_settings.frame_rate,
             burst_threshold_percent=analysis_settings.calcium_burst_threshold,
             min_duration_ms=analysis_settings.calcium_burst_min_duration,
@@ -396,8 +92,8 @@ def compute_fov_analysis(
         )
 
     # Create FOVAnalysis object with all measurements
-    fov_analysis = FOVAnalysis(
-        calcium_active_roi_labels=roi_labels,
+    return FOVAnalysis(
+        calcium_active_roi_labels=population.labels,
         calcium_dff_correlation_matrix=calcium_dff_corr_matrix.tolist()
         if calcium_dff_corr_matrix is not None
         else None,
@@ -422,55 +118,52 @@ def compute_fov_analysis(
         cluster_n_clusters=cluster_n,
         cluster_silhouette_score=cluster_silhouette,
         cluster_order=cluster_order,
-        spike_analyses=[
-            SpikeFOVAnalysis(
-                active_roi_labels=roi_labels,
-                spike_max_lag_correlation_matrix=spike_max_lag_corr_matrix.tolist()
-                if spike_max_lag_corr_matrix is not None
-                else None,
-                global_spike_max_lag_correlation=global_spike_max_lag_corr,
-                spike_max_lag_values_matrix=spike_max_lag_values_matrix.tolist()
-                if spike_max_lag_values_matrix is not None
-                else None,
-                spike_max_lag_correlation_matrix_rising_edges=spike_max_lag_corr_matrix_rising_edges.tolist()
-                if spike_max_lag_corr_matrix_rising_edges is not None
-                else None,
-                global_spike_max_lag_correlation_rising_edges=global_spike_max_lag_corr_rising_edges,
-                spike_max_lag_values_matrix_rising_edges=spike_max_lag_values_matrix_rising_edges.tolist()
-                if spike_max_lag_values_matrix_rising_edges is not None
-                else None,
-                spike_ccg_zscore_matrix=spike_ccg_zscore_matrix.tolist()
-                if spike_ccg_zscore_matrix is not None
-                else None,
-                spike_ccg_zscore_matrix_rising_edges=spike_ccg_zscore_matrix_rising_edges.tolist()
-                if spike_ccg_zscore_matrix_rising_edges is not None
-                else None,
-                fraction_significant_ccg_pairs=frac_sig_ccg_pairs,
-                fraction_significant_ccg_pairs_rising_edges=frac_sig_ccg_pairs_rising_edges,
-                spike_jitter_synchrony_matrix=spike_jitter_sync_matrix.tolist()
-                if spike_jitter_sync_matrix is not None
-                else None,
-                global_spike_jitter_synchrony=global_spike_jitter_sync,
-                spike_jitter_synchrony_matrix_rising_edges=spike_jitter_sync_matrix_rising_edges.tolist()
-                if spike_jitter_sync_matrix_rising_edges is not None
-                else None,
-                global_spike_jitter_synchrony_rising_edges=global_spike_jitter_sync_rising_edges,
-                spike_burst_count=spike_burst_count,
-                spike_burst_avg_duration=spike_burst_avg_duration,
-                spike_burst_avg_interval=spike_burst_avg_interval,
-                spike_burst_starts=spike_burst_starts if spike_burst_starts else None,
-                spike_burst_ends=spike_burst_ends if spike_burst_ends else None,
-                spike_population_activity=spike_population_activity.tolist()
-                if spike_population_activity is not None
-                else None,
-                spike_population_activity_raw=spike_population_activity_raw.tolist()
-                if spike_population_activity_raw is not None
-                else None,
+    )
+
+
+def _compute_fov_analysis(
+    fov: FOV, analysis_settings: AnalysisSettings, *, parallel: bool
+) -> FOVAnalysis | None:
+    from ._fov_analysis_parallel import compute_spike_population
+
+    analysis_settings.validate_spike_settings()
+    calcium = (
+        collect_calcium(fov)
+        if analysis_settings.enable_calcium
+        else CalciumPopulation()
+    )
+    spikes = (
+        [
+            collect_spikes(fov, analysis_settings, method)
+            for method in canonical_spike_methods(
+                [child.method for child in analysis_settings.spike_settings]
             )
         ]
         if analysis_settings.enable_spikes
-        else [],
+        else []
     )
+    if len(calcium.labels) < 2 and not any(len(child.labels) >= 2 for child in spikes):
+        return None
+    parent = (
+        _compute_calcium_population(calcium, analysis_settings)
+        if len(calcium.labels) >= 2
+        else FOVAnalysis(calcium_active_roi_labels=calcium.labels)
+    )
+    parent.spike_analyses = [
+        compute_spike_population(
+            population,
+            analysis_settings.get_spike_settings(population.method),
+            name=fov.name,
+            parallel=parallel,
+            n_workers=max(1, analysis_settings.n_processes),
+        )
+        for population in spikes
+    ]
+    return parent
 
-    bind_fov_spike_source(fov_analysis, fov)
-    return fov_analysis
+
+def compute_fov_analysis(
+    fov: FOV, analysis_settings: AnalysisSettings
+) -> FOVAnalysis | None:
+    """Compute independent populations using sequential pairwise spike metrics."""
+    return _compute_fov_analysis(fov, analysis_settings, parallel=False)

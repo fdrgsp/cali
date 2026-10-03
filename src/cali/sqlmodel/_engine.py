@@ -18,7 +18,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def _add_columns(
@@ -187,6 +187,19 @@ def _acquisition_timing(connection: Connection) -> None:
     )
 
 
+def _spike_population_coordinates(connection: Connection) -> None:
+    """Leave historical population intervals/rates unknown during migration."""
+    _add_columns(
+        connection,
+        "spike_fov_analysis",
+        (
+            ("valid_start", "INTEGER"),
+            ("valid_stop", "INTEGER"),
+            ("frame_rate_hz", "FLOAT"),
+        ),
+    )
+
+
 def _calcium_noise(connection: Connection) -> None:
     """Keep OASIS calcium noise independent of retained spike outputs.
 
@@ -208,6 +221,7 @@ _MIGRATIONS = (
     _acquisition_timing,
     _calcium_noise,
     migrate_trace_arrays,
+    _spike_population_coordinates,
 )
 
 

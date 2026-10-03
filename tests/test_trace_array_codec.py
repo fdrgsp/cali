@@ -246,7 +246,10 @@ def test_migration_streams_all_rows_and_preserves_legacy_and_unknown_provenance(
     engine = create_cali_engine(f"sqlite:///{path}")
     try:
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 11
+            assert (
+                connection.exec_driver_sql("PRAGMA user_version").scalar()
+                == _engine.SCHEMA_VERSION
+            )
             rows = connection.exec_driver_sql(
                 'SELECT typeof("values"),"values",noise FROM spike_trace ORDER BY id'
             ).all()
@@ -301,7 +304,10 @@ def test_invalid_row_rolls_back_previous_arrays_and_version(
             )
         ensure_schema_current(engine)
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 11
+            assert (
+                connection.exec_driver_sql("PRAGMA user_version").scalar()
+                == _engine.SCHEMA_VERSION
+            )
     finally:
         engine.dispose()
 
@@ -333,7 +339,10 @@ def test_interrupted_conversion_is_atomic_and_retryable(tmp_path: Path) -> None:
             )
         ensure_schema_current(engine)
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 11
+            assert (
+                connection.exec_driver_sql("PRAGMA user_version").scalar()
+                == _engine.SCHEMA_VERSION
+            )
     finally:
         engine.dispose()
 

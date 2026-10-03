@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations and CASCADE ROI metrics implemented; method-bound FOV analysis, real-plate performance, consumer/comparison integration, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations and CASCADE ROI metrics plus P6b method-bound FOV populations implemented; schema-12 population coordinates added; real-plate performance, consumer/comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,8 +442,9 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6b per-method FOV collections, activity membership and valid-interval
-population analysis, followed by method-aware consumers/comparison selection. Step 10's production codec now addresses the measured dense-JSON budget failure.
+**Next landing step:** P6c method-aware exports, plot/metric consumers and comparison selection,
+including per-pillar activity and population-array coordinate handling. Complete those checks before
+opening the full runner's CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
 available, before release or GUI exposure.
@@ -786,7 +787,7 @@ P6a — shared ROI analysis and CASCADE spike semantics (2026-10-03):
   finite/nonnegative checks. A silent OASIS trace therefore no longer fails persistence.
 - Calcium-only `AnalysisRunner` re-analysis now accepts CASCADE settings: the public
   spike-analysis gate is consulted only when spike analysis is enabled. Full CASCADE
-  plate spike analysis stays gated until P6b's FOV method/pillar collections land.
+  plate spike analysis stays gated through the remaining P6 FOV/consumer checks.
   Per-pillar ROI flags are available, but the legacy `ROI.active` selection is retained
   during this slice so existing FOV calcium membership cannot change prematurely.
 
@@ -804,6 +805,59 @@ Validation: **81 passed in 1.94 s** in focused ROI/OASIS/settings/persistence ch
 9.73 s** against the newly built and installed wheel with real pretrained models.
 Ruff lint/format pass. Mypy adds no diagnostics (352 existing versus 353 before this
 slice). Test-migrated tracked database fixtures were restored after all test jobs ended.
+
+P6b — independent FOV populations and stored coordinates (2026-10-03):
+
+- Both sequential and parallel FOV entry points now use one shared orchestrator.
+  Calcium correlations, bursts and clustering use `DataAnalysis.calcium_active`;
+  each spike collection uses its own `SpikeAnalysis.spike_active`. An explicit False
+  never falls back to `ROI.active`. Historical/synthetic rows whose per-pillar flag
+  is unknown retain the legacy activity fallback. Extraction and re-analysis now
+  set the ROI summary to calcium activity OR any enabled method's spike activity.
+- Every selected method receives its own labels, applied thresholds, binary/onset
+  arrays, CCG, jitter and burst settings, metrics and inference source. Spike-only
+  FOV calculations no longer require calcium arrays or two calcium-active ROIs.
+  When another pillar has sufficient data, methods with zero/one active ROI retain
+  honest membership/provenance while leaving pairwise and burst metrics unset.
+- Spike population inputs must agree on method/units, selected source, inference
+  run, retained lengths, timestamps and extraction window. Active inputs are cropped
+  to their common nonempty valid interval before every population calculation.
+  CASCADE uses the persisted acquisition rate; OASIS retains the legacy configured
+  FOV rate. Cropping cannot create an onset at the first common sample. Full-length
+  OASIS retains its first-positive-sample convention.
+- Schema 12 adds nullable `valid_start`, `valid_stop` and `frame_rate_hz` to
+  `SpikeFOVAnalysis`. Population arrays cover that half-open retained-relative
+  interval; burst bounds include its origin and remain retained-relative. New
+  database/JSON writes validate coordinates and array lengths. The transactional
+  migration leaves historical coordinates unknown and existing metrics unchanged;
+  interrupted DDL rolls back and retries successfully.
+- Parallel CCG pool sizes and pair indices now follow the selected method's ROI
+  count. Worker inputs contain valid samples only. Calcium calculation is shared
+  once across retained output selections; deterministic per-method FOV metrics
+  match corresponding single-output calculations. Shift-predictor z-scores remain
+  stochastic, as before; they are tested through settings/input routing rather than
+  an unsupported exact equality claim.
+- Persistence now retargets staged FOV inference pointers when per-FOV provenance
+  merges into one canonical extraction/method run. This fixes multi-FOV extraction
+  and preserves strict source validation. Coverage includes all FOVs staged together
+  and later FOVs attached after an earlier flush.
+- The installed-wheel CI includes FOV semantics. The codec migration benchmark
+  accepts the current schema, fingerprints every original field and separately
+  verifies the newly added population coordinates remain NULL; a smoke check passes.
+
+Full runner CASCADE spike analysis remains gated until method-aware exports and
+plot/aggregation consumers handle these populations and coordinates. Standalone
+FOV calculations work from persisted arrays without optional inference packages
+or model files. GUI exposure and independent real-plate/device measurements remain
+later gates; P6 as a whole is not complete.
+
+Validation: **105 passed in 2.03 s** in focused population/codec/ROI checks before
+the additional cross-FOV cases; **49 passed in 3.83 s** in provenance/runner checks
+after the canonical-run fix; **2009 passed, 13 skipped in 227.49 s** in the full
+base/GUI suite; **212 passed in 12.95 s** against the rebuilt and installed wheel
+with real pretrained models. Ruff lint/format pass and full-environment mypy adds
+no diagnostics (352 existing). Tracked database fixtures are restored after test
+processes stop; no migrated test databases are committed.
 
 ## 0. TL;DR
 

@@ -1,8 +1,9 @@
-"""Verify and time production schema-10 to schema-11 upgrades on copied files.
+"""Verify and time schema-10 upgrades to the current schema on copied files.
 
 Run after benchmark_cascade_storage.py, without competing measurement processes.
 All original databases/exports remain untouched. Database fingerprints replace only
-spike-array encoding with decoded float64 bytes; every other stored field is exact.
+spike-array encoding with decoded float64 bytes; every original stored field is exact.
+Schema-12's added, unknown population coordinates are separately verified as NULL.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from sqlmodel import Session, select
 
 from cali._constants import CASCADE_EXPECTED_SPIKES_TRACES, INFERRED_SPIKES_TRACES
 from cali.sqlmodel import SpikeTrace, create_cali_engine
+from cali.sqlmodel._engine import SCHEMA_VERSION
 from cali.sqlmodel._trace_array_codec import decode_trace_array
 from cali.sqlmodel._trace_array_migration import migrate_trace_arrays
 from cali.util._database_to_csv import export_traces_to_csv
@@ -37,8 +39,16 @@ def fingerprint(path: Path) -> str:
         )
         for name in tables:
             quoted = '"' + name.replace('"', '""') + '"'
-            cursor = connection.execute(f"SELECT * FROM {quoted} ORDER BY rowid")
-            columns = [item[0] for item in cursor.description]
+            columns = [
+                row[1]
+                for row in connection.execute(f"PRAGMA table_info({quoted})")
+                if name != "spike_fov_analysis"
+                or row[1] not in {"valid_start", "valid_stop", "frame_rate_hz"}
+            ]
+            selected = ",".join('"' + col.replace('"', '""') + '"' for col in columns)
+            cursor = connection.execute(
+                f"SELECT {selected} FROM {quoted} ORDER BY rowid"
+            )
             digest.update(repr((name, columns)).encode())
             for row in cursor:
                 values = list(row)
@@ -110,7 +120,14 @@ def main() -> None:
     assert expected and actual == expected, "Migrated exports differ from original."
     before_vacuum_bytes = destination.stat().st_size
     with sqlite3.connect(destination) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM spike_fov_analysis WHERE valid_start IS NOT NULL "
+                "OR valid_stop IS NOT NULL OR frame_rate_hz IS NOT NULL"
+            ).fetchone()[0]
+            == 0
+        )
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM spike_trace WHERE typeof(\"values\")='blob'"
@@ -128,7 +145,7 @@ def main() -> None:
         ).hexdigest(),
         "rows": row_count,
         "schema_before": version,
-        "schema_after": 11,
+        "schema_after": SCHEMA_VERSION,
         "database_fingerprint": before,
         "all_decoded_arrays_and_other_fields_exact": True,
         "all_csv_files_byte_identical": True,

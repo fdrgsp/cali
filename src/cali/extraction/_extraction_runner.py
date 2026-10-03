@@ -88,7 +88,7 @@ class ExtractionRunner:
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None = None,
     ) -> None:
-        """Validate dispatch and keep CASCADE spike analysis gated until P6."""
+        """Validate dispatch; P6's remaining consumers gate full CASCADE analysis."""
         extraction_settings.validate_output_settings()
         if analysis_settings is not None:
             analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
@@ -1080,11 +1080,8 @@ class ExtractionRunner:
             except AnalysisCancelled:
                 return None
 
-            # Preserve the legacy summary until P6's FOV pillar selection lands.
-            active = (
-                bool(data_analysis.calcium_active)
-                if analysis_settings.enable_calcium
-                else any(child.spike_active for child in data_analysis.spike_analyses)
+            active = bool(data_analysis.calcium_active) or any(
+                child.spike_active for child in data_analysis.spike_analyses
             )
 
         return (

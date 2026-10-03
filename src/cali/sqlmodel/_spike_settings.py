@@ -33,7 +33,7 @@ def canonical_spike_methods(value: Any) -> tuple[SpikeMethod, ...]:
 
 
 def require_available_spike_methods(methods: Any) -> None:
-    """Gate CASCADE spike consumers until method-bound analysis lands in P6."""
+    """Gate complete CASCADE runs until P6's export/plot consumers select a method."""
     if "cascade" in canonical_spike_methods(methods):
         raise NotImplementedError(
             "CASCADE spike analysis is not available yet. Extract without spike "

@@ -90,6 +90,8 @@ def _validate_snapshot(obj: SQLModel) -> None:
             raise ValueError("Spike valid interval must lie within the stored array.")
         method, units = run.method, run.units
     elif isinstance(obj, (SpikeAnalysis, SpikeFOVAnalysis)):
+        if isinstance(obj, SpikeFOVAnalysis):
+            obj.validate_population_coordinates()
         method, units = obj.method, obj.units
         if isinstance(obj, SpikeAnalysis):
             run = obj.spike_trace.inference_run if obj.spike_trace is not None else None

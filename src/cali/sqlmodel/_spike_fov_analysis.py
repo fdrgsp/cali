@@ -1,5 +1,6 @@
 """Method-bound FOV spike results and their input ordering."""
 
+import math
 from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import UniqueConstraint, inspect
@@ -66,6 +67,11 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
     units: str = "a.u."
     provenance_source: str = "analysis"
     active_roi_labels: list[int] | None = Field(default=None, sa_column=Column(JSON))
+    # Population arrays cover this retained-relative half-open interval. Unknown
+    # historical coordinates remain NULL rather than being guessed in migration.
+    valid_start: int | None = None
+    valid_stop: int | None = None
+    frame_rate_hz: float | None = None
 
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)
@@ -117,6 +123,39 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
     inference_run: Optional["SpikeInferenceRun"] = Relationship(
         sa_relationship_kwargs={"lazy": "selectin"}
     )
+
+    def validate_population_coordinates(self) -> None:
+        """Require complete, usable coordinates for cropped population arrays."""
+        coordinates = (self.valid_start, self.valid_stop, self.frame_rate_hz)
+        if all(value is None for value in coordinates):
+            return
+        start, stop, rate = coordinates
+        if (
+            start is None
+            or stop is None
+            or rate is None
+            or not 0 <= start < stop
+            or not math.isfinite(rate)
+            or rate <= 0
+        ):
+            raise ValueError(
+                "FOV spike population coordinates must be complete and valid."
+            )
+        for values in (
+            self.spike_population_activity,
+            self.spike_population_activity_raw,
+        ):
+            if values is not None and len(values) != stop - start:
+                raise ValueError(
+                    "FOV spike population arrays must match their valid interval."
+                )
+        for bounds in (self.spike_burst_starts, self.spike_burst_ends):
+            if bounds is not None and any(
+                not start <= bound <= stop for bound in bounds
+            ):
+                raise ValueError(
+                    "FOV spike burst bounds must lie in their valid interval."
+                )
 
 
 def normalize_spike_fov_analyses(session: "Session", *_: Any) -> None:
@@ -261,6 +300,7 @@ def normalize_spike_fov_analyses(session: "Session", *_: Any) -> None:
         if isinstance(obj, SpikeFOVAnalysis)
     }
     for child in children.values():
+        child.validate_population_coordinates()
         if child.provenance_source == "legacy_unresolved":
             state = inspect(child)
             assert state is not None

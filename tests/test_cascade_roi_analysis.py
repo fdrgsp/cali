@@ -319,10 +319,14 @@ def test_shared_roi_results_are_independent_of_retained_spike_outputs(
 
 
 @pytest.mark.parametrize("methods", [("oasis",), ("cascade",), ("oasis", "cascade")])
+@pytest.mark.parametrize("calcium_active", [True, False])
 def test_inline_roi_finalization_matches_analysis_only_calculations(
     methods: tuple,
+    calcium_active: bool,
 ) -> None:
     source = _trace(methods)
+    if not calcium_active:
+        source.raw_trace = source.dff = source.den_dff = [0.0] * 100
     window = source.extraction_frame_window
     parts = _RoiParts(
         1,
@@ -349,12 +353,14 @@ def test_inline_roi_finalization_matches_analysis_only_calculations(
         spike_traces=source.spike_traces,
     )
     assert finalized is not None
-    trace, inline, _, _, _, _ = finalized
-    reanalysis, _, _ = AnalysisRunner()._analyze_roi_traces(
+    trace, inline, active, _, _, _ = finalized
+    reanalysis, reanalysis_active, _ = AnalysisRunner()._analyze_roi_traces(
         trace, settings, ROI(label_value=1)
     )
     assert _calcium(inline) == _calcium(reanalysis)
     assert _spikes(inline) == _spikes(reanalysis)
+    assert inline.calcium_active is calcium_active
+    assert active is reanalysis_active is True
 
 
 def test_calcium_only_reanalysis_accepts_cascade_settings() -> None:

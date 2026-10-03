@@ -322,11 +322,8 @@ class AnalysisRunner:
                 # Consider the ROI stimulated if more than 10% overlaps
                 stimulated = roi_stimulation_overlap_ratio > 0.1
 
-        # Preserve the legacy summary until P6's FOV pillar selection lands.
-        active = (
-            bool(data_analysis.calcium_active)
-            if analysis_settings.enable_calcium
-            else any(child.spike_active for child in data_analysis.spike_analyses)
+        active = bool(data_analysis.calcium_active) or any(
+            child.spike_active for child in data_analysis.spike_analyses
         )
 
         return (data_analysis, active, stimulated)
