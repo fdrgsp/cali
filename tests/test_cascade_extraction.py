@@ -3,6 +3,7 @@
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -174,6 +175,80 @@ def test_all_output_modes_preserve_exact_oasis_calcium_and_noise(
         baselines.append(rows)
     assert baselines[0] == baselines[1] == baselines[2]
     assert sum(c[0] == "predict" for c in calls) == 2
+
+
+def test_active_fov_calcium_analysis_is_independent_of_spike_settings(
+    fake_reference: tuple,
+) -> None:
+    products = []
+    for methods in (("oasis",), ("cascade",), ("oasis", "cascade")):
+        dataset = _dataset(count=256)
+        image, _metadata = dataset.isel.return_value
+        image[:, 2:, 2:] = image[:, :2, :2]
+        fov = _fov()
+        analysis = AnalysisSettings(
+            frame_rate=10,
+            enable_spikes=False,
+            peaks_height_mode="global",
+            peaks_height_value=0.005,
+            peaks_prominence_multiplier=0.5,
+            spike_settings=[SpikeAnalysisSettings(method=m) for m in methods],
+        )
+        assert ExtractionRunner().run(
+            dataset, _settings(methods), [fov], analysis_settings=analysis
+        ) == [fov]
+        assert all(roi.active for roi in fov.rois)
+        result = fov._new_fov_analysis[0]
+        assert result.calcium_den_dff_corr_matrix is not None
+        assert not result.spike_analyses
+        products.append(result.model_dump(exclude={"created_at"}))
+    assert products[0] == products[1] == products[2]
+
+
+def test_fov_pool_blocks_while_remaining_worker_finishes() -> None:
+    from cali.extraction import _extraction_runner as module
+
+    runner = ExtractionRunner()
+    quick, slow = _fov(), _fov(1)
+    release = threading.Event()
+    waiting = threading.Event()
+    polls = 0
+    original_wait = module.wait
+
+    def analyze(*args: object) -> FOV:
+        fov = args[-1]
+        if fov is slow:
+            assert release.wait(5)
+        return fov
+
+    def wait(*args: object, **kwargs: object) -> tuple:
+        nonlocal polls
+        polls += 1
+        waiting.set()
+        return original_wait(*args, **kwargs)
+
+    with patch.object(module, "wait", wait), ThreadPoolExecutor(1) as consumer:
+        results = runner._exec_in_threadpool(
+            analyze,
+            _dataset(),
+            runner._cancellation_event,
+            [quick, slow],
+            _settings(("oasis",)),
+            None,
+            max_workers=2,
+        )
+        assert next(results) is quick
+        waiting.clear()
+        remaining = consumer.submit(list, results)
+        try:
+            assert waiting.wait(1)
+            # A coordinator should sleep inside wait while the slow FOV is blocked.
+            # Polling already-completed futures spins thousands of times instead.
+            assert not release.wait(0.05)
+            assert polls <= 2
+        finally:
+            release.set()
+        assert remaining.result(timeout=2) == [slow]
 
 
 @pytest.mark.parametrize(

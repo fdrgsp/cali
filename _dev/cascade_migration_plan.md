@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; next: full extraction performance/storage release gates; CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; dense JSON fails the storage release gate, so a versioned lossless trace-array codec is next; real-plate performance, CASCADE spike analysis, consumer/comparison integration, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,8 +442,11 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** Step 10's complete-mode performance and DB storage/codec release gates:
-cold/warm OASIS-only, CASCADE-only, and dual runs, including persistence and analysis costs.
+**Next landing step:** Step 10's production versioned lossless trace-array codec, triggered
+by the measured dense-JSON budget failure below. Controlled cold/warm extraction, calcium
+analysis and persistence measurements are now recorded; independent real-plate performance
+and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
+available, before release or GUI exposure.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction is now available through the upstream reference path; the cached service
 remains an explicit experimental option.
@@ -649,6 +652,67 @@ stored-method filename check passes **60 focused extraction/export tests, 3 skip
 installed-wheel reference/cache contracts pass **67 tests** under warnings-as-errors.
 Test-migrated database fixtures were restored after validation. Remote CI and GPU checks
 remain pending.
+
+Step 10a — complete controlled extraction and storage release-gate evidence (2026-10-03):
+
+- Added fresh-process `_dev/benchmark_cascade_extraction.py` for all three output modes,
+  upstream reference versus cached service versus the benchmark-only global-lock alternative.
+  Actual image-to-DFF extraction, the mandatory OASIS pass, ROI/FOV calcium analysis and normal
+  SQLite staging/commits are timed separately. Model loads, actual inference-thread settings,
+  chunk/queue bounds, peak RSS, blocked-caller retained arrays and exact numerical differences
+  are recorded. Cold is one FOV; warm is four concurrent FOVs reusing the prepared backend.
+  Known synthetic masks/images, no neuropil, 30 Hz trusted timing and a fixed 1 s OASIS tau
+  make independent process comparisons deterministic; automatic upstream AR estimation can
+  randomize invalid coefficients and is unchanged by this benchmark.
+- Complete extraction exposed two bugs. `_exec_in_threadpool()` previously waited on already
+  completed futures, causing a busy loop after the first FOV finished. It now waits only on
+  pending futures; a blocked-worker regression verifies that the coordinator sleeps. The same
+  short cached-service warm workload fell from a diagnostic 23.26 s to about 1 s. Calcium-only
+  FOV analysis also read OASIS CCG settings unconditionally, failing CASCADE-only runs with two
+  active ROIs. Those reads now occur only in the enabled spike branch; all three modes produce
+  identical active-cell calcium correlations/bursts without spike analyses.
+- Controlled extraction workloads are 8 ROIs × 256 frames and 32 ROIs × 2048 frames, each with
+  cold and four-FOV warm batches. All stored spikes, denoised calcium and calcium noise match
+  exactly across all selections/backends, including every pooled FOV. Longer warm service times
+  are 37.89 s CASCADE-only and 38.13 s dual, versus 40.39/41.24 s reference: 6.2%/7.6% improvements.
+  Cached paths load zero weights warm; reference loads 160. Four CASCADE callers retain at least
+  11.52 MiB each in source/trace/mask arrays; the service queue stays at one. Both cached paths
+  stay within the earlier 256 MiB incremental-RSS target on these controlled workloads. These
+  single CPU samples do not establish a material full-plate gain or promote the cache.
+- Added `_dev/benchmark_cascade_storage.py`: actual ORM JSON payload bytes, vacuumed database
+  sizes, write/read/export costs, plot-array preparation and temporary physical legacy OASIS
+  duplication. Short inputs repeat the checked real upstream golden excerpt to 100 ROIs; long
+  inputs reuse the recorded 100 × 6000 P3b predictions, verify equality to the independent
+  reference and reconstruct their seeded DFF. Four repeated FOVs per case are controlled
+  storage workloads; 96-FOV numbers are arithmetic projections, not independent plate runs.
+- Proposed release budget: **512 MiB for retained spike payloads including compatibility
+  duplication**, at 96 FOVs × 100 ROIs × 6000 frames; base traces/indices/analyses are additional.
+  Long JSON projects to 300.19 MiB OASIS-only, **1144.26 MiB CASCADE-only**, 1444.45 MiB dual and
+  1744.64 MiB dual plus legacy duplication. Dense JSON fails: **release is blocked on a codec**.
+  A benchmark-only versioned zlib/BLOB sidecar with dtype/shape/checksum metadata projects to
+  14.75/189.07/203.83/504.02 MiB respectively, including retained legacy JSON in the last case.
+  All decoded CASCADE float32/OASIS float64 samples equal their stored JSON values exactly;
+  no additional sum/rate/crossing error is allowed. Six-decimal rounding changes three samples
+  at a demonstrated configurable AP fraction in the long workload, so quantization is rejected.
+  Candidate files are not application-readable databases; production migration, legacy JSON
+  reads, integrity/rollback checks and consumer acceptance are still required. Compatibility
+  duplication nearly exhausts the candidate budget and needs real-data acceptance.
+- `_dev/cascade_full_mode_cpu_benchmark.json` preserves measurements, source/input hashes,
+  the pre-fix coordinator diagnostic and a real-fixture audit. Reproduction, timer boundaries,
+  full tables and remaining gates are documented in `_dev/cascade_release_benchmarks.md`.
+  The available eight-position imaging fixture repeats only two biological positions and has
+  300–500 ms stimulation-boundary intervals versus a 100 ms median, failing uniform timing.
+  The other real fixture has ten frames and fails minimum length. Neither was resampled or
+  relabeled to claim a representative plate. An independent real plate, the 100 × 6000 complete
+  image workload and GPU acceptance remain pending. CASCADE ROI/FOV spike-analysis costs must
+  be measured after P6, before release; calcium analysis alone cannot certify that gate.
+
+Validation: focused extraction/FOV regressions pass **61 tests, 2 skipped**; the full base/GUI
+suite passes **1901 tests, 13 skipped in 240.28 s**. A freshly built and installed wheel passes
+**95 tests in 9.44 s**, including actual pretrained extraction/reference/cache acceptance and
+both new regressions. Ruff passes; mypy remains at 353 existing diagnostics with no additions.
+Test-migrated database fixtures were restored after validation. Remote CI, GPU and independent
+real-plate acceptance remain pending; no production codec or CASCADE spike analysis is implied.
 
 ## 0. TL;DR
 

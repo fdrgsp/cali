@@ -376,8 +376,8 @@ class ExtractionRunner:
             # Process completed futures with cancellation checks
             # Use a timeout to periodically check for cancellation even if no futures
             # have completed
-            completed_futures: set[Future] = set()
-            while len(completed_futures) < len(futures):
+            pending_futures: set[Future] = set(futures)
+            while pending_futures:
                 # Check for cancellation before waiting for futures
                 if cancel_event.is_set():
                     cali_logger.info(
@@ -388,13 +388,13 @@ class ExtractionRunner:
                     break
 
                 # Wait for futures with short timeout to enable responsive cancellation
-                done, _ = wait(futures, timeout=0.5, return_when=FIRST_COMPLETED)
+                done, _ = wait(
+                    pending_futures, timeout=0.5, return_when=FIRST_COMPLETED
+                )
 
                 # Process newly completed futures
                 for future in done:
-                    if future in completed_futures:
-                        continue
-                    completed_futures.add(future)
+                    pending_futures.remove(future)
 
                     try:
                         # Commit the results to database if we got any

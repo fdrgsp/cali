@@ -300,10 +300,6 @@ def compute_fov_analysis_parallel(
     def ms_to_frames(ms: float) -> int:
         return max(0, int((ms / 1000.0) * frame_rate))
 
-    max_lag_frames = ms_to_frames(analysis_settings.spikes_sync_cross_corr_lag)
-    jitter_window_frames = ms_to_frames(analysis_settings.spikes_sync_jitter_window)
-    n_shuffles = analysis_settings.ccg_n_shuffles
-
     # Initialize matrices
     spike_max_lag_corr_matrix = None
     spike_max_lag_values_matrix = None
@@ -322,6 +318,9 @@ def compute_fov_analysis_parallel(
     global_spike_jitter_sync_rising_edges = None
 
     if analysis_settings.enable_spikes and len(spike_trains) >= 2:
+        max_lag_frames = ms_to_frames(analysis_settings.spikes_sync_cross_corr_lag)
+        jitter_window_frames = ms_to_frames(analysis_settings.spikes_sync_jitter_window)
+        n_shuffles = analysis_settings.ccg_n_shuffles
         spike_trains_array = np.array(spike_trains, dtype=np.float32)
         pairs = [(i, j) for i in range(n_rois) for j in range(i + 1, n_rois)]
 

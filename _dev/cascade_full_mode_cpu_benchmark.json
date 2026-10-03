@@ -1,0 +1,2188 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-03",
+  "scope": "controlled CPU extraction/calcium analysis/persistence and storage release-gate evidence; no independent real plate or CASCADE spike analysis",
+  "extraction": {
+    "short": {
+      "schema": 1,
+      "script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+      "runtime_source_sha256": {
+        "extraction_runner": "0c728efa30c1313354b93a64bceb122727d56da9a397827da06564a038407bdd",
+        "fov_analysis_parallel": "330203504140b798fa4290638363c25a7fcc619b7c7c6654890cc4dad27bc6bc"
+      },
+      "results": [
+        {
+          "mode": "oasis",
+          "backend": "reference",
+          "package_initialization_s": 0.9494728749850765,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": null,
+          "model_manifest_sha256": null,
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 0,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 0,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 418.25,
+          "peak_rss_mib": 458.484375,
+          "incremental_peak_rss_mib": 40.234375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 7.104093674570322e-05,
+              "extraction_with_calcium_analysis_s": 0.26278999994974583,
+              "persistence_s": 0.022540749981999397,
+              "complete_s": 0.28540179086849093,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.2190950388321653,
+                "oasis_inference": 0.006279499968513846,
+                "roi_calcium_analysis_functions": 0.0011622098973020911,
+                "trace_finalization": 0.008425540174357593,
+                "fov_calcium_analysis": 0.00855291704647243
+              },
+              "model_loads": 0,
+              "database_bytes": 491520
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 0.10386808298062533,
+              "persistence_s": 0.03884433303028345,
+              "complete_s": 0.14271241601090878,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.03622650296892971,
+                "oasis_inference": 0.09168679092545062,
+                "roi_calcium_analysis_functions": 0.026509783696383238,
+                "trace_finalization": 0.05079291062429547,
+                "fov_calcium_analysis": 0.011543250875547528
+              },
+              "model_loads": 0,
+              "database_bytes": 548864
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "reference",
+          "package_initialization_s": 0.600819083978422,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 4,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 418.546875,
+          "peak_rss_mib": 644.359375,
+          "incremental_peak_rss_mib": 225.8125,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.015697124996222556,
+              "extraction_with_calcium_analysis_s": 0.531950292061083,
+              "persistence_s": 0.024853791925124824,
+              "complete_s": 0.5725012089824304,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.07518762489780784,
+                "oasis_inference": 0.004031084012240171,
+                "cascade_compute": 0.4096661671064794,
+                "cascade_caller": 0.41742679092567414,
+                "roi_calcium_analysis_functions": 0.0005736261373385787,
+                "trace_finalization": 0.007689580670557916,
+                "fov_calcium_analysis": 0.00786766700912267
+              },
+              "model_loads": 25,
+              "database_bytes": 507904
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 1.5604763330193236,
+              "persistence_s": 0.03141512500587851,
+              "complete_s": 1.5918914580252022,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.040263417875394225,
+                "oasis_inference": 0.0933745828224346,
+                "cascade_compute": 3.4777001679176465,
+                "cascade_caller": 3.564096251153387,
+                "roi_calcium_analysis_functions": 0.007293828530237079,
+                "trace_finalization": 0.028493250138126314,
+                "fov_calcium_analysis": 0.009748709155246615
+              },
+              "model_loads": 100,
+              "database_bytes": 540672
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "reference",
+          "package_initialization_s": 0.6121855829842389,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 4,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 419.25,
+          "peak_rss_mib": 642.09375,
+          "incremental_peak_rss_mib": 222.84375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.00743995897937566,
+              "extraction_with_calcium_analysis_s": 0.46800358302425593,
+              "persistence_s": 0.022585582919418812,
+              "complete_s": 0.4980291249230504,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.08015045896172523,
+                "oasis_inference": 0.004354957956820726,
+                "cascade_compute": 0.34463741607032716,
+                "cascade_caller": 0.3528235839912668,
+                "roi_calcium_analysis_functions": 0.00045967078767716885,
+                "trace_finalization": 0.006243042065761983,
+                "fov_calcium_analysis": 0.006371333030983806
+              },
+              "model_loads": 25,
+              "database_bytes": 532480
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 1.5307906250236556,
+              "persistence_s": 0.03607770800590515,
+              "complete_s": 1.5668683330295607,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.046253958251327276,
+                "oasis_inference": 0.08268479211255908,
+                "cascade_compute": 3.433901249896735,
+                "cascade_caller": 3.5323785410728306,
+                "roi_calcium_analysis_functions": 0.007174588972702622,
+                "trace_finalization": 0.02736083196941763,
+                "fov_calcium_analysis": 0.010668792063370347
+              },
+              "model_loads": 100,
+              "database_bytes": 589824
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "service",
+          "package_initialization_s": 0.5709741669707,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": 1024,
+          "queue_capacity": 1,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 1,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 5,
+            "parameter_bytes": 3438100,
+            "model_loads": 25,
+            "chunks": 25,
+            "largest_chunk_windows": 576
+          },
+          "baseline_peak_rss_mib": 417.265625,
+          "peak_rss_mib": 556.203125,
+          "incremental_peak_rss_mib": 138.9375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.00774095905944705,
+              "extraction_with_calcium_analysis_s": 0.4021731249522418,
+              "persistence_s": 0.025547416997142136,
+              "complete_s": 0.43546150100883096,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.07863562507554889,
+                "oasis_inference": 0.00432737497612834,
+                "cascade_compute": 0.27871591597795486,
+                "cascade_caller": 0.2874038750305772,
+                "roi_calcium_analysis_functions": 0.00044354493729770184,
+                "trace_finalization": 0.006490873056463897,
+                "fov_calcium_analysis": 0.006477999966591597
+              },
+              "model_loads": 25,
+              "database_bytes": 507904
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 1.002770541002974,
+              "persistence_s": 0.036268249968998134,
+              "complete_s": 1.039038790971972,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.044931293348781765,
+                "oasis_inference": 0.08432912593707442,
+                "cascade_compute": 0.8716798729728907,
+                "cascade_caller": 2.3055371679365635,
+                "roi_calcium_analysis_functions": 0.006598365493118763,
+                "trace_finalization": 0.02921020786743611,
+                "fov_calcium_analysis": 0.010952333104796708
+              },
+              "model_loads": 0,
+              "database_bytes": 573440
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "service",
+          "package_initialization_s": 0.615374792017974,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": 1024,
+          "queue_capacity": 1,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 1,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 5,
+            "parameter_bytes": 3438100,
+            "model_loads": 25,
+            "chunks": 25,
+            "largest_chunk_windows": 576
+          },
+          "baseline_peak_rss_mib": 415.421875,
+          "peak_rss_mib": 555.296875,
+          "incremental_peak_rss_mib": 139.875,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.006664916989393532,
+              "extraction_with_calcium_analysis_s": 0.37473949999548495,
+              "persistence_s": 0.031040500034578145,
+              "complete_s": 0.4124449170194566,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.07347254094202071,
+                "oasis_inference": 0.0038735419511795044,
+                "cascade_compute": 0.2570033330703154,
+                "cascade_caller": 0.2646072080824524,
+                "roi_calcium_analysis_functions": 0.0003741666441783309,
+                "trace_finalization": 0.005881417077034712,
+                "fov_calcium_analysis": 0.008185333921574056
+              },
+              "model_loads": 25,
+              "database_bytes": 532480
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 1.0305312080308795,
+              "persistence_s": 0.038080292055383325,
+              "complete_s": 1.0686115000862628,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.03263075079303235,
+                "oasis_inference": 0.08319379098247737,
+                "cascade_compute": 0.8949289150768891,
+                "cascade_caller": 2.3863849999615923,
+                "roi_calcium_analysis_functions": 0.004424459533765912,
+                "trace_finalization": 0.026843124185688794,
+                "fov_calcium_analysis": 0.011865622946061194
+              },
+              "model_loads": 0,
+              "database_bytes": 589824
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "cached-lock",
+          "package_initialization_s": 0.6024994999170303,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": 1024,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 5,
+            "parameter_bytes": 3438100,
+            "model_loads": 25,
+            "chunks": 25,
+            "largest_chunk_windows": 576
+          },
+          "baseline_peak_rss_mib": 416.53125,
+          "peak_rss_mib": 606.015625,
+          "incremental_peak_rss_mib": 189.484375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.0069738340098410845,
+              "extraction_with_calcium_analysis_s": 0.44797870807815343,
+              "persistence_s": 0.031850375002250075,
+              "complete_s": 0.4868029170902446,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.08288283401634544,
+                "oasis_inference": 0.004890625015832484,
+                "cascade_compute": 0.30356116697657853,
+                "cascade_caller": 0.3115673749707639,
+                "roi_calcium_analysis_functions": 0.0005692086415365338,
+                "trace_finalization": 0.007521249121055007,
+                "fov_calcium_analysis": 0.021944584092125297
+              },
+              "model_loads": 25,
+              "database_bytes": 507904
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 0.9815320828929543,
+              "persistence_s": 0.04030270897783339,
+              "complete_s": 1.0218347918707877,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.0440017917426303,
+                "oasis_inference": 0.06662587507162243,
+                "cascade_compute": 0.8453340821433812,
+                "cascade_caller": 2.237596543156542,
+                "roi_calcium_analysis_functions": 0.004537795553915203,
+                "trace_finalization": 0.026034248410724103,
+                "fov_calcium_analysis": 0.015953249880112708
+              },
+              "model_loads": 0,
+              "database_bytes": 573440
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "cached-lock",
+          "package_initialization_s": 0.5750117501011118,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 8,
+          "frames": 256,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+          "chunk_windows": 1024,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 5,
+            "parameter_bytes": 3438100,
+            "model_loads": 25,
+            "chunks": 25,
+            "largest_chunk_windows": 576
+          },
+          "baseline_peak_rss_mib": 415.65625,
+          "peak_rss_mib": 603.078125,
+          "incremental_peak_rss_mib": 187.421875,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.006811958970502019,
+              "extraction_with_calcium_analysis_s": 0.3713108749361709,
+              "persistence_s": 0.024188249954022467,
+              "complete_s": 0.40231108386069536,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.07234958373010159,
+                "oasis_inference": 0.003881624899804592,
+                "cascade_compute": 0.2569551659980789,
+                "cascade_caller": 0.264410833013244,
+                "roi_calcium_analysis_functions": 0.0003768749302253127,
+                "trace_finalization": 0.0059544602409005165,
+                "fov_calcium_analysis": 0.006510040955618024
+              },
+              "model_loads": 25,
+              "database_bytes": 532480
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 0.9491434999508783,
+              "persistence_s": 0.034991083084605634,
+              "complete_s": 0.984134583035484,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.034680414479225874,
+                "oasis_inference": 0.0725276661105454,
+                "cascade_compute": 0.8242083329241723,
+                "cascade_caller": 2.181052290950902,
+                "roi_calcium_analysis_functions": 0.004671171074733138,
+                "trace_finalization": 0.02554237295407802,
+                "fov_calcium_analysis": 0.009972874890081584
+              },
+              "model_loads": 0,
+              "database_bytes": 589824
+            }
+          ]
+        }
+      ],
+      "max_abs_differences": {
+        "oasis/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0
+        },
+        "cascade/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/service/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/service/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/cached-lock/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/cached-lock/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "oasis/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0
+        },
+        "cascade/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/service/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/service/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/cached-lock/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/cached-lock/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        }
+      },
+      "release_gate": "pending: representative real plate, CASCADE spike analysis, GPU acceptance and storage codec"
+    },
+    "long": {
+      "schema": 1,
+      "script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+      "runtime_source_sha256": {
+        "extraction_runner": "0c728efa30c1313354b93a64bceb122727d56da9a397827da06564a038407bdd",
+        "fov_analysis_parallel": "330203504140b798fa4290638363c25a7fcc619b7c7c6654890cc4dad27bc6bc"
+      },
+      "results": [
+        {
+          "mode": "oasis",
+          "backend": "reference",
+          "package_initialization_s": 0.6511802499881014,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": null,
+          "model_manifest_sha256": null,
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 0,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 0,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 420.375,
+          "peak_rss_mib": 565.890625,
+          "incremental_peak_rss_mib": 145.515625,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 7.570895832031965e-05,
+              "extraction_with_calcium_analysis_s": 0.45712291705422103,
+              "persistence_s": 0.11694174993317574,
+              "complete_s": 0.5741403759457171,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.35992637590970844,
+                "oasis_inference": 0.026402833056636155,
+                "roi_calcium_analysis_functions": 0.0018576266011223197,
+                "trace_finalization": 0.025285667972639203,
+                "fov_calcium_analysis": 0.014077916974201798
+              },
+              "model_loads": 0,
+              "database_bytes": 5865472
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 1.4183832500129938,
+              "persistence_s": 0.14533741702325642,
+              "complete_s": 1.5637206670362502,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 3.0923665476730093,
+                "oasis_inference": 1.0219517510849983,
+                "roi_calcium_analysis_functions": 0.093254538718611,
+                "trace_finalization": 0.1892498788656667,
+                "fov_calcium_analysis": 0.03969420795328915
+              },
+              "model_loads": 0,
+              "database_bytes": 6344704
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "reference",
+          "package_initialization_s": 0.5553982499986887,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 4,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 417.265625,
+          "peak_rss_mib": 731.609375,
+          "incremental_peak_rss_mib": 314.34375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.014709667069837451,
+              "extraction_with_calcium_analysis_s": 10.297315665986389,
+              "persistence_s": 0.1281205000123009,
+              "complete_s": 10.440145833068527,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.3340135848848149,
+                "oasis_inference": 0.02460187510587275,
+                "cascade_compute": 9.861617499962449,
+                "cascade_caller": 9.86993129097391,
+                "roi_calcium_analysis_functions": 0.001760156941600144,
+                "trace_finalization": 0.022792875999584794,
+                "fov_calcium_analysis": 0.015075625036843121
+              },
+              "model_loads": 40,
+              "database_bytes": 6803456
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 40.216055499971844,
+              "persistence_s": 0.16993058298248798,
+              "complete_s": 40.38598608295433,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 2.279455296928063,
+                "oasis_inference": 1.334098834078759,
+                "cascade_compute": 97.14801049802918,
+                "cascade_caller": 97.28540833306033,
+                "roi_calcium_analysis_functions": 0.013801596942357719,
+                "trace_finalization": 0.10783008462749422,
+                "fov_calcium_analysis": 0.03508291591424495
+              },
+              "model_loads": 160,
+              "database_bytes": 7315456
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "reference",
+          "package_initialization_s": 0.6360999579774216,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": null,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 4,
+          "cache_stats": null,
+          "baseline_peak_rss_mib": 416.515625,
+          "peak_rss_mib": 699.234375,
+          "incremental_peak_rss_mib": 282.71875,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.006559834000654519,
+              "extraction_with_calcium_analysis_s": 10.452162208035588,
+              "persistence_s": 0.149210250005126,
+              "complete_s": 10.607932292041369,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.3425735807977617,
+                "oasis_inference": 0.02629162499215454,
+                "cascade_compute": 9.98477333295159,
+                "cascade_caller": 9.993799624964595,
+                "roi_calcium_analysis_functions": 0.002136210328899324,
+                "trace_finalization": 0.03111550014000386,
+                "fov_calcium_analysis": 0.022952667088247836
+              },
+              "model_loads": 40,
+              "database_bytes": 7241728
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 41.06436795904301,
+              "persistence_s": 0.17790987493935972,
+              "complete_s": 41.24227783398237,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 1.4744374986039475,
+                "oasis_inference": 1.7600017500808463,
+                "cascade_compute": 99.12895479099825,
+                "cascade_caller": 99.2995703748893,
+                "roi_calcium_analysis_functions": 0.016653083148412406,
+                "trace_finalization": 0.10847758420277387,
+                "fov_calcium_analysis": 0.040956208016723394
+              },
+              "model_loads": 160,
+              "database_bytes": 7761920
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "service",
+          "package_initialization_s": 0.6682034169789404,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": 1024,
+          "queue_capacity": 1,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 1,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 8,
+            "parameter_bytes": 5500960,
+            "model_loads": 40,
+            "chunks": 320,
+            "largest_chunk_windows": 1024
+          },
+          "baseline_peak_rss_mib": 416.53125,
+          "peak_rss_mib": 634.40625,
+          "incremental_peak_rss_mib": 217.875,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.007132041966542602,
+              "extraction_with_calcium_analysis_s": 9.600521791959181,
+              "persistence_s": 0.13026145892217755,
+              "complete_s": 9.737915292847902,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.34299095976166427,
+                "oasis_inference": 0.025112541974522173,
+                "cascade_compute": 9.154240375035442,
+                "cascade_caller": 9.16261374996975,
+                "roi_calcium_analysis_functions": 0.001872378052212298,
+                "trace_finalization": 0.024047004990279675,
+                "fov_calcium_analysis": 0.013893249910324812
+              },
+              "model_loads": 40,
+              "database_bytes": 6803456
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 37.71733841695823,
+              "persistence_s": 0.17589479207526892,
+              "complete_s": 37.8932332090335,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 2.106393334106542,
+                "oasis_inference": 1.3551718760281801,
+                "cascade_compute": 36.26995050010737,
+                "cascade_caller": 91.27931791602168,
+                "roi_calcium_analysis_functions": 0.013549538096413016,
+                "trace_finalization": 0.10178375337272882,
+                "fov_calcium_analysis": 0.03594404214527458
+              },
+              "model_loads": 0,
+              "database_bytes": 7315456
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "service",
+          "package_initialization_s": 0.6837827919516712,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": 1024,
+          "queue_capacity": 1,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 1,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 8,
+            "parameter_bytes": 5500960,
+            "model_loads": 40,
+            "chunks": 320,
+            "largest_chunk_windows": 1024
+          },
+          "baseline_peak_rss_mib": 420.78125,
+          "peak_rss_mib": 578.59375,
+          "incremental_peak_rss_mib": 157.8125,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.007117500063031912,
+              "extraction_with_calcium_analysis_s": 9.911164833931252,
+              "persistence_s": 0.15401595807634294,
+              "complete_s": 10.072298292070627,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.3426478378241882,
+                "oasis_inference": 0.02510895801242441,
+                "cascade_compute": 9.44282579200808,
+                "cascade_caller": 9.4512922919821,
+                "roi_calcium_analysis_functions": 0.002009205985814333,
+                "trace_finalization": 0.029125292086973786,
+                "fov_calcium_analysis": 0.028093958972021937
+              },
+              "model_loads": 40,
+              "database_bytes": 7241728
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 37.943304707994685,
+              "persistence_s": 0.18316345906350762,
+              "complete_s": 38.12646816705819,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 1.6148903329158202,
+                "oasis_inference": 1.481577207800001,
+                "cascade_compute": 36.459108915994875,
+                "cascade_caller": 92.18065437488258,
+                "roi_calcium_analysis_functions": 0.015700158081017435,
+                "trace_finalization": 0.11491582321468741,
+                "fov_calcium_analysis": 0.041374666965566576
+              },
+              "model_loads": 0,
+              "database_bytes": 7761920
+            }
+          ]
+        },
+        {
+          "mode": "cascade",
+          "backend": "cached-lock",
+          "package_initialization_s": 0.6436708749970421,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": 1024,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 8,
+            "parameter_bytes": 5500960,
+            "model_loads": 40,
+            "chunks": 320,
+            "largest_chunk_windows": 1024
+          },
+          "baseline_peak_rss_mib": 419.953125,
+          "peak_rss_mib": 571.390625,
+          "incremental_peak_rss_mib": 151.4375,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.006947666988708079,
+              "extraction_with_calcium_analysis_s": 9.628282915917225,
+              "persistence_s": 0.13523516594432294,
+              "complete_s": 9.770465748850256,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.3441291191847995,
+                "oasis_inference": 0.02504575008060783,
+                "cascade_compute": 9.178080082987435,
+                "cascade_caller": 9.186361624975689,
+                "roi_calcium_analysis_functions": 0.0020279589807614684,
+                "trace_finalization": 0.02612429449800402,
+                "fov_calcium_analysis": 0.014148499933071434
+              },
+              "model_loads": 40,
+              "database_bytes": 6803456
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 39.112898666993715,
+              "persistence_s": 0.17943679098971188,
+              "complete_s": 39.29233545798343,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 1.4404561298433691,
+                "oasis_inference": 1.7659376240335405,
+                "cascade_compute": 37.634073083871044,
+                "cascade_caller": 94.06475833198056,
+                "roi_calcium_analysis_functions": 0.015069131972268224,
+                "trace_finalization": 0.12583688145969063,
+                "fov_calcium_analysis": 0.03966679086443037
+              },
+              "model_loads": 0,
+              "database_bytes": 7315456
+            }
+          ]
+        },
+        {
+          "mode": "dual",
+          "backend": "cached-lock",
+          "package_initialization_s": 0.6525692079449072,
+          "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+          "excluded": [
+            "detection",
+            "CASCADE spike analysis",
+            "GUI rendering",
+            "representative real plate"
+          ],
+          "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+          "rois_per_fov": 32,
+          "frames": 2048,
+          "workers": 4,
+          "seed": 9183,
+          "frame_rate_hz": 30,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "device": "cpu",
+          "torch": "2.14.1",
+          "torch_threads": 1,
+          "inference_torch_thread_counts": [
+            1
+          ],
+          "thread_environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1"
+          },
+          "oasis_decay_constant_s": 1.0,
+          "retained_payload_bytes_per_cascade_caller_lower_bound": 12077056,
+          "chunk_windows": 1024,
+          "queue_capacity": null,
+          "python": "3.13.0",
+          "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+          "peak_active_cascade_callers": 4,
+          "peak_queue_depth": 0,
+          "model_loader_threads": 1,
+          "cache_stats": {
+            "ensembles": 8,
+            "parameter_bytes": 5500960,
+            "model_loads": 40,
+            "chunks": 320,
+            "largest_chunk_windows": 1024
+          },
+          "baseline_peak_rss_mib": 420.390625,
+          "peak_rss_mib": 575.46875,
+          "incremental_peak_rss_mib": 155.078125,
+          "phases": [
+            {
+              "phase": "cold",
+              "fovs": 1,
+              "preparation_s": 0.006993874907493591,
+              "extraction_with_calcium_analysis_s": 9.923781957942992,
+              "persistence_s": 0.17215695802588016,
+              "complete_s": 10.102932790876366,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 0.3489438807591796,
+                "oasis_inference": 0.024535040953196585,
+                "cascade_compute": 9.431089540943503,
+                "cascade_caller": 9.439416000037454,
+                "roi_calcium_analysis_functions": 0.002798878471367061,
+                "trace_finalization": 0.0395847080508247,
+                "fov_calcium_analysis": 0.02850245905574411
+              },
+              "model_loads": 40,
+              "database_bytes": 7241728
+            },
+            {
+              "phase": "warm",
+              "fovs": 4,
+              "preparation_s": 0,
+              "extraction_with_calcium_analysis_s": 38.04443712497596,
+              "persistence_s": 0.18620308302342892,
+              "complete_s": 38.230640207999386,
+              "stage_aggregate_s": {
+                "image_roi_extraction": 2.709927534335293,
+                "oasis_inference": 1.1698409171076491,
+                "cascade_compute": 36.50690279097762,
+                "cascade_caller": 91.63643579185009,
+                "roi_calcium_analysis_functions": 0.014378204708918929,
+                "trace_finalization": 0.11072654009331018,
+                "fov_calcium_analysis": 0.04001587489619851
+              },
+              "model_loads": 0,
+              "database_bytes": 7761920
+            }
+          ]
+        }
+      ],
+      "max_abs_differences": {
+        "oasis/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0
+        },
+        "cascade/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/reference/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/service/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/service/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/cached-lock/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/cached-lock/cold": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "oasis/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0
+        },
+        "cascade/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/reference/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/service/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/service/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        },
+        "cascade/cached-lock/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "cascade": 0.0
+        },
+        "dual/cached-lock/warm": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 0.0
+        }
+      },
+      "release_gate": "pending: representative real plate, CASCADE spike analysis, GPU acceptance and storage codec"
+    }
+  },
+  "storage": {
+    "short": {
+      "schema": 1,
+      "script_sha256": "2f5e126bebf8b5b18b9e22f79b6c84cbc2fe6f71d9a7955fdb3edf79c404ce1f",
+      "helper_script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+      "runtime_source_sha256": {
+        "spike_trace": "1a870cbc9fadf28ab126a616b71b7841d0de412e8950a438e890b125760d95d2",
+        "cali_runner": "5e031d1bd2b4d85e1eedbe7aaa88c42b94d28f75d8ecc381ec1aed20c6184c21",
+        "export_traces": "c369431f538ab699750889a598b6c5db0f679cd7f3c9fa3aac3a08566528f516"
+      },
+      "results": [
+        {
+          "mode": "oasis",
+          "workload": "short",
+          "source": {
+            "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+            "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+            "valid_interval": [
+              32,
+              224
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 256,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "oasis": 570200
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.73828125,
+            "oasis": 0.033203125
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 9363456,
+          "write_s": 0.30120862496551126,
+          "legacy_write_s": 0,
+          "maintenance_s": 0.07477733399719,
+          "orm_read_s": 0.010347625007852912,
+          "export_s": 1.2924986250000075,
+          "plot_array_preparation_s": 0.002176749985665083,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 97400
+            },
+            "database_bytes": 8658944,
+            "encode_verify_write_s": 0.02442083298228681,
+            "maintenance_s": 0.05697362497448921,
+            "sql_read_decode_s": 0.0023487500147894025,
+            "compare_to_original_json_s": 0.014133083983324468,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.982409477233968e-07,
+            "max_roi_sum_abs_error": 3.7728109694157297e-06,
+            "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.004595117966716302,
+              "changed_samples": 50
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 13684800.0,
+          "projection_96_fov_candidate_payload_bytes": 2337600.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 2337600.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": true,
+          "peak_rss_mib": 400.6875
+        },
+        {
+          "mode": "cascade",
+          "workload": "short",
+          "source": {
+            "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+            "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+            "valid_interval": [
+              32,
+              224
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 256,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 1815800
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.73828125,
+            "oasis": 0.033203125
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 10420224,
+          "write_s": 0.32593129109591246,
+          "legacy_write_s": 0,
+          "maintenance_s": 0.05496391700580716,
+          "orm_read_s": 0.019821375026367605,
+          "export_s": 1.2748404160374776,
+          "plot_array_preparation_s": 0.0022637920919805765,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "cascade": 349000
+            },
+            "database_bytes": 8953856,
+            "encode_verify_write_s": 0.04320016596466303,
+            "maintenance_s": 0.05394670809619129,
+            "sql_read_decode_s": 0.0036233749706298113,
+            "compare_to_original_json_s": 0.024031749926507473,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.982409477233968e-07,
+            "max_roi_sum_abs_error": 3.7728109694157297e-06,
+            "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.004595117966716302,
+              "changed_samples": 50
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 43579200.0,
+          "projection_96_fov_candidate_payload_bytes": 8376000.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 8376000.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": true,
+          "peak_rss_mib": 400.640625
+        },
+        {
+          "mode": "dual",
+          "workload": "short",
+          "source": {
+            "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+            "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+            "valid_interval": [
+              32,
+              224
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 256,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 1815800,
+            "oasis": 570200
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.73828125,
+            "oasis": 0.033203125
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 11005952,
+          "write_s": 0.3328221249394119,
+          "legacy_write_s": 0,
+          "maintenance_s": 0.04852724994998425,
+          "orm_read_s": 0.02746666595339775,
+          "export_s": 1.4904985419707373,
+          "plot_array_preparation_s": 0.004245791933499277,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 97400,
+              "cascade": 349000
+            },
+            "database_bytes": 9097216,
+            "encode_verify_write_s": 0.0630754999583587,
+            "maintenance_s": 0.047941749915480614,
+            "sql_read_decode_s": 0.0053992909379303455,
+            "compare_to_original_json_s": 0.03816670796368271,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.982409477233968e-07,
+            "max_roi_sum_abs_error": 3.7728109694157297e-06,
+            "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.004595117966716302,
+              "changed_samples": 50
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 57264000.0,
+          "projection_96_fov_candidate_payload_bytes": 10713600.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 10713600.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": true,
+          "peak_rss_mib": 411.46875
+        },
+        {
+          "mode": "dual-legacy-duplication",
+          "workload": "short",
+          "source": {
+            "source": "real upstream golden excerpt; repeated ROI/FOV workload",
+            "source_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+            "valid_interval": [
+              32,
+              224
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 256,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 1815800,
+            "oasis": 570200
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.73828125,
+            "oasis": 0.033203125
+          },
+          "legacy_duplicate_bytes": 570200,
+          "database_bytes": 11415552,
+          "write_s": 0.32975783303845674,
+          "legacy_write_s": 0.028258665930479765,
+          "maintenance_s": 0.05178145901300013,
+          "orm_read_s": 0.027565291966311634,
+          "export_s": 1.5345342500368133,
+          "plot_array_preparation_s": 0.0041983750415965915,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 97400,
+              "cascade": 349000
+            },
+            "database_bytes": 9506816,
+            "encode_verify_write_s": 0.06401616602670401,
+            "maintenance_s": 0.0439678750699386,
+            "sql_read_decode_s": 0.005721625057049096,
+            "compare_to_original_json_s": 0.039311249973252416,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.982409477233968e-07,
+            "max_roi_sum_abs_error": 3.7728109694157297e-06,
+            "max_roi_mean_rate_hz_abs_error": 5.895017139712078e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.004595117966716302,
+              "changed_samples": 50
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 57264000.0,
+          "projection_96_fov_candidate_payload_bytes": 10713600.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 24398400.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": true,
+          "peak_rss_mib": 413.125
+        }
+      ],
+      "size_budget": "512 MiB for spike arrays including compatibility duplication at 96 FOVs x 100 ROIs x 6000 frames; base traces, indices and analyses are additional.",
+      "numerical_budget": "Zero additional error relative to stored CASCADE float32 and OASIS float64; no quantization.",
+      "release_gate": "workload within size budget; long workload and real plate acceptance still required"
+    },
+    "long": {
+      "schema": 1,
+      "script_sha256": "2f5e126bebf8b5b18b9e22f79b6c84cbc2fe6f71d9a7955fdb3edf79c404ce1f",
+      "helper_script_sha256": "4396710722b1ad681db374465f5fb5c1e907fbf50c7f4dd0f0fb01e9634f7a1d",
+      "runtime_source_sha256": {
+        "spike_trace": "1a870cbc9fadf28ab126a616b71b7841d0de412e8950a438e890b125760d95d2",
+        "cali_runner": "5e031d1bd2b4d85e1eedbe7aaa88c42b94d28f75d8ecc381ec1aed20c6184c21",
+        "export_traces": "c369431f538ab699750889a598b6c5db0f679cd7f3c9fa3aac3a08566528f516"
+      },
+      "results": [
+        {
+          "mode": "oasis",
+          "workload": "long",
+          "source": {
+            "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+            "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "valid_interval": [
+              32,
+              5968
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 6000,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "oasis": 13115564
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.9274633333333333,
+            "oasis": 0.027418333333333333
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 200007680,
+          "write_s": 3.313469290966168,
+          "legacy_write_s": 0,
+          "maintenance_s": 1.015433624968864,
+          "orm_read_s": 0.12022899999283254,
+          "export_s": 20.47633420897182,
+          "plot_array_preparation_s": 0.04279879201203585,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 644580
+            },
+            "database_bytes": 187506688,
+            "encode_verify_write_s": 0.2936286659678444,
+            "maintenance_s": 0.8907283749431372,
+            "sql_read_decode_s": 0.017043791012838483,
+            "compare_to_original_json_s": 0.17823150008916855,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.999993741513012e-07,
+            "max_roi_sum_abs_error": 6.133184731993424e-05,
+            "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.013883117363899246,
+              "changed_samples": 3
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 314773536.0,
+          "projection_96_fov_candidate_payload_bytes": 15469920.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 15469920.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": true,
+          "peak_rss_mib": 1338.328125
+        },
+        {
+          "mode": "cascade",
+          "workload": "long",
+          "source": {
+            "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+            "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "valid_interval": [
+              32,
+              5968
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 6000,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 49993476
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.9274633333333333,
+            "oasis": 0.027418333333333333
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 236937216,
+          "write_s": 3.8109018329996616,
+          "legacy_write_s": 0,
+          "maintenance_s": 1.2348697499837726,
+          "orm_read_s": 0.4178780409274623,
+          "export_s": 24.311740666045807,
+          "plot_array_preparation_s": 0.04262416705023497,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "cascade": 8260800
+            },
+            "database_bytes": 195092480,
+            "encode_verify_write_s": 0.7654802090255544,
+            "maintenance_s": 0.9624907079851255,
+            "sql_read_decode_s": 0.03022420802153647,
+            "compare_to_original_json_s": 0.4677824160316959,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.999993741513012e-07,
+            "max_roi_sum_abs_error": 6.133184731993424e-05,
+            "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.013883117363899246,
+              "changed_samples": 3
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 1199843424.0,
+          "projection_96_fov_candidate_payload_bytes": 198259200.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 198259200.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": false,
+          "peak_rss_mib": 1325.15625
+        },
+        {
+          "mode": "dual",
+          "workload": "long",
+          "source": {
+            "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+            "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "valid_interval": [
+              32,
+              5968
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 6000,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 49993476,
+            "oasis": 13115564
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.9274633333333333,
+            "oasis": 0.027418333333333333
+          },
+          "legacy_duplicate_bytes": 0,
+          "database_bytes": 250314752,
+          "write_s": 4.237061167019419,
+          "legacy_write_s": 0,
+          "maintenance_s": 1.4855941249988973,
+          "orm_read_s": 0.5647552500013262,
+          "export_s": 29.816414957982488,
+          "plot_array_preparation_s": 0.08540845802053809,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 644580,
+              "cascade": 8260800
+            },
+            "database_bytes": 196079616,
+            "encode_verify_write_s": 1.037694999948144,
+            "maintenance_s": 0.8924884159350768,
+            "sql_read_decode_s": 0.048006583005189896,
+            "compare_to_original_json_s": 0.6562771250028163,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.999993741513012e-07,
+            "max_roi_sum_abs_error": 6.133184731993424e-05,
+            "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.013883117363899246,
+              "changed_samples": 3
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 1514616960.0,
+          "projection_96_fov_candidate_payload_bytes": 213729120.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 213729120.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": false,
+          "peak_rss_mib": 1197.859375
+        },
+        {
+          "mode": "dual-legacy-duplication",
+          "workload": "long",
+          "source": {
+            "source": "recorded P3b synthetic DFF, cached predictions equal independent reference",
+            "source_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "reference_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+            "valid_interval": [
+              32,
+              5968
+            ]
+          },
+          "scope": "actual ORM/SQLite JSON and CSV export; repeated input traces/FOVs, no inference timings",
+          "rois_per_fov": 100,
+          "frames": 6000,
+          "fovs": 4,
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "oasis_decay_constant_s": 1.0,
+          "spike_payload_bytes": {
+            "cascade": 49993476,
+            "oasis": 13115564
+          },
+          "nonzero_sample_fraction": {
+            "cascade": 0.9274633333333333,
+            "oasis": 0.027418333333333333
+          },
+          "legacy_duplicate_bytes": 13115564,
+          "database_bytes": 263426048,
+          "write_s": 4.0884846249828115,
+          "legacy_write_s": 0.6269379159202799,
+          "maintenance_s": 1.2516581660602242,
+          "orm_read_s": 0.5584686660440639,
+          "export_s": 29.722553958999924,
+          "plot_array_preparation_s": 0.08812979201320559,
+          "plot_note": "ORM read plus NumPy conversion/valid slicing; GUI rendering and method-bound plot integration remain pending.",
+          "candidate": {
+            "status": "benchmark-only BLOB sidecar, not an application-readable database",
+            "spike_payload_bytes_including_metadata": {
+              "oasis": 644580,
+              "cascade": 8260800
+            },
+            "database_bytes": 209190912,
+            "encode_verify_write_s": 1.0600657500326633,
+            "maintenance_s": 1.0372696249978617,
+            "sql_read_decode_s": 0.0502533339895308,
+            "compare_to_original_json_s": 0.6924171659629792,
+            "max_sample_error": 0,
+            "max_sum_error": 0,
+            "mean_rate_error": 0,
+            "changed_threshold_crossings": 0
+          },
+          "six_decimal_rounding": {
+            "decimal_places": 6,
+            "max_sample_abs_error": 4.999993741513012e-07,
+            "max_roi_sum_abs_error": 6.133184731993424e-05,
+            "max_roi_mean_rate_hz_abs_error": 3.099655356465679e-07,
+            "changed_ap_threshold_samples": {
+              "0.1": 0,
+              "0.2": 0,
+              "0.5": 0,
+              "1.0": 0
+            },
+            "demonstrated_sensitive_ap_threshold": {
+              "fraction": 0.013883117363899246,
+              "changed_samples": 3
+            },
+            "decision": "Do not quantize: candidate compression preserves all stored values exactly; tested thresholds do not bound arbitrary user thresholds."
+          },
+          "projection_96_fov_spike_payload_bytes": 1514616960.0,
+          "projection_96_fov_candidate_payload_bytes": 213729120.0,
+          "projection_96_fov_candidate_with_legacy_bytes": 528502656.0,
+          "spike_payload_budget_96_fovs_bytes": 536870912,
+          "within_json_budget": false,
+          "peak_rss_mib": 1436.609375
+        }
+      ],
+      "size_budget": "512 MiB for spike arrays including compatibility duplication at 96 FOVs x 100 ROIs x 6000 frames; base traces, indices and analyses are additional.",
+      "numerical_budget": "Zero additional error relative to stored CASCADE float32 and OASIS float64; no quantization.",
+      "release_gate": "blocked: implement a versioned lossless trace-array codec with legacy JSON reads"
+    }
+  },
+  "real_fixture_audit": [
+    {
+      "dataset": "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
+      "position": 0,
+      "image_shape": [
+        153,
+        256,
+        256
+      ],
+      "median_interval_ms": 100.0,
+      "max_relative_interval_deviation": 4.000059999984805,
+      "nonuniform_interval_indices_0based": [
+        2,
+        52,
+        102
+      ],
+      "passes_30hz_model_preflight": false,
+      "reason": "irregular 10Hz timestamps"
+    },
+    {
+      "dataset": "tests/test_data/no_hcs/no_hcs.tensorstore.zarr",
+      "position": 0,
+      "image_shape": [
+        10,
+        256,
+        256
+      ],
+      "median_interval_ms": 100.51999999999998,
+      "max_relative_interval_deviation": 0.00567051333068096,
+      "nonuniform_interval_indices_0based": [],
+      "passes_30hz_model_preflight": false,
+      "reason": "below minimum retained length"
+    }
+  ],
+  "pre_fix_coordinator_sample": {
+    "mode": "cascade",
+    "backend": "service",
+    "package_initialization_s": 0.8229704999830574,
+    "scope": "controlled images, known ROI masks, actual FOV pool, calcium analysis and SQLite persistence",
+    "excluded": [
+      "detection",
+      "CASCADE spike analysis",
+      "GUI rendering",
+      "representative real plate"
+    ],
+    "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI calcium functions are a subset of trace_finalization.",
+    "rois_per_fov": 8,
+    "frames": 256,
+    "workers": 4,
+    "seed": 9183,
+    "frame_rate_hz": 30,
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "device": "cpu",
+    "torch": "2.14.1",
+    "torch_threads": 1,
+    "inference_torch_thread_counts": [
+      1
+    ],
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMBA_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "oasis_decay_constant_s": 1.0,
+    "retained_payload_bytes_per_cascade_caller_lower_bound": 377984,
+    "chunk_windows": 1024,
+    "queue_capacity": 1,
+    "python": "3.13.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "peak_active_cascade_callers": 4,
+    "peak_queue_depth": 1,
+    "model_loader_threads": 1,
+    "cache_stats": {
+      "ensembles": 5,
+      "parameter_bytes": 3438100,
+      "model_loads": 25,
+      "chunks": 25,
+      "largest_chunk_windows": 576
+    },
+    "baseline_peak_rss_mib": 416.21875,
+    "peak_rss_mib": 550.078125,
+    "incremental_peak_rss_mib": 133.859375,
+    "phases": [
+      {
+        "phase": "cold",
+        "fovs": 1,
+        "preparation_s": 0.01520383299794048,
+        "extraction_with_calcium_analysis_s": 0.4848755830898881,
+        "persistence_s": 0.023256500018760562,
+        "complete_s": 0.5233359161065891,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 0.14519191579893231,
+          "oasis_inference": 0.005010416032746434,
+          "cascade_compute": 0.29473875008989125,
+          "cascade_caller": 0.3021063340129331,
+          "roi_calcium_analysis_functions": 0.00043391447979956865,
+          "trace_finalization": 0.005852750153280795,
+          "fov_calcium_analysis": 0.0077890841057524085
+        },
+        "model_loads": 25,
+        "database_bytes": 507904
+      },
+      {
+        "phase": "warm",
+        "fovs": 4,
+        "preparation_s": 0,
+        "extraction_with_calcium_analysis_s": 23.218976458068937,
+        "persistence_s": 0.03741291700862348,
+        "complete_s": 23.25638937507756,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 0.032295083394274116,
+          "oasis_inference": 0.06786904099863023,
+          "cascade_compute": 11.329346416983753,
+          "cascade_caller": 45.84519287501462,
+          "roi_calcium_analysis_functions": 0.11348496074788272,
+          "trace_finalization": 0.1354064189363271,
+          "fov_calcium_analysis": 0.009711500024423003
+        },
+        "model_loads": 0,
+        "database_bytes": 573440
+      }
+    ],
+    "coordinator_source_sha256": "577f97168eeb422b6cc864d805f849276ff02889e07a426f82be55f129888f3c",
+    "note": "Diagnostic before pending-futures fix; same 8 ROI/256 frame fixed-tau service workload and thread environment; helper subsequently added all-FOV/provenance checks outside extraction timing."
+  },
+  "release_decisions": {
+    "default_backend": "upstream reference",
+    "cache": "explicit experimental option; real-plate/material wall-time and GPU gates pending",
+    "storage": "JSON exceeds 512MiB spike-payload budget; production versioned lossless codec required",
+    "candidate": "all stored values exactly preserved; production migration, backward JSON reads, exports/plots and integrity acceptance pending",
+    "analysis": "CASCADE ROI/FOV spike metrics and their performance must be measured after P6"
+  }
+}
