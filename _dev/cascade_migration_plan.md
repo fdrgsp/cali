@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, and ROI/FOV spike results implemented; JSON/source-audit completion and startup-discard completion pending; CASCADE not enabled
+**Status**: P1/P2a committed; P2b settings, trace provenance, initial source linking, ROI/FOV spike results, and normalized JSON implemented; source-audit completion and startup-discard completion pending; CASCADE not enabled
 **Date**: 2026-08-14
 
 ---
@@ -186,6 +186,22 @@ conflicting partial backfill, unresolved/orphaned ordering, dual detached reads,
 labels/permutations, copied provenance after deletion, and ORM deletion with an external engine.
 Runner force/recreation and standalone/manual pipeline routes also pass. Ruff passes; mypy has
 354 existing diagnostics and no added diagnostics. Checked-in database fixtures were restored.
+
+P2b continuation — normalized result JSON (2026-10-03):
+
+- Trace, ROI, and FOV snapshots preserve all method-bound children and their shared source
+  metadata without traversing ORM back-pointers. Legacy JSON inputs retain explicit synthetic
+  provenance; missing audited sources remain missing. Loading validates method/units, valid
+  intervals, threshold semantics, parent/source IDs, and duplicate methods.
+- Validating an existing ORM object clones its owned snapshot graph without reparenting the
+  source records. Nested include/exclude options work for normalized relationships, and legacy
+  infinite CCG values survive round trips. Detached persisted snapshots can be merged without
+  duplicating their spike traces or inference runs.
+
+Validation: **1656 passed, 1 skipped in 220.74 s** in the full suite; **21 passed** in the
+focused JSON module. Ruff passes; mypy remains at 354 existing diagnostics with no added
+diagnostics. Legacy database fixtures were restored. Source repair/splitting and legacy stage
+flag audits remain pending in P2b; CASCADE execution remains gated.
 
 Validation for the settings continuation: **1584 passed, 1 skipped in 186.08 s** in the
 full suite against restored legacy fixtures, followed by **133 passed in 6.48 s** after

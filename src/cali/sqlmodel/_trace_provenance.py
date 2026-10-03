@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, Optional
 from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel, select
 
+from ._result_json import ResultJSON
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
@@ -105,7 +107,7 @@ class SpikeInferenceRun(SQLModel, table=True):  # type: ignore[call-arg, unused-
         )
 
 
-class SpikeTrace(SQLModel, table=True):  # type: ignore[call-arg, unused-ignore]
+class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignore]
     """One method's spike array and valid interval for one base trace."""
 
     __tablename__ = "spike_trace"

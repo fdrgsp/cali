@@ -55,6 +55,7 @@ from cali._constants import (
 )
 from cali.readers._tiff_collection_reader import TiffCollectionSettings
 from cali.sqlmodel._engine import create_cali_engine, ensure_schema_current
+from cali.sqlmodel._result_json import ResultJSON
 from cali.sqlmodel._spike_analysis import (
     LEGACY_SPIKE_METRICS,
     normalize_spike_analyses,
@@ -2077,7 +2078,7 @@ class ROI(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
 
-class Traces(SQLModel, table=True):  # type: ignore[call-arg]
+class Traces(ResultJSON, table=True):  # type: ignore[call-arg]
     """Fluorescence trace data for an ROI.
 
     Stores all time-series fluorescence measurements and derived traces.
@@ -2175,6 +2176,7 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     def __init__(self, **data: Any) -> None:
+        explicit_window = "extraction_frame_window" in data
         spikes = data.pop("inferred_spikes", None)
         legacy_window = {
             name: data.pop(name)
@@ -2199,7 +2201,8 @@ class Traces(SQLModel, table=True):  # type: ignore[call-arg]
                 SpikeTrace(values=list(spikes), inference_run=SpikeInferenceRun())
             ]
         if (
-            self.extraction_frame_window is None
+            not explicit_window
+            and self.extraction_frame_window is None
             and self.extraction_frame_window_id is None
         ):
             arrays = (self.raw_trace, self.dff, self.den_dff, self.x_axis, spikes)
@@ -2291,7 +2294,7 @@ SQLModel.metadata.tables["trace"].append_column(
 )
 
 
-class DataAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+class DataAnalysis(ResultJSON, table=True):  # type: ignore[call-arg]
     """Container for data analysis results for an ROI.
 
     This class stores various analysis results related to an ROI,
@@ -2437,7 +2440,7 @@ for _legacy_metric in LEGACY_SPIKE_METRICS:
     )
 
 
-class FOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg]
+class FOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg]
     """FOV-level analysis results (correlation and synchrony matrices).
 
     This class stores FOV-wide analysis metrics that describe relationships

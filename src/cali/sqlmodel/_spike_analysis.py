@@ -4,8 +4,9 @@ import math
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from sqlalchemy import UniqueConstraint, inspect
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, select
 
+from ._result_json import ResultJSON
 from ._trace_provenance import SpikeTrace
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ LEGACY_SPIKE_METRICS = {
 }
 
 
-class SpikeAnalysis(SQLModel, table=True):  # type: ignore[call-arg, unused-ignore]
+class SpikeAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignore]
     """An applied threshold and rates for one spike trace and analysis run.
 
     A nullable trace is reserved for documented synthetic API inputs or quarantined

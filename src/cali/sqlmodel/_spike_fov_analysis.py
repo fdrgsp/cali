@@ -3,8 +3,9 @@
 from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import UniqueConstraint, inspect
-from sqlmodel import JSON, Column, Field, Relationship, SQLModel, select
+from sqlmodel import JSON, Column, Field, Relationship, select
 
+from ._result_json import ResultJSON
 from ._trace_provenance import SpikeInferenceRun
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ SPIKE_FOV_METRICS = (
 )
 
 
-class SpikeFOVAnalysis(SQLModel, table=True):  # type: ignore[call-arg, unused-ignore]
+class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignore]
     """Spike matrices, synchrony, and bursts for one method, FOV, and run."""
 
     __tablename__ = "spike_fov_analysis"

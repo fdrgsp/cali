@@ -203,4 +203,4 @@ ignore = [
 extend-exclude = ["*.ipynb"]
 
 [tool.typos.default] 
-extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems", "selectin", "pn", "id"]
+extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems", "selectin", "pn", "id", "ser_json_inf_nan"]
