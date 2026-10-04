@@ -129,7 +129,11 @@ def _products(session: Session, run_id: int) -> tuple:
 
 
 def _seed(
-    path: Path, methods: tuple, pretrained: bool = False, mask_path: Path | None = None
+    path: Path,
+    methods: tuple,
+    pretrained: bool = False,
+    mask_path: Path | None = None,
+    device: str = "cpu",
 ) -> tuple:
     engine = create_cali_engine(f"sqlite:///{path}")
     create_database_and_tables(engine)
@@ -144,7 +148,7 @@ def _seed(
             extraction = ExtractionSettings(
                 spike_methods=methods,
                 cascade_model=metadata["model_name"] if "cascade" in methods else None,
-                cascade_device="cpu",
+                cascade_device=device,
                 frame_rate=30,
                 dff_window=5,
                 neuropil_inner_radius=0,
@@ -220,14 +224,22 @@ def test_public_combined_and_offline_reanalysis_match_single_and_dual_outputs(
     os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
     reason="Pretrained full-runner acceptance runs in the installed-wheel job",
 )
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
 def test_pretrained_public_combined_and_offline_reanalysis_match_all_modes(
-    tmp_path: Path, deterministic_ccg: object
+    tmp_path: Path,
+    deterministic_ccg: object,
+    device: str,
 ) -> None:
-    _assert_public_parity(tmp_path, pretrained=True)
+    _assert_public_parity(tmp_path, pretrained=True, device=device)
 
 
 def _assert_public_parity(
-    tmp_path: Path, pretrained: bool = False, stimulated: bool = False
+    tmp_path: Path,
+    pretrained: bool = False,
+    stimulated: bool = False,
+    device: str = "cpu",
 ) -> None:
     mask_path = None
     if stimulated:
@@ -238,7 +250,7 @@ def _assert_public_parity(
     modes = []
     for methods in (("oasis",), ("cascade",), ("oasis", "cascade")):
         path = tmp_path / ("-".join(methods) + ".cali")
-        graph = _seed(path, methods, pretrained, mask_path)
+        graph = _seed(path, methods, pretrained, mask_path, device=device)
         dataset = _dataset(count=256, rate=30 if pretrained else 10)
         image, _ = dataset.isel.return_value
         image[:, 2:, 2:] = image[:, :2, :2]
@@ -256,6 +268,10 @@ def _assert_public_parity(
             assert owner.positions_extracted == owner.positions_analyzed == [0]
             inline = _products(session, source_id)
             assert set(inline[4]) == set(methods)
+            if pretrained and "cascade" in methods:
+                for parent in owner.data_analysis_results:
+                    run = parent.get_spike_analysis("cascade").spike_trace.inference_run
+                    assert run.resolved_device.split(":")[0] == device
             if "cascade" in methods and not pretrained:
                 child = owner.data_analysis_results[0].get_spike_analysis("cascade")
                 assert child.expected_spike_count == pytest.approx(45.25)

@@ -449,8 +449,8 @@ for assessing those inputs. `benchmark_cascade_real_plate.py` now provides read-
 recording/mask preflight, fresh-process mode comparisons, database audits, offline
 reuse checks and process-tree memory sampling for that gate; its controlled file-reader
 validation does not satisfy independent real-plate acceptance. The 100 × 6000
-complete-image workload, two-worker
-memory measurements and production schema-13 storage repair are complete. P7's
+complete-image workload, two-worker memory measurements and production schema-13
+storage repair are complete. P7's
 installation audit covers both base-wheel absence and base-to-extra installation;
 remote dedicated CI, upstream packaging submission and distribution licensing review
 remain separate release follow-ups.
@@ -459,8 +459,10 @@ The complete-image workload's v1 spike projection failed at 517.96 MiB including
 legacy duplication; production v2 now measures 493.93 MiB against the unchanged
 512 MiB budget, with zero sample changes, atomic migration and exact consumer exports.
 Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
-re-analysis have independent database audits. Independent real-plate performance,
-GPU and scoped memory acceptance remain pending. Full-graph memory samples do not
+re-analysis have independent database audits. Controlled MPS oracle/cache/cancellation,
+small image/full-runner checks and large Phase-B inference are now validated.
+Independent real-plate performance, representative complete GPU workloads, CUDA
+hardware and scoped memory acceptance remain pending. Full-graph memory samples do not
 certify the prior inference-only comparison target or promote the cached service.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction and analysis are available through the upstream reference path; the cached service
@@ -1443,6 +1445,41 @@ with commands and measurement scopes in [`cascade_release_benchmarks.md`](cascad
 These controlled file-reader checks prepare the independent recording gate; they
 do not satisfy real-plate, representative memory, GPU or remote CI acceptance.
 Reference inference remains the default and GUI exposure remains gated.
+
+P3 GPU continuation — actual MPS parity, cancellation and scoped inference measurements (2026-10-04):
+
+- The installed-wheel environment exposes actual MPS on the Apple M2 Pro/16 GiB
+  host. Pretrained tests accept explicit `CALI_CASCADE_TEST_DEVICES=cpu,mps` or
+  `cpu,cuda`; default CI stays CPU and unavailable requested devices fail rather
+  than skipping or falling back. Bundled real/synthetic traces, chunks 1/37/1024,
+  concurrent services, image/calcium parity, persisted resolved-device provenance
+  and inference-free offline re-analysis pass. A real cancellation test stops
+  after one completed chunk and retries without additional model loads.
+- `benchmark_cascade_inference.py --device` records separate host RSS and device
+  allocator scopes, validates every warm FOV, and binds cross-device CPU oracles
+  by DFF/model/package/file hashes. Fresh CPU and four MPS paths on 100 × 6000
+  traces pass the unchanged `rtol=1e-5, atol=1e-6`; four independent prediction
+  audits verify identities, dimensions, dtype, finite/nonnegative values and zero
+  padding. Maximum CPU/MPS difference is **2.68 × 10⁻⁷**; optimized/MPS-reference
+  difference is **5.96 × 10⁻⁸**. Cached paths load 30 weights cold and none warm.
+- MPS service four-FOV warm time is **37.596 s** versus **90.065 s** reference
+  (**2.396×** speedup). The lock path is **35.511 s**, about 5.5% less time than service,
+  but its **317.22 MiB** incremental host RSS exceeds the unchanged 256 MiB target.
+  Service (**182.05 MiB**) and serial cached (**220.77 MiB**) pass that controlled
+  host comparison; reference (**1042.98 MiB**) does not. Source images here are
+  32 × 32 uint16, so this does not certify representative complete-image retention.
+  MPS memory readings are synchronized snapshots, not device peaks; driver and
+  host counters overlap on unified-memory hardware and must not be summed.
+
+Validation: **121 passed in 18.08 s** against the installed wheel with CPU and MPS.
+Warnings-as-errors are retained, with a command-line exception only for the identified
+NumCodecs 0.15.1 deprecated `sys` shutdown callback; no application filters changed.
+Explicit unavailable CUDA is rejected without a prediction. Ruff/format and commit
+hooks pass. No production source/schema/default backend changes are made. Detailed
+scope, hashes and results are in [`cascade_mps_validation.json`](cascade_mps_validation.json)
+and [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). Independent real-plate,
+representative complete GPU/memory scopes, CUDA hardware and remaining release
+evidence still gate GUI exposure and optimized-default promotion.
 
 ## 0. TL;DR
 

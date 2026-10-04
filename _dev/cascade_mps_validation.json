@@ -1,0 +1,532 @@
+{
+  "schema": 1,
+  "scope": "Local MPS numerical/cache/cancellation, small image/full-runner checks, and controlled large Phase-B inference; not complete release acceptance",
+  "hardware": "Apple M2 Pro, 16 GiB unified memory (same host as preceding controlled CPU measurements)",
+  "script_sha256": "29ad6a8618e03bbc6d3cf29525c17c4bfc4542bbefece77f757854001c26bcab",
+  "test_source_sha256": {
+    "test_cascade_reference.py": "fead6e62e8b803a9fad8ba6487003fcab946430613f9a84d4088991dbfc4283c",
+    "test_cascade_cached.py": "4f33e7c3b10ad8468ce6938fa0e02d4f3a4cadb6ea4fc6edc4776441ac4fd2fc",
+    "test_cascade_extraction.py": "0c1dcb581a8318d13431d4b2cf40738debe84e813e65f80796367eff996a9ba4",
+    "test_cascade_runner_analysis.py": "e264b6513aeca905be11b0c3fff0832d985a921669e24d9cd94b6f1b8906886f"
+  },
+  "installed_wheel_sha256": "2792dd8a01995a6370e78069fe2b6aac2872cee3ddfabc2bfb091ffc34327a07",
+  "pretrained_fixture_manifest": {
+    "schema_version": 1,
+    "model_name": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "catalogue_revision": "c6978d5ff33edad8792c76e040412f0636913092",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "package_source_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+    "source_url": "https://github.com/PTRRupprecht/CascadeTorch/blob/c6978d5ff33edad8792c76e040412f0636913092/Example_datasets/Allen-Brain-Observatory-Visual-Coding-30Hz/Experiment_552195520_excerpt.mat",
+    "source_sha256": "ba82413d65fc3dfac622da559fdef0e379f7ed072316b08b1980c7c7d4739f3b",
+    "source_array": "dF_traces",
+    "roi_slice": [
+      0,
+      2
+    ],
+    "frame_slice": [
+      0,
+      256
+    ],
+    "sampling_rate_hz": 30.0,
+    "valid_interval": [
+      32,
+      224
+    ],
+    "fixture_sha256": "dfe7aa25f1049dde4cc6e66993df964521ae43398633112ccffa84b7ceb3eb99",
+    "device": "cpu",
+    "input_dtype": "float32",
+    "prediction_dtype": "float64",
+    "numpy_version": "2.5.3",
+    "scipy_version": "1.16.3",
+    "torch_version": "2.14.1",
+    "torch_threads": 1,
+    "threshold": 0,
+    "padding": 0
+  },
+  "tests": {
+    "devices": [
+      "cpu",
+      "mps"
+    ],
+    "passed": 121,
+    "seconds": 18.08,
+    "includes": [
+      "real/synthetic CPU-MPS oracle",
+      "chunks 1/37/1024",
+      "concurrent service",
+      "image extraction and calcium parity",
+      "persisted MPS provenance and offline reuse",
+      "cancel after first chunk, retry without loads, close cache"
+    ]
+  },
+  "warning_policy": {
+    "in_test": "repository warnings-as-errors",
+    "process": "-Werror with exact sys DeprecationWarning exception for NumCodecs 0.15.1 deprecated _destroy shutdown callback",
+    "application_filters_changed": false,
+    "initial_pretrained_run": "17 tests passed; process-wide -Werror exposed an unrelated NumCodecs atexit deprecation; final 121-test run identifies and narrowly excepts it without inference warning suppression"
+  },
+  "cpu_oracle": {
+    "mode": "reference",
+    "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "device": "cpu",
+    "device_memory": {
+      "baseline": null,
+      "cold": null,
+      "warm": null,
+      "closed": null
+    },
+    "dtype": "float32",
+    "python": "3.13.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "architecture": "arm64",
+    "cpu_count": 12,
+    "torch": "2.14.1",
+    "torch_threads": 1,
+    "rois": 100,
+    "frames": 6000,
+    "warm_fovs": 1,
+    "workers": 1,
+    "chunk_windows": null,
+    "queue_capacity": null,
+    "package_initialization_s": 0.9144318329636008,
+    "model_cold_fov_s": 98.513512791018,
+    "warm_batch_s": 95.15505083301105,
+    "cold_model_loads": 30,
+    "warm_model_loads": 30,
+    "model_loader_threads": 2,
+    "cache_stats": null,
+    "peak_active_callers": 1,
+    "peak_queue_depth": 0,
+    "retained_payload_bytes_per_fov": 36390400,
+    "baseline_peak_rss_mib": 452.234375,
+    "peak_rss_mib": 1261.203125,
+    "incremental_peak_rss_mib": 808.96875,
+    "incremental_rss_budget_mib": 256,
+    "within_incremental_budget": false,
+    "warm_expected_spikes_totals": [
+      7221.027047445031
+    ],
+    "all_warm_fovs_match_cold": true,
+    "input_dff_sha256": "cc3730bff3acee015d990ce1f8b0d98f46eaa78f7fab2c6b32e3187ecc7d9d32",
+    "prediction_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+    "package_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf"
+  },
+  "mps_report": {
+    "schema_version": 1,
+    "runs": [
+      {
+        "mode": "reference",
+        "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "mps",
+        "device_memory": {
+          "baseline": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 393216,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "cold": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 1084981248,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "warm": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 1084981248,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "closed": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 1084981248,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          }
+        },
+        "dtype": "float32",
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "architecture": "arm64",
+        "cpu_count": 12,
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "rois": 100,
+        "frames": 6000,
+        "warm_fovs": 4,
+        "workers": 4,
+        "chunk_windows": null,
+        "queue_capacity": null,
+        "package_initialization_s": 0.9484843329992145,
+        "model_cold_fov_s": 24.2754967919318,
+        "warm_batch_s": 90.06511637510266,
+        "cold_model_loads": 30,
+        "warm_model_loads": 120,
+        "model_loader_threads": 5,
+        "cache_stats": null,
+        "peak_active_callers": 4,
+        "peak_queue_depth": 0,
+        "retained_payload_bytes_per_fov": 36390400,
+        "baseline_peak_rss_mib": 451.375,
+        "peak_rss_mib": 1494.359375,
+        "incremental_peak_rss_mib": 1042.984375,
+        "incremental_rss_budget_mib": 256,
+        "within_incremental_budget": false,
+        "warm_expected_spikes_totals": [
+          7221.026881952728,
+          7221.026881952728,
+          7221.026881952728,
+          7221.026881952728
+        ],
+        "all_warm_fovs_match_cold": true,
+        "input_dff_sha256": "cc3730bff3acee015d990ce1f8b0d98f46eaa78f7fab2c6b32e3187ecc7d9d32",
+        "prediction_sha256": "bfa40e4b9d2215390ce0b979b080907a144d9020c7033d884392fb3b9be7a021",
+        "package_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf"
+      },
+      {
+        "mode": "cached",
+        "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "mps",
+        "device_memory": {
+          "baseline": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 393216,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "cold": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "warm": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "closed": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          }
+        },
+        "dtype": "float32",
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "architecture": "arm64",
+        "cpu_count": 12,
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "rois": 100,
+        "frames": 6000,
+        "warm_fovs": 4,
+        "workers": 1,
+        "chunk_windows": 1024,
+        "queue_capacity": null,
+        "package_initialization_s": 0.7171523749129847,
+        "model_cold_fov_s": 9.149129124940373,
+        "warm_batch_s": 37.39764608303085,
+        "cold_model_loads": 30,
+        "warm_model_loads": 0,
+        "model_loader_threads": 1,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 2915,
+          "largest_chunk_windows": 1024
+        },
+        "peak_active_callers": 1,
+        "peak_queue_depth": 0,
+        "retained_payload_bytes_per_fov": 36390400,
+        "baseline_peak_rss_mib": 453.75,
+        "peak_rss_mib": 674.515625,
+        "incremental_peak_rss_mib": 220.765625,
+        "incremental_rss_budget_mib": 256,
+        "within_incremental_budget": true,
+        "warm_expected_spikes_totals": [
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865
+        ],
+        "all_warm_fovs_match_cold": true,
+        "input_dff_sha256": "cc3730bff3acee015d990ce1f8b0d98f46eaa78f7fab2c6b32e3187ecc7d9d32",
+        "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+        "package_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf"
+      },
+      {
+        "mode": "service",
+        "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "mps",
+        "device_memory": {
+          "baseline": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 393216,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "cold": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "warm": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "closed": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          }
+        },
+        "dtype": "float32",
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "architecture": "arm64",
+        "cpu_count": 12,
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "rois": 100,
+        "frames": 6000,
+        "warm_fovs": 4,
+        "workers": 4,
+        "chunk_windows": 1024,
+        "queue_capacity": 1,
+        "package_initialization_s": 0.7831801250576973,
+        "model_cold_fov_s": 10.483430791995488,
+        "warm_batch_s": 37.59570545796305,
+        "cold_model_loads": 30,
+        "warm_model_loads": 0,
+        "model_loader_threads": 1,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 2915,
+          "largest_chunk_windows": 1024
+        },
+        "peak_active_callers": 4,
+        "peak_queue_depth": 1,
+        "retained_payload_bytes_per_fov": 36390400,
+        "baseline_peak_rss_mib": 451.453125,
+        "peak_rss_mib": 633.5,
+        "incremental_peak_rss_mib": 182.046875,
+        "incremental_rss_budget_mib": 256,
+        "within_incremental_budget": true,
+        "warm_expected_spikes_totals": [
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865
+        ],
+        "all_warm_fovs_match_cold": true,
+        "input_dff_sha256": "cc3730bff3acee015d990ce1f8b0d98f46eaa78f7fab2c6b32e3187ecc7d9d32",
+        "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+        "package_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf"
+      },
+      {
+        "mode": "cached-lock",
+        "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "mps",
+        "device_memory": {
+          "baseline": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 393216,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "cold": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "warm": {
+            "tensor_allocated_bytes": 4170240,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          },
+          "closed": {
+            "tensor_allocated_bytes": 0,
+            "driver_allocated_bytes": 53182464,
+            "recommended_max_bytes": 12713115648,
+            "scope": "synchronized snapshots, not a peak-memory measurement"
+          }
+        },
+        "dtype": "float32",
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "architecture": "arm64",
+        "cpu_count": 12,
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "rois": 100,
+        "frames": 6000,
+        "warm_fovs": 4,
+        "workers": 4,
+        "chunk_windows": 1024,
+        "queue_capacity": null,
+        "package_initialization_s": 0.7691552919568494,
+        "model_cold_fov_s": 9.39980045799166,
+        "warm_batch_s": 35.51144687505439,
+        "cold_model_loads": 30,
+        "warm_model_loads": 0,
+        "model_loader_threads": 1,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 2915,
+          "largest_chunk_windows": 1024
+        },
+        "peak_active_callers": 4,
+        "peak_queue_depth": 0,
+        "retained_payload_bytes_per_fov": 36390400,
+        "baseline_peak_rss_mib": 452.09375,
+        "peak_rss_mib": 769.3125,
+        "incremental_peak_rss_mib": 317.21875,
+        "incremental_rss_budget_mib": 256,
+        "within_incremental_budget": false,
+        "warm_expected_spikes_totals": [
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865,
+          7221.0268809291865
+        ],
+        "all_warm_fovs_match_cold": true,
+        "input_dff_sha256": "cc3730bff3acee015d990ce1f8b0d98f46eaa78f7fab2c6b32e3187ecc7d9d32",
+        "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+        "package_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf"
+      }
+    ],
+    "max_abs_errors_vs_reference": {
+      "cached": 5.960464477539063e-08,
+      "service": 5.960464477539063e-08,
+      "cached-lock": 5.960464477539063e-08
+    },
+    "warm_service_speedup_vs_reference": 2.3956224594803075,
+    "warm_service_speedup_vs_cached_lock": 0.9445612588586977,
+    "production_full_mode_gates": "controlled inference only; independent real plate, representative memory and complete GPU workloads remain separate acceptance gates",
+    "tolerances": {
+      "rtol": 1e-05,
+      "atol": 1e-06
+    },
+    "script_sha256": "29ad6a8618e03bbc6d3cf29525c17c4bfc4542bbefece77f757854001c26bcab",
+    "implementation_source_sha256": {
+      "_cascade_reference": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+      "_cascade_cached": "1035062fd67ee41f5295e71ef92517193daed92b236ffaeb56968a1b346b803c",
+      "_cascade_service": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+    },
+    "cross_device_cpu_oracle": {
+      "prediction_sha256": "3b7a8106582250b98260f17b41cb955be10dc44a00cacbf8000e6ca34e2f3103",
+      "max_abs_errors": {
+        "reference": 2.682209014892578e-07,
+        "cached": 2.682209014892578e-07,
+        "service": 2.682209014892578e-07,
+        "cached-lock": 2.682209014892578e-07
+      },
+      "all_modes_within_tolerance": true
+    }
+  },
+  "independent_prediction_audits": {
+    "reference": {
+      "shape": [
+        100,
+        6000
+      ],
+      "dtype": "float32",
+      "valid_interval": [
+        32,
+        5968
+      ],
+      "finite_nonnegative_and_zero_padding": true,
+      "prediction_sha256": "bfa40e4b9d2215390ce0b979b080907a144d9020c7033d884392fb3b9be7a021",
+      "max_abs_error_vs_cpu": 2.682209014892578e-07,
+      "max_abs_error_vs_mps_reference": 0.0,
+      "sum_expected_spikes": 7221.026881952728
+    },
+    "cached": {
+      "shape": [
+        100,
+        6000
+      ],
+      "dtype": "float32",
+      "valid_interval": [
+        32,
+        5968
+      ],
+      "finite_nonnegative_and_zero_padding": true,
+      "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+      "max_abs_error_vs_cpu": 2.682209014892578e-07,
+      "max_abs_error_vs_mps_reference": 5.960464477539063e-08,
+      "sum_expected_spikes": 7221.0268809291865
+    },
+    "service": {
+      "shape": [
+        100,
+        6000
+      ],
+      "dtype": "float32",
+      "valid_interval": [
+        32,
+        5968
+      ],
+      "finite_nonnegative_and_zero_padding": true,
+      "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+      "max_abs_error_vs_cpu": 2.682209014892578e-07,
+      "max_abs_error_vs_mps_reference": 5.960464477539063e-08,
+      "sum_expected_spikes": 7221.0268809291865
+    },
+    "cached-lock": {
+      "shape": [
+        100,
+        6000
+      ],
+      "dtype": "float32",
+      "valid_interval": [
+        32,
+        5968
+      ],
+      "finite_nonnegative_and_zero_padding": true,
+      "prediction_sha256": "5fa66ea276e309d80f96026145f9d989d9c0937807e57e322a5273fde02f3600",
+      "max_abs_error_vs_cpu": 2.682209014892578e-07,
+      "max_abs_error_vs_mps_reference": 5.960464477539063e-08,
+      "sum_expected_spikes": 7221.0268809291865
+    }
+  },
+  "explicit_unavailable_cuda_rejected_without_prediction": true,
+  "limits": [
+    "100x6000 inference retains synthetic 32x32 uint16 source images and real _RoiParts, not the 40x40 float64 complete-image workload.",
+    "Four MPS warm FOVs match each same-backend cold output. CPU oracle has one warm FOV; no CPU-to-GPU complete-pipeline speedup is inferred.",
+    "MPS allocations are synchronized snapshots, not device peaks; unified-memory RSS and driver counters overlap and must not be summed.",
+    "Service and cached host RSS pass the unchanged 256 MiB incremental comparison here; reference and lock paths fail. This does not certify representative-image/concurrency memory.",
+    "Service is faster than the MPS reference but slightly slower than cached-lock. No optimized production default was promoted.",
+    "Independent real plate, representative complete GPU workload, CUDA hardware and remote release evidence remain pending. GUI exposure remains gated."
+  ]
+}

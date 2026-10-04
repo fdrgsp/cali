@@ -83,6 +83,108 @@ required. The command never promotes cached inference or enables CASCADE in the 
 
 ## Controlled workloads
 
+### Explicit GPU validation
+
+The pretrained tests accept `CALI_CASCADE_TEST_DEVICES=cpu,mps` (or `cpu,cuda`).
+The default remains CPU. Explicitly requested unavailable devices fail; they are
+not skipped and do not fall back. The same tests cover the bundled real trace,
+synthetic traces, chunks of 1/37/1024 windows, concurrent service calls, resolved
+device provenance, calcium parity across output selections, persistence and
+inference-free offline analysis. CPU/GPU predictions use the plan's unchanged
+`rtol=1e-5, atol=1e-6`; CPU noise estimates and ensemble selections remain exact.
+A pretrained cancellation test stops after the first completed chunk, retries
+without reloading the ensemble, and checks cache cleanup on the selected device.
+
+Run the installed wheel with the verified model cache and single CPU threads:
+
+```sh
+PYTEST_RUNNING=1 QT_QPA_PLATFORM=offscreen \
+CALI_CASCADE_REFERENCE_TESTS=1 CALI_CASCADE_TEST_DEVICES=cpu,mps \
+CALI_CASCADE_MODELS=/path/to/verified-model-cache \
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1 \
+python -I -Werror \
+  '-Wignore:Call to deprecated function (or staticmethod) _destroy.:DeprecationWarning:sys' \
+  -m pytest --noconftest -q \
+  tests/test_cascade_reference.py tests/test_cascade_cached.py \
+  tests/test_cascade_extraction.py tests/test_cascade_runner_analysis.py -k pretrained
+```
+
+The narrow command-line warning exception above is for the installed NumCodecs
+0.15.1 `atexit.register(blosc.destroy)` callback: its deprecated native `_destroy`
+wrapper warns from `sys` after pytest restores its filters. This occurs independently
+of Torch/MPS inference. No project warning policy or inference-warning filter is changed.
+It can be omitted with dependency versions whose shutdown callback is warning-free.
+
+`benchmark_cascade_inference.py --device cpu|mps|cuda` now selects an explicit
+device for each isolated reference/cached/service/lock process. Capture a fresh CPU
+reference before a GPU comparison:
+
+```sh
+# Use the same environment variables as above, running measurements sequentially.
+python _dev/benchmark_cascade_inference.py \
+  --model-dir /path/to/verified-model-cache \
+  --output-dir /tmp/cali-cpu-oracle --mode reference --device cpu \
+  --rois 100 --frames 6000 --fovs 1 --workers 1
+
+python _dev/benchmark_cascade_inference.py \
+  --model-dir /path/to/verified-model-cache \
+  --output-dir /tmp/cali-mps-inference --device mps \
+  --cpu-reference /tmp/cali-cpu-oracle \
+  --rois 100 --frames 6000 --fovs 4 --workers 4
+```
+
+CPU oracle comparison checks matching input DFF hashes, model/manifest/package
+identities, dimensions, CPU device and prediction checksum before comparing every
+backend at the same tolerances. Every warm FOV also matches its cold result; cached
+GPU repetition uses numerical tolerance and CPU repetition stays exact. Existing
+prediction/report files are protected against replacement.
+
+Host RSS and GPU allocator figures have separate scopes. MPS reports synchronized
+tensor, driver and recommended-memory snapshots at baseline/cold/warm/close; these
+are **not MPS peak-memory measurements**. CUDA reports allocator current/peak/reserved
+bytes, excluding driver overhead and other processes. Cached parameter counts remain
+a separate cap. Host RSS and MPS driver counters can overlap on unified-memory
+hardware; adding them does not yield physical peak memory. The existing 256 MiB
+host RSS comparison is unchanged and cannot
+certify GPU device memory or representative-image retention. Timings include retained
+caller payload construction and warm parity checks, while snapshot checks are outside
+the warm timer; cold includes device initialization and its baseline snapshot.
+
+This is controlled Phase-B inference with 32 × 32 uint16 retained source images,
+not complete image extraction/analysis/persistence or independent plate acceptance.
+Keep the reference production default and experimental cached flag until all their
+remaining gates pass. GPU numerical checks do not enable the GUI option.
+
+Local MPS validation is recorded in `cascade_mps_validation.json` on the same Apple
+M2 Pro/16 GiB host, with Python 3.13 and Torch 2.14.1. All **121 CPU/MPS backend and
+runner tests** pass, including real chunk cancellation and retry. Four independent
+100 × 6000 prediction audits confirm finite nonnegative float32 samples, zero edge
+padding and model/input/file identities. Maximum deviation from the fresh CPU oracle
+is **2.68 × 10⁻⁷**; cached/service/lock deviation from MPS reference is **5.96 × 10⁻⁸**.
+All warm FOVs match their cold predictions.
+
+| MPS path | Cold FOV (s) | Four warm FOVs (s) | Incremental host peak (MiB) | Within existing 256 MiB comparison |
+| --- | ---: | ---: | ---: | --- |
+| Reference | 24.275 | 90.065 | 1042.98 | No |
+| Cached, one caller | 9.149 | 37.398 | 220.77 | Yes |
+| Service, four callers | 10.483 | 37.596 | 182.05 | Yes |
+| Cached lock, four callers | 9.400 | 35.511 | 317.22 | No |
+
+The service is **2.396×** faster than the MPS reference here. The lock path takes
+about **5.5%** less warm time than the service and fails this host comparison.
+Cached paths load 30 checkpoints cold and zero warm, retaining six selected noise ensembles.
+MPS cached driver snapshots are 50.72 MiB warm and after close; tensor allocation
+returns to zero on close. Retained allocator memory is separate from retained models.
+Reference driver snapshots retain about 1034.72 MiB after calls; snapshots do not
+reveal the transient peak. The CPU oracle's single warm FOV takes 95.155 s, with
+808.97 MiB incremental host peak; its concurrency scope differs from the GPU batch.
+No complete-pipeline CPU/GPU speedup or representative memory acceptance is claimed.
+Explicit unavailable CUDA selection fails before creating a prediction. CUDA hardware,
+independent real-plate inputs, representative complete GPU and memory scopes, and
+remaining release evidence are still pending.
+
+### Complete CPU extraction and storage
+
 The short/long full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`;
 the completed 100 × 6000 image workload and worker-memory comparison are in
 `cascade_large_mode_cpu_benchmark.json`. Its v1 spike-payload projection exceeds

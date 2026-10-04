@@ -615,8 +615,12 @@ def test_calcium_noise_migration_leaves_historical_values_unknown(
     reason="Actual pretrained extraction runs in the optional installed-wheel job",
 )
 @pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
 def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
     experimental: bool,
+    device: str,
 ) -> None:
     metadata = json.loads(
         (Path(__file__).parent / "fixtures/cascade_reference/manifest.json").read_text()
@@ -625,7 +629,7 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
     backend = reference.CascadeReferenceBackend(
         metadata["model_name"],
         expected_manifest=metadata["model_manifest_sha256"],
-        device="cpu",
+        device=device,
     )
     modes = []
     oasis_spikes = []
@@ -635,7 +639,7 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
         settings = ExtractionSettings(
             spike_methods=methods,
             cascade_model=metadata["model_name"] if "cascade" in methods else None,
-            cascade_device="cpu",
+            cascade_device=device,
             frame_rate=30,
             dff_window=5,
             neuropil_inner_radius=0,
@@ -692,7 +696,7 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
                 padding=0,
                 trace_noise_levels=noise,
                 verbosity=0,
-                device=package.torch.device("cpu"),
+                device=package.torch.device(device),
             )
             np.testing.assert_allclose(
                 [trace.get_spike_values("cascade") for trace in traces],
@@ -703,7 +707,8 @@ def test_pretrained_extraction_matches_upstream_and_preserves_calcium(
             for trace in traces:
                 run = trace.get_spike_trace("cascade").inference_run
                 assert run.weights_manifest_sha256 == metadata["model_manifest_sha256"]
-                assert run.resolved_device == "cpu" and run.dtype == "float32"
+                assert run.resolved_device.split(":")[0] == device
+                assert run.dtype == "float32"
     assert modes[0] == modes[1] == modes[2]
     assert oasis_spikes[0] == oasis_spikes[1]
     assert roi_calcium[0] == roi_calcium[1] == roi_calcium[2]

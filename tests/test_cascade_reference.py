@@ -244,17 +244,21 @@ def test_explicit_unavailable_device_does_not_fallback(
     os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
     reason="Pretrained CASCADE oracle runs in the dedicated optional-dependency job",
 )
-def test_pinned_pretrained_real_and_synthetic_oracle() -> None:
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
+def test_pinned_pretrained_real_and_synthetic_oracle(device: str) -> None:
     """Opt in requires the exact real model; absent dependencies/models fail the job."""
     fixture = Path(__file__).parent / "fixtures" / "cascade_reference"
     metadata = json.loads((fixture / "manifest.json").read_text())
     package = reference.load_cascade_package()
+    assert device in {"cpu", "mps", "cuda"}
     assert package.package_revision == metadata["package_revision"]
     assert package.source_manifest_sha256 == metadata["package_source_sha256"]
     backend = reference.CascadeReferenceBackend(
         metadata["model_name"],
         expected_manifest=metadata["model_manifest_sha256"],
-        device="cpu",
+        device=device,
     )
     with np.load(fixture / "real_excerpt.npz", allow_pickle=False) as saved:
         real = saved["dff"]
@@ -277,10 +281,22 @@ def test_pinned_pretrained_real_and_synthetic_oracle() -> None:
             padding=0,
             trace_noise_levels=None,
             verbosity=0,
-            device=package.torch.device("cpu"),
+            device=package.torch.device(result.resolved_device),
         )
         np.testing.assert_allclose(result.spikes, implicit, rtol=1e-5, atol=1e-6)
         np.testing.assert_array_equal(result.spikes, implicit.astype(np.float32))
+        assert result.resolved_device.split(":")[0] == device
+        if device != "cpu":
+            cpu = reference.CascadeReferenceBackend(
+                metadata["model_name"],
+                expected_manifest=metadata["model_manifest_sha256"],
+                device="cpu",
+            ).infer_all(dff, backend.model.sampling_rate, timing=timing)
+            np.testing.assert_allclose(result.spikes, cpu.spikes, rtol=1e-5, atol=1e-6)
+            np.testing.assert_array_equal(result.noise_by_roi, cpu.noise_by_roi)
+            np.testing.assert_array_equal(
+                result.selected_noise_levels_by_roi, cpu.selected_noise_levels_by_roi
+            )
         if dff is real:
             np.testing.assert_allclose(result.spikes, expected, rtol=1e-5, atol=1e-6)
             np.testing.assert_array_equal(result.noise_by_roi, expected_noise)

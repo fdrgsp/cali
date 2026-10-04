@@ -27,13 +27,48 @@ from cali._cascade_package import load_cascade_package
 from cali.extraction._extraction_runner import _RoiParts
 from cali.extraction._frame_window import TimingDescriptor
 from cali.extraction._spike_inference._cascade_cached import CachedCascadePredictor
-from cali.extraction._spike_inference._cascade_reference import CascadeReferenceBackend
+from cali.extraction._spike_inference._cascade_reference import (
+    CascadeReferenceBackend,
+    resolve_cascade_device,
+)
 from cali.extraction._spike_inference._cascade_service import CascadeInferenceService
 
 MODEL = "Global_EXC_30Hz_smoothing25ms"
 MANIFEST = "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184"
 MODES = ("reference", "cached", "service", "cached-lock")
 INCREMENTAL_RSS_BUDGET_MIB = 256
+RTOL, ATOL = 1e-5, 1e-6
+
+
+def _checksum(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while block := stream.read(1024**2):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _device_memory(package: object, device: str) -> dict | None:
+    """Report device bytes separately from host RSS, without inventing MPS peaks."""
+    torch = package.torch
+    if device == "mps":
+        torch.mps.synchronize()
+        return {
+            "tensor_allocated_bytes": torch.mps.current_allocated_memory(),
+            "driver_allocated_bytes": torch.mps.driver_allocated_memory(),
+            "recommended_max_bytes": torch.mps.recommended_max_memory(),
+            "scope": "synchronized snapshots, not a peak-memory measurement",
+        }
+    if device.startswith("cuda"):
+        torch.cuda.synchronize(device)
+        return {
+            "tensor_allocated_bytes": torch.cuda.memory_allocated(device),
+            "reserved_bytes": torch.cuda.memory_reserved(device),
+            "peak_tensor_allocated_bytes": torch.cuda.max_memory_allocated(device),
+            "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+            "scope": "allocator bytes; excludes other processes and driver overhead",
+        }
+    return None
 
 
 def _peak_mib() -> float:
@@ -95,7 +130,7 @@ def _run_mode(args: argparse.Namespace) -> dict:
         "model_name": MODEL,
         "model_dir": args.model_dir,
         "expected_manifest": MANIFEST,
-        "device": "cpu",
+        "device": args.device,
     }
     if args.mode == "reference":
         backend = CascadeReferenceBackend(**options)
@@ -118,6 +153,8 @@ def _run_mode(args: argparse.Namespace) -> dict:
 
     monitor_thread = threading.Thread(target=monitor, daemon=True)
     monitor_thread.start()
+    cold = None
+    device_memory = {}
 
     def infer() -> np.ndarray:
         nonlocal active_callers, peak_callers
@@ -132,6 +169,13 @@ def _run_mode(args: argparse.Namespace) -> dict:
             else:
                 result = backend.infer_all(dff, 30, timing=timing)
             assert len(parts) == args.rois and image.shape[0] == args.frames
+            if cold is not None:
+                if args.device == "cpu":
+                    np.testing.assert_array_equal(result.spikes, cold)
+                else:
+                    np.testing.assert_allclose(
+                        result.spikes, cold, rtol=RTOL, atol=ATOL
+                    )
             return result.spikes
         finally:
             with counters_lock:
@@ -139,8 +183,13 @@ def _run_mode(args: argparse.Namespace) -> dict:
 
     try:
         cold_begin = time.perf_counter()
+        resolved_device = resolve_cascade_device(package, args.device)
+        if resolved_device.startswith("cuda"):
+            package.torch.cuda.reset_peak_memory_stats(resolved_device)
+        device_memory["baseline"] = _device_memory(package, resolved_device)
         cold = infer()
         cold_s = time.perf_counter() - cold_begin
+        device_memory["cold"] = _device_memory(package, resolved_device)
         cold_loads = load_count
         np.savez_compressed(
             args.output_dir / f"{args.mode}-prediction.npz", spikes=cold
@@ -156,12 +205,15 @@ def _run_mode(args: argparse.Namespace) -> dict:
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 totals = list(pool.map(run_fov, range(args.fovs)))
         warm_s = time.perf_counter() - warm_begin
+        device_memory["warm"] = _device_memory(package, resolved_device)
         stats = None if args.mode == "reference" else vars(backend.stats)
     finally:
         stop.set()
         monitor_thread.join()
         if args.mode != "reference":
             backend.close()
+        if cold is not None:
+            device_memory["closed"] = _device_memory(package, resolved_device)
         package.torch.load = original_load
     peak = _peak_mib()
     incremental = max(peak - baseline_peak, 0)
@@ -172,11 +224,15 @@ def _run_mode(args: argparse.Namespace) -> dict:
     )
     return {
         "mode": args.mode,
-        "scope": "controlled Phase-B inference with real _RoiParts and source-image retention",
+        "scope": (
+            "controlled Phase-B inference with real _RoiParts "
+            "and source-image retention"
+        ),
         "model": MODEL,
         "model_manifest_sha256": MANIFEST,
         "package_revision": package.package_revision,
-        "device": "cpu",
+        "device": resolved_device,
+        "device_memory": device_memory,
         "dtype": "float32",
         "python": platform.python_version(),
         "platform": platform.platform(),
@@ -206,10 +262,15 @@ def _run_mode(args: argparse.Namespace) -> dict:
         "incremental_rss_budget_mib": INCREMENTAL_RSS_BUDGET_MIB,
         "within_incremental_budget": incremental <= INCREMENTAL_RSS_BUDGET_MIB,
         "warm_expected_spikes_totals": totals,
+        "all_warm_fovs_match_cold": True,
+        "input_dff_sha256": hashlib.sha256(template.tobytes()).hexdigest(),
+        "prediction_sha256": _checksum(args.output_dir / f"{args.mode}-prediction.npz"),
+        "package_source_manifest_sha256": package.source_manifest_sha256,
     }
 
 
 def main() -> None:
+    """Compare isolated devices/backends with explicitly bound CPU oracle inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("all", *MODES), default="all")
     parser.add_argument("--model-dir", type=Path, required=True)
@@ -219,11 +280,18 @@ def main() -> None:
     parser.add_argument("--fovs", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--chunk", type=int, default=1024)
+    parser.add_argument("--device", choices=("cpu", "mps", "cuda"), default="cpu")
+    parser.add_argument("--cpu-reference", type=Path)
     args = parser.parse_args()
     if min(args.rois, args.frames, args.fovs, args.workers, args.chunk) <= 0:
         parser.error("Counts and chunk size must be positive")
+    if args.cpu_reference is not None and args.mode != "all":
+        parser.error("--cpu-reference requires --mode all")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.mode != "all":
+        for suffix in (".json", "-prediction.npz"):
+            if (args.output_dir / (args.mode + suffix)).exists():
+                raise FileExistsError(args.output_dir / (args.mode + suffix))
         result = _run_mode(args)
         (args.output_dir / f"{args.mode}.json").write_text(
             json.dumps(result, indent=2) + "\n"
@@ -231,6 +299,8 @@ def main() -> None:
         print(json.dumps(result, indent=2))
         return
     results = []
+    if (args.output_dir / "report.json").exists():
+        raise FileExistsError(args.output_dir / "report.json")
     for mode in MODES:
         command = [
             sys.executable,
@@ -251,6 +321,8 @@ def main() -> None:
             str(args.workers),
             "--chunk",
             str(args.chunk),
+            "--device",
+            args.device,
         ]
         completed = subprocess.run(command, capture_output=True, text=True)
         (args.output_dir / f"{mode}.log").write_text(
@@ -272,7 +344,7 @@ def main() -> None:
     for mode in MODES[1:]:
         with np.load(args.output_dir / f"{mode}-prediction.npz") as saved:
             prediction = saved["spikes"]
-        np.testing.assert_allclose(prediction, oracle, rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(prediction, oracle, rtol=RTOL, atol=ATOL)
         max_errors[mode] = float(np.max(np.abs(prediction - oracle)))
     by_mode = {row["mode"]: row for row in results}
     report = {
@@ -283,7 +355,12 @@ def main() -> None:
         / by_mode["service"]["warm_batch_s"],
         "warm_service_speedup_vs_cached_lock": by_mode["cached-lock"]["warm_batch_s"]
         / by_mode["service"]["warm_batch_s"],
-        "production_full_mode_gates": "pending runner integration: OASIS-only/CASCADE-only/dual, persistence, analysis, real plate",
+        "production_full_mode_gates": (
+            "controlled inference only; independent real plate, representative "
+            "memory and complete GPU workloads remain separate acceptance gates"
+        ),
+        "tolerances": {"rtol": RTOL, "atol": ATOL},
+        "script_sha256": _checksum(Path(__file__)),
         "implementation_source_sha256": {
             name: hashlib.sha256(
                 Path(
@@ -295,6 +372,40 @@ def main() -> None:
             for name in ("_cascade_reference", "_cascade_cached", "_cascade_service")
         },
     }
+    if args.cpu_reference is not None:
+        cpu = json.loads((args.cpu_reference / "reference.json").read_text())
+        actual = by_mode["reference"]
+        for field in (
+            "model",
+            "model_manifest_sha256",
+            "package_revision",
+            "package_source_manifest_sha256",
+            "input_dff_sha256",
+            "rois",
+            "frames",
+        ):
+            if cpu[field] != actual[field]:
+                raise ValueError(f"CPU oracle identity mismatch: {field}")
+        cpu_path = args.cpu_reference / "reference-prediction.npz"
+        if cpu["device"] != "cpu" or _checksum(cpu_path) != cpu["prediction_sha256"]:
+            raise ValueError("CPU oracle device or prediction checksum mismatch.")
+        with np.load(cpu_path, allow_pickle=False) as saved:
+            cpu_prediction = saved["spikes"]
+        cross_device_errors = {}
+        for mode in MODES:
+            with np.load(
+                args.output_dir / f"{mode}-prediction.npz", allow_pickle=False
+            ) as saved:
+                prediction = saved["spikes"]
+            np.testing.assert_allclose(prediction, cpu_prediction, rtol=RTOL, atol=ATOL)
+            cross_device_errors[mode] = float(
+                np.max(np.abs(prediction - cpu_prediction))
+            )
+        report["cross_device_cpu_oracle"] = {
+            "prediction_sha256": cpu["prediction_sha256"],
+            "max_abs_errors": cross_device_errors,
+            "all_modes_within_tolerance": True,
+        }
     (args.output_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(
         json.dumps(

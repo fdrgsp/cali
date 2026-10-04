@@ -249,8 +249,53 @@ def test_ensemble_average_nonnegative_edges_and_reuse(
     backend.infer_all(dff, 10, timing=_timing(19))
     assert len(state["loads"]) == 8
     backend.close()
+    assert backend.stats.ensembles == backend.stats.parameter_bytes == 0
     with pytest.raises(RuntimeError, match="closed"):
         backend.infer_all(dff, 10, timing=_timing(19))
+
+
+@pytest.mark.skipif(
+    os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
+    reason="Real device cancellation runs in optional pretrained validation",
+)
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
+def test_pretrained_cancellation_stops_after_one_chunk_and_can_retry(
+    device: str,
+) -> None:
+    fixture = Path(__file__).parent / "fixtures/cascade_reference"
+    metadata = json.loads((fixture / "manifest.json").read_text())
+    with np.load(fixture / "real_excerpt.npz", allow_pickle=False) as saved:
+        dff, golden = saved["dff"], saved["expected_spikes"]
+    backend = CachedCascadePredictor(
+        metadata["model_name"],
+        expected_manifest=metadata["model_manifest_sha256"],
+        device=device,
+        max_windows=37,
+    )
+    try:
+        baseline = backend.infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
+        chunks, loads = backend.stats.chunks, backend.stats.model_loads
+        with pytest.raises(InferenceCancelled):
+            backend.infer_all(
+                dff,
+                30,
+                timing=_timing(dff.shape[1], 30),
+                cancel=lambda: backend.stats.chunks > chunks,
+            )
+        assert backend.stats.chunks == chunks + 1
+        assert backend.stats.model_loads == loads
+        retry = backend.infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
+        assert retry.resolved_device.split(":")[0] == device
+        np.testing.assert_array_equal(retry.spikes, baseline.spikes)
+        np.testing.assert_allclose(retry.spikes, golden, rtol=1e-5, atol=1e-6)
+        assert backend.stats.model_loads == loads
+    finally:
+        backend.close()
+    assert backend.stats.ensembles == backend.stats.parameter_bytes == 0
+    with pytest.raises(RuntimeError, match="closed"):
+        backend.infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
 
 
 def test_cache_budget_evicts_and_refuses_oversized_ensemble(toy_package: tuple) -> None:
@@ -521,7 +566,10 @@ def test_service_reentrant_submission_rejected_and_close_before_use(
     os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
     reason="Real cached service equivalence runs in CASCADE CI",
 )
-def test_pretrained_service_reuses_models_across_concurrent_fovs() -> None:
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
+def test_pretrained_service_reuses_models_across_concurrent_fovs(device: str) -> None:
     fixture = Path(__file__).parent / "fixtures/cascade_reference"
     metadata = json.loads((fixture / "manifest.json").read_text())
     with np.load(fixture / "real_excerpt.npz", allow_pickle=False) as saved:
@@ -529,7 +577,7 @@ def test_pretrained_service_reuses_models_across_concurrent_fovs() -> None:
     with CascadeInferenceService(
         metadata["model_name"],
         expected_manifest=metadata["model_manifest_sha256"],
-        device="cpu",
+        device=device,
         max_windows=37,
     ) as service:
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -538,9 +586,9 @@ def test_pretrained_service_reuses_models_across_concurrent_fovs() -> None:
                 for _ in range(3)
             ]
             for future in futures:
-                np.testing.assert_allclose(
-                    future.result(timeout=30).spikes, golden, rtol=1e-5, atol=1e-6
-                )
+                result = future.result(timeout=60)
+                assert result.resolved_device.split(":")[0] == device
+                np.testing.assert_allclose(result.spikes, golden, rtol=1e-5, atol=1e-6)
         assert service.stats.model_loads == 5
         assert service.stats.ensembles == 1
     assert service.stats.ensembles == service.stats.parameter_bytes == 0
@@ -551,19 +599,22 @@ def test_pretrained_service_reuses_models_across_concurrent_fovs() -> None:
     reason="Real cached predictor equivalence runs in CASCADE CI",
 )
 @pytest.mark.parametrize("chunk", [1, 37, 1024])
-def test_cached_pretrained_matches_upstream_and_golden(chunk: int) -> None:
+@pytest.mark.parametrize(
+    "device", os.environ.get("CALI_CASCADE_TEST_DEVICES", "cpu").split(",")
+)
+def test_cached_pretrained_matches_upstream_and_golden(chunk: int, device: str) -> None:
     fixture = Path(__file__).parent / "fixtures/cascade_reference"
     metadata = json.loads((fixture / "manifest.json").read_text())
     backend = CachedCascadePredictor(
         metadata["model_name"],
         expected_manifest=metadata["model_manifest_sha256"],
-        device="cpu",
+        device=device,
         max_windows=chunk,
     )
     oracle = reference.CascadeReferenceBackend(
         metadata["model_name"],
         expected_manifest=metadata["model_manifest_sha256"],
-        device="cpu",
+        device=device,
     )
     with np.load(fixture / "real_excerpt.npz", allow_pickle=False) as saved:
         real, golden = saved["dff"], saved["expected_spikes"]
@@ -576,9 +627,17 @@ def test_cached_pretrained_matches_upstream_and_golden(chunk: int) -> None:
     for dff in (real, synthetic):
         expected = oracle.infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
         actual = backend.infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
+        assert actual.resolved_device.split(":")[0] == device
         np.testing.assert_allclose(actual.spikes, expected.spikes, rtol=1e-5, atol=1e-6)
         if dff is real:
             np.testing.assert_allclose(actual.spikes, golden, rtol=1e-5, atol=1e-6)
+        if device != "cpu":
+            cpu = reference.CascadeReferenceBackend(
+                metadata["model_name"],
+                expected_manifest=metadata["model_manifest_sha256"],
+                device="cpu",
+            ).infer_all(dff, 30, timing=_timing(dff.shape[1], 30))
+            np.testing.assert_allclose(actual.spikes, cpu.spikes, rtol=1e-5, atol=1e-6)
         np.testing.assert_array_equal(actual.noise_by_roi, expected.noise_by_roi)
         np.testing.assert_array_equal(
             actual.selected_noise_levels_by_roi, expected.selected_noise_levels_by_roi
