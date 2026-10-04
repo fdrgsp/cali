@@ -14,13 +14,21 @@ from pyqtgraph import BarGraphItem
 from sqlmodel import Session, col, select
 
 from cali._constants import EVK_NON_STIM, EVK_STIM, EVOKED
+from cali.plot._spike_data import (
+    SPIKE_METRIC_ALIASES,
+    SPIKE_METRIC_METHODS,
+    roi_is_active,
+    validate_spike_metric,
+)
 from cali.sqlmodel import FOV, ROI, AnalysisSettings, DataAnalysis, Well
 from cali.sqlmodel._engine import ensure_schema_current
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 
 # PLOT STYLE CONSTANTS
@@ -256,6 +264,7 @@ def _query_roi_parameter_by_condition(
     parameter: str,
     run_id: int | None = None,
     include_stim_status: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> dict[str, dict[str, dict[str, list[float]]]]:
     """Query ROI-level parameters grouped by condition, well, and FOV.
 
@@ -271,11 +280,20 @@ def _query_roi_parameter_by_condition(
         If True, include stimulation status in condition labels for evoked experiments.
         Default is False (general plots don't split by stim status).
 
+    spike_method : {"oasis", "cascade"}
+        Stored method to select for spike metrics.
+
     Returns
     -------
     dict[str, dict[str, dict[str, list[float]]]]
         Nested dict: {condition_label: {well_name: {fov_name: [values]}}}
     """
+    canonical_spike_methods((spike_method,))
+    spike_parameter = (
+        parameter in SPIKE_METRIC_ALIASES or parameter in SPIKE_METRIC_METHODS
+    )
+    if spike_parameter:
+        parameter = validate_spike_metric(spike_method, parameter)
     ensure_schema_current(engine)
     with Session(engine) as session:
         # Get experiment type if run_id is provided and stim status is needed
@@ -290,7 +308,6 @@ def _query_roi_parameter_by_condition(
             .join(ROI, DataAnalysis.roi_id == ROI.id)
             .join(FOV, ROI.fov_id == FOV.id)
             .join(Well, FOV.well_id == Well.id)
-            .where(col(ROI.active) == True)  # noqa: E712
         )
 
         if run_id is not None:
@@ -301,15 +318,13 @@ def _query_roi_parameter_by_condition(
         # Group by condition → well → FOV
         data: dict[str, dict[str, dict[str, list[float]]]] = {}
         for analysis, roi, fov, well in results:
-            # Get value for this ROI
+            if not roi_is_active(
+                roi, analysis, spike_method if spike_parameter else None
+            ):
+                continue
             value = (
-                analysis.get_spike_metric("oasis", parameter)
-                if parameter
-                in {
-                    "inferred_spikes_threshold",
-                    "inferred_spikes_frequency",
-                    "inferred_spikes_rising_edge_frequency",
-                }
+                analysis.get_spike_metric(spike_method, parameter)
+                if spike_parameter
                 else getattr(analysis, parameter, None)
             )
             if value is None:
@@ -835,17 +850,25 @@ def make_parameter_compute_fn(
     units: str,
     name: str,
     include_stim_status: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]:
     """Create a headless compute function for a standard parameter bar plot.
 
     Returns a callable (engine, run_id) -> (BarPlotData, name, units) | None.
     """
+    canonical_spike_methods((spike_method,))
+    if parameter in SPIKE_METRIC_ALIASES or parameter in SPIKE_METRIC_METHODS:
+        validate_spike_metric(spike_method, parameter)
 
     def _compute(
         engine: Engine, run_id: int | None
     ) -> tuple[BarPlotData, str, str] | None:
         data_by_condition = _query_roi_parameter_by_condition(
-            engine, parameter, run_id, include_stim_status=include_stim_status
+            engine,
+            parameter,
+            run_id,
+            include_stim_status=include_stim_status,
+            spike_method=spike_method,
         )
         if not data_by_condition:
             return None
@@ -866,6 +889,7 @@ def plot_parameter_bar_plot(
     units: str = "",
     title_suffix: str = "",
     include_stim_status: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a bar plot for a given parameter across conditions.
 
@@ -887,6 +911,8 @@ def plot_parameter_bar_plot(
         Suffix to append to plot title (e.g., "(Median)")
     include_stim_status : bool
         If True, condition labels include stim/non-stim split (evoked plots only).
+    spike_method : {"oasis", "cascade"}
+        Stored output for a spike metric; values are never pooled across methods.
     """
     if not parameter:
         widget.clear_plot()
@@ -894,7 +920,11 @@ def plot_parameter_bar_plot(
 
     # Query data grouped by condition
     data_by_condition = _query_roi_parameter_by_condition(
-        engine, parameter, run_id, include_stim_status=include_stim_status
+        engine,
+        parameter,
+        run_id,
+        include_stim_status=include_stim_status,
+        spike_method=spike_method,
     )
 
     if not data_by_condition:

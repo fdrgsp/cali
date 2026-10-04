@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations and P6c1 method-aware exports implemented; schema-12 population coordinates added; real-plate performance, plot/aggregation/comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports and P6c2a plot registry/ROI consumers implemented; schema-12 population coordinates added; real-plate performance, remaining population/evoked/PCA consumers, comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,7 +442,8 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6c2 method-aware plots, aggregation consumers and comparison selection,
+**Next landing step:** P6c2b method-aware population/matrix/burst, evoked and PCA consumers,
+then comparison selection,
 including per-pillar activity and population-array coordinate handling. Complete those checks before
 opening the full runner's CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
@@ -904,6 +905,58 @@ P6c2 plot/aggregation consumers and comparison validation remain pending. Full
 CASCADE runner spike analysis remains gated until those consumers select the proper
 method and population. Stored-result exports require no optional inference packages
 or model files. This completes the export slice, not P6 or GUI exposure.
+
+P6c2a — plot registry, ROI plots and scalar consumers (2026-10-03):
+
+- Every registered product has an explicit stable ID; single/multi-well dispatch
+  accepts that ID or the existing display name. Spike products declare supported
+  methods and, where converted, required stored fields. Availability filtering
+  accepts the selected run's stored methods, active results method and non-NULL
+  metrics. `get_stored_spike_capabilities()` discovers those fields without loading
+  trace arrays. Extraction-only raw/normalized spike plots no longer require ROI
+  analysis rows or an analysis-stage gate.
+- Single-well trace, raster and heatmap renderers accept explicit method selection.
+  One shared reader validates method/units and analyzed-source binding, masks
+  invalid samples as NaN and uses the analysis onset rule. Normalization and heatmap
+  scaling exclude padding; cropped edges cannot fabricate events. Heatmaps preserve
+  ragged trailing samples as unknown. CASCADE axes retain frame coordinates instead
+  of borrowing OASIS's duration-based tick scaling; switching plots clears stale ticks.
+  Valid zero cutoffs are accepted; OASIS's
+  allowed disabled multiplier cutoff does not draw a nonfinite threshold line.
+- Thresholded/raster plots and scalar rate/count plots use the selected method's
+  activity flag. Active-only raw spike plots use the same flag; active-only calcium
+  traces and calcium scalar queries use `calcium_active`. Explicit False never falls
+  back to the ROI union summary; only unknown historical flags retain that fallback.
+- CASCADE expected rate, expected count and optional threshold-excursion rate have
+  separate single-well and multi-well products with explicit scientific names and
+  units. They cannot use OASIS sample/rising-edge metrics. Headless scalar queries
+  and factories validate the method/metric pair and select one method's child rows;
+  dual outputs cannot be pooled or substituted. Hierarchical ROI/FOV/well averaging
+  is preserved. Aggregated spike CSVs now record product ID, method, metric and units
+  in sidecars; batch export uses the validated product compute entry point.
+- Unsupported CASCADE requests fail before registry dispatch, independently of GUI
+  filtering. Unconverted registered population, correlation and evoked families
+  remain OASIS-only; PCA conversion also remains pending. The calcium/spike overlay remains
+  OASIS-only until it can represent separate amplitude units. This does not hide
+  shared calcium traces when viewing CASCADE results.
+- Installed-wheel CI now installs the Qt test plugin and verifies actual plot
+  semantics alongside inference, persistence and exports. Tests exercise all three
+  output selections, retained-frame events, contradictory union/activity flags,
+  extraction-only traces, optional metrics, headless rejection and method-qualified
+  scalar exports.
+
+Validation: **285 passed in 27.82 s** in focused plot, scalar, runner and export
+regressions; **2074 passed, 13 skipped in 248.08 s** in the full base/GUI suite;
+**249 passed in 24.43 s** in plot/interactions checks after the final CASCADE axis
+correction; **271 passed in 16.78 s** against the rebuilt and installed final wheel
+with real pretrained models and Qt rendering. Ruff lint/format pass; mypy adds no
+diagnostics (352 existing). Tracked database fixtures were restored after test processes
+stopped; no migrated databases are committed.
+
+Remaining P6c2 work is method-bound population/burst/matrix rendering, evoked
+consumers, PCA feature selection and comparison interval alignment. GUI results-method
+selection remains part of P8. Full CASCADE runner spike analysis stays gated until those consumers
+are safe; this is the registry/ROI consumer slice, not completion of P6 or GUI exposure.
 
 ## 0. TL;DR
 

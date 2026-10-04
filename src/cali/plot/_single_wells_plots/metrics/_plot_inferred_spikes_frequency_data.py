@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_data import roi_is_active, validate_spike_metric
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 SCATTER_SIZE = 7
@@ -28,6 +30,8 @@ def _plot_inferred_spikes_frequency_data(
     rois: list[int] | None = None,
     run_id: int | None = None,
     rising_edge: bool = False,
+    spike_method: SpikeMethod = "oasis",
+    metric: str | None = None,
 ) -> None:
     """Plot inferred spikes frequency data using pyqtgraph.
 
@@ -45,7 +49,29 @@ def _plot_inferred_spikes_frequency_data(
         Analysis run ID to use.
     rising_edge : bool
         If True, plot rising edge frequency; otherwise plot thresholded frequency.
+    spike_method : {"oasis", "cascade"}
+        Stored output whose scalar is displayed.
+    metric : str | None
+        Explicit metric; defaults to the matching sample/edge or
+        expected/excursion rate.
     """
+    metric = validate_spike_metric(
+        spike_method,
+        metric
+        or (
+            (
+                "suprathreshold_rising_edge_rate_hz"
+                if rising_edge
+                else "suprathreshold_sample_rate_hz"
+            )
+            if spike_method == "oasis"
+            else (
+                "suprathreshold_excursion_rate_hz"
+                if rising_edge
+                else "expected_spike_rate_hz"
+            )
+        ),
+    )
     plot = widget.plot_item
     assert plot is not None
 
@@ -106,11 +132,9 @@ def _plot_inferred_spikes_frequency_data(
     roi_labels: list[int] = []
 
     for idx, (roi, da) in enumerate(roi_data):
-        # Get the appropriate frequency based on rising_edge flag
-        if rising_edge:
-            freq = da.get_spike_metric("oasis", "suprathreshold_rising_edge_rate_hz")
-        else:
-            freq = da.get_spike_metric("oasis", "suprathreshold_sample_rate_hz")
+        if not roi_is_active(roi, da, spike_method):
+            continue
+        freq = da.get_spike_metric(spike_method, metric)
 
         if freq is None:
             continue
@@ -146,15 +170,25 @@ def _plot_inferred_spikes_frequency_data(
     )
     plot.addItem(scatter)
 
-    # Set title and labels
-    if rising_edge:
-        title = "Inferred Spikes Rising Edge Frequency"
-    else:
-        title = "Inferred Spikes Thresholded Frequency"
-
-    plot.setTitle(title)
+    # Metric names preserve the distinct scientific meaning of each output.
+    titles = {
+        "suprathreshold_sample_rate_hz": "OASIS Suprathreshold Sample Rate",
+        "suprathreshold_rising_edge_rate_hz": "OASIS Suprathreshold Rising Edge Rate",
+        "expected_spike_rate_hz": "CASCADE Expected Spike Rate",
+        "expected_spike_count": "CASCADE Expected Spike Count",
+        "suprathreshold_excursion_rate_hz": "CASCADE Threshold Excursion Rate",
+        "threshold": f"{spike_method.upper()} Applied Threshold",
+    }
+    units = (
+        "spikes"
+        if metric == "expected_spike_count"
+        else ("spikes/frame" if spike_method == "cascade" else "a.u.")
+        if metric == "threshold"
+        else "Hz"
+    )
+    plot.setTitle(titles[metric])
     plot.setLabel("bottom", "ROI")
-    plot.setLabel("left", "Frequency (Hz)")
+    plot.setLabel("left", f"{titles[metric]} ({units})")
 
     # Attach click handler
     _attach_click_handlers(widget, scatter)

@@ -2012,7 +2012,7 @@ def export_multi_well_to_csv(
             continue
 
         try:
-            result = product.compute_fn(engine, run_id)
+            result = product.compute_data(engine, run_id)
         except Exception as e:
             cali_logger.debug(f"Skipping multi-well export for '{product.name}': {e}")
             continue
@@ -2054,6 +2054,21 @@ def export_multi_well_to_csv(
         safe_name = product.name.replace(" ", "_").replace("/", "_").lower()
         csv_path = output_dir / f"{safe_name}.csv"
         df.to_csv(csv_path, index=False)
+        if product.supported_spike_methods is not None:
+            from ._spike_export import write_spike_metadata
+
+            write_spike_metadata(
+                csv_path.with_suffix(".metadata.json"),
+                {
+                    "schema_version": 1,
+                    "product_id": product.product_id,
+                    "run_id": run_id,
+                    "method": product.selected_method(None),
+                    "metric": _name,
+                    "metric_units": _units,
+                    "required_metrics": list(product.required_metrics),
+                },
+            )
         cali_logger.debug(f"Exported multi-well data: {csv_path}")
 
 

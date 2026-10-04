@@ -177,9 +177,6 @@ def _get_traces_and_metadata(
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        if active_only:
-            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-
         stmt = stmt.order_by(col(ROI.label_value))
         roi_data = session.exec(stmt).all()
 
@@ -192,6 +189,11 @@ def _get_traces_and_metadata(
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, da in roi_data:
+        if active_only:
+            from cali.plot._spike_data import roi_is_active
+
+            if not roi_is_active(roi_model, da):
+                continue
         if not trace_obj:
             continue
 

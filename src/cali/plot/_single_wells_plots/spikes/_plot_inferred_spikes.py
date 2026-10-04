@@ -7,15 +7,18 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_data import roi_is_active, spike_plot_data
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 INFERRED_TRACE_COLOR = "k"
@@ -75,6 +78,7 @@ def _plot_inferred_spikes(
     thresholds: bool = False,
     thresholded: bool = False,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot inferred spikes data by querying database directly (pyqtgraph).
 
@@ -105,7 +109,12 @@ def _plot_inferred_spikes(
         Plot binarized (0/1) spike traces as vertical lines
     rising_edges : bool
         Mark rising edges of thresholded spikes with vertical lines
+    spike_method : {"oasis", "cascade"}
+        Stored output to display with its own units and valid interval.
     """
+    canonical_spike_methods((spike_method,))
+    if den_dff and spike_method == "cascade":
+        raise ValueError("CASCADE/calcium overlays require separate amplitude units.")
     plot = widget.plot_item
     assert plot is not None
 
@@ -147,7 +156,7 @@ def _plot_inferred_spikes(
                 Traces,
                 (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-            .join(
+            .outerjoin(
                 DataAnalysis,
                 (DataAnalysis.roi_id == ROI.id)
                 & (DataAnalysis.analysis_result_id == run_id),
@@ -158,13 +167,32 @@ def _plot_inferred_spikes(
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
 
-        if active_only:
-            stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-
         stmt = stmt.order_by(col(ROI.label_value))
-        roi_data: list[tuple[ROI, Traces, DataAnalysis]] = session.exec(stmt).all()
+        roi_data: list[tuple[ROI, Traces, DataAnalysis | None]] = session.exec(
+            stmt
+        ).all()
 
-    if not roi_data:
+    roi_data = [
+        (roi, trace, analysis)
+        for roi, trace, analysis in roi_data
+        if not (active_only or thresholded or rising_edges)
+        or roi_is_active(roi, analysis, spike_method)
+    ]
+    selected = [
+        (roi, trace, analysis, data)
+        for roi, trace, analysis in roi_data
+        if (
+            data := spike_plot_data(
+                trace,
+                analysis,
+                spike_method,
+                require_threshold=thresholded or rising_edges or thresholds,
+            )
+        )
+        is not None
+    ]
+
+    if not selected:
         plot.setTitle("No ROI spike data found for this FOV.")
         plot.setLabel("bottom", "Frames")
         plot.setLabel("left", "Inferred Spikes (a.u.)")
@@ -174,10 +202,8 @@ def _plot_inferred_spikes(
     p1 = p2 = 0.0
     if normalize:
         all_values: list[float] = []
-        for _roi, traces, data_analysis in roi_data:
-            spike_values = traces.get_spike_values("oasis")
-            if data_analysis and spike_values:
-                all_values.extend([float(s) for s in spike_values])
+        for _roi, _trace, _analysis, data in selected:
+            all_values.extend(data.values[np.isfinite(data.values)].tolist())
 
         if all_values:
             p1, p2 = map(float, np.percentile(all_values, [5, 100]))
@@ -189,35 +215,21 @@ def _plot_inferred_spikes(
     count = 0
     rois_rec_time: list[float] = []
     last_trace: list[float] | None = None
-    n_rois = len(roi_data)
+    n_rois = len(selected)
 
-    for roi, traces, data_analysis in roi_data:
-        spike_values = traces.get_spike_values("oasis")
-        if data_analysis is None or not spike_values:
-            continue
-
-        if data_analysis.total_recording_time_sec is not None:
+    for roi, traces, data_analysis, data in selected:
+        if data_analysis and data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-        # Get spike data as continuous values
-        spike_data = np.asarray(spike_values, dtype=float)
-
-        # x-axis = frames
+        spike_data = data.values
         x = np.arange(spike_data.size, dtype=float)
+        threshold = data.metric.threshold if data.metric else None
 
         # For thresholded or rising_edges plots, compute binary data
         if thresholded or rising_edges:
-            threshold = data_analysis.get_spike_metric("oasis", "threshold")
-            if threshold is None or threshold <= 0:
-                # Skip this ROI if no valid threshold
-                continue
-
-            # Create binary mask where spikes exceed threshold
-            binary_spikes = (spike_data > threshold).astype(float)
-
+            assert threshold is not None
             if rising_edges:
-                # Detect rising edges (transitions from 0 to 1)
-                edges = np.diff(binary_spikes, prepend=0) > 0
+                edges = np.zeros(len(spike_data), dtype=bool)
+                edges[data.event_frames(onsets=True)] = True
                 curve = _plot_spike_rising_edges(
                     plot=plot,
                     roi_key=str(roi.label_value),
@@ -259,7 +271,7 @@ def _plot_inferred_spikes(
                 p1=p1,
                 p2=p2,
                 thresholds=thresholds,
-                spikes_threshold=data_analysis.get_spike_metric("oasis", "threshold"),
+                spikes_threshold=threshold,
             )
             if curve is not None:
                 curves.append(curve)
@@ -283,14 +295,16 @@ def _plot_inferred_spikes(
                         pen=pg.mkPen(DFF_OVERLAY_COLOR, width=DFF_OVERLAY_WIDTH),
                     )
 
-        last_trace = list(spike_values)
+        last_trace = list(data.values)
         count += 1
 
     _set_graph_title_and_labels_pg(
-        plot, normalize, raw, den_dff, thresholded, rising_edges
+        plot, normalize, raw, den_dff, thresholded, rising_edges, spike_method
     )
     total_frames = len(last_trace) if last_trace is not None else 1
-    _update_time_axis_pg_for_spikes(plot, rois_rec_time, total_frames)
+    _update_time_axis_pg_for_spikes(
+        plot, rois_rec_time if spike_method == "oasis" else [], total_frames
+    )
 
     # Y axis behavior
     y_axis = plot.getAxis("left")
@@ -350,12 +364,13 @@ def _plot_spike_trace(
         y,
         pen=pen,
         name=f"ROI {roi_key}",
+        connect="finite",
     )
     curve.setProperty("roi_label", roi_key)
     curve.setProperty("roi_index", index)
 
     # Threshold line (only if single ROI selected and thresholds=True)
-    if thresholds and spikes_threshold is not None and spikes_threshold > 0.0:
+    if thresholds and spikes_threshold is not None and np.isfinite(spikes_threshold):
         if normalize:
             denom = p2 - p1
             if denom > 0:
@@ -575,7 +590,7 @@ def _normalize_trace_percentile(trace: np.ndarray, p1: float, p2: float) -> np.n
     tr = np.asarray(trace, dtype=float)
     denom = p2 - p1
     if denom == 0:
-        return np.zeros_like(tr)
+        return np.where(np.isfinite(tr), 0.0, np.nan)
     normalized = (tr - p1) / denom
     return np.clip(normalized, 0, 1)
 
@@ -587,6 +602,7 @@ def _set_graph_title_and_labels_pg(
     den_dff: bool,
     thresholded: bool = False,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Set axis labels based on the plotted data."""
     # Initialize defaults
@@ -613,6 +629,12 @@ def _set_graph_title_and_labels_pg(
         title = "Normalized Inferred Spikes" if normalize else "Inferred Spikes"
         y_lbl = "ROI" if normalize else "Inferred Spikes (a.u.)"
 
+    if spike_method == "cascade":
+        title = title.replace("Inferred Spikes", "CASCADE Expected Spikes")
+        y_lbl = y_lbl.replace("(a.u.)", "(spikes/frame)")
+        y_lbl = y_lbl.replace("Rising Edge Events", "Threshold Excursion Starts")
+    else:
+        title += " [OASIS]"
     plot.setTitle(title)
     plot.setLabel("left", y_lbl)
 
@@ -623,6 +645,8 @@ def _update_time_axis_pg_for_spikes(
     total_frames: int,
 ) -> None:
     """Update the time axis based on recording time (pyqtgraph)."""
+    plot.getAxis("bottom").setTicks(None)
+    plot.getAxis("bottom").setStyle(showValues=True)
     if total_frames <= 1 or not rois_rec_time or sum(rois_rec_time) <= 0:
         plot.setLabel("bottom", "Frames")
         return

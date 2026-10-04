@@ -12,6 +12,7 @@ from ._main_plot import (
     plot_single_well_data,
     requires_active_rois,
 )
+from ._spike_data import get_stored_spike_capabilities
 
 __all__ = [
     "ANALYSIS_PRODUCTS",
@@ -21,6 +22,7 @@ __all__ = [
     "AnalysisProduct",
     "PipelineStage",
     "get_available_plots",
+    "get_stored_spike_capabilities",
     "plot_multi_well_data",
     "plot_single_well_data",
     "requires_active_rois",

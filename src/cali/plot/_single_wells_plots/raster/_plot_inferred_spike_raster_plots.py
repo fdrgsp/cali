@@ -7,15 +7,18 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_data import roi_is_active, spike_plot_data
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI, DataAnalysis, Traces
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 BLACK = (0, 0, 0, 255)
@@ -35,8 +38,10 @@ def _generate_spike_raster_plot(
     *,
     run_id: int,
     edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Generate a spike raster plot using thresholded spike data (pyqtgraph)."""
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
@@ -63,7 +68,7 @@ def _generate_spike_raster_plot(
 
     title = "Inferred Spike Events Raster Plot (Thresholded"
     title += " - Rising Edges)" if edges else ")"
-    plot.setTitle(title)
+    plot.setTitle(title + f" [{spike_method.upper()}]")
 
     # ------------------------ Query DB ------------------------ #
     ensure_schema_current(engine)
@@ -104,24 +109,14 @@ def _generate_spike_raster_plot(
     sample_trace: list[float] | None = None
 
     for roi, traces, data_analysis in roi_data:
-        if data_analysis is None or not traces.get_spike_values("oasis"):
+        if not roi_is_active(roi, data_analysis, spike_method):
             continue
-
-        threshold = data_analysis.get_spike_metric("oasis", "threshold") or 0.0
-        inferred = np.asarray(traces.get_spike_values("oasis"), dtype=float)
-
-        # Thresholded spikes
-        above_the = inferred > threshold
-        if not np.any(above_the):
+        data = spike_plot_data(
+            traces, data_analysis, spike_method, require_threshold=True
+        )
+        if data is None:
             continue
-
-        if edges:
-            # Rising edges: detect 0 -> 1 transitions
-            rising = above_the & ~np.concatenate(([False], above_the[:-1]))
-            spike_times = np.where(rising)[0]
-        else:
-            # Binary thresholding: all frames where signal > threshold
-            spike_times = np.where(above_the)[0]
+        spike_times = data.event_frames(onsets=edges)
 
         if spike_times.size == 0:
             continue
@@ -132,8 +127,8 @@ def _generate_spike_raster_plot(
         if data_analysis.total_recording_time_sec is not None:
             rois_rec_time.append(data_analysis.total_recording_time_sec)
 
-        if sample_trace is None and traces.get_spike_values("oasis") is not None:
-            sample_trace = traces.get_spike_values("oasis")
+        if sample_trace is None:
+            sample_trace = data.values.tolist()
 
     if not event_data:
         cali_logger.warning(
@@ -177,7 +172,9 @@ def _generate_spike_raster_plot(
 
     # ------------------------ Axes ------------------------ #
     plot.setLabel("left", "ROI")
-    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+    _update_time_axis_pg_frames(
+        plot, rois_rec_time if spike_method == "oasis" else [], sample_trace
+    )
 
     # Hide y tick values
     y_axis = plot.getAxis("left")
@@ -227,6 +224,8 @@ def _update_time_axis_pg_frames(
     trace: list[float] | None,
 ) -> None:
     """Set bottom axis as time (s) if total recording time is available, else frames."""
+    plot.getAxis("bottom").setTicks(None)
+    plot.getAxis("bottom").setStyle(showValues=True)
     if trace is None or not rois_rec_time or sum(rois_rec_time) <= 0:
         plot.setLabel("bottom", "Frames")
         return
@@ -286,12 +285,14 @@ def _generate_spike_intensity_heatmap(
     rois: list[int] | None = None,
     *,
     run_id: int,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Generate intensity heatmap with spike data color-coded.
 
     Each ROI is displayed as a horizontal row, with the full inferred spike
     signal represented by color intensity.
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
@@ -314,7 +315,7 @@ def _generate_spike_intensity_heatmap(
             widget.legend.clear()
         widget.legend.setVisible(False)
 
-    plot.setTitle("Inferred Spikes Heatmap (Raw Signal)")
+    plot.setTitle(f"{spike_method.upper()} Spike Output Heatmap (Raw Signal)")
 
     # ------------------------ Query DB ------------------------ #
     ensure_schema_current(engine)
@@ -356,12 +357,10 @@ def _generate_spike_intensity_heatmap(
     rois_rec_time: list[float] = []
 
     for roi, traces, data_analysis in roi_data:
-        if traces is None or traces.get_spike_values("oasis") is None:
+        data = spike_plot_data(traces, data_analysis, spike_method)
+        if data is None:
             continue
-
-        spike_trace = np.asarray(traces.get_spike_values("oasis"), dtype=float)
-        if spike_trace.size == 0:
-            continue
+        spike_trace = data.values
 
         traces_list.append(spike_trace)
         active_rois.append(roi.label_value)
@@ -379,12 +378,12 @@ def _generate_spike_intensity_heatmap(
         return
 
     # Stack traces into 2D array (n_rois x n_frames)
-    traces_array = np.vstack(traces_list)
+    traces_array = _stack_spike_traces(traces_list)
     n_rois, n_frames = traces_array.shape
 
     # Percentile-based bounds (robust to outliers) in raw units
-    vmin_raw = float(np.percentile(traces_array, 5))
-    vmax_raw = float(np.percentile(traces_array, 95))
+    vmin_raw = float(np.nanpercentile(traces_array, 5))
+    vmax_raw = float(np.nanpercentile(traces_array, 95))
     if vmax_raw <= vmin_raw:
         vmax_raw = vmin_raw + 0.1
 
@@ -418,10 +417,12 @@ def _generate_spike_intensity_heatmap(
 
     # Time axis (using first trace as reference)
     sample_trace = traces_list[0]
-    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+    _update_time_axis_pg_frames(
+        plot, rois_rec_time if spike_method == "oasis" else [], sample_trace
+    )
 
     # ------------------------ Colorbar ------------------------ #
-    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw, spike_method)
 
     # ------------------------ Click → roiSelected ------------------------ #
     _attach_click_handlers_spike_intensity(widget, plot, active_rois)
@@ -431,6 +432,7 @@ def _add_spike_intensity_colorbar_to_widget(
     widget: _SingleWellGraphWidget,
     vmin: float,
     vmax: float,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Add a ColorBarItem to the spike intensity heatmap widget layout."""
     # Create ColorBarItem with fixed range (non-interactive)
@@ -438,7 +440,9 @@ def _add_spike_intensity_colorbar_to_widget(
         values=(vmin, vmax),
         colorMap=HEATMAP_CMAP,
         width=COLORBAR_WIDTH,
-        label="Inferred spikes (a.u.)",
+        label="Expected spikes (spikes/frame)"
+        if spike_method == "cascade"
+        else "Inferred spikes (a.u.)",
         interactive=False,
     )
 
@@ -487,12 +491,14 @@ def _generate_spike_intensity_heatmap_thresholded(
     rois: list[int] | None = None,
     *,
     run_id: int,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Generate intensity heatmap with thresholded spike data.
 
     Each ROI is displayed as a horizontal row, showing only spike events
     that exceed the detection threshold (binary: 0 or spike amplitude).
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
@@ -517,7 +523,7 @@ def _generate_spike_intensity_heatmap_thresholded(
     # Disconnect any hover handlers from previous plots
     disconnect_hover_handlers(plot)
 
-    plot.setTitle("Inferred Spikes Heatmap (Thresholded)")
+    plot.setTitle(f"{spike_method.upper()} Spike Output Heatmap (Thresholded)")
 
     # ------------------------ Query DB ------------------------ #
     ensure_schema_current(engine)
@@ -559,17 +565,18 @@ def _generate_spike_intensity_heatmap_thresholded(
     rois_rec_time: list[float] = []
 
     for roi, traces, data_analysis in roi_data:
-        if traces is None or traces.get_spike_values("oasis") is None:
+        if not roi_is_active(roi, data_analysis, spike_method):
             continue
-
-        threshold = data_analysis.get_spike_metric("oasis", "threshold") or 0.0
-        spike_signal = np.asarray(traces.get_spike_values("oasis"), dtype=float)
-
-        # Apply threshold: keep amplitudes above threshold, set rest to 0
-        thresholded_signal = np.where(spike_signal > threshold, spike_signal, 0.0)
-
-        if thresholded_signal.size == 0 or np.all(thresholded_signal == 0):
+        data = spike_plot_data(
+            traces, data_analysis, spike_method, require_threshold=True
+        )
+        if data is None:
             continue
+        thresholded_signal = np.where(np.isfinite(data.values), 0.0, np.nan)
+        frames = data.event_frames()
+        if not frames.size:
+            continue
+        thresholded_signal[frames] = data.values[frames]
 
         traces_list.append(thresholded_signal)
         active_rois.append(roi.label_value)
@@ -587,7 +594,7 @@ def _generate_spike_intensity_heatmap_thresholded(
         return
 
     # Stack traces into 2D array (n_rois x n_frames)
-    traces_array = np.vstack(traces_list)
+    traces_array = _stack_spike_traces(traces_list)
     n_rois, n_frames = traces_array.shape
 
     # Get non-zero values for robust scaling
@@ -634,10 +641,20 @@ def _generate_spike_intensity_heatmap_thresholded(
 
     # Time axis (using first trace as reference)
     sample_trace = traces_list[0]
-    _update_time_axis_pg_frames(plot, rois_rec_time, sample_trace)
+    _update_time_axis_pg_frames(
+        plot, rois_rec_time if spike_method == "oasis" else [], sample_trace
+    )
 
     # ------------------------ Colorbar ------------------------ #
-    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw)
+    _add_spike_intensity_colorbar_to_widget(widget, vmin_raw, vmax_raw, spike_method)
 
     # ------------------------ Click → roiSelected ------------------------ #
     _attach_click_handlers_spike_intensity(widget, plot, active_rois)
+
+
+def _stack_spike_traces(traces: list[np.ndarray]) -> np.ndarray:
+    """Keep ragged retained lengths explicit as unobserved heatmap cells."""
+    result = np.full((len(traces), max(len(trace) for trace in traces)), np.nan)
+    for row, trace in enumerate(traces):
+        result[row, : len(trace)] = trace
+    return result
