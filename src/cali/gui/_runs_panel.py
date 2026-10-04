@@ -11,7 +11,6 @@ from qtpy.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -124,7 +123,7 @@ class _RunsPanel(QGroupBox):
     sourceRepaired = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("cali runs", parent=parent)
+        super().__init__("Saved runs", parent=parent)
 
         # Database path
         self._database_path: Path | None = None
@@ -133,6 +132,15 @@ class _RunsPanel(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)
+        from ._settings_tabs import guidance
+
+        layout.addWidget(
+            guidance(
+                "Select a run to restore its settings and view its results. "
+                "Saved segmentations contain ROI masks you can reuse.",
+                self,
+            )
+        )
 
         # Splitter so the user can resize runs vs saved segmentations
         self._splitter = QSplitter(Qt.Orientation.Vertical)
@@ -173,8 +181,7 @@ class _RunsPanel(QGroupBox):
         layout.addWidget(self._splitter)
 
         # Buttons layout
-        buttons_layout = QHBoxLayout()
-        buttons_layout.addStretch()  # Push buttons to the right
+        buttons_layout = QVBoxLayout()
 
         self._repair_source_btn = QPushButton("Repair Source...")
         self._repair_source_btn.setToolTip(

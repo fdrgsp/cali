@@ -26,6 +26,7 @@ from qtpy.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
+    QPushButton,
     QSizePolicy,
     QSplitter,
     QTabWidget,
@@ -80,6 +81,7 @@ from ._pygraph_plot_widgets import _MultilWellGraphWidget, _SingleWellGraphWidge
 from ._run_selection_dialog import RunSelectionDialog
 from ._run_widget import CaliRunSettings, _RunCaliWidget
 from ._save_as_widgets import _SaveAsTiff, _SaveLabelsAsTiff
+from ._settings_tabs import guidance
 from ._tiff_collection_widget import TiffCollectionWidget
 from ._util import (
     _ElapsedTimer,
@@ -132,9 +134,9 @@ class CaliGui(QMainWindow):
         # MENU BAR -------------------------------------------------------------------
         self.menu_bar = QMenuBar(self)
         self.file_menu = cast("QMenu", self.menu_bar.addMenu("File"))
-        open_action = QAction("Select Data Source...", self)
+        open_action = QAction("Open experiment...", self)
         open_action.setToolTip(
-            "Open a dialog to select zarr datastore and analysis database location."
+            "Open imaging data, a TIFF collection, or a saved cali database."
         )
         open_action.triggered.connect(self._show_data_input_dialog)
         save_as_tiff_action = QAction("Save Data as Tiff...", self)
@@ -188,7 +190,7 @@ class CaliGui(QMainWindow):
         self.splitter_top_left.setChildrenCollapsible(False)
         self.splitter_top_left.addWidget(top_wdg)
         self.splitter_top_left.addWidget(self._fov_table)
-        top_left_group = QGroupBox()
+        top_left_group = QGroupBox("Experiment and positions")
         top_left_layout = QVBoxLayout(top_left_group)
         top_left_layout.setContentsMargins(10, 10, 10, 10)
         top_left_layout.addWidget(self.splitter_top_left)
@@ -210,9 +212,7 @@ class CaliGui(QMainWindow):
 
         # DETECTION AND EXTRACTION TAB --------------------------------
         self._detection_extraction_tab = QWidget()
-        self._main_tab.addTab(
-            self._detection_extraction_tab, "Detection, Extraction and Analysis"
-        )
+        self._main_tab.addTab(self._detection_extraction_tab, "Setup and run")
         detection_extraction_layout = QVBoxLayout(self._detection_extraction_tab)
         detection_extraction_layout.setContentsMargins(5, 0, 5, 0)
         detection_extraction_layout.setSpacing(5)
@@ -223,7 +223,7 @@ class CaliGui(QMainWindow):
 
         # DETECTION SUB-TAB -----------------------------------------------------------
         self._detection_tab = QWidget()
-        self._sub_tab.addTab(self._detection_tab, "Detection")
+        self._sub_tab.addTab(self._detection_tab, "1. Detect ROIs")
         detection_tab_layout = QVBoxLayout(self._detection_tab)
         detection_tab_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -232,7 +232,7 @@ class CaliGui(QMainWindow):
 
         # EXTRACTION SUB-TAB ----------------------------------------------------------
         self._extraction_tab = QWidget()
-        self._sub_tab.addTab(self._extraction_tab, "Extraction")
+        self._sub_tab.addTab(self._extraction_tab, "2. Extract traces")
         extraction_tab_layout = QVBoxLayout(self._extraction_tab)
         extraction_tab_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -242,7 +242,7 @@ class CaliGui(QMainWindow):
 
         # ANALYSIS SUB-TAB ------------------------------------------------------------
         self._analysis_tab = QWidget()
-        self._sub_tab.addTab(self._analysis_tab, "Analysis")
+        self._sub_tab.addTab(self._analysis_tab, "3. Analyze activity")
         analysis_tab_layout = QVBoxLayout(self._analysis_tab)
         analysis_tab_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -259,10 +259,20 @@ class CaliGui(QMainWindow):
 
         # VISUALIZATION TAB -----------------------------------------------------------
         self._visualization_tab = QWidget()
-        self._main_tab.addTab(self._visualization_tab, "Visualization")
+        self._main_tab.addTab(self._visualization_tab, "Results")
         visualization_layout = QVBoxLayout(self._visualization_tab)
         visualization_layout.setContentsMargins(5, 5, 5, 5)
         visualization_layout.setSpacing(5)
+        visualization_layout.addWidget(
+            guidance(
+                "Select a saved run on the right, then a position on the left "
+                "and a plot. "
+                "For dual-output runs, Spike Backend switches the stored "
+                "spike results; "
+                "it does not change the settings for your next extraction.",
+                self._visualization_tab,
+            )
+        )
 
         # Create sub-tabs for single and multi well visualizations
         self._vis_sub_tab = QTabWidget()
@@ -271,7 +281,7 @@ class CaliGui(QMainWindow):
 
         # SINGLE WELL VISUALIZATION TAB -----------------------------------------------
         self._single_well_vis_tab = QWidget()
-        self._vis_sub_tab.addTab(self._single_well_vis_tab, "Single Wells")
+        self._vis_sub_tab.addTab(self._single_well_vis_tab, "Position details")
         single_well_vis_layout = QVBoxLayout(self._single_well_vis_tab)
         single_well_vis_layout.setContentsMargins(5, 5, 5, 5)
         single_well_vis_layout.setSpacing(5)
@@ -301,7 +311,7 @@ class CaliGui(QMainWindow):
 
         # MULTI WELL VISUALIZATION TAB ------------------------------------------------
         self._multi_well_vis_tab = QWidget()
-        self._vis_sub_tab.addTab(self._multi_well_vis_tab, "Multi Wells")
+        self._vis_sub_tab.addTab(self._multi_well_vis_tab, "Compare wells")
         multi_well_layout = QGridLayout(self._multi_well_vis_tab)
         multi_well_layout.setContentsMargins(5, 5, 5, 5)
         multi_well_layout.setSpacing(5)
@@ -339,8 +349,16 @@ class CaliGui(QMainWindow):
         self._central_widget = QWidget(self)
         self._central_widget_layout = QVBoxLayout(self._central_widget)
         self._central_widget_layout.setContentsMargins(10, 10, 10, 10)
+        source_header = QHBoxLayout()
+        self._open_experiment_btn = QPushButton("Open experiment...", self)
+        self._open_experiment_btn.clicked.connect(open_action.trigger)
+        source_header.addWidget(self._open_experiment_btn)
+        self._experiment_context = guidance("", self)
+        source_header.addWidget(self._experiment_context, 1)
+        self._central_widget_layout.addLayout(source_header)
         self._central_widget_layout.addWidget(self.main_splitter)
         self.setCentralWidget(self._central_widget)
+        self._refresh_experiment_context()
 
         # CONNECT SIGNALS ------------------------------------------------------------
         self._plate_view.selectionChanged.connect(self._on_scene_well_changed)
@@ -454,6 +472,23 @@ class CaliGui(QMainWindow):
         else:
             methods = outputs.methods()
         self._analysis_wdg.set_spike_methods(methods)
+
+    def _refresh_experiment_context(self) -> None:
+        if self._database_path is None:
+            text = "Open imaging data or a saved database to begin."
+        elif self._data is None:
+            text = (
+                f"{Path(self._database_path).name} — saved results only. "
+                "Review, re-analyze or export stored traces; detection and "
+                "extraction need imaging data."
+            )
+        else:
+            text = (
+                f"{Path(self._database_path).name} — imaging data loaded. "
+                "Choose positions and the steps to run below."
+            )
+        self._experiment_context.setText(text)
+        self._experiment_context.setToolTip(self._database_path or "")
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
@@ -756,6 +791,7 @@ class CaliGui(QMainWindow):
 
     def _finalize_initialization(self, experiment: Experiment) -> None:
         """Finalize GUI initialization with experiment data."""
+        self._refresh_experiment_context()
         # UPDATE GUI SETTINGS  --------------------------------------------------------
         if self._database_path is not None:
             self._update_gui_settings(self._database_path, experiment=experiment)
@@ -2219,6 +2255,7 @@ class CaliGui(QMainWindow):
 
     def _enable(self, state: bool) -> None:
         """Enable or disable the GUI during a run."""
+        self._open_experiment_btn.setEnabled(state)
         # Switch to Detection & Analysis tab and prevent tab changes
         self._main_tab.setCurrentIndex(0)
         # Enable/disable tab bar to prevent switching (but keep tab content viewable)
@@ -2303,6 +2340,7 @@ class CaliGui(QMainWindow):
         # clear the datastore
         self._data = None
         # clear fov table
+        self._refresh_experiment_context()
         self._fov_table.clear()
         # clear scene
         self._plate_view.clear()
@@ -2589,9 +2627,14 @@ class CaliGui(QMainWindow):
             (self.splitter_top_left, [0.73, 0.27]),
             (self.splitter_bottom_left, [0.50, 0.50]),
             (self.main_splitter, [0.30, 0.70]),
+            (self.right_splitter, [0.78, 0.22]),
         )
         for splitter, sizes in splitter_and_sizes:
-            total_size = splitter.size().width()
+            total_size = (
+                splitter.size().height()
+                if splitter.orientation() == Qt.Orientation.Vertical
+                else splitter.size().width()
+            )
             splitter.setSizes([int(size * total_size) for size in sizes])
 
     def _on_led_info_from_meta_clicked(self) -> None:

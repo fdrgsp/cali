@@ -6,6 +6,44 @@
 
 ---
 
+## P8 continuation — guided GUI and checkable settings tabs (2026-10-04)
+
+- The window now distinguishes **Setup and run** from **Results**, numbers the
+  detection/extraction/analysis stages, and provides a visible **Open experiment**
+  action with imaging-versus-database-only context. The opening dialog explains
+  new experiments and reopening saved experiments, including optional imaging data.
+- Extraction separates shared trace preparation, spike inference, and processing/
+  export. CASCADE and OASIS have checkboxes on their tab headers and independent
+  parameter pages. Both outputs can be retained; browsing a tab does not select
+  it, and the final output cannot be unchecked. The OASIS page explicitly identifies
+  calcium denoising and decay settings as always applicable.
+- Analysis uses checkable **Calcium events** and **Spike activity** tabs while
+  retaining at least one analysis pillar. Spike activity applies to all selected/
+  stored outputs and keeps independent CASCADE/OASIS parameter pages. Event detection,
+  network bursts, ROI grouping, activity thresholds and synchrony have visible
+  explanations; advanced synchrony controls are expandable. Method threshold units
+  and true acquisition timing are explained without using inverse exposure as a
+  substitute for verified timing.
+- Detection uses exclusive, checkable Cellpose/imported-label tabs. Run choices
+  explain which stages compute, reuse saved data or export. Save/load buttons have
+  text labels, position indices are explicitly zero-based, results explain saved-run
+  backend selection, and image-mask controls identify their purpose.
+- Shared scrollable settings pages and responsive threshold rows improve readability
+  in narrower panes. Splitter sizing now uses the correct orientation and allocates
+  more space to settings. Settings serialization, analysis ownership, scientific
+  defaults and the existing CASCADE extraction release gate are preserved.
+
+Validation: mouse and keyboard interaction checks cover selection, nonempty/
+exclusive invariants, independent parameters, gated-page browsing and experiment
+opening/context. The complete suite passed **2389 tests** and skipped **16** in
+**289.44 s**. Repository spelling, Ruff, formatting and focused mypy hooks pass.
+Offscreen previews were reviewed at 1440 × 950 for every settings page and both
+experiment-opening pages. Test-migrated tracked databases were backed up and restored.
+
+This usability continuation does not change release acceptance or authorize a
+CASCADE extraction gate override. The remaining external release evidence and
+asynchronous GUI download/timing-preview work listed below remain pending.
+
 ## P8 continuation — GUI controls and stored results (2026-10-04)
 
 - The extraction panel now has independent CASCADE/OASIS output checkboxes, explicit

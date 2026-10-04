@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
 )
 from superqt import QIconifyIcon
 
+from ._settings_tabs import guidance
 from ._util import create_divider_line, parse_lineedit_text
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -37,7 +38,7 @@ class _ChoosePositionsWidget(QWidget):
             "NOTE: The Positions are 0-indexed."
         )
 
-        self._pos_lbl = QLabel("Analyze Positions:")
+        self._pos_lbl = QLabel("Positions (0-based):")
         self._pos_lbl.setSizePolicy(*FIXED)
         self._pos_le = QLineEdit(self)
         self._pos_le.setPlaceholderText("e.g. 0-10, 30, 33. Leave empty for all.")
@@ -121,14 +122,18 @@ class _RunCaliWidget(QWidget):
         # buttons
         from cali._constants import GREEN, RED
 
-        self._save_settings_btn = QPushButton()
+        self._save_settings_btn = QPushButton("Save settings")
+        self._save_settings_btn.setToolTip("Save all stage settings to a JSON file.")
         self._save_settings_btn.setSizePolicy(*FIXED)
         self._save_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:content-save-cog")))
-        self._load_settings_btn = QPushButton()
+        self._load_settings_btn = QPushButton("Load settings")
+        self._load_settings_btn.setToolTip(
+            "Load stage settings from a saved JSON file."
+        )
         self._load_settings_btn.setSizePolicy(*FIXED)
         self._load_settings_btn.setIcon(QIcon(QIconifyIcon("mdi:cog-clockwise")))
 
-        self._run_btn = QPushButton("Run")
+        self._run_btn = QPushButton("Run selected steps")
         self._run_btn.setSizePolicy(*FIXED)
         self._run_btn.setIcon(QIconifyIcon("mdi:play", color=GREEN))
         self._cancel_btn = QPushButton("Cancel")
@@ -140,7 +145,7 @@ class _RunCaliWidget(QWidget):
 
         # run options selector
         run_options_wdg = QWidget()
-        self._run_options_lbl = QLabel("Run Options:")
+        self._run_options_lbl = QLabel("Steps to run:")
         self._run_options_lbl.setSizePolicy(*FIXED)
         self._run_options_combo = QComboBox()
         items = [
@@ -244,10 +249,12 @@ class _RunCaliWidget(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(5)
-        main_layout.addWidget(create_divider_line("Positions to Extract"))
+        main_layout.addWidget(create_divider_line("Run this experiment"))
         main_layout.addWidget(self._positions_wdg)
-        main_layout.addWidget(create_divider_line("Run Options"))
+
         main_layout.addWidget(run_options_wdg)
+        self._run_help = guidance("", self)
+        main_layout.addWidget(self._run_help)
         main_layout.addWidget(self._source_options_wdg)
 
         # run control layout
@@ -256,12 +263,17 @@ class _RunCaliWidget(QWidget):
         run_control_layout.setSpacing(5)
         run_control_layout.addWidget(self._run_btn)
         run_control_layout.addWidget(self._cancel_btn)
+        run_control_layout.addStretch(1)
         run_control_layout.addWidget(self._save_settings_btn)
         run_control_layout.addWidget(self._load_settings_btn)
-        run_control_layout.addWidget(self._progress_bar)
-        run_control_layout.addWidget(self._progress_pos_label)
-        run_control_layout.addWidget(self._elapsed_time_label)
         main_layout.addLayout(run_control_layout)
+        progress = QHBoxLayout()
+        progress.addWidget(self._progress_bar, 1)
+        progress.addWidget(self._progress_pos_label)
+        progress.addWidget(QLabel("Elapsed:"))
+        progress.addWidget(self._elapsed_time_label)
+        main_layout.addLayout(progress)
+        self._on_run_option_changed(self._run_options_combo.currentText())
 
         # Track whether raw imaging data is available
         self._has_data = True
@@ -613,6 +625,26 @@ class _RunCaliWidget(QWidget):
         text : str
             The selected run option text
         """
+        descriptions = {
+            "Detection, Extraction and Analysis": "Find ROIs, extract their traces and "
+            "compute activity metrics using the settings above.",
+            "Detection and Extraction": "Find ROIs and save traces. Activity metrics "
+            "can be computed later using Analysis Only.",
+            "Extraction and Analysis (require detection)": "Reuse a saved ROI "
+            "detection, extract new traces and compute activity metrics.",
+            "Detection Only": "Find or import ROI masks. No traces or activity "
+            "metrics are computed in this step.",
+            "Extraction Only (require detection)": "Reuse a saved ROI detection and "
+            "extract traces with the selected spike outputs.",
+            "Analysis Only (require detection and extraction)": "Reuse saved traces "
+            "and recompute activity metrics. Spike outputs come from the saved "
+            "extraction; changing outputs requires re-extraction.",
+            "Export Only (require existing run)": "Export the selected saved run to "
+            "CSV using the export choices above. No new calculations are run.",
+        }
+        if hasattr(self, "_run_help"):
+            self._run_help.setText(descriptions.get(text, ""))
+
         # Show detection settings for "Extraction Only", "Analysis Only",
         # and "Extraction and Analysis"
         is_extraction_only = text == "Extraction Only (require detection)"

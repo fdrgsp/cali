@@ -5,23 +5,21 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import Signal
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QDoubleSpinBox,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
-from superqt import QCollapsible, QIconifyIcon
+from superqt import QIconifyIcon
 
 from cali._constants import (
     DEFAULT_DFF_PERCENTILE,
@@ -45,10 +43,10 @@ from cali.sqlmodel._spike_settings import (
     canonical_spike_methods,
 )
 
+from ._settings_tabs import _SettingsTabs, settings_section
 from ._spike_output_widget import CASCADE_GUI_GATE, _SpikeOutputWidget
 from ._util import (
     _ExportGroup,
-    create_divider_line,
 )
 
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -144,12 +142,6 @@ class _ExtractionGUI(QWidget):
         super().__init__(parent)
         self._cascade_enabled = cascade_enabled
 
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
-
         # THREADS WIDGET -------------------------------------------------------------
         cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
         threads_wdg = QWidget(self)
@@ -181,7 +173,17 @@ class _ExtractionGUI(QWidget):
         self._metadata_wdg = _MetadataWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
-        self._spike_outputs = _SpikeOutputWidget(self, cascade_enabled=cascade_enabled)
+        for widget in (
+            self._trace_extraction_wdg._dec_wdg,
+            self._trace_extraction_wdg._discard_initial_wdg,
+            self._trace_extraction_wdg._frame_rate_verified,
+        ):
+            self._trace_extraction_wdg.layout().removeWidget(widget)
+        self._spike_outputs = _SpikeOutputWidget(
+            self,
+            cascade_enabled=cascade_enabled,
+            oasis_settings=self._trace_extraction_wdg._dec_wdg,
+        )
         self._spike_outputs.methodsChanged.connect(
             self._trace_extraction_wdg.set_spike_methods
         )
@@ -199,42 +201,55 @@ class _ExtractionGUI(QWidget):
         self._export_group.add_option(INFERRED_SPIKES_TRACES, 5, 0)
         self._export_group.add_stretch("horizontal")
 
-        # SCROLL AREA WIDGET ---------------------------------------------------------
-        analysis_scroll_area = QScrollArea()
-        analysis_scroll_area.setWidgetResizable(True)
-        analysis_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._settings_tabs = _SettingsTabs(self)
+        self._settings_tabs.add_page(
+            "Prepare traces",
+            "These settings apply to every selected spike output. Fluorescence is "
+            "measured inside each ROI, corrected for background, and converted "
+            "to ΔF/F₀.",
+            settings_section(
+                "Acquisition and startup",
+                "Set the true acquisition rate. Discard at start removes frames from "
+                "every position before trace calculations; ROI detection is unchanged.",
+                self._metadata_wdg,
+                self._trace_extraction_wdg._discard_initial_wdg,
+                self._trace_extraction_wdg._frame_rate_verified,
+            ),
+            settings_section(
+                "Background correction",
+                "Estimate nearby background fluorescence outside each ROI and subtract "
+                "the chosen fraction from its calcium trace.",
+                self._neuropil_wdg,
+            ),
+            settings_section(
+                "ΔF/F₀ baseline",
+                "The window and percentile define baseline fluorescence F₀. ΔF/F₀ "
+                "expresses the change relative to that baseline.",
+                self._trace_extraction_wdg,
+            ),
         )
-        analysis_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._settings_tabs.add_page(
+            "Spike inference",
+            "Check a method's tab to keep its spike output. Opening a tab only shows "
+            "its settings; you can keep both methods for comparison.",
+            self._spike_outputs,
         )
-        # add extraction widgets to scroll area
-        group_layout.addWidget(create_divider_line("Neuropil Settings"))
-        group_layout.addWidget(self._neuropil_wdg)
-        group_layout.addWidget(create_divider_line("ΔF/F0 and Spike Inference"))
-        group_layout.addWidget(self._trace_extraction_wdg)
-        group_layout.addWidget(self._spike_outputs)
-        group_layout.addWidget(create_divider_line("Metadata"))
-        group_layout.addWidget(self._metadata_wdg)
-        group_layout.addWidget(create_divider_line("Parallelization"))
-        group_layout.addWidget(threads_wdg)
-        group_layout.addWidget(create_divider_line("Export Options"))
-        export_collapsible = QCollapsible("Select the Data to Export as csv")
-        export_collapsible.setToolTip(
-            "Enable/disable export options and select which data types to export\n"
-            "as CSV files. Check the boxes for the data you want to save."
+        self._settings_tabs.add_page(
+            "Processing and export",
+            "Results are always saved in the experiment database. CSV export is "
+            "optional and does not change which outputs are computed.",
+            settings_section(
+                "Processing",
+                "More extraction threads process more positions at "
+                "once and use more memory. Reduce this value if the computer "
+                "slows down.",
+                threads_wdg,
+            ),
+            self._export_group,
         )
-        export_collapsible.layout().setContentsMargins(0, 0, 0, 0)
-        export_collapsible.addWidget(self._export_group)
-        group_layout.addWidget(export_collapsible)
-        group_layout.addStretch(1)
-        analysis_scroll_area.setWidget(group_wdg)
-
-        # MAIN LAYOUT -----------------------------------------------------------------
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(15)
-        main_layout.addWidget(analysis_scroll_area)
+        main_layout.addWidget(self._settings_tabs)
 
         # STYLING ---------------------------------------------------------------------
         fix_width = self._threads_lbl.sizeHint().width()
@@ -563,7 +578,7 @@ class _TraceExtractionWidget(QWidget):
             "The decay constant represents how quickly the calcium indicator\n"
             "returns to baseline after a calcium transient."
         )
-        self._decay_const_lbl = QLabel("Decay Constant:", self._dec_wdg)
+        self._decay_const_lbl = QLabel("Calcium decay time:", self._dec_wdg)
         self._decay_const_lbl.setSizePolicy(*FIXED)
         self._decay_constant_spin = QDoubleSpinBox(self._dec_wdg)
         self._decay_constant_spin.setSuffix(" s")
@@ -734,12 +749,10 @@ class _MetadataWidget(QWidget):
         # Frame Rate widget
         self._frame_rate_wdg = QWidget(self)
         self._frame_rate_wdg.setToolTip(
-            "Acquisition frame rate in frames per second (fps).\n\n"
-            "This is used to convert time-based parameters (e.g., DFF window in "
-            "milliseconds) to frames for processing.\n\n"
-            "Tip: This is typically the inverse of exposure time:\n"
-            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\n"
-            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+            "True acquisition rate in frames per second (fps).\n\n"
+            "Converts baseline windows and discarded seconds to frames, and must "
+            "match the CASCADE model rate. Use acquisition timestamps or verified "
+            "metadata; exposure time alone may omit readout and inter-frame gaps."
         )
         self._frame_rate_lbl = QLabel("Frame Rate:", self._frame_rate_wdg)
         self._frame_rate_lbl.setSizePolicy(*FIXED)

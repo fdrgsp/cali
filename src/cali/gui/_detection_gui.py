@@ -14,7 +14,6 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QVBoxLayout,
@@ -27,6 +26,8 @@ from cali.gui._util import (
     create_divider_line,
     show_error_dialog,
 )
+
+from ._settings_tabs import _SettingsTabs
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import DetectionSettings
@@ -70,12 +71,6 @@ class _DetectionGUI(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
-
         # CELLPOSE WIDGET -------------------------------------------------------------
         self._cellpose_wdg = _CellposeDetectionWidget(self)
         self._cellpose_wdg.setCheckable(True)
@@ -88,26 +83,44 @@ class _DetectionGUI(QWidget):
         self._cellpose_wdg.toggled.connect(self._on_cellpose_toggled)
         self._imported_labels_wdg.toggled.connect(self._on_imported_toggled)
 
-        # SCROLL AREA WIDGET ---------------------------------------------------------
-        detection_scroll_area = QScrollArea()
-        detection_scroll_area.setWidgetResizable(True)
-        detection_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._cellpose_cb = QCheckBox(self)
+        self._imported_cb = QCheckBox(self)
+        self._cellpose_cb.setToolTip(
+            "Detect ROIs with Cellpose. Only one detection method is used."
         )
-        detection_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._imported_cb.setToolTip(
+            "Use existing ROI label images. Only one detection method is used."
         )
-        # add detection widgets to scroll area
-        group_layout.addWidget(self._cellpose_wdg)
-        group_layout.addWidget(self._imported_labels_wdg)
-        group_layout.addStretch(1)
-        detection_scroll_area.setWidget(group_wdg)
-
-        # MAIN LAYOUT -----------------------------------------------------------------
+        self._settings_tabs = _SettingsTabs(self)
+        self._cellpose_page = self._settings_tabs.add_page(
+            "Cellpose",
+            "Check this tab to find ROIs automatically from the images. Choose a model "
+            "and adjust detection parameters; the resulting ROI masks are reused by "
+            "trace extraction and analysis.",
+            self._cellpose_wdg,
+            checkbox=self._cellpose_cb,
+        )
+        self._imported_page = self._settings_tabs.add_page(
+            "Import ROI labels",
+            "Check this tab to use segmentation created elsewhere. Import labeled "
+            "TIFF images, where each nonzero integer identifies one ROI, and match "
+            "them to the experiment's positions.",
+            self._imported_labels_wdg,
+            checkbox=self._imported_cb,
+        )
+        # The existing checkable groups retain selection semantics; the visible
+        # controls now live on the tab headers.
+        for group in (self._cellpose_wdg, self._imported_labels_wdg):
+            group.setTitle("")
+            group.setFlat(True)
+            group.setStyleSheet("QGroupBox::indicator { width: 0px; height: 0px; }")
+            group.toggled.connect(self._sync_method_tabs)
+        self._cellpose_cb.toggled.connect(self._cellpose_wdg.setChecked)
+        self._imported_cb.toggled.connect(self._imported_labels_wdg.setChecked)
+        self._sync_method_tabs()
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(15)
-        main_layout.addWidget(detection_scroll_area)
+        main_layout.addWidget(self._settings_tabs)
 
         # STYLING ---------------------------------------------------------------------
         cp = self._cellpose_wdg
@@ -154,10 +167,14 @@ class _DetectionGUI(QWidget):
             with signals_blocked(self._imported_labels_wdg):
                 self._imported_labels_wdg.setChecked(False)
 
+        self._sync_method_tabs()
+
     def enable(self, enabled: bool) -> None:
         """Enable or disable the detection GUI."""
         self._cellpose_wdg.setEnabled(enabled)
         self._imported_labels_wdg.setEnabled(enabled)
+        self._cellpose_cb.setEnabled(enabled)
+        self._imported_cb.setEnabled(enabled)
 
     def reset(self) -> None:
         """Reset the detection GUI to default values."""
@@ -167,6 +184,8 @@ class _DetectionGUI(QWidget):
             self._cellpose_wdg.setChecked(True)
         with signals_blocked(self._imported_labels_wdg):
             self._imported_labels_wdg.setChecked(False)
+
+        self._sync_method_tabs()
 
     def to_model_settings(self) -> DetectionSettings:
         """Convert current GUI settings to DetectionSettings model.
@@ -204,6 +223,16 @@ class _DetectionGUI(QWidget):
         )
 
     # PRIVATE METHODS -----------------------------------------------------------------
+
+    def _sync_method_tabs(self) -> None:
+        with signals_blocked(self._cellpose_cb), signals_blocked(self._imported_cb):
+            self._cellpose_cb.setChecked(self._cellpose_wdg.isChecked())
+            self._imported_cb.setChecked(self._imported_labels_wdg.isChecked())
+        self._settings_tabs.setCurrentWidget(
+            self._cellpose_page
+            if self._cellpose_wdg.isChecked()
+            else self._imported_page
+        )
 
     def _on_cellpose_toggled(self, checked: bool) -> None:
         """When cellpose is checked, uncheck imported labels."""

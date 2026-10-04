@@ -322,6 +322,9 @@ cali --logger DEBUG
 
 ## GUI Overview
 
+The screenshots and video below show an earlier layout. The current controls are
+described in the accompanying text.
+
 <https://github.com/user-attachments/assets/4fdcabb9-6d7b-4c4f-ae84-8dffc8487376>
 
 ### File Formats
@@ -333,13 +336,16 @@ cali --logger DEBUG
 
 ### Open a File
 
-In the GUI, go to `File -> Select Data Source...`. Two options are available:
+Click **Open experiment...** in the window header or choose
+`File -> Open experiment...`. Two options are available:
 
-- To re-open a previously saved `cali` project (`.cali` file), select the **From Database** tab and input:
+- To re-open a previously saved `cali` project (`.cali` file), select **Saved experiment** and input:
   - the path to the database file
-  - the path of the actual data referenced in the database (either a `tensorstore.zarr`, `ome.zarr`, or a folder of TIFF files).
+  - optionally, the original imaging data (a Zarr datastore or folder of TIFF files).
+    Saved results can be reviewed, re-analyzed and exported without the images;
+    new detection or extraction requires imaging data.
 
-- To create a new project, select the **From Directories** tab and input:
+- To create a new project, select **New experiment** and input:
   - the path to the data (either a `tensorstore.zarr`, `ome.zarr`, or a folder of TIFF files),
   - the output path for the `cali` project database file, and
   - the name of the project (if you omit `.cali`, it will be added automatically).
@@ -361,19 +367,23 @@ After confirming the plate assignment, the main `cali` window will open. Next ti
 The main window contains the following sections:
 
 - **Left panel**: shows the plate layout with wells and FOVs and the image viewer. Selecting a well/FOV updates the image viewer to show the corresponding data. Double-clicking a well/FOV opens the full FOV in a new [ndv](https://pyapp-kit.github.io/ndv/latest/) window.
-- **Center panel**: contains tabs for ROI detection, trace extraction, analysis, and a visualization tab for displaying results.
-- **Right panel**: contains the list of *Runs* the user has performed. `cali` is structured so that each time the user changes pipeline settings and runs the analysis, a new *Run* is created. This allows comparing different settings and results. Selecting a run updates the center panel tabs to show the settings and results for that run.
+- **Center panel**: **Setup and run** contains the numbered stages **1. Detect ROIs**, **2. Extract traces**, and **3. Analyze activity**. **Results** contains **Position details** and **Compare wells**.
+- **Right panel**: **Saved runs** lists previous runs and saved segmentations. Changing pipeline settings and running the analysis creates a new run. Selecting a run restores its settings and results for review and comparison.
+- **Window header**: identifies the open database and whether imaging data are available.
 
 <img width="1750" height="1103" alt="Screenshot 2026-03-09 at 10 10 25 PM" src="https://github.com/user-attachments/assets/3af9fccb-4412-4865-ae1a-8e24fa1262af" />
 
 
 ### Pipeline Tabs
 
-Hovering over each parameter in the Detection, Extraction, and Analysis tabs shows a tooltip with a description of that parameter.
+Each settings page explains what its controls do, with more detail in tooltips.
+Click a tab title to view its settings; check its header box to include that method
+or analysis in the run. Browsing a tab does not change what will run.
 
 #### Detection Tab
 
-The Detection tab allows the user to set the parameters used to segment cells and define ROIs for trace extraction. Two detection methods are available:
+**1. Detect ROIs** has checkable **Cellpose** and **Import ROI labels** tabs.
+Choose exactly one method to define ROIs for trace extraction:
 
 - **Cellpose**: run Cellpose segmentation with configurable parameters directly from the GUI.
 - **Imported Labels**: import pre-existing label TIFF files (e.g., from manual segmentation or another tool) and assign them to specific FOVs. Clicking "Import Labels..." opens a dedicated dialog where you can:
@@ -389,28 +399,36 @@ The Detection tab allows the user to set the parameters used to segment cells an
 
 #### Extraction Tab
 
-The Extraction tab allows the user to configure fluorescence trace extraction from the segmented ROIs. Parameters include:
+**2. Extract traces** organizes parameters into three pages:
 
-- **Neuropil correction**: enable/disable and set neuropil mask parameters
-- **ΔF/F and OASIS Deconvolution**:
-  - window size for ΔF/F calculation
-  - percentile for ΔF/F baseline
-  - parameters for OASIS deconvolution (or leave on `auto` to use default parameters)
-  - optional startup exclusion in frames or seconds
-- **Metadata**: frame rate and pixel size
-- **Number of Threads**: number of threads used for parallel extraction across wells/FOVs. Keep this number low if you experience memory issues during extraction.
-- **CSV Export**: raw traces, ΔF/F, deconvolved ΔF/F, inferred spikes (raw and thresholded), neuropil traces, and neuropil-corrected traces.
+- **Prepare traces**: acquisition rate, pixel size, startup exclusion in frames or
+  seconds, neuropil correction and the ΔF/F₀ baseline window/percentile.
+- **Spike inference**: check **OASIS**, **CASCADE**, or both where CASCADE extraction
+  is enabled. Each method has its own settings page. OASIS exposes the calcium
+  decay time; CASCADE exposes the explicit model, device, local verification and
+  installation instructions. OASIS calcium denoising always runs, including when
+  only CASCADE spike output is retained. Released GUI CASCADE extraction remains
+  gated as described in the [migration notes](#optional-cascade-dependency-migration-branch).
+- **Processing and export**: extraction threads and optional CSV exports of traces,
+  inferred spikes and related products. More concurrent positions use more memory.
 
 <img width="800" alt="Screenshot 2026-03-09 at 10 11 33 PM" src="https://github.com/user-attachments/assets/d6a6bcd0-137d-441c-a3f5-0e7b9c292e82" />
 
 
 #### Analysis Tab
 
-The Analysis tab allows the user to configure analysis of the extracted traces, including:
+**3. Analyze activity** has **Experiment**, checkable **Calcium events** and
+**Spike activity**, and **Processing and export** pages. At least one analysis
+must remain checked. Parameters include:
 
 - **Experiment Type**: since `cali` was designed to work with [micromanager-gui](https://github.com/fdrgsp/micromanager-gui), which supports spatio-temporal optogenetic stimulation, the user can select the `Evoked Activity` experiment type. This enables input of stimulation metadata used during acquisition and allows splitting results into stimulated vs non-stimulated ROIs.
-- **Calcium Traces and Peaks Analysis**: parameters for calcium peak detection and analysis of calcium traces.
-- **Inferred Spikes**: parameters for analysis of inferred spikes obtained from OASIS deconvolution. This includes detection thresholds, burst detection parameters, and correlation / synchrony analysis between ROIs.
+- **Calcium events**: grouped event detection, network bursts and ROI clustering settings.
+- **Spike activity**: separate method-labelled tabs for each selected or stored
+  spike output, with independent thresholds, burst and synchrony parameters.
+  CASCADE thresholds use an AP peak fraction or an explicit global spikes/frame
+  value; OASIS uses a noise multiplier or global amplitude threshold. Advanced
+  shuffle and onset settings are expandable. The header checkbox enables spike
+  analysis for all these outputs; changing the retained outputs requires extraction.
 - **Cluster Analysis**: groups ROIs into functional clusters based on their pairwise denoised ΔF/F correlation patterns using Hierarchical clustering (average/UPGMA linkage), with automatic or fixed number of clusters.
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
 - **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
@@ -431,22 +449,28 @@ After setting parameters in each tab, the user can run the pipeline using the ru
 <br>
 <br>
 
-The user can select which steps to run (Detection, Extraction, Analysis) using the **Run Options** dropdown and then click **Run**. This runs the selected pipeline steps on all wells/FOVs in the plate and creates a new *Run* in the run panel on the right.
+Choose **Steps to run** and click **Run selected steps**. The explanation below
+the dropdown describes whether the choice computes new results, reuses saved
+segmentation or traces, or only exports existing data. A new computation creates
+a run in **Saved runs**.
 
-If the user wants to first explore and optimize parameters, a subset of wells/FOVs can be specified in the **Positions to Extract** field. By entering a comma-separated list of FOV position indices (obtained from the FOV table under the plate layout, e.g. `1, 3, 4` or `3-7` for a range), only those positions will be processed. This is useful to quickly test and optimize parameters before running the full pipeline. Once satisfied, the user can clear **Positions to Extract** and run the pipeline on the full dataset.
+To explore parameters on a subset, enter FOV indices in **Positions (0-based)**,
+for example `1, 3, 4` or `3-7`. Use the indices shown in the position table.
+Clear the field to process all positions.
 
-Segmentation results and neuropil masks (if enabled) are displayed in the image viewer by clicking on "Labels". The rest of the results can be visualized in the **Visualization** tab.
+Toggle **ROI masks** and **Background masks** in the image viewer to inspect
+segmentation and neuropil regions. Explore plots in **Results**.
 
-The full pipeline settings can be saved and loaded through the `save` and `load` button next to the `Run` and `Cancel` buttons.
+Use **Save settings** and **Load settings** to transfer the full pipeline settings.
 
 ### Visualization Tab
 
-The Visualization tab allows the user to explore analysis results for the selected *Run*.
+The **Results** tab displays analysis results for the selected saved run.
 
 Two sub-tabs are available:
 
-- **Single Well**: visualize results for a single well/FOV.
-- **Multi Well**: visualize summary metrics across all wells/FOVs.
+- **Position details**: inspect plots for a single well/FOV.
+- **Compare wells**: compare summary metrics across wells/FOVs and conditions.
 
 Plots are interactive (zoom/pan). Clicking on a trace or data point highlights the corresponding ROI in the image viewer (and vice versa).
 

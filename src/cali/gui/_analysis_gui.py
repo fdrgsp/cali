@@ -8,18 +8,15 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
-from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -73,7 +70,8 @@ from cali.sqlmodel._spike_settings import (
 )
 
 from ._extraction_gui import FromMetaButton
-from ._util import _BrowseWidget, _ExportGroup, create_divider_line
+from ._settings_tabs import _SettingsTabs, guidance, settings_section
+from ._util import _BrowseWidget, _ExportGroup
 
 if TYPE_CHECKING:
     from cali.sqlmodel import AnalysisSettings
@@ -180,12 +178,6 @@ class _AnalysisGUI(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # MAIN WIDGET -----------------------------------------------------------------
-        group_wdg = QGroupBox(self)
-        group_layout = QVBoxLayout(group_wdg)
-        group_layout.setContentsMargins(10, 10, 10, 10)
-        group_layout.setSpacing(5)
-
         # THREADS WIDGET -------------------------------------------------------------
         cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
         threads_wdg = QWidget()
@@ -243,6 +235,24 @@ class _AnalysisGUI(QWidget):
         self._spike_wdg = _SpikeWidget(self)
         self._cascade_spike_wdg = _SpikeWidget(self, method="cascade")
         self._spike_tabs = QTabWidget(self)
+        self._method_pages = {
+            "oasis": settings_section(
+                "OASIS activity",
+                "Thresholds apply to relative OASIS spike amplitudes. "
+                "A noise multiplier adapts to each ROI; a global threshold uses "
+                "the same "
+                "value for every ROI.",
+                self._spike_wdg,
+            ),
+            "cascade": settings_section(
+                "CASCADE activity",
+                "Thresholds apply to expected spikes per frame. "
+                "Model AP Threshold uses the selected model's response to one action "
+                "potential; a global threshold requires an explicit "
+                "spikes/frame value.",
+                self._cascade_spike_wdg,
+            ),
+        }
         self._spike_methods: tuple[SpikeMethod, ...] = ("oasis",)
         self.set_spike_methods(("oasis",))
         self._metadata_wdg = _MetadataWidget(self)
@@ -251,10 +261,16 @@ class _AnalysisGUI(QWidget):
         self._enable_calcium_cb = QCheckBox()
         self._enable_calcium_cb.setChecked(True)
         self._enable_calcium_cb.clicked.connect(self._on_enable_changed)
+        self._enable_calcium_cb.setToolTip(
+            "Compute calcium events, bursts and ROI grouping."
+        )
 
         self._enable_spikes_cb = QCheckBox()
         self._enable_spikes_cb.setChecked(True)
         self._enable_spikes_cb.clicked.connect(self._on_enable_changed)
+        self._enable_spikes_cb.setToolTip(
+            "Analyze all selected or stored spike outputs."
+        )
 
         self._export_group = _ExportGroup()
         # Multi-Well Aggregated Data
@@ -296,61 +312,45 @@ class _AnalysisGUI(QWidget):
         )
         self._export_group.add_stretch("horizontal")
 
-        # SCROLL AREA WIDGET ---------------------------------------------------------
-        analysis_scroll_area = QScrollArea()
-        analysis_scroll_area.setWidgetResizable(True)
-        analysis_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._settings_tabs = _SettingsTabs(self)
+        self._settings_tabs.add_page(
+            "Experiment",
+            "Choose spontaneous activity or a stimulated experiment. The acquisition "
+            "rate converts time-based thresholds into frames.",
+            self._experiment_type_wdg,
+            self._metadata_wdg,
         )
-        analysis_scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        self._settings_tabs.add_page(
+            "Calcium events",
+            "Check this tab to detect calcium events, network bursts and groups of "
+            "ROIs with similar activity. At least one analysis tab must stay checked.",
+            self._calcium_peaks_wdg,
+            checkbox=self._enable_calcium_cb,
         )
-        # add analysis widgets to scroll area
-        group_layout.addWidget(create_divider_line("Experiment Type"))
-        group_layout.addWidget(self._experiment_type_wdg)
-        # Calcium divider with checkbox
-        calcium_divider_container = QWidget()
-        calcium_divider_layout = QHBoxLayout(calcium_divider_container)
-        calcium_divider_layout.setContentsMargins(0, 0, 0, 0)
-        calcium_divider_layout.setSpacing(10)
-        calcium_divider_layout.addWidget(self._enable_calcium_cb)
-        calcium_divider_layout.addWidget(
-            create_divider_line("Calcium Traces and Peaks"), 1
+        self._settings_tabs.add_page(
+            "Spike activity",
+            "Check this tab to analyze every selected spike output. Each method keeps "
+            "its own thresholds and synchrony settings. Choose outputs in Extraction; "
+            "analysis-only uses the outputs already stored in the selected extraction.",
+            self._spike_tabs,
+            checkbox=self._enable_spikes_cb,
         )
-        group_layout.addWidget(calcium_divider_container)
-        group_layout.addWidget(self._calcium_peaks_wdg)
-
-        # Spikes divider with checkbox
-        spikes_divider_container = QWidget()
-        spikes_divider_layout = QHBoxLayout(spikes_divider_container)
-        spikes_divider_layout.setContentsMargins(0, 0, 0, 0)
-        spikes_divider_layout.setSpacing(10)
-        spikes_divider_layout.addWidget(self._enable_spikes_cb)
-        spikes_divider_layout.addWidget(create_divider_line("Inferred Spikes"), 1)
-        group_layout.addWidget(spikes_divider_container)
-        group_layout.addWidget(self._spike_tabs)
-        group_layout.addWidget(create_divider_line("Metadata"))
-        group_layout.addWidget(self._metadata_wdg)
-        group_layout.addWidget(create_divider_line("Parallelization"))
-        group_layout.addWidget(threads_wdg)
-        group_layout.addWidget(self._n_processes_wdg)
-        group_layout.addWidget(create_divider_line("Export Options"))
-        export_collapsible = QCollapsible("Select the Data to Export as csv")
-        export_collapsible.setToolTip(
-            "Enable/disable export options and select which data types to export\n"
-            "as CSV files. Check the boxes for the data you want to save."
+        self._settings_tabs.add_page(
+            "Processing and export",
+            "Analysis results are saved in the database. Choose optional CSV exports "
+            "here; exporting does not change the analysis.",
+            settings_section(
+                "Processing",
+                "Threads process ROIs. CCG worker processes compare "
+                "spike timing between ROI pairs; more workers use more memory.",
+                threads_wdg,
+                self._n_processes_wdg,
+            ),
+            self._export_group,
         )
-        export_collapsible.layout().setContentsMargins(0, 0, 0, 0)
-        export_collapsible.addWidget(self._export_group)
-        group_layout.addWidget(export_collapsible)
-        group_layout.addStretch(1)
-        analysis_scroll_area.setWidget(group_wdg)
-
-        # MAIN LAYOUT -----------------------------------------------------------------
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(15)
-        main_layout.addWidget(analysis_scroll_area)
+        main_layout.addWidget(self._settings_tabs)
 
         # STYLING ---------------------------------------------------------------------
         fix_width = self._calcium_peaks_wdg._peaks_prominence_lbl.sizeHint().width()
@@ -478,7 +478,7 @@ class _AnalysisGUI(QWidget):
         self._spike_tabs.clear()
         for method in ("cascade", "oasis"):
             if method in self._spike_methods:
-                self._spike_tabs.addTab(self._method_widget(method), method.upper())
+                self._spike_tabs.addTab(self._method_pages[method], method.upper())
 
     def to_model_settings(
         self, spike_methods: tuple[SpikeMethod, ...] | None = None
@@ -867,18 +867,19 @@ class _PeaksHeightWidget(QWidget):
         self._peaks_height_spin.setSingleStep(0.01)
         self._peaks_height_spin.setValue(DEFAULT_HEIGHT)
 
-        self._global_peaks_height = QRadioButton("Use as Global Minimum Peaks Height")
+        self._global_peaks_height = QRadioButton("Global threshold")
 
-        self._height_multiplier = QRadioButton("Use as Noise Level Multiplier")
+        self._height_multiplier = QRadioButton("Noise multiplier")
         self._height_multiplier.setChecked(True)
 
-        layout = QHBoxLayout(self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._peaks_height_lbl)
-        layout.addWidget(self._peaks_height_spin, 1)
-        layout.addWidget(self._height_multiplier, 0)
-        layout.addWidget(self._global_peaks_height, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._peaks_height_lbl, 0, 0)
+        layout.addWidget(self._peaks_height_spin, 0, 1)
+        layout.addWidget(self._height_multiplier, 1, 0)
+        layout.addWidget(self._global_peaks_height, 1, 1)
+        layout.setColumnStretch(1, 1)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1015,12 +1016,35 @@ class _CalciumPeaksWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
-        layout.addWidget(self._peaks_height)
-        layout.addWidget(self._peaks_distance_wdg)
-        layout.addWidget(self._peaks_prominence_wdg)
-        layout.addWidget(self._burst_wdg)
-        layout.addWidget(self._n_clusters_wdg)
-        layout.addWidget(self._max_k_wdg)
+        layout.addWidget(
+            settings_section(
+                "Event detection",
+                "Find peaks in calcium fluorescence. Height rejects "
+                "small events; spacing separates nearby peaks; prominence rejects "
+                "peaks that barely rise above their surroundings.",
+                self._peaks_height,
+                self._peaks_distance_wdg,
+                self._peaks_prominence_wdg,
+            )
+        )
+        layout.addWidget(
+            settings_section(
+                "Network bursts",
+                "Identify intervals when a large fraction of ROIs is "
+                "active together. Duration rejects brief fluctuations; smoothing joins "
+                "activity over nearby time points.",
+                self._burst_wdg,
+            )
+        )
+        layout.addWidget(
+            settings_section(
+                "ROI grouping",
+                "Group ROIs with similar calcium activity. Auto estimates "
+                "the number of groups up to the selected maximum.",
+                self._n_clusters_wdg,
+                self._max_k_wdg,
+            )
+        )
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1116,18 +1140,19 @@ class _SpikeThresholdWidget(QWidget):
         self._spike_threshold_spin.setSingleStep(0.1)
         self._spike_threshold_spin.setValue(DEFAULT_SPIKE_THRESHOLD)
 
-        self._global_spike_threshold = QRadioButton("Use as Global Minimum Threshold")
+        self._global_spike_threshold = QRadioButton("Global threshold")
 
-        self._threshold_multiplier = QRadioButton("Use as Noise Level Multiplier")
+        self._threshold_multiplier = QRadioButton("Noise multiplier")
         self._threshold_multiplier.setChecked(True)
 
-        layout = QHBoxLayout(self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(self._spike_threshold_lbl)
-        layout.addWidget(self._spike_threshold_spin, 1)
-        layout.addWidget(self._threshold_multiplier, 0)
-        layout.addWidget(self._global_spike_threshold, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._spike_threshold_lbl, 0, 0)
+        layout.addWidget(self._spike_threshold_spin, 0, 1)
+        layout.addWidget(self._threshold_multiplier, 1, 0)
+        layout.addWidget(self._global_spike_threshold, 1, 1)
+        layout.setColumnStretch(1, 1)
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1168,19 +1193,27 @@ class _CascadeThresholdWidget(QWidget):
             "Fraction of the peak prediction for one action potential under the "
             "selected model's smoothing kernel. Default: 1/e. Must be in (0, 1]."
         )
-        layout = QHBoxLayout(self)
+        self._fraction_label = QLabel("AP peak fraction:", self)
+        self._global_label = QLabel("Global value (spikes/frame):", self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._spike_threshold_lbl)
-        layout.addWidget(self._mode)
-        layout.addWidget(self._fraction, 1)
-        layout.addWidget(self._global, 1)
+        layout.setSpacing(6)
+        layout.addWidget(self._spike_threshold_lbl, 0, 0)
+        layout.addWidget(self._mode, 0, 1)
+        layout.addWidget(self._fraction_label, 1, 0)
+        layout.addWidget(self._fraction, 1, 1)
+        layout.addWidget(self._global_label, 2, 0)
+        layout.addWidget(self._global, 2, 1)
+        layout.setColumnStretch(1, 1)
         self._mode.currentIndexChanged.connect(self._update_mode)
         self._update_mode()
 
     def _update_mode(self) -> None:
         ap_mode = self._mode.currentData() == CASCADE_AP_THRESHOLD
         self._fraction.setVisible(ap_mode)
+        self._fraction_label.setVisible(ap_mode)
         self._global.setVisible(not ap_mode)
+        self._global_label.setVisible(not ap_mode)
 
     def value(self) -> tuple[float | None, str]:
         mode = self._mode.currentData()
@@ -1442,12 +1475,44 @@ class _SpikeWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
-        layout.addWidget(self._spike_threshold_wdg)
-        layout.addWidget(self._spike_max_lag_wdg)
-        layout.addWidget(self._spike_jitter_wdg)
-        layout.addWidget(self._ccg_shuffles_wdg)
-        layout.addWidget(self._rising_edge_wdg)
-        layout.addWidget(self._burst_wdg)
+        layout.addWidget(
+            settings_section(
+                "Activity threshold",
+                "Convert the inferred trace into active/inactive "
+                "frames for raster, burst and synchrony analysis.",
+                self._spike_threshold_wdg,
+            )
+        )
+        layout.addWidget(
+            settings_section(
+                "Synchrony between ROIs",
+                "Compare the timing of activity between pairs "
+                "of ROIs. Lag and jitter set how far apart activity can occur "
+                "and still "
+                "be counted together.",
+                self._spike_max_lag_wdg,
+                self._spike_jitter_wdg,
+            )
+        )
+        advanced = QCollapsible("Advanced synchrony: shuffles and onset analysis")
+        advanced.addWidget(
+            guidance(
+                "More shuffles improve the baseline estimate but take longer. Onset "
+                "analysis compares activity starts in addition to active frames.",
+                advanced,
+            )
+        )
+        advanced.addWidget(self._ccg_shuffles_wdg)
+        advanced.addWidget(self._rising_edge_wdg)
+        layout.addWidget(advanced)
+        layout.addWidget(
+            settings_section(
+                "Network bursts",
+                "Detect periods when a large fraction of ROIs is "
+                "active together. These settings apply only to this method.",
+                self._burst_wdg,
+            )
+        )
         if method == "cascade":
             self.reset()
 
@@ -1555,12 +1620,10 @@ class _MetadataWidget(QWidget):
         # Frame Rate widget
         self._frame_rate_wdg = QWidget(self)
         self._frame_rate_wdg.setToolTip(
-            "Acquisition frame rate in frames per second (fps).\\n\\n"
-            "This is used to convert time-based parameters (e.g., peaks distance in "
-            "milliseconds, jitter windows) to frames for processing.\\n\\n"
-            "Tip: This is typically the inverse of exposure time:\\n"
-            "• Exposure = 50ms → Frame Rate = 20 fps (1000/50)\\n"
-            "• Exposure = 100ms → Frame Rate = 10 fps (1000/100)"
+            "True acquisition rate in frames per second (fps).\n\n"
+            "Converts event spacing, burst duration and synchrony windows to frames. "
+            "Use acquisition timestamps or verified metadata. Exposure time alone "
+            "does not include readout or gaps between frames."
         )
         self._frame_rate_lbl = QLabel("Frame Rate:")
         self._frame_rate_lbl.setSizePolicy(*FIXED)

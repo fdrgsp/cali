@@ -410,7 +410,7 @@ def create_divider_line(text: str | None = None) -> QWidget:
     # Add text label
     label = QLabel(text)
     # make bold and increase font size
-    label.setStyleSheet("font-weight: bold; font-size: 14px; color: rgb(0, 183, 0);")
+    label.setStyleSheet("font-weight: bold; font-size: 14px;")
     layout.addWidget(label)
 
     line = _create_line()
@@ -438,7 +438,7 @@ class _ExportGroup(QGroupBox):
         self.setCheckable(True)
         self.setChecked(True)
         self.setStyleSheet("QGroupBox::title { font-size: 14px; }")
-        self.setTitle("Enable/Disable Export Options")
+        self.setTitle("Export selected data as CSV")
 
         self._checkboxes: dict[str, tuple[QCheckBox, int, int]] = {}
 
@@ -506,7 +506,7 @@ class _ExportGroup(QGroupBox):
             Number of columns to span, by default 1.
         """
         label = QLabel(f"<b>{text}</b>")
-        label.setStyleSheet("color: rgb(0, 183, 0); margin-top: 5px;")
+        label.setStyleSheet("font-weight: bold; margin-top: 5px;")
         self._layout.addWidget(label, row, col, 1, col_span)
 
     def value(self) -> dict[str, tuple[bool, int, int]]:

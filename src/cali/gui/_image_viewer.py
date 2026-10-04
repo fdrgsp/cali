@@ -79,11 +79,12 @@ class _ImageViewer(QGroupBox):
         find_roi_lbl = QLabel("ROI:")
         find_roi_lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._roi_number_le = QLineEdit()
+        self._roi_number_le.setPlaceholderText("ROI labels, e.g. 1-5, 12")
         # when pressing enter in the line edit, update the graph
         self._roi_number_le.returnPressed.connect(self._highlight_rois)
-        self._find_btn = QPushButton("Find")
+        self._find_btn = QPushButton("Highlight")
         self._find_btn.clicked.connect(self._highlight_rois)
-        self._clear_btn = QPushButton("Clear")
+        self._clear_btn = QPushButton("Clear highlight")
         self._clear_btn.clicked.connect(self._clear_highlight)
         roi_wdg = QWidget()
         roi_wdg.setToolTip(
@@ -108,18 +109,25 @@ class _ImageViewer(QGroupBox):
         self._clims.setRange(0, 2**8)
         self._clims.valueChanged.connect(self._on_clims_changed)
         # auto contrast checkbox
-        self._auto_clim = QPushButton("Auto")
+        self._auto_clim = QPushButton("Auto contrast")
+        self._auto_clim.setToolTip(
+            "Fit display contrast to the image; trace data are unchanged."
+        )
         self._auto_clim.setCheckable(True)
         self._auto_clim.setChecked(True)
         self._auto_clim.toggled.connect(self._clims_auto)
         # labels
-        self._labels = QPushButton("Labels")
+        self._labels = QPushButton("ROI masks")
+        self._labels.setToolTip("Show the detected or imported ROI masks.")
         self._labels.setCheckable(True)
         self._labels.setChecked(False)
         self._labels.toggled.connect(self._show_labels)
         self._labels.setEnabled(False)
         # neuropil
-        self._neuropil = QPushButton("Neuropil")
+        self._neuropil = QPushButton("Background masks")
+        self._neuropil.setToolTip(
+            "Show regions used to estimate background around each ROI."
+        )
         self._neuropil.setCheckable(True)
         self._neuropil.setChecked(False)
         self._neuropil.toggled.connect(self._show_neuropil)
@@ -143,15 +151,19 @@ class _ImageViewer(QGroupBox):
         bottom_wdg_layout.setSpacing(3)
         bottom_wdg_layout.addWidget(self._clims)
         bottom_wdg_layout.addWidget(self._auto_clim)
-        bottom_wdg_layout.addWidget(self._labels)
-        bottom_wdg_layout.addWidget(self._neuropil)
-        bottom_wdg_layout.addWidget(self._reset_view)
-        bottom_wdg_layout.addWidget(self._save_image_btn)
+        overlays = QHBoxLayout()
+        overlays.setContentsMargins(0, 0, 0, 0)
+        overlays.addStretch(1)
+        overlays.addWidget(self._labels)
+        overlays.addWidget(self._neuropil)
+        overlays.addWidget(self._reset_view)
+        overlays.addWidget(self._save_image_btn)
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(roi_wdg)
         main_layout.addWidget(self._viewer)
         main_layout.addWidget(bottom_wdg)
+        main_layout.addLayout(overlays)
 
     def setData(
         self,

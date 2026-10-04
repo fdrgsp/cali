@@ -93,12 +93,12 @@ def test_input_dialog_database_with_data(qtbot: QtBot) -> None:
     assert value.data_path is not None
 
 
-def test_input_dialog_data_path_label_has_asterisk(qtbot: QtBot) -> None:
-    """Data path label in database tab should show asterisk for optional."""
+def test_input_dialog_imaging_data_is_clearly_optional(qtbot: QtBot) -> None:
+    """The saved-experiment page explicitly labels optional imaging data."""
     dialog = _InputDialog()
     qtbot.addWidget(dialog)
 
-    assert "Data Path*" in dialog._browse_data_db._label.text()
+    assert "Imaging data (optional)" in dialog._browse_data_db._label.text()
 
 
 # --- Initialization tests ---

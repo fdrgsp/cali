@@ -14,11 +14,14 @@ from qtpy.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 from superqt.utils import signals_blocked
 
 from cali.sqlmodel._spike_settings import SpikeMethod, canonical_spike_methods
+
+from ._settings_tabs import _SettingsTabs, guidance
 
 CASCADE_GUI_GATE = (
     "CASCADE extraction is awaiting the GUI release checks. "
@@ -30,9 +33,13 @@ class _SpikeOutputWidget(QGroupBox):
     methodsChanged = Signal(object)
 
     def __init__(
-        self, parent: QWidget | None = None, *, cascade_enabled: bool = False
+        self,
+        parent: QWidget | None = None,
+        *,
+        cascade_enabled: bool = False,
+        oasis_settings: QWidget | None = None,
     ) -> None:
-        super().__init__("Spike Outputs", parent)
+        super().__init__("Spike outputs — check one or both tabs", parent)
         self._cascade_enabled = cascade_enabled
         self._read_only = False
         self._frame_rate = 10.0
@@ -43,12 +50,12 @@ class _SpikeOutputWidget(QGroupBox):
             "still runs for denoised ΔF/F even when this output is unchecked."
         )
         self._cascade.setToolTip("Retain CASCADE expected spikes per frame.")
-        outputs = QHBoxLayout()
-        outputs.addWidget(self._cascade)
-        outputs.addWidget(self._oasis)
-        outputs.addStretch()
         self._model = QComboBox(self)
         self._model.setEditable(True)
+        self._model.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._model.setMinimumContentsLength(20)
         self._model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self._model.setToolTip(
             "Choose a model explicitly. The offline catalogue is filtered by the "
@@ -63,24 +70,52 @@ class _SpikeOutputWidget(QGroupBox):
             ("Apple MPS", "mps"),
         ):
             self._device.addItem(label, device)
-        self._refresh = QPushButton("Refresh Local Models", self)
-        self._verify = QPushButton("Verify Model / Show Details", self)
-        self._install = QPushButton("Install / Download Instructions", self)
+        self._refresh = QPushButton("Refresh models", self)
+        self._verify = QPushButton("Verify model", self)
+        self._install = QPushButton("Install / download", self)
         self._status = QLabel(self)
         self._status.setWordWrap(True)
         self._info = QLabel(self)
         self._info.setWordWrap(True)
-        layout = QFormLayout(self)
-        layout.addRow(outputs)
-        layout.addRow("CASCADE Model:", self._model)
-        layout.addRow("CASCADE Device:", self._device)
+        self._cascade_parameters = QWidget(self)
+        form = QFormLayout(self._cascade_parameters)
+        form.setContentsMargins(0, 0, 0, 0)
+        form.addRow("Pretrained model:", self._model)
+        form.addRow("Compute device:", self._device)
         actions = QHBoxLayout()
         actions.addWidget(self._refresh)
         actions.addWidget(self._verify)
         actions.addWidget(self._install)
-        layout.addRow(actions)
-        layout.addRow(self._info)
-        layout.addRow(self._status)
+        form.addRow(actions)
+        self._tabs = _SettingsTabs(self)
+        self._cascade_page = self._tabs.add_page(
+            "CASCADE",
+            "Predicts expected spikes per frame using a pretrained neural network. "
+            "Choose a model that matches your acquisition rate and indicator; use "
+            "Verify model to inspect its smoothing, noise range and "
+            "trace requirements.",
+            self._cascade_parameters,
+            self._info,
+            self._status,
+            checkbox=self._cascade,
+        )
+        oasis_widgets = [oasis_settings] if oasis_settings is not None else []
+        self._oasis_page = self._tabs.add_page(
+            "OASIS",
+            "Estimates relative spike amplitudes from calcium decay. Check this tab "
+            "to keep its spike output, or check both tabs to compare methods. "
+            "OASIS calcium denoising always runs, including when this tab "
+            "is unchecked.",
+            guidance(
+                "Calcium denoising (always runs). Auto estimates the decay time "
+                "from each trace; enter a known indicator decay time to use it instead."
+            ),
+            *oasis_widgets,
+            checkbox=self._oasis,
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 12, 10, 10)
+        layout.addWidget(self._tabs)
         self._oasis.toggled.connect(self._on_methods_changed)
         self._cascade.toggled.connect(self._on_methods_changed)
         self._model.currentTextChanged.connect(self._update_info)
@@ -122,6 +157,9 @@ class _SpikeOutputWidget(QGroupBox):
         self._model.setCurrentText(model or "")
         self._device.setCurrentIndex(device_index)
         self._update_enabled()
+        self._tabs.setCurrentWidget(
+            self._cascade_page if "cascade" in methods else self._oasis_page
+        )
         self.methodsChanged.emit(methods)
 
     def reset(self) -> None:
