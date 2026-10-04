@@ -32,15 +32,6 @@ def canonical_spike_methods(value: Any) -> tuple[SpikeMethod, ...]:
     return tuple(method for method in ordered_methods if method in value)
 
 
-def require_available_spike_methods(methods: Any) -> None:
-    """Gate complete CASCADE runs until P6's export/plot consumers select a method."""
-    if "cascade" in canonical_spike_methods(methods):
-        raise NotImplementedError(
-            "CASCADE spike analysis is not available yet. Extract without spike "
-            "analysis until the method-bound analysis checks pass."
-        )
-
-
 class ExtractionOutputSettings(BaseModel):
     """Validate extraction-owned output selection without loading a backend."""
 

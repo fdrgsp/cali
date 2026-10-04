@@ -32,7 +32,6 @@ from cali.sqlmodel._model import (
     SpikeTrace,
     Traces,
 )
-from cali.sqlmodel._spike_settings import require_available_spike_methods
 from cali.util import coordinates_to_mask, mask_to_coordinates
 from cali.util._util import _NUMBA_LOCK
 
@@ -88,12 +87,10 @@ class ExtractionRunner:
         extraction_settings: ExtractionSettings,
         analysis_settings: AnalysisSettings | None = None,
     ) -> None:
-        """Validate dispatch; P6's remaining consumers gate full CASCADE analysis."""
+        """Validate output selection and matching method-bound analysis settings."""
         extraction_settings.validate_output_settings()
         if analysis_settings is not None:
             analysis_settings.validate_spike_settings(extraction_settings.spike_methods)
-            if analysis_settings.enable_spikes:
-                require_available_spike_methods(extraction_settings.spike_methods)
 
     @contextmanager
     def _cascade_context(
@@ -239,6 +236,44 @@ class ExtractionRunner:
         analysis_settings: AnalysisSettings | None,
         fovs: Iterable[FOV],
     ) -> Generator[FOV, None, None]:
+        """Restore unpublished extraction stages after all workers have joined."""
+        selected = list(fovs)
+        try:
+            yield from self._extract_generator(
+                dataset, extraction_settings, analysis_settings, selected
+            )
+        finally:
+            for fov in selected:
+                self._restore_fov_stage(fov)
+
+    @staticmethod
+    def _restore_fov_stage(fov: FOV) -> None:
+        snapshot = getattr(fov, "_extraction_stage_snapshot", None)
+        if snapshot is None:
+            return
+        for roi, traces, analysis, active, stimulated, size, units in snapshot:
+            for attribute, previous in (
+                ("_new_traces", traces),
+                ("_new_data_analysis", analysis),
+            ):
+                if previous is None:
+                    if hasattr(roi, attribute):
+                        delattr(roi, attribute)
+                else:
+                    setattr(roi, attribute, previous)
+            roi.active, roi.stimulated = active, stimulated
+            roi.cell_size, roi.cell_size_units = size, units
+        delattr(fov, "_extraction_stage_snapshot")
+        if hasattr(fov, "_pending_analysis_settings"):
+            delattr(fov, "_pending_analysis_settings")
+
+    def _extract_generator(
+        self,
+        dataset: TensorstoreZarrReader | OMEZarrReader | TiffCollectionReader,
+        extraction_settings: ExtractionSettings,
+        analysis_settings: AnalysisSettings | None,
+        fovs: Iterable[FOV],
+    ) -> Generator[FOV, None, None]:
         """Internal generator for analysis process."""
         # Reset cancellation event
         self._cancellation_event.clear()
@@ -285,6 +320,8 @@ class ExtractionRunner:
                             if hasattr(fov_result, "_pending_analysis_settings"):
                                 fovs_for_analysis.append(fov_result)
                             else:
+                                if hasattr(fov_result, "_extraction_stage_snapshot"):
+                                    delattr(fov_result, "_extraction_stage_snapshot")
                                 yield fov_result
                 except BaseException:
                     # A closing consumer must cancel active FOVs before joining
@@ -314,10 +351,14 @@ class ExtractionRunner:
                 fov_analysis = compute_fov_analysis_parallel(
                     fov_result, pending_settings
                 )
+                if self._cancellation_event.is_set():
+                    break
                 if fov_analysis is not None:
                     if not hasattr(fov_result, "_new_fov_analysis"):
                         fov_result._new_fov_analysis = []
                     fov_result._new_fov_analysis.append(fov_analysis)
+                if hasattr(fov_result, "_extraction_stage_snapshot"):
+                    delattr(fov_result, "_extraction_stage_snapshot")
                 cali_logger.info(
                     f"✅ FOV-level analysis complete for {fov_result.name}."
                 )
@@ -792,6 +833,18 @@ class ExtractionRunner:
         if self._check_for_abort_requested():
             return None
 
+        fov_to_analyze._extraction_stage_snapshot = [
+            (
+                roi_map[label],
+                getattr(roi_map[label], "_new_traces", None),
+                getattr(roi_map[label], "_new_data_analysis", None),
+                roi_map[label].active,
+                roi_map[label].stimulated,
+                roi_map[label].cell_size,
+                roi_map[label].cell_size_units,
+            )
+            for label, _ in finalized
+        ]
         for label_value, trace_data in finalized:
             existing_roi = roi_map[label_value]
             (
@@ -811,10 +864,13 @@ class ExtractionRunner:
             # This avoids SQLAlchemy warnings about modifying collections
             # during threaded execution. The commit function will handle
             # proper attachment.
-            if not hasattr(existing_roi, "_new_traces"):
-                existing_roi._new_traces = []
-                existing_roi._new_data_analysis = []
-            existing_roi._new_traces.append(traces)
+            existing_roi._new_traces = [
+                *getattr(existing_roi, "_new_traces", []),
+                traces,
+            ]
+            existing_roi._new_data_analysis = [
+                *getattr(existing_roi, "_new_data_analysis", []),
+            ]
             # Only add data_analysis if it was computed
             if data_analysis is not None:
                 existing_roi._new_data_analysis.append(data_analysis)

@@ -368,13 +368,6 @@ class CaliRunner:
                 else:
                     analysis_settings_id = None
 
-                if extraction_settings_obj is not None:
-                    inference_stack.enter_context(
-                        self._extraction_runner.inference_session(
-                            extraction_settings_obj, analysis_settings_obj
-                        )
-                    )
-
                 det_id = detection_settings.id
                 if det_id is None:  # pragma: no cover
                     msg = "DetectionSettings must have an ID after persistence."
@@ -419,6 +412,29 @@ class CaliRunner:
                     global_position_indices,
                     force=force and source_extraction_result_id is None,
                 )
+
+                # Stored-trace re-analysis needs no optional inference package,
+                # model files or device. Preflight only when extracting images.
+                if (
+                    extraction_settings_obj is not None
+                    and extraction_settings_id is not None
+                    and source_extraction_result_id is None
+                    and (
+                        positions_for_detection
+                        or self._get_positions_for_extraction(
+                            session,
+                            det_id,
+                            extraction_settings_id,
+                            global_position_indices,
+                            force=force,
+                        )
+                    )
+                ):
+                    inference_stack.enter_context(
+                        self._extraction_runner.inference_session(
+                            extraction_settings_obj, analysis_settings_obj
+                        )
+                    )
 
                 if (
                     force
@@ -475,8 +491,6 @@ class CaliRunner:
                             analysis_settings_obj.peaks_height_mode,
                             analysis_settings_obj.peaks_distance,
                             analysis_settings_obj.peaks_prominence_multiplier,
-                            analysis_settings_obj.spike_threshold_value,
-                            analysis_settings_obj.spike_threshold_mode,
                             analysis_settings_obj.experiment_type,
                             analysis_settings_obj.stimulation_mask_path,
                         )
@@ -536,6 +550,11 @@ class CaliRunner:
                             _ = analysis_settings_obj.stimulation_mask.width
 
                     if analysis_settings_obj is not None:
+                        # Load each selected method's settings, including after a
+                        # stimulation-mask commit expires the session state.
+                        for child in analysis_settings_obj.spike_settings:
+                            for field in type(child).model_fields:
+                                getattr(child, field)
                         # Detach for thread safety
                         session.expunge(analysis_settings_obj)
 

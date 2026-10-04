@@ -61,16 +61,16 @@ jobs:
         env:
           CALI_CASCADE_REFERENCE_TESTS: '1'
         run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_reference.py tests/test_cascade_cached.py -k 'pretrained or backend_import'
-      - name: Verify installed-wheel extraction modes against pretrained upstream
+      - name: Verify installed-wheel extraction and offline analysis with pretrained models
         env:
           CALI_CASCADE_REFERENCE_TESTS: '1'
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_extraction.py -k pretrained
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_extraction.py tests/test_cascade_runner_analysis.py -k pretrained
       - name: Verify installed-wheel trace codec, migration, ROI/FOV, export, and plot semantics
         env:
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py tests/test_spike_export.py tests/test_spike_plot_selection.py tests/test_spike_fov_plot_selection.py tests/test_spike_evoked_pca_selection.py tests/test_spike_comparison.py
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py tests/test_cascade_runner_analysis.py tests/test_spike_settings.py tests/test_spike_export.py tests/test_spike_plot_selection.py tests/test_spike_fov_plot_selection.py tests/test_spike_evoked_pca_selection.py tests/test_spike_comparison.py
 
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }} ${{ matrix.backend }}

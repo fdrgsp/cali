@@ -14,7 +14,6 @@ from tqdm import tqdm
 
 from cali.logger import cali_logger
 from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
-from cali.sqlmodel._spike_settings import require_available_spike_methods
 
 if TYPE_CHECKING:
     from cali.sqlmodel._model import ROI, Traces
@@ -69,10 +68,6 @@ class AnalysisRunner:
             ready to be saved to database
         """
         analysis_settings.validate_spike_settings()
-        if analysis_settings.enable_spikes:
-            require_available_spike_methods(
-                tuple(child.method for child in analysis_settings.spike_settings)
-            )
         generator = self._run_generator(fovs, analysis_settings)
         return generator if as_generator else list(generator)
 
@@ -81,14 +76,28 @@ class AnalysisRunner:
         fovs: Iterable[FOV],
         analysis_settings: AnalysisSettings,
     ) -> Generator[FOV, None, None]:
-        """Internal generator for analysis process."""
+        """Restore unpublished FOV stages on failure, cancellation or close."""
+        pending: list[FOV] = []
+        try:
+            yield from self._analyze_generator(fovs, analysis_settings, pending)
+        finally:
+            for fov in pending:
+                self._restore_fov_stage(fov)
+
+    def _analyze_generator(
+        self,
+        fovs: Iterable[FOV],
+        analysis_settings: AnalysisSettings,
+        pending: list[FOV],
+    ) -> Generator[FOV, None, None]:
+        """Compute every selected ROI/FOV product before publishing a FOV."""
         self._cancellation_event.clear()
 
         cali_logger.info(f"⚡️ Using {analysis_settings.threads} threads")
 
         # Phase 1: Execute ROI analysis in parallel threads
         # Collect FOVs that need FOV-level analysis
-        fovs_for_analysis: list[FOV] = []
+        fovs_for_analysis = pending
 
         for fov_result in self._exec_in_threadpool(
             analyze=self._analyze_fov,
@@ -126,10 +135,13 @@ class AnalysisRunner:
                 fov_analysis = compute_fov_analysis_parallel(
                     fov_result, pending_settings
                 )
+                if self._cancellation_event.is_set():
+                    break
                 if fov_analysis is not None:
                     if not hasattr(fov_result, "_new_fov_analysis"):
                         fov_result._new_fov_analysis = []
                     fov_result._new_fov_analysis.append(fov_analysis)
+                delattr(fov_result, "_analysis_stage_snapshot")
                 cali_logger.info(
                     f"✅ FOV-level analysis complete for {fov_result.name}."
                 )
@@ -152,40 +164,51 @@ class AnalysisRunner:
         analysis_settings: AnalysisSettings,
         max_workers: int | None = None,
     ) -> Iterable[FOV]:
-        """Execute analysis in parallel and yield FOV results."""
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            if cancel_event.is_set():
-                cali_logger.info("🚮 Cancellation requested before starting analysis")
-                return
-
-            futures = (
-                executor.submit(
-                    analyze,
-                    analysis_settings,
-                    fov,
-                )
-                for fov in fovs
-            )
-
-            for future in as_completed(futures):
-                # Check for cancellation at the start of each iteration
-                if cancel_event.is_set():
-                    cali_logger.info(
-                        "🚮 Cancellation requested, shutting down executor..."
-                    )
-                    # Cancel pending futures and shutdown executor
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    break
-
+        """Propagate failures, cancel remaining workers and restore abandoned stages."""
+        submitted: list[FOV] = []
+        completed = False
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
                 try:
-                    # Commit the results to database if we got any
-                    if (fov_result := future.result()) is not None:
-                        yield fov_result
-                except Exception:
-                    import traceback
+                    if cancel_event.is_set():
+                        return
+                    for fov in fovs:
+                        submitted.append(fov)
+                        futures.append(executor.submit(analyze, analysis_settings, fov))
+                    for future in as_completed(futures):
+                        if cancel_event.is_set():
+                            return
+                        if (fov_result := future.result()) is not None:
+                            yield fov_result
+                    completed = True
+                finally:
+                    if not completed:
+                        # Signal before the executor joins running workers.
+                        cancel_event.set()
+                        for future in futures:
+                            future.cancel()
+        finally:
+            if not completed:
+                for fov in submitted:
+                    self._restore_fov_stage(fov)
 
-                    full_tb = traceback.format_exc()
-                    cali_logger.error(f"Exception in analysis thread: {full_tb}")
+    @staticmethod
+    def _restore_fov_stage(fov: FOV) -> None:
+        """Restore ROI flags and prior staged analyses for an unpublished FOV."""
+        snapshot = getattr(fov, "_analysis_stage_snapshot", None)
+        if snapshot is None:
+            return
+        for roi, previous, active, stimulated in snapshot:
+            if previous is None:
+                if hasattr(roi, "_new_data_analysis"):
+                    delattr(roi, "_new_data_analysis")
+            else:
+                roi._new_data_analysis = previous
+            roi.active, roi.stimulated = active, stimulated
+        delattr(fov, "_analysis_stage_snapshot")
+        if hasattr(fov, "_pending_analysis_settings"):
+            delattr(fov, "_pending_analysis_settings")
 
     def _analyze_fov(
         self,
@@ -216,15 +239,17 @@ class AnalysisRunner:
 
         # cali_logger.info(msg)
 
+        staged: list[tuple[ROI, DataAnalysis, bool, bool]] = []
         for roi in tqdm(fov.rois, desc=msg):
             if self._check_for_abort_requested():
                 cali_logger.info(
                     f"🚮 Cancellation requested during analysis of {fov.name}"
                 )
-                break
+                return None
 
             # Skip ROIs without traces
-            if not roi.traces_history:
+            traces = getattr(roi, "_analysis_source_trace", None)
+            if traces is None and not roi.traces_history:
                 cali_logger.warning(
                     f"ROI {roi.label_value} in {fov.name} has no traces. "
                     "Run extraction first."
@@ -232,7 +257,6 @@ class AnalysisRunner:
                 continue
 
             # Get the most recent traces (last in list)
-            traces = getattr(roi, "_analysis_source_trace", None)
             if traces is None:
                 traces = roi.traces_history[-1]
 
@@ -244,12 +268,20 @@ class AnalysisRunner:
             if analysis_data is not None:
                 data_analysis, active, stimulated = analysis_data
 
-                # Store analysis in temporary list (similar to extraction pattern)
-                if not hasattr(roi, "_new_data_analysis"):
-                    roi._new_data_analysis = []
-                roi._new_data_analysis.append(data_analysis)
-                roi.active = active
-                roi.stimulated = stimulated
+                staged.append((roi, data_analysis, active, stimulated))
+
+        if self._check_for_abort_requested():
+            return None
+        fov._analysis_stage_snapshot = [
+            (roi, getattr(roi, "_new_data_analysis", None), roi.active, roi.stimulated)
+            for roi, _, _, _ in staged
+        ]
+        for roi, data_analysis, active, stimulated in staged:
+            roi._new_data_analysis = [
+                *getattr(roi, "_new_data_analysis", []),
+                data_analysis,
+            ]
+            roi.active, roi.stimulated = active, stimulated
 
         # NOTE: FOV-level analysis (CCG) is now computed AFTER the threadpool completes
         # in _run_generator(). This avoids concurrent Pool creation when multiple
@@ -286,6 +318,11 @@ class AnalysisRunner:
 
         elapsed_time_list = traces.x_axis
         if elapsed_time_list is None or len(elapsed_time_list) < 2:
+            if (
+                analysis_settings.enable_spikes
+                and traces.get_spike_trace("cascade") is not None
+            ):
+                raise ValueError("CASCADE re-analysis requires a retained time axis.")
             cali_logger.warning("Traces missing time axis data, skipping analysis")
             return None
         tot_time_sec = (elapsed_time_list[-1] - elapsed_time_list[0]) / 1000

@@ -598,10 +598,13 @@ def test_analysis_runner_error() -> None:
     # Mock _analyze_roi_traces to raise exception
     from unittest.mock import patch
 
-    with patch.object(
-        runner, "_analyze_roi_traces", side_effect=ValueError("Test Error")
+    with (
+        patch.object(
+            runner, "_analyze_roi_traces", side_effect=ValueError("Test Error")
+        ),
+        pytest.raises(ValueError, match="Test Error"),
     ):
-        # Should not raise, but log error
+        # A failed worker must reach the caller rather than appear successful.
         runner.run([fov], analysis_settings=AnalysisSettings(threads=THREADS))
 
     # Verify no analysis added

@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers and P6c2d aligned comparisons implemented; schema-12 population coordinates added; real-plate performance, full CASCADE runner spike analysis, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; real-plate performance, analysis-cost measurements and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,14 +442,15 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6d full-runner integration and failure propagation, with
-end-to-end extraction/re-analysis parity for all output selections, before opening
-the CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
+**Next landing step:** measure complete CASCADE ROI/FOV spike-analysis costs and
+audit the remaining P7/release acceptance evidence before P8 GUI exposure.
+P6d now opens headless CASCADE spike analysis after full-runner parity and failure
+checks. Step 10's production codec addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
 available, before release or GUI exposure.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
-Headless extraction is now available through the upstream reference path; the cached service
+Headless extraction and analysis are available through the upstream reference path; the cached service
 remains an explicit experimental option.
 
 Step 6 — pinned catalogue, verified model cache, and download CLI (2026-10-03):
@@ -1094,6 +1095,50 @@ worker exceptions without propagating them; address this before enabling full
 CASCADE analysis so failed dual runs cannot appear successful. The calcium/spike
 amplitude overlay remains OASIS-only. GUI results selection stays in P8, and
 independent real-plate performance and analysis-cost gates remain pending.
+
+P6d — full-runner CASCADE analysis and failure isolation (2026-10-04):
+
+- Removed the temporary headless CASCADE spike-analysis gate. `ExtractionRunner`,
+  `AnalysisRunner` and the public `CaliRunner` now support OASIS-only, CASCADE-only
+  and dual extraction with matching method-bound ROI/FOV analysis settings.
+- Full-runner parity exposed two integration bugs: settings detachment accessed
+  the legacy OASIS threshold in CASCADE-only runs, and analysis-only reuse opened
+  the inference backend even though all selected spike traces were already stored.
+  The runner now preloads the selected method settings and opens inference only
+  when image extraction is needed. A stimulation-mask commit regression exercises
+  expired settings before workers detach them.
+- Analysis worker exceptions propagate to the caller, signal cancellation before
+  joining other workers and restore unpublished stages. Both extraction and
+  re-analysis restore prior staged lists and ROI flags on failed/cancelled FOV
+  analysis or a closing consumer; extraction also restores cell-size metadata.
+  Cancellation during FOV analysis cannot publish that FOV's staged results.
+- Public-runner tests compare persisted combined extraction/analysis with offline
+  re-analysis for all three selections, including actual pretrained CASCADE weights
+  in the installed-wheel job. Every dual method matches its single-method ROI/FOV
+  products; shared calcium traces, noise and metrics remain identical. Tests seed
+  Numba's CCG RNG before real calculations to compare identical random draws;
+  production shuffle behavior is unchanged.
+- Failure tests verify that a selected ROI or FOV error saves no partial scientific
+  products or completed-position flags for that FOV, preserves the source run and
+  allows an in-memory analysis retry. Closing a generator preserves already
+  published FOVs while restoring pending FOVs. Completed database batches retain
+  the existing resumable-run semantics; this is not a transaction across all FOVs.
+- Installed-wheel CI now includes full-runner failure/parity checks and pretrained
+  combined/offline analysis. The full regression suite's legacy worker-error test
+  now requires the original exception instead of accepting a logged failure.
+
+Validation: **80 passed, 3 skipped in 2.92 s** in initial runner/settings/extraction
+checks; **15 passed, 1 skipped in 3.77 s** in final runner checks including the
+stimulation-mask commit; **2275 passed, 14 skipped in 315.85 s** in the full
+base/GUI regression suite; **510 passed in 37.16 s** against the rebuilt installed
+wheel with real pretrained models. Ruff lint/format and commit hooks pass;
+full-environment mypy adds no diagnostics (340 existing, one fewer than the prior
+milestone). Tracked database fixtures were restored after all test processes
+stopped; no migrated fixture databases are committed.
+
+The headless CASCADE analysis gate is open. GUI exposure remains pending P8 and
+the remaining dependency/performance release evidence. The cached service is still
+experimental; no real-plate or GPU performance acceptance is implied.
 
 ## 0. TL;DR
 

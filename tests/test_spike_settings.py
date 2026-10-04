@@ -393,19 +393,10 @@ def test_mutations_are_validated_before_database_write() -> None:
         engine.dispose()
 
 
-def test_cascade_spike_analysis_rejected_before_computation() -> None:
+def test_cascade_spike_analysis_settings_are_available() -> None:
     extraction = ExtractionSettings(spike_methods=("cascade",), cascade_model="model")
-    with pytest.raises(NotImplementedError, match="not available"):
-        ExtractionRunner().run(
-            None,
-            extraction,
-            [],
-            analysis_settings=AnalysisSettings(
-                spike_settings=[SpikeAnalysisSettings(method="cascade")]
-            ),
-        )
     analysis = AnalysisSettings(
         spike_settings=[SpikeAnalysisSettings(method="cascade")]
     )
-    with pytest.raises(NotImplementedError, match="not available"):
-        AnalysisRunner().run([], analysis)
+    ExtractionRunner.validate_settings(extraction, analysis)
+    assert AnalysisRunner().run([], analysis) == []
