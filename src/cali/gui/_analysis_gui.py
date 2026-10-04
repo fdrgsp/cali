@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
@@ -21,6 +22,7 @@ from qtpy.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -63,6 +65,12 @@ from cali._constants import (
     SPONTANEOUS,
     CorrelationDataType,
 )
+from cali.sqlmodel import SpikeAnalysisSettings
+from cali.sqlmodel._spike_settings import (
+    CASCADE_AP_THRESHOLD,
+    SpikeMethod,
+    canonical_spike_methods,
+)
 
 from ._extraction_gui import FromMetaButton
 from ._util import _BrowseWidget, _ExportGroup, create_divider_line
@@ -82,6 +90,7 @@ class AnalysisSettingsData:
     enable_spikes: bool = True
     calcium_peaks_data: CalciumPeaksData | None = None
     spikes_data: SpikeData | None = None
+    spike_settings: tuple[SpikeData, ...] | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
     threads: int = max((os.cpu_count() or 1) - 2, 1)
@@ -121,7 +130,7 @@ class CalciumPeaksData:
 class SpikeData:
     """Data structure to hold the spikes settings."""
 
-    spike_threshold: float = DEFAULT_SPIKE_THRESHOLD
+    spike_threshold: float | None = DEFAULT_SPIKE_THRESHOLD
     spike_threshold_mode: str = MULTIPLIER
     burst_threshold: float = DEFAULT_BURST_THRESHOLD
     burst_min_duration: float = DEFAULT_MIN_BURST_DURATION  # milliseconds
@@ -130,6 +139,39 @@ class SpikeData:
     synchrony_jitter: float = DEFAULT_SPIKE_SYNC_JITTER_WINDOW  # milliseconds
     ccg_n_shuffles: int = DEFAULT_CCG_N_SHUFFLES
     enable_rising_edge_analysis: bool = DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
+    method: SpikeMethod = "oasis"
+    cascade_ap_threshold_fraction: float | None = None
+
+    def to_model(self) -> SpikeAnalysisSettings:
+        return SpikeAnalysisSettings(
+            method=self.method,
+            threshold_value=self.spike_threshold,
+            threshold_mode=self.spike_threshold_mode,
+            cascade_ap_threshold_fraction=self.cascade_ap_threshold_fraction,
+            burst_threshold=self.burst_threshold,
+            burst_min_duration=self.burst_min_duration,
+            burst_gaussian_sigma=self.burst_blur_sigma,
+            spikes_sync_cross_corr_lag=self.synchrony_lag,
+            spikes_sync_jitter_window=self.synchrony_jitter,
+            ccg_n_shuffles=self.ccg_n_shuffles,
+            enable_rising_edge_analysis=self.enable_rising_edge_analysis,
+        )
+
+    @classmethod
+    def from_model(cls, settings: SpikeAnalysisSettings) -> SpikeData:
+        return cls(
+            method=canonical_spike_methods((settings.method,))[0],
+            spike_threshold=settings.threshold_value,
+            spike_threshold_mode=settings.threshold_mode,
+            cascade_ap_threshold_fraction=settings.cascade_ap_threshold_fraction,
+            burst_threshold=settings.burst_threshold,
+            burst_min_duration=settings.burst_min_duration,
+            burst_blur_sigma=settings.burst_gaussian_sigma,
+            synchrony_lag=settings.spikes_sync_cross_corr_lag,
+            synchrony_jitter=settings.spikes_sync_jitter_window,
+            ccg_n_shuffles=settings.ccg_n_shuffles,
+            enable_rising_edge_analysis=settings.enable_rising_edge_analysis,
+        )
 
 
 class _AnalysisGUI(QWidget):
@@ -199,6 +241,10 @@ class _AnalysisGUI(QWidget):
         self._experiment_type_wdg = _ExperimentTypeWidget(self)
         self._calcium_peaks_wdg = _CalciumPeaksWidget(self)
         self._spike_wdg = _SpikeWidget(self)
+        self._cascade_spike_wdg = _SpikeWidget(self, method="cascade")
+        self._spike_tabs = QTabWidget(self)
+        self._spike_methods: tuple[SpikeMethod, ...] = ("oasis",)
+        self.set_spike_methods(("oasis",))
         self._metadata_wdg = _MetadataWidget(self)
 
         # ENABLE CHECKBOXES ----------------------------------------------------------
@@ -282,7 +328,7 @@ class _AnalysisGUI(QWidget):
         spikes_divider_layout.addWidget(self._enable_spikes_cb)
         spikes_divider_layout.addWidget(create_divider_line("Inferred Spikes"), 1)
         group_layout.addWidget(spikes_divider_container)
-        group_layout.addWidget(self._spike_wdg)
+        group_layout.addWidget(self._spike_tabs)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Parallelization"))
@@ -311,6 +357,7 @@ class _AnalysisGUI(QWidget):
         self._experiment_type_wdg.set_labels_width(fix_width)
         self._calcium_peaks_wdg.set_labels_width(fix_width)
         self._spike_wdg.set_labels_width(fix_width)
+        self._cascade_spike_wdg.set_labels_width(fix_width)
         self._metadata_wdg.set_labels_width(fix_width)
         threads_lbl.setFixedWidth(fix_width)
         n_processes_lbl.setFixedWidth(fix_width)
@@ -334,6 +381,9 @@ class _AnalysisGUI(QWidget):
             enable_spikes=self._enable_spikes_cb.isChecked(),
             calcium_peaks_data=self._calcium_peaks_wdg.value(),
             spikes_data=self._spike_wdg.value(),
+            spike_settings=tuple(
+                self._method_widget(method).value() for method in self._spike_methods
+            ),
             experiment_type_data=self._experiment_type_wdg.value(),
             frame_rate=self._metadata_wdg.value(),
             threads=self._threads.value(),
@@ -348,11 +398,23 @@ class _AnalysisGUI(QWidget):
         self._enable_spikes_cb.setChecked(value.enable_spikes)
         self._calcium_peaks_wdg.setEnabled(value.enable_calcium)
         self._spike_wdg.setEnabled(value.enable_spikes)
+        self._spike_tabs.setEnabled(value.enable_spikes)
         self._n_processes_wdg.setVisible(value.enable_spikes)
         if value.calcium_peaks_data is not None:
             self._calcium_peaks_wdg.setValue(value.calcium_peaks_data)
         if value.spikes_data is not None:
             self._spike_wdg.setValue(value.spikes_data)
+        if value.spike_settings is not None:
+            methods = canonical_spike_methods(
+                [child.method for child in value.spike_settings]
+            )
+            if len(methods) != len(value.spike_settings):
+                raise ValueError("Each spike analysis method must occur exactly once.")
+            for child in value.spike_settings:
+                child.to_model()  # Validate method/mode pairs before updating controls.
+            for child in value.spike_settings:
+                self._method_widget(child.method).setValue(child)
+            self.set_spike_methods(methods)
         if value.experiment_type_data is not None:
             self._experiment_type_wdg.setValue(value.experiment_type_data)
         self._metadata_wdg.setValue(value.frame_rate)
@@ -369,10 +431,12 @@ class _AnalysisGUI(QWidget):
         self._enable_spikes_cb.setChecked(True)
         self._calcium_peaks_wdg.setEnabled(True)
         self._spike_wdg.setEnabled(True)
+        self._spike_tabs.setEnabled(True)
         self._n_processes_wdg.setVisible(True)
         self._experiment_type_wdg.reset()
         self._calcium_peaks_wdg.reset()
         self._spike_wdg.reset()
+        self._cascade_spike_wdg.reset()
         self._metadata_wdg.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
         self._n_processes.setValue(max((os.cpu_count() or 1) - 2, 1))
@@ -402,9 +466,23 @@ class _AnalysisGUI(QWidget):
 
         self._calcium_peaks_wdg.setEnabled(calcium_on)
         self._spike_wdg.setEnabled(spikes_on)
+        self._spike_tabs.setEnabled(spikes_on)
         self._n_processes_wdg.setVisible(spikes_on)
 
-    def to_model_settings(self) -> AnalysisSettings:
+    def _method_widget(self, method: SpikeMethod) -> _SpikeWidget:
+        return self._spike_wdg if method == "oasis" else self._cascade_spike_wdg
+
+    def set_spike_methods(self, methods: tuple[SpikeMethod, ...]) -> None:
+        """Select tabs without discarding either method's independent settings."""
+        self._spike_methods = canonical_spike_methods(methods)
+        self._spike_tabs.clear()
+        for method in ("cascade", "oasis"):
+            if method in self._spike_methods:
+                self._spike_tabs.addTab(self._method_widget(method), method.upper())
+
+    def to_model_settings(
+        self, spike_methods: tuple[SpikeMethod, ...] | None = None
+    ) -> AnalysisSettings:
         """Convert current GUI settings to AnalysisSettings model.
 
         Returns
@@ -414,11 +492,15 @@ class _AnalysisGUI(QWidget):
         """
         from cali.sqlmodel import AnalysisSettings
 
+        methods = canonical_spike_methods(
+            self._spike_methods if spike_methods is None else spike_methods
+        )
+        if spike_methods is not None:
+            self.set_spike_methods(methods)
         settings = self.value()
 
         # Extract nested data with defaults
         peaks_data = settings.calcium_peaks_data
-        spikes_data = settings.spikes_data
         experiment_type_data = settings.experiment_type_data
 
         return AnalysisSettings(
@@ -428,6 +510,9 @@ class _AnalysisGUI(QWidget):
             threads=self._threads.value(),
             n_processes=self._n_processes.value(),
             frame_rate=settings.frame_rate,
+            spike_settings=[
+                self._method_widget(method).value().to_model() for method in methods
+            ],
             peaks_height_value=(
                 peaks_data.peaks_height if peaks_data else DEFAULT_HEIGHT
             ),
@@ -439,25 +524,6 @@ class _AnalysisGUI(QWidget):
             ),
             peaks_prominence_multiplier=(
                 peaks_data.peaks_prominence_multiplier if peaks_data else 1.0
-            ),
-            spike_threshold_value=(
-                spikes_data.spike_threshold if spikes_data else DEFAULT_SPIKE_THRESHOLD
-            ),
-            spike_threshold_mode=(
-                spikes_data.spike_threshold_mode if spikes_data else MULTIPLIER
-            ),
-            burst_threshold=(
-                spikes_data.burst_threshold if spikes_data else DEFAULT_BURST_THRESHOLD
-            ),
-            burst_min_duration=(
-                spikes_data.burst_min_duration
-                if spikes_data
-                else DEFAULT_MIN_BURST_DURATION
-            ),
-            burst_gaussian_sigma=(
-                spikes_data.burst_blur_sigma
-                if spikes_data
-                else DEFAULT_BURST_GAUSS_SIGMA
             ),
             calcium_burst_threshold=(
                 peaks_data.burst_threshold
@@ -471,24 +537,6 @@ class _AnalysisGUI(QWidget):
             ),
             calcium_burst_gaussian_sigma=(
                 peaks_data.burst_blur_sigma if peaks_data else DEFAULT_BURST_GAUSS_SIGMA
-            ),
-            spikes_sync_cross_corr_lag=(
-                spikes_data.synchrony_lag
-                if spikes_data
-                else DEFAULT_SPIKE_SYNCHRONY_MAX_LAG
-            ),
-            spikes_sync_jitter_window=(
-                spikes_data.synchrony_jitter
-                if spikes_data
-                else DEFAULT_SPIKE_SYNC_JITTER_WINDOW
-            ),
-            ccg_n_shuffles=(
-                spikes_data.ccg_n_shuffles if spikes_data else DEFAULT_CCG_N_SHUFFLES
-            ),
-            enable_rising_edge_analysis=(
-                spikes_data.enable_rising_edge_analysis
-                if spikes_data
-                else DEFAULT_ENABLE_RISING_EDGE_ANALYSIS
             ),
             cluster_method=DEFAULT_CLUSTER_METHOD,
             cluster_n_clusters=(
@@ -1053,9 +1101,10 @@ class _SpikeThresholdWidget(QWidget):
             "everywhere.\n\n"
             "• Noise Multiplier: Adaptive threshold computed individually for EACH "
             "ROI in EACH FOV.\n"
-            "  For ROIs with ≥10 detected spikes: "
-            "Threshold = 10th_percentile_of_spikes * multiplier\n"
-            "  For ROIs with <10 spikes: Threshold = 0.01 * multiplier (fallback)"
+            "  Threshold = median + multiplier * MAD-based noise estimate.\n"
+            "  Noise is estimated from the lower half of positive amplitudes.\n"
+            "  If the MAD-based noise is zero, median * multiplier is used.\n"
+            "  Fewer than five positive amplitudes disables detection."
         )
 
         self._spike_threshold_lbl = QLabel("Spike Detection Threshold:", self)
@@ -1093,12 +1142,71 @@ class _SpikeThresholdWidget(QWidget):
             ),
         )
 
-    def setValue(self, value: tuple[float, str]) -> None:
+    def setValue(self, value: tuple[float | None, str]) -> None:
         """Set the value of the spike threshold widget."""
         threshold, mode = value
+        if threshold is None:
+            raise ValueError("OASIS requires an explicit threshold value.")
         self._spike_threshold_spin.setValue(threshold)
         self._global_spike_threshold.setChecked(mode == GLOBAL_SPIKE_THRESHOLD)
         self._threshold_multiplier.setChecked(mode == MULTIPLIER)
+
+
+class _CascadeThresholdWidget(QWidget):
+    """CASCADE uses a model-derived AP threshold or an explicit spikes/frame value."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._spike_threshold_lbl = QLabel("CASCADE Threshold:", self)
+        self._mode = QComboBox(self)
+        self._mode.addItem("Model AP Threshold", CASCADE_AP_THRESHOLD)
+        self._mode.addItem("Global Minimum (spikes/frame)", GLOBAL_SPIKE_THRESHOLD)
+        self._global = QLineEdit(self)
+        self._global.setPlaceholderText("Enter an explicit threshold in spikes/frame")
+        self._fraction = QLineEdit(str(1 / math.e), self)
+        self._fraction.setToolTip(
+            "Fraction of the peak prediction for one action potential under the "
+            "selected model's smoothing kernel. Default: 1/e. Must be in (0, 1]."
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._spike_threshold_lbl)
+        layout.addWidget(self._mode)
+        layout.addWidget(self._fraction, 1)
+        layout.addWidget(self._global, 1)
+        self._mode.currentIndexChanged.connect(self._update_mode)
+        self._update_mode()
+
+    def _update_mode(self) -> None:
+        ap_mode = self._mode.currentData() == CASCADE_AP_THRESHOLD
+        self._fraction.setVisible(ap_mode)
+        self._global.setVisible(not ap_mode)
+
+    def value(self) -> tuple[float | None, str]:
+        mode = self._mode.currentData()
+        threshold = None
+        if mode == GLOBAL_SPIKE_THRESHOLD:
+            if not self._global.text().strip():
+                raise ValueError(
+                    "CASCADE global threshold needs an explicit spikes/frame value."
+                )
+            threshold = float(self._global.text())
+        return threshold, mode
+
+    def ap_fraction(self) -> float | None:
+        return (
+            float(self._fraction.text())
+            if self._mode.currentData() == CASCADE_AP_THRESHOLD
+            else None
+        )
+
+    def setValue(self, value: tuple[float | None, str]) -> None:
+        threshold, mode = value
+        index = self._mode.findData(mode)
+        if index < 0:
+            raise ValueError(f"Invalid CASCADE threshold mode: {mode}")
+        self._global.setText("" if threshold is None else str(threshold))
+        self._mode.setCurrentIndex(index)
 
 
 class _BurstWidget(QWidget):
@@ -1187,11 +1295,20 @@ class _BurstWidget(QWidget):
 class _SpikeWidget(QWidget):
     """Widget to select the spike detection settings."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, method: SpikeMethod = "oasis"
+    ) -> None:
         super().__init__(parent)
+        self._method = method
+        self._loaded_data: SpikeData | None = None
+        self._displayed_data: SpikeData | None = None
 
         # spikes threshold
-        self._spike_threshold_wdg = _SpikeThresholdWidget(self)
+        self._spike_threshold_wdg = (
+            _CascadeThresholdWidget(self)
+            if method == "cascade"
+            else _SpikeThresholdWidget(self)
+        )
 
         # burst detection settings
         self._burst_wdg = _BurstWidget(self)
@@ -1331,6 +1448,8 @@ class _SpikeWidget(QWidget):
         layout.addWidget(self._ccg_shuffles_wdg)
         layout.addWidget(self._rising_edge_wdg)
         layout.addWidget(self._burst_wdg)
+        if method == "cascade":
+            self.reset()
 
     # PUBLIC METHODS ------------------------------------------------------------------
 
@@ -1346,6 +1465,18 @@ class _SpikeWidget(QWidget):
         self._rising_edge_lbl.setFixedWidth(width)
 
     def value(self) -> SpikeData:
+        data = self._read_value()
+        if self._loaded_data is None or self._displayed_data is None:
+            return data
+        # Spin-box precision is a display choice, not a change to stored science.
+        preserved = {
+            name: getattr(self._loaded_data, name)
+            for name in SpikeData.__dataclass_fields__
+            if getattr(data, name) == getattr(self._displayed_data, name)
+        }
+        return replace(data, **preserved)
+
+    def _read_value(self) -> SpikeData:
         """Get the current values of the widget."""
         spike_threshold, spike_threshold_mode = self._spike_threshold_wdg.value()
         burst_threshold, burst_min_duration, burst_blur_sigma = self._burst_wdg.value()
@@ -1355,6 +1486,12 @@ class _SpikeWidget(QWidget):
         enable_rising_edge = self._rising_edge_checkbox.isChecked()
 
         return SpikeData(
+            method=self._method,
+            cascade_ap_threshold_fraction=(
+                self._spike_threshold_wdg.ap_fraction()
+                if isinstance(self._spike_threshold_wdg, _CascadeThresholdWidget)
+                else None
+            ),
             spike_threshold=spike_threshold,
             spike_threshold_mode=spike_threshold_mode,
             burst_threshold=burst_threshold,
@@ -1368,18 +1505,34 @@ class _SpikeWidget(QWidget):
 
     def setValue(self, value: SpikeData) -> None:
         """Set the values of the widget."""
+        if value.method != self._method:
+            raise ValueError("Spike analysis settings must match their method tab.")
+        value.to_model()
         tr = (value.spike_threshold, value.spike_threshold_mode)
         self._spike_threshold_wdg.setValue(tr)
+        if isinstance(self._spike_threshold_wdg, _CascadeThresholdWidget):
+            self._spike_threshold_wdg._fraction.setText(
+                str(value.cascade_ap_threshold_fraction or 1 / math.e)
+            )
         bst = (value.burst_threshold, value.burst_min_duration, value.burst_blur_sigma)
         self._burst_wdg.setValue(bst)
         self._spikes_sync_cross_corr_max_lag.setValue(value.synchrony_lag)
         self._spike_jitter_spin.setValue(value.synchrony_jitter)
         self._ccg_shuffles_spin.setValue(value.ccg_n_shuffles)
         self._rising_edge_checkbox.setChecked(value.enable_rising_edge_analysis)
+        self._loaded_data = value
+        self._displayed_data = self._read_value()
 
     def reset(self) -> None:
         """Reset the widget to default values."""
-        self._spike_threshold_wdg.setValue((DEFAULT_SPIKE_THRESHOLD, MULTIPLIER))
+        self._loaded_data = self._displayed_data = None
+        self._spike_threshold_wdg.setValue(
+            (None, CASCADE_AP_THRESHOLD)
+            if self._method == "cascade"
+            else (DEFAULT_SPIKE_THRESHOLD, MULTIPLIER)
+        )
+        if isinstance(self._spike_threshold_wdg, _CascadeThresholdWidget):
+            self._spike_threshold_wdg._fraction.setText(str(1 / math.e))
         self._burst_wdg.setValue(
             (
                 DEFAULT_BURST_THRESHOLD,

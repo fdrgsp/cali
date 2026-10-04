@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
 )
 from sqlmodel import Session, col, select
 from superqt import QIconifyIcon
+from superqt.utils import signals_blocked
 
 from cali.plot._main_plot import (
     ANALYSIS_PRODUCTS,
@@ -57,6 +58,8 @@ if TYPE_CHECKING:
     from cali.sqlmodel._spike_settings import SpikeMethod
 
 
+from ._stored_spike_selector import _StoredSpikeSelector
+
 RED = "#C33"
 SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
 
@@ -86,6 +89,9 @@ class _SingleWellGraphWidget(QWidget):
         # ------------------------------------------------------------------ #
         # Top combo + save button
         # ------------------------------------------------------------------ #
+        self._backend_selector = _StoredSpikeSelector(self)
+        self._spike_method: SpikeMethod = "oasis"
+        self._backend_selector.methodChanged.connect(self._on_spike_method_changed)
         self._combo = QComboBox(self)
         self._rebuild_combo_box()
 
@@ -96,6 +102,7 @@ class _SingleWellGraphWidget(QWidget):
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(5)
+        top.addWidget(self._backend_selector)
         top.addWidget(self._combo, 1)
         top.addWidget(self._save_btn, 0)
 
@@ -169,7 +176,7 @@ class _SingleWellGraphWidget(QWidget):
                         was_disabled = not (item.flags() & Qt.ItemFlag.ItemIsEnabled)
 
         # Update combo item availability based on new FOV data
-        self._update_combo_item_availability()
+        self._rebuild_combo_box(preserve_selection=True)
 
         # Check if current selection is now enabled (after update)
         is_now_enabled = False
@@ -186,7 +193,9 @@ class _SingleWellGraphWidget(QWidget):
         # 1. FOV changed AND new FOV is not empty, OR
         # 2. Current selection went from disabled to enabled
         should_reload = (old_fov != fov and fov) or (was_disabled and is_now_enabled)
-        if should_reload:
+        if not fov:
+            self.clear_plot()
+        elif should_reload:
             self._reload_current_plot()
 
     @property
@@ -293,6 +302,11 @@ class _SingleWellGraphWidget(QWidget):
             self._check_pipeline_stage_availability()
         )
 
+        self._backend_selector.refresh(
+            self._engine, self._run_id, fov_name=self._fov or None
+        )
+        self._spike_method = self._backend_selector.method
+
         # Get ALL possible plots for this experiment type
         # (we'll disable items individually based on data availability)
         combo_options = get_available_plots(
@@ -301,66 +315,71 @@ class _SingleWellGraphWidget(QWidget):
             has_extraction=True,
             has_analysis=True,
             experiment_type=self._experiment_type,
+            **self._backend_selector.plot_options(),
         )
 
         # Store current selection if preserving
         current_text = self._combo.currentText() if preserve_selection else "None"
 
-        # Rebuild the combo box model
-        model = QStandardItemModel()
-        self._combo.setModel(model)
+        with signals_blocked(self._combo):
+            # Rebuild the combo box model
+            model = self._combo.model()
+            if isinstance(model, QStandardItemModel):
+                model.clear()
+            else:
+                model = QStandardItemModel(self._combo)
+                self._combo.setModel(model)
 
-        # Add "None" option
-        none_item = QStandardItem("None")
-        model.appendRow(none_item)
+            # Add "None" option
+            none_item = QStandardItem("None")
+            model.appendRow(none_item)
 
-        # Create a mapping of plot names to their pipeline stage requirements
-        plot_requirements = {
-            product.name: product.pipeline_stage
-            for product in ANALYSIS_PRODUCTS
-            if product.group == AnalysisGroup.SINGLE_WELL
-        }
+            # Create a mapping of plot names to their pipeline stage requirements
+            plot_requirements = {
+                product.name: product.pipeline_stage
+                for product in ANALYSIS_PRODUCTS
+                if product.group == AnalysisGroup.SINGLE_WELL
+            }
 
-        # Add categorized plots
-        for key, value in combo_options.items():
-            section = QStandardItem(key)
-            section.setFlags(Qt.ItemFlag.NoItemFlags)
-            section.setData(True, SECTION_ROLE)
-            model.appendRow(section)
-            for plot_name in value:
-                item = QStandardItem(plot_name)
+            # Add categorized plots
+            for key, value in combo_options.items():
+                section = QStandardItem(key)
+                section.setFlags(Qt.ItemFlag.NoItemFlags)
+                section.setData(True, SECTION_ROLE)
+                model.appendRow(section)
+                for plot_name in value:
+                    item = QStandardItem(plot_name)
 
-                # Check if this plot's required stage is available
-                required_stage = plot_requirements.get(plot_name)
-                is_available = True
+                    # Check if this plot's required stage is available
+                    required_stage = plot_requirements.get(plot_name)
+                    is_available = True
 
-                if required_stage == PipelineStage.DETECTION:
-                    is_available = has_detection
-                elif required_stage == PipelineStage.EXTRACTION:
-                    is_available = has_detection and has_extraction
-                elif required_stage == PipelineStage.ANALYSIS:
-                    is_available = has_detection and has_extraction and has_analysis
+                    if required_stage == PipelineStage.DETECTION:
+                        is_available = has_detection
+                    elif required_stage == PipelineStage.EXTRACTION:
+                        is_available = has_detection and has_extraction
+                    elif required_stage == PipelineStage.ANALYSIS:
+                        is_available = has_detection and has_extraction and has_analysis
 
-                # Disable item if data not available
-                if not is_available:
-                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    # Disable item if data not available
+                    if not is_available:
+                        item.setFlags(Qt.ItemFlag.NoItemFlags)
 
-                model.appendRow(item)
+                    model.appendRow(item)
 
-        # Try to restore previous selection if preserving and still valid
-        if preserve_selection:
-            idx = self._combo.findText(current_text)
-            if idx >= 0:
-                # Check if the item is enabled
-                item = model.item(idx)
-                if item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+            # Try to restore previous selection if preserving and still valid
+            if preserve_selection:
+                idx = self._combo.findText(current_text)
+                if idx >= 0:
+                    # Keep a temporarily disabled plot selected when an empty FOV
+                    # is clicked, so it returns on the next FOV with data.
                     self._combo.setCurrentIndex(idx)
                     return
-            self._combo.setCurrentIndex(0)
-            return
+                self._combo.setCurrentIndex(0)
+                return
 
-        # Default to "None" if not preserving or selection not found
-        self._combo.setCurrentIndex(0)
+            # Default to "None" if not preserving or selection not found
+            self._combo.setCurrentIndex(0)
 
     def _update_combo_item_availability(self) -> None:
         """Update combo items enabled/disabled state based on FOV data.
@@ -531,10 +550,21 @@ class _SingleWellGraphWidget(QWidget):
         self._connectivity_threshold_widget.setVisible(is_connectivity_plot)
 
         plot_single_well_data(
-            self, self._engine, self._fov, text, rois=None, run_id=self._run_id
+            self,
+            self._engine,
+            self._fov,
+            text,
+            rois=None,
+            run_id=self._run_id,
+            spike_method=self._spike_method,
         )
         if self._choose_dysplayed_traces.isChecked():
             self._choose_dysplayed_traces._update()
+
+    def _on_spike_method_changed(self, method: str) -> None:
+        self._spike_method = canonical_spike_methods((method,))[0]
+        self._rebuild_combo_box(preserve_selection=True)
+        self._on_combo_changed(self._combo.currentText())
 
     def _on_save(self) -> None:
         """Save the current plot as an image file."""
@@ -576,6 +606,9 @@ class _MultilWellGraphWidget(QWidget):
         # ------------------------------------------------------------------ #
         # Top combo + conditions button + save button
         # ------------------------------------------------------------------ #
+        self._backend_selector = _StoredSpikeSelector(self)
+        self._spike_method: SpikeMethod = "oasis"
+        self._backend_selector.methodChanged.connect(self._on_spike_method_changed)
         self._combo = QComboBox(self)
         self._rebuild_combo_box()  # Initialize with no experiment type filter
 
@@ -600,6 +633,7 @@ class _MultilWellGraphWidget(QWidget):
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(5)
+        top.addWidget(self._backend_selector)
         top.addWidget(self._combo, 1)
         top.addWidget(self._conditions_btn, 0)
         top.addWidget(self._pca_features_btn, 0)
@@ -694,6 +728,9 @@ class _MultilWellGraphWidget(QWidget):
             If True, attempt to preserve the current selection.
             If False, reset to "None".
         """
+        self._backend_selector.refresh(self._engine, self._run_id)
+        self._spike_method = self._backend_selector.method
+
         # Get available plots filtered by experiment type
         combo_options = get_available_plots(
             group=AnalysisGroup.MULTI_WELL,
@@ -701,38 +738,44 @@ class _MultilWellGraphWidget(QWidget):
             has_extraction=True,
             has_analysis=True,
             experiment_type=self._experiment_type,
+            **self._backend_selector.plot_options(),
         )
 
         # Store current selection if preserving
         current_text = self._combo.currentText() if preserve_selection else "None"
 
-        # Rebuild the combo box model
-        model = QStandardItemModel()
-        self._combo.setModel(model)
+        with signals_blocked(self._combo):
+            # Rebuild the combo box model
+            model = self._combo.model()
+            if isinstance(model, QStandardItemModel):
+                model.clear()
+            else:
+                model = QStandardItemModel(self._combo)
+                self._combo.setModel(model)
 
-        # Add "None" option
-        none_item = QStandardItem("None")
-        model.appendRow(none_item)
+            # Add "None" option
+            none_item = QStandardItem("None")
+            model.appendRow(none_item)
 
-        # Add categorized plots
-        for key, value in combo_options.items():
-            section = QStandardItem(key)
-            section.setFlags(Qt.ItemFlag.NoItemFlags)
-            section.setData(True, SECTION_ROLE)
-            model.appendRow(section)
-            for plot_name in value:
-                item = QStandardItem(plot_name)
-                model.appendRow(item)
+            # Add categorized plots
+            for key, value in combo_options.items():
+                section = QStandardItem(key)
+                section.setFlags(Qt.ItemFlag.NoItemFlags)
+                section.setData(True, SECTION_ROLE)
+                model.appendRow(section)
+                for plot_name in value:
+                    item = QStandardItem(plot_name)
+                    model.appendRow(item)
 
-        # Try to restore previous selection if preserving and still valid
-        if preserve_selection:
-            idx = self._combo.findText(current_text)
-            if idx >= 0:
-                self._combo.setCurrentIndex(idx)
-                return
+            # Try to restore previous selection if preserving and still valid
+            if preserve_selection:
+                idx = self._combo.findText(current_text)
+                if idx >= 0:
+                    self._combo.setCurrentIndex(idx)
+                    return
 
-        # Default to "None" if not preserving or selection not found
-        self._combo.setCurrentIndex(0)
+            # Default to "None" if not preserving or selection not found
+            self._combo.setCurrentIndex(0)
 
     # ------------------------------------------------------------------ #
     # Public helpers used by plot functions
@@ -790,7 +833,18 @@ class _MultilWellGraphWidget(QWidget):
         if text == "None" or not self._engine:
             return
 
-        plot_multi_well_data(self, text, self._engine, run_id=self._run_id)
+        plot_multi_well_data(
+            self,
+            text,
+            self._engine,
+            run_id=self._run_id,
+            spike_method=self._spike_method,
+        )
+
+    def _on_spike_method_changed(self, method: str) -> None:
+        self._spike_method = canonical_spike_methods((method,))[0]
+        self._rebuild_combo_box(preserve_selection=True)
+        self._on_combo_changed(self._combo.currentText())
 
     def _on_save(self) -> None:
         """Save the current plot as an image file."""
@@ -916,6 +970,7 @@ class _DisplaySingleWellTraces(QGroupBox):
             text,
             rois=rois,
             run_id=self._graph._run_id,
+            spike_method=self._graph._spike_method,
         )
 
     def _parse_roi_selection(self) -> list[int] | None:
@@ -1089,6 +1144,7 @@ class _ConnectivityThresholdWidget(QGroupBox):
                 text,
                 rois=None,
                 run_id=self._graph._run_id,
+                spike_method=self._graph._spike_method,
             )
 
 

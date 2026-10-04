@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
 
@@ -39,7 +39,13 @@ from cali._constants import (
     TraceDataType,
 )
 from cali.sqlmodel import ExtractionSettings
+from cali.sqlmodel._spike_settings import (
+    ExtractionOutputSettings,
+    SpikeMethod,
+    canonical_spike_methods,
+)
 
+from ._spike_output_widget import CASCADE_GUI_GATE, _SpikeOutputWidget
 from ._util import (
     _ExportGroup,
     create_divider_line,
@@ -90,13 +96,53 @@ class TraceExtractionData:
     discard_initial_value: float = 0.0
     discard_initial_unit: str = "frames"
     frame_rate_verified: bool = False
+    spike_methods: tuple[SpikeMethod, ...] = ("oasis",)
+    cascade_model: str | None = None
+    cascade_device: str = "auto"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "spike_methods", canonical_spike_methods(self.spike_methods)
+        )
+        # A fresh GUI can await a model selection; model construction still rejects
+        # an empty CASCADE model before a run starts.
+        ExtractionOutputSettings(
+            spike_methods=self.spike_methods,
+            cascade_model=self.cascade_model or "unselected-gui-model",
+            cascade_device=self.cascade_device,
+            discard_initial_value=self.discard_initial_value,
+            discard_initial_unit=self.discard_initial_unit,
+            frame_rate_verified=self.frame_rate_verified,
+        )
+
+    @classmethod
+    def from_json(cls, data: dict) -> TraceExtractionData:
+        """Migrate old output keys and validate before Qt can clamp invalid values."""
+        data = dict(data)
+        if "spike_method" in data:
+            legacy_method = data.pop("spike_method")
+            if "spike_methods" in data:
+                raise ValueError("Specify spike_methods, not both output keys.")
+            data["spike_methods"] = [legacy_method]
+        normalized = ExtractionOutputSettings.model_validate(
+            {
+                key: data[key]
+                for key in ExtractionOutputSettings.model_fields
+                if key in data
+            }
+        )
+        data.update(normalized.model_dump())
+        return cls(**data)
 
 
 class _ExtractionGUI(QWidget):
     progress_bar_updated = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, cascade_enabled: bool = False
+    ) -> None:
         super().__init__(parent)
+        self._cascade_enabled = cascade_enabled
 
         # MAIN WIDGET -----------------------------------------------------------------
         group_wdg = QGroupBox(self)
@@ -135,6 +181,14 @@ class _ExtractionGUI(QWidget):
         self._metadata_wdg = _MetadataWidget(self)
         self._neuropil_wdg = _NeuropilCorrectionWidget(self)
         self._trace_extraction_wdg = _TraceExtractionWidget(self)
+        self._spike_outputs = _SpikeOutputWidget(self, cascade_enabled=cascade_enabled)
+        self._spike_outputs.methodsChanged.connect(
+            self._trace_extraction_wdg.set_spike_methods
+        )
+        self._trace_extraction_wdg.set_spike_methods(self._spike_outputs.methods())
+        self._metadata_wdg._frame_rate_spin.valueChanged.connect(
+            self._spike_outputs.set_frame_rate
+        )
 
         self._export_group = _ExportGroup()
         self._export_group.add_option(RAW_CALCIUM_TRACES, 0, 0)
@@ -157,8 +211,9 @@ class _ExtractionGUI(QWidget):
         # add extraction widgets to scroll area
         group_layout.addWidget(create_divider_line("Neuropil Settings"))
         group_layout.addWidget(self._neuropil_wdg)
-        group_layout.addWidget(create_divider_line("ΔF/F0 and Deconvolution"))
+        group_layout.addWidget(create_divider_line("ΔF/F0 and Spike Inference"))
         group_layout.addWidget(self._trace_extraction_wdg)
+        group_layout.addWidget(self._spike_outputs)
         group_layout.addWidget(create_divider_line("Metadata"))
         group_layout.addWidget(self._metadata_wdg)
         group_layout.addWidget(create_divider_line("Parallelization"))
@@ -198,9 +253,15 @@ class _ExtractionGUI(QWidget):
     def value(self) -> ExtractionSettingsData:
         """Get the current values of the widget."""
         metadata_data = self._metadata_wdg.value()
+        methods, model, device = self._spike_outputs.value()
         return ExtractionSettingsData(
-            trace_extraction_data=self._trace_extraction_wdg.value(
-                self._neuropil_wdg.value(), metadata_data.frame_rate
+            trace_extraction_data=replace(
+                self._trace_extraction_wdg.value(
+                    self._neuropil_wdg.value(), metadata_data.frame_rate
+                ),
+                spike_methods=methods,
+                cascade_model=model,
+                cascade_device=device,
             ),
             metadata_data=metadata_data,
             threads=self._threads.value(),
@@ -211,7 +272,13 @@ class _ExtractionGUI(QWidget):
     def setValue(self, value: ExtractionSettingsData) -> None:
         """Set the values of the widget."""
         if value.trace_extraction_data is not None:
+            trace = value.trace_extraction_data
+            # Validate loaded values before controls round/clamp them.
+            TraceExtractionData.from_json(vars(trace))
             self._trace_extraction_wdg.setValue(value.trace_extraction_data)
+            self._spike_outputs.setValue(
+                trace.spike_methods, trace.cascade_model, trace.cascade_device
+            )
             # Also set the neuropil widget from trace extraction data
             neuropil_data = NeuropilData(
                 value.trace_extraction_data.neuropil_inner_radius,
@@ -231,6 +298,7 @@ class _ExtractionGUI(QWidget):
         self._metadata_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
+        self._spike_outputs.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
 
     def get_export_options(self) -> dict[TraceDataType, bool] | None:
@@ -254,10 +322,19 @@ class _ExtractionGUI(QWidget):
         # Extract nested data with defaults
         trace_data = settings.trace_extraction_data
         metadata_data = settings.metadata_data
+        if (
+            trace_data
+            and "cascade" in trace_data.spike_methods
+            and not self._cascade_enabled
+        ):
+            raise ValueError(CASCADE_GUI_GATE)
 
         settings = ExtractionSettings(
             created_at=datetime.now(),
             threads=self._threads.value(),
+            spike_methods=trace_data.spike_methods if trace_data else ("oasis",),
+            cascade_model=trace_data.cascade_model if trace_data else None,
+            cascade_device=trace_data.cascade_device if trace_data else "auto",
             neuropil_inner_radius=(
                 trace_data.neuropil_inner_radius if trace_data else 0
             ),
@@ -410,6 +487,7 @@ class _NeuropilCorrectionWidget(QWidget):
 class _TraceExtractionWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._cascade_selected = False
 
         # ΔF/F0 windows
         self._dff_wdg = QWidget(self)
@@ -612,12 +690,16 @@ class _TraceExtractionWidget(QWidget):
             self._discard_initial_spin.setDecimals(0)
             self._discard_initial_spin.setSingleStep(1.0)
             self._discard_initial_spin.setSuffix(" frames")
-            self._frame_rate_verified.setEnabled(False)
+            self._frame_rate_verified.setEnabled(self._cascade_selected)
         else:
             self._discard_initial_spin.setDecimals(3)
             self._discard_initial_spin.setSingleStep(0.1)
             self._discard_initial_spin.setSuffix(" s")
             self._frame_rate_verified.setEnabled(True)
+
+    def set_spike_methods(self, methods: tuple[SpikeMethod, ...]) -> None:
+        self._cascade_selected = "cascade" in methods
+        self._on_discard_unit_changed(self._discard_frames_radio.isChecked())
 
 
 class _MetadataWidget(QWidget):

@@ -1,10 +1,60 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; remaining P7/release evidence, real-plate performance and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls and stored-results selection implemented behind the extraction release gate; remaining P7/release evidence, real-plate performance and GUI extraction exposure pending
 **Date**: 2026-08-14
 
 ---
+
+## P8 continuation — GUI controls and stored results (2026-10-04)
+
+- The extraction panel now has independent CASCADE/OASIS output checkboxes, explicit
+  offline catalogue/model and device controls, local model verification with
+  smoothing/kernel/noise metadata, and installation/download command instructions.
+  It retains at least one output and keeps OASIS denoising enabled. CASCADE also enables
+  acquisition-rate verification in Frames mode. No automatic model selection,
+  download, inference, or fallback occurs when a control is changed.
+- The released GUI constructor remains gated: new/reset released setups retain
+  OASIS-only execution, show CASCADE disabled with the pending-release explanation,
+  and block new CASCADE extraction even if CASCADE settings were loaded. The private
+  `CaliGui(cascade_gui_enabled=True)` integration switch exercises CASCADE-only
+  new/reset defaults and the complete controls; no public CLI/environment opt-in
+  or release-gate override has been added. Headless defaults remain OASIS-only.
+- GUI extraction data and settings JSON normalize `spike_methods`, migrate old singular
+  `spike_method`, and preserve model/device, discard/unit, and rate verification.
+  Empty/unknown method lists and invalid discard inputs fail before Qt clamps them.
+- Method-labelled analysis tabs persist independent normalized children. CASCADE uses
+  `cascade_ap`/1/e or an explicitly entered global spikes/frame threshold; OASIS keeps
+  global/multiplier modes with a corrected MAD tooltip. Loading a CASCADE-only run no
+  longer invokes legacy OASIS scalar accessors. Saved child precision survives the
+  spin-box display precision, and switching tabs does not discard either config.
+- Analysis-only binds its tabs/read-only output controls to the chosen saved extraction;
+  the run dispatch obtains methods from the stored ExtractionSettings ID, independent
+  of editable future outputs. Selected-run loading also preserves frame rate and CCG
+  process count, which the old loader omitted.
+- Single/multi-well plots query stored methods and non-NULL capabilities. Single-output
+  runs hide the selector; dual runs show CASCADE first. Every shared plot dispatch,
+  ROI subset update, connectivity refresh, and PCA feature dialog uses the selected
+  stored backend. Incompatible products are omitted and comparisons use the existing
+  dual-only registry. Calcium plot selection survives temporarily empty FOVs.
+
+Validation: the complete source run passed **2378 tests** and skipped **16**,
+with one failure in a pre-existing jitter fixture that supplied the unsupported
+threshold mode `fixed`. That fixture now uses the legal `global` mode; a new test
+checks that `fixed` is rejected. The final affected GUI/plot/settings/jitter matrix
+passed **341 tests in 35.28 s**, followed by **35 CASCADE GUI tests in 4.37 s**
+after the final offline-catalogue/legacy-key checks. Repository spelling, Ruff,
+formatting and focused mypy hooks pass. Offscreen previews show the extraction
+controls, method tabs and a saved 100 × 6000 dual-output run switching between
+CASCADE spikes/frame and OASIS amplitude units. The test-migrated tracked databases
+were backed up and restored.
+
+This is GUI implementation, **not P8 release acceptance**. The real-plate workload,
+remote dedicated CI, representative complete-workload memory budget and remaining
+external release evidence are still pending. An in-GUI asynchronous downloader,
+timing-source/resolved-discard preview, and remaining GUI release acceptance are
+follow-up work. The verified download CLI remains the installation action supplied
+by this milestone. `_dev/TODO.md` is unchanged.
 
 ## Implementation review — 2026-10-02
 

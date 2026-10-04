@@ -84,7 +84,7 @@ def test_spike_widget_jitter_value_get_set(qtbot: QtBot) -> None:
     # Set via setValue
     new_data = SpikeData(
         spike_threshold=0.6,
-        spike_threshold_mode="fixed",
+        spike_threshold_mode="global",
         burst_threshold=80.0,
         burst_min_duration=4000.0,
         burst_blur_sigma=2.0,

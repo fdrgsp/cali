@@ -105,6 +105,8 @@ class CaliGui(QMainWindow):
     def __init__(
         self,
         parent: QWidget | None = None,
+        *,
+        cascade_gui_enabled: bool = False,
     ) -> None:
         super().__init__(parent)
 
@@ -234,7 +236,8 @@ class CaliGui(QMainWindow):
         extraction_tab_layout = QVBoxLayout(self._extraction_tab)
         extraction_tab_layout.setContentsMargins(5, 5, 5, 5)
 
-        self._extraction_wdg = _ExtractionGUI(self)
+        # Private integration switch: released entry points retain the P8 gate.
+        self._extraction_wdg = _ExtractionGUI(self, cascade_enabled=cascade_gui_enabled)
         extraction_tab_layout.addWidget(self._extraction_wdg)
 
         # ANALYSIS SUB-TAB ------------------------------------------------------------
@@ -380,6 +383,16 @@ class CaliGui(QMainWindow):
         self._run_cali_wdg._cancel_btn.clicked.connect(self._on_cali_cancel)
         self._run_cali_wdg._save_settings_btn.clicked.connect(self._on_save_settings)
         self._run_cali_wdg._load_settings_btn.clicked.connect(self._on_load_settings)
+        self._extraction_wdg._spike_outputs.methodsChanged.connect(
+            self._sync_spike_analysis_outputs
+        )
+        self._run_cali_wdg._run_options_combo.currentTextChanged.connect(
+            self._sync_spike_analysis_outputs
+        )
+        self._run_cali_wdg._extraction_settings_combo.currentIndexChanged.connect(
+            self._sync_spike_analysis_outputs
+        )
+        self._sync_spike_analysis_outputs()
 
         self._elapsed_timer.elapsed_time_updated.connect(
             self._run_cali_wdg.set_time_label
@@ -404,6 +417,43 @@ class CaliGui(QMainWindow):
         # self._output_path = "tests/test_data/data_and_db_for_tests/"
         # fmt: on
         # _____________________________________________________________________________
+
+    def _sync_spike_analysis_outputs(self) -> None:
+        """Analysis-only uses saved output ownership, never future output edits."""
+        analysis_only = self._run_cali_wdg._run_options_combo.currentText() == (
+            "Analysis Only (require detection and extraction)"
+        )
+        outputs = self._extraction_wdg._spike_outputs
+        outputs.setReadOnly(analysis_only)
+        extraction_id = self._run_cali_wdg._extraction_settings_combo.currentData()
+        if (
+            analysis_only
+            and extraction_id is not None
+            and self._database_path is not None
+        ):
+            from sqlalchemy.exc import SQLAlchemyError
+
+            from cali.sqlmodel import ExtractionSettings
+
+            try:
+                settings = ExtractionSettings.load_from_database(
+                    self._database_path, id=extraction_id
+                )
+                assert isinstance(settings, ExtractionSettings)
+            except (SQLAlchemyError, ValueError) as error:
+                outputs._status.setText(f"Cannot load stored spike outputs: {error}")
+                return
+            methods = settings.spike_methods
+            # Block the signal to avoid recursively synchronizing the saved outputs.
+            from superqt.utils import signals_blocked
+
+            with signals_blocked(outputs):
+                outputs.setValue(
+                    methods, settings.cascade_model, settings.cascade_device
+                )
+        else:
+            methods = outputs.methods()
+        self._analysis_wdg.set_spike_methods(methods)
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
@@ -530,10 +580,8 @@ class CaliGui(QMainWindow):
 
                 self._extraction_wdg.setValue(
                     ExtractionSettingsData(
-                        trace_extraction_data=(
-                            TraceExtractionData(**ext_settings)
-                            if ext_settings
-                            else None
+                        trace_extraction_data=TraceExtractionData.from_json(
+                            ext_settings or {}
                         ),
                         metadata_data=(
                             MetadataData(**metadata_settings)
@@ -579,6 +627,13 @@ class CaliGui(QMainWindow):
                         else None
                     ),
                     spikes_data=(SpikeData(**spikes_data) if spikes_data else None),
+                    spike_settings=(
+                        tuple(
+                            SpikeData(**child) for child in analysis["spike_settings"]
+                        )
+                        if analysis.get("spike_settings") is not None
+                        else None
+                    ),
                     experiment_type_data=(
                         ExperimentTypeData(**experiment_type_data)
                         if experiment_type_data
@@ -1375,8 +1430,22 @@ class CaliGui(QMainWindow):
                 extraction_settings = None
 
             # Get analysis settings if needed
+            if isinstance(extraction_settings, int):
+                from cali.sqlmodel import ExtractionSettings
+
+                stored_extraction = ExtractionSettings.load_from_database(
+                    self._database_path, id=extraction_settings
+                )
+                assert isinstance(stored_extraction, ExtractionSettings)
+                spike_methods = stored_extraction.spike_methods
+            elif extraction_settings is not None:
+                spike_methods = extraction_settings.spike_methods
+            else:
+                spike_methods = None
             analysis_settings = (
-                self._analysis_wdg.to_model_settings() if value.run_analysis else None
+                self._analysis_wdg.to_model_settings(spike_methods)
+                if value.run_analysis
+                else None
             )
 
             if extraction_settings is not None and analysis_settings is not None:
@@ -2388,6 +2457,9 @@ class CaliGui(QMainWindow):
                             discard_initial_value=e_settings.discard_initial_value,
                             discard_initial_unit=e_settings.discard_initial_unit,
                             frame_rate_verified=e_settings.frame_rate_verified,
+                            spike_methods=e_settings.spike_methods,
+                            cascade_model=e_settings.cascade_model,
+                            cascade_device=e_settings.cascade_device,
                         ),
                         metadata_data=MetadataData(
                             pixel_size=e_settings.pixel_size,
@@ -2438,17 +2510,12 @@ class CaliGui(QMainWindow):
                             cluster_n_clusters=a_settings.cluster_n_clusters,
                             cluster_max_k=a_settings.cluster_max_k,
                         ),
-                        spikes_data=SpikeData(
-                            spike_threshold=a_settings.spike_threshold_value,
-                            spike_threshold_mode=a_settings.spike_threshold_mode,
-                            burst_threshold=a_settings.burst_threshold,
-                            burst_min_duration=a_settings.burst_min_duration,
-                            burst_blur_sigma=a_settings.burst_gaussian_sigma,
-                            synchrony_lag=a_settings.spikes_sync_cross_corr_lag,
-                            synchrony_jitter=a_settings.spikes_sync_jitter_window,
-                            ccg_n_shuffles=a_settings.ccg_n_shuffles,
-                            enable_rising_edge_analysis=a_settings.enable_rising_edge_analysis,
+                        spike_settings=tuple(
+                            SpikeData.from_model(child)
+                            for child in a_settings.spike_settings
                         ),
+                        frame_rate=a_settings.frame_rate,
+                        n_processes=a_settings.n_processes,
                         threads=a_settings.threads,
                         export_options=_cur_ana.export_options,
                         export_enabled=_cur_ana.export_enabled,

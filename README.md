@@ -164,9 +164,20 @@ the denoised calcium trace and its noise diagnostic. The default CASCADE path us
 the verified upstream reference adapter. The cached service is available through
 `ExtractionRunner(experimental_cascade_cache=True)` or the same option on `CaliRunner`;
 its complete-workload memory/performance release gates remain pending. Headless
-CASCADE ROI/FOV spike analysis and offline re-analysis are enabled. GUI selection
-remains gated by the release checks in
-[_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
+CASCADE ROI/FOV spike analysis and offline re-analysis are enabled. The GUI can
+load CASCADE-only and dual-output run settings and display stored results. For dual
+runs, the **Spike Backend** selector switches the shared plots between CASCADE and
+OASIS; single-output runs hide it. Plot availability follows the stored run, while
+OASIS denoised calcium plots remain available for either backend.
+
+The extraction panel includes output, model and device controls, and the analysis
+panel keeps separate method-labelled threshold/burst/synchrony settings. CASCADE
+extraction from the released GUI remains disabled pending the release checks in
+[_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md). Selected unavailable
+models stay selected and fail clearly; the GUI supplies installation/download
+instructions and explicit offline model verification rather than downloading
+weights on selection. Analysis-only output controls are read-only because changing
+retained outputs requires re-extraction.
 
 Download an explicitly chosen model with:
 
