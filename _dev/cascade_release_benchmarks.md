@@ -6,6 +6,83 @@ The historical JSON/prototype results are in `cascade_full_mode_cpu_benchmark.js
 `cascade_trace_codec_cpu_benchmark.json`.
 The upstream reference remains the default; the cached service is experimental.
 
+## Independent recording command
+
+`benchmark_cascade_real_plate.py` prepares the remaining real-plate gate using an
+existing recording and matching saved detection masks. It opens the source database
+read-only, makes a consistent SQLite backup including committed WAL contents, and
+migrates only that temporary backup. It never runs detection. Measured outputs go
+to fresh databases containing the selected masks and new products; historical results
+are not included in their storage figures.
+
+First run the preflight, selecting the experiment, detection settings, extraction
+settings and acquisition positions explicitly:
+
+```sh
+PYTEST_RUNNING=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1 \
+VECLIB_MAXIMUM_THREADS=1 MPLCONFIGDIR=/tmp/cali-mpl-cache \
+python _dev/benchmark_cascade_real_plate.py \
+  --database /path/to/recording.cali \
+  --dataset /path/to/recording.tensorstore.zarr \
+  --experiment-id 1 --detection-settings-id 1 --extraction-settings-id 2 \
+  --positions 0 1 2 3 \
+  --recording-description 'Recording origin, indicator, plate and acquisition protocol' \
+  --model Global_EXC_30Hz_smoothing25ms \
+  --model-dir /path/to/verified-model-cache \
+  --output-dir /tmp/cali-real-plate-preflight --preflight-only
+```
+
+Run on macOS/Linux with a Python environment containing `cali[cascade]`; process
+memory sampling uses Unix `ps`/`resource` APIs. The command also supports the
+production OME-Zarr reader and TIFF collections configured in the selected experiment.
+Preflight checks every position's masks, trusted timing, retained length and selected
+model rate. Non-uniform acquisition timestamps remain an error even when settings
+contain a verified rate. A failure writes `preflight-rejected.json` and runs no inference.
+Pixel and metadata hashes bind the actual reader calls to the preflight inputs; each
+case must use the same database snapshot, masks, settings, recording and model manifest.
+Descriptions record the recording's claimed origin; they do not certify biological
+representativeness.
+
+Remove `--preflight-only` and choose a new output directory to run all seven reference,
+service and cached-lock cases in fresh CPU processes. Cold uses the first selected FOV;
+warm uses all selected FOVs, including that first position, through the same backend.
+Use at least four distinct representative positions with `--workers 4` for the planned
+concurrency gate. `--analysis-processes 2` selects the additional multiprocessing scope.
+Run measurements sequentially without concurrent benchmark/test jobs.
+
+The selected extraction settings are preserved, including neuropil correction,
+startup discard and decay constant. Analysis uses full calcium/spike
+benchmark defaults, independent method settings, `--ccg-shuffles` (default 20), and
+rising-edge analysis disabled. It does not reproduce a saved evoked-analysis protocol.
+Both settings objects are saved in each case report. Automatic OASIS AR estimation can
+randomize invalid coefficients; a saved zero decay constant can therefore cause exact
+cross-process parity to fail. The command does not silently replace that setting.
+
+Each phase records extraction plus complete ROI/FOV analysis, persistence, offline
+re-analysis, summed parent/descendant RSS, actual checkpoint loads and runtime/source
+identities. The extraction timer includes image loading and provenance hashing;
+schema/mask setup, optional-package initialization, artifact verification, exports and
+GUI rendering are excluded. Package initialization has a separate duration. Lifetime
+peak RSS includes preflight and validation; stage samples have the same summed-RSS
+limitations as the controlled benchmark. A warm cached case can legitimately load
+additional noise ensembles when a different FOV first needs them.
+
+Every position and ROI label is checked, including non-contiguous labels and differing
+ROI counts. Independent SQLite audits verify saved calcium/spike samples, foreign keys
+and inference ownership. Offline analysis must match the original deterministic products
+and make zero image, model-loading or inference calls. Raw CCG/lag/jitter products are
+compared; the four stochastic significance fields are listed as exclusions. Per-phase
+noise-QC CSVs keep calcium and CASCADE estimators separate. Storage reports actual
+canonical spike bytes plus an arithmetic projection including legacy OASIS JSON to
+96 FOVs against the existing 512 MiB budget; this is not a complete-plate measurement.
+
+`cascade_real_plate_harness_validation.json` records a file-reader smoke test of this
+command, not independent real-plate acceptance. A suitable independently acquired
+recording and review of its performance, compressibility and memory scope are still
+required. The command never promotes cached inference or enables CASCADE in the GUI.
+
+## Controlled workloads
+
 The short/long full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`;
 the completed 100 × 6000 image workload and worker-memory comparison are in
 `cascade_large_mode_cpu_benchmark.json`. Its v1 spike-payload projection exceeds

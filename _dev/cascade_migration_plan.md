@@ -445,7 +445,11 @@ incomplete. The continuations above now cover those prerequisites:
 **Next landing step:** collect independent uniformly timed real-plate
 performance/compressibility and define representative-image/concurrency memory
 acceptance before P8 GUI exposure. Per-FOV method-qualified noise QC is now available
-for assessing those inputs. The 100 × 6000 complete-image workload, two-worker
+for assessing those inputs. `benchmark_cascade_real_plate.py` now provides read-only
+recording/mask preflight, fresh-process mode comparisons, database audits, offline
+reuse checks and process-tree memory sampling for that gate; its controlled file-reader
+validation does not satisfy independent real-plate acceptance. The 100 × 6000
+complete-image workload, two-worker
 memory measurements and production schema-13 storage repair are complete. P7's
 installation audit covers both base-wheel absence and base-to-extra installation;
 remote dedicated CI, upstream packaging submission and distribution licensing review
@@ -1407,6 +1411,38 @@ installed-wheel CI includes the QC suite; remote CI was not run or published.
 wheel/input hashes, independent scientific/QC audits and migration evidence.
 Independent real-plate performance/compressibility, scoped memory, GPU and remaining
 release follow-ups still gate GUI exposure; reference inference remains the default.
+
+Step 10f — recording preflight and reproducible real-plate measurement command (2026-10-04):
+
+- `benchmark_cascade_real_plate.py` selects an existing experiment, saved detection
+  masks, extraction settings and acquisition positions explicitly. It migrates a
+  consistent temporary SQLite backup, including committed WAL data, while keeping
+  the source connection read-only. Preflight rejects incompatible geometry, duplicate
+  labels/pixels, insufficient retained frames and incompatible/untrusted timing.
+  Full pixel/metadata hashes bind measured reader calls to the checked recording.
+- Seven fresh-process CPU cases cover OASIS, CASCADE and dual outputs through the
+  reference, service and benchmark-only lock paths. Each reports complete extraction,
+  ROI/FOV analysis, persistence, inference-free offline reuse, summed process-tree
+  memory, actual checkpoint loads, model/runtime identities, noise-QC CSVs and the
+  existing spike-storage projection. Exact comparisons check every real position and
+  label; selected masks and settings are preserved and prior results are excluded.
+- Controlled Zarr files with distinct positions, unequal ROI counts and non-contiguous
+  labels pass **14 cross-mode/backend comparisons**. A separate 12/14-ROI recording
+  exercises the actual two-worker CCG pool, captures both workers plus the resource
+  tracker, and exactly matches single-worker samples and deterministic products.
+  **18 independent database audits** pass; a temporary, correctly encoded tampered
+  sample is rejected. The existing acquisition fixture is rejected for non-uniform
+  timestamps before inference, with a machine-readable reason.
+
+Validation: **66 passed, 3 skipped** focused regressions; **69 passed** installed-wheel
+pretrained checks; **459 passed in 32.88 s** for the updated installed-wheel CI test
+list. The Unix developer benchmark tests are skipped on Windows. Ruff/format and
+commit hooks pass. Production Python source and schema remain unchanged. Durable
+evidence is in [`cascade_real_plate_harness_validation.json`](cascade_real_plate_harness_validation.json),
+with commands and measurement scopes in [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md).
+These controlled file-reader checks prepare the independent recording gate; they
+do not satisfy real-plate, representative memory, GPU or remote CI acceptance.
+Reference inference remains the default and GUI exposure remains gated.
 
 ## 0. TL;DR
 

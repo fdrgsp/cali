@@ -1,0 +1,2328 @@
+{
+  "schema": 1,
+  "acceptance": "controlled file-reader harness validation only; independent real plate, scoped memory and GPU acceptance remain pending",
+  "script_sha256": "e99ad368cf59bbf1fb6e02bb182f5f0d44ea371d931b46390bbb450acecf2856",
+  "shared_benchmark_sha256": "7aa5ee678b788a1143e67412632e38cc950cc66290655e36ed23964f6268d887",
+  "installed_wheel_sha256": "2792dd8a01995a6370e78069fe2b6aac2872cee3ddfabc2bfb091ffc34327a07",
+  "focused_tests": {
+    "passed": 66,
+    "skipped": 3,
+    "seconds": 3.64
+  },
+  "installed_pretrained_tests": {
+    "passed": 69,
+    "seconds": 6.15
+  },
+  "controlled_recording": {
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "model_rate_hz": 30.0,
+    "positions": [
+      {
+        "shape": [
+          128,
+          12,
+          12
+        ],
+        "dtype": "<f8",
+        "image_bytes": 147456,
+        "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+        "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+        "position": 0,
+        "roi_count": 2,
+        "source_start_frame": 0,
+        "retained_frames": 128,
+        "timing_source": "runner_time",
+        "observed_rate_hz": 29.999999999999865,
+        "jitter_fraction": 4.0927261579781586e-14
+      },
+      {
+        "shape": [
+          128,
+          12,
+          12
+        ],
+        "dtype": "<f8",
+        "image_bytes": 147456,
+        "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+        "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+        "position": 1,
+        "roi_count": 3,
+        "source_start_frame": 0,
+        "retained_frames": 128,
+        "timing_source": "runner_time",
+        "observed_rate_hz": 29.999999999999865,
+        "jitter_fraction": 4.0927261579781586e-14
+      }
+    ],
+    "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+    "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+    "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+    "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+    "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+    "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+  },
+  "mode_results": [
+    {
+      "mode": "oasis",
+      "backend": "reference",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.08999849995598197,
+          "persistence_s": 0.01662875001784414,
+          "complete_s": 0.10737958294339478,
+          "offline_reanalysis_s": 0.002610249910503626,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 0,
+          "audit": {
+            "array_count": 12,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 545
+            },
+            "projected_legacy_oasis_json_bytes": 2117,
+            "database_sha256": "f25fe2f1351ea129d1a6cdb377e6c0fa81931146224d2c180e63da745a385187",
+            "database_bytes": 323584
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.24371337890625,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.01647112495265901,
+          "persistence_s": 0.11463783297222108,
+          "complete_s": 0.1311089579248801,
+          "offline_reanalysis_s": 0.005076458095572889,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 0,
+          "audit": {
+            "array_count": 30,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 1388
+            },
+            "projected_legacy_oasis_json_bytes": 5440,
+            "database_sha256": "de8428b753b0586bb052d48736ac1cd569757aa9c3c53306cd09841b9e608865",
+            "database_bytes": 376832
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.31256103515625,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 480.25,
+      "peak_rss_mib": 521.40625,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 542.109375,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 480.25,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 480.25,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 480.25,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 521.375,
+            "descendants_peak_mib": 20.734375,
+            "combined_peak_mib": 542.109375,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 521.375,
+              "descendants_mib": [
+                20.734375
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 0,
+      "package_initialization_s": 0.5525903749512509,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "oasis"
+        ],
+        "cascade_model": null,
+        "cascade_device": "auto",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "oasis",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "multiplier",
+            "threshold_value": 3.0,
+            "cascade_ap_threshold_fraction": null,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "cascade",
+      "backend": "reference",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.15238362492527813,
+          "persistence_s": 0.017670041997916996,
+          "complete_s": 0.17712425091303885,
+          "offline_reanalysis_s": 0.002721457974985242,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 12,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "9a32b1b2f5210d4f20970b19eaba40c3c50a661fa8598b603b1981332701a185",
+            "database_bytes": 323584
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.076446533203125,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.23990454198792577,
+          "persistence_s": 0.02044512506108731,
+          "complete_s": 0.2603496670490131,
+          "offline_reanalysis_s": 0.004503916949033737,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 25,
+          "audit": {
+            "array_count": 30,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "6147ea2d62f3cb9462ec9e9bf3f2474f6343b1dacaad0e0ef581eb9df6214164",
+            "database_bytes": 376832
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.093841552734375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 479.875,
+      "peak_rss_mib": 536.515625,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 557.296875,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 479.875,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 479.875,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 479.875,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 536.453125,
+            "descendants_peak_mib": 20.84375,
+            "combined_peak_mib": 557.296875,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 536.453125,
+              "descendants_mib": [
+                20.84375
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.5571893750457093,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "dual",
+      "backend": "reference",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.15985383302904665,
+          "persistence_s": 0.019860958913341165,
+          "complete_s": 0.18766541685909033,
+          "offline_reanalysis_s": 0.0037065830547362566,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 14,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 545,
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 2117,
+            "database_sha256": "fde842b045972824f9b3bcfb4243dd6c7c0eba64fd85d87696f23eb8d090a4be",
+            "database_bytes": 331776
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.320159912109375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.2395661659538746,
+          "persistence_s": 0.024322375073097646,
+          "complete_s": 0.26388854102697223,
+          "offline_reanalysis_s": 0.006987291038967669,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 25,
+          "audit": {
+            "array_count": 35,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 1388,
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 5440,
+            "database_sha256": "c30e9fc7a0f9c1cc121a5877d55abbcaaaea4b159271ab78d19cae5ae667232c",
+            "database_bytes": 385024
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.406402587890625,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 478.0625,
+      "peak_rss_mib": 537.65625,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 558.46875,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 478.0625,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 478.0625,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 478.0625,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 537.625,
+            "descendants_peak_mib": 20.84375,
+            "combined_peak_mib": 558.46875,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 537.625,
+              "descendants_mib": [
+                20.84375
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.57223508390598,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "oasis",
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "oasis",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "multiplier",
+            "threshold_value": 3.0,
+            "cascade_ap_threshold_fraction": null,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          },
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "cascade",
+      "backend": "service",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.14358012494631112,
+          "persistence_s": 0.016429292038083076,
+          "complete_s": 0.16760991688352078,
+          "offline_reanalysis_s": 0.0026928329607471824,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 12,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "db68f57ac313416f2795f50cd4752e619a477dc15de1ea9826a19c51b344f6d5",
+            "database_bytes": 323584
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.076446533203125,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.11828100006096065,
+          "persistence_s": 0.020527707994915545,
+          "complete_s": 0.1388087080558762,
+          "offline_reanalysis_s": 0.004506000084802508,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 30,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "c034742e5149c4af8ee87725130448df64968ac57fccbce77161e6eec8e52608",
+            "database_bytes": 376832
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.093841552734375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 478.71875,
+      "peak_rss_mib": 529.390625,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 550.0625,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 478.71875,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 478.71875,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 478.71875,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 529.328125,
+            "descendants_peak_mib": 20.734375,
+            "combined_peak_mib": 550.0625,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 529.328125,
+              "descendants_mib": [
+                20.734375
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.5641374579863623,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "dual",
+      "backend": "service",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.14378066698554903,
+          "persistence_s": 0.018712792079895735,
+          "complete_s": 0.17053125007078052,
+          "offline_reanalysis_s": 0.0038060409715399146,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 14,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 545,
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 2117,
+            "database_sha256": "89fee389e7a5b0364381fc48a5822acb6e1a0b0b3f970742b14e88e262841af1",
+            "database_bytes": 331776
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.320159912109375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.18471020902507007,
+          "persistence_s": 0.02522858395241201,
+          "complete_s": 0.20993879297748208,
+          "offline_reanalysis_s": 0.007131249993108213,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 35,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 1388,
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 5440,
+            "database_sha256": "d38c079ff23ae8fc07cb874443052c0f127e7cbcd321dce5ecf24c60028f9559",
+            "database_bytes": 385024
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.406402587890625,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 480.65625,
+      "peak_rss_mib": 530.375,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 551.171875,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 480.65625,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 480.65625,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 480.65625,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 530.3125,
+            "descendants_peak_mib": 20.859375,
+            "combined_peak_mib": 551.171875,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 530.3125,
+              "descendants_mib": [
+                20.859375
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.5753139170119539,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "oasis",
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "oasis",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "multiplier",
+            "threshold_value": 3.0,
+            "cascade_ap_threshold_fraction": null,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          },
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "cascade",
+      "backend": "cached-lock",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.13787495798896998,
+          "persistence_s": 0.016808000043965876,
+          "complete_s": 0.1623209579847753,
+          "offline_reanalysis_s": 0.0025013330159708858,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 12,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "570dd687afaa36d9e13771e2cfd64c4e59b506b917ac25d12c6ef61fc54011ab",
+            "database_bytes": 323584
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.076446533203125,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.1806230410002172,
+          "persistence_s": 0.02097137493547052,
+          "complete_s": 0.20159441593568772,
+          "offline_reanalysis_s": 0.004666666034609079,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 30,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 0,
+            "database_sha256": "182fb8e952d2b1f244d58792d2cff32594216a14c64b665fdbfc4843ced4f879",
+            "database_bytes": 376832
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.093841552734375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 481.46875,
+      "peak_rss_mib": 531.21875,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 551.953125,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 481.46875,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 481.46875,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 481.46875,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 531.1875,
+            "descendants_peak_mib": 20.765625,
+            "combined_peak_mib": 551.953125,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 531.1875,
+              "descendants_mib": [
+                20.765625
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.5618533750530332,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    },
+    {
+      "mode": "dual",
+      "backend": "cached-lock",
+      "phases": [
+        {
+          "phase": "cold",
+          "fovs": 1,
+          "extraction_with_analysis_s": 0.14267724996898323,
+          "persistence_s": 0.01884375000372529,
+          "complete_s": 0.16919012495782226,
+          "offline_reanalysis_s": 0.003727499977685511,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 14,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 545,
+              "cascade": 835
+            },
+            "projected_legacy_oasis_json_bytes": 2117,
+            "database_sha256": "fd70090e14f119a3e3befb484807c1f29d22d1a50d3f1ed2c6ecc7bb21d99870",
+            "database_bytes": 331776
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.320159912109375,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        },
+        {
+          "phase": "warm",
+          "fovs": 2,
+          "extraction_with_analysis_s": 0.18447108299005777,
+          "persistence_s": 0.024632583023048937,
+          "complete_s": 0.2091036660131067,
+          "offline_reanalysis_s": 0.006684457999654114,
+          "offline_image_inference_model_calls": 0,
+          "model_loads": 10,
+          "audit": {
+            "array_count": 35,
+            "all_samples_equal": true,
+            "canonical_payload_bytes": {
+              "oasis": 1388,
+              "cascade": 2050
+            },
+            "projected_legacy_oasis_json_bytes": 5440,
+            "database_sha256": "5ef786ea33cf1c0b6e66a93b37dccadc41fd05b7fcd5f26063dfe8601484207e",
+            "database_bytes": 385024
+          },
+          "spike_storage_projection": {
+            "target_fovs": 96,
+            "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+            "mib": 0.406402587890625,
+            "budget_mib": 512,
+            "note": "Arithmetic projection; does not measure a complete independent plate."
+          }
+        }
+      ],
+      "baseline_peak_rss_mib": 479.21875,
+      "peak_rss_mib": 532.671875,
+      "memory": {
+        "interval_s": 1.0,
+        "scope": "simultaneous parent + descendant RSS, including resource trackers",
+        "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+        "samples": 2,
+        "combined_peak_mib": 553.53125,
+        "max_descendant_processes": 1,
+        "stages": {
+          "preparation": {
+            "samples": 1,
+            "parent_peak_mib": 479.21875,
+            "descendants_peak_mib": 0.0,
+            "combined_peak_mib": 479.21875,
+            "max_descendant_processes": 0,
+            "combined_peak_snapshot": {
+              "parent_mib": 479.21875,
+              "descendants_mib": []
+            }
+          },
+          "warm/audit_export": {
+            "samples": 1,
+            "parent_peak_mib": 532.640625,
+            "descendants_peak_mib": 20.890625,
+            "combined_peak_mib": 553.53125,
+            "max_descendant_processes": 1,
+            "combined_peak_snapshot": {
+              "parent_mib": 532.640625,
+              "descendants_mib": [
+                20.890625
+              ]
+            }
+          }
+        }
+      },
+      "peak_cascade_callers": 2,
+      "package_initialization_s": 0.5518774160882458,
+      "extraction_settings": {
+        "neuropil_inner_radius": 0,
+        "neuropil_min_pixels": 0,
+        "neuropil_correction_factor": 0.0,
+        "decay_constant": 1.0,
+        "dff_window": 5.0,
+        "dff_percentile": 10,
+        "frame_rate": 30.0,
+        "frame_rate_verified": false,
+        "discard_initial_value": 0.0,
+        "discard_initial_unit": "frames",
+        "spike_methods": [
+          "oasis",
+          "cascade"
+        ],
+        "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+        "cascade_device": "cpu",
+        "pixel_size": null,
+        "threads": 2
+      },
+      "analysis_settings": {
+        "frame_rate": 30.0,
+        "enable_calcium": true,
+        "enable_spikes": true,
+        "n_processes": 1,
+        "spike_settings": [
+          {
+            "method": "oasis",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "multiplier",
+            "threshold_value": 3.0,
+            "cascade_ap_threshold_fraction": null,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          },
+          {
+            "method": "cascade",
+            "ccg_n_shuffles": 2,
+            "enable_rising_edge_analysis": false,
+            "id": null,
+            "analysis_settings_id": null,
+            "threshold_mode": "cascade_ap",
+            "threshold_value": null,
+            "cascade_ap_threshold_fraction": 0.36787944117144233,
+            "burst_threshold": 65.0,
+            "burst_min_duration": 500.0,
+            "burst_gaussian_sigma": 0.3,
+            "spikes_sync_cross_corr_lag": 500.0,
+            "spikes_sync_jitter_window": 200.0
+          }
+        ]
+      },
+      "inputs": {
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "model_rate_hz": 30.0,
+        "positions": [
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "4040e6946b705e5e3f8e273628a5c46bdcc781b1ecc66627dcf17b7978117b1a",
+            "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+            "position": 0,
+            "roi_count": 2,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          },
+          {
+            "shape": [
+              128,
+              12,
+              12
+            ],
+            "dtype": "<f8",
+            "image_bytes": 147456,
+            "pixels_sha256": "e08a380a9089787151edde00fc3d314fbb63b7b0925adf6cec1cda763b9bb279",
+            "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+            "position": 1,
+            "roi_count": 3,
+            "source_start_frame": 0,
+            "retained_frames": 128,
+            "timing_source": "runner_time",
+            "observed_rate_hz": 29.999999999999865,
+            "jitter_fraction": 4.0927261579781586e-14
+          }
+        ],
+        "source_database_snapshot_sha256": "98f6f8deb8d02738da1b069ce641c151b4e2232c2be9c3938c054a8c42197f5d",
+        "dataset": "/private/tmp/cali-real-plate-harness-input/controlled.tensorstore.zarr",
+        "database": "/private/tmp/cali-real-plate-harness-input/source.cali",
+        "recording_description": "Synthetic file-reader harness smoke, not independent real-plate acceptance",
+        "selection_sha256": "ccc3ff969ace92541a9fe407acd482837a45758783dbd6c76c95341dbf45ccb6",
+        "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+      },
+      "release_gate": "pending; this individual case does not establish acceptance",
+      "runtime": {
+        "packages": {
+          "cali": "0.1.dev1410+gceef9bec8.d20261004",
+          "CascadeTorch": "2.0",
+          "torch": "2.14.1",
+          "numpy": "2.5.3",
+          "scipy": "1.16.3",
+          "numba": "0.68.0"
+        },
+        "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+        "runtime_source_sha256": {
+          "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+          "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+          "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+          "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+        }
+      }
+    }
+  ],
+  "exact_comparisons": {
+    "oasis-reference-cold": true,
+    "cascade-reference-cold": true,
+    "dual-reference-cold": true,
+    "cascade-service-cold": true,
+    "dual-service-cold": true,
+    "cascade-cached-lock-cold": true,
+    "dual-cached-lock-cold": true,
+    "oasis-reference-warm": true,
+    "cascade-reference-warm": true,
+    "dual-reference-warm": true,
+    "cascade-service-warm": true,
+    "dual-service-warm": true,
+    "cascade-cached-lock-warm": true,
+    "dual-cached-lock-warm": true
+  },
+  "independent_database_audits": {
+    "oasis-reference-cold": {
+      "array_count": 12,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 545
+      },
+      "projected_legacy_oasis_json_bytes": 2117,
+      "database_sha256": "f25fe2f1351ea129d1a6cdb377e6c0fa81931146224d2c180e63da745a385187",
+      "database_bytes": 323584
+    },
+    "oasis-reference-warm": {
+      "array_count": 30,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 1388
+      },
+      "projected_legacy_oasis_json_bytes": 5440,
+      "database_sha256": "de8428b753b0586bb052d48736ac1cd569757aa9c3c53306cd09841b9e608865",
+      "database_bytes": 376832
+    },
+    "cascade-reference-cold": {
+      "array_count": 12,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "9a32b1b2f5210d4f20970b19eaba40c3c50a661fa8598b603b1981332701a185",
+      "database_bytes": 323584
+    },
+    "cascade-reference-warm": {
+      "array_count": 30,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "6147ea2d62f3cb9462ec9e9bf3f2474f6343b1dacaad0e0ef581eb9df6214164",
+      "database_bytes": 376832
+    },
+    "dual-reference-cold": {
+      "array_count": 14,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 545,
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 2117,
+      "database_sha256": "fde842b045972824f9b3bcfb4243dd6c7c0eba64fd85d87696f23eb8d090a4be",
+      "database_bytes": 331776
+    },
+    "dual-reference-warm": {
+      "array_count": 35,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 1388,
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 5440,
+      "database_sha256": "c30e9fc7a0f9c1cc121a5877d55abbcaaaea4b159271ab78d19cae5ae667232c",
+      "database_bytes": 385024
+    },
+    "cascade-service-cold": {
+      "array_count": 12,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "db68f57ac313416f2795f50cd4752e619a477dc15de1ea9826a19c51b344f6d5",
+      "database_bytes": 323584
+    },
+    "cascade-service-warm": {
+      "array_count": 30,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "c034742e5149c4af8ee87725130448df64968ac57fccbce77161e6eec8e52608",
+      "database_bytes": 376832
+    },
+    "dual-service-cold": {
+      "array_count": 14,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 545,
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 2117,
+      "database_sha256": "89fee389e7a5b0364381fc48a5822acb6e1a0b0b3f970742b14e88e262841af1",
+      "database_bytes": 331776
+    },
+    "dual-service-warm": {
+      "array_count": 35,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 1388,
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 5440,
+      "database_sha256": "d38c079ff23ae8fc07cb874443052c0f127e7cbcd321dce5ecf24c60028f9559",
+      "database_bytes": 385024
+    },
+    "cascade-cached-lock-cold": {
+      "array_count": 12,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "570dd687afaa36d9e13771e2cfd64c4e59b506b917ac25d12c6ef61fc54011ab",
+      "database_bytes": 323584
+    },
+    "cascade-cached-lock-warm": {
+      "array_count": 30,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 0,
+      "database_sha256": "182fb8e952d2b1f244d58792d2cff32594216a14c64b665fdbfc4843ced4f879",
+      "database_bytes": 376832
+    },
+    "dual-cached-lock-cold": {
+      "array_count": 14,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 545,
+        "cascade": 835
+      },
+      "projected_legacy_oasis_json_bytes": 2117,
+      "database_sha256": "fd70090e14f119a3e3befb484807c1f29d22d1a50d3f1ed2c6ecc7bb21d99870",
+      "database_bytes": 331776
+    },
+    "dual-cached-lock-warm": {
+      "array_count": 35,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 1388,
+        "cascade": 2050
+      },
+      "projected_legacy_oasis_json_bytes": 5440,
+      "database_sha256": "5ef786ea33cf1c0b6e66a93b37dccadc41fd05b7fcd5f26063dfe8601484207e",
+      "database_bytes": 385024
+    },
+    "pool-1/dual-service-cold": {
+      "array_count": 84,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 3782,
+        "cascade": 4483
+      },
+      "projected_legacy_oasis_json_bytes": 11581,
+      "database_sha256": "45d33a76eefcea1559030f099a4e043f94e6160844991e424f2ee11d6a2bd2cb",
+      "database_bytes": 462848
+    },
+    "pool-2/dual-service-cold": {
+      "array_count": 84,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 3782,
+        "cascade": 4483
+      },
+      "projected_legacy_oasis_json_bytes": 11581,
+      "database_sha256": "b9ae3e2c4c8511f946a68f963b8f67d537cae95fabcfb6592331a27b645ecee4",
+      "database_bytes": 462848
+    },
+    "pool-1/dual-service-warm": {
+      "array_count": 182,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 8138,
+        "cascade": 9428
+      },
+      "projected_legacy_oasis_json_bytes": 25089,
+      "database_sha256": "a15156d17dd699be09c7c10aeabb15d5bd2f231c5ba8930f85d41c12303e0eaf",
+      "database_bytes": 667648
+    },
+    "pool-2/dual-service-warm": {
+      "array_count": 182,
+      "all_samples_equal": true,
+      "canonical_payload_bytes": {
+        "oasis": 8138,
+        "cascade": 9428
+      },
+      "projected_legacy_oasis_json_bytes": 25089,
+      "database_sha256": "f6fcff6871297c0d2db8b85b71a69ffd78c1dd20ef40d6bd2fd4b4af96e4d380",
+      "database_bytes": 671744
+    }
+  },
+  "tampered_sample_rejected": true,
+  "existing_fixture_rejected": {
+    "status": "rejected",
+    "reason": "B5_0000 (position 0): CASCADE requires uniform intervals; maximum interval deviation is 400.01% (allowed 1.00%).",
+    "dataset": "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
+    "database": "/Users/fdrgsp/Documents/git/cali/tests/test_data/data_and_db_for_tests/test_db.cali",
+    "release_gate": "pending; no benchmark was run"
+  },
+  "pool_validation": {
+    "controlled_roi_counts": [
+      12,
+      14
+    ],
+    "single_vs_two_worker_samples_and_deterministic_products_equal": true,
+    "max_sampled_descendants": 3,
+    "results": [
+      {
+        "mode": "dual",
+        "backend": "service",
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "extraction_with_analysis_s": 0.2770069590769708,
+            "persistence_s": 0.12411658302880824,
+            "complete_s": 0.4089123330777511,
+            "offline_reanalysis_s": 0.012623957940377295,
+            "offline_image_inference_model_calls": 0,
+            "model_loads": 25,
+            "audit": {
+              "array_count": 84,
+              "all_samples_equal": true,
+              "canonical_payload_bytes": {
+                "oasis": 3782,
+                "cascade": 4483
+              },
+              "projected_legacy_oasis_json_bytes": 11581,
+              "database_sha256": "45d33a76eefcea1559030f099a4e043f94e6160844991e424f2ee11d6a2bd2cb",
+              "database_bytes": 462848
+            },
+            "spike_storage_projection": {
+              "target_fovs": 96,
+              "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+              "mib": 1.81695556640625,
+              "budget_mib": 512,
+              "note": "Arithmetic projection; does not measure a complete independent plate."
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "extraction_with_analysis_s": 0.30689662497024983,
+            "persistence_s": 0.04721341701224446,
+            "complete_s": 0.3541100419824943,
+            "offline_reanalysis_s": 0.02523658296559006,
+            "offline_image_inference_model_calls": 0,
+            "model_loads": 5,
+            "audit": {
+              "array_count": 182,
+              "all_samples_equal": true,
+              "canonical_payload_bytes": {
+                "oasis": 8138,
+                "cascade": 9428
+              },
+              "projected_legacy_oasis_json_bytes": 25089,
+              "database_sha256": "a15156d17dd699be09c7c10aeabb15d5bd2f231c5ba8930f85d41c12303e0eaf",
+              "database_bytes": 667648
+            },
+            "spike_storage_projection": {
+              "target_fovs": 96,
+              "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+              "mib": 1.9525909423828125,
+              "budget_mib": 512,
+              "note": "Arithmetic projection; does not measure a complete independent plate."
+            }
+          }
+        ],
+        "baseline_peak_rss_mib": 481.71875,
+        "peak_rss_mib": 580.84375,
+        "memory": {
+          "interval_s": 1.0,
+          "scope": "simultaneous parent + descendant RSS, including resource trackers",
+          "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+          "samples": 2,
+          "combined_peak_mib": 601.578125,
+          "max_descendant_processes": 1,
+          "stages": {
+            "preparation": {
+              "samples": 1,
+              "parent_peak_mib": 481.71875,
+              "descendants_peak_mib": 0.0,
+              "combined_peak_mib": 481.71875,
+              "max_descendant_processes": 0,
+              "combined_peak_snapshot": {
+                "parent_mib": 481.71875,
+                "descendants_mib": []
+              }
+            },
+            "warm/audit_export": {
+              "samples": 1,
+              "parent_peak_mib": 580.78125,
+              "descendants_peak_mib": 20.796875,
+              "combined_peak_mib": 601.578125,
+              "max_descendant_processes": 1,
+              "combined_peak_snapshot": {
+                "parent_mib": 580.78125,
+                "descendants_mib": [
+                  20.796875
+                ]
+              }
+            }
+          }
+        },
+        "peak_cascade_callers": 2,
+        "package_initialization_s": 0.56247466604691,
+        "extraction_settings": {
+          "neuropil_inner_radius": 0,
+          "neuropil_min_pixels": 0,
+          "neuropil_correction_factor": 0.0,
+          "decay_constant": 1.0,
+          "dff_window": 5.0,
+          "dff_percentile": 10,
+          "frame_rate": 30.0,
+          "frame_rate_verified": false,
+          "discard_initial_value": 0.0,
+          "discard_initial_unit": "frames",
+          "spike_methods": [
+            "oasis",
+            "cascade"
+          ],
+          "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+          "cascade_device": "cpu",
+          "pixel_size": null,
+          "threads": 2
+        },
+        "analysis_settings": {
+          "frame_rate": 30.0,
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "n_processes": 1,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 2,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            },
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 2,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "inputs": {
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "model_rate_hz": 30.0,
+          "positions": [
+            {
+              "shape": [
+                128,
+                48,
+                48
+              ],
+              "dtype": "<f8",
+              "image_bytes": 2359296,
+              "pixels_sha256": "8c24a7a5ea48ef56aacb546658a7652b60d343d11e1cd688e86b011bfe7ea03a",
+              "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+              "position": 0,
+              "roi_count": 12,
+              "source_start_frame": 0,
+              "retained_frames": 128,
+              "timing_source": "runner_time",
+              "observed_rate_hz": 29.999999999999865,
+              "jitter_fraction": 4.0927261579781586e-14
+            },
+            {
+              "shape": [
+                128,
+                48,
+                48
+              ],
+              "dtype": "<f8",
+              "image_bytes": 2359296,
+              "pixels_sha256": "8a29b15a9d4a9e5ce0f7db7947bcee6819b6e9e94f725321fb02f4bc64c7fcf5",
+              "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+              "position": 1,
+              "roi_count": 14,
+              "source_start_frame": 0,
+              "retained_frames": 128,
+              "timing_source": "runner_time",
+              "observed_rate_hz": 29.999999999999865,
+              "jitter_fraction": 4.0927261579781586e-14
+            }
+          ],
+          "source_database_snapshot_sha256": "fe3bd0a5555bffbeb7aafebc0ccd5c1d39192cb25e92fe7a2f3d95b4d2cc16c8",
+          "dataset": "/private/tmp/cali-real-plate-harness-pool-input/controlled.tensorstore.zarr",
+          "database": "/private/tmp/cali-real-plate-harness-pool-input/source.cali",
+          "recording_description": "Synthetic 12/14 ROI file-reader pool smoke, not real-plate acceptance",
+          "selection_sha256": "a88bf52b817f93afffb89fa91f28574f62096fbd6d5b303fb8b92dcbfb825656",
+          "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+        },
+        "release_gate": "pending; this individual case does not establish acceptance",
+        "runtime": {
+          "packages": {
+            "cali": "0.1.dev1410+gceef9bec8.d20261004",
+            "CascadeTorch": "2.0",
+            "torch": "2.14.1",
+            "numpy": "2.5.3",
+            "scipy": "1.16.3",
+            "numba": "0.68.0"
+          },
+          "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+          "runtime_source_sha256": {
+            "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+            "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+            "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+            "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+          }
+        }
+      },
+      {
+        "mode": "dual",
+        "backend": "service",
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "extraction_with_analysis_s": 3.737618707935326,
+            "persistence_s": 0.13768016605172306,
+            "complete_s": 3.8833422489697114,
+            "offline_reanalysis_s": 3.4559209999861196,
+            "offline_image_inference_model_calls": 0,
+            "model_loads": 25,
+            "audit": {
+              "array_count": 84,
+              "all_samples_equal": true,
+              "canonical_payload_bytes": {
+                "oasis": 3782,
+                "cascade": 4483
+              },
+              "projected_legacy_oasis_json_bytes": 11581,
+              "database_sha256": "b9ae3e2c4c8511f946a68f963b8f67d537cae95fabcfb6592331a27b645ecee4",
+              "database_bytes": 462848
+            },
+            "spike_storage_projection": {
+              "target_fovs": 96,
+              "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+              "mib": 1.81695556640625,
+              "budget_mib": 512,
+              "note": "Arithmetic projection; does not measure a complete independent plate."
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "extraction_with_analysis_s": 7.125751374987885,
+            "persistence_s": 0.05277800001204014,
+            "complete_s": 7.1785293749999255,
+            "offline_reanalysis_s": 6.851803124998696,
+            "offline_image_inference_model_calls": 0,
+            "model_loads": 5,
+            "audit": {
+              "array_count": 182,
+              "all_samples_equal": true,
+              "canonical_payload_bytes": {
+                "oasis": 8138,
+                "cascade": 9428
+              },
+              "projected_legacy_oasis_json_bytes": 25089,
+              "database_sha256": "f6fcff6871297c0d2db8b85b71a69ffd78c1dd20ef40d6bd2fd4b4af96e4d380",
+              "database_bytes": 671744
+            },
+            "spike_storage_projection": {
+              "target_fovs": 96,
+              "scope": "canonical spike payloads plus projected legacy OASIS JSON",
+              "mib": 1.9525909423828125,
+              "budget_mib": 512,
+              "note": "Arithmetic projection; does not measure a complete independent plate."
+            }
+          }
+        ],
+        "baseline_peak_rss_mib": 480.0625,
+        "peak_rss_mib": 583.453125,
+        "memory": {
+          "interval_s": 1.0,
+          "scope": "simultaneous parent + descendant RSS, including resource trackers",
+          "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+          "samples": 22,
+          "combined_peak_mib": 1258.34375,
+          "max_descendant_processes": 3,
+          "stages": {
+            "preparation": {
+              "samples": 1,
+              "parent_peak_mib": 480.0625,
+              "descendants_peak_mib": 0.0,
+              "combined_peak_mib": 480.0625,
+              "max_descendant_processes": 0,
+              "combined_peak_snapshot": {
+                "parent_mib": 480.0625,
+                "descendants_mib": []
+              }
+            },
+            "cold/extraction_analysis": {
+              "samples": 3,
+              "parent_peak_mib": 553.609375,
+              "descendants_peak_mib": 704.8125,
+              "combined_peak_mib": 1258.34375,
+              "max_descendant_processes": 3,
+              "combined_peak_snapshot": {
+                "parent_mib": 553.53125,
+                "descendants_mib": [
+                  20.921875,
+                  341.8125,
+                  342.078125
+                ]
+              }
+            },
+            "cold/offline_analysis": {
+              "samples": 4,
+              "parent_peak_mib": 555.578125,
+              "descendants_peak_mib": 639.15625,
+              "combined_peak_mib": 1194.734375,
+              "max_descendant_processes": 3,
+              "combined_peak_snapshot": {
+                "parent_mib": 555.578125,
+                "descendants_mib": [
+                  20.921875,
+                  309.0625,
+                  309.171875
+                ]
+              }
+            },
+            "warm/extraction_analysis": {
+              "samples": 7,
+              "parent_peak_mib": 581.25,
+              "descendants_peak_mib": 643.984375,
+              "combined_peak_mib": 1225.234375,
+              "max_descendant_processes": 3,
+              "combined_peak_snapshot": {
+                "parent_mib": 581.25,
+                "descendants_mib": [
+                  20.921875,
+                  311.21875,
+                  311.84375
+                ]
+              }
+            },
+            "warm/offline_analysis": {
+              "samples": 6,
+              "parent_peak_mib": 582.984375,
+              "descendants_peak_mib": 619.859375,
+              "combined_peak_mib": 1202.84375,
+              "max_descendant_processes": 3,
+              "combined_peak_snapshot": {
+                "parent_mib": 582.984375,
+                "descendants_mib": [
+                  20.921875,
+                  299.734375,
+                  299.203125
+                ]
+              }
+            },
+            "warm/audit_export": {
+              "samples": 1,
+              "parent_peak_mib": 583.390625,
+              "descendants_peak_mib": 20.921875,
+              "combined_peak_mib": 604.3125,
+              "max_descendant_processes": 1,
+              "combined_peak_snapshot": {
+                "parent_mib": 583.390625,
+                "descendants_mib": [
+                  20.921875
+                ]
+              }
+            }
+          }
+        },
+        "peak_cascade_callers": 2,
+        "package_initialization_s": 0.5889898339519277,
+        "extraction_settings": {
+          "neuropil_inner_radius": 0,
+          "neuropil_min_pixels": 0,
+          "neuropil_correction_factor": 0.0,
+          "decay_constant": 1.0,
+          "dff_window": 5.0,
+          "dff_percentile": 10,
+          "frame_rate": 30.0,
+          "frame_rate_verified": false,
+          "discard_initial_value": 0.0,
+          "discard_initial_unit": "frames",
+          "spike_methods": [
+            "oasis",
+            "cascade"
+          ],
+          "cascade_model": "Global_EXC_30Hz_smoothing25ms",
+          "cascade_device": "cpu",
+          "pixel_size": null,
+          "threads": 2
+        },
+        "analysis_settings": {
+          "frame_rate": 30.0,
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "n_processes": 2,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 2,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            },
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 2,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "inputs": {
+          "model": "Global_EXC_30Hz_smoothing25ms",
+          "manifest": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+          "model_rate_hz": 30.0,
+          "positions": [
+            {
+              "shape": [
+                128,
+                48,
+                48
+              ],
+              "dtype": "<f8",
+              "image_bytes": 2359296,
+              "pixels_sha256": "8c24a7a5ea48ef56aacb546658a7652b60d343d11e1cd688e86b011bfe7ea03a",
+              "metadata_sha256": "92dc1b4b0882b972b1e73e3fdd597d1a98e12c0c1ed70f0b1e44b41608bcf0d4",
+              "position": 0,
+              "roi_count": 12,
+              "source_start_frame": 0,
+              "retained_frames": 128,
+              "timing_source": "runner_time",
+              "observed_rate_hz": 29.999999999999865,
+              "jitter_fraction": 4.0927261579781586e-14
+            },
+            {
+              "shape": [
+                128,
+                48,
+                48
+              ],
+              "dtype": "<f8",
+              "image_bytes": 2359296,
+              "pixels_sha256": "8a29b15a9d4a9e5ce0f7db7947bcee6819b6e9e94f725321fb02f4bc64c7fcf5",
+              "metadata_sha256": "362480adc6bef626b653f0a631de433eced54fe3592a8cc5bac16b5d6b1946c3",
+              "position": 1,
+              "roi_count": 14,
+              "source_start_frame": 0,
+              "retained_frames": 128,
+              "timing_source": "runner_time",
+              "observed_rate_hz": 29.999999999999865,
+              "jitter_fraction": 4.0927261579781586e-14
+            }
+          ],
+          "source_database_snapshot_sha256": "fe3bd0a5555bffbeb7aafebc0ccd5c1d39192cb25e92fe7a2f3d95b4d2cc16c8",
+          "dataset": "/private/tmp/cali-real-plate-harness-pool-input/controlled.tensorstore.zarr",
+          "database": "/private/tmp/cali-real-plate-harness-pool-input/source.cali",
+          "recording_description": "Synthetic 12/14 ROI file-reader pool smoke, not real-plate acceptance",
+          "selection_sha256": "a88bf52b817f93afffb89fa91f28574f62096fbd6d5b303fb8b92dcbfb825656",
+          "independent_real_plate_acceptance": "pending biological review and measured comparisons"
+        },
+        "release_gate": "pending; this individual case does not establish acceptance",
+        "runtime": {
+          "packages": {
+            "cali": "0.1.dev1410+gceef9bec8.d20261004",
+            "CascadeTorch": "2.0",
+            "torch": "2.14.1",
+            "numpy": "2.5.3",
+            "scipy": "1.16.3",
+            "numba": "0.68.0"
+          },
+          "cascade_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+          "cascade_source_manifest_sha256": "0820b7ccf4c43a74ef863f8a6e29cfa32c22af3a3914531eab6bc7f48a1a9ecf",
+          "runtime_source_sha256": {
+            "CaliRunner": "73ae7446013ab39093b261d401772c0cc981d34c7011ee64800c2eaefda7de8d",
+            "AnalysisRunner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+            "CascadeReferenceBackend": "7de8d9c6c061849c3252cf2fa029c31c574e2b3f7cce1cf6200cf07f631a5ce3",
+            "CascadeInferenceService": "a11befe85041218843be45df825b147fabd4e67dab6b1c620138683bb797c97d"
+          }
+        }
+      }
+    ]
+  },
+  "limits": [
+    "Controlled pixels and metadata were written as actual Zarr files; these are not independently acquired plate data.",
+    "Two positions and 128 frames exercise file readers, non-contiguous labels and unequal ROI counts, not the representative concurrency or storage workload.",
+    "The first five-ROI two-process configuration did not activate the CCG process pool; the separate 12/14 ROI recording does.",
+    "Summed RSS can double-count shared pages and miss peaks; short benchmark stages may have no sample.",
+    "Exact comparisons exclude the four stochastic CCG significance fields listed in the complete report.",
+    "Production source and installed wheel are unchanged; no GUI gate or cached-default promotion occurred."
+  ],
+  "installed_ci_test_list": {
+    "passed": 459,
+    "seconds": 32.88,
+    "remote_ci_run": false
+  }
+}
