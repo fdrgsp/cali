@@ -163,8 +163,9 @@ Headless extraction now supports OASIS, CASCADE, or both, while OASIS always pro
 the denoised calcium trace and its noise diagnostic. The default CASCADE path uses
 the verified upstream reference adapter. The cached service is available through
 `ExtractionRunner(experimental_cascade_cache=True)` or the same option on `CaliRunner`;
-its full extraction performance release gates remain pending. CASCADE spike analysis
-and GUI selection remain gated by the method-specific analysis checks in
+its complete-workload memory/performance release gates remain pending. Headless
+CASCADE ROI/FOV spike analysis and offline re-analysis are enabled. GUI selection
+remains gated by the release checks in
 [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md).
 
 Download an explicitly chosen model with:
@@ -177,7 +178,7 @@ For a recording with verified 30 Hz acquisition timing and an explicitly chosen
 compatible model, pass settings such as these to the runner:
 
 ```python
-from cali.sqlmodel import ExtractionSettings
+from cali.sqlmodel import AnalysisSettings, ExtractionSettings, SpikeAnalysisSettings
 
 settings = ExtractionSettings(
     spike_methods=("oasis", "cascade"),  # Both outputs.
@@ -185,10 +186,24 @@ settings = ExtractionSettings(
     cascade_device="cpu",
     frame_rate=30,
 )
+
+analysis_settings = AnalysisSettings(
+    frame_rate=30,
+    enable_spikes=True,
+    spike_settings=[
+        SpikeAnalysisSettings(method="oasis"),
+        SpikeAnalysisSettings(method="cascade"),
+    ],
+)
 ```
 
 Use `analysis_settings=None` for extraction-only runs. Inline calcium analysis is
-also supported with `enable_spikes=False` and matching method settings. CASCADE requires
+also supported with `enable_spikes=False` and matching method settings. For full
+analysis, supply one `SpikeAnalysisSettings` child for every retained output, as
+above. Each method keeps its own activity, thresholds and population metrics;
+CASCADE's default AP threshold uses the selected model's sampling rate and smoothing.
+Analysis-only reuse reads the stored spikes and provenance without loading a model
+or running inference. CASCADE requires
 trusted acquisition timestamps, explicit frame-period metadata, or a user-verified
 acquisition rate; exposure alone is insufficient. Selected backend failures propagate,
 and a FOV stores neither spike output when its inference or finalization fails.
@@ -196,10 +211,11 @@ CASCADE CSV exports leave invalid model edges empty and include stored provenanc
 
 Spike arrays use a versioned, checksummed, lossless compressed BLOB format while
 Python accessors and JSON snapshots continue to expose numeric lists. Opening an
-older database transactionally upgrades its canonical spike arrays to schema 11;
+older database transactionally upgrades its canonical spike arrays to schema 11,
+then adds method-bound population coordinates in schema 12;
 legacy physical copies and inference provenance remain unchanged. Existing JSON
-arrays remain readable. Older cali versions reject schema 11. Migration reuses
-SQLite pages; reclaiming unused file space requires a separate `VACUUM` after
+arrays remain readable. Older cali versions reject unsupported newer schemas.
+Migration reuses SQLite pages; reclaiming unused file space requires a separate `VACUUM` after
 closing application connections.
 
 Without `--model-dir`, the cache uses `CALI_CASCADE_MODELS` or
@@ -209,6 +225,14 @@ the model atomically, and prints its sampling rate and manifest SHA-256.
 another machine. Cached models are verified on every load and work offline;
 inference never downloads a missing model automatically. Choose the model's rate,
 family, and smoothing deliberately for the recording; no model is selected by default.
+
+CASCADE values are expected spikes per frame. Expected counts sum the valid samples,
+and expected rates multiply their mean by the measured frame rate. OASIS amplitudes
+and CASCADE rates have different units; compare them with aligned valid intervals
+and separate axes or normalized traces. Model padding is excluded from analysis.
+Controlled complete extraction/analysis and storage measurements, including their
+remaining real-plate and GPU limits, are in
+[_dev/cascade_release_benchmarks.md](_dev/cascade_release_benchmarks.md).
 
 <br>
 

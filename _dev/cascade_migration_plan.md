@@ -442,8 +442,11 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** audit the remaining P7/release acceptance evidence before
-P8 GUI exposure, and complete representative workload and memory acceptance.
+**Next landing step:** complete representative workload and memory acceptance,
+including the 100 × 6000 complete image workload, before P8 GUI exposure. The P7
+installation audit now covers both base-wheel absence and base-to-extra installation;
+remote dedicated CI, upstream packaging submission and distribution licensing review
+remain separate release follow-ups.
 P6d now opens headless CASCADE spike analysis after full-runner parity and failure
 checks. Step 10's production codec addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
@@ -1198,6 +1201,47 @@ processes stopped. Detailed methodology and reproduction commands are in
 
 Headless CASCADE extraction and full analysis are available. GUI exposure remains
 pending P8 and the remaining dependency/performance release evidence.
+
+P7 continuation — installed base wheel and dependency/release evidence audit (2026-10-04):
+
+- The pinned maintained fork, source-integrity loader, pretrained numerical oracle,
+  warning-clean inference imports and installed-wheel tests are already implemented.
+  This audit found that dedicated CI covered an optional installation but did not
+  prove an installed base wheel works with Torch and CASCADE genuinely absent.
+- The Python 3.11/3.13 CASCADE CI job now first installs the built base wheel into
+  its isolated environment. An opt-in subprocess check requires both distributions
+  and importable modules to be absent, imports the installed cali model/reference
+  APIs under warnings-as-errors, verifies the package lives in the environment, and
+  requires the actionable install error on backend-package use. It cannot pass
+  by substituting OASIS. The existing source-loader contracts run in the same step.
+  CI then adds CPU Torch and the pinned `[cascade]` extra to that environment before
+  running the existing package, pretrained, combined/offline and consumer suites.
+- Locally, a fresh Python 3.13.0 environment installed the rebuilt base wheel and
+  passed the strict absence/import checks and exact legacy OASIS regressions. Adding
+  `[cascade]` to that same environment installed the pinned CascadeTorch 2.0 and
+  resolved Torch 2.14.1, NumPy 2.5.3 and SciPy 1.16.3. Package source identity,
+  generated-ensemble prediction, real pretrained reference/cache/service comparisons
+  and combined/offline public-runner parity all pass with this newer runtime. These
+  installation checks do not replace the recorded performance environment.
+- README guidance now reflects enabled headless full analysis, independent per-method
+  settings, offline reuse without inference, expected-rate units, valid model edges,
+  schema-12 population coordinates and the remaining GUI/performance gates. Its
+  actual dual-output settings example was executed and validates both method children.
+  The rebuilt wheel contains cali's adapter and no vendored `cascade2p` source.
+
+Validation: final base-wheel checks **11 passed in 1.97 s** under warnings-as-errors;
+base OASIS regressions **9 passed in 21.35 s**; upgraded optional package/OASIS checks
+**24 passed, 1 skipped in 10.14 s** (the base-only check intentionally skips after
+installing Torch); pretrained reference/cache/service **7 passed, 61 deselected in
+10.14 s** under warnings-as-errors; real-model combined/offline runner checks
+**3 passed, 40 deselected in 9.67 s**. Workflow YAML parses, Ruff/format and commit
+hooks pass. No production Python source changed after Step 10c's full regression.
+
+P7's local installation evidence is complete for Python 3.13. Remote execution of
+the Python 3.11/3.13 job still requires a separately authorized push; upstream
+packaging PR submission and project licensing review before distribution remain
+follow-ups. No external publication was performed. These do not block development
+with the pinned fork. GUI exposure remains gated by the remaining release evidence.
 
 ## 0. TL;DR
 

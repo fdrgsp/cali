@@ -41,9 +41,18 @@ jobs:
           enable-cache: true
       - name: Build cali wheel
         run: uv build --wheel
-      - name: Install wheel with optional CASCADE dependency
+      - name: Install base wheel without optional inference dependencies
         run: |
           uv venv .cascade-smoke
+          for cali_wheel in dist/cali-*.whl; do
+            uv pip install --python .cascade-smoke/bin/python "${cali_wheel}" pytest pytest-qt
+          done
+      - name: Verify installed base wheel with Torch and CASCADE absent
+        env:
+          CALI_CASCADE_BASE_TESTS: '1'
+        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py
+      - name: Install optional CASCADE dependency into the isolated wheel environment
+        run: |
           uv pip install --python .cascade-smoke/bin/python torch --index https://download.pytorch.org/whl/cpu
           for cali_wheel in dist/cali-*.whl; do
             uv pip install --python .cascade-smoke/bin/python "${cali_wheel}[cascade]" pytest pytest-qt
