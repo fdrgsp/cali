@@ -1,4 +1,4 @@
-"""Selectable settings tabs preserve computation ownership and keyboard access."""
+"""Settings selections preserve computation ownership and keyboard access."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QTabBar
+from qtpy.QtWidgets import QStyle, QStyleOptionGroupBox
 
 from cali.gui import CaliGui
 from cali.gui._analysis_gui import _AnalysisGUI
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
 
 
-def test_extraction_tab_headers_keep_both_outputs_and_parameters(qtbot: QtBot) -> None:
+def test_extraction_groups_keep_both_outputs_and_parameters(qtbot: QtBot) -> None:
     widget = _ExtractionGUI(cascade_enabled=True)
     qtbot.addWidget(widget)
     widget.resize(700, 750)
@@ -26,23 +26,26 @@ def test_extraction_tab_headers_keep_both_outputs_and_parameters(qtbot: QtBot) -
     outputs = widget._spike_outputs
     outputs._model.setCurrentText("explicit-model")
     outputs._device.setCurrentIndex(outputs._device.findData("mps"))
-    assert (
-        outputs._tabs.tabBar().tabButton(0, QTabBar.ButtonPosition.LeftSide)
-        is outputs._cascade
-    )
-    assert (
-        outputs._tabs.tabBar().tabButton(1, QTabBar.ButtonPosition.LeftSide)
-        is outputs._oasis
-    )
-    # Browsing settings cannot turn computation on or off.
-    outputs._tabs.setCurrentWidget(outputs._oasis_page)
     assert outputs.methods() == ("cascade",)
+    assert outputs._cascade.isCheckable() and outputs._cascade.isVisible()
+    assert outputs._oasis.isCheckable() and outputs._oasis.isVisible()
     decay = widget._trace_extraction_wdg._decay_constant_spin
     assert decay.isEnabled() and decay.isVisible()
     decay.setValue(1.5)
-    qtbot.mouseClick(outputs._oasis, Qt.MouseButton.LeftButton)
+    option = QStyleOptionGroupBox()
+    outputs._oasis.initStyleOption(option)
+    check_position = (
+        outputs._oasis.style()
+        .subControlRect(
+            QStyle.ComplexControl.CC_GroupBox,
+            option,
+            QStyle.SubControl.SC_GroupBoxCheckBox,
+            outputs._oasis,
+        )
+        .center()
+    )
+    qtbot.mouseClick(outputs._oasis, Qt.MouseButton.LeftButton, pos=check_position)
     assert outputs.methods() == ("oasis", "cascade")
-    outputs._tabs.setCurrentWidget(outputs._cascade_page)
     model = widget.to_model_settings()
     assert model.spike_methods == ("oasis", "cascade")
     assert model.cascade_model == "explicit-model"
@@ -65,15 +68,22 @@ def test_keyboard_cannot_uncheck_last_spike_output(qtbot: QtBot) -> None:
     assert outputs.methods() == ("oasis",)
     qtbot.keyClick(outputs._oasis, Qt.Key.Key_Space)
     assert outputs.methods() == ("oasis",)
+    qtbot.keyClick(outputs._cascade, Qt.Key.Key_Space)
+    qtbot.keyClick(outputs._oasis, Qt.Key.Key_Space)
+    assert outputs.methods() == ("cascade",)
+    assert widget._trace_extraction_wdg._decay_constant_spin.isEnabled()
+    widget.setEnabled(False)
+    assert not widget._trace_extraction_wdg._decay_constant_spin.isEnabled()
+    widget.setEnabled(True)
+    assert widget._trace_extraction_wdg._decay_constant_spin.isEnabled()
 
 
-def test_gated_cascade_page_can_be_read_without_changing_output(qtbot: QtBot) -> None:
+def test_gated_cascade_group_explains_unavailable_output(qtbot: QtBot) -> None:
     widget = _ExtractionGUI()
     qtbot.addWidget(widget)
     widget.show()
     widget._settings_tabs.setCurrentIndex(1)
     outputs = widget._spike_outputs
-    outputs._tabs.setCurrentWidget(outputs._cascade_page)
     assert outputs._status.isVisible()
     assert "release" in outputs._status.text()
     assert not outputs._cascade.isEnabled()

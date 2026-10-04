@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import shlex
 
-from qtpy.QtCore import Signal
+from qtpy.QtCore import QEvent, Signal
 from qtpy.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -21,12 +20,34 @@ from superqt.utils import signals_blocked
 
 from cali.sqlmodel._spike_settings import SpikeMethod, canonical_spike_methods
 
-from ._settings_tabs import _SettingsTabs, guidance
+from ._settings_tabs import guidance, settings_section
 
 CASCADE_GUI_GATE = (
     "CASCADE extraction is awaiting the GUI release checks. "
     "Stored CASCADE results can be viewed without running inference."
 )
+
+
+class _OasisOutputGroup(QGroupBox):
+    """Keep mandatory denoising usable when optional spike output is unchecked."""
+
+    denoising: QWidget | None = None
+
+    def enable_denoising(self) -> None:
+        if self.denoising is not None:
+            for widget in (self.denoising, *self.denoising.findChildren(QWidget)):
+                widget.setEnabled(self.isEnabled())
+
+    def event(self, event: QEvent | None) -> bool:
+        handled = bool(super().event(event))
+        if event is not None and event.type() in (
+            QEvent.Type.ChildPolished,
+            QEvent.Type.EnabledChange,
+        ):
+            # Qt disables unchecked groups' children during initialization and
+            # ancestor enable changes. Denoising is independent of this check.
+            self.enable_denoising()
+        return handled
 
 
 class _SpikeOutputWidget(QGroupBox):
@@ -39,12 +60,14 @@ class _SpikeOutputWidget(QGroupBox):
         cascade_enabled: bool = False,
         oasis_settings: QWidget | None = None,
     ) -> None:
-        super().__init__("Spike outputs — check one or both tabs", parent)
+        super().__init__("Spike outputs — check one or both methods", parent)
         self._cascade_enabled = cascade_enabled
         self._read_only = False
         self._frame_rate = 10.0
-        self._oasis = QCheckBox("OASIS", self)
-        self._cascade = QCheckBox("CASCADE", self)
+        self._oasis = _OasisOutputGroup("OASIS", self)
+        self._cascade = QGroupBox("CASCADE", self)
+        self._oasis.setCheckable(True)
+        self._cascade.setCheckable(True)
         self._oasis.setToolTip(
             "Retain OASIS spike amplitudes for analysis/comparison. OASIS denoising "
             "still runs for denoised ΔF/F even when this output is unchecked."
@@ -87,35 +110,40 @@ class _SpikeOutputWidget(QGroupBox):
         actions.addWidget(self._verify)
         actions.addWidget(self._install)
         form.addRow(actions)
-        self._tabs = _SettingsTabs(self)
-        self._cascade_page = self._tabs.add_page(
-            "CASCADE",
-            "Predicts expected spikes per frame using a pretrained neural network. "
-            "Choose a model that matches your acquisition rate and indicator; use "
-            "Verify model to inspect its smoothing, noise range and "
-            "trace requirements.",
-            self._cascade_parameters,
-            self._info,
-            self._status,
-            checkbox=self._cascade,
+        cascade_layout = QVBoxLayout(self._cascade)
+        cascade_layout.addWidget(
+            guidance(
+                "Predicts expected spikes per frame using a pretrained neural network. "
+                "Choose a model that matches your acquisition rate and indicator; use "
+                "Verify model to inspect its smoothing, noise range and "
+                "trace requirements."
+            )
+        )
+        cascade_layout.addWidget(self._cascade_parameters)
+        cascade_layout.addWidget(self._info)
+        cascade_layout.addWidget(self._status)
+
+        oasis_layout = QVBoxLayout(self._oasis)
+        oasis_layout.addWidget(
+            guidance(
+                "Estimates relative spike amplitudes from calcium decay. Check this "
+                "group to keep its spike output, or check both methods to compare."
+            )
         )
         oasis_widgets = [oasis_settings] if oasis_settings is not None else []
-        self._oasis_page = self._tabs.add_page(
-            "OASIS",
-            "Estimates relative spike amplitudes from calcium decay. Check this tab "
-            "to keep its spike output, or check both tabs to compare methods. "
-            "OASIS calcium denoising always runs, including when this tab "
-            "is unchecked.",
-            guidance(
-                "Calcium denoising (always runs). Auto estimates the decay time "
-                "from each trace; enter a known indicator decay time to use it instead."
-            ),
+        self._oasis_denoising = settings_section(
+            "Calcium denoising (always runs)",
+            "Denoising runs even when OASIS spike output is unchecked. Auto estimates "
+            "the decay time from each trace; enter a known indicator decay time "
+            "to use it instead.",
             *oasis_widgets,
-            checkbox=self._oasis,
         )
+        oasis_layout.addWidget(self._oasis_denoising)
+        self._oasis.denoising = self._oasis_denoising
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 12, 10, 10)
-        layout.addWidget(self._tabs)
+        layout.addWidget(self._cascade)
+        layout.addWidget(self._oasis)
         self._oasis.toggled.connect(self._on_methods_changed)
         self._cascade.toggled.connect(self._on_methods_changed)
         self._model.currentTextChanged.connect(self._update_info)
@@ -157,9 +185,6 @@ class _SpikeOutputWidget(QGroupBox):
         self._model.setCurrentText(model or "")
         self._device.setCurrentIndex(device_index)
         self._update_enabled()
-        self._tabs.setCurrentWidget(
-            self._cascade_page if "cascade" in methods else self._oasis_page
-        )
         self.methodsChanged.emit(methods)
 
     def reset(self) -> None:
@@ -181,7 +206,7 @@ class _SpikeOutputWidget(QGroupBox):
     def _on_methods_changed(self) -> None:
         if not self._oasis.isChecked() and not self._cascade.isChecked():
             sender = self.sender()
-            if isinstance(sender, QCheckBox):
+            if isinstance(sender, QGroupBox):
                 with signals_blocked(sender):
                     sender.setChecked(True)
         self._update_enabled()
@@ -192,6 +217,8 @@ class _SpikeOutputWidget(QGroupBox):
     def _update_enabled(self) -> None:
         self._oasis.setEnabled(not self._read_only)
         self._cascade.setEnabled(self._cascade_enabled and not self._read_only)
+        # The check controls retained spikes, while denoising remains mandatory.
+        self._oasis.enable_denoising()
         enabled = (
             self._cascade.isChecked() and self._cascade_enabled and not self._read_only
         )

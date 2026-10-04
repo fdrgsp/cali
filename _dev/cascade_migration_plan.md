@@ -50,6 +50,16 @@ both methods' controls visible together. Extraction and analysis keep their new 
 The detection/settings regression checks passed **40 tests in 4.57 s**, repository
 hooks passed, and the restored layout was reviewed in an offscreen preview.
 
+Follow-up: spike inference also uses two stacked, checkable CASCADE and OASIS group
+boxes at the user's request. Both methods' settings are visible together and both
+outputs can be retained. The OASIS calcium-denoising section remains enabled when
+its spike output is unchecked, because denoising always runs. Shared extraction
+preparation/processing tabs and the analysis tabs remain in place; extraction
+release gating and saved-output ownership are unchanged.
+The affected GUI/settings checks passed **53 tests in 5.62 s**, repository hooks
+passed, and dual-output/CASCADE-only group-box previews were reviewed. Checks cover
+mandatory denoising after initialization, selection changes and run enable cycles.
+
 ## P8 continuation — GUI controls and stored results (2026-10-04)
 
 - The extraction panel now has independent CASCADE/OASIS output checkboxes, explicit

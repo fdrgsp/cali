@@ -377,9 +377,9 @@ The main window contains the following sections:
 ### Pipeline Tabs
 
 Each settings page explains what its controls do, with more detail in tooltips.
-In extraction and analysis, click a tab title to view its settings; check its
-header box to include that method or analysis in the run. Browsing a tab does not
-change what will run.
+In analysis, click a tab title to view its settings; check its header box to
+include that analysis in the run. Browsing a tab does not change what will run.
+Detection and spike inference show their method settings in checkable group boxes.
 
 #### Detection Tab
 
@@ -405,8 +405,9 @@ Choose exactly one method to define ROIs for trace extraction:
 
 - **Prepare traces**: acquisition rate, pixel size, startup exclusion in frames or
   seconds, neuropil correction and the ΔF/F₀ baseline window/percentile.
-- **Spike inference**: check **OASIS**, **CASCADE**, or both where CASCADE extraction
-  is enabled. Each method has its own settings page. OASIS exposes the calcium
+- **Spike inference**: check the **OASIS** or **CASCADE** group box, or both where
+  CASCADE extraction is enabled. Both groups and their settings are shown together.
+  OASIS exposes the calcium
   decay time; CASCADE exposes the explicit model, device, local verification and
   installation instructions. OASIS calcium denoising always runs, including when
   only CASCADE spike output is retained. Released GUI CASCADE extraction remains

@@ -230,8 +230,8 @@ class _ExtractionGUI(QWidget):
         )
         self._settings_tabs.add_page(
             "Spike inference",
-            "Check a method's tab to keep its spike output. Opening a tab only shows "
-            "its settings; you can keep both methods for comparison.",
+            "Check either method's group to keep its spike output, or check both "
+            "for comparison. Each group contains its method's settings.",
             self._spike_outputs,
         )
         self._settings_tabs.add_page(
