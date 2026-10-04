@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import numpy as np
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from cali._cascade_package import load_cascade_package
@@ -49,11 +50,18 @@ from cali.sqlmodel import (
     ROI,
     AnalysisSettings,
     CaliResult,
+    DataAnalysis,
     Experiment,
     ExtractionSettings,
+    FOVAnalysis,
     Mask,
     Plate,
+    SpikeAnalysis,
     SpikeAnalysisSettings,
+    SpikeFOVAnalysis,
+    SpikeInferenceRun,
+    SpikeTrace,
+    Traces,
     Well,
     create_cali_engine,
     create_database_and_tables,
@@ -141,6 +149,116 @@ def peak_mib() -> float:
     """Return process lifetime peak RSS with platform-correct units."""
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return peak / (1024**2 if sys.platform == "darwin" else 1024)
+
+
+class ProcessMemorySampler:
+    """Sample simultaneous RSS for the benchmark process and its descendants."""
+
+    def __init__(self, interval_s: float = 1.0) -> None:
+        self.interval_s = interval_s
+        self.stage = "preparation"
+        self.stages: dict[str, dict] = {}
+        self.error: Exception | None = None
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._monitor, daemon=True)
+
+    def sample(self) -> None:
+        """Exclude the short-lived ps sampler from the descendant inventory."""
+        stage = self.stage
+        with subprocess.Popen(
+            ["ps", "-axo", "pid=,ppid=,rss="],
+            stdout=subprocess.PIPE,
+            text=True,
+        ) as process:
+            try:
+                output, _ = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise
+            if process.returncode:
+                raise RuntimeError("Process-tree memory sampling failed.")
+            sampler_pid = process.pid
+        rows = [tuple(map(int, line.split())) for line in output.splitlines()]
+        parent_pid = os.getpid()
+        included = {parent_pid}
+        while children := {
+            pid
+            for pid, owner, _ in rows
+            if owner in included and pid not in included and pid != sampler_pid
+        }:
+            included.update(children)
+        parent = sum(rss for pid, _, rss in rows if pid == parent_pid) / 1024
+        descendants = {
+            pid: rss / 1024
+            for pid, _, rss in rows
+            if pid in included and pid != parent_pid
+        }
+        combined = parent + sum(descendants.values())
+        values = self.stages.setdefault(
+            stage,
+            {
+                "samples": 0,
+                "parent_peak_mib": 0.0,
+                "descendants_peak_mib": 0.0,
+                "combined_peak_mib": 0.0,
+                "max_descendant_processes": 0,
+                "combined_peak_snapshot": {},
+            },
+        )
+        values["samples"] += 1
+        values["parent_peak_mib"] = max(values["parent_peak_mib"], parent)
+        values["descendants_peak_mib"] = max(
+            values["descendants_peak_mib"], sum(descendants.values())
+        )
+        values["max_descendant_processes"] = max(
+            values["max_descendant_processes"], len(descendants)
+        )
+        if combined > values["combined_peak_mib"]:
+            values["combined_peak_mib"] = combined
+            values["combined_peak_snapshot"] = {
+                "parent_mib": parent,
+                "descendants_mib": list(descendants.values()),
+            }
+
+    def _monitor(self) -> None:
+        try:
+            while not self.stop.wait(self.interval_s):
+                self.sample()
+        except Exception as error:
+            self.error = error
+
+    def start(self) -> None:
+        """Fail immediately if the system ps command is unavailable."""
+        self.sample()
+        self.thread.start()
+
+    def close(self) -> dict:
+        """Return sampled peaks; never sum independent process high-water marks."""
+        self.stop.set()
+        self.thread.join()
+        if self.error is not None:
+            raise self.error
+        self.sample()
+        return {
+            "interval_s": self.interval_s,
+            "scope": (
+                "simultaneous parent + descendant RSS, including resource trackers"
+            ),
+            "note": (
+                "Sampling can miss short peaks; shared pages count in each process. "
+                "This is a summed-RSS comparison, not unique physical memory. "
+                "The ps sampler is excluded. Stage transitions are approximate."
+            ),
+            "samples": sum(value["samples"] for value in self.stages.values()),
+            "combined_peak_mib": max(
+                value["combined_peak_mib"] for value in self.stages.values()
+            ),
+            "max_descendant_processes": max(
+                value["max_descendant_processes"] for value in self.stages.values()
+            ),
+            "stages": self.stages,
+        }
 
 
 class ControlledReader(TensorstoreZarrReader):
@@ -335,6 +453,13 @@ def run_case(args: argparse.Namespace) -> dict:
     reader = ControlledReader(args.rois, args.frames)
     runner = BenchmarkRunner(args, measurements)
     stop = threading.Event()
+    memory = ProcessMemorySampler() if args.sample_memory else None
+    if memory is not None:
+        memory.start()
+
+    def memory_stage(stage: str) -> None:
+        if memory is not None:
+            memory.stage = stage
 
     def monitor() -> None:
         while not stop.wait(0.005):
@@ -457,11 +582,13 @@ def run_case(args: argparse.Namespace) -> dict:
                     # them attached here lets one commit expire another FOV's
                     # ROI collection and lose its private staged products.
                     session.expunge_all()
+                    memory_stage(f"{phase}/extraction_analysis")
                     extract_begin = time.perf_counter()
                     completed = runner.run(
                         reader, settings, fovs, analysis_settings=analysis
                     )
                     extraction_s = time.perf_counter() - extract_begin
+                    memory_stage(f"{phase}/extraction_validation")
                     assert len(completed) == count
                     products = scientific_products(completed[0])
                     encoded_products = json.dumps(products, sort_keys=True)
@@ -531,6 +658,7 @@ def run_case(args: argparse.Namespace) -> dict:
                         args.output_dir / f"{args.mode}-{args.backend}-{phase}.npz",
                         **arrays,
                     )
+                    memory_stage(f"{phase}/persistence")
                     persistence_begin = time.perf_counter()
                     for fov in completed:
                         CaliRunner()._process_fov_results(
@@ -538,10 +666,50 @@ def run_case(args: argparse.Namespace) -> dict:
                         )
                         commit_fov_result(session, experiment, fov)
                     persistence_s = time.perf_counter() - persistence_begin
+                    memory_stage(f"{phase}/database_validation")
                     # Confirm stored products survived normal staging/commits.
                     stored_fovs = list(
                         session.exec(select(FOV).order_by(FOV.position_index)).all()
                     )
+                    expected_rois = count * args.rois
+                    rows = {
+                        model.__tablename__: session.exec(
+                            select(func.count()).select_from(model)
+                        ).one()
+                        for model in (
+                            FOV,
+                            ROI,
+                            Traces,
+                            DataAnalysis,
+                            FOVAnalysis,
+                            SpikeTrace,
+                            SpikeAnalysis,
+                            SpikeFOVAnalysis,
+                            SpikeInferenceRun,
+                        )
+                    }
+                    assert rows == {
+                        "fov": count,
+                        "roi": expected_rois,
+                        "trace": expected_rois,
+                        "data_analysis": expected_rois,
+                        "fov_analysis": count,
+                        "spike_trace": expected_rois * len(methods),
+                        "spike_analysis": (
+                            expected_rois * len(methods)
+                            if args.analysis == "full"
+                            else 0
+                        ),
+                        "spike_fov_analysis": (
+                            count * len(methods) if args.analysis == "full" else 0
+                        ),
+                        "spike_inference_run": len(methods),
+                    }
+                    canonical_runs = {
+                        run.method: run.id
+                        for run in session.exec(select(SpikeInferenceRun)).all()
+                    }
+                    assert set(canonical_runs) == set(methods)
                     assert len(stored_fovs) == count
                     assert (
                         sum(len(fov.rois) for fov in stored_fovs) == count * args.rois
@@ -556,18 +724,35 @@ def run_case(args: argparse.Namespace) -> dict:
                         for roi in fov.rois:
                             trace = roi.traces_history[-1]
                             _ = trace.x_axis, trace.den_dff, trace.calcium_noise
+                            index = roi.label_value - 1
+                            np.testing.assert_array_equal(
+                                trace.den_dff, arrays["den_dff"][index]
+                            )
+                            np.testing.assert_array_equal(
+                                trace.calcium_noise, arrays["calcium_noise"][index]
+                            )
                             _ = trace.extraction_frame_window.acquisition_frame_rate_hz
                             for spike in trace.spike_traces:
                                 _ = spike.values, spike.inference_run.semantic_key()
+                                method = spike.inference_run.method
+                                assert (
+                                    spike.spike_inference_run_id
+                                    == canonical_runs[method]
+                                )
+                                np.testing.assert_array_equal(
+                                    spike.values, arrays[method][index]
+                                )
                     # Detach fully loaded ORM inputs just as the public runner does.
                     session.expunge_all()
                     offline_settings = AnalysisSettings.model_validate(analysis_data)
                     offline_before = dict(measurements.seconds)
                     offline_before_calls = dict(measurements.calls)
                     offline_loads = measurements.model_loads
+                    memory_stage(f"{phase}/offline_analysis")
                     offline_begin = time.perf_counter()
                     reanalyzed = AnalysisRunner().run(stored_fovs, offline_settings)
                     offline_s = time.perf_counter() - offline_begin
+                    memory_stage(f"{phase}/offline_validation")
                     assert len(reanalyzed) == count
                     assert measurements.model_loads == offline_loads
                     for fov in reanalyzed:
@@ -634,11 +819,17 @@ def run_case(args: argparse.Namespace) -> dict:
                         },
                         "model_loads": measurements.model_loads - before_loads,
                         "database_bytes": database.stat().st_size,
+                        "persistence_audit": {
+                            "rows": rows,
+                            "all_stored_arrays_equal_extraction": True,
+                            "canonical_inference_ids": canonical_runs,
+                        },
                     }
                 )
                 # Fresh settings objects avoid cross-database ORM identity reuse.
                 settings = ExtractionSettings.model_validate(settings_data)
                 analysis = AnalysisSettings.model_validate(analysis_data)
+                memory_stage("between_phases")
             stats = (
                 None
                 if args.backend == "reference" or runner.backend is None
@@ -647,6 +838,7 @@ def run_case(args: argparse.Namespace) -> dict:
     finally:
         stop.set()
         monitor_thread.join()
+        memory_report = None if memory is None else memory.close()
     return {
         "mode": args.mode,
         "backend": args.backend,
@@ -710,6 +902,7 @@ def run_case(args: argparse.Namespace) -> dict:
         "baseline_peak_rss_mib": baseline,
         "peak_rss_mib": peak_mib(),
         "incremental_peak_rss_mib": peak_mib() - baseline,
+        "process_tree_memory": memory_report,
         "phases": phases,
     }
 
@@ -736,6 +929,7 @@ def main() -> None:
     parser.add_argument("--analysis-processes", type=int, default=1)
     parser.add_argument("--ccg-shuffles", type=int, default=20)
     parser.add_argument("--rising-edges", action="store_true")
+    parser.add_argument("--sample-memory", action="store_true")
     args = parser.parse_args()
     if (
         min(
@@ -789,6 +983,7 @@ def main() -> None:
             "--ccg-shuffles",
             str(args.ccg_shuffles),
             *(["--rising-edges"] if args.rising_edges else []),
+            *(["--sample-memory"] if args.sample_memory else []),
         ]
         with (args.output_dir / f"{mode}-{backend}.log").open("w") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
@@ -842,8 +1037,8 @@ def main() -> None:
         "max_abs_differences": differences,
         "deterministic_scientific_parity": scientific_parity,
         "release_gate": (
-            "pending: representative real plate, 100 x 6000 complete image workload, "
-            "GPU acceptance and independent codec compressibility"
+            "pending: representative real plate, GPU acceptance, independent codec "
+            "compressibility and memory acceptance; controlled workloads require review"
         ),
     }
     (args.output_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")

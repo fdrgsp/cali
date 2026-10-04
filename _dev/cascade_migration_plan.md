@@ -1243,6 +1243,31 @@ packaging PR submission and project licensing review before distribution remain
 follow-ups. No external publication was performed. These do not block development
 with the pinned fork. GUI exposure remains gated by the remaining release evidence.
 
+Large-workload measurement tools — process-tree RSS and independent persistence audit (2026-10-04):
+
+- `benchmark_cascade_extraction.py --sample-memory` now samples simultaneous parent
+  and descendant RSS every second, with separate extraction/analysis, persistence,
+  validation and offline stages. It excludes its own `ps` process, includes resource
+  trackers, records snapshots at summed-RSS peaks and retains the separate parent
+  lifetime high-water mark. Sampling can miss short peaks and double-count shared
+  pages; this is not unique physical memory or inference-only allocation accounting.
+- Each phase now asserts all expected ROI/FOV/trace/analysis/method row counts and
+  exactly compares persisted denoised/spike samples and scalar calcium noise with
+  extracted values. The new read-only `audit_cascade_extraction.py` independently
+  replays these checks against saved NPZ arrays, checks canonical inference ownership
+  and records complete file checksums without running database migrations.
+- A small full-analysis validation covers all seven output/backend cases and both
+  cold/warm phases: **14 scientific comparisons and 14 complete database audits**
+  pass. The independent auditor passes those same 14 databases and rejects temporary
+  copies with a missing trace or a modified, correctly checksummed spike sample.
+  A real-model two-process dual/service smoke verifies combined/offline parity and
+  captures the two analysis workers plus the resource tracker in sampled RSS.
+
+Ruff lint/format and commit hooks pass. No production Python source changed. The
+100 × 6000 complete image workload is being measured sequentially across the seven
+cases; it remains pending until the full results and independent audits are recorded.
+No performance, memory, real-plate, GPU or GUI gate is opened by these tool checks.
+
 ## 0. TL;DR
 
 | Question | Answer |

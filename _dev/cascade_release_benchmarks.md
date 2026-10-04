@@ -208,6 +208,29 @@ additions. The two test-migrated database fixtures were restored after the suite
 
 ## Complete method-bound analysis measurements
 
+The benchmark also accepts `--sample-memory` for one-second simultaneous RSS
+sampling of the measured process and its descendants, excluding the sampler's own
+`ps` subprocess. It separates extraction/analysis, validation, persistence and offline
+stages. Summed RSS counts shared pages in each process and can miss short peaks;
+the parent lifetime high-water mark remains recorded separately. Resource trackers
+are included and can exist even when no FOV analysis pool is created. The sampler
+requires the Unix `ps` command, consistent with this benchmark's `resource` usage.
+
+Every new report includes persistence row counts and exact comparisons of stored
+denoised/spike samples and scalar calcium noise. Independently replay these checks
+without opening a migration-capable database connection:
+
+```sh
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-analysis-long-full \
+  --output /tmp/cali-analysis-long-full-audit.json
+```
+
+The auditor supports all-case and single-case output directories, opens SQLite
+read-only, checks canonical inference ownership, decodes the production spike
+codec, compares every sample with the saved NPZ arrays and records full database
+checksums. Missing rows and a changed sample with a valid codec checksum both fail.
+
 `benchmark_cascade_extraction.py --analysis full` now includes default OASIS/CASCADE
 ROI analysis, independent FOV populations, CCG/jitter/bursts and offline re-analysis
 of stored traces. The matching `--analysis calcium` runs use the same inputs and
