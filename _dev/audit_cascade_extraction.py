@@ -73,11 +73,21 @@ def audit(directory: Path) -> dict:
                 }
                 if rows != expected_rows:
                     raise ValueError(f"Incomplete {stem}: {rows} != {expected_rows}")
+                if connection.execute("PRAGMA foreign_key_check").fetchall():
+                    raise ValueError(f"Broken foreign-key references in {stem}.")
                 runs = dict(
                     connection.execute("SELECT id, method FROM spike_inference_run")
                 )
                 if set(runs.values()) != set(methods):
                     raise ValueError(f"Incorrect inference methods in {stem}.")
+                payload_bytes = dict(
+                    connection.execute(
+                        'SELECT i.method, sum(length(s."values")) FROM spike_trace s '
+                        "JOIN spike_inference_run i ON i.id=s.spike_inference_run_id "
+                        "GROUP BY i.method"
+                    )
+                )
+                legacy_oasis_json_bytes = 0
                 with np.load(directory / f"{stem}.npz", allow_pickle=False) as expected:
                     if set(expected.files) != {"den_dff", "calcium_noise", *methods}:
                         raise ValueError(f"Incorrect ground-truth array set in {stem}.")
@@ -114,18 +124,26 @@ def audit(directory: Path) -> dict:
                                 raise ValueError(
                                     f"Incorrect inference owner in {stem}."
                                 )
+                            decoded = decode_trace_array(values)
                             np.testing.assert_array_equal(
-                                decode_trace_array(values), expected[method][index]
+                                decoded, expected[method][index]
                             )
+                            if method == "oasis":
+                                # Project the physical JSON duplication of a migrated
+                                # legacy source without modifying a measured database.
+                                legacy_oasis_json_bytes += len(
+                                    json.dumps(decoded).encode()
+                                )
                 fov_sources = connection.execute(
-                    "SELECT s.spike_inference_run_id, i.extraction_result_id, "
+                    "SELECT s.spike_inference_run_id, s.method, "
+                    "i.extraction_result_id, "
                     "f.analysis_result_id FROM spike_fov_analysis s "
                     "JOIN spike_inference_run i ON i.id=s.spike_inference_run_id "
                     "JOIN fov_analysis f ON f.id=s.fov_analysis_id"
                 )
                 if any(
-                    run not in runs or owner != parent
-                    for run, owner, parent in fov_sources
+                    run not in runs or runs[run] != method or owner != parent
+                    for run, method, owner, parent in fov_sources
                 ):
                     raise ValueError(f"Incorrect FOV inference owner in {stem}.")
                 schema = connection.execute("PRAGMA user_version").fetchone()[0]
@@ -134,6 +152,17 @@ def audit(directory: Path) -> dict:
                 "schema_version": schema,
                 "database_bytes": database.stat().st_size,
                 "database_sha256": checksum(database),
+                "canonical_spike_payload_bytes": payload_bytes,
+                "hypothetical_legacy_oasis_json_bytes": legacy_oasis_json_bytes,
+                "projected_96_fov_spike_payload_mib": (
+                    sum(payload_bytes.values()) / phase["fovs"] * 96 / 1024**2
+                ),
+                "projected_96_fov_with_legacy_oasis_mib": (
+                    (sum(payload_bytes.values()) + legacy_oasis_json_bytes)
+                    / phase["fovs"]
+                    * 96
+                    / 1024**2
+                ),
                 "all_arrays_exact": True,
                 "canonical_run_ownership": True,
             }

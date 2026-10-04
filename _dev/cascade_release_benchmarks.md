@@ -6,7 +6,11 @@ The historical JSON/prototype results are in `cascade_full_mode_cpu_benchmark.js
 `cascade_trace_codec_cpu_benchmark.json`.
 The upstream reference remains the default; the cached service is experimental.
 
-The current full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`.
+The short/long full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`;
+the completed 100 × 6000 image workload and worker-memory comparison are in
+`cascade_large_mode_cpu_benchmark.json`. The latter fails the 512 MiB payload budget
+when projected legacy OASIS duplication is included; a lossless byte-shuffle candidate
+is measured but requires a production reader and migration.
 Its database audits supersede the historical extraction benchmark's warm persistence,
 database-size and complete-wall-time figures: those archived warm databases retained
 only 8–9 of 32 requested short traces and 33 of 128 requested long traces. The separate
@@ -344,12 +348,136 @@ exclude their worker RSS. Long full service increments are **313.81 MiB CASCADE*
 increments are 440.28/468.84 MiB and the lock alternative is 422.80/444.23 MiB. These
 complete-graph samples supersede the historical incomplete-graph RSS evidence; they
 do not isolate inference-only allocations or certify a many-process memory budget.
-The independent uniformly timed real plate, 100 × 6000 complete image workload,
-GPU acceptance and independent codec compressibility gates remain pending. The cached
-service stays experimental and the released GUI remains gated.
+The 100 × 6000 complete image workload is recorded below. Independent uniformly timed
+real-plate data, GPU acceptance, codec compressibility and scoped memory acceptance
+remain pending. The cached service stays experimental and the released GUI remains gated.
 
 Final regression validation is recorded in the migration plan.
 
+
+## 100 × 6000 complete image workload and worker memory
+
+The [large-workload artifact](cascade_large_mode_cpu_benchmark.json) records all seven
+output/backend cases plus dual/service with two FOV analysis processes. Each runs in a
+fresh process, sequentially, with one cold and four warm FOVs. Inputs are deterministic
+**6000 × 40 × 40 float64 images**, 100 known four-pixel masks, 30 Hz, fixed one-second
+OASIS decay, default method thresholds, 20 CCG shuffles and no rising-edge analysis.
+Four extraction workers and one offline ROI analysis thread match the previous setup.
+The CPU environment is Apple M2 Pro with 16 GiB RAM, Python 3.13, Torch 2.14.1,
+NumPy 2.5.3, SciPy 1.16.3 and Numba 0.68.0. Detection, GUI rendering, offline
+persistence and database-load time are excluded. These are controlled single samples, not representative biological-plate acceptance.
+
+The default populations contain 99 OASIS-active ROIs / 4851 pairs and 100 CASCADE-active
+ROIs / 4950 pairs per FOV. CASCADE's common valid interval is `[32, 5968)`; OASIS uses
+all 6000 retained frames. The model's eight noise levels are 2–9; 27 of 100 synthetic
+ROI noise estimates fall outside that coverage and use the recorded nearest ensemble.
+This is a workload cost check, not validation of biological accuracy outside training
+coverage. Model/config/package identities and all stage settings appear in the artifact.
+
+Warm times below cover four FOVs and are seconds. Complete time includes extraction,
+full ROI/FOV analysis and persistence; aggregate FOV spike times are already included
+in complete time. Offline timing excludes loading and persistence.
+
+| Output | Backend | Complete | Persistence | FOV spike analysis | Offline |
+| --- | --- | ---: | ---: | ---: | ---: |
+| OASIS | reference | 88.494 | 4.643 | 71.541 | 72.326 |
+| CASCADE | reference | 501.170 | 5.344 | 73.972 | 75.451 |
+| dual | reference | 571.307 | 6.458 | 150.419 | 153.257 |
+| CASCADE | service | 482.629 | 5.056 | 76.076 | 77.452 |
+| dual | service | 509.473 | 6.272 | 143.764 | 144.977 |
+| CASCADE | cached lock | 468.678 | 4.972 | 76.198 | 77.265 |
+| dual | cached lock | 510.106 | 5.997 | 144.601 | 146.096 |
+| dual, two FOV processes | service | 449.884 | 5.754 | 89.181 | 90.358 |
+
+Reference CASCADE cases load 40 checkpoints cold and 160 across the warm batch.
+Cached cases load 40 cold and none warm, retaining eight ensembles with 5,500,960
+parameter bytes and chunks of at most 1024 windows. Each CASCADE-containing selection
+also performs mandatory OASIS calcium denoising. Offline reuse performs no inference
+or model loads. Single/dual and reference/service/lock arrays and all deterministic
+scientific ROI/FOV fingerprints match exactly in both phases; the stochastic CCG
+fields remain computed but are excluded from comparisons.
+
+The independent read-only audit verifies **16 complete databases**, all expected
+ROI/FOV/trace/method rows, foreign keys and canonical method/owner bindings. Every
+stored denoised/spike sample and scalar calcium-noise value matches the saved NPZ
+arrays. Full database checksums are recorded. All warm databases contain 400 base
+traces and analysis rows; dual cases have 800 spike traces and ROI spike analyses,
+eight FOV spike analyses and two shared canonical inference rows.
+
+Memory figures are MiB. Parent peaks include extraction, persistence validation and
+offline graphs. The sampled tree sums parent and simultaneous descendant RSS every
+second, including the resource tracker; shared pages count in each process and brief
+peaks may be missed. These are neither unique physical-memory measurements nor
+inference-only allocations.
+
+| Output | Backend | Parent peak | Growth above startup peak | Sampled tree peak |
+| --- | --- | ---: | ---: | ---: |
+| OASIS | reference | 1419.89 | 946.95 | 1433.33 |
+| CASCADE | reference | 1711.88 | 1239.48 | 1723.11 |
+| dual | reference | 1767.42 | 1295.47 | 1777.70 |
+| CASCADE | service | 1207.91 | 732.89 | 1219.16 |
+| dual | service | 1310.44 | 837.05 | 1319.84 |
+| CASCADE | cached lock | 1101.91 | 630.92 | 1113.03 |
+| dual | cached lock | 1381.41 | 910.20 | 1392.23 |
+| dual, two FOV processes | service | 2365.56 | 1892.92 | 3558.41 |
+
+Two processes reduce dual/service offline time from 144.977 to 90.358 s, with matching
+deterministic fingerprints, but increase sampled summed RSS from 1319.84 to 3558.41
+MiB. Default one-process runs include a resource tracker and create no FOV analysis
+pool; the two-process run captures two analysis workers plus that tracker. Model
+parameter bytes remain below the 128 MiB cache cap, which is not a process-memory cap.
+The harness's retained image/trace/mask lower bound is 96.28 MiB per blocked CASCADE
+caller, or 385.13 MiB for four callers before prediction buffers/results. The prior
+256 MiB inference-workload comparison cannot certify this complete-workload memory
+scope. A documented representative-image/concurrency budget remains necessary.
+
+Storage reveals a new failed gate. Measured warm four-FOV files are 184.49 MiB OASIS,
+191.64 MiB CASCADE and 195.80 MiB dual. Projecting measured canonical spike BLOBs to
+96 FOVs gives 16.33, 195.59 and 211.92 MiB respectively. Serializing the exact OASIS
+samples as hypothetical migrated legacy JSON adds 306.04 MiB: **517.96 MiB total**,
+**5.96 MiB over the 512 MiB budget**. This is a spike-payload projection, not a measured
+96-FOV file; base calcium traces, analyses, indexes and SQLite space are additional.
+It supersedes the earlier claim that the controlled storage margin was sufficient
+for every longer input.
+
+`benchmark_trace_array_shuffle.py` evaluates a proposed v2 layout that groups each
+sample's bytes by byte position before zlib compression, then reverses the shuffle
+and checks every original sample bit and metadata-bound checksum. It selects the
+smaller raw/shuffled full payload, preserving float32/double choices and including
+header/checksum overhead. On these exact arrays, the candidate plus legacy projection
+is **493.93 MiB**, leaving **18.07 MiB** of budget headroom with zero sample changes.
+Raising zlib's level alone barely improved the representative traces. The candidate
+does not write databases, and the current v1 reader rejects its proposed version;
+reader/migration, rollback/integrity and consumer acceptance must land before this
+becomes production storage evidence. No rounding or quantization is proposed.
+
+Reproduce the measurements and independent audits in fresh directories, using the
+same environment above and Unix `ps` access:
+
+```sh
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --analysis full --analysis-processes 1 --ccg-shuffles 20 --sample-memory \
+  --model-dir "$CALI_CASCADE_MODELS" --output-dir /tmp/cali-large-full \
+  --rois 100 --frames 6000 --fovs 4 --workers 4
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --analysis full --analysis-processes 2 --ccg-shuffles 20 --sample-memory \
+  --mode dual --backend service \
+  --model-dir "$CALI_CASCADE_MODELS" --output-dir /tmp/cali-large-two-processes \
+  --rois 100 --frames 6000 --fovs 4 --workers 4
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-large-full --output /tmp/cali-large-audit.json
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-large-two-processes --output /tmp/cali-large-worker-audit.json
+"$cascade_bench_python" _dev/benchmark_trace_array_shuffle.py \
+  --input /tmp/cali-large-full/dual-reference-warm.npz \
+  --output /tmp/cali-large-byte-shuffle-candidate.json
+```
+
+The controlled 100 × 6000 workload and multi-worker memory measurement are now
+recorded. Production storage-budget repair, independent uniformly timed real-plate
+performance/compressibility, GPU acceptance and scoped memory acceptance remain
+pending. The reference remains the production default, the cached service remains
+experimental, and GUI exposure remains gated.
 
 ## Production codec storage and migration
 
@@ -374,8 +502,9 @@ base calcium arrays and other records are additional.
 | dual | 204.03 | 187.01 | 5.604 | 0.121 | 28.335 |
 | dual + legacy OASIS JSON | 504.22 | 199.52 | 5.198 | 0.119 | 28.534 |
 
-The codec passes the controlled **512 MiB** spike-payload budget with **zero** added
-sample, sum, rate or threshold-crossing error. All 400 CASCADE rows use float32. Of
+On this earlier input, the codec passes the controlled **512 MiB** spike-payload
+budget with **zero** added sample, sum, rate or threshold-crossing error. The larger
+complete-image input above exceeds this budget and requires a storage repair. All 400 CASCADE rows use float32. Of
 400 OASIS rows, 372 require float64 and 28 round-trip exactly as float32. Canonical
 writes take longer than the historical JSON samples because compression/validation
 cost is included; dual ORM reads fall from 0.565 s to 0.121 s in these samples. CSV

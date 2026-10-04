@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis measurements and database audits complete, default single-worker FOV startup optimized; remaining P7/release evidence, real-plate performance and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; earlier controlled storage budget passes but the complete-image workload exceeds it; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; lossless byte-shuffle candidate measured, production reader/migration pending; remaining P7/release evidence, real-plate performance and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,18 +442,22 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** complete representative workload and memory acceptance,
-including the 100 × 6000 complete image workload, before P8 GUI exposure. The P7
-installation audit now covers both base-wheel absence and base-to-extra installation;
-remote dedicated CI, upstream packaging submission and distribution licensing review
-remain separate release follow-ups.
-P6d now opens headless CASCADE spike analysis after full-runner parity and failure
-checks. Step 10's production codec addresses the measured dense-JSON budget failure.
+**Next landing step:** implement and validate a versioned lossless byte-shuffle
+reader/writer and atomic migration to repair the newly measured 512 MiB storage
+failure, before P8 GUI exposure. The 100 × 6000 complete-image workload and two-worker
+memory measurements are complete. The P7 installation audit covers both base-wheel
+absence and base-to-extra installation; remote dedicated CI, upstream packaging
+submission and distribution licensing review remain separate release follow-ups.
+P6d opens headless CASCADE spike analysis after full-runner parity and failure checks.
+Step 10's production codec fixed the earlier dense-JSON failure, but the new complete
+image workload projects 517.96 MiB including legacy duplication and fails the same
+512 MiB spike-payload budget. A bit-preserving v2 prototype projects 493.93 MiB;
+production decoding, migration integrity/rollback and consumer acceptance are pending.
 Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
-re-analysis measurements are now recorded with complete database audits. Independent
-real-plate performance, the 100 × 6000 complete image workload and memory acceptance
-remain pending. The corrected full-graph memory samples do not pass the prior
-incremental comparison target or promote the cached service.
+re-analysis measurements have complete independent database audits. Independent
+real-plate performance, GPU and scoped memory acceptance remain pending. Full-graph
+memory samples do not certify the prior inference-only comparison target or promote
+the cached service.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction and analysis are available through the upstream reference path; the cached service
 remains an explicit experimental option.
@@ -1267,6 +1271,54 @@ Ruff lint/format and commit hooks pass. No production Python source changed. The
 100 × 6000 complete image workload is being measured sequentially across the seven
 cases; it remains pending until the full results and independent audits are recorded.
 No performance, memory, real-plate, GPU or GUI gate is opened by these tool checks.
+
+Step 10d — complete-image workload, worker costs and storage-budget failure (2026-10-04):
+
+- [`cascade_large_mode_cpu_benchmark.json`](cascade_large_mode_cpu_benchmark.json)
+  records seven sequential fresh-process selections and a dual/service two-FOV-worker
+  comparison on Apple M2 Pro / 16 GiB RAM. Each uses 100 known ROI masks and 6000
+  uniformly timed 40 × 40 float64 frames, one cold FOV and four warm FOVs, full ROI/FOV
+  analysis, 20 CCG shuffles and four extraction workers. Detection and GUI are excluded;
+  this controlled input is not independent biological-plate acceptance.
+- All **14** default cold/warm scientific comparisons and both one/two-worker phase
+  comparisons pass. Every persisted denoised/spike sample and scalar calcium-noise
+  value matches the saved extraction arrays exactly. The read-only auditor verifies
+  **16 complete databases**, expected rows, foreign keys, canonical method/owner
+  bindings and complete file checksums. Stochastic CCG fields remain calculated but
+  are excluded from deterministic comparisons.
+- Reference CASCADE cases load 40 checkpoints cold and 160 warm; cached paths load
+  40 cold and zero warm, retaining eight ensembles and 5,500,960 parameter bytes.
+  Offline re-analysis loads no images or inference models. The synthetic input has
+  27/100 noise estimates outside the model's 2–9 coverage; nearest-ensemble selection
+  is recorded and does not establish scientific acceptance outside training coverage.
+- Dual/service warm complete time is **509.473 s**, with **144.977 s** offline
+  re-analysis. Two FOV processes give **449.884 s** complete and **90.358 s** offline,
+  but sampled simultaneous parent/descendant RSS rises from **1319.84 to 3558.41 MiB**.
+  Default single-process analysis creates no FOV pool; its resource tracker is included.
+  Summed RSS counts shared pages per process and one-second sampling can miss peaks.
+  Four blocked callers already retain at least **385.13 MiB** of images/traces/masks;
+  the previous 256 MiB inference comparison cannot certify this complete workload.
+- New measured canonical BLOBs project **211.92 MiB** for 96 dual FOVs; hypothetical
+  exact legacy OASIS JSON adds **306.04 MiB**, for **517.96 MiB**, failing the unchanged
+  **512 MiB** spike-payload budget by **5.96 MiB**. The measured four-FOV dual database
+  is **195.80 MiB**; payload projections exclude base traces, analyses and SQLite space.
+  The earlier 504.22 MiB result remains valid for its original source arrays only.
+- `benchmark_trace_array_shuffle.py` evaluates a proposed version-2 layout, choosing
+  the smaller raw or byte-column-shuffled zlib payload with full metadata/checksum
+  overhead. Restoring every original sample bit yields a **493.93 MiB** dual-plus-legacy
+  projection (**18.07 MiB** headroom). Compression-level changes alone offer little
+  improvement. This prototype writes no databases; the current production reader
+  rejects v2. Versioned decoding, atomic migration, failure/rollback and downstream
+  consumer checks must land before claiming production storage acceptance.
+
+Validation: completed real-model benchmark cases, 16 independent database audits,
+exact array/scientific comparisons, prototype bit/checksum checks, Ruff lint/format
+and commit hooks. No production Python source changed; the previously recorded full
+regression and installed-wheel checks were not rerun for this development-tool/docs
+milestone. Detailed settings, scope and reproducible commands are in
+[`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). The next landing
+step is production codec/migration repair; real-plate performance/compressibility,
+GPU, scoped memory and remaining release evidence still gate GUI exposure.
 
 ## 0. TL;DR
 
