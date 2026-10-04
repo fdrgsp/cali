@@ -6,6 +6,11 @@ import numpy as np
 import pyqtgraph as pg
 
 from cali.logger import cali_logger
+from cali.plot._spike_fov_data import (
+    selected_spike_fov,
+    spike_burst_bounds,
+    spike_population_duration,
+)
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
@@ -15,11 +20,13 @@ from cali.sqlmodel._model import (
     FOVAnalysis,
     Traces,
 )
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 MEAN_RAW_ACTIVITY_COLOR = "k"
@@ -101,9 +108,7 @@ def _get_data_analysis_for_run(
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    # Fall back to first entry (for backwards compatibility with data that has
-    # analysis_result_id=None)
-    return roi_model.data_analysis_history[0]
+    return None
 
 
 # -----------------------------------------------------------------------------#
@@ -115,361 +120,137 @@ def _plot_inferred_spike_burst_activity(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
-    """Plot burst detection and network state analysis for inferred spikes (pyqtgraph).
+    """Render the selected stored population in its retained frame coordinates."""
+    from sqlmodel import Session
 
-    This analyzes population-level spike activity to detect synchronized burst events
-    and displays burst statistics.
-    """
+    from cali.sqlmodel import AnalysisSettings
+
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
-
-    # Clear previous plot
     plot.clear()
-
-    # Reset ViewBox settings that might have been set by previous plots
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
+    disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=1)
     vb.setAspectLocked(False)
+    vb.invertY(False)
     vb.enableAutoRange(x=True, y=False)
+    plot.getAxis("bottom").setTicks(None)
+    plot.getAxis("bottom").setStyle(showValues=True)
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        legend.setVisible(False)
+    plot.setLabel("left", "Fraction of Active ROIs [0,1]")
+    plot.setLabel("bottom", "Retained Frames")
+    title = f"[{spike_method.upper()}] Population Burst Activity"
+    parent = _get_fov_analysis_for_run(engine, fov_name, run_id)
+    child = selected_spike_fov(parent, spike_method) if parent is not None else None
+    if child is None or not child.spike_population_activity:
+        plot.setTitle(title + " (No stored population data)")
+        return
 
-    # Disconnect any hover handlers from previous plots
-    disconnect_hover_handlers(plot)
-
-    # Hide shared legend if you use one elsewhere
-    if hasattr(widget, "legend") and widget.legend is not None:
-        if hasattr(widget.legend, "clear"):
-            widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    # Initialize variables that will be used in drawing
-    population_activity: np.ndarray | None = None
-    time_axis: np.ndarray = np.array([])
-    bursts: list[tuple[int, int]] = []
-
-    # --- Try to get pre-computed burst data from FOVAnalysis ---
-    fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
-
-    # Check if pre-computed population activity data exists (regardless of burst count)
-    if (
-        fov_analysis is not None
-        and fov_analysis.get_spike_metric("oasis", "spike_population_activity")
-        is not None
-    ):
-        # Use stored burst data - much faster!
-        burst_starts = (
-            fov_analysis.get_spike_metric("oasis", "spike_burst_starts") or []
+    assert parent is not None
+    activity = np.asarray(child.spike_population_activity, dtype=float)
+    known_origin = child.valid_start is not None
+    start = child.valid_start if child.valid_start is not None else 0
+    frames = np.arange(start, start + len(activity))
+    if not known_origin:
+        plot.setLabel("bottom", "Population Sample Index (Retained Origin Unknown)")
+    bounds = spike_burst_bounds(child)
+    with Session(engine) as session:
+        owner = (
+            session.get(CaliResult, parent.analysis_result_id)
+            if parent.analysis_result_id is not None
+            else None
         )
-        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
-        population_activity_list = fov_analysis.get_spike_metric(
-            "oasis", "spike_population_activity"
+        settings = (
+            session.get(AnalysisSettings, owner.analysis_settings_id)
+            if owner is not None and owner.analysis_settings_id is not None
+            else None
         )
+        parameters = (
+            settings.get_spike_settings(spike_method) if settings is not None else None
+        )
+        duration = spike_population_duration(child, settings)
 
-        if population_activity_list:
-            # spike_population_activity contains smoothed fraction active [0,1]
-            population_activity = np.array(population_activity_list)
+    def draw(
+        values: list[float] | np.ndarray, color: str, width: int, label: str
+    ) -> None:
+        if len(values) != len(activity):
+            raise ValueError("Raw and smoothed spike populations must align.")
+        item = plot.plot(frames, values, pen=pg.mkPen(color, width=width))
+        if legend is not None:
+            legend.addItem(item, label)
 
-            # Get raw activity if available
-            population_activity_raw_list = fov_analysis.get_spike_metric(
-                "oasis", "spike_population_activity_raw"
+    if child.spike_population_activity_raw is not None:
+        draw(
+            child.spike_population_activity_raw,
+            MEAN_RAW_ACTIVITY_COLOR,
+            MEAN_RAW_ACTIVITY_WIDTH,
+            "Raw Activity (Fraction Active)",
+        )
+    draw(
+        activity,
+        MEAN_SMOOTHED_ACTIVITY_COLOR,
+        MEAN_SMOOTHED_ACTIVITY_WIDTH,
+        "Smoothed Activity (Fraction Active)",
+    )
+    if parameters is not None:
+        threshold = parameters.burst_threshold / 100
+        pen = pg.mkPen(
+            THRESHOLD_COLOR, width=THRESHOLD_WIDTH, style=pg.QtCore.Qt.PenStyle.DashLine
+        )
+        line = pg.InfiniteLine(pos=threshold, angle=0, pen=pen)
+        plot.addItem(line)
+        if legend is not None:
+            legend.addItem(
+                pg.PlotDataItem(pen=pen), f"Burst Threshold ({threshold:.3f})"
             )
-            population_activity_raw = (
-                np.array(population_activity_raw_list)
-                if population_activity_raw_list
-                else None
+    # Historical origins remain unknown: do not reinterpret retained bounds as indices.
+    if known_origin:
+        for lo, hi in bounds:
+            region = pg.LinearRegionItem(
+                values=(lo, hi),
+                brush=pg.mkBrush(BURST_REGION_COLOR),
+                pen=pg.mkPen(None),
+                movable=False,
             )
-
-            # Get time axis from ALL ROIs
-            # (population activity was computed from all active ROIs)
-            _, _, time_axis = _get_population_spike_data(
-                engine, fov_name, rois=None, run_id=run_id
-            )
-
-            if time_axis.size == 0 or len(time_axis) != len(population_activity):
-                cali_logger.warning("Time axis length mismatch with stored data")
-                # Fall back to frame indices
-                time_axis = np.arange(len(population_activity)) / 10.0
-
-            # Convert stored frame indices to (start, end) tuples
-            bursts = list(zip(burst_starts, burst_ends))
-
-            # Get threshold from AnalysisSettings for display
-            burst_params = _get_burst_parameters(engine, fov_name, rois, run_id)
-            the_value = (burst_params[0] / 100.0) if burst_params else 0.5
-
-            # --- Draw raw + smoothed activity + threshold + burst regions ---
-            # Plot raw population activity (fraction active, black)
-            if population_activity_raw is not None:
-                plot.plot(
-                    time_axis,
-                    population_activity_raw,
-                    pen=pg.mkPen(
-                        MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH
-                    ),
-                    name="Raw Activity (Fraction Active)",
-                )
-
-            # Plot smoothed population activity (fraction active, magenta)
-            plot.plot(
-                time_axis,
-                population_activity,
-                pen=pg.mkPen(
-                    MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
-                ),
-                name="Smoothed Activity (Fraction Active)",
-            )
-
-            # Threshold line
-            threshold_line = pg.InfiniteLine(
-                pos=the_value,
-                angle=0,
-                pen=pg.mkPen(
-                    THRESHOLD_COLOR,
-                    width=THRESHOLD_WIDTH,
-                    style=pg.QtCore.Qt.PenStyle.DashLine,
-                ),
-            )
-            threshold_line.setZValue(5)
-            plot.addItem(threshold_line)
-
-            # Burst regions (green translucent)
-            # Burst indices are frame indices; map them to time_axis values
-            for start_idx, end_idx in bursts:
-                # Clamp indices to valid range
-                start_idx = max(0, min(start_idx, len(time_axis) - 1))
-                end_idx = max(0, min(end_idx, len(time_axis)))
-                if end_idx <= start_idx:
-                    continue
-                # Map frame indices to time values
-                t0 = float(time_axis[start_idx])
-                t1 = float(time_axis[min(end_idx - 1, len(time_axis) - 1)])
-
-                region = pg.LinearRegionItem(
-                    values=[t0, t1],
-                    brush=pg.mkBrush(BURST_REGION_COLOR),
-                    pen=pg.mkPen(None),
-                    movable=False,
-                )
-                region.setZValue(1)
-                plot.addItem(region)
-
-            # Add legend
-            if hasattr(widget, "legend") and widget.legend is not None:
-                widget.legend.clear()
-                raw_item = pg.PlotDataItem(
-                    pen=pg.mkPen(MEAN_RAW_ACTIVITY_COLOR, width=MEAN_RAW_ACTIVITY_WIDTH)
-                )
-                widget.legend.addItem(raw_item, "Raw Activity (Fraction Active)")
-                smoothed_item = pg.PlotDataItem(
-                    pen=pg.mkPen(
-                        MEAN_SMOOTHED_ACTIVITY_COLOR, width=MEAN_SMOOTHED_ACTIVITY_WIDTH
-                    )
-                )
-                widget.legend.addItem(
-                    smoothed_item, "Smoothed Activity (Fraction Active)"
-                )
-                threshold_item = pg.PlotDataItem(
-                    pen=pg.mkPen(
-                        THRESHOLD_COLOR,
-                        width=THRESHOLD_WIDTH,
-                        style=pg.QtCore.Qt.PenStyle.DashLine,
-                    )
-                )
-                widget.legend.addItem(
-                    threshold_item, f"Burst Threshold ({the_value:.3f})"
-                )
-                burst_item = pg.PlotDataItem(
+            region.setZValue(1)
+            plot.addItem(region)
+        if bounds and legend is not None:
+            legend.addItem(
+                pg.PlotDataItem(
                     pen=pg.mkPen(
                         BURST_REGION_COLOR_LEGEND, width=BURST_REGION_LEGEND_WIDTH
                     )
-                )
-                widget.legend.addItem(burst_item, "Detected Bursts")
-                widget.legend.setVisible(True)
-
-            # --- Stats text in title ---
-            stats_text = _burst_statistics_text(bursts, time_axis)
-            title = f"Population Burst Activity (Inferred Spikes)\n{stats_text}"
-            plot.setTitle(title)
-
-            plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Fraction of Active ROIs [0,1])")
-
-            # Set range once everything is added
-            vb.setRange(yRange=(0.0, 1.0))
-        else:
-            cali_logger.warning(
-                "Pre-computed spike burst data is incomplete "
-                "(missing population activity)"
+                ),
+                "Detected Bursts",
             )
-            plot.setTitle(
-                "Population Burst Activity\n"
-                "(No pre-computed data available - please re-run analysis)"
-            )
-            plot.setLabel("bottom", "Time (s)")
-            plot.setLabel("left", "Population Activity")
-    else:
-        cali_logger.warning("No spike burst analysis data found in database")
-        plot.setTitle(
-            "Population Burst Activity\n(No data found - please run analysis first)"
-        )
-        plot.setLabel("bottom", "Time (s)")
-        plot.setLabel("left", "Population Activity")
-
-
-# -----------------------------------------------------------------------------#
-# Burst parameter retrieval
-# -----------------------------------------------------------------------------#
-def _get_burst_parameters(
-    engine: Engine,
-    fov_name: str,  # kept for API symmetry; currently unused
-    rois: list[int] | None = None,  # kept for API symmetry; currently unused
-    run_id: int | None = None,
-) -> tuple[float, float, float] | None:
-    """Get burst detection parameters from AnalysisSettings.
-
-    Returns (burst_threshold, burst_min_duration_ms, burst_gaussian_sigma) if found.
-    All returned in original units from database (threshold in %, duration in ms, sigma
-    in seconds).
-    """
-    from sqlmodel import Session, select
-
-    from cali.sqlmodel._model import AnalysisSettings
-
-    ensure_schema_current(engine)
-    with Session(engine) as session:
-        # Prefer settings from the given run_id
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result and result.analysis_settings_id is not None:
-                settings = session.get(AnalysisSettings, result.analysis_settings_id)
-                if settings:
-                    return (
-                        settings.burst_threshold,
-                        settings.burst_min_duration,  # milliseconds
-                        settings.burst_gaussian_sigma,  # seconds
-                    )
-
-        # Fallback: get settings from the first available run that has them
-        stmt = (
-            select(CaliResult)
-            .where(CaliResult.analysis_settings_id.is_not(None))  # type: ignore
-            .limit(1)
-        )
-        result = session.exec(stmt).first()
-        if result and result.analysis_settings_id is not None:
-            settings = session.get(AnalysisSettings, result.analysis_settings_id)
-            if settings:
-                return (
-                    settings.burst_threshold,
-                    settings.burst_min_duration,  # milliseconds
-                    settings.burst_gaussian_sigma,  # seconds
-                )
-
-    cali_logger.warning("No valid analysis settings found for burst parameters.")
-    return None
-
-
-# -----------------------------------------------------------------------------#
-# Population spike data extraction
-# -----------------------------------------------------------------------------#
-def _get_population_spike_data(
-    engine: Engine,
-    fov_name: str,
-    rois: list[int] | None = None,
-    run_id: int | None = None,
-) -> tuple[np.ndarray | None, list[str], np.ndarray]:
-    """Extract population spike data from database.
-
-    Returns
-    -------
-    (spike_trains_array, roi_names, time_axis)
-    """
-    from sqlalchemy.orm import selectinload
-    from sqlmodel import Session, col, select
-
-    from cali.sqlmodel._model import FOV
-
-    ensure_schema_current(engine)
-    with Session(engine) as session:
-        # Get detection_settings_id from the run if run_id is provided
-        detection_settings_id: int | None = None
-        if run_id is not None:
-            result = session.get(CaliResult, run_id)
-            if result:
-                detection_settings_id = result.detection_settings_id
-
-        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
-
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-
-        # Filter by detection settings if we have a run_id
-        if detection_settings_id is not None:
-            stmt = stmt.where(col(ROI.detection_settings_id) == detection_settings_id)
-
-        stmt = stmt.where(col(ROI.active) == True).options(  # noqa: E712
-            selectinload(ROI.traces_history),
-            selectinload(ROI.data_analysis_history),
-        )
-
-        roi_results = session.exec(stmt).all()
-
-    spike_trains: list[np.ndarray] = []
-    roi_names: list[str] = []
-    rois_rec_time: list[float] = []
-
-    for roi in roi_results:
-        traces = _get_traces_for_run(roi, run_id)
-        if traces is None or not traces.get_spike_values("oasis"):
-            continue
-
-        spikes = np.asarray(traces.get_spike_values("oasis"), dtype=float)
-
-        data_analysis = _get_data_analysis_for_run(roi, run_id)
-        threshold = (
-            data_analysis.get_spike_metric("oasis", "threshold")
-            if data_analysis
-            else 0.0
-        )
-        if threshold is None:
-            threshold = 0.0
-
-        # Threshold + binarize
-        spikes[spikes <= threshold] = 0.0
-        spike_train = (spikes > 0.0).astype(float)
-
-        if spike_train.sum() == 0:
-            continue
-
-        spike_trains.append(spike_train)
-        roi_names.append(str(roi.label_value))
-
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-    if len(spike_trains) < 2:
-        return None, [], np.array([])
-
-    # Pad / truncate to common length
-    lengths = np.array([len(t) for t in spike_trains], dtype=int)
-    max_length = int(lengths.max())
-
-    spike_trains_array = np.zeros((len(spike_trains), max_length), dtype=float)
-    for i, train in enumerate(spike_trains):
-        L = len(train)
-        if L >= max_length:
-            spike_trains_array[i, :] = train[:max_length]
-        else:
-            spike_trains_array[i, :L] = train
-
-    # Time axis from recording time if available, else frames @ 10Hz
-    if rois_rec_time:
-        avg_rec_time = float(np.mean(rois_rec_time))
-        time_axis = np.linspace(0.0, avg_rec_time, max_length)
-    else:
-        time_axis = np.arange(max_length) / 10.0
-
-    return spike_trains_array, roi_names, time_axis
+    count = child.spike_burst_count
+    count_text = str(count) if count is not None else "unknown"
+    rate = (
+        f"{count * 60 / duration:.2f}/min"
+        if count is not None and duration
+        else "unknown"
+    )
+    average = child.spike_burst_avg_duration
+    average_text = f"{average:.2f} s" if average is not None else "unknown"
+    interval = child.spike_burst_avg_interval
+    interval_text = f"{interval:.2f} s" if interval is not None else "unknown"
+    plot.setTitle(
+        title + f"\nBursts: {count_text}; Rate: {rate}; "
+        f"Mean Duration: {average_text}; Mean Interval: {interval_text}"
+    )
+    if legend is not None:
+        legend.setVisible(True)
+    vb.setRange(yRange=(0.0, 1.0))
 
 
 # -----------------------------------------------------------------------------#
@@ -675,6 +456,8 @@ def _plot_inferred_spikes_normalized_with_bursts(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot normalized inferred spikes with superimposed *global* burst periods.
 
@@ -682,6 +465,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
     (global network activity). The ROI selection only affects which traces are
     drawn, not how bursts are defined.
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
@@ -709,15 +493,12 @@ def _plot_inferred_spikes_normalized_with_bursts(
     # ------------- Get pre-computed burst data from FOVAnalysis -------------#
     fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
 
-    bursts: list[tuple[int, int]] = []
-    if (
-        fov_analysis is not None
-        and fov_analysis.get_spike_metric("oasis", "spike_burst_starts") is not None
-    ):
-        # Use stored burst data
-        burst_starts = fov_analysis.get_spike_metric("oasis", "spike_burst_starts")
-        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
-        bursts = list(zip(burst_starts, burst_ends))
+    child = (
+        selected_spike_fov(fov_analysis, spike_method)
+        if fov_analysis is not None
+        else None
+    )
+    bursts = spike_burst_bounds(child) if child is not None else []
 
     # -------------------- Plot normalized spikes (subset) -------------------#
     from cali.plot._single_wells_plots.spikes._plot_inferred_spikes import (
@@ -732,7 +513,8 @@ def _plot_inferred_spikes_normalized_with_bursts(
         run_id=run_id,
         raw=False,
         normalize=True,
-        active_only=False,
+        active_only=True,
+        spike_method=spike_method,
         den_dff=False,
         thresholds=False,
     )
@@ -750,7 +532,7 @@ def _plot_inferred_spikes_normalized_with_bursts(
 
             # Use frame indices directly (matching the underlying plot)
             region = pg.LinearRegionItem(
-                values=(float(start_idx), float(end_idx - 1)),
+                values=(float(start_idx), float(end_idx)),
                 brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
@@ -776,6 +558,8 @@ def _plot_inferred_spike_raster_with_bursts(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot thresholded spike raster with superimposed *global* burst periods.
 
@@ -787,6 +571,7 @@ def _plot_inferred_spike_raster_with_bursts(
         _generate_spike_raster_plot,
     )
 
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
@@ -814,19 +599,22 @@ def _plot_inferred_spike_raster_with_bursts(
     # ------------- Get pre-computed burst data from FOVAnalysis -------------#
     fov_analysis = _get_fov_analysis_for_run(engine, fov_name, run_id)
 
-    bursts: list[tuple[int, int]] = []
-    if (
-        fov_analysis is not None
-        and fov_analysis.get_spike_metric("oasis", "spike_burst_starts") is not None
-    ):
-        # Use stored burst data
-        burst_starts = fov_analysis.get_spike_metric("oasis", "spike_burst_starts")
-        burst_ends = fov_analysis.get_spike_metric("oasis", "spike_burst_ends") or []
-        bursts = list(zip(burst_starts, burst_ends))
+    child = (
+        selected_spike_fov(fov_analysis, spike_method)
+        if fov_analysis is not None
+        else None
+    )
+    bursts = spike_burst_bounds(child) if child is not None else []
 
     # -------------------- Plot raster (subset) -------------------#
     _generate_spike_raster_plot(
-        widget, engine, fov_name, rois=rois, run_id=run_id, edges=True
+        widget,
+        engine,
+        fov_name,
+        rois=rois,
+        run_id=run_id,
+        edges=True,
+        spike_method=spike_method,
     )
 
     # ------------------------ Overlay global bursts ------------------------ #
@@ -842,7 +630,7 @@ def _plot_inferred_spike_raster_with_bursts(
 
             # Use frame indices directly (matching the underlying plot)
             region = pg.LinearRegionItem(
-                values=(float(start_idx), float(end_idx - 1)),
+                values=(float(start_idx), float(end_idx)),
                 brush=pg.mkBrush(BURST_REGION_COLOR),
                 pen=pg.mkPen(None),
                 movable=False,
@@ -851,9 +639,13 @@ def _plot_inferred_spike_raster_with_bursts(
             plot.addItem(region)
 
         # Update title to indicate burst overlay
+        event_label = (
+            "Threshold Excursion Starts"
+            if spike_method == "cascade"
+            else "Rising Edges"
+        )
         plot.setTitle(
-            "Inferred Spike Events Raster Plot (Thresholded - Rising Edges) "
-            "with Network Bursts"
+            f"[{spike_method.upper()}] Spike Raster ({event_label}) with Network Bursts"
         )
 
         # Add legend for detected bursts

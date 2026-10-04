@@ -191,8 +191,8 @@ def test_query_rate_computed_from_population_activity(
     assert abs(fov_wt_0["rate_per_min"] - expected_rate) < 1e-9
 
 
-def test_query_rate_zero_when_no_population_activity() -> None:
-    """When spike_population_activity is None/empty, rate falls back to 0.0."""
+def test_query_rate_unknown_when_no_population_activity() -> None:
+    """Without a stored population duration, the burst rate remains unknown."""
     engine = create_engine("sqlite:///:memory:")
     create_database_and_tables(engine)
 
@@ -238,7 +238,7 @@ def test_query_rate_zero_when_no_population_activity() -> None:
     wt_fovs = {
         fov_name: m for well_d in data["WT"].values() for fov_name, m in well_d.items()
     }
-    assert wt_fovs["fov_0"]["rate_per_min"] == 0.0
+    assert "rate_per_min" not in wt_fovs["fov_0"]
     engine.dispose(close=True)
 
 
@@ -247,8 +247,8 @@ def test_query_rate_zero_when_no_population_activity() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_query_excludes_fovs_with_zero_burst_count() -> None:
-    """FOVs with spike_burst_count=0 are excluded from results."""
+def test_query_preserves_fovs_with_zero_burst_count() -> None:
+    """Zero is an observed count; missing durations and rates remain unknown."""
     engine = create_engine("sqlite:///:memory:")
     create_database_and_tables(engine)
 
@@ -288,7 +288,7 @@ def test_query_excludes_fovs_with_zero_burst_count() -> None:
         session.commit()
 
     data = _query_burst_metrics_by_condition(engine, run_id)
-    assert data == {}, f"Expected empty dict, got {data}"
+    assert data == {"WT": {"W0": {"fov_zero": {"count": 0.0}}}}
     engine.dispose(close=True)
 
 

@@ -1971,6 +1971,8 @@ def export_multi_well_to_csv(
     run_id: int,
     db_path: Path,
     experiment_type: str | None = None,
+    *,
+    spike_methods: tuple[SpikeMethod, ...] | None = None,
 ) -> None:
     """Export all multi-well aggregated bar plot data to CSV files.
 
@@ -1990,36 +1992,55 @@ def export_multi_well_to_csv(
     experiment_type : str | None
         Experiment type (`"evoked"` or `"spontaneous"`).  Products
         whose `experiment_type` doesn't match are skipped.
+    spike_methods : tuple | None
+        Stored methods to export separately; None exports all available methods.
     """
     from cali.logger import cali_logger
     from cali.plot._main_plot import ANALYSIS_PRODUCTS, AnalysisGroup
+
+    from ._spike_export import (
+        _selected_methods,
+        available_spike_result_methods,
+        write_spike_metadata,
+    )
+
+    available = available_spike_result_methods(engine, run_id=run_id)
+    methods = _selected_methods(available, spike_methods)
+    # Resolve all spike products before writing, so invalid selected data cannot
+    # partially replace previously exported method files.
+    computed = []
+    for product in ANALYSIS_PRODUCTS:
+        if product.group != AnalysisGroup.MULTI_WELL or product.compute_fn is None:
+            continue
+        if (
+            product.experiment_type is not None
+            and product.experiment_type != experiment_type
+        ):
+            continue
+        choices = (
+            [method for method in methods if method in product.supported_spike_methods]
+            if product.supported_spike_methods is not None
+            else [None]
+        )
+        for method in choices:
+            try:
+                result = product.compute_data(engine, run_id, spike_method=method)
+            except Exception as e:
+                if method is not None:
+                    raise
+                cali_logger.debug(
+                    f"Skipping multi-well export for '{product.name}': {e}"
+                )
+                continue
+            if result is not None:
+                computed.append((product, method, result))
 
     output_dir = (
         db_path.parent / f"{db_path.stem}_exports" / f"run_{run_id}" / "multi_well"
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for product in ANALYSIS_PRODUCTS:
-        if product.group != AnalysisGroup.MULTI_WELL:
-            continue
-        if product.compute_fn is None:
-            continue
-        # Filter by experiment type
-        if (
-            product.experiment_type is not None
-            and product.experiment_type != experiment_type
-        ):
-            continue
-
-        try:
-            result = product.compute_data(engine, run_id)
-        except Exception as e:
-            cali_logger.debug(f"Skipping multi-well export for '{product.name}': {e}")
-            continue
-
-        if result is None:
-            continue
-
+    for product, method, result in computed:
         bar_data, _name, _units = result
         # Build DataFrame from BarPlotData
         well_values = bar_data["well_values_list"]
@@ -2052,18 +2073,19 @@ def export_multi_well_to_csv(
         df = pd.DataFrame(rows)
         # Sanitize filename from product name
         safe_name = product.name.replace(" ", "_").replace("/", "_").lower()
+        if method is not None and (method != "oasis" or len(available) > 1):
+            if not safe_name.startswith(method + "_"):
+                safe_name = method + "_" + safe_name
         csv_path = output_dir / f"{safe_name}.csv"
         df.to_csv(csv_path, index=False)
         if product.supported_spike_methods is not None:
-            from ._spike_export import write_spike_metadata
-
             write_spike_metadata(
                 csv_path.with_suffix(".metadata.json"),
                 {
                     "schema_version": 1,
                     "product_id": product.product_id,
                     "run_id": run_id,
-                    "method": product.selected_method(None),
+                    "method": method,
                     "metric": _name,
                     "metric_units": _units,
                     "required_metrics": list(product.required_metrics),

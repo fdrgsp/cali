@@ -9,15 +9,18 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_fov_data import selected_spike_fov, spike_fov_matrix
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, FOVAnalysis
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 CMAP_NAME = "viridis"
@@ -32,6 +35,7 @@ def _get_spike_max_lag_correlation_matrix_from_db(
     fov_name: str,
     run_id: int | None = None,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Get the pre-computed spike max-lag correlation matrix from database.
 
@@ -46,11 +50,15 @@ def _get_spike_max_lag_correlation_matrix_from_db(
     rising_edges : bool
         If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     Returns
     -------
     tuple[np.ndarray | None, list[int] | None]
         (correlation_matrix, roi_labels) or (None, None) if not found
     """
+    canonical_spike_methods((spike_method,))
     if run_id is None:
         cali_logger.warning("No run ID specified for spike max-lag correlation plot.")
         return None, None
@@ -73,19 +81,23 @@ def _get_spike_max_lag_correlation_matrix_from_db(
                 )
                 return None, None
 
+            child = selected_spike_fov(fov_analysis, spike_method)
+            if child is None:
+                return None, None
+
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
                 corr_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_max_lag_correlation_matrix_rising_edges"
+                    spike_method, "spike_max_lag_correlation_matrix_rising_edges"
                 )
                 matrix_type = "rising edges"
             else:
                 corr_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_max_lag_correlation_matrix"
+                    spike_method, "spike_max_lag_correlation_matrix"
                 )
                 matrix_type = "thresholded binary"
 
-            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            spike_roi_labels = fov_analysis.get_spike_roi_labels(spike_method)
             if corr_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike max-lag "
@@ -93,8 +105,12 @@ def _get_spike_max_lag_correlation_matrix_from_db(
                 )
                 return None, None
 
-            corr_matrix = np.asarray(corr_matrix_data, dtype=float)
-            roi_labels = list(spike_roi_labels)
+            corr_matrix, roi_labels = spike_fov_matrix(
+                fov_analysis,
+                spike_method,
+                "spike_max_lag_correlation_matrix"
+                + ("_rising_edges" if rising_edges else ""),
+            )
 
             return corr_matrix, roi_labels
     except OperationalError:
@@ -156,6 +172,7 @@ def _plot_spike_max_lag_correlation_data(
     run_id: int | None = None,
     title_suffix: str = "",
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot the spike max-lag cross-correlation matrix as a heatmap (pyqtgraph).
 
@@ -164,11 +181,15 @@ def _plot_spike_max_lag_correlation_data(
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -184,11 +205,12 @@ def _plot_spike_max_lag_correlation_data(
 
     # Query pre-computed correlation matrix from database
     correlation_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if correlation_matrix is None or roi_labels is None:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes Peak CCG at Optimal Lag (No data){title_suffix}"
         )
         plot.setLabel("bottom", "ROI")
@@ -200,6 +222,7 @@ def _plot_spike_max_lag_correlation_data(
 
     if len(rois_idxs) < 2:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes Peak CCG at Optimal Lag (Need ≥2 ROIs){title_suffix}"
         )
         plot.setLabel("bottom", "ROI")
@@ -237,6 +260,9 @@ def _plot_spike_max_lag_correlation_data(
         f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
         f"(median: {median_corr:.3f}){title_suffix}"
     )
+    if spike_method == "cascade":
+        title = title.replace("Rising Edges", "Threshold Excursion Starts")
+    title = f"[{spike_method.upper()}] {title}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")
@@ -332,6 +358,7 @@ def _get_ccg_zscore_matrix_from_db(
     fov_name: str,
     run_id: int | None = None,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[np.ndarray | None, list[int] | None]:
     """Get the pre-computed CCG z-score matrix from database.
 
@@ -352,11 +379,15 @@ def _get_ccg_zscore_matrix_from_db(
     rising_edges : bool
         If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     Returns
     -------
     tuple[np.ndarray | None, list[int] | None]
         (zscore_matrix, roi_labels) or (None, None) if not found
     """
+    canonical_spike_methods((spike_method,))
     if run_id is None:
         cali_logger.warning("No run ID specified for CCG z-score plot.")
         return None, None
@@ -379,19 +410,23 @@ def _get_ccg_zscore_matrix_from_db(
                 )
                 return None, None
 
+            child = selected_spike_fov(fov_analysis, spike_method)
+            if child is None:
+                return None, None
+
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
                 zscore_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_ccg_zscore_matrix_rising_edges"
+                    spike_method, "spike_ccg_zscore_matrix_rising_edges"
                 )
                 matrix_type = "rising edges"
             else:
                 zscore_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_ccg_zscore_matrix"
+                    spike_method, "spike_ccg_zscore_matrix"
                 )
                 matrix_type = "thresholded binary"
 
-            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            spike_roi_labels = fov_analysis.get_spike_roi_labels(spike_method)
             if zscore_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no CCG z-score "
@@ -399,8 +434,11 @@ def _get_ccg_zscore_matrix_from_db(
                 )
                 return None, None
 
-            zscore_matrix = np.asarray(zscore_matrix_data, dtype=float)
-            roi_labels = list(spike_roi_labels)
+            zscore_matrix, roi_labels = spike_fov_matrix(
+                fov_analysis,
+                spike_method,
+                "spike_ccg_zscore_matrix" + ("_rising_edges" if rising_edges else ""),
+            )
 
             return zscore_matrix, roi_labels
     except OperationalError:
@@ -424,6 +462,7 @@ def _plot_ccg_zscore_data(
     run_id: int | None = None,
     title_suffix: str = "",
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot the CCG z-score matrix as a heatmap (pyqtgraph).
 
@@ -447,12 +486,19 @@ def _plot_ccg_zscore_data(
         Optional suffix to add to plot titles
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
     vb.setAspectLocked(False)
@@ -467,11 +513,14 @@ def _plot_ccg_zscore_data(
 
     # Query pre-computed z-score matrix from database
     zscore_matrix, roi_labels = _get_ccg_zscore_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if zscore_matrix is None or roi_labels is None:
-        plot.setTitle(f"Inferred Spikes CCG Z-Score (No data){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes CCG Z-Score (No data){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -480,7 +529,10 @@ def _plot_ccg_zscore_data(
     zscores, rois_idxs = _filter_matrix_by_rois(zscore_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(f"Inferred Spikes CCG Z-Score (Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes CCG Z-Score (Need ≥2 ROIs){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -529,6 +581,9 @@ def _plot_ccg_zscore_data(
         f"Inferred Spikes CCG Z-Score ({spike_type}) "
         f"(median: {median_z:.2f}, {pct_significant:.1f}% significant){title_suffix}"
     )
+    if spike_method == "cascade":
+        title = title.replace("Rising Edges", "Threshold Excursion Starts")
+    title = f"[{spike_method.upper()}] {title}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")

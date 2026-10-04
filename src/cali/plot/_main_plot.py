@@ -188,9 +188,7 @@ MultiWellAnalyzer: TypeAlias = (
 )
 AnyAnalyzer: TypeAlias = "SingleWellAnalyzer | MultiWellAnalyzer"
 # Headless compute function: (engine, run_id) -> (BarPlotData, name, units) | None
-ComputeFn: TypeAlias = (
-    "Callable[[Engine, int | None], tuple[BarPlotData, str, str] | None]"
-)
+ComputeFn: TypeAlias = "Callable[..., tuple[BarPlotData, str, str] | None]"
 
 
 @dataclass
@@ -273,6 +271,8 @@ class AnalysisProduct:
             metrics = get_stored_spike_capabilities(engine, run_id).get(method, set())
             if not set(self.required_metrics) <= metrics:
                 return None
+        if self.supported_spike_methods == ("oasis", "cascade"):
+            return self.compute_fn(engine, run_id, spike_method=method)
         return self.compute_fn(engine, run_id)
 
 
@@ -703,7 +703,7 @@ AnalysisProduct(
 # Inferred Spike Burst Analysis Group
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_burst_activity_analysis",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_population_activity",),
     name="Inferred Spikes Thresholded Burst Activity Analysis",
     group=AnalysisGroup.SINGLE_WELL,
@@ -713,8 +713,8 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_normalized_with_network_bursts",
-    supported_spike_methods=("oasis",),
-    required_metrics=("spike_population_activity",),
+    supported_spike_methods=("oasis", "cascade"),
+    required_metrics=("spike_population_activity", "spike_trace", "threshold"),
     name="Inferred Spikes Thresholded Normalized with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spikes_normalized_with_bursts,
@@ -723,8 +723,8 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spike_raster_with_network_bursts",
-    supported_spike_methods=("oasis",),
-    required_metrics=("spike_population_activity",),
+    supported_spike_methods=("oasis", "cascade"),
+    required_metrics=("spike_population_activity", "spike_trace", "threshold"),
     name="Inferred Spike Raster with Network Bursts",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_inferred_spike_raster_with_bursts,
@@ -795,7 +795,7 @@ AnalysisProduct(
 # Inferred Spikes Correlation Analysis Group
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_max_lag_correlation",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_correlation_matrix",),
     name="Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
@@ -805,7 +805,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_max_lag_correlation_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_correlation_matrix_rising_edges",),
     name="Inferred Spikes Thresholded Max Lag Correlation (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -814,7 +814,8 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_ccg_zscore_matrix",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="single_well.inferred_spikes_thresholded_ccg_z_score",
     name="Inferred Spikes Thresholded CCG Z-Score",
     group=AnalysisGroup.SINGLE_WELL,
@@ -823,7 +824,8 @@ AnalysisProduct(
     pipeline_stage=PipelineStage.ANALYSIS,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_ccg_zscore_matrix_rising_edges",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="single_well.inferred_spikes_thresholded_ccg_z_score_rising_edges",
     name="Inferred Spikes Thresholded CCG Z-Score (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -833,7 +835,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_max_lag_values",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_values_matrix",),
     name="Inferred Spikes Thresholded Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
@@ -843,7 +845,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_max_lag_values_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_values_matrix_rising_edges",),
     name="Inferred Spikes Thresholded Max Lag Values (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -853,7 +855,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_global_synchrony",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_jitter_synchrony_matrix",),
     name="Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
@@ -863,7 +865,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.inferred_spikes_thresholded_global_synchrony_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_jitter_synchrony_matrix_rising_edges",),
     name="Inferred Spikes Thresholded Global Synchrony (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1199,7 +1201,8 @@ AnalysisProduct(
 
 # Multi-Well Products — inferred spikes burst metrics
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_burst_count",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.inferred_spikes_burst_count_bar_plot",
     name="Inferred Spikes Burst Count Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
@@ -1209,7 +1212,8 @@ AnalysisProduct(
     compute_fn=compute_burst_count_data,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_burst_avg_duration",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.inferred_spikes_burst_average_duration_bar_plot",
     name="Inferred Spikes Burst Average Duration Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
@@ -1219,7 +1223,8 @@ AnalysisProduct(
     compute_fn=compute_burst_avg_duration_data,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_burst_avg_interval",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.inferred_spikes_burst_average_interval_bar_plot",
     name="Inferred Spikes Burst Average Interval Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
@@ -1229,7 +1234,8 @@ AnalysisProduct(
     compute_fn=compute_burst_avg_interval_data,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("spike_burst_count",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.inferred_spikes_burst_rate_bar_plot",
     name="Inferred Spikes Burst Rate Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
@@ -1259,8 +1265,9 @@ AnalysisProduct(
     compute_fn=compute_calcium_den_dff_correlation_data,
 )
 AnalysisProduct(
+    required_metrics=("global_spike_jitter_synchrony",),
     product_id="multi_well.spike_jitter_synchrony_bar_plot",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name="Spike Jitter Synchrony Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_spike_synchrony_bar_plot,
@@ -1269,8 +1276,9 @@ AnalysisProduct(
     compute_fn=compute_spike_synchrony_data,
 )
 AnalysisProduct(
+    required_metrics=("global_spike_jitter_synchrony_rising_edges",),
     product_id="multi_well.spike_jitter_synchrony_bar_plot_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name="Spike Jitter Synchrony Bar Plot (Rising Edges)",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_spike_synchrony_rising_edges_bar_plot,
@@ -1279,8 +1287,9 @@ AnalysisProduct(
     compute_fn=compute_spike_synchrony_rising_edges_data,
 )
 AnalysisProduct(
+    required_metrics=("global_spike_max_lag_correlation",),
     product_id="multi_well.spike_max_lag_correlation_bar_plot",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name="Spike Max-Lag Correlation Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_spike_correlation_bar_plot,
@@ -1289,8 +1298,9 @@ AnalysisProduct(
     compute_fn=compute_spike_correlation_data,
 )
 AnalysisProduct(
+    required_metrics=("global_spike_max_lag_correlation_rising_edges",),
     product_id="multi_well.spike_max_lag_correlation_bar_plot_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name="Spike Max-Lag Correlation Bar Plot (Rising Edges)",
     group=AnalysisGroup.MULTI_WELL,
     analyzer=plot_spike_correlation_rising_edges_bar_plot,
@@ -1299,7 +1309,8 @@ AnalysisProduct(
     compute_fn=compute_spike_correlation_rising_edges_data,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("fraction_significant_ccg_pairs",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.fraction_significant_ccg_pairs_bar_plot",
     name="Fraction Significant CCG Pairs Bar Plot",
     group=AnalysisGroup.MULTI_WELL,
@@ -1309,7 +1320,8 @@ AnalysisProduct(
     compute_fn=compute_fraction_significant_ccg_pairs_data,
 )
 AnalysisProduct(
-    supported_spike_methods=("oasis",),
+    required_metrics=("fraction_significant_ccg_pairs_rising_edges",),
+    supported_spike_methods=("oasis", "cascade"),
     product_id="multi_well.fraction_significant_ccg_pairs_bar_plot_rising_edges",
     name="Fraction Significant CCG Pairs Bar Plot (Rising Edges)",
     group=AnalysisGroup.MULTI_WELL,
@@ -1745,9 +1757,11 @@ def plot_multi_well_data(
                 text in {product.name, product.product_id}
                 and product.group == AnalysisGroup.MULTI_WELL
             ):
-                product.selected_method(spike_method)
+                method = product.selected_method(spike_method)
                 # Type narrowing: we know this is a MultiWellAnalyzer
                 analyzer = cast("MultiWellAnalyzer", product.analyzer)
+                if product.supported_spike_methods == ("oasis", "cascade"):
+                    return analyzer(widget, text, engine, run_id, spike_method=method)
                 return analyzer(widget, text, engine, run_id)
 
         # If we get here, analysis was not found

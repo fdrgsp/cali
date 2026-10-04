@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from cali.plot._spike_fov_data import selected_spike_fov, spike_population_duration
 from cali.sqlmodel._engine import ensure_schema_current
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 from ._util import (
     BarPlotData,
@@ -25,38 +27,23 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _MultilWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 
 def _query_burst_metrics_by_condition(
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
-    """Query pre-computed spike burst metrics from FOVAnalysis, grouped by condition.
-
-    Uses stored `FOVAnalysis.spike_burst_count`, `spike_burst_avg_duration`,
-    and `spike_burst_avg_interval` — the same values highlighted in the
-    single-well burst view.  FOVs with no detected bursts (count is None or 0)
-    are excluded, matching the behaviour of the calcium burst bar plots.
-
-    Parameters
-    ----------
-    engine : Engine
-        Database engine.
-    run_id : int | None
-        Filter by specific analysis run.
-
-    Returns
-    -------
-    dict[str, dict[str, dict[str, dict[str, float]]]]
-        Nested dict: {condition: {well_id: {fov_name: {"count": ...,
-        "avg_duration_sec": ..., "avg_interval_sec": ..., "rate_per_min": ...}}}}
-    """
+    """Read one method's population, preserving zero counts and unknown metrics."""
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session, col, select
 
     from cali.sqlmodel import FOV, FOVAnalysis, Well
     from cali.sqlmodel._model import AnalysisSettings, CaliResult
 
+    canonical_spike_methods((spike_method,))
     try:
         ensure_schema_current(engine)
         with Session(engine) as session:
@@ -65,59 +52,32 @@ def _query_burst_metrics_by_condition(
                 .join(FOV, FOVAnalysis.fov_id == FOV.id)
                 .join(Well, FOV.well_id == Well.id)
                 .join(CaliResult, FOVAnalysis.analysis_result_id == CaliResult.id)
-                .join(
+                .outerjoin(
                     AnalysisSettings,
-                    CaliResult.analysis_settings_id == AnalysisSettings.id,
+                    col(CaliResult.analysis_settings_id) == col(AnalysisSettings.id),
                 )
             )
             if run_id is not None:
                 stmt = stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
-            results = session.exec(stmt).all()
-
             data: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
-
-            for fa, fov, well, settings in results:
-                if not fa.get_spike_metric(
-                    "oasis", "spike_burst_count"
-                ):  # skip None and 0
+            for parent, fov, well, settings in session.exec(stmt).all():
+                child = selected_spike_fov(parent, spike_method)
+                if child is None or child.spike_burst_count is None:
                     continue
-
-                cond_label = _get_condition_label(well)
-                well_key = well.name
-
-                # Compute burst rate from stored population activity length
-                rate_per_min = 0.0
-                if (
-                    fa.get_spike_metric("oasis", "spike_population_activity")
-                    and settings.frame_rate
+                metrics = {"count": float(child.spike_burst_count)}
+                for key, value in (
+                    ("avg_duration_sec", child.spike_burst_avg_duration),
+                    ("avg_interval_sec", child.spike_burst_avg_interval),
                 ):
-                    n_frames = len(
-                        fa.get_spike_metric("oasis", "spike_population_activity")
-                    )
-                    duration_min = n_frames / settings.frame_rate / 60.0
-                    if duration_min > 0:
-                        rate_per_min = (
-                            fa.get_spike_metric("oasis", "spike_burst_count")
-                            / duration_min
-                        )
-
-                data.setdefault(cond_label, {}).setdefault(well_key, {})[fov.name] = {
-                    "count": float(fa.get_spike_metric("oasis", "spike_burst_count")),
-                    "avg_duration_sec": (
-                        float(fa.get_spike_metric("oasis", "spike_burst_avg_duration"))
-                        if fa.get_spike_metric("oasis", "spike_burst_avg_duration")
-                        is not None
-                        else 0.0
-                    ),
-                    "avg_interval_sec": (
-                        float(fa.get_spike_metric("oasis", "spike_burst_avg_interval"))
-                        if fa.get_spike_metric("oasis", "spike_burst_avg_interval")
-                        is not None
-                        else 0.0
-                    ),
-                    "rate_per_min": rate_per_min,
-                }
-
+                    if value is not None:
+                        metrics[key] = float(value)
+                duration = spike_population_duration(child, settings)
+                if duration is not None and duration > 0:
+                    metrics["rate_per_min"] = child.spike_burst_count * 60 / duration
+                condition = _get_condition_label(well)
+                data.setdefault(condition, {}).setdefault(well.name, {})[fov.name] = (
+                    metrics
+                )
         return data
     except OperationalError:
         logging.getLogger(__name__).debug(
@@ -134,6 +94,8 @@ def _plot_burst_metric(
     run_id: int | None,
     metric_key: str,
     units: str,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a single burst metric across conditions.
 
@@ -141,7 +103,9 @@ def _plot_burst_metric(
     metric_key: Key in the burst metrics dict (e.g. `"count"`, `"avg_duration_sec"`).
     units: Y-axis units label.
     """
-    data_by_condition = _query_burst_metrics_by_condition(engine, run_id)
+    data_by_condition = _query_burst_metrics_by_condition(
+        engine, run_id, spike_method=spike_method
+    )
 
     if not data_by_condition:
         widget.clear_plot()
@@ -150,7 +114,11 @@ def _plot_burst_metric(
     # Each FOV contributes a single scalar → use between-well SEM (weight=1)
     scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
         cond: {
-            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            well: {
+                fov: (m[metric_key], 1)
+                for fov, m in fov_dict.items()
+                if metric_key in m
+            }
             for well, fov_dict in well_dict.items()
         }
         for cond, well_dict in data_by_condition.items()
@@ -167,7 +135,7 @@ def _plot_burst_metric(
         data=plot_data,
         parameter=text,
         units=units,
-        title_suffix=" (Inferred Spikes)",
+        title_suffix=f" ({spike_method.upper()} Inferred Spikes)",
         bar_label="Mean ± SEM (per FOV)",
     )
 
@@ -177,9 +145,13 @@ def plot_burst_count_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot burst count across conditions."""
-    _plot_burst_metric(widget, text, engine, run_id, "count", "Count")
+    _plot_burst_metric(
+        widget, text, engine, run_id, "count", "Count", spike_method=spike_method
+    )
 
 
 def plot_burst_avg_duration_bar_plot(
@@ -187,9 +159,13 @@ def plot_burst_avg_duration_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot burst average duration across conditions."""
-    _plot_burst_metric(widget, text, engine, run_id, "avg_duration_sec", "s")
+    _plot_burst_metric(
+        widget, text, engine, run_id, "avg_duration_sec", "s", spike_method=spike_method
+    )
 
 
 def plot_burst_avg_interval_bar_plot(
@@ -197,9 +173,13 @@ def plot_burst_avg_interval_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot burst average interval across conditions."""
-    _plot_burst_metric(widget, text, engine, run_id, "avg_interval_sec", "s")
+    _plot_burst_metric(
+        widget, text, engine, run_id, "avg_interval_sec", "s", spike_method=spike_method
+    )
 
 
 def plot_burst_rate_bar_plot(
@@ -207,9 +187,19 @@ def plot_burst_rate_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot burst rate across conditions."""
-    _plot_burst_metric(widget, text, engine, run_id, "rate_per_min", "bursts/min")
+    _plot_burst_metric(
+        widget,
+        text,
+        engine,
+        run_id,
+        "rate_per_min",
+        "bursts/min",
+        spike_method=spike_method,
+    )
 
 
 def plot_inferred_spikes_frequency_bar_plot(
@@ -311,14 +301,22 @@ def _compute_burst_metric(
     metric_key: str,
     name: str,
     units: str,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute a single burst metric without rendering."""
-    data_by_condition = _query_burst_metrics_by_condition(engine, run_id)
+    data_by_condition = _query_burst_metrics_by_condition(
+        engine, run_id, spike_method=spike_method
+    )
     if not data_by_condition:
         return None
     scalar_data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {
         cond: {
-            well: {fov: (m[metric_key], 1) for fov, m in fov_dict.items()}
+            well: {
+                fov: (m[metric_key], 1)
+                for fov, m in fov_dict.items()
+                if metric_key in m
+            }
             for well, fov_dict in well_dict.items()
         }
         for cond, well_dict in data_by_condition.items()
@@ -326,40 +324,71 @@ def _compute_burst_metric(
     plot_data = _aggregate_fov_scalar_to_condition_stats(scalar_data)
     if not plot_data["conditions"]:
         return None
+    if spike_method == "cascade":
+        name = "CASCADE " + name.replace("Rising Edges", "Threshold Excursion Starts")
     return plot_data, name, units
 
 
 def compute_burst_count_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute burst count data without rendering."""
-    return _compute_burst_metric(engine, run_id, "count", "Burst Count", "Count")
+    return _compute_burst_metric(
+        engine, run_id, "count", "Burst Count", "Count", spike_method=spike_method
+    )
 
 
 def compute_burst_avg_duration_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute burst average duration data without rendering."""
     return _compute_burst_metric(
-        engine, run_id, "avg_duration_sec", "Burst Average Duration", "s"
+        engine,
+        run_id,
+        "avg_duration_sec",
+        "Burst Average Duration",
+        "s",
+        spike_method=spike_method,
     )
 
 
 def compute_burst_avg_interval_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute burst average interval data without rendering."""
     return _compute_burst_metric(
-        engine, run_id, "avg_interval_sec", "Burst Average Interval", "s"
+        engine,
+        run_id,
+        "avg_interval_sec",
+        "Burst Average Interval",
+        "s",
+        spike_method=spike_method,
     )
 
 
 def compute_burst_rate_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute burst rate data without rendering."""
     return _compute_burst_metric(
-        engine, run_id, "rate_per_min", "Burst Rate", "bursts/min"
+        engine,
+        run_id,
+        "rate_per_min",
+        "Burst Rate",
+        "bursts/min",
+        spike_method=spike_method,
     )
 
 
@@ -374,6 +403,7 @@ def _query_fov_scalar_by_condition(
     field_name: str,
     *,
     use_n_pairs_weight: bool = True,
+    spike_method: SpikeMethod = "oasis",
 ) -> dict[str, dict[str, dict[str, tuple[float, int]]]]:
     """Query a scalar FOVAnalysis field per FOV, grouped by condition and well.
 
@@ -385,6 +415,8 @@ def _query_fov_scalar_by_condition(
         Filter by specific analysis run.
     field_name : str
         Name of the ``FOVAnalysis`` attribute to read (must be a float field).
+    spike_method : {"oasis", "cascade"}
+        Requested stored population; calcium fields remain shared.
     use_n_pairs_weight : bool
         If True, weight is ``n_rois*(n_rois-1)//2`` (number of unique pairs).
         If False, weight is 1 (equal weight per FOV).
@@ -400,6 +432,7 @@ def _query_fov_scalar_by_condition(
     from cali.sqlmodel import FOV, FOVAnalysis, SpikeFOVAnalysis, Well
     from cali.sqlmodel._spike_fov_analysis import SPIKE_FOV_METRICS
 
+    canonical_spike_methods((spike_method,))
     try:
         ensure_schema_current(engine)
         with Session(engine) as session:
@@ -416,7 +449,9 @@ def _query_fov_scalar_by_condition(
                 stmt = stmt.join(
                     SpikeFOVAnalysis,
                     col(SpikeFOVAnalysis.fov_analysis_id) == FOVAnalysis.id,
-                ).where(SpikeFOVAnalysis.method == "oasis", col(field_col).is_not(None))
+                ).where(
+                    SpikeFOVAnalysis.method == spike_method, col(field_col).is_not(None)
+                )
             else:
                 stmt = stmt.where(col(field_col).is_not(None))
 
@@ -427,8 +462,15 @@ def _query_fov_scalar_by_condition(
 
             data: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             for fov_analysis, fov, well in results:
+                child = (
+                    selected_spike_fov(fov_analysis, spike_method)
+                    if is_spike_metric
+                    else None
+                )
+                if is_spike_metric and child is None:
+                    continue
                 value = (
-                    fov_analysis.get_spike_metric("oasis", field_name)
+                    getattr(child, field_name)
                     if is_spike_metric
                     else getattr(fov_analysis, field_name)
                 )
@@ -436,8 +478,8 @@ def _query_fov_scalar_by_condition(
                     continue  # pragma: no cover
 
                 roi_labels = (
-                    fov_analysis.get_spike_roi_labels("oasis")
-                    if is_spike_metric
+                    child.active_roi_labels
+                    if child is not None
                     else fov_analysis.calcium_active_roi_labels
                 )
                 if use_n_pairs_weight and roi_labels:
@@ -473,10 +515,15 @@ def _plot_fov_scalar_bar_plot(
     title_suffix: str = "",
     *,
     use_n_pairs_weight: bool = True,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a FOV-level scalar metric across conditions."""
     data_by_condition = _query_fov_scalar_by_condition(
-        engine, run_id, field_name, use_n_pairs_weight=use_n_pairs_weight
+        engine,
+        run_id,
+        field_name,
+        use_n_pairs_weight=use_n_pairs_weight,
+        spike_method=spike_method,
     )
     if not data_by_condition:
         widget.clear_plot()
@@ -488,12 +535,21 @@ def _plot_fov_scalar_bar_plot(
         widget.clear_plot()
         return
 
+    if spike_method == "cascade":
+        text = text.replace("Rising Edges", "Threshold Excursion Starts")
+        title_suffix = title_suffix.replace(
+            "Rising Edges", "Threshold Excursion Starts"
+        )
     _create_pyqtgraph_bar_plot(
         widget=widget,
         data=plot_data,
         parameter=text,
         units=units,
-        title_suffix=title_suffix,
+        title_suffix=(
+            f" [{spike_method.upper()}]" + title_suffix
+            if "spike" in field_name or "ccg" in field_name
+            else title_suffix
+        ),
         bar_label="Mean ± SEM (per FOV)",
     )
 
@@ -506,16 +562,23 @@ def _compute_fov_scalar_data(
     units: str,
     *,
     use_n_pairs_weight: bool = True,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute a FOV-level scalar metric without rendering (for CSV export)."""
     data_by_condition = _query_fov_scalar_by_condition(
-        engine, run_id, field_name, use_n_pairs_weight=use_n_pairs_weight
+        engine,
+        run_id,
+        field_name,
+        use_n_pairs_weight=use_n_pairs_weight,
+        spike_method=spike_method,
     )
     if not data_by_condition:
         return None
     plot_data = _aggregate_fov_scalar_to_condition_stats(data_by_condition)
     if not plot_data["conditions"]:
         return None
+    if spike_method == "cascade":
+        name = "CASCADE " + name.replace("Rising Edges", "Threshold Excursion Starts")
     return plot_data, name, units
 
 
@@ -524,6 +587,8 @@ def plot_spike_synchrony_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot inferred spikes global synchrony across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -534,11 +599,15 @@ def plot_spike_synchrony_bar_plot(
         field_name="global_spike_jitter_synchrony",
         units="Synchrony",
         title_suffix=" (Jitter Synchrony)",
+        spike_method=spike_method,
     )
 
 
 def compute_spike_synchrony_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute spike synchrony data without rendering."""
     return _compute_fov_scalar_data(
@@ -547,6 +616,7 @@ def compute_spike_synchrony_data(
         "global_spike_jitter_synchrony",
         "Spike Jitter Synchrony",
         "Synchrony",
+        spike_method=spike_method,
     )
 
 
@@ -555,6 +625,8 @@ def plot_spike_correlation_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot inferred spikes global max-lag correlation across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -565,11 +637,15 @@ def plot_spike_correlation_bar_plot(
         field_name="global_spike_max_lag_correlation",
         units="Correlation",
         title_suffix=" (Max-Lag Cross-Correlation)",
+        spike_method=spike_method,
     )
 
 
 def compute_spike_correlation_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute spike correlation data without rendering."""
     return _compute_fov_scalar_data(
@@ -578,6 +654,7 @@ def compute_spike_correlation_data(
         "global_spike_max_lag_correlation",
         "Spike Max-Lag Correlation",
         "Correlation",
+        spike_method=spike_method,
     )
 
 
@@ -658,6 +735,8 @@ def plot_spike_synchrony_rising_edges_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike jitter synchrony (rising edges) across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -668,11 +747,15 @@ def plot_spike_synchrony_rising_edges_bar_plot(
         field_name="global_spike_jitter_synchrony_rising_edges",
         units="Synchrony",
         title_suffix=" (Jitter Synchrony, Rising Edges)",
+        spike_method=spike_method,
     )
 
 
 def compute_spike_synchrony_rising_edges_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute spike synchrony (rising edges) data without rendering."""
     return _compute_fov_scalar_data(
@@ -681,6 +764,7 @@ def compute_spike_synchrony_rising_edges_data(
         "global_spike_jitter_synchrony_rising_edges",
         "Spike Jitter Synchrony (Rising Edges)",
         "Synchrony",
+        spike_method=spike_method,
     )
 
 
@@ -689,6 +773,8 @@ def plot_spike_correlation_rising_edges_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike max-lag correlation (rising edges) across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -699,11 +785,15 @@ def plot_spike_correlation_rising_edges_bar_plot(
         field_name="global_spike_max_lag_correlation_rising_edges",
         units="Correlation",
         title_suffix=" (Max-Lag Cross-Correlation, Rising Edges)",
+        spike_method=spike_method,
     )
 
 
 def compute_spike_correlation_rising_edges_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute spike correlation (rising edges) data without rendering."""
     return _compute_fov_scalar_data(
@@ -712,6 +802,7 @@ def compute_spike_correlation_rising_edges_data(
         "global_spike_max_lag_correlation_rising_edges",
         "Spike Max-Lag Correlation (Rising Edges)",
         "Correlation",
+        spike_method=spike_method,
     )
 
 
@@ -725,6 +816,8 @@ def plot_fraction_significant_ccg_pairs_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot fraction of significant CCG pairs across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -735,11 +828,15 @@ def plot_fraction_significant_ccg_pairs_bar_plot(
         field_name="fraction_significant_ccg_pairs",
         units="Fraction",
         title_suffix=" (|z| > 2)",
+        spike_method=spike_method,
     )
 
 
 def compute_fraction_significant_ccg_pairs_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute fraction of significant CCG pairs data without rendering."""
     return _compute_fov_scalar_data(
@@ -748,6 +845,7 @@ def compute_fraction_significant_ccg_pairs_data(
         "fraction_significant_ccg_pairs",
         "Fraction Significant CCG Pairs",
         "Fraction",
+        spike_method=spike_method,
     )
 
 
@@ -756,6 +854,8 @@ def plot_fraction_significant_ccg_pairs_rising_edges_bar_plot(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot fraction of significant CCG pairs (rising edges) across conditions."""
     _plot_fov_scalar_bar_plot(
@@ -766,11 +866,15 @@ def plot_fraction_significant_ccg_pairs_rising_edges_bar_plot(
         field_name="fraction_significant_ccg_pairs_rising_edges",
         units="Fraction",
         title_suffix=" (|z| > 2, Rising Edges)",
+        spike_method=spike_method,
     )
 
 
 def compute_fraction_significant_ccg_pairs_rising_edges_data(
-    engine: Engine, run_id: int | None
+    engine: Engine,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[BarPlotData, str, str] | None:
     """Compute fraction of significant CCG pairs (rising edges) data."""
     return _compute_fov_scalar_data(
@@ -779,4 +883,5 @@ def compute_fraction_significant_ccg_pairs_rising_edges_data(
         "fraction_significant_ccg_pairs_rising_edges",
         "Fraction Significant CCG Pairs (Rising Edges)",
         "Fraction",
+        spike_method=spike_method,
     )

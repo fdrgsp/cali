@@ -9,15 +9,18 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_fov_data import selected_spike_fov, spike_fov_matrix
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 CMAP_NAME = "CET-D1A"
@@ -32,6 +35,7 @@ def _get_spike_max_lag_values_matrix_from_db(
     fov_name: str,
     run_id: int | None = None,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[np.ndarray | None, list[int] | None, int | None]:
     """Get the pre-computed spike max-lag values matrix from database.
 
@@ -46,11 +50,15 @@ def _get_spike_max_lag_values_matrix_from_db(
     rising_edges : bool
         If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     Returns
     -------
     tuple[np.ndarray | None, list[int] | None, int | None]
         (lag_matrix, roi_labels, max_lag_frames) or (None, None, None) if not found
     """
+    canonical_spike_methods((spike_method,))
     if run_id is None:
         cali_logger.warning("No run ID specified for spike max-lag values plot.")
         return None, None, None
@@ -73,19 +81,23 @@ def _get_spike_max_lag_values_matrix_from_db(
                 )
                 return None, None, None
 
+            child = selected_spike_fov(fov_analysis, spike_method)
+            if child is None:
+                return None, None, None
+
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
                 lag_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_max_lag_values_matrix_rising_edges"
+                    spike_method, "spike_max_lag_values_matrix_rising_edges"
                 )
                 matrix_type = "rising edges"
             else:
                 lag_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_max_lag_values_matrix"
+                    spike_method, "spike_max_lag_values_matrix"
                 )
                 matrix_type = "thresholded binary"
 
-            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            spike_roi_labels = fov_analysis.get_spike_roi_labels(spike_method)
             if lag_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike max-lag values "
@@ -93,8 +105,12 @@ def _get_spike_max_lag_values_matrix_from_db(
                 )
                 return None, None, None
 
-            lag_matrix = np.asarray(lag_matrix_data, dtype=int)
-            roi_labels = list(spike_roi_labels)
+            lag_matrix, roi_labels = spike_fov_matrix(
+                fov_analysis,
+                spike_method,
+                "spike_max_lag_values_matrix"
+                + ("_rising_edges" if rising_edges else ""),
+            )
 
             # Get max_lag from analysis settings
             max_lag_frames = None
@@ -109,9 +125,14 @@ def _get_spike_max_lag_values_matrix_from_db(
                 ).first()
                 if analysis_settings:
                     # Convert from ms to frames
-                    max_lag_ms = analysis_settings.spikes_sync_cross_corr_lag
-                    frame_rate = analysis_settings.frame_rate
-                    max_lag_frames = int(max_lag_ms * frame_rate / 1000.0)
+                    max_lag_ms = analysis_settings.get_spike_settings(
+                        spike_method
+                    ).spikes_sync_cross_corr_lag
+                    frame_rate = child.frame_rate_hz
+                    if frame_rate is None and spike_method == "oasis":
+                        frame_rate = analysis_settings.frame_rate
+                    if frame_rate is not None:
+                        max_lag_frames = int(max_lag_ms * frame_rate / 1000.0)
 
             return lag_matrix, roi_labels, max_lag_frames
     except OperationalError:
@@ -173,6 +194,7 @@ def _plot_spike_max_lag_values_data(
     run_id: int | None = None,
     title_suffix: str = "",
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot the spike max-lag values as a heatmap (pyqtgraph).
 
@@ -197,12 +219,19 @@ def _plot_spike_max_lag_values_data(
         Optional suffix to add to plot titles (e.g., " - Stimulated")
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -222,11 +251,14 @@ def _plot_spike_max_lag_values_data(
         roi_labels,
         max_lag_frames,
     ) = _get_spike_max_lag_values_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if lag_matrix is None or roi_labels is None:
-        plot.setTitle(f"Inferred Spikes Max-Lag Values (No data){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes Max-Lag Values (No data){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI (j)")
         plot.setLabel("left", "ROI (i)")
         return
@@ -235,7 +267,10 @@ def _plot_spike_max_lag_values_data(
     lags, rois_idxs = _filter_matrix_by_rois(lag_matrix, roi_labels, rois)
 
     if len(rois_idxs) < 2:
-        plot.setTitle(f"Inferred Spikes Max-Lag Values (Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes Max-Lag Values (Need ≥2 ROIs){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI (j)")
         plot.setLabel("left", "ROI (i)")
         return
@@ -268,6 +303,9 @@ def _plot_spike_max_lag_values_data(
 
     spike_type = "Rising Edges" if rising_edges else "Thresholded"
     title = f"Inferred Spikes Max-Lag Values ({spike_type}) (frames){title_suffix}"
+    if spike_method == "cascade":
+        title = title.replace("Rising Edges", "Threshold Excursion Starts")
+    title = f"[{spike_method.upper()}] {title}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (j)")
     plot.setLabel("left", "ROI (i)")

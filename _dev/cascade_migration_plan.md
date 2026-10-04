@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports and P6c2a plot registry/ROI consumers implemented; schema-12 population coordinates added; real-plate performance, remaining population/evoked/PCA consumers, comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers and P6c2b population/burst/matrix consumers implemented; schema-12 population coordinates added; real-plate performance, remaining evoked/sorted/PCA consumers, comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,9 +442,8 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6c2b method-aware population/matrix/burst, evoked and PCA consumers,
-then comparison selection,
-including per-pillar activity and population-array coordinate handling. Complete those checks before
+**Next landing step:** P6c2c method-aware evoked/sorted consumers and PCA feature selection,
+then comparison selection and valid-interval alignment. Complete those checks before
 opening the full runner's CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
@@ -957,6 +956,53 @@ Remaining P6c2 work is method-bound population/burst/matrix rendering, evoked
 consumers, PCA feature selection and comparison interval alignment. GUI results-method
 selection remains part of P8. Full CASCADE runner spike analysis stays gated until those consumers
 are safe; this is the registry/ROI consumer slice, not completion of P6 or GUI exposure.
+
+P6c2b — population, burst and matrix consumers (2026-10-03):
+
+- Shared population/burst, jitter synchrony, max-lag correlation/lag and CCG
+  matrix products now select either stored method through registry dispatch.
+  The FOV reader validates the selected method, units, provenance, unique labels,
+  coordinate completeness and matrix dimensions. Both matrix axes preserve the
+  selected method's stored label order. Missing methods never substitute OASIS.
+  Switching to missing results clears stale images and colorbars; titles identify
+  the selected method and CASCADE onset products say threshold excursion starts.
+- Population curves use their stored retained interval, including CASCADE's
+  cropped common interval. Burst overlays use retained half-open bounds directly,
+  with no origin shift or end-minus-one conversion. Normalized traces/raster
+  overlays select the same method and activity flag. Historical unknown population
+  origins are labelled as sample indices and cannot receive retained-coordinate
+  burst overlays. Stored statistics remain readable; no 10 Hz axis is guessed.
+  Displayed burst thresholds come from the selected run/method's settings.
+- Burst rates use the population's stored valid span and frame rate, rather than
+  the parent OASIS analysis rate. Only historical OASIS rows retain their explicit
+  population-length/settings-rate fallback. Unknown CASCADE duration/rate remains
+  absent. Zero-burst FOVs contribute real zero counts/rates; absent mean durations,
+  intervals and rates remain unknown instead of invented zeros.
+- Multi-well burst/network plots and headless compute entry points select one
+  method's FOV rows and pair weights. Aggregated CSV export writes every stored
+  supported method separately, with qualified filenames for CASCADE/dual outputs,
+  preserving legacy names for OASIS-only runs. Sidecars retain product ID, selected
+  method, metric and units. Explicit unavailable requests and malformed selected
+  populations fail before any existing CSV files are replaced; shared calcium
+  products are exported once. All selected spike computations finish before writing.
+- Installed-wheel CI includes population/plot checks covering OASIS-only,
+  CASCADE-only and dual results, contradictory ROI union flags, reversed matrix
+  labels, independent method settings/rates, cropped origins, half-open bounds,
+  malformed stored rows, method switching and separate aggregate exports.
+
+Validation: **284 passed in 40.85 s** in focused plotting/legacy regressions;
+**2140 passed, 13 skipped in 270.35 s** in the full base/GUI suite;
+**66 passed in 9.40 s** in the final population/matrix checks after preserving the
+stored mean-interval title; **337 passed in 26.42 s** against the rebuilt installed
+final wheel, including real pretrained reference/cached inference, ROI/FOV analysis,
+method-aware exports and Qt plot semantics. Ruff lint/format pass; mypy adds no
+diagnostics (349 existing, down from 352). Tracked database fixtures were restored
+after validation; no migrated databases are committed.
+
+Remaining P6c2 work is method-aware evoked/sorted consumers, PCA feature selection
+and comparison interval alignment. The calcium/spike amplitude overlay remains
+OASIS-only. GUI results-method selection remains in P8, and full CASCADE runner
+spike analysis stays gated until the remaining consumers are safe.
 
 ## 0. TL;DR
 

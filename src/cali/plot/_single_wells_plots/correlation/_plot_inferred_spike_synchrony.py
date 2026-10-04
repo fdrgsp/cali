@@ -9,15 +9,18 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from cali.logger import cali_logger
+from cali.plot._spike_fov_data import selected_spike_fov, spike_fov_matrix
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, AnalysisSettings, CaliResult, FOVAnalysis
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 CMAP_NAME = "viridis"
@@ -32,6 +35,7 @@ def _get_spike_synchrony_matrix_from_db(
     fov_name: str,
     run_id: int | None = None,
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[np.ndarray | None, list[int] | None, float | None, float | None]:
     """Get the pre-computed spike synchrony matrix from database.
 
@@ -46,12 +50,16 @@ def _get_spike_synchrony_matrix_from_db(
     rising_edges : bool
         If True, use rising_edges matrix; otherwise use thresholded binary matrix
 
+    spike_method : {"oasis", "cascade"}
+        Stored method whose population, matrix and settings are displayed.
+
     Returns
     -------
     tuple[np.ndarray | None, list[int] | None, float | None, float | None]
         (synchrony_matrix, roi_labels, global_synchrony, jitter_window_ms)
         or (None, None, None, None)
     """
+    canonical_spike_methods((spike_method,))
     if run_id is None:
         cali_logger.warning("No run ID specified for spike synchrony plot.")
         return None, None, None, None
@@ -74,25 +82,29 @@ def _get_spike_synchrony_matrix_from_db(
                 )
                 return None, None, None, None
 
+            child = selected_spike_fov(fov_analysis, spike_method)
+            if child is None:
+                return None, None, None, None
+
             # Get the appropriate matrix based on rising_edges parameter
             if rising_edges:
                 sync_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_jitter_synchrony_matrix_rising_edges"
+                    spike_method, "spike_jitter_synchrony_matrix_rising_edges"
                 )
                 global_sync = fov_analysis.get_spike_metric(
-                    "oasis", "global_spike_jitter_synchrony_rising_edges"
+                    spike_method, "global_spike_jitter_synchrony_rising_edges"
                 )
                 matrix_type = "rising edges"
             else:
                 sync_matrix_data = fov_analysis.get_spike_metric(
-                    "oasis", "spike_jitter_synchrony_matrix"
+                    spike_method, "spike_jitter_synchrony_matrix"
                 )
                 global_sync = fov_analysis.get_spike_metric(
-                    "oasis", "global_spike_jitter_synchrony"
+                    spike_method, "global_spike_jitter_synchrony"
                 )
                 matrix_type = "thresholded binary"
 
-            spike_roi_labels = fov_analysis.get_spike_roi_labels("oasis")
+            spike_roi_labels = fov_analysis.get_spike_roi_labels(spike_method)
             if sync_matrix_data is None or spike_roi_labels is None:
                 cali_logger.info(
                     f"FOVAnalysis for {fov_name} has no spike synchrony matrix "
@@ -112,10 +124,16 @@ def _get_spike_synchrony_matrix_from_db(
                     )
                 ).first()
                 if analysis_settings:
-                    jitter_window_ms = analysis_settings.spikes_sync_jitter_window
+                    jitter_window_ms = analysis_settings.get_spike_settings(
+                        spike_method
+                    ).spikes_sync_jitter_window
 
-            sync_matrix = np.asarray(sync_matrix_data, dtype=float)
-            roi_labels = list(spike_roi_labels)
+            sync_matrix, roi_labels = spike_fov_matrix(
+                fov_analysis,
+                spike_method,
+                "spike_jitter_synchrony_matrix"
+                + ("_rising_edges" if rising_edges else ""),
+            )
 
             return sync_matrix, roi_labels, global_sync, jitter_window_ms
     except OperationalError:
@@ -162,6 +180,7 @@ def _plot_spike_synchrony_data(
     run_id: int | None = None,
     title_suffix: str = "",
     rising_edges: bool = False,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike-based synchrony analysis (pyqtgraph heatmap).
 
@@ -170,11 +189,15 @@ def _plot_spike_synchrony_data(
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     # Reset ViewBox settings that might have been set by previous plots
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -190,14 +213,18 @@ def _plot_spike_synchrony_data(
 
     # Query pre-computed synchrony matrix from database
     sync_matrix, roi_labels, global_synchrony, jitter_window_ms = (
-        _get_spike_synchrony_matrix_from_db(engine, fov_name, run_id, rising_edges)
+        _get_spike_synchrony_matrix_from_db(
+            engine, fov_name, run_id, rising_edges, spike_method
+        )
     )
 
     if sync_matrix is None or roi_labels is None:
         cali_logger.warning(
             "No spike synchrony data found for this FOV. Ensure analysis has been run."
         )
-        plot.setTitle(f"Inferred Spike Synchrony (No data){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] Inferred Spike Synchrony (No data){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -207,7 +234,10 @@ def _plot_spike_synchrony_data(
 
     if len(active_roi_ids) < 2:
         cali_logger.warning("Need at least 2 ROIs for synchrony plot.")
-        plot.setTitle(f"Inferred Spike Synchrony (Need ≥2 ROIs){title_suffix}")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spike Synchrony (Need ≥2 ROIs){title_suffix}"
+        )
         plot.setLabel("bottom", "ROI")
         plot.setLabel("left", "ROI")
         return
@@ -221,7 +251,8 @@ def _plot_spike_synchrony_data(
         else:
             global_synchrony = 0.0
     elif global_synchrony is None:
-        global_synchrony = 0.0
+        mask = ~np.eye(sync.shape[0], dtype=bool)
+        global_synchrony = float(np.median(sync[mask]))
 
     # Format jitter window for title
     if jitter_window_ms is not None:
@@ -251,6 +282,9 @@ def _plot_spike_synchrony_data(
     vb.setAspectLocked(True)  # keep matrix square
     vb.enableAutoRange(x=True, y=True)
 
+    if spike_method == "cascade":
+        title = title.replace("Rising Edges", "Threshold Excursion Starts")
+    title = f"[{spike_method.upper()}] {title}"
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")

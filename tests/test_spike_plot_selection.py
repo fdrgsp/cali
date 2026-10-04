@@ -100,7 +100,7 @@ def test_availability_uses_stored_methods_and_metrics(spike_database: tuple) -> 
                 "suprathreshold_excursion_rate_hz" in capabilities[method]
             )
             assert "Inferred Spikes Thresholded Frequency" not in names
-            assert "Inferred Spikes Thresholded Burst Activity Analysis" not in names
+            assert "Inferred Spikes Thresholded Burst Activity Analysis" in names
         else:
             assert "Inferred Spikes Thresholded Frequency" in names
             assert "CASCADE Expected Spike Rate" not in names
