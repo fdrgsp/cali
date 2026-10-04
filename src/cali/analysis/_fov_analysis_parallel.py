@@ -130,8 +130,9 @@ def compute_spike_population(
         pairs = [(i, j) for i in range(n_rois) for j in range(i + 1, n_rois)]
 
         if use_parallel:
+            execution = "Parallel CCG" if n_workers > 1 else "Direct CCG"
             cali_logger.info(
-                f"🖥️ FOV {name} ({population.method}): Parallel CCG "
+                f"🖥️ FOV {name} ({population.method}): {execution} "
                 f"({n_rois} ROIs, {n_pairs} pairs, "
                 f"{n_workers} workers)"
             )
@@ -163,13 +164,18 @@ def compute_spike_population(
             # Use a single pool for all computations
             # 'spawn' is safer for numba but has overhead;
             # 'fork' is faster but can cause issues
-            ctx = mp.get_context("spawn")
-            with ctx.Pool(processes=n_workers) as pool:
-                # CCG computation
-                ccg_results = pool.map(_compute_ccg_for_pair, ccg_args)
-
-                # Jitter computation (reuse same pool)
-                jitter_results = pool.map(_compute_jitter_for_pair, jitter_args)
+            if n_workers > 1:
+                ctx = mp.get_context("spawn")
+                with ctx.Pool(processes=n_workers) as pool:
+                    ccg_results = pool.map(_compute_ccg_for_pair, ccg_args)
+                    jitter_results = pool.map(_compute_jitter_for_pair, jitter_args)
+            else:
+                # Keep this path's pair ordering, normalization and matrix
+                # assembly. Only bypass process startup for a single worker.
+                ccg_results = [_compute_ccg_for_pair(args) for args in ccg_args]
+                jitter_results = [
+                    _compute_jitter_for_pair(args) for args in jitter_args
+                ]
 
             # Assemble CCG results
             spike_max_lag_corr_matrix = np.zeros((n_rois, n_rois))

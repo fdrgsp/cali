@@ -1,9 +1,9 @@
-"""Measure image extraction, calcium analysis and persistence in fresh processes.
+"""Measure image extraction, method-bound analysis and persistence in fresh processes.
 
 Run with cali[cascade], OMP_NUM_THREADS=1, MKL_NUM_THREADS=1 and
 NUMBA_NUM_THREADS=1. This controlled
 image workload exercises the actual FOV pool and database path, starting from
-known masks. It excludes detection and unavailable CASCADE spike analysis. It
+known masks. Select --analysis full to include spike analysis and offline reuse. It
 does not substitute for the required independently recorded real-plate gate.
 """
 
@@ -28,10 +28,15 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import numpy as np
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from cali._cascade_package import load_cascade_package
-from cali.analysis import _fov_analysis_parallel, _trace_analysis
+from cali.analysis import (
+    AnalysisRunner,
+    _fov_analysis,
+    _fov_analysis_parallel,
+    _roi_analysis,
+)
 from cali.extraction._extraction_runner import ExtractionRunner
 from cali.extraction._spike_inference import OasisBackend
 from cali.extraction._spike_inference._cascade_cached import CachedCascadePredictor
@@ -69,6 +74,67 @@ CASES = (
     ("cascade", "cached-lock"),
     ("dual", "cached-lock"),
 )
+
+# Identity differs between runs; shuffled CCG significance uses random surrogates.
+# All deterministic scientific products, including raw CCG/lag/jitter, are checked.
+IDENTITY_FIELDS = {
+    "id",
+    "created_at",
+    "roi_id",
+    "fov_id",
+    "analysis_result_id",
+    "data_analysis_id",
+    "spike_trace_id",
+    "spike_inference_run_id",
+    "fov_analysis_id",
+}
+STOCHASTIC_FIELDS = {
+    "spike_ccg_zscore_matrix",
+    "fraction_significant_ccg_pairs",
+    "spike_ccg_zscore_matrix_rising_edges",
+    "fraction_significant_ccg_pairs_rising_edges",
+}
+
+
+def scientific_fields(model: object) -> dict:
+    """Compare scientific scalar fields independently of ORM identity and RNG."""
+    return {
+        name: getattr(model, name)
+        for name in type(model).model_fields
+        if name not in IDENTITY_FIELDS | STOCHASTIC_FIELDS
+    }
+
+
+def scientific_products(fov: FOV, *, staged: bool = True) -> dict:
+    """Read every ROI and FOV pillar in stable label order."""
+    rois = sorted(fov.rois, key=lambda roi: roi.label_value)
+    analyses = [
+        roi._new_data_analysis[-1] if staged else roi.data_analysis_history[-1]
+        for roi in rois
+    ]
+    fov_analysis = fov._new_fov_analysis[-1] if staged else fov.fov_analysis_history[-1]
+    return {
+        "calcium": {
+            "roi_labels": [roi.label_value for roi in rois],
+            "roi": [scientific_fields(parent) for parent in analyses],
+            "fov": scientific_fields(fov_analysis),
+        },
+        "spikes": {
+            child.method: {
+                "roi": [
+                    scientific_fields(parent.get_spike_analysis(child.method))
+                    for parent in analyses
+                ],
+                "fov": scientific_fields(child),
+            }
+            for child in fov_analysis.spike_analyses
+        },
+    }
+
+
+def fingerprint(value: object) -> str:
+    """Identify normalized products without retaining duplicate matrices."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def peak_mib() -> float:
@@ -158,6 +224,17 @@ class Measurements:
 
         return measured
 
+    def wrap_method(self, name: str, operation: object) -> object:
+        """Time the actual selected method without pooling unlike populations."""
+
+        def measured(product: object, *args: object, **kwargs: object) -> object:
+            method = product.inference_run.method if name == "roi" else product.method
+            return self.wrap(f"{name}_spike_analysis_{method}", operation)(
+                product, *args, **kwargs
+            )
+
+        return measured
+
 
 class LockedPredictor(CachedCascadePredictor):
     """Benchmark-only cross-thread ownership, guarded by one external caller lock."""
@@ -240,13 +317,21 @@ def run_case(args: argparse.Namespace) -> dict:
     analysis = AnalysisSettings(
         frame_rate=30,
         enable_calcium=True,
-        enable_spikes=False,
+        enable_spikes=args.analysis == "full",
+        n_processes=args.analysis_processes,
         peaks_height_value=0.1,
         peaks_prominence_multiplier=0.5,
-        spike_settings=[SpikeAnalysisSettings(method=method) for method in methods],
+        spike_settings=[
+            SpikeAnalysisSettings(
+                method=method,
+                ccg_n_shuffles=args.ccg_shuffles,
+                enable_rising_edge_analysis=args.rising_edges,
+            )
+            for method in methods
+        ],
     )
     settings_data = settings.model_dump(exclude={"id"})
-    analysis_data = analysis.model_dump(exclude={"id"})
+    analysis_data = analysis.model_dump(mode="json", exclude={"id", "created_at"})
     reader = ControlledReader(args.rois, args.frames)
     runner = BenchmarkRunner(args, measurements)
     stop = threading.Event()
@@ -292,26 +377,37 @@ def run_case(args: argparse.Namespace) -> dict:
             _fov_analysis_parallel,
             "compute_fov_analysis_parallel",
             measurements.wrap(
-                "fov_calcium_analysis",
+                "fov_analysis_total",
                 _fov_analysis_parallel.compute_fov_analysis_parallel,
             ),
         ),
+        patch.object(
+            _roi_analysis,
+            "analyze_roi_calcium",
+            measurements.wrap(
+                "roi_calcium_analysis", _roi_analysis.analyze_roi_calcium
+            ),
+        ),
+        patch.object(
+            _roi_analysis,
+            "analyze_spike_trace",
+            measurements.wrap_method("roi", _roi_analysis.analyze_spike_trace),
+        ),
+        patch.object(
+            _fov_analysis,
+            "_compute_calcium_population",
+            measurements.wrap(
+                "fov_calcium_analysis", _fov_analysis._compute_calcium_population
+            ),
+        ),
+        patch.object(
+            _fov_analysis_parallel,
+            "compute_spike_population",
+            measurements.wrap_method(
+                "fov", _fov_analysis_parallel.compute_spike_population
+            ),
+        ),
     ]
-    for name in (
-        "compute_calcium_peak_detection_thresholds",
-        "detect_peaks_in_trace",
-        "calculate_frequency",
-        "calculate_inter_event_intervals",
-    ):
-        patches.append(
-            patch.object(
-                _trace_analysis,
-                name,
-                measurements.wrap(
-                    "roi_calcium_analysis_functions", getattr(_trace_analysis, name)
-                ),
-            )
-        )
     from contextlib import ExitStack
 
     try:
@@ -321,6 +417,7 @@ def run_case(args: argparse.Namespace) -> dict:
             begin = time.perf_counter()
             stack.enter_context(runner.inference_session(settings, analysis))
             preparation = time.perf_counter() - begin
+            preparation_loads = measurements.model_loads
             for phase, count in (("cold", 1), ("warm", args.fovs)):
                 database = args.output_dir / f"{args.mode}-{args.backend}-{phase}.cali"
                 if database.exists():
@@ -336,6 +433,7 @@ def run_case(args: argparse.Namespace) -> dict:
                     ),
                 )
                 before = dict(measurements.seconds)
+                before_calls = dict(measurements.calls)
                 before_loads = measurements.model_loads
                 with Session(engine) as session:
                     session.add_all([experiment, settings, analysis])
@@ -351,12 +449,47 @@ def run_case(args: argparse.Namespace) -> dict:
                     for fov in fovs:
                         for roi in fov.rois:
                             _ = roi.roi_mask.coords_y, roi.roi_mask.coords_x
+                            _ = roi.traces_history, roi.data_analysis_history
+                    settings.validate_output_settings()
+                    analysis.validate_spike_settings()
+                    _ = analysis.model_dump(), experiment.id, result.id
+                    # Workers receive detached FOVs in the public runner. Keeping
+                    # them attached here lets one commit expire another FOV's
+                    # ROI collection and lose its private staged products.
+                    session.expunge_all()
                     extract_begin = time.perf_counter()
                     completed = runner.run(
                         reader, settings, fovs, analysis_settings=analysis
                     )
                     extraction_s = time.perf_counter() - extract_begin
                     assert len(completed) == count
+                    products = scientific_products(completed[0])
+                    encoded_products = json.dumps(products, sort_keys=True)
+                    for fov in completed:
+                        assert (
+                            json.dumps(scientific_products(fov), sort_keys=True)
+                            == encoded_products
+                        )
+                    (
+                        args.output_dir
+                        / f"{args.mode}-{args.backend}-{phase}-metrics.json"
+                    ).write_text(json.dumps(products, indent=2) + "\n")
+                    stage_seconds = {
+                        name: seconds - before.get(name, 0)
+                        for name, seconds in measurements.seconds.items()
+                    }
+                    stage_calls = {
+                        name: calls - before_calls.get(name, 0)
+                        for name, calls in measurements.calls.items()
+                    }
+                    assert stage_calls["roi_calcium_analysis"] == count * args.rois
+                    assert stage_calls["fov_calcium_analysis"] == count
+                    for method in methods if args.analysis == "full" else ():
+                        assert (
+                            stage_calls[f"roi_spike_analysis_{method}"]
+                            == count * args.rois
+                        )
+                        assert stage_calls[f"fov_spike_analysis_{method}"] == count
                     arrays = {
                         "den_dff": np.array(
                             [roi._new_traces[0].den_dff for roi in completed[0].rois]
@@ -405,20 +538,99 @@ def run_case(args: argparse.Namespace) -> dict:
                         )
                         commit_fov_result(session, experiment, fov)
                     persistence_s = time.perf_counter() - persistence_begin
+                    # Confirm stored products survived normal staging/commits.
+                    stored_fovs = list(
+                        session.exec(select(FOV).order_by(FOV.position_index)).all()
+                    )
+                    assert len(stored_fovs) == count
+                    assert (
+                        sum(len(fov.rois) for fov in stored_fovs) == count * args.rois
+                    )
+                    for fov in stored_fovs:
+                        assert (
+                            json.dumps(
+                                scientific_products(fov, staged=False), sort_keys=True
+                            )
+                            == encoded_products
+                        )
+                        for roi in fov.rois:
+                            trace = roi.traces_history[-1]
+                            _ = trace.x_axis, trace.den_dff, trace.calcium_noise
+                            _ = trace.extraction_frame_window.acquisition_frame_rate_hz
+                            for spike in trace.spike_traces:
+                                _ = spike.values, spike.inference_run.semantic_key()
+                    # Detach fully loaded ORM inputs just as the public runner does.
+                    session.expunge_all()
+                    offline_settings = AnalysisSettings.model_validate(analysis_data)
+                    offline_before = dict(measurements.seconds)
+                    offline_before_calls = dict(measurements.calls)
+                    offline_loads = measurements.model_loads
+                    offline_begin = time.perf_counter()
+                    reanalyzed = AnalysisRunner().run(stored_fovs, offline_settings)
+                    offline_s = time.perf_counter() - offline_begin
+                    assert len(reanalyzed) == count
+                    assert measurements.model_loads == offline_loads
+                    for fov in reanalyzed:
+                        assert (
+                            json.dumps(scientific_products(fov), sort_keys=True)
+                            == encoded_products
+                        )
+                    offline_seconds = {
+                        name: seconds - offline_before.get(name, 0)
+                        for name, seconds in measurements.seconds.items()
+                    }
+                    offline_calls = {
+                        name: calls - offline_before_calls.get(name, 0)
+                        for name, calls in measurements.calls.items()
+                    }
+                    assert not offline_calls.get("oasis_inference", 0)
+                    assert not offline_calls.get("cascade_caller", 0)
+                    assert offline_calls["roi_calcium_analysis"] == count * args.rois
+                    assert offline_calls["fov_calcium_analysis"] == count
+                    for method in methods if args.analysis == "full" else ():
+                        assert (
+                            offline_calls[f"roi_spike_analysis_{method}"]
+                            == count * args.rois
+                        )
+                        assert offline_calls[f"fov_spike_analysis_{method}"] == count
                 engine.dispose()
                 phases.append(
                     {
                         "phase": phase,
                         "fovs": count,
                         "preparation_s": preparation if phase == "cold" else 0,
-                        "extraction_with_calcium_analysis_s": extraction_s,
+                        "preparation_model_loads": preparation_loads
+                        if phase == "cold"
+                        else 0,
+                        "extraction_with_analysis_s": extraction_s,
                         "persistence_s": persistence_s,
                         "complete_s": extraction_s
                         + persistence_s
                         + (preparation if phase == "cold" else 0),
-                        "stage_aggregate_s": {
-                            name: seconds - before.get(name, 0)
-                            for name, seconds in measurements.seconds.items()
+                        "stage_aggregate_s": stage_seconds,
+                        "stage_calls": stage_calls,
+                        "offline_reanalysis_s": offline_s,
+                        "offline_stage_aggregate_s": offline_seconds,
+                        "offline_stage_calls": offline_calls,
+                        "calcium_products_sha256": fingerprint(products["calcium"]),
+                        "method_products_sha256": {
+                            method: fingerprint(product)
+                            for method, product in products["spikes"].items()
+                        },
+                        "populations": {
+                            method: {
+                                "active_rois": len(
+                                    product["fov"]["active_roi_labels"] or []
+                                ),
+                                "pairs": (
+                                    n := len(product["fov"]["active_roi_labels"] or [])
+                                )
+                                * (n - 1)
+                                // 2,
+                                "valid_start": product["fov"]["valid_start"],
+                                "valid_stop": product["fov"]["valid_stop"],
+                            }
+                            for method, product in products["spikes"].items()
                         },
                         "model_loads": measurements.model_loads - before_loads,
                         "database_bytes": database.stat().st_size,
@@ -441,22 +653,27 @@ def run_case(args: argparse.Namespace) -> dict:
         "package_initialization_s": package_initialization_s,
         "scope": (
             "controlled images, known ROI masks, actual FOV pool, "
-            "calcium analysis and SQLite persistence"
+            f"{args.analysis} analysis, SQLite persistence and offline re-analysis"
         ),
         "excluded": [
             "detection",
-            "CASCADE spike analysis",
+            *(["spike analysis"] if args.analysis == "calcium" else []),
+            "offline persistence and database-load time",
             "GUI rendering",
             "representative real plate",
         ],
         "stage_note": (
             "Aggregate stage times can overlap across FOV threads; "
             "cascade_caller includes queue/lock waiting; "
-            "ROI calcium functions are a subset of trace_finalization."
+            "ROI helpers are subsets of trace_finalization; FOV population "
+            "timers are subsets of fov_analysis_total."
         ),
         "rois_per_fov": args.rois,
         "frames": args.frames,
         "workers": args.workers,
+        "analysis": args.analysis,
+        "analysis_settings": analysis_data,
+        "comparison_excludes": sorted(STOCHASTIC_FIELDS),
         "seed": 9183,
         "frame_rate_hz": 30,
         "model": MODEL if "cascade" in methods else None,
@@ -488,6 +705,7 @@ def run_case(args: argparse.Namespace) -> dict:
         "peak_active_cascade_callers": measurements.peak_callers,
         "peak_queue_depth": measurements.peak_queue,
         "model_loader_threads": len(measurements.loader_threads),
+        "total_model_loads": measurements.model_loads,
         "cache_stats": stats,
         "baseline_peak_rss_mib": baseline,
         "peak_rss_mib": peak_mib(),
@@ -514,9 +732,26 @@ def main() -> None:
     parser.add_argument("--fovs", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--chunk", type=int, default=1024)
+    parser.add_argument("--analysis", choices=("calcium", "full"), default="calcium")
+    parser.add_argument("--analysis-processes", type=int, default=1)
+    parser.add_argument("--ccg-shuffles", type=int, default=20)
+    parser.add_argument("--rising-edges", action="store_true")
     args = parser.parse_args()
-    if min(args.rois, args.fovs, args.workers, args.chunk) < 1 or args.frames < 65:
+    if (
+        min(
+            args.rois,
+            args.fovs,
+            args.workers,
+            args.chunk,
+            args.analysis_processes,
+            args.ccg_shuffles,
+        )
+        < 1
+        or args.frames < 65
+    ):
         parser.error("Counts must be positive and traces need at least 65 frames.")
+    if args.rois < 2:
+        parser.error("Analysis comparisons need at least two ROIs.")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.mode != "all":
         report = run_case(args)
@@ -547,6 +782,13 @@ def main() -> None:
             str(args.workers),
             "--chunk",
             str(args.chunk),
+            "--analysis",
+            args.analysis,
+            "--analysis-processes",
+            str(args.analysis_processes),
+            "--ccg-shuffles",
+            str(args.ccg_shuffles),
+            *(["--rising-edges"] if args.rising_edges else []),
         ]
         with (args.output_dir / f"{mode}-{backend}.log").open("w") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
@@ -555,6 +797,7 @@ def main() -> None:
         )
         print(f"Completed {mode}/{backend}", flush=True)
     differences = {}
+    scientific_parity = {}
     for phase in ("cold", "warm"):
         with np.load(args.output_dir / f"oasis-reference-{phase}.npz") as oasis:
             with np.load(args.output_dir / f"cascade-reference-{phase}.npz") as cascade:
@@ -571,21 +814,36 @@ def main() -> None:
                         differences[f"{mode}/{backend}/{phase}"] = errors
                         if any(errors.values()):
                             raise ValueError(f"Numerical mismatch: {differences}")
+        products = {
+            (mode, backend): json.loads(
+                (args.output_dir / f"{mode}-{backend}-{phase}-metrics.json").read_text()
+            )
+            for mode, backend in CASES
+        }
+        for case, value in products.items():
+            assert value["calcium"] == products["oasis", "reference"]["calcium"]
+            for method, product in value["spikes"].items():
+                assert product == products[method, "reference"]["spikes"][method]
+            scientific_parity[f"{case[0]}/{case[1]}/{phase}"] = True
     report = {
-        "schema": 1,
+        "schema": 2,
         "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "runtime_source_sha256": {
             name: hashlib.sha256(Path(inspect.getfile(value)).read_bytes()).hexdigest()
             for name, value in (
                 ("extraction_runner", ExtractionRunner),
                 ("fov_analysis_parallel", _fov_analysis_parallel),
+                ("fov_analysis", _fov_analysis),
+                ("roi_analysis", _roi_analysis),
+                ("analysis_runner", AnalysisRunner),
             )
         },
         "results": reports,
         "max_abs_differences": differences,
+        "deterministic_scientific_parity": scientific_parity,
         "release_gate": (
-            "pending: representative real plate, CASCADE spike analysis, "
-            "GPU acceptance and storage codec"
+            "pending: representative real plate, 100 x 6000 complete image workload, "
+            "GPU acceptance and independent codec compressibility"
         ),
     }
     (args.output_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")

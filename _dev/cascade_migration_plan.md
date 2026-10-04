@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; real-plate performance, analysis-cost measurements and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis measurements and database audits complete, default single-worker FOV startup optimized; remaining P7/release evidence, real-plate performance and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,13 +442,15 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** measure complete CASCADE ROI/FOV spike-analysis costs and
-audit the remaining P7/release acceptance evidence before P8 GUI exposure.
+**Next landing step:** audit the remaining P7/release acceptance evidence before
+P8 GUI exposure, and complete representative workload and memory acceptance.
 P6d now opens headless CASCADE spike analysis after full-runner parity and failure
 checks. Step 10's production codec addresses the measured dense-JSON budget failure.
-Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
-and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
-available, before release or GUI exposure.
+Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
+re-analysis measurements are now recorded with complete database audits. Independent
+real-plate performance, the 100 × 6000 complete image workload and memory acceptance
+remain pending. The corrected full-graph memory samples do not pass the prior
+incremental comparison target or promote the cached service.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction and analysis are available through the upstream reference path; the cached service
 remains an explicit experimental option.
@@ -1139,6 +1141,63 @@ stopped; no migrated fixture databases are committed.
 The headless CASCADE analysis gate is open. GUI exposure remains pending P8 and
 the remaining dependency/performance release evidence. The cached service is still
 experimental; no real-plate or GPU performance acceptance is implied.
+
+Step 10c — complete analysis costs, persistence audits and single-worker FOV execution (2026-10-04):
+
+- Extended the controlled extraction benchmark with full method-bound ROI/FOV
+  analysis and offline re-analysis, calcium-only controls, stage timers, call counts,
+  population sizes and deterministic scientific fingerprints. Seven output/backend
+  cases run sequentially in fresh processes. Short (8 × 256) and long (32 × 2048)
+  workloads each include one cold and four warm FOVs, using default thresholds,
+  20 CCG shuffles, no rising-edge analysis and one FOV analysis process.
+- Corrected the benchmark's input lifetime to mirror public-runner detachment.
+  Its previously attached inputs could lose another FOV's staged traces after a
+  commit expired ROI collections. The archived warm databases contain only 8–9
+  of 32 short traces or 33 of 128 long traces. Their historical persistence,
+  complete wall time, database size and incomplete-graph memory evidence are
+  superseded; the independently validated production codec measurements remain valid.
+- Measurements exposed a separate ORM flush-order bug: traces can canonicalize an
+  inference row before their staged FOV analysis is attached. FOV binding now accepts
+  a compatible transient alias from the same extraction and binds the stored row.
+  Different owners, persisted identities and conflicting known provenance remain
+  rejected. Tests exercise both flush orders and these negative cases.
+- Default single-worker analysis now calls the existing large-population CCG/jitter
+  pair helpers directly. It preserves pair ordering, normalization, lag conventions
+  and matrix assembly, while two or more workers retain the spawn pool. A regression
+  uses unequal event counts to check agreement with pair-worker execution. The
+  separate small-population algorithm remains unchanged.
+- Long reference offline wall times decrease from 8.249 to 2.333 s for OASIS,
+  8.285 to 2.336 s for CASCADE and 16.356 to 4.594 s for dual output: about 72%
+  in these samples. Complete warm CASCADE/dual reference times are 41.352/43.917 s;
+  service times are 38.683/41.175 s. Long FOV spike calculations take about 2.2 s
+  for one method and 4.4 s for dual output across four FOVs. These are single
+  controlled samples, not real-plate acceptance or uncertainty estimates.
+- The new [analysis artifact](cascade_analysis_cpu_benchmark.json) records all
+  settings, module hashes, timing comparisons and 70 complete database audits.
+  Every expected trace, analysis row and method child is present, and all stored
+  denoised/noise/spike arrays exactly match extraction. Deterministic ROI/FOV products
+  match across single/dual outputs, backends, persistence, offline reuse and the
+  before/after optimization. Random CCG z-scores/significant-pair fractions remain
+  computed but are excluded from fingerprints. Offline reuse performs no image
+  reads, inference or model loads. The discarded small-population diagnostic is
+  excluded because it changed large-population matrices.
+- Complete long service graph RSS increments are 313.81 MiB CASCADE and
+  334.66 MiB dual, above the earlier 256 MiB comparison target. These parent-process
+  peaks include validation/offline graphs; they do not isolate inference allocations
+  or measure multi-worker RSS. The cache stays experimental. Independent uniformly
+  timed real-plate data, the 100 × 6000 complete image workload, GPU acceptance,
+  independent codec compressibility and multi-worker memory remain pending.
+
+Validation: **53 passed in 2.65 s** in final FOV/threading checks;
+**2282 passed, 14 skipped in 278.22 s** in the full base/GUI regression suite;
+**517 passed in 38.27 s** against the rebuilt installed wheel with real pretrained
+models. Ruff lint/format and commit hooks pass. Full-environment mypy adds no
+diagnostics (340 existing). Tracked database fixtures were restored after test
+processes stopped. Detailed methodology and reproduction commands are in
+[the release benchmarks](cascade_release_benchmarks.md).
+
+Headless CASCADE extraction and full analysis are available. GUI exposure remains
+pending P8 and the remaining dependency/performance release evidence.
 
 ## 0. TL;DR
 

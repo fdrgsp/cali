@@ -1,10 +1,16 @@
-# CASCADE extraction and storage measurements
+# CASCADE extraction, analysis and storage measurements
 
 These are controlled CPU measurements for Step 10, not completed release acceptance.
 The historical JSON/prototype results are in `cascade_full_mode_cpu_benchmark.json`
 (commit `0ed3443`); the production codec measurements are in
 `cascade_trace_codec_cpu_benchmark.json`.
 The upstream reference remains the default; the cached service is experimental.
+
+The current full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`.
+Its database audits supersede the historical extraction benchmark's warm persistence,
+database-size and complete-wall-time figures: those archived warm databases retained
+only 8–9 of 32 requested short traces and 33 of 128 requested long traces. The separate
+production codec storage/migration benchmark retains its independently checked row counts.
 
 ## Scope and reproduction
 
@@ -189,8 +195,8 @@ uniform-timing requirement. The other real fixture has only ten frames, below th
 model's minimum. Neither is an acceptable representative real-plate benchmark.
 No timestamps were replaced or resampled to bypass preflight.
 
-CASCADE spike analysis does not exist yet, so its ROI/FOV and dual-method analysis
-costs cannot be certified at this step. Measure those after P6 and before release.
+At this historical step CASCADE spike analysis was unavailable. P6d now enables it;
+the complete controlled analysis measurements below supersede that limitation.
 An independently recorded plate, the 100 × 6000 end-to-end workload and GPU
 acceptance also remain pending. These partial CPU results do not promote the
 cached backend to the default.
@@ -199,6 +205,127 @@ Validation: **1901 passed, 13 skipped** in the full base/GUI suite; **95 passed*
 against a freshly built and installed wheel with actual pretrained CASCADE tests
 enabled. Ruff passes, and mypy remains at 353 pre-existing diagnostics with no
 additions. The two test-migrated database fixtures were restored after the suite.
+
+## Complete method-bound analysis measurements
+
+`benchmark_cascade_extraction.py --analysis full` now includes default OASIS/CASCADE
+ROI analysis, independent FOV populations, CCG/jitter/bursts and offline re-analysis
+of stored traces. The matching `--analysis calcium` runs use the same inputs and
+physical output selections. Defaults are 30 Hz, method-specific default thresholds,
+20 CCG shuffles, rising-edge analysis disabled, one FOV analysis process, four
+extraction workers and one offline ROI analysis thread. All settings appear in the
+artifact. Both workloads use one cold FOV and four warm FOVs; short is 8 × 256,
+long is 32 × 2048. Each combination runs in a fresh process, sequentially so cases
+do not contend with other benchmarks. These are single samples without uncertainty
+intervals, and cold refers to inference preparation rather than an empty disk/Numba cache.
+
+ROI timers intercept the shared helpers, including one timer per spike method;
+FOV timers separate calcium from each spike population. FOV spike timers include
+the real multiprocessing pool startup/join costs. Aggregate ROI times overlap across
+extraction workers, and helper times are included in their enclosing finalization/FOV
+timers. Offline timing includes the analysis runner and ROI/FOV calculations, while
+database loading, result checks and offline persistence are excluded. It performs no
+image reads, OASIS inference, CASCADE inference or model loads.
+
+The benchmark now detaches worker inputs as the public runner does. Its earlier
+attached inputs let one FOV commit expire another FOV's ROI collection and lose
+private staged products. Every current database is audited for all requested FOVs,
+ROI traces, analysis rows and method children. Persisted arrays must exactly match
+the extracted arrays. Shared calcium and each method's deterministic ROI/FOV products
+must match across single/dual outputs, reference/service/lock dispatch, persistence
+and offline re-analysis. Only shuffled CCG z-scores/significant-pair fractions are
+excluded from comparisons; production random shuffles remain unchanged. Raw CCG,
+lags, jitter, membership, valid intervals and all other scientific fields are checked.
+
+Measurements also exposed a legitimate flush-order bug: the trace normalizer can
+merge a transient inference row before its staged FOV result is attached. FOV binding
+now accepts only a compatible transient alias from the same extraction and rebinds
+it to the stored canonical row; different owners, persisted identities and known
+metadata conflicts still fail. The regression tests cover both flush orders and
+negative provenance cases.
+
+The table uses the corrected long workload: **four FOVs × 32 ROIs × 2048 frames**.
+It records complete warm wall time (extraction/analysis plus persistence), the
+separate persisted-graph commit time, aggregate method-bound FOV spike analysis,
+and offline re-analysis. All times are seconds.
+
+| Output | Backend | Calcium-only complete | Full complete | Persistence | FOV spike analysis | Offline full |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| OASIS | reference | 1.841 | 4.153 | 0.549 | 2.197 | 2.333 |
+| CASCADE | reference | 39.284 | 41.352 | 0.550 | 2.204 | 2.336 |
+| dual | reference | 39.292 | 43.917 | 0.703 | 4.407 | 4.594 |
+| CASCADE | service | 36.278 | 38.683 | 0.566 | 2.204 | 2.335 |
+| dual | service | 36.511 | 41.175 | 0.718 | 4.407 | 4.597 |
+| CASCADE | cached lock | 36.293 | 38.637 | 0.575 | 2.207 | 2.334 |
+| dual | cached lock | 36.492 | 41.074 | 0.711 | 4.403 | 4.592 |
+
+Long populations contain **31 OASIS-active ROIs / 465 pairs** and
+**32 CASCADE-active ROIs / 496 pairs** per FOV. Short populations contain
+8 active ROIs / 28 pairs for each method. Long aggregate ROI spike helper times
+are 0.033–0.170 s for single outputs and 0.069–0.087 s for dual outputs; they
+overlap across extraction threads. Population/CCG work dominates spike analysis.
+
+The first complete measurements started a one-worker pool for every large
+population, despite the default `n_processes=1`. That default now invokes the same
+pair workers directly, with identical ordering, normalization and matrix assembly;
+two or more workers retain multiprocessing. The separate small-population algorithm
+is unchanged. The before/after long reference comparisons are:
+
+| Output | Offline before | Offline after | Complete before | Complete after |
+| --- | ---: | ---: | ---: | ---: |
+| OASIS | 8.249 | 2.333 | 10.030 | 4.153 |
+| CASCADE | 8.285 | 2.336 | 47.658 | 41.352 |
+| dual | 16.356 | 4.594 | 55.439 | 43.917 |
+
+This reduces default offline analysis by about **72%** in these samples, with
+identical deterministic scientific fingerprints in every backend and phase. A
+regression with unequal ROI event counts checks the pair normalization and lag
+conventions. The stochastic CCG fields remain computed and retain their existing
+random-shuffle behavior. The discarded diagnostic that used the small-population
+algorithm is excluded from the artifact because it changed large-population matrices.
+
+The artifact audits **70 measured databases**, including the before-optimization
+baseline. Every requested trace, analysis row and method child is present, inference
+rows share their canonical owner/method identity, and all stored spike/denoised/noise
+values equal the extracted arrays exactly. Shared calcium fingerprints match with
+spike analysis enabled and disabled in all cases. The separate archived audit records
+the incomplete warm databases and their byte counts/checksums; their historical
+complete/persistence/storage figures must not be used as four-FOV acceptance.
+
+Reproduce final controlled measurements with the environment above, choosing a
+fresh output directory each time. Each command runs all seven cases sequentially:
+
+```sh
+for cascade_analysis in calcium full; do
+  "$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+    --analysis "$cascade_analysis" --analysis-processes 1 --ccg-shuffles 20 \
+    --model-dir "$CALI_CASCADE_MODELS" \
+    --output-dir "/tmp/cali-analysis-short-$cascade_analysis" \
+    --rois 8 --frames 256 --fovs 4 --workers 4
+  "$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+    --analysis "$cascade_analysis" --analysis-processes 1 --ccg-shuffles 20 \
+    --model-dir "$CALI_CASCADE_MODELS" \
+    --output-dir "/tmp/cali-analysis-long-$cascade_analysis" \
+    --rois 32 --frames 2048 --fovs 4 --workers 4
+done
+```
+
+Before-optimization results retain their runtime module hashes and settings in
+`benchmarks.long.full_before_single_worker`. Final runs use the direct single-worker
+implementation; they do not recreate that historical pool-startup baseline.
+
+Parent peak RSS includes artifact validation and offline result graphs. The final
+one-process path spawns no FOV workers, while the before-optimization measurements
+exclude their worker RSS. Long full service increments are **313.81 MiB CASCADE** and
+**334.66 MiB dual**, above the earlier 256 MiB incremental comparison target. Reference
+increments are 440.28/468.84 MiB and the lock alternative is 422.80/444.23 MiB. These
+complete-graph samples supersede the historical incomplete-graph RSS evidence; they
+do not isolate inference-only allocations or certify a many-process memory budget.
+The independent uniformly timed real plate, 100 × 6000 complete image workload,
+GPU acceptance and independent codec compressibility gates remain pending. The cached
+service stays experimental and the released GUI remains gated.
+
+Final regression validation is recorded in the migration plan.
 
 
 ## Production codec storage and migration

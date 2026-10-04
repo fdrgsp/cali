@@ -7,7 +7,7 @@ from sqlalchemy import UniqueConstraint, inspect
 from sqlmodel import JSON, Column, Field, Relationship, select
 
 from ._result_json import ResultJSON
-from ._trace_provenance import SpikeInferenceRun
+from ._trace_provenance import SpikeInferenceRun, compatible_inference_provenance
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -285,9 +285,33 @@ def normalize_spike_fov_analyses(session: "Session", *_: Any) -> None:
                     child.inference_run is not None
                     and child.inference_run is not canonical_run
                 ):
-                    raise ValueError(
-                        "FOV spike analysis must use its stored traces' inference run."
-                    )
+                    proposed = child.inference_run
+                    # Traces may have been flushed and merged before their staged
+                    # FOV result is attached. Accept only a compatible transient
+                    # alias belonging to that same extraction, never another run.
+                    if not (
+                        proposed.id is None
+                        and proposed.extraction_result_id is not None
+                        and proposed.extraction_result_id
+                        == canonical_run.extraction_result_id
+                        and child.spike_inference_run_id in (None, canonical_run.id)
+                        and compatible_inference_provenance(canonical_run, proposed)
+                    ):
+                        raise ValueError(
+                            "FOV spike analysis must use its stored traces' "
+                            "inference run."
+                        )
+                    child.inference_run = canonical_run
+                    if proposed in session.new:
+                        owner = proposed.extraction_result
+                        if owner is not None:
+                            owner.spike_inference_runs = [
+                                run
+                                for run in owner.spike_inference_runs
+                                if run is not proposed
+                            ]
+                        proposed.extraction_result = None
+                        session.expunge(proposed)
                 child.inference_run = canonical_run
                 if child.provenance_source == "synthetic_legacy_api":
                     child.provenance_source = "legacy_api_bound"

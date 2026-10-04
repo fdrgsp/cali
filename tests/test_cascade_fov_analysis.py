@@ -331,7 +331,9 @@ def test_large_method_population_drives_pool_dimensions_and_valid_worker_inputs(
     pool.__enter__.return_value.map.side_effect = mapped
     with patch("cali.analysis._fov_analysis_parallel.mp.get_context") as context:
         context.return_value.Pool.return_value = pool
-        result = compute_fov_analysis_parallel(fov, _settings(("cascade",)))
+        settings = _settings(("cascade",))
+        settings.n_processes = 2
+        result = compute_fov_analysis_parallel(fov, settings)
     child = result.get_spike_analysis("cascade")
     assert child.active_roi_labels == list(range(2, 12))
     assert np.asarray(child.spike_ccg_zscore_matrix).shape == (10, 10)
@@ -342,6 +344,41 @@ def test_large_method_population_drives_pool_dimensions_and_valid_worker_inputs(
     assert [len(args) for _, args in captured] == [45, 45]
     assert all(len(arg[2]) == len(arg[3]) == 65 for _, args in captured for arg in args)
     assert all(arg[-2:] == (3, 4) for arg in captured[0][1])
+
+
+@pytest.mark.parametrize("method", ["oasis", "cascade"])
+def test_one_analysis_process_runs_directly_and_matches_pair_workers(
+    method: str,
+) -> None:
+    fov = _fov((method,), count=11)
+    for roi in fov.rois:
+        spike = roi._new_traces[-1].get_spike_trace(method)
+        # Unequal event counts expose the directional normalization difference
+        # between the separate small- and large-population implementations.
+        values = np.zeros(100)
+        values[30 : 30 + roi.label_value : 2] = 0.5
+        values[70] = 0.5
+        spike.values = values.tolist()
+        roi._new_data_analysis[-1].get_spike_analysis(method).spike_active = True
+    settings = _settings((method,))
+    with patch("cali.analysis._fov_analysis_parallel.mp.get_context") as context:
+        direct = compute_fov_analysis_parallel(fov, settings)
+        context.assert_not_called()
+    settings.n_processes = 2
+    pool = MagicMock()
+    pool.__enter__.return_value.map.side_effect = lambda worker, args: [
+        worker(arg) for arg in args
+    ]
+    with patch("cali.analysis._fov_analysis_parallel.mp.get_context") as context:
+        context.return_value.Pool.return_value = pool
+        parallel = compute_fov_analysis_parallel(fov, settings)
+        context.return_value.Pool.assert_called_once_with(processes=2)
+    assert direct.get_spike_roi_labels(method) == parallel.get_spike_roi_labels(method)
+    for name in SPIKE_FOV_METRICS:
+        if "zscore" not in name and "significant" not in name:
+            assert direct.get_spike_metric(method, name) == parallel.get_spike_metric(
+                method, name
+            )
 
 
 def test_persisted_population_coordinates_and_provenance_roundtrip(
@@ -373,8 +410,10 @@ def test_persisted_population_coordinates_and_provenance_roundtrip(
 
 
 @pytest.mark.parametrize("flush_each", [True, False])
+@pytest.mark.parametrize("flush_before_parent", [True, False])
 def test_multiple_fovs_retarget_results_to_canonical_inference_runs(
     flush_each: bool,
+    flush_before_parent: bool,
     tmp_path: Path,
 ) -> None:
     engine = create_cali_engine(f"sqlite:///{tmp_path / 'plate.cali'}")
@@ -395,6 +434,9 @@ def test_multiple_fovs_retarget_results_to_canonical_inference_runs(
                     roi._new_traces[-1].analysis_result = owner
                     roi._new_data_analysis[-1].analysis_result = owner
                 parent = compute_fov_analysis(fov, _settings())
+                if flush_before_parent:
+                    session.add(fov)
+                    session.flush()
                 parent.fov = fov
                 parent.analysis_result = owner
                 session.add_all([fov, parent])
@@ -410,6 +452,51 @@ def test_multiple_fovs_retarget_results_to_canonical_inference_runs(
                 for child in parent.spike_analyses:
                     assert child.inference_run is canonical[child.method]
                     assert child.spike_inference_run_id == canonical[child.method].id
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"backend_package": "different backend"},
+        {"extraction_result_id": 999},
+        {"id": 999},
+    ],
+)
+def test_late_fov_alias_rejects_conflicting_provenance(
+    change: dict, tmp_path: Path
+) -> None:
+    engine = create_cali_engine(f"sqlite:///{tmp_path / 'alias.cali'}")
+    create_database_and_tables(engine)
+    try:
+        with Session(engine) as session:
+            experiment = Experiment(name="late aliases")
+            session.add(experiment)
+            session.flush()
+            owner = CaliResult(experiment=experiment.id, positions_extracted=[0, 1])
+            session.add(owner)
+            session.flush()
+            for position in range(2):
+                fov = _fov()
+                fov.position_index = position
+                for roi in fov.rois:
+                    roi._new_traces[-1].analysis_result = owner
+                    roi._new_data_analysis[-1].analysis_result = owner
+                parent = compute_fov_analysis(fov, _settings())
+                session.add(fov)
+                if position == 0:
+                    parent.fov, parent.analysis_result = fov, owner
+                    session.add(parent)
+                session.flush()
+            proposed = parent.get_spike_analysis("cascade").inference_run
+            for name, value in change.items():
+                setattr(proposed, name, value)
+            parent.fov, parent.analysis_result = fov, owner
+            session.add(parent)
+            with pytest.raises(ValueError, match="stored traces' inference run"):
+                session.flush()
+            session.rollback()
     finally:
         engine.dispose()
 

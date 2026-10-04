@@ -147,6 +147,24 @@ class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignor
         return len(self.values) if self.valid_stop is None else self.valid_stop
 
 
+def compatible_inference_provenance(
+    canonical: SpikeInferenceRun, proposed: SpikeInferenceRun
+) -> bool:
+    """Preserve known canonical metadata when merging one extraction's aliases."""
+    excluded = {
+        "id",
+        "extraction_result_id",
+        "legacy_owner_result_id",
+        "provenance_source",
+    }
+    return all(
+        getattr(canonical, name) is None
+        or getattr(canonical, name) == getattr(proposed, name)
+        for name in type(proposed).model_fields
+        if name not in excluded
+    )
+
+
 def normalize_trace_provenance(session: "Session", *_: Any) -> None:
     """Bind/deduplicate provenance before insertion, including headless ORM writes."""
     from ._model import ROI, CaliResult, Traces
@@ -261,19 +279,10 @@ def normalize_trace_provenance(session: "Session", *_: Any) -> None:
             if existing_run is not None and existing_run is not run:
                 # Never ascribe today's version/device to imported historical data.
                 # An existing unknown field remains unknown when extending a legacy run.
-                excluded = {
-                    "id",
-                    "extraction_result_id",
-                    "legacy_owner_result_id",
-                    "provenance_source",
-                }
-                for name in type(run).model_fields:
-                    old, new = getattr(existing_run, name), getattr(run, name)
-                    if name not in excluded and old is not None and old != new:
-                        raise ValueError(
-                            "Conflicting inference provenance for one "
-                            "extraction/method."
-                        )
+                if not compatible_inference_provenance(existing_run, run):
+                    raise ValueError(
+                        "Conflicting inference provenance for one extraction/method."
+                    )
                 child.inference_run = existing_run
                 run_aliases[id(run)] = existing_run
                 replaced.add(id(run))
