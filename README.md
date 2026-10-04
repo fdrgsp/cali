@@ -377,12 +377,14 @@ The main window contains the following sections:
 ### Pipeline Tabs
 
 Each settings page explains what its controls do, with more detail in tooltips.
-Click a tab title to view its settings; check its header box to include that method
-or analysis in the run. Browsing a tab does not change what will run.
+In extraction and analysis, click a tab title to view its settings; check its
+header box to include that method or analysis in the run. Browsing a tab does not
+change what will run.
 
 #### Detection Tab
 
-**1. Detect ROIs** has checkable **Cellpose** and **Import ROI labels** tabs.
+**1. Detect ROIs** shows the **Cellpose** and **Imported Labels** settings together
+in two checkable group boxes.
 Choose exactly one method to define ROIs for trace extraction:
 
 - **Cellpose**: run Cellpose segmentation with configurable parameters directly from the GUI.

@@ -44,6 +44,12 @@ This usability continuation does not change release acceptance or authorize a
 CASCADE extraction gate override. The remaining external release evidence and
 asynchronous GUI download/timing-preview work listed below remain pending.
 
+Follow-up: at the user's request, Detect ROIs retains its original stacked,
+checkable Cellpose and Imported Labels group boxes, with exclusive selection and
+both methods' controls visible together. Extraction and analysis keep their new tabs.
+The detection/settings regression checks passed **40 tests in 4.57 s**, repository
+hooks passed, and the restored layout was reviewed in an offscreen preview.
+
 ## P8 continuation — GUI controls and stored results (2026-10-04)
 
 - The extraction panel now has independent CASCADE/OASIS output checkboxes, explicit

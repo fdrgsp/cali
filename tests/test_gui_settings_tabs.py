@@ -10,7 +10,6 @@ from qtpy.QtWidgets import QTabBar
 
 from cali.gui import CaliGui
 from cali.gui._analysis_gui import _AnalysisGUI
-from cali.gui._detection_gui import _DetectionGUI
 from cali.gui._extraction_gui import _ExtractionGUI
 from cali.gui._run_widget import _RunCaliWidget
 
@@ -99,23 +98,6 @@ def test_analysis_tab_checks_require_one_pillar(qtbot: QtBot) -> None:
     qtbot.mouseClick(widget._enable_spikes_cb, Qt.MouseButton.LeftButton)
     assert not widget.to_model_settings().enable_spikes
     assert not widget._spike_tabs.isEnabled()
-
-
-def test_detection_tab_browsing_and_selection_are_separate(qtbot: QtBot) -> None:
-    widget = _DetectionGUI()
-    qtbot.addWidget(widget)
-    widget.show()
-    widget._settings_tabs.setCurrentWidget(widget._imported_page)
-    assert widget.active_method() == "cellpose"
-    qtbot.mouseClick(widget._imported_cb, Qt.MouseButton.LeftButton)
-    assert widget.active_method() == "imported_labels"
-    assert not widget._cellpose_cb.isChecked()
-    qtbot.keyClick(widget._imported_cb, Qt.Key.Key_Space)
-    assert widget._imported_cb.isChecked()
-    widget.reset()
-    assert widget._cellpose_cb.isChecked()
-    assert not widget._imported_cb.isChecked()
-    assert widget._settings_tabs.currentWidget() is widget._cellpose_page
 
 
 def test_run_controls_explain_reanalysis_and_export(qtbot: QtBot) -> None:
