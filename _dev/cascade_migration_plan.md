@@ -1481,6 +1481,48 @@ and [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). Independen
 representative complete GPU/memory scopes, CUDA hardware and remaining release
 evidence still gate GUI exposure and optimized-default promotion.
 
+P3 GPU continuation — complete MPS image/analysis/storage validation (2026-10-04):
+
+- `benchmark_cascade_extraction.py --device cpu|mps|cuda` now selects CASCADE's
+  device explicitly and verifies persisted resolved-device provenance. OASIS and
+  calcium remain CPU calculations. Default CPU comparisons stay exact. GPU
+  comparisons permit the existing tolerance only for prediction samples and ROI
+  expected count/rate; binary decisions and every deterministic FOV metric stay
+  exact. Repeated FOVs, persistence and offline re-analysis remain exact.
+- The 100 × 6000 complete workload runs all seven modes on actual MPS, including
+  40 × 40 float64 images, four FOV workers, full calcium/spike analysis, 20 CCG
+  shuffles, SQLite staging/commits and inference-free offline re-analysis. Service
+  warm complete time is **120.351 s** CASCADE-only / **193.296 s** dual, compared
+  with **171.871 s** / **251.646 s** reference: **1.428× / 1.302×**, substantially
+  smaller gains than inference-only measurements. Lock times are **121.671 s** /
+  **195.545 s**; a single observation does not prove service superiority.
+- A new read-only device audit binds exact inputs, timing/noise/model provenance,
+  applied thresholds and every threshold crossing to the archived CPU oracle.
+  It verifies finite/nonnegative predictions, exact padding, deterministic FOV
+  science and every stored sample/owner. Cross-version comparisons omit only the
+  seven additive QC fields; all original noise inputs remain exact. CPU/GPU
+  timings across schema versions are not treated as a controlled speed comparison.
+- CASCADE-enabled parent RSS is **1.6–2.1 GiB** on this scope. Four callers' retained
+  payload lower bound is **385.13 MiB** before inference, already above the earlier
+  256 MiB inference-only comparison. This does not define or pass a representative
+  complete-pipeline memory budget. Cached paths load 40 weights cold / zero warm,
+  with eight ensembles, 5.25 MiB of parameters and 1,024-window chunks.
+
+Validation: all seven large and final strict small modes pass; **28 CPU/GPU
+comparisons and 28 read-only database audits** pass. **478 installed-wheel CI-list
+tests** pass, including 19 new negative checks for changed decisions, threshold
+crossings, source arrays, model/device provenance, shape and nonfinite values.
+Explicit unavailable CUDA fails without output or CPU fallback. The comparison
+policy was tightened after timing; timed pipeline code remains unchanged and both
+script hashes are recorded. Evidence is in
+[`cascade_mps_complete_validation.json`](cascade_mps_complete_validation.json) and
+[`cascade_release_benchmarks.md`](cascade_release_benchmarks.md).
+
+This closes the controlled complete-image MPS evidence gap. Independent recording,
+representative memory and remaining release evidence still gate GUI exposure and
+cached-default promotion. GUI wiring is the next implementation priority; backend,
+analysis, storage and export support already exist headlessly.
+
 ## 0. TL;DR
 
 | Question | Answer |

@@ -103,6 +103,58 @@ STOCHASTIC_FIELDS = {
     "fraction_significant_ccg_pairs_rising_edges",
 }
 
+# Only continuous ROI quantities derived from GPU predictions receive tolerance.
+# Activity, excursions, labels, lag choices, burst counts/bounds, coordinates,
+# model noise and applied thresholds must agree exactly.
+GPU_CONTINUOUS_FIELDS = {
+    "expected_spike_count",
+    "expected_spike_rate_hz",
+}
+GPU_RTOL = 1e-5
+GPU_ATOL = 1e-6
+
+
+def compare_arrays(
+    actual: np.ndarray, expected: np.ndarray, *, tolerant: bool
+) -> float:
+    """Reject broadcasting/nonfinite predictions before testing device parity."""
+    assert actual.shape == expected.shape
+    assert np.isfinite(actual).all() and np.isfinite(expected).all()
+    if tolerant:
+        np.testing.assert_allclose(actual, expected, rtol=GPU_RTOL, atol=GPU_ATOL)
+    else:
+        np.testing.assert_array_equal(actual, expected)
+    return float(np.max(np.abs(actual - expected))) if actual.size else 0.0
+
+
+def compare_spike_products(actual: dict, expected: dict, *, tolerant: bool) -> dict:
+    """Require exact discrete science even when continuous GPU values differ."""
+    assert actual.keys() == expected.keys() == {"roi", "fov"}
+    assert len(actual["roi"]) == len(expected["roi"])
+    differences = {}
+    pairs = [("fov", actual["fov"], expected["fov"])] + [
+        (f"roi/{index}", row, oracle)
+        for index, (row, oracle) in enumerate(
+            zip(actual["roi"], expected["roi"], strict=True)
+        )
+    ]
+    for owner, row, oracle in pairs:
+        assert row.keys() == oracle.keys()
+        for name, value in row.items():
+            baseline = oracle[name]
+            if tolerant and name in GPU_CONTINUOUS_FIELDS and value is not None:
+                assert baseline is not None
+                error = compare_arrays(
+                    np.asarray(value), np.asarray(baseline), tolerant=True
+                )
+                if error:
+                    differences[f"{owner}/{name}"] = error
+            else:
+                assert value == baseline, (
+                    f"Discrete/exact metric changed: {owner}/{name}"
+                )
+    return differences
+
 
 def scientific_fields(model: object) -> dict:
     """Compare scientific scalar fields independently of ORM identity and RNG."""
@@ -379,7 +431,7 @@ class BenchmarkRunner(ExtractionRunner):
             "model_name": MODEL,
             "model_dir": self.args.model_dir,
             "expected_manifest": MANIFEST,
-            "device": "cpu",
+            "device": self.args.device,
         }
         if self.args.backend == "reference":
             backend = CascadeReferenceBackend(**options)
@@ -425,7 +477,7 @@ def run_case(args: argparse.Namespace) -> dict:
     settings = ExtractionSettings(
         spike_methods=methods,
         cascade_model=MODEL if "cascade" in methods else None,
-        cascade_device="cpu",
+        cascade_device=args.device,
         frame_rate=30,
         dff_window=5,
         decay_constant=1.0,
@@ -710,6 +762,9 @@ def run_case(args: argparse.Namespace) -> dict:
                         for run in session.exec(select(SpikeInferenceRun)).all()
                     }
                     assert set(canonical_runs) == set(methods)
+                    for inference in session.exec(select(SpikeInferenceRun)).all():
+                        if inference.method == "cascade":
+                            assert inference.resolved_device == args.device
                     assert len(stored_fovs) == count
                     assert (
                         sum(len(fov.rois) for fov in stored_fovs) == count * args.rois
@@ -871,7 +926,7 @@ def run_case(args: argparse.Namespace) -> dict:
         "model": MODEL if "cascade" in methods else None,
         "model_manifest_sha256": MANIFEST if "cascade" in methods else None,
         "package_revision": package.package_revision,
-        "device": "cpu",
+        "device": args.device if "cascade" in methods else "cpu",
         "torch": str(package.torch.__version__),
         "torch_threads": package.torch.get_num_threads(),
         "inference_torch_thread_counts": sorted(measurements.inference_thread_counts),
@@ -919,6 +974,7 @@ def main() -> None:
         default="reference",
     )
     parser.add_argument("--model-dir", type=Path, required=True)
+    parser.add_argument("--device", choices=("cpu", "mps", "cuda"), default="cpu")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rois", type=int, default=32)
     parser.add_argument("--frames", type=int, default=2048)
@@ -964,6 +1020,8 @@ def main() -> None:
             backend,
             "--model-dir",
             str(args.model_dir),
+            "--device",
+            args.device,
             "--output-dir",
             str(args.output_dir),
             "--rois",
@@ -993,6 +1051,7 @@ def main() -> None:
         print(f"Completed {mode}/{backend}", flush=True)
     differences = {}
     scientific_parity = {}
+    scientific_differences = {}
     for phase in ("cold", "warm"):
         with np.load(args.output_dir / f"oasis-reference-{phase}.npz") as oasis:
             with np.load(args.output_dir / f"cascade-reference-{phase}.npz") as cascade:
@@ -1000,15 +1059,22 @@ def main() -> None:
                     with np.load(
                         args.output_dir / f"{mode}-{backend}-{phase}.npz"
                     ) as data:
+                        assert set(data.files) == {
+                            "den_dff",
+                            "calcium_noise",
+                            *(("oasis", "cascade") if mode == "dual" else (mode,)),
+                        }
                         errors = {}
                         for name in data.files:
                             expected = (
                                 cascade[name] if name == "cascade" else oasis[name]
                             )
-                            errors[name] = float(np.max(np.abs(data[name] - expected)))
+                            errors[name] = compare_arrays(
+                                data[name],
+                                expected,
+                                tolerant=args.device != "cpu" and name == "cascade",
+                            )
                         differences[f"{mode}/{backend}/{phase}"] = errors
-                        if any(errors.values()):
-                            raise ValueError(f"Numerical mismatch: {differences}")
         products = {
             (mode, backend): json.loads(
                 (args.output_dir / f"{mode}-{backend}-{phase}-metrics.json").read_text()
@@ -1018,10 +1084,17 @@ def main() -> None:
         for case, value in products.items():
             assert value["calcium"] == products["oasis", "reference"]["calcium"]
             for method, product in value["spikes"].items():
-                assert product == products[method, "reference"]["spikes"][method]
+                metric_errors = compare_spike_products(
+                    product,
+                    products[method, "reference"]["spikes"][method],
+                    tolerant=args.device != "cpu" and method == "cascade",
+                )
+                scientific_differences[f"{case[0]}/{case[1]}/{phase}/{method}"] = (
+                    metric_errors
+                )
             scientific_parity[f"{case[0]}/{case[1]}/{phase}"] = True
     report = {
-        "schema": 2,
+        "schema": 3,
         "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "runtime_source_sha256": {
             name: hashlib.sha256(Path(inspect.getfile(value)).read_bytes()).hexdigest()
@@ -1036,6 +1109,16 @@ def main() -> None:
         "results": reports,
         "max_abs_differences": differences,
         "deterministic_scientific_parity": scientific_parity,
+        "continuous_scientific_max_abs_differences": scientific_differences,
+        "comparison_policy": {
+            "device": args.device,
+            "rtol": GPU_RTOL if args.device != "cpu" else 0,
+            "atol": GPU_ATOL if args.device != "cpu" else 0,
+            "tolerant_cascade_fields": sorted(GPU_CONTINUOUS_FIELDS)
+            if args.device != "cpu"
+            else [],
+            "calcium_oasis_discrete_metrics_persistence_offline": "exact",
+        },
         "release_gate": (
             "pending: representative real plate, GPU acceptance, independent codec "
             "compressibility and memory acceptance; controlled workloads require review"

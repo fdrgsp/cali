@@ -183,6 +183,87 @@ Explicit unavailable CUDA selection fails before creating a prediction. CUDA har
 independent real-plate inputs, representative complete GPU and memory scopes, and
 remaining release evidence are still pending.
 
+### Complete MPS extraction, analysis and persistence
+
+The complete-image GPU command uses the same installed wheel, model, 100 ROI
+masks, 6,000 frames, 40 × 40 float64 images, four extraction workers and one FOV
+analysis worker as the controlled CPU workload. It runs all seven output/backend
+combinations in fresh processes, with one cold FOV and four warm FOVs. Full spike
+analysis uses 20 CCG shuffles and no rising-edge analysis. Image loading, ROI/FOV
+analysis and normal SQLite persistence are included; offline re-analysis is timed
+separately and must make zero inference/checkpoint-load calls.
+
+```sh
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --mode all --device mps --model-dir /tmp/cali-cascade-real-models \
+  --output-dir /tmp/cali-mps-complete-large \
+  --rois 100 --frames 6000 --fovs 4 --workers 4 \
+  --analysis full --analysis-processes 1 --sample-memory
+
+"$cascade_bench_python" _dev/audit_cascade_device_parity.py \
+  --cpu /tmp/cali-p8-large-full --gpu /tmp/cali-mps-complete-large \
+  --output /tmp/cali-mps-complete-device-audit.json
+```
+
+The device audit opens both SQLite inputs read-only. It binds extraction/analysis
+settings, model/package/runtime identities, every raw/DFF/denoised/time sample,
+noise values, frame windows and all stored model provenance except the intentionally
+different device. Every ROI's binary threshold decisions, activity, ordering,
+lag choices, synchrony, bursts and deterministic FOV population products must be
+exact. Only CASCADE prediction samples and ROI expected count/rate allow the
+existing `rtol=1e-5, atol=1e-6`. A rounding error within that tolerance still fails
+if it changes a threshold crossing. Finite/nonnegative predictions and exact zero
+padding are also verified. Four random CCG significance fields remain excluded
+from comparisons, as in the CPU benchmark.
+
+The archived CPU oracle predates additive schema-14 noise summaries. The audit
+excludes those seven fields from cross-version scientific products, while comparing
+all persisted calcium/model noise inputs exactly. This is numerical evidence;
+the old CPU and new GPU complete times are not a same-version speed comparison.
+Database audits require exact persisted samples and valid run/FOV ownership.
+Host RSS includes the complete result graph and validation/offline stages;
+one-second simultaneous parent/descendant samples can miss short peaks and count
+shared pages more than once. These are host measurements, not GPU allocator peaks.
+
+| Output / backend | Cold complete s | Four warm FOVs s | Warm offline s | Parent peak MiB | Summed RSS peak MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| OASIS / reference (CPU) | 22.243 | 88.373 | 72.534 | 1530.81 | 1551.34 |
+| CASCADE / reference | 43.780 | 171.871 | 75.169 | 2141.34 | 2153.50 |
+| dual / reference | 61.114 | 251.646 | 145.560 | 2151.16 | 2156.22 |
+| CASCADE / service | 30.610 | 120.351 | 74.077 | 1644.53 | 1665.30 |
+| dual / service | 48.797 | 193.296 | 146.992 | 1837.50 | 1858.22 |
+| CASCADE / cached lock | 31.200 | 121.671 | 74.991 | 1652.11 | 1672.86 |
+| dual / cached lock | 50.071 | 195.545 | 144.066 | 1819.67 | 1840.52 |
+
+The service improves complete warm time **1.428×** for CASCADE-only and **1.302×**
+for dual output against MPS reference. Its observed times are about 1.1% shorter
+than the lock baseline; this single sample does not establish a stable advantage.
+All CASCADE paths resolve to MPS in persisted provenance. Reference loads 40
+checkpoints cold and 160 warm; cached paths load 40 cold and zero warm, retaining
+eight ensembles / 5.25 MiB of parameters with chunks capped at 1,024 windows.
+Optimized/reference MPS prediction differences are at most **5.96 × 10⁻⁸**.
+CPU/MPS differences are at most **2.38 × 10⁻⁷**, with every binary decision and
+deterministic FOV product exact. All 14 large databases contain the complete
+requested rows and lossless samples. Dual/legacy spike payload projections are
+**493.934 MiB per 96 FOVs**, below the unchanged controlled 512 MiB comparison.
+The final strict 12 × 256 smoke adds 14 audited databases; the updated installed
+CI test list passes **478 tests in 31.11 s**, including 19 acceptance-guard tests.
+Explicit unavailable CUDA fails without a database or prediction.
+
+The complete graph does not pass the earlier **256 MiB inference-only** host
+comparison: four callers' retained image/trace/mask lower bound alone is
+**385.13 MiB**, before inference and Python/container overhead. The parameter
+cache cap is not a whole-pipeline memory budget. A representative image scope,
+concurrency policy and accepted complete-pipeline budget still need evaluation.
+No cached-default promotion or GUI release gate is opened by this controlled
+measurement; independent recording and remaining release checks stay pending.
+
+The final comparator was tightened after timing to require exact FOV products
+instead of allowing tolerance in four floating-point FOV fields. Timed extraction,
+analysis and persistence code did not change. The original measurement script hash
+is retained in the raw report; the final strict smoke and CPU/device audits bind
+the final script separately in `cascade_mps_complete_validation.json`.
+
 ### Complete CPU extraction and storage
 
 The short/long full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`;
