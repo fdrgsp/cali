@@ -7,6 +7,9 @@ import numpy as np
 import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
+from cali.analysis._fov_inputs import _check_alignment
+from cali.analysis._roi_analysis import cascade_acquisition_rate
+from cali.plot._spike_data import SpikePlotData, roi_is_active, spike_plot_data
 from cali.plot._util import disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import (
@@ -17,12 +20,14 @@ from cali.sqlmodel._model import (
     DataAnalysis,
     Traces,
 )
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pyqtgraph.GraphicsScene.mouseEvents import MouseClickEvent
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 
 P1 = 5
@@ -76,7 +81,7 @@ def _get_data_analysis_for_run(
     for analysis in roi_model.data_analysis_history:
         if analysis.analysis_result_id == run_id:
             return analysis
-    return roi_model.data_analysis_history[0]
+    return None
 
 
 # -----------------------------------------------------------------------------#
@@ -183,6 +188,8 @@ def _plot_stim_and_non_stim_peaks_amplitude(
     non_stim_data: list[tuple[int, float, float, list[float]]] = []
 
     for roi_model, _traces, data_analysis in results:
+        if not roi_is_active(roi_model, data_analysis):
+            continue
         if not (data_analysis and data_analysis.peaks_amplitudes_den_dff):
             continue
 
@@ -461,6 +468,8 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
     rois_rec_time: list[float] = []
 
     for roi_model, trace_obj, data_analysis in results:
+        if not roi_is_active(roi_model, data_analysis):
+            continue
         if trace_obj and trace_obj.den_dff:
             if roi_model.stimulated:
                 stimulated_data.append((roi_model, trace_obj, data_analysis))
@@ -471,7 +480,7 @@ def _plot_stimulated_vs_non_stimulated_roi_traces(
 
     # ---------- GLOBAL PERCENTILE NORMALIZATION ----------
     all_values: list[float] = []
-    for _, trace_obj, _ in results:
+    for _, trace_obj, _ in stimulated_data + non_stimulated_data:
         if trace_obj and trace_obj.den_dff:
             all_values.extend(trace_obj.den_dff)
 
@@ -702,214 +711,13 @@ def _plot_stimulated_vs_non_stimulated_spike_raster(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
-    """Plot raster of thresholded spikes (green=stim, magenta=non-stim) with pg.
-
-    Each suprathreshold burst in the inferred spike trace is collapsed to a
-    single event (rising edge), so the raster shows one tick per inferred spike
-    event rather than one tick per frame above threshold.
-    """
-    plot = widget.plot_item
-    assert plot is not None
-
-    plot.clear()
-
-    # Disconnect any hover handlers from previous plots
-    disconnect_hover_handlers(plot)
-
-    vb = plot.getViewBox()
-    vb.setAspectLocked(False)
-    vb.invertY(True)
-
-    # Hide legend
-    if hasattr(widget, "legend") and widget.legend is not None:
-        widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    from cali.sqlmodel._model import FOV as FOVModel  # avoid name clash
-
-    if run_id is None:
-        plot.setTitle(
-            "Stimulated vs Non-Stimulated Spike Raster Plot\nNo run selected."
-        )
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # ------------------------ Query DB ------------------------ #
-    ensure_schema_current(engine)
-    with Session(engine) as session:
-        stmt = (
-            select(ROI, Traces, DataAnalysis)
-            .join(FOVModel, ROI.fov_id == FOVModel.id)
-            .join(
-                Traces,
-                (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
-            )
-            .outerjoin(
-                DataAnalysis,
-                (DataAnalysis.roi_id == ROI.id)
-                & (DataAnalysis.analysis_result_id == run_id),
-            )
-            .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
-        if rois is not None:
-            stmt = stmt.where(col(ROI.label_value).in_(rois))
-        stmt = stmt.order_by(col(ROI.label_value))
-        results = session.exec(stmt).all()
-
-    if not results:
-        plot.setTitle("Spike Raster\nNo active ROI data found for this FOV.")
-        plot.setLabel("bottom", "Frames")
-        return
-
-    stimulated_rois: list[tuple[ROI, Traces, DataAnalysis | None]] = []
-    non_stimulated_rois: list[tuple[ROI, Traces, DataAnalysis | None]] = []
-    active_roi_labels: list[int] = []
-    rois_rec_time: list[float] = []
-    total_frames = 0
-
-    for roi_model, trace_obj, data_analysis in results:
-        spike_values = trace_obj.get_spike_values("oasis") if trace_obj else None
-        if trace_obj and spike_values is not None and data_analysis:
-            active_roi_labels.append(roi_model.label_value)
-            if roi_model.stimulated:
-                stimulated_rois.append((roi_model, trace_obj, data_analysis))
-            else:
-                non_stimulated_rois.append((roi_model, trace_obj, data_analysis))
-
-            if data_analysis.total_recording_time_sec is not None:
-                rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-            total_frames = max(total_frames, len(spike_values))
-
-    if not stimulated_rois and not non_stimulated_rois:
-        plot.setTitle("Spike Raster\nNo spike data available.")
-        plot.setLabel("bottom", "Frames")
-        return
-
-    # ------------------------ Build raster ------------------------ #
-    y_row = 0
-
-    def _add_raster_row(
-        roi_model: ROI,
-        trace_obj: Traces,
-        data_analysis: DataAnalysis | None,
-        color: str,
-        row_index: int,
-    ) -> bool:
-        """Detect binary spike events (rising edges); return True if anything plotted.
-
-        Uses rising edge detection to show discrete spike events, matching
-        standard spike raster convention (one tick per event onset).
-        """
-        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
-        if spikes.size == 0:
-            return False
-
-        threshold = (
-            float(data_analysis.get_spike_metric("oasis", "threshold") or 0)
-            if data_analysis
-            else 0.0
-        )
-
-        above_threshold = spikes > threshold
-        if not np.any(above_threshold):
-            return False
-
-        # Rising edges: detect 0 -> 1 transitions (discrete spike events)
-        # This collapses continuous suprathreshold periods into single events
-        rising = above_threshold & ~np.concatenate(([False], above_threshold[:-1]))
-        spike_indices = np.where(rising)[0]
-        if spike_indices.size == 0:
-            return False
-
-        item = pg.ScatterPlotItem(
-            x=spike_indices.astype(float),
-            y=np.full_like(spike_indices, row_index, dtype=float),
-            pen=None,
-            brush=pg.mkBrush(color),
-            size=RASTER_SYMBOL_SIZE,
-            symbol=RASTER_SYMBOL,
-        )
-        item.setProperty("roi_label", str(roi_model.label_value))
-        plot.addItem(item)
-        return True
-
-    # Stimulated rows
-    for roi_model, trace_obj, data_analysis in stimulated_rois:
-        _add_raster_row(roi_model, trace_obj, data_analysis, STIMULATED_COLOR, y_row)
-        y_row += 1
-
-    # Non-stimulated rows
-    for roi_model, trace_obj, data_analysis in non_stimulated_rois:
-        _add_raster_row(
-            roi_model, trace_obj, data_analysis, NON_STIMULATED_COLOR, y_row
-        )
-        y_row += 1
-
-    plot.setTitle(
-        "Stimulated vs Non-Stimulated Spike Raster Plot\n(Thresholded - Rising Edges)"
+    """Render one method's validated threshold onsets in stimulation order."""
+    _plot_evoked_spikes(
+        widget, engine, fov_name, rois, run_id, spike_method=spike_method, raster=True
     )
-    plot.setLabel("left", "ROI")
-    _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
-
-    # hide y tick values (but keep axis label)
-    y_axis = plot.getAxis("left")
-    y_axis.setTicks([])
-    y_axis.setStyle(showValues=False)
-
-    # ---------- LEGEND ----------
-    legend = getattr(widget, "legend", None)
-    if legend is not None:
-        legend.clear()
-
-        # Add legend items for stimulated and non-stimulated spikes
-        if stimulated_rois:
-            stim_item = pg.ScatterPlotItem(
-                pen=None,
-                brush=pg.mkBrush(STIMULATED_COLOR),
-                size=RASTER_SYMBOL_SIZE_LEGEND,
-                symbol=RASTER_SYMBOL,
-            )
-            legend.addItem(stim_item, "Stimulated ROIs")
-
-        if non_stimulated_rois:
-            non_stim_item = pg.ScatterPlotItem(
-                pen=None,
-                brush=pg.mkBrush(NON_STIMULATED_COLOR),
-                size=RASTER_SYMBOL_SIZE_LEGEND,
-                symbol=RASTER_SYMBOL,
-            )
-            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
-
-        # Add LED stimulation legend item
-        led_item = pg.ScatterPlotItem(
-            pen=None,
-            brush=pg.mkBrush(LED_COLOR),
-            size=LED_SYMBOL_SIZE,
-            symbol=LED_SYMBOL,
-        )
-        legend.addItem(led_item, "LED Stimulation")
-
-        legend.setVisible(True)
-
-    # ---------- LED STIMULATION BANDS ----------
-    # Get frame rate from data analysis
-    frame_rate = None
-    for _, _, data_analysis in results:
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            frame_rate = total_frames / data_analysis.total_recording_time_sec
-            break
-
-    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride=1)
-
-    # Set x-range to full frames with some padding at the end, enable autorange for y
-    if total_frames > 0:
-        vb.setXRange(0, total_frames * 1.05, padding=0)
-    vb.enableAutoRange(x=False, y=True)
-
-    _attach_click_handlers_raster(widget, plot, active_roi_labels)
 
 
 def _attach_click_handlers_raster(
@@ -1001,7 +809,6 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
                 & (DataAnalysis.analysis_result_id == run_id),
             )
             .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
         )
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
@@ -1020,6 +827,8 @@ def _plot_stimulated_vs_non_stimulated_calcium_peaks_raster(
     total_frames = 0
 
     for roi_model, trace_obj, data_analysis in results:
+        if not roi_is_active(roi_model, data_analysis):
+            continue
         if trace_obj and trace_obj.den_dff is not None and data_analysis:
             active_roi_labels.append(roi_model.label_value)
             if roi_model.stimulated:
@@ -1152,177 +961,172 @@ def _plot_stimulated_vs_non_stimulated_spike_traces(
     fov_name: str,
     rois: list[int] | None = None,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
-    """Plot continuous inferred spike traces separated by stimulation status."""
+    """Render one method's amplitudes, masking padding and preserving its units."""
+    _plot_evoked_spikes(
+        widget, engine, fov_name, rois, run_id, spike_method=spike_method
+    )
+
+
+def _plot_evoked_spikes(
+    widget: _SingleWellGraphWidget,
+    engine: Engine,
+    fov_name: str,
+    rois: list[int] | None,
+    run_id: int | None,
+    *,
+    spike_method: SpikeMethod,
+    raster: bool = False,
+) -> None:
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
-
     plot.clear()
-
-    # Disconnect any hover handlers from previous plots
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     disconnect_hover_handlers(plot)
-
     vb = plot.getViewBox()
     vb.setAspectLocked(False)
-
-    if hasattr(widget, "legend") and widget.legend is not None:
-        widget.legend.clear()
-        widget.legend.setVisible(False)
-
-    from cali.sqlmodel._model import FOV as FOVModel  # avoid name clash
-
-    if run_id is None:
-        plot.setTitle(
-            "Stimulated vs Non-Stimulated Spike Traces\nNo analysis run selected."
+    vb.invertY(raster)
+    vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+    plot.getAxis("bottom").setTicks(None)
+    plot.getAxis("bottom").setStyle(showValues=True)
+    plot.setLabel("bottom", "Frames")
+    units = "a.u." if spike_method == "oasis" else "spikes/frame"
+    plot.setLabel("left", "ROI" if raster else f"Inferred Spikes ({units})")
+    kind = "Raster" if raster else "Traces"
+    title = f"[{spike_method.upper()}] Stimulated vs Non-Stimulated Spike {kind}"
+    if raster:
+        title += (
+            " (Threshold Excursion Starts)"
+            if spike_method == "cascade"
+            else " (Rising Edges)"
         )
-        plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes (Thresholded)")
-        y_axis = plot.getAxis("left")
-        y_axis.setStyle(showValues=True)
+    plot.setTitle(title)
+    legend = getattr(widget, "legend", None)
+    if legend is not None:
+        legend.clear()
+        legend.setVisible(False)
+    if run_id is None:
+        plot.setTitle(title + " (No run selected)")
         return
 
     ensure_schema_current(engine)
+    rows: list[tuple[ROI, Traces, SpikePlotData]] = []
+    durations: list[float] = []
+    rate = None
     with Session(engine) as session:
         stmt = (
             select(ROI, Traces, DataAnalysis)
-            .join(FOVModel, ROI.fov_id == FOVModel.id)
+            .join(FOV, ROI.fov_id == FOV.id)
             .join(
                 Traces,
                 (Traces.roi_id == ROI.id) & (Traces.analysis_result_id == run_id),
             )
-            .outerjoin(
+            .join(
                 DataAnalysis,
                 (DataAnalysis.roi_id == ROI.id)
                 & (DataAnalysis.analysis_result_id == run_id),
             )
-            .where(col(FOVModel.name) == fov_name)
-            .where(col(ROI.active) == True)  # noqa: E712
+            .where(col(FOV.name) == fov_name)
+            .order_by(col(ROI.label_value))
         )
         if rois is not None:
             stmt = stmt.where(col(ROI.label_value).in_(rois))
-        stmt = stmt.order_by(col(ROI.label_value))
-        results = session.exec(stmt).all()
-
-    if not results:
-        plot.setTitle("Stimulated vs Non-Stimulated Spike Traces\nNo ROI data.")
-        plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes (Thresholded)")
-        y_axis = plot.getAxis("left")
-        y_axis.setStyle(showValues=True)
+        for roi, trace, analysis in session.exec(stmt).all():
+            if not roi_is_active(roi, analysis, spike_method):
+                continue
+            data = spike_plot_data(
+                trace, analysis, spike_method, require_threshold=raster
+            )
+            if data is None:
+                continue
+            if spike_method == "cascade":
+                current_rate = cascade_acquisition_rate(data.spike, trace)
+                if rows:
+                    _check_alignment(rows[0][1], trace, len(data.values))
+                    if len(data.values) != len(rows[0][2].values) or not np.isclose(
+                        rate, current_rate, rtol=1e-9
+                    ):
+                        raise ValueError(
+                            "Evoked CASCADE traces must share their "
+                            "retained time axis and rate."
+                        )
+                rate = current_rate
+            elif (
+                analysis.total_recording_time_sec is not None
+                and analysis.total_recording_time_sec > 0
+            ):
+                durations.append(analysis.total_recording_time_sec)
+                if rate is None:
+                    rate = len(data.values) / analysis.total_recording_time_sec
+            rows.append((roi, trace, data))
+    if not rows:
+        plot.setTitle(title + " (No selected-method activity data)")
         return
-
-    stimulated_data: list[tuple[ROI, Traces, DataAnalysis | None]] = []
-    non_stimulated_data: list[tuple[ROI, Traces, DataAnalysis | None]] = []
-    rois_rec_time: list[float] = []
-
-    for roi_model, trace_obj, data_analysis in results:
-        if trace_obj and trace_obj.get_spike_values("oasis"):
-            if roi_model.stimulated:
-                stimulated_data.append((roi_model, trace_obj, data_analysis))
-            else:
-                non_stimulated_data.append((roi_model, trace_obj, data_analysis))
-
-            if data_analysis and data_analysis.total_recording_time_sec is not None:
-                rois_rec_time.append(data_analysis.total_recording_time_sec)
-
-    if not stimulated_data and not non_stimulated_data:
-        plot.setTitle("Stimulated vs Non-Stimulated Spike Traces\nNo spike data.")
-        plot.setLabel("bottom", "Frames")
-        plot.setLabel("left", "Inferred Spikes (Thresholded)")
-        y_axis = plot.getAxis("left")
-        y_axis.setStyle(showValues=True)
-        return
-
-    curves: list[pg.PlotDataItem] = []
-    count = 0
-    total_frames = 0
-
-    # Stim traces - show continuous spike amplitudes
-    for roi_model, trace_obj, _data_analysis in stimulated_data:
-        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
-        offset = count * 1.1
-        y = spikes + offset
-        x = np.arange(y.size, dtype=float)
-        curve = plot.plot(
-            x,
-            y,
-            pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH),
-            name=f"ROI {roi_model.label_value}",
-        )
-        curve.setProperty("roi_label", str(roi_model.label_value))
-        curve.setProperty("roi_index", count)
-        curves.append(curve)
-        count += 1
-        total_frames = max(total_frames, y.size)
-
-    # Non-stim traces - show continuous spike amplitudes
-    for roi_model, trace_obj, _data_analysis in non_stimulated_data:
-        spikes = np.asarray(trace_obj.get_spike_values("oasis"), dtype=float)
-        offset = count * 1.1
-        y = spikes + offset
-        x = np.arange(y.size, dtype=float)
-        curve = plot.plot(
-            x,
-            y,
-            pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH),
-            name=f"ROI {roi_model.label_value}",
-        )
-        curve.setProperty("roi_label", str(roi_model.label_value))
-        curve.setProperty("roi_index", count)
-        curves.append(curve)
-        count += 1
-        total_frames = max(total_frames, y.size)
-
-    plot.setLabel("left", "Inferred Spikes (a.u.)")
-    plot.setTitle("Stimulated vs Non-Stimulated Inferred Spike Traces")
-
-    # hide y tick values, but keep the axis label text
-    y_axis = plot.getAxis("left")
-    y_axis.setTicks([])
-    y_axis.setStyle(showValues=False)
-
-    # ---------- LEGEND ----------
-    legend = getattr(widget, "legend", None)
+    rows.sort(key=lambda row: (not bool(row[0].stimulated), row[0].label_value))
+    curves = []
+    total_frames = max(len(data.values) for _, _, data in rows)
+    for index, (roi, _, data) in enumerate(rows):
+        color = STIMULATED_COLOR if roi.stimulated else NON_STIMULATED_COLOR
+        if raster:
+            events = data.event_frames(onsets=True)
+            item = pg.ScatterPlotItem(
+                x=events.astype(float),
+                y=np.full(len(events), index),
+                pen=None,
+                brush=pg.mkBrush(color),
+                size=RASTER_SYMBOL_SIZE,
+                symbol=RASTER_SYMBOL,
+            )
+            plot.addItem(item)
+        else:
+            item = plot.plot(
+                np.arange(len(data.values)),
+                data.values + index * 1.1,
+                pen=pg.mkPen(color, width=TRACES_WIDTH),
+            )
+            item.setProperty("roi_index", index)
+            curves.append(item)
+        item.setProperty("roi_label", str(roi.label_value))
+    plot.getAxis("left").setTicks([])
+    plot.getAxis("left").setStyle(showValues=False)
+    if spike_method == "oasis":
+        _update_time_axis_pg_frames(plot, durations, total_frames)
     if legend is not None:
-        legend.clear()
-
-        # Add legend items for stimulated and non-stimulated traces
-        if stimulated_data:
-            stim_item = pg.PlotDataItem(
-                pen=pg.mkPen(STIMULATED_COLOR, width=TRACES_WIDTH)
-            )
-            legend.addItem(stim_item, "Stimulated ROIs")
-
-        if non_stimulated_data:
-            non_stim_item = pg.PlotDataItem(
-                pen=pg.mkPen(NON_STIMULATED_COLOR, width=TRACES_WIDTH)
-            )
-            legend.addItem(non_stim_item, "Non-Stimulated ROIs")
-
-        # Add LED stimulation legend item
-        led_item = pg.ScatterPlotItem(
-            pen=None,
-            brush=pg.mkBrush(LED_COLOR),
-            size=LED_SYMBOL_SIZE,
-            symbol=LED_SYMBOL,
+        for stimulated, color, label in (
+            (True, STIMULATED_COLOR, "Stimulated ROIs"),
+            (False, NON_STIMULATED_COLOR, "Non-Stimulated ROIs"),
+        ):
+            if any(bool(roi.stimulated) == stimulated for roi, _, _ in rows):
+                legend.addItem(
+                    pg.PlotDataItem(pen=pg.mkPen(color, width=TRACES_WIDTH)), label
+                )
+        legend.addItem(
+            pg.ScatterPlotItem(
+                pen=None,
+                brush=pg.mkBrush(LED_COLOR),
+                size=LED_SYMBOL_SIZE,
+                symbol=LED_SYMBOL,
+            ),
+            "LED Stimulation",
         )
-        legend.addItem(led_item, "LED Stimulation")
-
         legend.setVisible(True)
-
-    _update_time_axis_pg_frames(plot, rois_rec_time, total_frames)
-
-    # ---------- LED STIMULATION BANDS ----------
-    # Get frame rate from data analysis
-    frame_rate = None
-    for _, _, data_analysis in results:
-        if data_analysis and data_analysis.total_recording_time_sec is not None:
-            frame_rate = total_frames / data_analysis.total_recording_time_sec
-            break
-
-    _add_led_stimulation_bands(plot, engine, run_id, fov_name, frame_rate, stride=1)
-
-    _attach_click_handlers_evoked(widget, curves)
+    _add_led_stimulation_bands(
+        plot, engine, run_id, fov_name, rate, source_trace=rows[0][1]
+    )
+    if raster:
+        vb.setXRange(0, total_frames * 1.05, padding=0)
+        vb.enableAutoRange(x=False, y=True)
+        _attach_click_handlers_raster(
+            widget, plot, [roi.label_value for roi, _, _ in rows]
+        )
+    else:
+        vb.enableAutoRange(x=True, y=True)
+        _attach_click_handlers_evoked(widget, curves)
 
 
 # -----------------------------------------------------------------------------#
@@ -1336,6 +1140,8 @@ def _add_led_stimulation_bands(
     frame_rate: float | None = None,
     stride: int = 1,
     color: tuple[int, int, int, int] = LED_COLOR,
+    *,
+    source_trace: Traces | None = None,
 ) -> None:
     """Add vertical bands for LED stimulation events.
 
@@ -1353,6 +1159,8 @@ def _add_led_stimulation_bands(
         Frame rate in Hz (frames per second). If None, tries to get from settings.
     stride : int
         Downsampling stride used in the plot (default 1)
+    source_trace : Traces | None
+        Plotted trace with the selected run's retained-to-source mapping.
     color : tuple[int, int, int, int]
         RGBA color tuple for the bands (default blue: 0, 0, 255, 200)
     """
@@ -1375,15 +1183,18 @@ def _add_led_stimulation_bands(
         if frame_rate is None:
             frame_rate = settings.frame_rate
 
-        trace = session.exec(
-            select(Traces)
-            .join(ROI, col(Traces.roi_id) == col(ROI.id))
-            .join(FOV, col(ROI.fov_id) == col(FOV.id))
-            .where(
-                Traces.analysis_result_id == run_id,
-                FOV.name == fov_name,
-            )
-        ).first()
+        trace = (
+            source_trace
+            or session.exec(
+                select(Traces)
+                .join(ROI, col(Traces.roi_id) == col(ROI.id))
+                .join(FOV, col(ROI.fov_id) == col(FOV.id))
+                .where(
+                    Traces.analysis_result_id == run_id,
+                    FOV.name == fov_name,
+                )
+            ).first()
+        )
         if trace is None:
             return
 

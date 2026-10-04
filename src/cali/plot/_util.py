@@ -276,6 +276,8 @@ def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
         "spike_maxlag_values_hover_handler",
         "dff_corr_hover_handler",
         "evoked_hover_handler",
+        "sorted_lag_hover_handler",
+        "sorted_zscore_hover_handler",
         "cluster_heatmap_hover_handler",
     ]
     for handler_name in hover_handler_names:
@@ -304,6 +306,8 @@ def disconnect_hover_handlers(plot: pg.PlotItem) -> None:
         "spike_ccorr_click_handler",
         "dff_corr_click_handler",
         "evoked_click_handler",
+        "sorted_lag_click_handler",
+        "sorted_zscore_click_handler",
         "cell_size_click_handler",
         "cluster_heatmap_click_handler",
         "cluster_raster_click_handler",

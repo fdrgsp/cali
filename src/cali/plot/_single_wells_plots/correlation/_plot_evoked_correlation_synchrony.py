@@ -14,9 +14,11 @@ import pyqtgraph as pg
 from sqlmodel import Session, col, select
 
 from cali.extraction._frame_window import SourceFrameTransform
+from cali.plot._spike_data import roi_is_active
 from cali.plot._util import add_colorbar_to_widget, disconnect_hover_handlers
 from cali.sqlmodel._engine import ensure_schema_current
 from cali.sqlmodel._model import FOV, ROI
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 from ._plot_calcium_traces_correlation import (
     _get_den_dff_correlation_matrix_from_db,
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from cali.gui._pygraph_plot_widgets import _SingleWellGraphWidget
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 # PLOT STYLE CONSTANTS
 STIM_RECTANGLE_COLOR = "orange"
@@ -97,25 +100,19 @@ def _detach_heatmap_interaction(plot: pg.PlotItem) -> None:
     plot : pg.PlotItem
         Plot item to clean up
     """
-    old_hover = plot.property("evoked_hover_handler")
-    old_click = plot.property("evoked_click_handler")
-
-    # Disconnect from scene signals if scene exists
     scene = plot.scene()
-    if scene is not None:
-        if old_hover is not None:
-            with contextlib.suppress(TypeError, RuntimeError):
-                scene.sigMouseMoved.disconnect(old_hover)
-
-        if old_click is not None:
-            with contextlib.suppress(TypeError, RuntimeError):
-                scene.sigMouseClicked.disconnect(old_click)
-
-    # Always clear the property references, even if no scene
-    if old_hover is not None:
-        plot.setProperty("evoked_hover_handler", None)
-    if old_click is not None:
-        plot.setProperty("evoked_click_handler", None)
+    for prefix in ("evoked", "sorted_lag", "sorted_zscore"):
+        for kind, signal_name in (
+            ("hover", "sigMouseMoved"),
+            ("click", "sigMouseClicked"),
+        ):
+            property_name = f"{prefix}_{kind}_handler"
+            handler = plot.property(property_name)
+            if handler is not None:
+                if scene is not None:
+                    with contextlib.suppress(TypeError, RuntimeError):
+                        getattr(scene, signal_name).disconnect(handler)
+                plot.setProperty(property_name, None)
 
 
 def _attach_heatmap_interaction(
@@ -177,56 +174,39 @@ def _get_sorted_rois_by_stimulation(
     engine: Engine,
     fov_name: str,
     rois: list[int] | None,
+    *,
+    population_labels: list[int] | None = None,
+    run_id: int | None = None,
 ) -> tuple[list[int], list[int], list[int]]:
-    """Get ROIs sorted by stimulation status (stimulated first, then non-stimulated).
-
-    Parameters
-    ----------
-    engine : Engine
-        Database engine
-    fov_name : str
-        FOV name to query
-    rois : list[int] | None
-        Initial ROI filter (None for all ROIs in FOV)
-
-    Returns
-    -------
-    tuple[list[int], list[int], list[int]]
-        (all_sorted_rois, stimulated_rois, non_stimulated_rois)
-        all_sorted_rois is the concatenation of stimulated + non-stimulated
-    """
+    """Sort an explicit stored population, or the selected run's calcium population."""
     ensure_schema_current(engine)
     with Session(engine) as session:
-        # Get stimulated ROIs
-        stmt_stim = (
-            select(ROI.label_value)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.stimulated) == True)  # noqa: E712
-            .where(col(ROI.active) == True)  # noqa: E712
-        )
+        stmt = select(ROI).join(FOV).where(col(FOV.name) == fov_name)
         if rois is not None:
-            stmt_stim = stmt_stim.where(col(ROI.label_value).in_(rois))
-
-        stimulated_rois = sorted(session.exec(stmt_stim).all())
-
-        # Get non-stimulated ROIs
-        stmt_non_stim = (
-            select(ROI.label_value)
-            .join(FOV)
-            .where(col(FOV.name) == fov_name)
-            .where(col(ROI.stimulated) == False)  # noqa: E712
-            .where(col(ROI.active) == True)  # noqa: E712
+            stmt = stmt.where(col(ROI.label_value).in_(rois))
+        if population_labels is not None:
+            stmt = stmt.where(col(ROI.label_value).in_(population_labels))
+        selected = []
+        for roi in session.exec(stmt).all():
+            if population_labels is None:
+                analysis = next(
+                    (
+                        item
+                        for item in roi.data_analysis_history
+                        if item.analysis_result_id == run_id
+                    ),
+                    None,
+                )
+                if run_id is not None and not roi_is_active(roi, analysis):
+                    continue
+                if run_id is None and not roi.active:
+                    continue
+            selected.append(roi)
+        stimulated = sorted(roi.label_value for roi in selected if roi.stimulated)
+        non_stimulated = sorted(
+            roi.label_value for roi in selected if not roi.stimulated
         )
-        if rois is not None:
-            stmt_non_stim = stmt_non_stim.where(col(ROI.label_value).in_(rois))
-
-        non_stimulated_rois = sorted(session.exec(stmt_non_stim).all())
-
-    # Concatenate: stimulated first, then non-stimulated
-    all_sorted_rois = stimulated_rois + non_stimulated_rois
-
-    return all_sorted_rois, stimulated_rois, non_stimulated_rois
+    return stimulated + non_stimulated, stimulated, non_stimulated
 
 
 def _reorder_matrix_by_roi_list(
@@ -277,6 +257,8 @@ def _plot_sorted_spike_synchrony(
     rois: list[int] | None = None,
     run_id: int | None = None,
     rising_edges: bool = False,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike synchrony with ROIs sorted by stimulation status.
 
@@ -295,15 +277,21 @@ def _plot_sorted_spike_synchrony(
         ROI filter
     run_id : int | None
         Analysis run ID
+    spike_method : {"oasis", "cascade"}
+        Stored method to render.
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -314,16 +302,11 @@ def _plot_sorted_spike_synchrony(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    spike_type = "Rising Edges" if rising_edges else "Thresholded"
-
-    # Get sorted ROI lists
-    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+    spike_type = (
+        ("Threshold Excursion Starts" if spike_method == "cascade" else "Rising Edges")
+        if rising_edges
+        else "Thresholded"
     )
-
-    if len(all_sorted) < 2:
-        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - Need ≥2 ROIs)")
-        return
 
     # Get synchrony matrix from database
     (
@@ -332,11 +315,26 @@ def _plot_sorted_spike_synchrony(
         _,  # global_sync not used - we calculate from filtered matrix
         jitter_ms,
     ) = _get_spike_synchrony_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if sync_matrix is None or roi_labels is None:
-        plot.setTitle(f"Spike Global Synchrony ({spike_type}) (Sorted - No data)")
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Spike Global Synchrony ({spike_type}) (Sorted - No data)"
+        )
+        return
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois, population_labels=roi_labels
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Spike Global Synchrony ({spike_type}) (Sorted - Need ≥2 ROIs)"
+        )
         return
 
     # Reorder matrix according to sorted ROIs
@@ -346,6 +344,7 @@ def _plot_sorted_spike_synchrony(
 
     if reordered_matrix is None or len(final_rois) < 2:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Spike Global Synchrony ({spike_type}) (Sorted - Insufficient ROIs)"
         )
         return
@@ -384,7 +383,7 @@ def _plot_sorted_spike_synchrony(
         non_stim_median = np.nan
 
     title = (
-        f"Spike Global Synchrony ({spike_type}) "
+        f"[{spike_method.upper()}] Spike Global Synchrony ({spike_type}) "
         f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     )
     if jitter_ms is not None:
@@ -397,6 +396,7 @@ def _plot_sorted_spike_synchrony(
         title += f" | Non-stim median: {non_stim_median:.3f}"
     title += f" | Global median: {global_median:.3f}"
 
+    title = f"[{spike_method.upper()}] {title}" if not title.startswith("[") else title
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI")
     plot.setLabel("left", "ROI")
@@ -437,6 +437,8 @@ def _plot_sorted_spike_max_lag_correlation(
     rois: list[int] | None = None,
     run_id: int | None = None,
     rising_edges: bool = False,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike max-lag correlation with ROIs sorted by stimulation status.
 
@@ -455,15 +457,21 @@ def _plot_sorted_spike_max_lag_correlation(
         ROI filter
     run_id : int | None
         Analysis run ID
+    spike_method : {"oasis", "cascade"}
+        Stored method to render.
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -474,28 +482,34 @@ def _plot_sorted_spike_max_lag_correlation(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    spike_type = "Rising Edges" if rising_edges else "Thresholded"
-
-    # Get sorted ROI lists
-    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+    spike_type = (
+        ("Threshold Excursion Starts" if spike_method == "cascade" else "Rising Edges")
+        if rising_edges
+        else "Thresholded"
     )
-
-    if len(all_sorted) < 2:
-        plot.setTitle(
-            f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
-            "(Sorted - Need ≥2 ROIs)"
-        )
-        return
 
     # Get correlation matrix from database
     corr_matrix, roi_labels = _get_spike_max_lag_correlation_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if corr_matrix is None or roi_labels is None:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) (Sorted - No data)"
+        )
+        return
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois, population_labels=roi_labels
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
+            "(Sorted - Need ≥2 ROIs)"
         )
         return
 
@@ -506,6 +520,7 @@ def _plot_sorted_spike_max_lag_correlation(
 
     if reordered_matrix is None or len(final_rois) < 2:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
             "(Sorted - Insufficient ROIs)"
         )
@@ -547,6 +562,7 @@ def _plot_sorted_spike_max_lag_correlation(
         non_stim_median = np.nan
 
     title = (
+        f"[{spike_method.upper()}] "
         f"Inferred Spikes Peak CCG at Optimal Lag ({spike_type}) "
         f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     )
@@ -558,6 +574,7 @@ def _plot_sorted_spike_max_lag_correlation(
         title += f" | Non-stim median: {non_stim_median:.3f}"
     title += f" | Global median: {global_median:.3f}"
 
+    title = f"[{spike_method.upper()}] {title}" if not title.startswith("[") else title
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (j)")
     plot.setLabel("left", "ROI (i)")
@@ -621,7 +638,7 @@ def _plot_sorted_den_dff_correlation(
 
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+        engine, fov_name, rois, run_id=run_id
     )
 
     if len(all_sorted) < 2:
@@ -780,7 +797,7 @@ def _plot_sorted_den_dff_correlation_windowed_by_stim(
 
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+        engine, fov_name, rois, run_id=run_id
     )
 
     if len(all_sorted) < 2:
@@ -1020,7 +1037,7 @@ def _plot_sorted_den_dff_correlation_windowed_non_stim(
 
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+        engine, fov_name, rois, run_id=run_id
     )
 
     if len(all_sorted) < 2:
@@ -1246,6 +1263,8 @@ def _plot_sorted_spike_max_lag_values(
     rois: list[int] | None = None,
     run_id: int | None = None,
     rising_edges: bool = False,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot spike max-lag values with ROIs sorted by stimulation status.
 
@@ -1265,15 +1284,21 @@ def _plot_sorted_spike_max_lag_values(
         ROI filter
     run_id : int | None
         Analysis run ID
+    spike_method : {"oasis", "cascade"}
+        Stored method to render.
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -1284,18 +1309,11 @@ def _plot_sorted_spike_max_lag_values(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    spike_type = "Rising Edges" if rising_edges else "Thresholded"
-
-    # Get sorted ROI lists
-    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+    spike_type = (
+        ("Threshold Excursion Starts" if spike_method == "cascade" else "Rising Edges")
+        if rising_edges
+        else "Thresholded"
     )
-
-    if len(all_sorted) < 2:
-        plot.setTitle(
-            f"Inferred Spikes Max-Lag Values ({spike_type}) (Sorted - Need ≥2 ROIs)"
-        )
-        return
 
     # Get lag values matrix from database
     (
@@ -1303,12 +1321,25 @@ def _plot_sorted_spike_max_lag_values(
         roi_labels,
         max_lag_frames,
     ) = _get_spike_max_lag_values_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
     )
 
     if lag_matrix is None or roi_labels is None:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes Max-Lag Values ({spike_type}) (Sorted - No data)"
+        )
+        return
+
+    # Get sorted ROI lists
+    all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
+        engine, fov_name, rois, population_labels=roi_labels
+    )
+
+    if len(all_sorted) < 2:
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes Max-Lag Values ({spike_type}) (Sorted - Need ≥2 ROIs)"
         )
         return
 
@@ -1319,7 +1350,7 @@ def _plot_sorted_spike_max_lag_values(
 
     if reordered_matrix is None or len(final_rois) < 2:
         plot.setTitle(
-            f"Inferred Spikes Max-Lag Values ({spike_type}) "
+            f"[{spike_method.upper()}] Inferred Spikes Max-Lag Values ({spike_type}) "
             "(Sorted - Insufficient ROIs)"
         )
         return
@@ -1346,12 +1377,13 @@ def _plot_sorted_spike_max_lag_values(
     n_non_stim = len([r for r in final_rois if r in non_stim_rois])
 
     title = (
-        f"Inferred Spikes Max-Lag Values ({spike_type}) "
+        f"[{spike_method.upper()}] Inferred Spikes Max-Lag Values ({spike_type}) "
         f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim)"
     )
     if max_lag_frames is not None:
         title += f" | ±{max_lag_frames} frames"
 
+    title = f"[{spike_method.upper()}] {title}" if not title.startswith("[") else title
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (j)")
     plot.setLabel("left", "ROI (i)")
@@ -1467,6 +1499,8 @@ def _plot_sorted_spike_ccg_zscore(
     rois: list[int] | None = None,
     run_id: int | None = None,
     rising_edges: bool = False,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot CCG z-score matrix with ROIs sorted by stimulation status.
 
@@ -1488,15 +1522,21 @@ def _plot_sorted_spike_ccg_zscore(
         ROI filter
     run_id : int | None
         Analysis run ID
+    spike_method : {"oasis", "cascade"}
+        Stored method to render.
     rising_edges : bool
         If True, use rising edge spike data; otherwise use thresholded binary
     """
+    canonical_spike_methods((spike_method,))
     plot = widget.plot_item
     assert plot is not None
 
     # Clear previous plot
     _detach_heatmap_interaction(plot)
     plot.clear()
+    if widget.colorbar is not None:
+        plot.layout.removeItem(widget.colorbar)
+        widget.colorbar = None
     disconnect_hover_handlers(plot)
     vb = plot.getViewBox()
     vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
@@ -1507,26 +1547,34 @@ def _plot_sorted_spike_ccg_zscore(
         widget.legend.clear()
         widget.legend.setVisible(False)
 
-    spike_type = "Rising Edges" if rising_edges else "Thresholded"
+    spike_type = (
+        ("Threshold Excursion Starts" if spike_method == "cascade" else "Rising Edges")
+        if rising_edges
+        else "Thresholded"
+    )
+
+    # Get z-score matrix from database
+    zscore_matrix, roi_labels = _get_ccg_zscore_matrix_from_db(
+        engine, fov_name, run_id, rising_edges=rising_edges, spike_method=spike_method
+    )
+
+    if zscore_matrix is None or roi_labels is None:
+        plot.setTitle(
+            f"[{spike_method.upper()}] "
+            f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - No data)"
+        )
+        return
 
     # Get sorted ROI lists
     all_sorted, stim_rois, non_stim_rois = _get_sorted_rois_by_stimulation(
-        engine, fov_name, rois
+        engine, fov_name, rois, population_labels=roi_labels
     )
 
     if len(all_sorted) < 2:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - Need ≥2 ROIs)"
         )
-        return
-
-    # Get z-score matrix from database
-    zscore_matrix, roi_labels = _get_ccg_zscore_matrix_from_db(
-        engine, fov_name, run_id, rising_edges=rising_edges
-    )
-
-    if zscore_matrix is None or roi_labels is None:
-        plot.setTitle(f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - No data)")
         return
 
     # Reorder matrix according to sorted ROIs
@@ -1536,6 +1584,7 @@ def _plot_sorted_spike_ccg_zscore(
 
     if reordered_matrix is None or len(final_rois) < 2:
         plot.setTitle(
+            f"[{spike_method.upper()}] "
             f"Inferred Spikes CCG Z-Score ({spike_type}) (Sorted - Insufficient ROIs)"
         )
         return
@@ -1578,11 +1627,12 @@ def _plot_sorted_spike_ccg_zscore(
         pct_significant = 0.0
 
     title = (
-        f"Inferred Spikes CCG Z-Score ({spike_type}) "
+        f"[{spike_method.upper()}] Inferred Spikes CCG Z-Score ({spike_type}) "
         f"(Sorted: {n_stim} Stim, {n_non_stim} Non-Stim) "
         f"| {pct_significant:.1f}% significant"
     )
 
+    title = f"[{spike_method.upper()}] {title}" if not title.startswith("[") else title
     plot.setTitle(title)
     plot.setLabel("bottom", "ROI (j)")
     plot.setLabel("left", "ROI (i)")

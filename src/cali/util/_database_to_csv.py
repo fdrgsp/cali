@@ -2098,6 +2098,8 @@ def export_multi_well_pca_to_csv(
     engine: Engine,
     run_id: int,
     db_path: Path,
+    *,
+    spike_methods: tuple[SpikeMethod, ...] | None = None,
 ) -> None:
     """Export PCA analysis data (feature matrix, coordinates, loadings) to CSV.
 
@@ -2114,6 +2116,8 @@ def export_multi_well_pca_to_csv(
         The CaliResult.id to export data for.
     db_path : Path
         Path to the database file (used to determine export directory).
+    spike_methods : tuple | None
+        Stored methods to export separately; None exports all available methods.
     """
     from cali.logger import cali_logger
 
@@ -2126,20 +2130,35 @@ def export_multi_well_pca_to_csv(
         cali_logger.debug("sklearn not available, skipping PCA export")
         return
 
-    try:
-        df = build_fov_feature_matrix(engine, run_id)
-    except Exception as e:
-        cali_logger.debug(f"Skipping PCA export: {e}")
-        return
+    from ._spike_export import (
+        _selected_methods,
+        available_spike_result_methods,
+        write_spike_metadata,
+    )
 
-    if len(df) < 2:
-        cali_logger.debug("Skipping PCA export: fewer than 2 FOVs")
-        return
-
-    try:
-        coords, pca, used_features = compute_pca(df, n_components=min(len(df), 10))
-    except Exception as e:
-        cali_logger.debug(f"Skipping PCA export (compute failed): {e}")
+    available = available_spike_result_methods(engine, run_id=run_id)
+    methods = _selected_methods(available, spike_methods)
+    # Calcium-only historical PCA remains readable through its OASIS default.
+    if not methods:
+        methods = ("oasis",)
+    computed = []
+    for method in methods:
+        try:
+            df = build_fov_feature_matrix(engine, run_id, spike_method=method)
+        except ValueError:
+            raise
+        except Exception as e:
+            cali_logger.debug(f"Skipping {method} PCA export: {e}")
+            continue
+        if len(df) < 2:
+            continue
+        try:
+            coords, pca, used_features = compute_pca(df, n_components=min(len(df), 10))
+        except Exception as e:
+            cali_logger.debug(f"Skipping {method} PCA export (compute failed): {e}")
+            continue
+        computed.append((method, df, coords, pca, used_features))
+    if not computed:
         return
 
     output_dir = (
@@ -2147,35 +2166,60 @@ def export_multi_well_pca_to_csv(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Feature matrix CSV
-    df.to_csv(output_dir / "pca_feature_matrix.csv", index=False)
-    cali_logger.debug(f"Exported PCA feature matrix: {output_dir}")
+    for method, df, coords, pca, used_features in computed:
+        prefix = method + "_" if method != "oasis" or len(available) > 1 else ""
+        # 1. Feature matrix CSV
+        df.assign(spike_method=method).to_csv(
+            output_dir / f"{prefix}pca_feature_matrix.csv", index=False
+        )
+        cali_logger.debug(f"Exported PCA feature matrix: {output_dir}")
 
-    # 2. Coordinates CSV
-    n_components = coords.shape[1]
-    coord_df = pd.DataFrame(
-        coords,
-        columns=[f"PC{i + 1}" for i in range(n_components)],
-    )
-    coord_df.insert(0, "fov_name", df["fov_name"].values)
-    coord_df.insert(1, "condition", df["condition"].values)
-    coord_df.to_csv(output_dir / "pca_coordinates.csv", index=False)
-    cali_logger.debug(f"Exported PCA coordinates: {output_dir}")
+        # 2. Coordinates CSV
+        n_components = coords.shape[1]
+        coord_df = pd.DataFrame(
+            coords,
+            columns=[f"PC{i + 1}" for i in range(n_components)],
+        )
+        coord_df.insert(0, "fov_name", df["fov_name"].values)
+        coord_df.insert(1, "condition", df["condition"].values)
+        coord_df.insert(2, "spike_method", method)
+        coord_df.to_csv(output_dir / f"{prefix}pca_coordinates.csv", index=False)
+        cali_logger.debug(f"Exported PCA coordinates: {output_dir}")
 
-    # 3. Loadings and scree CSV
-    variance = pca.explained_variance_ratio_ * 100.0
-    cumulative = np.cumsum(variance)
-    rows: list[dict[str, object]] = []
-    for i in range(n_components):
-        row: dict[str, object] = {
-            "component": f"PC{i + 1}",
-            "explained_variance_pct": float(variance[i]),
-            "cumulative_variance_pct": float(cumulative[i]),
-        }
-        for j, feat in enumerate(used_features):
-            row[feat] = float(pca.components_[i, j])
-        rows.append(row)
+        # 3. Loadings and scree CSV
+        variance = pca.explained_variance_ratio_ * 100.0
+        cumulative = np.cumsum(variance)
+        rows: list[dict[str, object]] = []
+        for i in range(n_components):
+            row: dict[str, object] = {
+                "component": f"PC{i + 1}",
+                "explained_variance_pct": float(variance[i]),
+                "cumulative_variance_pct": float(cumulative[i]),
+            }
+            for j, feat in enumerate(used_features):
+                row[feat] = float(pca.components_[i, j])
+            rows.append(row)
 
-    loadings_df = pd.DataFrame(rows)
-    loadings_df.to_csv(output_dir / "pca_loadings_and_scree.csv", index=False)
-    cali_logger.debug(f"Exported PCA loadings and scree: {output_dir}")
+        loadings_df = pd.DataFrame(rows)
+        loadings_df.to_csv(
+            output_dir / f"{prefix}pca_loadings_and_scree.csv", index=False
+        )
+        cali_logger.debug(f"Exported PCA loadings and scree: {output_dir}")
+
+        write_spike_metadata(
+            output_dir / f"{prefix}pca.metadata.json",
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "method": method,
+                "input_spike_units": "a.u." if method == "oasis" else "spikes/frame",
+                "used_features": used_features,
+                "spike_metric_fields": df.attrs.get("spike_metric_fields", {}),
+                "calcium_activity_field": "calcium_active",
+                "spike_activity_field": "spike_active",
+                "missing_values": (
+                    "column median; all-missing and constant features excluded"
+                ),
+                "scaling": "z-score per feature before PCA",
+            },
+        )

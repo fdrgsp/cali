@@ -14,6 +14,7 @@ import numpy as np
 from sqlmodel import Session, col, select
 
 from cali._constants import MAX_FRAMES_AFTER_STIMULATION
+from cali.plot._spike_data import roi_is_active
 from cali.sqlmodel import (
     FOV,
     ROI,
@@ -69,7 +70,11 @@ def _query_evoked_amplitudes_by_condition(
             .join(FOV, ROI.fov_id == FOV.id)
             .join(Well, FOV.well_id == Well.id)
             .join(Traces, ROI.id == Traces.roi_id)
-            .join(DataAnalysis, ROI.id == DataAnalysis.roi_id)
+            .join(
+                DataAnalysis,
+                (ROI.id == DataAnalysis.roi_id)
+                & (Traces.analysis_result_id == DataAnalysis.analysis_result_id),
+            )
             .join(CaliResult, Traces.analysis_result_id == CaliResult.id)
             .join(
                 AnalysisSettings, CaliResult.analysis_settings_id == AnalysisSettings.id
@@ -81,15 +86,14 @@ def _query_evoked_amplitudes_by_condition(
                 col(DataAnalysis.analysis_result_id) == run_id
             )
 
-        # Only get active ROIs
-        stmt = stmt.where(col(ROI.active) == True)  # noqa: E712
-
         results = session.exec(stmt).all()
 
         # Group by condition → well → FOV → power_pulse
         data: dict[str, dict[str, dict[str, dict[str, list[float]]]]] = {}
 
         for roi, fov, well, traces, analysis, settings in results:
+            if not roi_is_active(roi, analysis):
+                continue
             # Check if this is an evoked experiment
             if not settings.led_pulse_on_frames or not settings.led_pulse_powers:
                 continue

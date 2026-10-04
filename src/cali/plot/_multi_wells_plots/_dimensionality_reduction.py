@@ -34,54 +34,84 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 
+from cali.plot._spike_data import get_stored_spike_capabilities, roi_is_active
+from cali.plot._spike_fov_data import selected_spike_fov
 from cali.sqlmodel._engine import ensure_schema_current
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     import pandas as pd
     from sqlalchemy.engine import Engine
 
-# Feature columns in the matrix (order matters for PCA loadings display)
+    from cali.sqlmodel._spike_settings import SpikeMethod
+
+# OASIS keeps historical column IDs, with explicit scientific labels/metadata.
+_CALCIUM_FEATURES = [
+    "mean_amplitude",
+    "mean_frequency",
+    "mean_iei",
+    "mean_cell_size",
+    "pct_active",
+]
+_BURST_FEATURES = ["burst_count", "burst_avg_duration_s", "burst_avg_interval_s"]
+_OASIS_SPIKE_FEATURES = {
+    "mean_spike_freq": "suprathreshold_sample_rate_hz",
+    "mean_spike_freq_edges": "suprathreshold_rising_edge_rate_hz",
+}
+_CASCADE_SPIKE_FEATURES = {
+    "mean_expected_spike_rate_hz": "expected_spike_rate_hz",
+    "mean_expected_spike_count": "expected_spike_count",
+    "mean_suprathreshold_excursion_rate_hz": "suprathreshold_excursion_rate_hz",
+}
 FEATURE_COLUMNS = [
     "mean_amplitude",
     "mean_frequency",
     "mean_iei",
-    "mean_spike_freq",
-    "mean_spike_freq_edges",
+    *_OASIS_SPIKE_FEATURES,
     "mean_cell_size",
     "pct_active",
-    "burst_count",
-    "burst_avg_duration_s",
-    "burst_avg_interval_s",
+    "pct_spike_active",
+    *_BURST_FEATURES,
 ]
+CASCADE_FEATURE_COLUMNS = [
+    *_CALCIUM_FEATURES,
+    *_CASCADE_SPIKE_FEATURES,
+    "pct_spike_active",
+    *_BURST_FEATURES,
+]
+
+
+def spike_feature_columns(method: SpikeMethod) -> list[str]:
+    """Return the selected method's scientifically named features."""
+    canonical_spike_methods((method,))
+    return list(FEATURE_COLUMNS if method == "oasis" else CASCADE_FEATURE_COLUMNS)
 
 
 def build_fov_feature_matrix(
     engine: Engine,
     run_id: int | None = None,
     include_stim_status: bool = False,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> pd.DataFrame:
-    """Build a per-FOV feature matrix from the database.
-
-    One row per FOV.  Columns are :data:`FEATURE_COLUMNS` plus `"fov_name"`
-    and `"condition"` (used for colouring downstream visualisations).
+    """Build one run's FOV features using independent calcium/spike populations.
 
     Parameters
     ----------
     engine : Engine
         Database engine.
     run_id : int | None
-        CaliResult id.  When `None` all results in the DB are included.
+        Selected analysis run; required when more than one analyzed run exists.
     include_stim_status : bool
-        When True, split each FOV into two rows — one for stimulated ROIs and
-        one for non-stimulated ROIs — and append the stim/non-stim suffix to
-        the condition label.  Only meaningful for Evoked Activity runs whose
-        ROIs have a `stimulated` attribute set.
+        Split ROI metrics by stimulation status; omit shared FOV burst metrics.
+    spike_method : {"oasis", "cascade"}
+        Method of the stored spike metrics; calcium metrics remain shared.
 
     Returns
     -------
     pandas.DataFrame
-        Shape `(n_rows, len(FEATURE_COLUMNS) + 2)` with columns
-        `["fov_name", "condition"] + FEATURE_COLUMNS`.
+        FOV/condition identifiers and scientifically named feature columns, with
+        the selected method, run, feature IDs and meanings recorded in attrs.
     """
     import pandas as pd
     from sqlmodel import Session, col, select
@@ -90,111 +120,93 @@ def build_fov_feature_matrix(
 
     from ._util import _get_condition_label, _get_experiment_type
 
+    canonical_spike_methods((spike_method,))
+    columns = spike_feature_columns(spike_method)
+    spike_fields = (
+        _OASIS_SPIKE_FEATURES if spike_method == "oasis" else _CASCADE_SPIKE_FEATURES
+    )
     rows: list[dict] = []
-
     ensure_schema_current(engine)
     with Session(engine) as session:
-        # ------------------------------------------------------------------
-        # 0.  Optionally look up experiment_type for stim-split labelling
-        # ------------------------------------------------------------------
-        experiment_type: str | None = None
-        if include_stim_status and run_id is not None:
-            experiment_type = _get_experiment_type(session, run_id)
-
-        # ------------------------------------------------------------------
-        # 1.  Per-FOV means of ROI-level scalars
-        # ------------------------------------------------------------------
-        roi_stmt = (
+        if run_id is None:
+            ids = set(session.exec(select(DataAnalysis.analysis_result_id)).all())
+            ids.update(session.exec(select(FOVAnalysis.analysis_result_id)).all())
+            ids.discard(None)
+            if len(ids) > 1:
+                raise ValueError("PCA requires one analysis run; select run_id.")
+            run_id = next(iter(ids)) if ids else None
+        if run_id is not None:
+            available = get_stored_spike_capabilities(engine, run_id)
+            if (available and spike_method not in available) or (
+                not available and spike_method == "cascade"
+            ):
+                raise ValueError(f"No stored {spike_method} results for PCA.")
+        experiment_type = (
+            _get_experiment_type(session, run_id)
+            if include_stim_status and run_id is not None
+            else None
+        )
+        stmt = (
             select(DataAnalysis, ROI, FOV, Well)
             .join(ROI, DataAnalysis.roi_id == ROI.id)
             .join(FOV, ROI.fov_id == FOV.id)
             .join(Well, FOV.well_id == Well.id)
-            .where(col(ROI.active) == True)  # noqa: E712
         )
         if run_id is not None:
-            roi_stmt = roi_stmt.where(col(DataAnalysis.analysis_result_id) == run_id)
-
-        roi_results = session.exec(roi_stmt).all()
-
-        # Aggregate per-ROI scalars → per-FOV (or per-FOV+stim) accumulators.
-        # When include_stim_status=True the key is (fov_id, roi.stimulated)
-        # so that stim and non-stim ROIs within the same FOV end up in
-        # separate rows of the feature matrix.
-        FovKey: TypeAlias = tuple  # (fov_id,) or (fov_id, stim_status)
-        fov_roi_data: dict[FovKey, dict[str, list[float]]] = {}
-        fov_meta: dict[FovKey, tuple[str, str]] = {}  # key → (fov_name, condition)
-
-        def _make_key(fov_id: int, roi: ROI) -> FovKey:
-            if include_stim_status:
-                return (fov_id, roi.stimulated)
-            return (fov_id,)
-
-        for analysis, roi, fov, well in roi_results:
-            key = _make_key(fov.id, roi)
-            if key not in fov_roi_data:
-                fov_roi_data[key] = {k: [] for k in FEATURE_COLUMNS}
-                if include_stim_status:
-                    label = _get_condition_label(well, roi, experiment_type)
-                else:
-                    label = _get_condition_label(well)
-                stim_suffix = ""
-                if include_stim_status and roi.stimulated is not None:
-                    stim_suffix = "_stim" if roi.stimulated else "_non_stim"
-                fov_meta[key] = (f"{fov.name}{stim_suffix}", label)
-
-            d = fov_roi_data[key]
-
-            # amplitude: mean per ROI
-            if analysis.peaks_amplitudes_den_dff:
-                d["mean_amplitude"].append(
-                    float(np.mean(analysis.peaks_amplitudes_den_dff))
-                )
-
-            # frequency
-            if analysis.den_dff_frequency is not None:
-                d["mean_frequency"].append(float(analysis.den_dff_frequency))
-
-            # IEI: mean per ROI
-            if analysis.iei:
-                d["mean_iei"].append(float(np.mean(analysis.iei)))
-
-            # spike frequency (thresholded)
-            spike_rate = analysis.get_spike_metric(
-                "oasis", "suprathreshold_sample_rate_hz"
+            stmt = stmt.where(col(DataAnalysis.analysis_result_id) == run_id)
+        FovKey: TypeAlias = tuple
+        values: dict[FovKey, dict[str, list[float]]] = {}
+        metadata: dict[FovKey, tuple[str, str]] = {}
+        counts: dict[FovKey, list[int]] = {}
+        seen = set()
+        for analysis, roi, fov, well in session.exec(stmt).all():
+            key = (fov.id, roi.stimulated) if include_stim_status else (fov.id,)
+            if (analysis.analysis_result_id, roi.id) in seen:
+                raise ValueError("PCA cannot pool duplicate ROI analyses.")
+            seen.add((analysis.analysis_result_id, roi.id))
+            suffix = (
+                ("_stim" if roi.stimulated else "_non_stim")
+                if include_stim_status and roi.stimulated is not None
+                else ""
             )
-            if spike_rate is not None:
-                d["mean_spike_freq"].append(float(spike_rate))
-
-            # spike frequency (rising edges)
-            edge_rate = analysis.get_spike_metric(
-                "oasis", "suprathreshold_rising_edge_rate_hz"
+            metadata[key] = (
+                fov.name + suffix,
+                _get_condition_label(
+                    well, roi if include_stim_status else None, experiment_type
+                ),
             )
-            if edge_rate is not None:
-                d["mean_spike_freq_edges"].append(float(edge_rate))
-
-            # cell size
-            if roi.cell_size is not None:
-                d["mean_cell_size"].append(float(roi.cell_size))
-
-        # Count active/total ROIs per FOV (for pct_active).
-        # When include_stim_status=True, count separately per (fov_id, stim).
-        all_roi_stmt = select(ROI, FOV).join(FOV, ROI.fov_id == FOV.id)
-        if run_id is not None:
-            all_roi_stmt = all_roi_stmt.join(
-                DataAnalysis, DataAnalysis.roi_id == ROI.id
-            ).where(col(DataAnalysis.analysis_result_id) == run_id)
-
-        fov_total: dict = {}
-        fov_active: dict = {}
-        for roi, fov in session.exec(all_roi_stmt).all():
-            k = _make_key(fov.id, roi) if include_stim_status else fov.id
-            fov_total[k] = fov_total.get(k, 0) + 1
-            if roi.active:
-                fov_active[k] = fov_active.get(k, 0) + 1
-
-        # ------------------------------------------------------------------
-        # 2.  FOVAnalysis burst stats (one scalar per FOV)
-        # ------------------------------------------------------------------
+            bucket = values.setdefault(key, {column: [] for column in columns})
+            child = analysis.get_spike_analysis(spike_method)
+            total = counts.setdefault(key, [0, 0, 0, 0])
+            total[0] += 1
+            calcium_active = roi_is_active(roi, analysis)
+            spike_active = roi_is_active(roi, analysis, spike_method)
+            total[1] += int(calcium_active)
+            total[2] += int(spike_active)
+            total[3] += int(child is not None)
+            if calcium_active:
+                if analysis.peaks_amplitudes_den_dff:
+                    bucket["mean_amplitude"].append(
+                        float(np.mean(analysis.peaks_amplitudes_den_dff))
+                    )
+                if analysis.den_dff_frequency is not None:
+                    bucket["mean_frequency"].append(float(analysis.den_dff_frequency))
+                if analysis.iei:
+                    bucket["mean_iei"].append(float(np.mean(analysis.iei)))
+                if roi.cell_size is not None:
+                    bucket["mean_cell_size"].append(float(roi.cell_size))
+            if child is not None:
+                if child.units != (
+                    "a.u." if spike_method == "oasis" else "spikes/frame"
+                ):
+                    raise ValueError(
+                        "PCA spike metric units must match the selected method."
+                    )
+                if spike_active:
+                    for column, field in spike_fields.items():
+                        value = getattr(child, field)
+                        if value is not None:
+                            bucket[column].append(float(value))
         fov_stmt = (
             select(FOVAnalysis, FOV, Well)
             .join(FOV, FOVAnalysis.fov_id == FOV.id)
@@ -202,87 +214,78 @@ def build_fov_feature_matrix(
         )
         if run_id is not None:
             fov_stmt = fov_stmt.where(col(FOVAnalysis.analysis_result_id) == run_id)
-
-        fov_analysis_map: dict[int, FOVAnalysis] = {}
-        for fa, fov, well in session.exec(fov_stmt).all():
-            fov_analysis_map[fov.id] = fa
-            # Register plain fov.id key for fov_meta when not stim-split
+        parents = {}
+        for parent, fov, well in session.exec(fov_stmt).all():
+            if fov.id in parents:
+                raise ValueError("PCA cannot pool multiple FOV analysis runs.")
+            parents[fov.id] = selected_spike_fov(parent, spike_method)
             if not include_stim_status:
-                plain_key = (fov.id,)
-                if plain_key not in fov_meta:
-                    fov_meta[plain_key] = (fov.name, _get_condition_label(well))
-
-        # ------------------------------------------------------------------
-        # 3.  Assemble one row per key (fov or fov+stim)
-        # ------------------------------------------------------------------
-        all_keys = set(fov_roi_data.keys())
-        # Also include FOVs that only have burst stats (no active ROIs)
-        if not include_stim_status:
-            for fov_id in fov_analysis_map:
-                all_keys.add((fov_id,))
-
-        for key in sorted(
-            all_keys, key=lambda k: (k[0], str(k[1]) if len(k) > 1 else "")
-        ):
-            fov_id = key[0]
-            fov_name, condition = fov_meta.get(key, (str(fov_id), "unknown"))
-            row: dict = {"fov_name": fov_name, "condition": condition}
-
-            # ROI-level scalars → mean
-            d = fov_roi_data.get(key, {})
-            for col_name in [
-                "mean_amplitude",
-                "mean_frequency",
-                "mean_iei",
-                "mean_spike_freq",
-                "mean_spike_freq_edges",
-                "mean_cell_size",
-            ]:
-                vals = d.get(col_name, [])
-                row[col_name] = float(np.mean(vals)) if vals else float("nan")
-
-            # % active — use stim-aware key when splitting
-            pct_key = key if include_stim_status else fov_id
-            total = fov_total.get(pct_key, 0)
-            active = fov_active.get(pct_key, 0)
-            row["pct_active"] = (active / total * 100.0) if total > 0 else float("nan")
-
-            # Burst stats from FOVAnalysis (FOV-level).
-            # When stim-splitting, burst stats are shared across stim/non-stim
-            # rows for the same FOV, which would create artificial correlation
-            # in PCA.  Exclude them from stim-split matrices by setting to NaN.
-            if include_stim_status:
-                row["burst_count"] = float("nan")
-                row["burst_avg_duration_s"] = float("nan")
-                row["burst_avg_interval_s"] = float("nan")
-            else:
-                fa = fov_analysis_map.get(fov_id)
-                if fa is not None:
-                    row["burst_count"] = (
-                        float(fa.get_spike_metric("oasis", "spike_burst_count"))
-                        if fa.get_spike_metric("oasis", "spike_burst_count") is not None
-                        else float("nan")
-                    )
-                    row["burst_avg_duration_s"] = (
-                        float(fa.get_spike_metric("oasis", "spike_burst_avg_duration"))
-                        if fa.get_spike_metric("oasis", "spike_burst_avg_duration")
-                        is not None
-                        else float("nan")
-                    )
-                    row["burst_avg_interval_s"] = (
-                        float(fa.get_spike_metric("oasis", "spike_burst_avg_interval"))
-                        if fa.get_spike_metric("oasis", "spike_burst_avg_interval")
-                        is not None
-                        else float("nan")
-                    )
-                else:
-                    row["burst_count"] = float("nan")
-                    row["burst_avg_duration_s"] = float("nan")
-                    row["burst_avg_interval_s"] = float("nan")
-
+                key = (fov.id,)
+                metadata.setdefault(key, (fov.name, _get_condition_label(well)))
+                values.setdefault(key, {column: [] for column in columns})
+        for key in sorted(values, key=lambda key: (key[0], str(key[1:]))):
+            fov_name, condition = metadata[key]
+            row: dict[str, object] = {"fov_name": fov_name, "condition": condition}
+            for column, observations in values[key].items():
+                row[column] = (
+                    float(np.mean(observations)) if observations else float("nan")
+                )
+            roi_count, calcium, spikes, observed = counts.get(key, [0, 0, 0, 0])
+            row["pct_active"] = calcium * 100 / roi_count if roi_count else float("nan")
+            row["pct_spike_active"] = (
+                spikes * 100 / observed if observed else float("nan")
+            )
+            child = parents.get(key[0])
+            if not include_stim_status and child is not None:
+                for column, field in zip(
+                    _BURST_FEATURES,
+                    (
+                        "spike_burst_count",
+                        "spike_burst_avg_duration",
+                        "spike_burst_avg_interval",
+                    ),
+                ):
+                    value = getattr(child, field)
+                    row[column] = float(value) if value is not None else float("nan")
             rows.append(row)
+    df = pd.DataFrame(rows, columns=["fov_name", "condition", *columns])
+    df.attrs.update(
+        spike_method=spike_method,
+        run_id=run_id,
+        feature_columns=columns,
+        spike_metric_fields=dict(spike_fields),
+        calcium_activity_field="calcium_active",
+        spike_activity_field="spike_active",
+    )
+    return df
 
-    return pd.DataFrame(rows)
+
+def _selected_pca_features(
+    df: pd.DataFrame, feature_cols: list[str] | None
+) -> list[str]:
+    """Reject mixed methods or incompatible feature IDs before computing PCA."""
+    method = df.attrs.get("spike_method")
+    if method is not None:
+        allowed = spike_feature_columns(method)
+    else:
+        oasis = any(c in df and not df[c].isna().all() for c in _OASIS_SPIKE_FEATURES)
+        cascade = any(
+            c in df and not df[c].isna().all() for c in _CASCADE_SPIKE_FEATURES
+        )
+        if oasis and cascade:
+            raise ValueError("PCA cannot pool OASIS and CASCADE spike metrics.")
+        allowed = list(CASCADE_FEATURE_COLUMNS if cascade else FEATURE_COLUMNS)
+        named_spike_features = set(_OASIS_SPIKE_FEATURES) | set(_CASCADE_SPIKE_FEATURES)
+        allowed.extend(c for c in df.columns if c not in named_spike_features)
+    other = _OASIS_SPIKE_FEATURES if method == "cascade" else _CASCADE_SPIKE_FEATURES
+    if method is not None and any(c in df and not df[c].isna().all() for c in other):
+        raise ValueError("PCA cannot pool OASIS and CASCADE spike metrics.")
+    if feature_cols is None:
+        feature_cols = [c for c in allowed if c in df.columns]
+    if set(feature_cols) - set(allowed) or set(feature_cols) - set(df.columns):
+        raise ValueError("PCA features must belong to the selected spike method.")
+
+    return feature_cols
 
 
 def _prepare_feature_matrix(
@@ -308,8 +311,7 @@ def _prepare_feature_matrix(
     """
     from sklearn.preprocessing import StandardScaler
 
-    if feature_cols is None:
-        feature_cols = [c for c in FEATURE_COLUMNS if c in df.columns]
+    feature_cols = _selected_pca_features(df, feature_cols)
 
     # Drop all-NaN columns
     feature_cols = [c for c in feature_cols if not df[c].isna().all()]
@@ -406,7 +408,7 @@ def _render_scatter(
             continue
         mask = cond_arr == cond
         x = coords[mask, 0]
-        y = coords[mask, 1]
+        y = coords[mask, 1] if coords.shape[1] > 1 else np.zeros(int(mask.sum()))
         color = cond_opts.get("color", "gray")
         scatter = pg.ScatterPlotItem(
             x=x,
@@ -431,14 +433,21 @@ def _run_pca_scatter(
     run_id: int | None,
     include_stim_status: bool,
     title: str,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Shared implementation for PCA scatter plots."""
+    canonical_spike_methods((spike_method,))
     import logging
 
     logger = logging.getLogger(__name__)
 
     try:
-        df = build_fov_feature_matrix(engine, run_id, include_stim_status)
+        df = build_fov_feature_matrix(
+            engine, run_id, include_stim_status, spike_method=spike_method
+        )
+    except ValueError:
+        raise
     except Exception:
         logger.debug("Failed to build FOV feature matrix for PCA", exc_info=True)
         widget.clear_plot()  # type: ignore[attr-defined]
@@ -458,7 +467,7 @@ def _run_pca_scatter(
         return
 
     # Read user-selected PCA features from the widget (if any)
-    pca_features: list[str] | None = getattr(widget, "_pca_features", None)
+    pca_features = _selected_pca_features(df, getattr(widget, "_pca_features", None))
 
     try:
         coords, pca, used_features = compute_pca(df, feature_cols=pca_features)
@@ -499,7 +508,9 @@ def _run_pca_scatter(
         coords=coords,
         conditions=df["condition"].tolist(),
         x_label=f"PC1 ({var1:.1f}% var)",
-        y_label=f"PC2 ({var2:.1f}% var)",
+        y_label=f"PC2 ({var2:.1f}% var)"
+        if len(pca.explained_variance_ratio_) > 1
+        else "PC2 (unavailable)",
         title=display_title,
     )
 
@@ -509,10 +520,14 @@ _FEATURE_SHORT_LABELS: dict[str, str] = {
     "mean_amplitude": "Amplitude",
     "mean_frequency": "Frequency",
     "mean_iei": "IEI",
-    "mean_spike_freq": "Spike Freq",
-    "mean_spike_freq_edges": "Spike Freq (edges)",
+    "mean_spike_freq": "Samples Above Cutoff (Hz)",
+    "mean_spike_freq_edges": "Rising Edges (Hz)",
     "mean_cell_size": "Cell Size",
-    "pct_active": "% Active",
+    "pct_active": "% Calcium Active",
+    "pct_spike_active": "% Spike Active",
+    "mean_expected_spike_rate_hz": "Expected Rate (Hz)",
+    "mean_expected_spike_count": "Expected Count",
+    "mean_suprathreshold_excursion_rate_hz": "Excursions (Hz)",
     "burst_count": "Burst Count",
     "burst_avg_duration_s": "Burst Dur.",
     "burst_avg_interval_s": "Burst Int.",
@@ -524,6 +539,8 @@ def _run_pca_full(
     engine: Engine,
     run_id: int | None,
     include_stim_status: bool,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> tuple[Any, list[str]] | None:
     """Build feature matrix and run PCA, returning (pca, used_features).
 
@@ -531,12 +548,17 @@ def _run_pca_full(
     loadings plots can show every component.  Returns `None` when PCA
     cannot be computed (too few FOVs, missing data, etc.).
     """
+    canonical_spike_methods((spike_method,))
     import logging
 
     logger = logging.getLogger(__name__)
 
     try:
-        df = build_fov_feature_matrix(engine, run_id, include_stim_status)
+        df = build_fov_feature_matrix(
+            engine, run_id, include_stim_status, spike_method=spike_method
+        )
+    except ValueError:
+        raise
     except Exception:
         logger.debug("Failed to build FOV feature matrix for PCA", exc_info=True)
         return None
@@ -544,7 +566,7 @@ def _run_pca_full(
     if df is None or len(df) < 2:
         return None
 
-    pca_features: list[str] | None = getattr(widget, "_pca_features", None)
+    pca_features = _selected_pca_features(df, getattr(widget, "_pca_features", None))
 
     try:
         from sklearn.decomposition import PCA
@@ -668,22 +690,34 @@ def plot_pca_loadings(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot PC1 loadings as a horizontal bar chart.
 
     Each bar represents one feature; length is the PC1 loading coefficient.
     Positive loadings are blue, negative loadings are red.
     """
+    canonical_spike_methods((spike_method,))
     widget.clear_plot()  # type: ignore[attr-defined]
-    result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
+    result = _run_pca_full(
+        widget, engine, run_id, include_stim_status=False, spike_method=spike_method
+    )
     if result is None:
         widget.plot_item.setTitle(  # type: ignore[attr-defined]
-            "PCA Loadings<br><span style='color:magenta; font-size:9pt'>"
+            f"[{spike_method.upper()}] PCA Loadings<br>"
+            "<span style='color:magenta; font-size:9pt'>"
             "Need ≥ 2 FOVs for PCA</span>"
         )
         return
     pca, used_features = result
-    _render_loadings_bar(widget, pca, used_features, pc_index=0, title="PCA Loadings")
+    _render_loadings_bar(
+        widget,
+        pca,
+        used_features,
+        pc_index=0,
+        title=f"[{spike_method.upper()}] PCA Loadings",
+    )
 
 
 def plot_pca_scree(
@@ -691,21 +725,27 @@ def plot_pca_scree(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a scree chart showing explained variance per principal component.
 
     Bars show individual variance; the red line shows cumulative variance.
     """
+    canonical_spike_methods((spike_method,))
     widget.clear_plot()  # type: ignore[attr-defined]
-    result = _run_pca_full(widget, engine, run_id, include_stim_status=False)
+    result = _run_pca_full(
+        widget, engine, run_id, include_stim_status=False, spike_method=spike_method
+    )
     if result is None:
         widget.plot_item.setTitle(  # type: ignore[attr-defined]
-            "PCA Scree Plot<br><span style='color:magenta; font-size:9pt'>"
+            f"[{spike_method.upper()}] PCA Scree Plot<br>"
+            "<span style='color:magenta; font-size:9pt'>"
             "Need ≥ 2 FOVs for PCA</span>"
         )
         return
     pca, _ = result
-    _render_scree(widget, pca, title="PCA Scree Plot")
+    _render_scree(widget, pca, title=f"[{spike_method.upper()}] PCA Scree Plot")
 
 
 def plot_pca_scatter(
@@ -713,6 +753,8 @@ def plot_pca_scatter(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a PCA scatter of FOVs coloured by condition.
 
@@ -730,15 +772,19 @@ def plot_pca_scatter(
         Plot name (used in the title).
     engine : Engine
         Database engine.
+    spike_method : {"oasis", "cascade"}
+        Method of the stored spike feature values.
     run_id : int | None
         Filter to a single CaliResult; `None` uses all runs in the DB.
     """
+    canonical_spike_methods((spike_method,))
     _run_pca_scatter(
         widget=widget,
         engine=engine,
         run_id=run_id,
         include_stim_status=False,
-        title="PCA — FOV Feature Space",
+        spike_method=spike_method,
+        title=f"[{spike_method.upper()}] PCA — FOV Feature Space",
     )
 
 
@@ -747,6 +793,8 @@ def plot_pca_scatter_stim_split(
     text: str,
     engine: Engine,
     run_id: int | None = None,
+    *,
+    spike_method: SpikeMethod = "oasis",
 ) -> None:
     """Plot a PCA scatter of FOVs coloured by condition + stimulation status.
 
@@ -767,13 +815,17 @@ def plot_pca_scatter_stim_split(
         Plot name (used in the title).
     engine : Engine
         Database engine.
+    spike_method : {"oasis", "cascade"}
+        Method of the stored spike feature values.
     run_id : int | None
         Filter to a single CaliResult; `None` uses all runs in the DB.
     """
+    canonical_spike_methods((spike_method,))
     _run_pca_scatter(
         widget=widget,
         engine=engine,
         run_id=run_id,
         include_stim_status=True,
-        title="PCA — FOV Feature Space (Stim vs NonStim)",
+        spike_method=spike_method,
+        title=f"[{spike_method.upper()}] PCA — FOV Feature Space (Stim vs NonStim)",
     )

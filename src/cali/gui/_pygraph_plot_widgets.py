@@ -47,11 +47,14 @@ from cali.sqlmodel import (
     Traces,
 )
 from cali.sqlmodel._engine import ensure_schema_current
+from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from sqlalchemy.engine import Engine
+
+    from cali.sqlmodel._spike_settings import SpikeMethod
 
 
 RED = "#C33"
@@ -819,6 +822,7 @@ class _MultilWellGraphWidget(QWidget):
 
     def _show_pca_features_dialog(self) -> None:
         """Show a dialog for selecting PCA features, then refresh the plot."""
+        method = canonical_spike_methods((getattr(self, "_spike_method", "oasis"),))[0]
         # Query whether rising edge analysis is enabled for this run
         enable_rising_edge = False
         if self._engine is not None and self._run_id is not None:
@@ -828,7 +832,7 @@ class _MultilWellGraphWidget(QWidget):
                     .join(AnalysisSettings)
                     .join(CaliResult)
                     .where(col(CaliResult.id) == self._run_id)
-                    .where(SpikeAnalysisSettings.method == "oasis")
+                    .where(SpikeAnalysisSettings.method == method)
                 )
                 result = session.exec(stmt).first()
                 if result is not None:
@@ -839,6 +843,7 @@ class _MultilWellGraphWidget(QWidget):
             experiment_type=self._experiment_type,
             enable_rising_edge=enable_rising_edge,
             parent=self,
+            spike_method=method,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._pca_features = dialog.get_features()
@@ -1250,10 +1255,14 @@ _PCA_FEATURE_LABELS: dict[str, str] = {
     "mean_amplitude": "Mean Amplitude (\u0394F/F\u2080)",
     "mean_frequency": "Mean Frequency (Hz)",
     "mean_iei": "Mean IEI (s)",
-    "mean_spike_freq": "Mean Spike Frequency (Hz)",
+    "mean_spike_freq": "OASIS Samples Above Threshold (Hz)",
     "mean_spike_freq_edges": "Mean Spike Freq \u2013 Rising Edges (Hz)",
     "mean_cell_size": "Mean Cell Size (\u00b5m\u00b2)",
-    "pct_active": "% Active ROIs",
+    "pct_active": "% Calcium Active ROIs",
+    "pct_spike_active": "% Spike Active ROIs",
+    "mean_expected_spike_rate_hz": "CASCADE Expected Spike Rate (Hz)",
+    "mean_expected_spike_count": "CASCADE Expected Spike Count (spikes)",
+    "mean_suprathreshold_excursion_rate_hz": "CASCADE Threshold Excursion Rate (Hz)",
     "burst_count": "Burst Count",
     "burst_avg_duration_s": "Burst Avg Duration (s)",
     "burst_avg_interval_s": "Burst Avg Interval (s)",
@@ -1272,17 +1281,20 @@ class _PCAFeaturesDialog(QDialog):
         experiment_type: str | None,
         enable_rising_edge: bool,
         parent: QWidget | None = None,
+        *,
+        spike_method: SpikeMethod = "oasis",
     ) -> None:
+        canonical_spike_methods((spike_method,))
         super().__init__(parent)
         self.setWindowTitle("PCA Feature Selection")
         self.setModal(True)
 
         from cali._constants import EVOKED
         from cali.plot._multi_wells_plots._dimensionality_reduction import (
-            FEATURE_COLUMNS,
+            spike_feature_columns,
         )
 
-        self._feature_columns = list(FEATURE_COLUMNS)
+        self._feature_columns = spike_feature_columns(spike_method)
         self._checkboxes: dict[str, QCheckBox] = {}
 
         # Instructions
@@ -1316,10 +1328,16 @@ class _PCAFeaturesDialog(QDialog):
                 cb.setToolTip("Burst stats are not available for evoked experiments")
 
             # Disable rising-edge feature when rising edge analysis is off
-            if feat == "mean_spike_freq_edges" and not enable_rising_edge:
+            if (
+                feat
+                in {"mean_spike_freq_edges", "mean_suprathreshold_excursion_rate_hz"}
+                and not enable_rising_edge
+            ):
                 cb.setChecked(False)
                 cb.setEnabled(False)
-                cb.setToolTip("Enable Rising Edge Analysis to use this feature")
+                cb.setToolTip(
+                    "Enable onset analysis for this spike method to use this feature"
+                )
 
             self._checkboxes[feat] = cb
             cb_layout.addWidget(cb)

@@ -170,6 +170,7 @@ def test_evoked_roi_traces_legend_with_both_types(
     )
     # Create mock widget
     mock_widget = MagicMock()
+    mock_widget.colorbar = None
     plot_widget = pg.PlotWidget()
     qtbot.addWidget(plot_widget)
     plot_item = plot_widget.getPlotItem()
@@ -225,6 +226,7 @@ def test_evoked_roi_traces_legend_with_both_types(
         analysis_result_id=1,
         total_recording_time_sec=10.0,
         peaks_den_dff=[10, 30, 50],
+        calcium_active=True,
     )
     data2 = DataAnalysis(
         id=2,
@@ -232,6 +234,7 @@ def test_evoked_roi_traces_legend_with_both_types(
         analysis_result_id=1,
         total_recording_time_sec=10.0,
         peaks_den_dff=[15, 35, 55],
+        calcium_active=True,
     )
 
     mock_results = [
@@ -317,6 +320,7 @@ def test_evoked_spike_traces_legend(
     )
     # Create mock widget
     mock_widget = MagicMock()
+    mock_widget.colorbar = None
     plot_widget = pg.PlotWidget()
     qtbot.addWidget(plot_widget)
     plot_item = plot_widget.getPlotItem()
@@ -467,6 +471,7 @@ def test_evoked_spike_raster_legend(
     )
     # Create mock widget
     mock_widget = MagicMock()
+    mock_widget.colorbar = None
     plot_widget = pg.PlotWidget()
     qtbot.addWidget(plot_widget)
     plot_item = plot_widget.getPlotItem()

@@ -922,8 +922,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
+    required_metrics=("spike_trace",),
     product_id="single_well.stimulated_vs_non_stimulated_spike_traces",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name="Stimulated vs Non-Stimulated Spike Traces",
     group=AnalysisGroup.SINGLE_WELL,
     analyzer=_plot_stimulated_vs_non_stimulated_spike_traces,
@@ -941,8 +942,9 @@ AnalysisProduct(
     experiment_type=EVOKED,
 )
 AnalysisProduct(
+    required_metrics=("spike_trace", "threshold"),
     product_id="single_well.stimulated_vs_non_stimulated_raster_inferred_spikes_thresholded_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     name=(
         "Stimulated vs Non-Stimulated Raster Inferred Spikes Thresholded (Rising Edges)"
     ),
@@ -981,7 +983,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_global_synchrony",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_jitter_synchrony_matrix",),
     name="Sorted Inferred Spikes Thresholded Global Synchrony",
     group=AnalysisGroup.SINGLE_WELL,
@@ -992,7 +994,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_global_synchrony_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_jitter_synchrony_matrix_rising_edges",),
     name="Sorted Inferred Spikes Thresholded Global Synchrony (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1003,7 +1005,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_max_lag_correlation",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_correlation_matrix",),
     name="Sorted Inferred Spikes Thresholded Max Lag Correlation",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1014,7 +1016,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_max_lag_correlation_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_correlation_matrix_rising_edges",),
     name="Sorted Inferred Spikes Thresholded Max Lag Correlation (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1025,7 +1027,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_max_lag_values",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_values_matrix",),
     name="Sorted Inferred Spikes Thresholded Max Lag Values",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1036,7 +1038,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_max_lag_values_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_max_lag_values_matrix_rising_edges",),
     name="Sorted Inferred Spikes Thresholded Max Lag Values (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1047,7 +1049,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_ccg_z_score",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_ccg_zscore_matrix",),
     name="Sorted Inferred Spikes Thresholded CCG Z-Score",
     group=AnalysisGroup.SINGLE_WELL,
@@ -1058,7 +1060,7 @@ AnalysisProduct(
 )
 AnalysisProduct(
     product_id="single_well.sorted_inferred_spikes_thresholded_ccg_z_score_rising_edges",
-    supported_spike_methods=("oasis",),
+    supported_spike_methods=("oasis", "cascade"),
     required_metrics=("spike_ccg_zscore_matrix_rising_edges",),
     name="Sorted Inferred Spikes Thresholded CCG Z-Score (Rising Edges)",
     group=AnalysisGroup.SINGLE_WELL,
