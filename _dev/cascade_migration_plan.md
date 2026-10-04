@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; remaining P7/release evidence, real-plate performance and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; remaining P7/release evidence, real-plate performance and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -444,7 +444,8 @@ incomplete. The continuations above now cover those prerequisites:
 
 **Next landing step:** collect independent uniformly timed real-plate
 performance/compressibility and define representative-image/concurrency memory
-acceptance before P8 GUI exposure. The 100 × 6000 complete-image workload, two-worker
+acceptance before P8 GUI exposure. Per-FOV method-qualified noise QC is now available
+for assessing those inputs. The 100 × 6000 complete-image workload, two-worker
 memory measurements and production schema-13 storage repair are complete. P7's
 installation audit covers both base-wheel absence and base-to-extra installation;
 remote dedicated CI, upstream packaging submission and distribution licensing review
@@ -1360,6 +1361,52 @@ records source/wheel hashes, production migration, exact consumer checks and
 independent audits. The storage/numerical gate now passes for this controlled input;
 real-plate performance/compressibility, GPU, scoped memory and remaining release
 follow-ups still gate GUI exposure.
+
+P3/P6 noise QC continuation — method-qualified FOV summaries and advisory checks (2026-10-04):
+
+- Schema 14 adds nullable calcium-noise summaries to `FOVAnalysis`, CASCADE model-noise
+  summaries to `SpikeFOVAnalysis`, and the actual calcium noise used to `DataAnalysis`.
+  Each summary has a median, linear interquartile range and known ROI count. Noise
+  samples include inactive ROIs; nonfinite/negative/missing estimates are excluded,
+  zero is retained, and missing values never become zeros. OASIS spike children do
+  not receive CASCADE model-noise fields.
+- New calcium analysis records its actual OASIS/GetSn estimate, including unchanged
+  historical GetSn fallback, without rewriting extraction provenance. FOV summaries
+  use staged analysis for that selected trace or the selected extraction's known
+  estimate, never unrelated analysis history. QC can produce a FOV row when every
+  ROI is inactive, with empty membership and no invented population metrics.
+- Completed extraction/offline batches log descriptive noise warnings outside
+  Q1/Q3 ± 3 IQR, with at least four known FOV medians. Calcium and CASCADE remain
+  separate; CASCADE groups require matching model, weights manifest and model
+  sampling rate. Unknown model identities and zero-IQR groups are skipped. Checks
+  retain only scalar records and change no thresholds, flags or model selection;
+  interrupted/incomplete batches do not establish a warning baseline.
+- `export_noise_qc_to_csv` scopes rows by selected run/FOV/position and records the
+  estimator, units, median/IQR/count and CASCADE model/rate/manifest. Normal trace
+  exports add `noise_qc.csv` when QC is stored. Unknown historical summaries create
+  no guessed rows or new CSV; an empty filtered re-export removes its stale QC CSV; SQL/JSON reads keep their NULL values until re-analysis.
+- The installed wheel upgrades a copy of the 800-spike-row large schema-13 database
+  to schema 14 in **0.006 s**. Every old field and original BLOB dtype/sample bit is
+  exact; all seven new QC columns remain NULL. All 11 existing exports retain CSV
+  bytes/JSON content. The 96-FOV spike-payload projection remains **493.93 MiB**
+  including hypothetical legacy duplication, within the unchanged 512 MiB budget.
+- The real-model full-runner smoke covers all seven output/backend selections and
+  cold/warm phases. The independent read-only QC audit checks **14** pre/post cases:
+  all original arrays and deterministic scientific fields are exact, and stored QC
+  equals independently recomputed selected-ROI summaries. It also completes **14
+  database audits** and rejects a temporary copy with a changed stored noise median.
+  No biological-quality or new performance acceptance is inferred from this smoke.
+
+Validation: **2316 passed, 15 skipped in 314.15 s** full regression; **558 passed in
+47.21 s** installed-wheel checks with actual pretrained models. Subsequent added
+history-source/automatic-export tests, the final CSV writer and empty-selection
+cleanup are covered by the installed checks and a final 70-test export run. Seven targeted source files pass strict mypy; Ruff/format and
+commit hooks pass. Test-modified checked-in database fixtures are restored. The
+installed-wheel CI includes the QC suite; remote CI was not run or published.
+[`cascade_noise_qc_validation.json`](cascade_noise_qc_validation.json) records code,
+wheel/input hashes, independent scientific/QC audits and migration evidence.
+Independent real-plate performance/compressibility, scoped memory, GPU and remaining
+release follow-ups still gate GUI exposure; reference inference remains the default.
 
 ## 0. TL;DR
 

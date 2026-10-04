@@ -1,10 +1,11 @@
-"""Verify and time schema-10/12 upgrades on copied files.
+"""Verify and time schema-10/12/13 upgrades on copied files.
 
 Run after benchmark_cascade_storage.py, without competing measurement processes.
 All original databases/exports remain untouched. Database fingerprints replace only
 spike-array encoding with decoded float64 bytes; every original stored field is exact.
 Schema-12's added coordinates are verified as NULL for schema-10 sources; existing
 schema-12 coordinates remain part of the complete field fingerprint.
+New schema-14 noise QC fields are separately verified as unknown, not backfilled.
 Event exports may add threshold mode/units columns; all preexisting fields must match.
 """
 
@@ -37,7 +38,12 @@ from cali.sqlmodel._trace_array_migration import migrate_trace_array_shuffle
 from cali.util._database_to_csv import export_traces_to_csv
 
 
-def fingerprint(path: Path, *, ignore_population_coordinates: bool = False) -> str:
+def fingerprint(
+    path: Path,
+    *,
+    ignore_population_coordinates: bool = False,
+    ignore_noise_qc: bool = False,
+) -> str:
     """Hash every stored field, normalizing only the canonical array encoding."""
     digest = hashlib.sha256()
     uri = "file:" + quote(str(path.resolve()), safe="/") + "?mode=ro"
@@ -53,9 +59,28 @@ def fingerprint(path: Path, *, ignore_population_coordinates: bool = False) -> s
             columns = [
                 row[1]
                 for row in connection.execute(f"PRAGMA table_info({quoted})")
-                if not ignore_population_coordinates
-                or name != "spike_fov_analysis"
-                or row[1] not in {"valid_start", "valid_stop", "frame_rate_hz"}
+                if not (
+                    ignore_population_coordinates
+                    and name == "spike_fov_analysis"
+                    and row[1] in {"valid_start", "valid_stop", "frame_rate_hz"}
+                )
+                and not (
+                    ignore_noise_qc
+                    and row[1]
+                    in {
+                        "data_analysis": {"calcium_noise"},
+                        "fov_analysis": {
+                            "calcium_noise_median",
+                            "calcium_noise_iqr",
+                            "calcium_noise_roi_count",
+                        },
+                        "spike_fov_analysis": {
+                            "model_noise_median",
+                            "model_noise_iqr",
+                            "model_noise_roi_count",
+                        },
+                    }.get(name, set())
+                )
             ]
             selected = ",".join('"' + col.replace('"', '""') + '"' for col in columns)
             cursor = connection.execute(
@@ -141,18 +166,25 @@ def main() -> None:
         sqlite3.connect(destination) as copy,
     ):
         version = original.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (10, 12):
-            raise ValueError("This measurement requires a schema-10 or schema-12 file.")
+        if version not in (10, 12, 13):
+            raise ValueError("This measurement requires a schema-10/12/13 file.")
         original.backup(copy)
         run_id = copy.execute("SELECT id FROM analysis_result").fetchone()[0]
-    before = fingerprint(destination, ignore_population_coordinates=version < 12)
+    before = fingerprint(
+        destination, ignore_population_coordinates=version < 12, ignore_noise_qc=True
+    )
     begin = time.perf_counter()
     engine = create_cali_engine(f"sqlite:///{destination}")
     migration_s = time.perf_counter() - begin
     assert (
-        fingerprint(destination, ignore_population_coordinates=version < 12) == before
+        fingerprint(
+            destination,
+            ignore_population_coordinates=version < 12,
+            ignore_noise_qc=True,
+        )
+        == before
     )
-    if version == 12:
+    if version >= 12:
         with (
             sqlite3.connect(uri, uri=True) as original,
             sqlite3.connect(destination) as migrated,
@@ -192,6 +224,28 @@ def main() -> None:
     before_vacuum_bytes = destination.stat().st_size
     with sqlite3.connect(destination) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        for table, columns in (
+            ("data_analysis", ("calcium_noise",)),
+            (
+                "fov_analysis",
+                (
+                    "calcium_noise_median",
+                    "calcium_noise_iqr",
+                    "calcium_noise_roi_count",
+                ),
+            ),
+            (
+                "spike_fov_analysis",
+                ("model_noise_median", "model_noise_iqr", "model_noise_roi_count"),
+            ),
+        ):
+            condition = " OR ".join(f"{column} IS NOT NULL" for column in columns)
+            assert (
+                connection.execute(
+                    f"SELECT count(*) FROM {table} WHERE {condition}"
+                ).fetchone()[0]
+                == 0
+            )
         assert version >= 12 or (
             connection.execute(
                 "SELECT COUNT(*) FROM spike_fov_analysis WHERE valid_start IS NOT NULL "
@@ -234,7 +288,8 @@ def main() -> None:
         "rows": row_count,
         "schema_before": version,
         "schema_after": SCHEMA_VERSION,
-        "original_blob_dtype_and_bits_exact": version == 12,
+        "original_blob_dtype_and_bits_exact": version >= 12,
+        "new_noise_qc_fields_unknown": True,
         "environment_versions": {
             "python": sys.version,
             "cali": package_version("cali"),

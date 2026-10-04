@@ -14,6 +14,7 @@ from cali.sqlmodel import FOVAnalysis
 from cali.sqlmodel._spike_settings import canonical_spike_methods
 
 from ._fov_inputs import CalciumPopulation, collect_calcium, collect_spikes
+from ._noise_qc import summarize_noise
 
 if TYPE_CHECKING:
     import numpy as np
@@ -142,7 +143,13 @@ def _compute_fov_analysis(
         if analysis_settings.enable_spikes
         else []
     )
-    if len(calcium.labels) < 2 and not any(len(child.labels) >= 2 for child in spikes):
+    calcium_median, calcium_iqr, calcium_count = summarize_noise(calcium.noise)
+    if (
+        len(calcium.labels) < 2
+        and not any(len(child.labels) >= 2 for child in spikes)
+        and not calcium_count
+        and not any(summarize_noise(child.noise)[2] for child in spikes)
+    ):
         return None
     parent = (
         _compute_calcium_population(calcium, analysis_settings)
@@ -159,6 +166,10 @@ def _compute_fov_analysis(
         )
         for population in spikes
     ]
+    if analysis_settings.enable_calcium:
+        parent.calcium_noise_median = calcium_median
+        parent.calcium_noise_iqr = calcium_iqr
+        parent.calcium_noise_roi_count = calcium_count
     return parent
 
 

@@ -299,6 +299,9 @@ class ExtractionRunner:
         # Phase 1: Execute extraction in parallel threads
         # Collect FOVs that need FOV-level analysis
         fovs_for_analysis: list[FOV] = []
+        from cali.analysis._noise_qc import NoiseQCCollection
+
+        noise_qc = NoiseQCCollection()
 
         with self._cascade_context(extraction_settings) as cascade_backend:
             with closing(
@@ -357,6 +360,7 @@ class ExtractionRunner:
                     if not hasattr(fov_result, "_new_fov_analysis"):
                         fov_result._new_fov_analysis = []
                     fov_result._new_fov_analysis.append(fov_analysis)
+                    noise_qc.add(fov_result.name, fov_analysis)
                 if hasattr(fov_result, "_extraction_stage_snapshot"):
                     delattr(fov_result, "_extraction_stage_snapshot")
                 cali_logger.info(
@@ -364,6 +368,8 @@ class ExtractionRunner:
                 )
                 yield fov_result
 
+        if not self._cancellation_event.is_set():
+            noise_qc.warn_outliers()
         if analysis_settings is None:
             if self._cancellation_event.is_set():
                 msg = "🛑 Extraction Cancelled!"

@@ -2389,6 +2389,8 @@ class DataAnalysis(ResultJSON, table=True):  # type: ignore[call-arg]
     )
     iei: list[float] | None = Field(default=None, sa_column=Column(JSON))
     calcium_active: bool | None = None
+    # Actual OASIS/GetSn estimate used by this calcium analysis, in ΔF/F units.
+    calcium_noise: float | None = None
 
     # Relationships
     roi: "ROI" = Relationship(back_populates="data_analysis_history")
@@ -2600,6 +2602,11 @@ class FOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg]
     calcium_active_roi_labels: list[int] | None = Field(
         default=None, sa_column=Column(JSON)
     )
+    # All selected ROIs with known finite noise, including inactive ROIs.
+    # Historical summaries remain unknown until explicitly re-analyzed.
+    calcium_noise_median: float | None = None
+    calcium_noise_iqr: float | None = None
+    calcium_noise_roi_count: int | None = None
 
     # Calcium peaks metrics (from den_dff traces and peak events)
     # 0. Zero-lag correlation on ΔF/F traces

@@ -18,6 +18,7 @@ from cali.sqlmodel._model import FOV, AnalysisSettings, DataAnalysis
 if TYPE_CHECKING:
     from cali.sqlmodel._model import ROI, Traces
 from ._fov_metrics import get_overlap_roi_with_stimulated_area
+from ._noise_qc import NoiseQCCollection
 from ._roi_analysis import AnalysisCancelled, analyze_roi_traces
 
 
@@ -98,6 +99,7 @@ class AnalysisRunner:
         # Phase 1: Execute ROI analysis in parallel threads
         # Collect FOVs that need FOV-level analysis
         fovs_for_analysis = pending
+        noise_qc = NoiseQCCollection()
 
         for fov_result in self._exec_in_threadpool(
             analyze=self._analyze_fov,
@@ -141,6 +143,7 @@ class AnalysisRunner:
                     if not hasattr(fov_result, "_new_fov_analysis"):
                         fov_result._new_fov_analysis = []
                     fov_result._new_fov_analysis.append(fov_analysis)
+                    noise_qc.add(fov_result.name, fov_analysis)
                 delattr(fov_result, "_analysis_stage_snapshot")
                 cali_logger.info(
                     f"✅ FOV-level analysis complete for {fov_result.name}."
@@ -150,6 +153,7 @@ class AnalysisRunner:
         if self._cancellation_event.is_set():
             cali_logger.info("🛑 Analysis Cancelled!")
         else:
+            noise_qc.warn_outliers()
             cali_logger.info("✅ Analysis complete!")
 
     def _check_for_abort_requested(self) -> bool:

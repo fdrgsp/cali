@@ -72,6 +72,11 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
     valid_start: int | None = None
     valid_stop: int | None = None
     frame_rate_hz: float | None = None
+    # CASCADE's model-rate noise scale, separate from calcium/GetSn and spikes/frame.
+    # Include inactive ROIs; OASIS spike children leave these fields NULL.
+    model_noise_median: float | None = None
+    model_noise_iqr: float | None = None
+    model_noise_roi_count: int | None = None
 
     spike_max_lag_correlation_matrix: list[list[float]] | None = Field(
         default=None, sa_column=Column(JSON)

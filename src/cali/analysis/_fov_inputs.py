@@ -29,6 +29,7 @@ class CalciumPopulation:
     dff: list[np.ndarray] = field(default_factory=list)
     den_dff: list[np.ndarray] = field(default_factory=list)
     peaks: list[np.ndarray] = field(default_factory=list)
+    noise: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -43,6 +44,7 @@ class SpikePopulation:
     valid_start: int | None = None
     valid_stop: int | None = None
     inference_run: SpikeInferenceRun | None = None
+    noise: list[float] = field(default_factory=list)
 
 
 def selected_roi_products(roi: ROI) -> tuple[Traces | None, DataAnalysis | None]:
@@ -76,6 +78,16 @@ def collect_calcium(fov: FOV) -> CalciumPopulation:
         trace, analysis = selected_roi_products(roi)
         if roi.label_value is None or trace is None:
             continue
+        noise = trace.calcium_noise
+        # A staged result records the exact noise used for this selected trace,
+        # including GetSn fallback for historical extractions. Unrelated stored
+        # analysis history must not replace the selected extraction's estimate.
+        if getattr(roi, "_new_data_analysis", None) and analysis is not None:
+            noise = (
+                analysis.calcium_noise if analysis.calcium_noise is not None else noise
+            )
+        if noise is not None:
+            result.noise.append(noise)
         if not _active(analysis.calcium_active if analysis else None, roi):
             continue
         dff = np.asarray(trace.dff, dtype=float)
@@ -174,6 +186,8 @@ def collect_spikes(
                     "Spike FOV inputs must share one inference run per method."
                 )
         result.inference_run = run
+        if method == "cascade" and spike.noise is not None:
+            result.noise.append(spike.noise)
         if not _active(metric.spike_active, roi):
             continue
         if metric.threshold is None:

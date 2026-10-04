@@ -551,6 +551,53 @@ Independent real-plate performance/compressibility, GPU and scoped memory accept
 remain pending. Reference inference remains the default, cached inference remains
 experimental, and GUI exposure remains gated by that release evidence.
 
+## Method-qualified noise QC and schema-14 preservation
+
+[`cascade_noise_qc_validation.json`](cascade_noise_qc_validation.json) records the
+planned per-FOV noise summaries. New analysis stores the actual calcium/GetSn noise
+used, plus calcium and CASCADE FOV median, linear IQR and known ROI count on separate
+scales. Samples include inactive ROIs. Known zero remains zero; missing, negative
+or nonfinite values are excluded. A FOV with no active events can still retain QC
+without populating activity/correlation/burst metrics.
+
+Completed batch warnings use Q1/Q3 ± 3 IQR with at least four FOV medians, separately
+for calcium and CASCADE. CASCADE groups match model, weights manifest and model
+sampling rate; unknown identities and zero-IQR groups are skipped. These checks are
+descriptive, leave results/thresholds/model selection unchanged and do not certify
+biological accuracy. Normal trace exports include `noise_qc.csv` when summaries are
+stored, with estimator, units, selected run and CASCADE model/rate metadata.
+
+An installed-wheel full-runner smoke repeats the seven 12-ROI × 256-frame selections
+with one cold and two warm FOVs. The independent auditor verifies **14** pre/post
+comparisons against the previous schema-13 run: every original sample array and
+deterministic scientific field is exact after excluding only seven additive QC
+fields. Stored summaries match independently recomputed selected-ROI inputs; **14**
+complete database audits pass. A temporary modified noise median is rejected.
+
+The installed schema-14 migration of the large schema-13 copy (800 spike rows)
+takes **0.006 s**. All original fields, sample bits/dtypes and 11 exports remain exact;
+all new QC fields are NULL, and the file remains **195.30 MiB**. Its existing spike
+payload remains **493.93 MiB** projected with hypothetical legacy duplication,
+below 512 MiB. Migration adds no historical estimates; explicit re-analysis produces
+summaries. The measurement is a controlled single CPU sample, not a new plate gate.
+
+Validation: **2316 passed, 15 skipped in 314.15 s** full regression and **558 passed
+in 47.21 s** installed-wheel tests with pretrained models. Final history-source,
+automatic-export, CSV-writer and empty-selection cleanup checks are covered by
+the installed suite and a 70-test focused export run. Empty selections remove stale
+QC CSVs at the requested path. Seven
+targeted sources pass strict mypy; commit hooks pass. Reproduce the independent
+comparison on completed before/after smoke directories:
+
+```sh
+"$cascade_bench_python" _dev/audit_cascade_noise_qc.py \
+  --before /tmp/cali-v2-full-smoke --after /tmp/cali-qc-full-smoke \
+  --output /tmp/cali-noise-qc-audit.json
+```
+
+Independent real-plate performance/compressibility, GPU, scoped memory and remaining
+release evidence remain pending. GUI exposure stays gated.
+
 ## Production codec storage and migration
 
 Schema 11 introduced the original production lossless codec for `SpikeTrace.values`. Its inline

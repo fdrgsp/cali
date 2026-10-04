@@ -1605,6 +1605,14 @@ def export_traces_to_csv(
     # Export each selected trace type into each target directory
     for target_dir, target_indices in export_targets:
         if any(export_traces.values()):
+            from ._noise_qc_export import export_noise_qc_to_csv
+
+            export_noise_qc_to_csv(
+                engine,
+                target_dir / "noise_qc.csv",
+                run_id=run_id,
+                position_indices=target_indices,
+            )
             stored_methods = export_trace_metadata(
                 engine,
                 target_dir / "trace_metadata.json",

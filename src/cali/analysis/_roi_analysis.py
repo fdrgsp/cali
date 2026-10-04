@@ -196,6 +196,7 @@ def analyze_roi_calcium(
     noise = traces.calcium_noise
     if noise is None:
         noise = GetSn(np.asarray(traces.dff), range_ff=[0.25, 0.5], method="median")
+    result.calcium_noise = float(noise)
     height, prominence = compute_calcium_peak_detection_thresholds(
         den_dff, noise, settings
     )

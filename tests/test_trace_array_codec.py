@@ -459,7 +459,10 @@ def test_interrupted_upgrade_never_writes_v2_before_schema_thirteen(
             )
         ensure_schema_current(engine)
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 13
+            assert (
+                connection.exec_driver_sql("PRAGMA user_version").scalar()
+                == _engine.SCHEMA_VERSION
+            )
     finally:
         engine.dispose()
 

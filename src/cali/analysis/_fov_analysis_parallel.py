@@ -17,6 +17,8 @@ from cali.analysis._fov_metrics import (
 from cali.logger import cali_logger
 from cali.sqlmodel._spike_fov_analysis import SpikeFOVAnalysis
 
+from ._noise_qc import summarize_noise
+
 if TYPE_CHECKING:
     from cali.sqlmodel import FOV, AnalysisSettings, FOVAnalysis, SpikeAnalysisSettings
 
@@ -312,6 +314,7 @@ def compute_spike_population(
             gaussian_sigma_sec=settings.burst_gaussian_sigma,
         )
 
+    noise_median, noise_iqr, noise_count = summarize_noise(population.noise)
     return SpikeFOVAnalysis(
         method=population.method,
         units=population.units,
@@ -322,6 +325,9 @@ def compute_spike_population(
         if population.valid_start is not None
         else None,
         inference_run=population.inference_run,
+        model_noise_median=noise_median if population.method == "cascade" else None,
+        model_noise_iqr=noise_iqr if population.method == "cascade" else None,
+        model_noise_roi_count=noise_count if population.method == "cascade" else None,
         spike_max_lag_correlation_matrix=spike_max_lag_corr_matrix.tolist()
         if spike_max_lag_corr_matrix is not None
         else None,

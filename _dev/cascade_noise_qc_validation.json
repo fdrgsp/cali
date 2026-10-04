@@ -1,0 +1,3134 @@
+{
+  "date": "2026-10-04",
+  "scope": "Method-qualified noise QC correctness, pre-QC scientific equality and historical migration integrity; controlled CPU inputs, not biological quality/performance acceptance.",
+  "installed_wheel": {
+    "filename": "cali-0.1.dev1410+gceef9bec8.d20261004-py3-none-any.whl",
+    "sha256": "2792dd8a01995a6370e78069fe2b6aac2872cee3ddfabc2bfb091ffc34327a07"
+  },
+  "runtime_source_sha256": {
+    "cali.analysis._noise_qc": "07e8627df6ba38d96e173b29edf297be4b56fe960223d43a7a34ae3230d48f27",
+    "cali.analysis._fov_inputs": "164163dc2e78eafdcaf809e9890bb797c64749eada744de2c0c5bd3fc200451c",
+    "cali.analysis._fov_analysis": "9c507911dc24daf97875fa757c8e1ac3f7c01716b29120fce509018d3d7c30d3",
+    "cali.analysis._fov_analysis_parallel": "16aff3a4b8751f10d6293aec2dbe73d5fee0eafa23d3378743a1b09986a0f1dd",
+    "cali.analysis._roi_analysis": "f26df2fc149bb18017a074e83fe9370d4e28678ab13ad073061d353ff265ea47",
+    "cali.analysis._analysis_runner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+    "cali.extraction._extraction_runner": "522829ca02d3d1d437f4edff845d917f4aae3736b91b7681bbc7ba46321ba4e8",
+    "cali.sqlmodel._engine": "f66ad55bfa26cb3c431f4ab26e93657327725eb14444c3b0ee24669a8c731ffb",
+    "cali.sqlmodel._model": "25e4d4d2bd14ec0493f57d70615eee1cb3642bc67f7b6bdf866424737784748b",
+    "cali.sqlmodel._spike_fov_analysis": "8a4a05f0c8e61e6a902ecf93bb7d6ef3b5ef489c2e205cd7da8c891a6c08986f",
+    "cali.util._noise_qc_export": "1ae1c66c6ba2da7deea5efd148d35a48257a4a559dc8da6e52d99e1a1694b7c8",
+    "cali.util._database_to_csv": "6feb17bca7bea0e3ff096dd0e63f651233cdea519c7e2f1b6d06eb1d17f7cb60"
+  },
+  "schema_13_to_14_migration": {
+    "source": "/tmp/cali-p9-v2-installed-migration/dual-reference-warm.cali",
+    "source_sha256": "16ee863d026bf784949973c80be84587f8fe30e8c43c4109a5ee0acbd8b52e83",
+    "migration_source_sha256": "06829c1215954a65af6170e5b30d4ac13ec458c8f3cceb564b9119811c2bc3c7",
+    "rows": 800,
+    "schema_before": 13,
+    "schema_after": 14,
+    "original_blob_dtype_and_bits_exact": true,
+    "new_noise_qc_fields_unknown": true,
+    "environment_versions": {
+      "python": "3.13.0 (main, Oct 16 2024, 08:05:40) [Clang 18.1.8 ]",
+      "cali": "0.1.dev1410+gceef9bec8.d20261004",
+      "numpy": "2.5.3",
+      "sqlalchemy": "2.0.54"
+    },
+    "database_fingerprint": "f0f43cf7555d9435f5fa4c89a513ffbfdade58fe2a2cb086b0cb68e8aeb607d1",
+    "all_decoded_arrays_and_other_fields_exact": true,
+    "all_csv_files_byte_identical": true,
+    "all_existing_csv_fields_exact": true,
+    "event_columns_added": [],
+    "all_json_sidecar_contents_identical": true,
+    "exported_files": 11,
+    "source_bytes": 204791808,
+    "migrated_bytes_before_vacuum": 204791808,
+    "migrated_bytes_after_vacuum": 204791808,
+    "migration_s": 0.00585799990221858,
+    "orm_read_s": 0.1421612499980256,
+    "export_s": 40.258149207918905,
+    "vacuum_s": 1.339217709028162,
+    "canonical_payload_bytes": {
+      "oasis": 713540,
+      "cascade": 7495912
+    },
+    "encodings": {
+      "oasis/<f8/zlib": 396,
+      "cascade/<f4/zlib-byte-shuffle": 400,
+      "oasis/<f4/zlib": 4
+    },
+    "hypothetical_legacy_oasis_json_bytes": 13370880,
+    "projected_96_fov_with_legacy_oasis_mib": 493.9346008300781,
+    "budget_mib": 512,
+    "within_storage_budget": true,
+    "script_sha256": "a2530e064a51ea1fc5dbeaa87f998b3f1045e5d57e337932876b4b65d05eb632",
+    "codec_source_sha256": "9e308f01c7d5c9b5f28c3f9f082f428e8b3574109276135c7bb17fc564d76ee0"
+  },
+  "fresh_write_science_and_qc_audit": {
+    "script_sha256": "b2f4d3db5dcaf3fca968e647004d7e28eab400ab372eacc537b58bee017bf280",
+    "before_report_sha256": "f8ac5b310c44147ddc45a13e613152fa8b70461010dc017d1b2bd1c36aa3198f",
+    "after_report_sha256": "f25b5a1a82786aae9874f744802f2e6f368025a293199379f0f0a95be2fc9226",
+    "additive_fields_excluded_from_original_science_comparison": [
+      "calcium_noise",
+      "calcium_noise_iqr",
+      "calcium_noise_median",
+      "calcium_noise_roi_count",
+      "model_noise_iqr",
+      "model_noise_median",
+      "model_noise_roi_count"
+    ],
+    "scope": "Controlled pre/post QC input/science equality and independent read-only stored-noise summaries",
+    "comparisons": {
+      "oasis-reference-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "oasis-reference-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "cascade-reference-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "cascade-reference-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "dual-reference-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "dual-reference-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "cascade-service-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "cascade-service-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "dual-service-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "dual-service-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "cascade-cached-lock-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "cascade-cached-lock-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              }
+            }
+          }
+        ]
+      },
+      "dual-cached-lock-cold": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      },
+      "dual-cached-lock-warm": {
+        "all_original_scientific_fields_exact": true,
+        "all_source_arrays_exact": true,
+        "all_stored_qc_matches_selected_inputs": true,
+        "fovs": [
+          {
+            "fov_id": 1,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          },
+          {
+            "fov_id": 2,
+            "calcium": [
+              0.28294703755556916,
+              0.2493719367830784,
+              12
+            ],
+            "spikes": {
+              "cascade": {
+                "median": 6.164800260153208,
+                "iqr": 4.7563060675189766,
+                "known_rois": 12
+              },
+              "oasis": {
+                "median": null,
+                "iqr": null,
+                "known_rois": null
+              }
+            }
+          }
+        ]
+      }
+    },
+    "independent_database_audit": {
+      "audit_script_sha256": "afa75154be8c4546584047fb52cc9dad031fb849e50b9e89b834ad77ecc796f5",
+      "scope": "read-only SQLite row/ownership checks and every stored array sample",
+      "databases": {
+        "oasis-reference-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 12,
+            "spike_inference_run": 1,
+            "spike_analysis": 12,
+            "spike_fov_analysis": 1
+          },
+          "schema_version": 14,
+          "database_bytes": 589824,
+          "database_sha256": "2d0d16189067d1c9ae6ed1f217de945a57515f2be9cfccfef91b1e8bf005e6a6",
+          "canonical_spike_payload_bytes": {
+            "oasis": 5211
+          },
+          "hypothetical_legacy_oasis_json_bytes": 21045,
+          "projected_96_fov_spike_payload_mib": 0.477081298828125,
+          "projected_96_fov_with_legacy_oasis_mib": 2.40380859375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "oasis-reference-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 24,
+            "spike_inference_run": 1,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 872448,
+          "database_sha256": "ad89d177f7214526e0afc63cbb4afc59076624d27eb428127a5eaf8596d8f6a0",
+          "canonical_spike_payload_bytes": {
+            "oasis": 10422
+          },
+          "hypothetical_legacy_oasis_json_bytes": 42090,
+          "projected_96_fov_spike_payload_mib": 0.477081298828125,
+          "projected_96_fov_with_legacy_oasis_mib": 2.40380859375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-reference-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 12,
+            "spike_inference_run": 1,
+            "spike_analysis": 12,
+            "spike_fov_analysis": 1
+          },
+          "schema_version": 14,
+          "database_bytes": 593920,
+          "database_sha256": "38faccf78cb0e510ccdc8bc559e5ae5679b536aaed0119f66a251f9e6ca12997",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-reference-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 24,
+            "spike_inference_run": 1,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 884736,
+          "database_sha256": "48a72a935f0ae069261ad381aa0a4d2d44df90e433c399885526dd460a09f69f",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-reference-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 24,
+            "spike_inference_run": 2,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 622592,
+          "database_sha256": "c8614a35968ebc39a5dd2bf271fa0321cc2987560f4b607010dc212c032ec996",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841,
+            "oasis": 5211
+          },
+          "hypothetical_legacy_oasis_json_bytes": 21045,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-reference-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 48,
+            "spike_inference_run": 2,
+            "spike_analysis": 48,
+            "spike_fov_analysis": 4
+          },
+          "schema_version": 14,
+          "database_bytes": 929792,
+          "database_sha256": "2952b24fa3e70f88f72024ff92570e85268fe33b3a430a8c5dde4219273354e1",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682,
+            "oasis": 10422
+          },
+          "hypothetical_legacy_oasis_json_bytes": 42090,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-service-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 12,
+            "spike_inference_run": 1,
+            "spike_analysis": 12,
+            "spike_fov_analysis": 1
+          },
+          "schema_version": 14,
+          "database_bytes": 593920,
+          "database_sha256": "4972512c5f51fd116ffa5301cc56f6439ba338ba436ec278224751c96bab42c6",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-service-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 24,
+            "spike_inference_run": 1,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 884736,
+          "database_sha256": "22e2a26bb90959fe44cf047fcfc846298f85b7ed71c1d3b4f9dc47bc2f73d8c9",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-service-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 24,
+            "spike_inference_run": 2,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 622592,
+          "database_sha256": "9d52642cef5fc219745a7bb6acc3fb93ac8084585d2db317af188249749c36f5",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841,
+            "oasis": 5211
+          },
+          "hypothetical_legacy_oasis_json_bytes": 21045,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-service-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 48,
+            "spike_inference_run": 2,
+            "spike_analysis": 48,
+            "spike_fov_analysis": 4
+          },
+          "schema_version": 14,
+          "database_bytes": 929792,
+          "database_sha256": "664d47f4ee446f199a758b0fc32ad8fc8e407b525aceddeafbfe091ee7b31b9e",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682,
+            "oasis": 10422
+          },
+          "hypothetical_legacy_oasis_json_bytes": 42090,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-cached-lock-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 12,
+            "spike_inference_run": 1,
+            "spike_analysis": 12,
+            "spike_fov_analysis": 1
+          },
+          "schema_version": 14,
+          "database_bytes": 593920,
+          "database_sha256": "94ede11bf7691c26959ebbf8c4b90c5324f4ba8729c5582b36795e1e813034f0",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "cascade-cached-lock-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 24,
+            "spike_inference_run": 1,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 884736,
+          "database_sha256": "4a4720413cdcd4518e137c07938a0328fe10f3c98d0be46f8fee4c714f62a519",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682
+          },
+          "hypothetical_legacy_oasis_json_bytes": 0,
+          "projected_96_fov_spike_payload_mib": 0.900970458984375,
+          "projected_96_fov_with_legacy_oasis_mib": 0.900970458984375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-cached-lock-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 12,
+            "trace": 12,
+            "data_analysis": 12,
+            "fov_analysis": 1,
+            "spike_trace": 24,
+            "spike_inference_run": 2,
+            "spike_analysis": 24,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 622592,
+          "database_sha256": "b64d7f57307a2933a22b483d204cf612dbb60f6bf204f091484786f8b6f30e71",
+          "canonical_spike_payload_bytes": {
+            "cascade": 9841,
+            "oasis": 5211
+          },
+          "hypothetical_legacy_oasis_json_bytes": 21045,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-cached-lock-warm": {
+          "rows": {
+            "fov": 2,
+            "roi": 24,
+            "trace": 24,
+            "data_analysis": 24,
+            "fov_analysis": 2,
+            "spike_trace": 48,
+            "spike_inference_run": 2,
+            "spike_analysis": 48,
+            "spike_fov_analysis": 4
+          },
+          "schema_version": 14,
+          "database_bytes": 929792,
+          "database_sha256": "5e39a54d9a9d207f884c38aa411235e79d6f6a1f55b78671243807aaeffa6fbf",
+          "canonical_spike_payload_bytes": {
+            "cascade": 19682,
+            "oasis": 10422
+          },
+          "hypothetical_legacy_oasis_json_bytes": 42090,
+          "projected_96_fov_spike_payload_mib": 1.3780517578125,
+          "projected_96_fov_with_legacy_oasis_mib": 3.304779052734375,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        }
+      }
+    }
+  },
+  "fresh_full_runner_smoke": {
+    "schema": 2,
+    "script_sha256": "7aa5ee678b788a1143e67412632e38cc950cc66290655e36ed23964f6268d887",
+    "runtime_source_sha256": {
+      "extraction_runner": "522829ca02d3d1d437f4edff845d917f4aae3736b91b7681bbc7ba46321ba4e8",
+      "fov_analysis_parallel": "16aff3a4b8751f10d6293aec2dbe73d5fee0eafa23d3378743a1b09986a0f1dd",
+      "fov_analysis": "9c507911dc24daf97875fa757c8e1ac3f7c01716b29120fce509018d3d7c30d3",
+      "roi_analysis": "f26df2fc149bb18017a074e83fe9370d4e28678ab13ad073061d353ff265ea47",
+      "analysis_runner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f"
+    },
+    "results": [
+      {
+        "mode": "oasis",
+        "backend": "reference",
+        "package_initialization_s": 0.7754992078989744,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": null,
+        "model_manifest_sha256": null,
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": null,
+        "queue_capacity": null,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 0,
+        "peak_queue_depth": 0,
+        "model_loader_threads": 0,
+        "total_model_loads": 0,
+        "cache_stats": null,
+        "baseline_peak_rss_mib": 471.234375,
+        "peak_rss_mib": 525.71875,
+        "incremental_peak_rss_mib": 54.484375,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 7.062498480081558e-05,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.20642408402636647,
+            "persistence_s": 0.03184775006957352,
+            "complete_s": 0.2383424590807408,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.15391279105097055,
+              "oasis_inference": 0.004304416943341494,
+              "roi_calcium_analysis": 0.0021183330100029707,
+              "roi_spike_analysis_oasis": 0.0020809147972613573,
+              "trace_finalization": 0.008243374177254736,
+              "fov_calcium_analysis": 0.007516667013987899,
+              "fov_spike_analysis_oasis": 0.011968625010922551,
+              "fov_analysis_total": 0.020410791970789433
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.01623833307530731,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "roi_calcium_analysis": 0.0021692499285563827,
+              "roi_spike_analysis_oasis": 0.001958834007382393,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.00346325000282377,
+              "fov_spike_analysis_oasis": 0.0063654170371592045,
+              "fov_analysis_total": 0.010750749963335693
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 589824,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 12,
+                "spike_analysis": 12,
+                "spike_fov_analysis": 1,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.1589634590782225,
+            "persistence_s": 0.04234829207416624,
+            "complete_s": 0.20131175115238875,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.02137770806439221,
+              "oasis_inference": 0.027729749912396073,
+              "roi_calcium_analysis": 0.10527387564070523,
+              "roi_spike_analysis_oasis": 0.004280753433704376,
+              "trace_finalization": 0.20437237597070634,
+              "fov_calcium_analysis": 0.006561417016200721,
+              "fov_spike_analysis_oasis": 0.012561458977870643,
+              "fov_analysis_total": 0.02077299903612584
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.031402666005305946,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "roi_calcium_analysis": 0.004023125045932829,
+              "roi_spike_analysis_oasis": 0.0037753720534965396,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.006529000005684793,
+              "fov_spike_analysis_oasis": 0.012790750013664365,
+              "fov_analysis_total": 0.02107708400581032
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 872448,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "cascade",
+        "backend": "reference",
+        "package_initialization_s": 0.5400532910134643,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": null,
+        "queue_capacity": null,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 0,
+        "model_loader_threads": 2,
+        "total_model_loads": 90,
+        "cache_stats": null,
+        "baseline_peak_rss_mib": 471.515625,
+        "peak_rss_mib": 615.9375,
+        "incremental_peak_rss_mib": 144.421875,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.014931750018149614,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.7059212499298155,
+            "persistence_s": 0.02825779200065881,
+            "complete_s": 0.749110791948624,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.07080537802539766,
+              "oasis_inference": 0.0034849580843001604,
+              "cascade_compute": 0.5866502500139177,
+              "cascade_caller": 0.5932049170369282,
+              "roi_calcium_analysis": 0.0021347079891711473,
+              "roi_spike_analysis_cascade": 0.00172728905454278,
+              "trace_finalization": 0.006338080973364413,
+              "fov_calcium_analysis": 0.0073397079249843955,
+              "fov_spike_analysis_cascade": 0.012245916994288564,
+              "fov_analysis_total": 0.020622124895453453
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.01519916602410376,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.0022353329695761204,
+              "roi_spike_analysis_cascade": 0.0016500001074746251,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.0034387499326840043,
+              "fov_spike_analysis_cascade": 0.005535000003874302,
+              "fov_analysis_total": 0.009979416965506971
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 593920,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 12,
+                "spike_analysis": 12,
+                "spike_fov_analysis": 1,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 1.0019778331043199,
+            "persistence_s": 0.04181283398065716,
+            "complete_s": 1.043790667084977,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.021863911068066955,
+              "oasis_inference": 0.02820637496188283,
+              "cascade_compute": 1.3915136659052223,
+              "cascade_caller": 1.415668207919225,
+              "roi_calcium_analysis": 0.004500752198509872,
+              "roi_spike_analysis_cascade": 0.003512538271024823,
+              "trace_finalization": 0.012705583474598825,
+              "fov_calcium_analysis": 0.006834750878624618,
+              "fov_spike_analysis_cascade": 0.01190587505698204,
+              "fov_analysis_total": 0.02065270789898932
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.029498999938368797,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.003903500735759735,
+              "roi_spike_analysis_cascade": 0.002982956822961569,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.007002750062383711,
+              "fov_spike_analysis_cascade": 0.011347541003488004,
+              "fov_analysis_total": 0.020322166848927736
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 60,
+            "database_bytes": 884736,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "dual",
+        "backend": "reference",
+        "package_initialization_s": 0.5325387499760836,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            },
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": null,
+        "queue_capacity": null,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 0,
+        "model_loader_threads": 2,
+        "total_model_loads": 90,
+        "cache_stats": null,
+        "baseline_peak_rss_mib": 473.765625,
+        "peak_rss_mib": 618.59375,
+        "incremental_peak_rss_mib": 144.828125,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.0066481250105425715,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.7040928748901933,
+            "persistence_s": 0.03135870792903006,
+            "complete_s": 0.742099707829766,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.07226879091467708,
+              "oasis_inference": 0.0035385420778766274,
+              "cascade_compute": 0.5740649170475081,
+              "cascade_caller": 0.5807957500219345,
+              "roi_calcium_analysis": 0.002163125202059746,
+              "roi_spike_analysis_oasis": 0.0020700431196019053,
+              "roi_spike_analysis_cascade": 0.0015468749916180968,
+              "trace_finalization": 0.008721499121747911,
+              "fov_calcium_analysis": 0.006865875096991658,
+              "fov_spike_analysis_oasis": 0.012834083987399936,
+              "fov_spike_analysis_cascade": 0.005560500081628561,
+              "fov_analysis_total": 0.026925666956230998
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.024655125103890896,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.002027127076871693,
+              "roi_spike_analysis_oasis": 0.001888125785626471,
+              "roi_spike_analysis_cascade": 0.0014543329598382115,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.0035914169857278466,
+              "fov_spike_analysis_oasis": 0.006220499984920025,
+              "fov_spike_analysis_cascade": 0.006169624975882471,
+              "fov_analysis_total": 0.01760133297648281
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 622592,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 1.0282874580007046,
+            "persistence_s": 0.0529379170620814,
+            "complete_s": 1.081225375062786,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.02157133596483618,
+              "oasis_inference": 0.025570874917320907,
+              "cascade_compute": 1.3995061250170693,
+              "cascade_caller": 1.4221279581543058,
+              "roi_calcium_analysis": 0.004767165053635836,
+              "roi_spike_analysis_oasis": 0.004425500053912401,
+              "roi_spike_analysis_cascade": 0.0032971238251775503,
+              "trace_finalization": 0.01837829197756946,
+              "fov_calcium_analysis": 0.0077924588695168495,
+              "fov_spike_analysis_oasis": 0.01240629202220589,
+              "fov_spike_analysis_cascade": 0.011583625921048224,
+              "fov_analysis_total": 0.03500537609215826
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.049925750005058944,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.0049562882632017136,
+              "roi_spike_analysis_oasis": 0.003888622741214931,
+              "roi_spike_analysis_cascade": 0.003010128391906619,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.006699498975649476,
+              "fov_spike_analysis_oasis": 0.012662083026953042,
+              "fov_spike_analysis_cascade": 0.012127958005294204,
+              "fov_analysis_total": 0.034762416034936905
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 60,
+            "database_bytes": 929792,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 48,
+                "spike_analysis": 48,
+                "spike_fov_analysis": 4,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "cascade",
+        "backend": "service",
+        "package_initialization_s": 0.628978917025961,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": 1024,
+        "queue_capacity": 1,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 1,
+        "model_loader_threads": 1,
+        "total_model_loads": 30,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 18,
+          "largest_chunk_windows": 576
+        },
+        "baseline_peak_rss_mib": 472.0,
+        "peak_rss_mib": 595.53125,
+        "incremental_peak_rss_mib": 123.53125,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.0084509999724105,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.5966236660024151,
+            "persistence_s": 0.17801787506323308,
+            "complete_s": 0.7830925410380587,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.08455037593375891,
+              "oasis_inference": 0.004350417060777545,
+              "cascade_compute": 0.4504107910906896,
+              "cascade_caller": 0.4586027089972049,
+              "roi_calcium_analysis": 0.0026140420231968164,
+              "roi_spike_analysis_cascade": 0.0022098729386925697,
+              "trace_finalization": 0.008918167790398002,
+              "fov_calcium_analysis": 0.00922524998895824,
+              "fov_spike_analysis_cascade": 0.015565334004350007,
+              "fov_analysis_total": 0.0261435410939157
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.02100674994289875,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.003053207998163998,
+              "roi_spike_analysis_cascade": 0.0022440841421484947,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.005002209101803601,
+              "fov_spike_analysis_cascade": 0.007287041982635856,
+              "fov_analysis_total": 0.013690790976397693
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 593920,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 12,
+                "spike_analysis": 12,
+                "spike_fov_analysis": 1,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.8950700000859797,
+            "persistence_s": 0.05963654210790992,
+            "complete_s": 0.9547065421938896,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.02745162567589432,
+              "oasis_inference": 0.02378329203929752,
+              "cascade_compute": 0.7892797919921577,
+              "cascade_caller": 1.2127385410713032,
+              "roi_calcium_analysis": 0.007413790328428149,
+              "roi_spike_analysis_cascade": 0.0062612120527774096,
+              "trace_finalization": 0.020153374876827,
+              "fov_calcium_analysis": 0.009157666005194187,
+              "fov_spike_analysis_cascade": 0.015291791991330683,
+              "fov_analysis_total": 0.026999209076166153
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.04164800001308322,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.005546542932279408,
+              "roi_spike_analysis_cascade": 0.00416329491417855,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.009681542054750025,
+              "fov_spike_analysis_cascade": 0.016262792167253792,
+              "fov_analysis_total": 0.028703124960884452
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 884736,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "dual",
+        "backend": "service",
+        "package_initialization_s": 1.040537334047258,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            },
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": 1024,
+        "queue_capacity": 1,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 1,
+        "model_loader_threads": 1,
+        "total_model_loads": 30,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 18,
+          "largest_chunk_windows": 576
+        },
+        "baseline_peak_rss_mib": 471.9375,
+        "peak_rss_mib": 591.5,
+        "incremental_peak_rss_mib": 119.5625,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.012605249998159707,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.9106983749661595,
+            "persistence_s": 0.27650995808653533,
+            "complete_s": 1.1998135830508545,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.1328137923264876,
+              "oasis_inference": 0.006873792037367821,
+              "cascade_compute": 0.6676987499231473,
+              "cascade_caller": 0.680496749933809,
+              "roi_calcium_analysis": 0.00392766494769603,
+              "roi_spike_analysis_oasis": 0.0036804169649258256,
+              "roi_spike_analysis_cascade": 0.002901041996665299,
+              "trace_finalization": 0.01817308203317225,
+              "fov_calcium_analysis": 0.015605667023919523,
+              "fov_spike_analysis_oasis": 0.02082491701003164,
+              "fov_spike_analysis_cascade": 0.009934292058460414,
+              "fov_analysis_total": 0.04942050005774945
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.04438720806501806,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.004868747899308801,
+              "roi_spike_analysis_oasis": 0.0035828747786581516,
+              "roi_spike_analysis_cascade": 0.002727627055719495,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.006515374989248812,
+              "fov_spike_analysis_oasis": 0.010530625004321337,
+              "fov_spike_analysis_cascade": 0.009709374979138374,
+              "fov_analysis_total": 0.029831374995410442
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 622592,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 1.1480261250399053,
+            "persistence_s": 0.09255254198797047,
+            "complete_s": 1.2405786670278758,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.0384499600622803,
+              "oasis_inference": 0.039582832949236035,
+              "cascade_compute": 0.9784539170796052,
+              "cascade_caller": 1.5316507080569863,
+              "roi_calcium_analysis": 0.011159710236825049,
+              "roi_spike_analysis_oasis": 0.007266082102432847,
+              "roi_spike_analysis_cascade": 0.005276790936477482,
+              "trace_finalization": 0.03436599997803569,
+              "fov_calcium_analysis": 0.011682709096930921,
+              "fov_spike_analysis_oasis": 0.018841249984689057,
+              "fov_spike_analysis_cascade": 0.017420875024981797,
+              "fov_analysis_total": 0.053208373952656984
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.07834283309057355,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.007784042274579406,
+              "roi_spike_analysis_oasis": 0.006025292677804828,
+              "roi_spike_analysis_cascade": 0.004696248797699809,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.012277333997189999,
+              "fov_spike_analysis_oasis": 0.01882533309981227,
+              "fov_spike_analysis_cascade": 0.017798042041249573,
+              "fov_analysis_total": 0.054635376087389886
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 929792,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 48,
+                "spike_analysis": 48,
+                "spike_fov_analysis": 4,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "cascade",
+        "backend": "cached-lock",
+        "package_initialization_s": 0.6988455000100657,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": 1024,
+        "queue_capacity": null,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 0,
+        "model_loader_threads": 1,
+        "total_model_loads": 30,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 18,
+          "largest_chunk_windows": 576
+        },
+        "baseline_peak_rss_mib": 471.734375,
+        "peak_rss_mib": 595.125,
+        "incremental_peak_rss_mib": 123.390625,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.008668540976941586,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.602647416992113,
+            "persistence_s": 0.035725834080949426,
+            "complete_s": 0.647041792050004,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.0886196248466149,
+              "oasis_inference": 0.004428333952091634,
+              "cascade_compute": 0.45242437499109656,
+              "cascade_caller": 0.4607362080132589,
+              "roi_calcium_analysis": 0.002728249179199338,
+              "roi_spike_analysis_cascade": 0.0022601240780204535,
+              "trace_finalization": 0.009293458890169859,
+              "fov_calcium_analysis": 0.009194332989864051,
+              "fov_spike_analysis_cascade": 0.015343875042162836,
+              "fov_analysis_total": 0.0259177089901641
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.022120875073596835,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.0036804151022806764,
+              "roi_spike_analysis_cascade": 0.0022286250023171306,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.0047622909769415855,
+              "fov_spike_analysis_cascade": 0.00784366694279015,
+              "fov_analysis_total": 0.01406191592104733
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 593920,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 12,
+                "spike_analysis": 12,
+                "spike_fov_analysis": 1,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.8782353330170736,
+            "persistence_s": 0.06074774998705834,
+            "complete_s": 0.9389830830041319,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.028580208425410092,
+              "oasis_inference": 0.02620320802088827,
+              "cascade_compute": 0.7727760410634801,
+              "cascade_caller": 1.192171750124544,
+              "roi_calcium_analysis": 0.008979459060356021,
+              "roi_spike_analysis_cascade": 0.0045381642412394285,
+              "trace_finalization": 0.01995916711166501,
+              "fov_calcium_analysis": 0.009408542071469128,
+              "fov_spike_analysis_cascade": 0.015376333030872047,
+              "fov_analysis_total": 0.02730766695458442
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.040002375026233494,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.0054956660605967045,
+              "roi_spike_analysis_cascade": 0.0042248350800946355,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.009244667016901076,
+              "fov_spike_analysis_cascade": 0.015170250087976456,
+              "fov_analysis_total": 0.027086791000328958
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 884736,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 1
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "cascade": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "mode": "dual",
+        "backend": "cached-lock",
+        "package_initialization_s": 0.7631784579716623,
+        "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+        "excluded": [
+          "detection",
+          "offline persistence and database-load time",
+          "GUI rendering",
+          "representative real plate"
+        ],
+        "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+        "rois_per_fov": 12,
+        "frames": 256,
+        "workers": 4,
+        "analysis": "full",
+        "analysis_settings": {
+          "enable_calcium": true,
+          "enable_spikes": true,
+          "peaks_height_value": 0.1,
+          "peaks_prominence_multiplier": 0.5,
+          "frame_rate": 30.0,
+          "n_processes": 1,
+          "peaks_height_mode": "multiplier",
+          "peaks_distance": 200.0,
+          "calcium_burst_threshold": 25.0,
+          "calcium_burst_min_duration": 500.0,
+          "calcium_burst_gaussian_sigma": 0.3,
+          "cluster_method": "hierarchical",
+          "cluster_n_clusters": 0,
+          "cluster_max_k": 10,
+          "experiment_type": "Spontaneous Activity",
+          "stimulation_mask_path": null,
+          "led_power_equation": null,
+          "led_pulse_duration": null,
+          "led_pulse_powers": null,
+          "led_pulse_on_frames": null,
+          "threads": 1,
+          "stimulation_mask_id": null,
+          "spike_settings": [
+            {
+              "method": "oasis",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "multiplier",
+              "threshold_value": 3.0,
+              "cascade_ap_threshold_fraction": null,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            },
+            {
+              "method": "cascade",
+              "ccg_n_shuffles": 20,
+              "enable_rising_edge_analysis": false,
+              "id": null,
+              "analysis_settings_id": null,
+              "threshold_mode": "cascade_ap",
+              "threshold_value": null,
+              "cascade_ap_threshold_fraction": 0.36787944117144233,
+              "burst_threshold": 65.0,
+              "burst_min_duration": 500.0,
+              "burst_gaussian_sigma": 0.3,
+              "spikes_sync_cross_corr_lag": 500.0,
+              "spikes_sync_jitter_window": 200.0
+            }
+          ]
+        },
+        "comparison_excludes": [
+          "fraction_significant_ccg_pairs",
+          "fraction_significant_ccg_pairs_rising_edges",
+          "spike_ccg_zscore_matrix",
+          "spike_ccg_zscore_matrix_rising_edges"
+        ],
+        "seed": 9183,
+        "frame_rate_hz": 30,
+        "model": "Global_EXC_30Hz_smoothing25ms",
+        "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+        "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+        "device": "cpu",
+        "torch": "2.14.1",
+        "torch_threads": 1,
+        "inference_torch_thread_counts": [
+          1
+        ],
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMBA_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1"
+        },
+        "oasis_decay_constant_s": 1.0,
+        "retained_payload_bytes_per_cascade_caller_lower_bound": 650240,
+        "chunk_windows": 1024,
+        "queue_capacity": null,
+        "python": "3.13.0",
+        "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+        "peak_active_cascade_callers": 2,
+        "peak_queue_depth": 0,
+        "model_loader_threads": 1,
+        "total_model_loads": 30,
+        "cache_stats": {
+          "ensembles": 6,
+          "parameter_bytes": 4125720,
+          "model_loads": 30,
+          "chunks": 18,
+          "largest_chunk_windows": 576
+        },
+        "baseline_peak_rss_mib": 471.640625,
+        "peak_rss_mib": 599.8125,
+        "incremental_peak_rss_mib": 128.171875,
+        "process_tree_memory": null,
+        "phases": [
+          {
+            "phase": "cold",
+            "fovs": 1,
+            "preparation_s": 0.009116832981817424,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.6571153340628371,
+            "persistence_s": 0.20886366709601134,
+            "complete_s": 0.8750958341406658,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.09515495609957725,
+              "oasis_inference": 0.0048397500067949295,
+              "cascade_compute": 0.4816573749994859,
+              "cascade_caller": 0.4908401670400053,
+              "roi_calcium_analysis": 0.0031009558588266373,
+              "roi_spike_analysis_oasis": 0.002876497805118561,
+              "roi_spike_analysis_cascade": 0.0022000831086188555,
+              "trace_finalization": 0.01360675017349422,
+              "fov_calcium_analysis": 0.011515457998029888,
+              "fov_spike_analysis_oasis": 0.015267124981619418,
+              "fov_spike_analysis_cascade": 0.007604165934026241,
+              "fov_analysis_total": 0.03664070903323591
+            },
+            "stage_calls": {
+              "image_roi_extraction": 12,
+              "oasis_inference": 1,
+              "cascade_compute": 1,
+              "cascade_caller": 1,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 12,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "offline_reanalysis_s": 0.03516870900057256,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.0037015420384705067,
+              "roi_spike_analysis_oasis": 0.002843832829967141,
+              "roi_spike_analysis_cascade": 0.002150291809812188,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.004985707928426564,
+              "fov_spike_analysis_oasis": 0.008915624930523336,
+              "fov_spike_analysis_cascade": 0.00763887504581362,
+              "fov_analysis_total": 0.023839833098463714
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 12,
+              "roi_spike_analysis_oasis": 12,
+              "roi_spike_analysis_cascade": 12,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 1,
+              "fov_spike_analysis_oasis": 1,
+              "fov_spike_analysis_cascade": 1,
+              "fov_analysis_total": 1
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 30,
+            "database_bytes": 622592,
+            "persistence_audit": {
+              "rows": {
+                "fov": 1,
+                "roi": 12,
+                "trace": 12,
+                "data_analysis": 12,
+                "fov_analysis": 1,
+                "spike_trace": 24,
+                "spike_analysis": 24,
+                "spike_fov_analysis": 2,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          },
+          {
+            "phase": "warm",
+            "fovs": 2,
+            "preparation_s": 0,
+            "preparation_model_loads": 0,
+            "extraction_with_analysis_s": 0.9687095829285681,
+            "persistence_s": 0.08178595802746713,
+            "complete_s": 1.0504955409560353,
+            "stage_aggregate_s": {
+              "image_roi_extraction": 0.029707416309975088,
+              "oasis_inference": 0.029982667067088187,
+              "cascade_compute": 0.8247376250801608,
+              "cascade_caller": 1.2751427500043064,
+              "roi_calcium_analysis": 0.008544043870642781,
+              "roi_spike_analysis_oasis": 0.006407541804946959,
+              "roi_spike_analysis_cascade": 0.006332959048449993,
+              "trace_finalization": 0.02981399977579713,
+              "fov_calcium_analysis": 0.010938291903585196,
+              "fov_spike_analysis_oasis": 0.017709958949126303,
+              "fov_spike_analysis_cascade": 0.01636941614560783,
+              "fov_analysis_total": 0.04993674997240305
+            },
+            "stage_calls": {
+              "image_roi_extraction": 24,
+              "oasis_inference": 2,
+              "cascade_compute": 2,
+              "cascade_caller": 2,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 24,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "offline_reanalysis_s": 0.07027725002262741,
+            "offline_stage_aggregate_s": {
+              "image_roi_extraction": 0.0,
+              "oasis_inference": 0.0,
+              "cascade_compute": 0.0,
+              "cascade_caller": 0.0,
+              "roi_calcium_analysis": 0.007166291470639408,
+              "roi_spike_analysis_oasis": 0.00555637723300606,
+              "roi_spike_analysis_cascade": 0.004293584148399532,
+              "trace_finalization": 0.0,
+              "fov_calcium_analysis": 0.010319209075532854,
+              "fov_spike_analysis_oasis": 0.017537999898195267,
+              "fov_spike_analysis_cascade": 0.01593679201323539,
+              "fov_analysis_total": 0.04854395904112607
+            },
+            "offline_stage_calls": {
+              "image_roi_extraction": 0,
+              "oasis_inference": 0,
+              "cascade_compute": 0,
+              "cascade_caller": 0,
+              "roi_calcium_analysis": 24,
+              "roi_spike_analysis_oasis": 24,
+              "roi_spike_analysis_cascade": 24,
+              "trace_finalization": 0,
+              "fov_calcium_analysis": 2,
+              "fov_spike_analysis_oasis": 2,
+              "fov_spike_analysis_cascade": 2,
+              "fov_analysis_total": 2
+            },
+            "calcium_products_sha256": "45b3d2c46b533e6bf22c0fdaea0257e568b3264663132a4863ea3122b942b2d1",
+            "method_products_sha256": {
+              "oasis": "7a28f71b114b49c074ff66ae527d7a939ef0fe35b7d6e51312bf79aea880a976",
+              "cascade": "d89174976d2118072c85700dc9959b7838f31e59620e2d7f2ca9d91c36404761"
+            },
+            "populations": {
+              "oasis": {
+                "active_rois": 11,
+                "pairs": 55,
+                "valid_start": 0,
+                "valid_stop": 256
+              },
+              "cascade": {
+                "active_rois": 12,
+                "pairs": 66,
+                "valid_start": 32,
+                "valid_stop": 224
+              }
+            },
+            "model_loads": 0,
+            "database_bytes": 929792,
+            "persistence_audit": {
+              "rows": {
+                "fov": 2,
+                "roi": 24,
+                "trace": 24,
+                "data_analysis": 24,
+                "fov_analysis": 2,
+                "spike_trace": 48,
+                "spike_analysis": 48,
+                "spike_fov_analysis": 4,
+                "spike_inference_run": 2
+              },
+              "all_stored_arrays_equal_extraction": true,
+              "canonical_inference_ids": {
+                "oasis": 1,
+                "cascade": 2
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "max_abs_differences": {
+      "oasis/reference/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0
+      },
+      "cascade/reference/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/reference/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      },
+      "cascade/service/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/service/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      },
+      "cascade/cached-lock/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/cached-lock/cold": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      },
+      "oasis/reference/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0
+      },
+      "cascade/reference/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/reference/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      },
+      "cascade/service/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/service/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      },
+      "cascade/cached-lock/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "cascade": 0.0
+      },
+      "dual/cached-lock/warm": {
+        "den_dff": 0.0,
+        "calcium_noise": 0.0,
+        "oasis": 0.0,
+        "cascade": 0.0
+      }
+    },
+    "deterministic_scientific_parity": {
+      "oasis/reference/cold": true,
+      "cascade/reference/cold": true,
+      "dual/reference/cold": true,
+      "cascade/service/cold": true,
+      "dual/service/cold": true,
+      "cascade/cached-lock/cold": true,
+      "dual/cached-lock/cold": true,
+      "oasis/reference/warm": true,
+      "cascade/reference/warm": true,
+      "dual/reference/warm": true,
+      "cascade/service/warm": true,
+      "dual/service/warm": true,
+      "cascade/cached-lock/warm": true,
+      "dual/cached-lock/warm": true
+    },
+    "release_gate": "pending: representative real plate, GPU acceptance, independent codec compressibility and memory acceptance; controlled workloads require review"
+  },
+  "negative_qc_audit": "Temporary copy with a changed FOV noise median is rejected; original inputs remain unchanged.",
+  "validation": {
+    "full_regression": {
+      "passed": 2316,
+      "skipped": 15,
+      "seconds": 314.15,
+      "note": "Subsequent history-source/automatic-export tests, final CSV writer and empty-selection cleanup covered by final installed/focused checks."
+    },
+    "installed_wheel": {
+      "passed": 558,
+      "seconds": 47.21,
+      "real_pretrained_models": true
+    },
+    "targeted_strict_mypy": {
+      "source_files": 7,
+      "result": "passed"
+    },
+    "initial_installed_wheel": {
+      "passed": 558,
+      "seconds": 54.59,
+      "real_pretrained_models": true
+    },
+    "final_focused_exports": {
+      "passed": 70,
+      "seconds": 10.49,
+      "empty_selection_cleanup": "passed"
+    }
+  },
+  "noise_summary_scope": "Known finite nonnegative estimates from all selected ROIs, including inactive ROIs; calcium uses the actual GetSn estimate from new analysis or the selected extraction; CASCADE uses stored per-ROI model noise. Never substitute one scale for the other.",
+  "advisory_warning_scope": "Completed batch only; at least four known FOV medians; Q1/Q3 +/- 3 linear IQR; skip zero IQR and unknown model identity; CASCADE groups match resolved model, weights manifest and model sampling rate. Does not alter thresholds/results or assert biological accuracy.",
+  "remaining_release_gates": [
+    "independent uniformly timed real-plate performance/compressibility",
+    "scoped representative image/concurrency memory acceptance",
+    "GPU acceptance",
+    "remote dedicated CI",
+    "upstream packaging and distribution licensing follow-ups",
+    "GUI exposure"
+  ],
+  "measurement_wheel": {
+    "filename": "cali-0.1.dev1410+gceef9bec8.d20261004-py3-none-any.whl",
+    "sha256": "201978facbc60f0d1e680f2e0233f3e228932e3ae1f51d2322ddc1d5f99e19df"
+  },
+  "measurement_source_sha256": {
+    "cali.analysis._noise_qc": "07e8627df6ba38d96e173b29edf297be4b56fe960223d43a7a34ae3230d48f27",
+    "cali.analysis._fov_inputs": "164163dc2e78eafdcaf809e9890bb797c64749eada744de2c0c5bd3fc200451c",
+    "cali.analysis._fov_analysis": "9c507911dc24daf97875fa757c8e1ac3f7c01716b29120fce509018d3d7c30d3",
+    "cali.analysis._fov_analysis_parallel": "16aff3a4b8751f10d6293aec2dbe73d5fee0eafa23d3378743a1b09986a0f1dd",
+    "cali.analysis._roi_analysis": "f26df2fc149bb18017a074e83fe9370d4e28678ab13ad073061d353ff265ea47",
+    "cali.analysis._analysis_runner": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f",
+    "cali.extraction._extraction_runner": "522829ca02d3d1d437f4edff845d917f4aae3736b91b7681bbc7ba46321ba4e8",
+    "cali.sqlmodel._engine": "f66ad55bfa26cb3c431f4ab26e93657327725eb14444c3b0ee24669a8c731ffb",
+    "cali.sqlmodel._model": "25e4d4d2bd14ec0493f57d70615eee1cb3642bc67f7b6bdf866424737784748b",
+    "cali.sqlmodel._spike_fov_analysis": "8a4a05f0c8e61e6a902ecf93bb7d6ef3b5ef489c2e205cd7da8c891a6c08986f",
+    "cali.util._noise_qc_export": "85fe191d22dc01f60ba3ce28f998abd3441a95f5e3bb77013ee6c749b509e633",
+    "cali.util._database_to_csv": "6feb17bca7bea0e3ff096dd0e63f651233cdea519c7e2f1b6d06eb1d17f7cb60"
+  },
+  "measurement_note": "Science/QC smoke and large migration were measured before adding stale-CSV removal for empty exports. Both wheels/source identities are recorded; final installed checks cover cleanup. No inference, noise-summary, schema or populated-export behavior changed after those measurements."
+}

@@ -27,6 +27,7 @@ from ._database_to_csv import (
     export_raw_traces_to_csv,
     export_trace_metadata,
 )
+from ._noise_qc_export import export_noise_qc_to_csv
 from ._spike_comparison_export import export_spike_comparison_to_csv
 from ._spike_export import export_spike_results_to_csv
 from ._util import (
@@ -67,6 +68,7 @@ __all__ = [
     "export_multi_well_to_csv",
     "export_neuropil_corrected_traces_to_csv",
     "export_neuropil_traces_to_csv",
+    "export_noise_qc_to_csv",
     "export_raw_traces_to_csv",
     "export_spike_comparison_to_csv",
     "export_spike_results_to_csv",

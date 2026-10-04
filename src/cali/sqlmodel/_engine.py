@@ -18,7 +18,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def _add_columns(
@@ -209,6 +209,21 @@ def _calcium_noise(connection: Connection) -> None:
     _add_columns(connection, "trace", (("calcium_noise", "FLOAT"),))
 
 
+def _noise_qc(connection: Connection) -> None:
+    """Add noise summaries without guessing historical estimates or populations."""
+    _add_columns(connection, "data_analysis", (("calcium_noise", "FLOAT"),))
+    for table, prefix in (("fov_analysis", "calcium"), ("spike_fov_analysis", "model")):
+        _add_columns(
+            connection,
+            table,
+            (
+                (f"{prefix}_noise_median", "FLOAT"),
+                (f"{prefix}_noise_iqr", "FLOAT"),
+                (f"{prefix}_noise_roi_count", "INTEGER"),
+            ),
+        )
+
+
 _MIGRATIONS = (
     _analysis_gates,
     _startup_discard,
@@ -223,6 +238,7 @@ _MIGRATIONS = (
     migrate_trace_arrays,
     _spike_population_coordinates,
     migrate_trace_array_shuffle,
+    _noise_qc,
 )
 
 

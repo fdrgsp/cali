@@ -213,11 +213,27 @@ Spike arrays use a versioned, checksummed, lossless compressed BLOB format while
 Python accessors and JSON snapshots continue to expose numeric lists. Opening an
 older database transactionally upgrades its canonical spike arrays to schema 11,
 then adds method-bound population coordinates in schema 12 and lossless byte-shuffle
-compression in schema 13. The codec selects the smaller raw/shuffled compressed payload;
-legacy physical copies and inference provenance remain unchanged. Existing JSON
+compression in schema 13. Schema 14 adds nullable noise QC fields without
+backfilling historical results. The codec selects the smaller raw/shuffled compressed
+payload; legacy physical copies and inference provenance remain unchanged. Existing JSON
 arrays remain readable. Older cali versions reject unsupported newer schemas.
 Migration reuses SQLite pages; reclaiming unused file space requires a separate `VACUUM` after
 closing application connections.
+
+New analyses store per-FOV noise median, interquartile range and known ROI count.
+Calcium summaries use the OASIS/GetSn estimate in ΔF/F units; CASCADE summaries use
+its model-rate noise scale. Both include inactive ROIs, keep missing estimates
+unknown and leave event thresholds and active populations unchanged. Re-analysis
+records the actual calcium noise used, including the legacy GetSn fallback.
+Trace exports include `noise_qc.csv` when summaries are stored; rows identify the
+estimator, units, selected run and CASCADE model/rate. You can also call
+`cali.util.export_noise_qc_to_csv(engine, path, run_id=...)` directly.
+
+After a completed batch, noise QC logs advisory warnings for FOV medians outside
+Q1/Q3 ± 3 IQR, using at least four FOVs on the same noise scale. CASCADE comparisons
+require matching model, weights manifest and model sampling rate. Unknown model
+identities and zero-IQR groups are skipped. These descriptive warnings do not
+change model selection or analysis results.
 
 Without `--model-dir`, the cache uses `CALI_CASCADE_MODELS` or
 `~/.cali/cascade_models`. The command verifies the pinned catalogue, installs
