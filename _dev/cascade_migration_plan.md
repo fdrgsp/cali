@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers and P6c2c evoked/sorted/PCA consumers implemented; schema-12 population coordinates added; real-plate performance, comparison integration, full CASCADE runner spike analysis, and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented and controlled storage budget passes; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers and P6c2d aligned comparisons implemented; schema-12 population coordinates added; real-plate performance, full CASCADE runner spike analysis, and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,9 +442,9 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** P6c2d comparison selection and valid-interval alignment.
-Complete those checks before
-opening the full runner's CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
+**Next landing step:** P6d full-runner integration and failure propagation, with
+end-to-end extraction/re-analysis parity for all output selections, before opening
+the CASCADE spike-analysis gate. Step 10's production codec now addresses the measured dense-JSON budget failure.
 Controlled cold/warm extraction, calcium analysis and persistence measurements are now recorded; independent real-plate performance
 and CASCADE spike-analysis costs remain pending. Measure the latter after P6 makes that analysis
 available, before release or GUI exposure.
@@ -1052,6 +1052,48 @@ Remaining P6c2 work is comparison selection and valid-interval alignment; the
 calcium/spike amplitude overlay remains OASIS-only. Full CASCADE runner spike
 analysis stays gated until those checks are complete. GUI results-method selection
 remains in P8; independent real-plate performance and analysis costs are pending.
+
+P6c2d — aligned dual-method comparisons (2026-10-04):
+
+- A shared comparison reader pairs only OASIS/CASCADE outputs of the same base
+  trace in one selected run. Each ROI uses the intersection of both valid
+  intervals, with retained half-open bounds. Units, analyzed-source bindings,
+  extraction owners/windows, lengths, persisted acquisition/model rates and
+  retained axes are validated. Missing methods or disjoint intervals yield no
+  pair; unresolved analysis sources and malformed inputs fail explicitly.
+  Every paired ROI is retained, including neurons inactive for either method;
+  the ROI union flag cannot bias the comparison population.
+- Two stable single-well registry products show independently peak-scaled trace
+  overlays and separate OASIS rising-edge/CASCADE excursion-start rows. Both use
+  common retained-frame coordinates and censor the common interval's left edge
+  for onset comparisons. Original amplitudes retain their scientific meaning;
+  normalized amplitudes are labelled explicitly. Product/method switching clears
+  old curves, images, colorbars, legends and callbacks. Comparison availability
+  requires both methods' capability maps, rather than the current backend alone.
+- `export_spike_comparison_to_csv()` stages all selected FOVs before replacing
+  files. Its long-form samples retain raw and independently normalized amplitudes,
+  units, scale, common interval, thresholds/modes/units and optional onsets.
+  Source/retained frame and time coordinates use the stored mapping, including
+  rebasing historical timestamp origins. Sidecars retain each method's inference
+  provenance, own valid interval and activity flag, plus shared window metadata.
+  Installed-wheel CI now includes comparison semantics and non-replacement checks.
+
+Validation: **264 passed, 1 skipped in 24.16 s** in affected plot/registry/export
+regressions; **53 passed in 3.71 s** in final comparison semantics, including
+timestamp rates, extraction-window ownership and historical time-origin rebasing;
+**2260 passed, 13 skipped in 274.28 s** in the full base/GUI suite;
+**453 passed in 37.49 s** against the rebuilt installed wheel with real pretrained
+reference/cached inference and all method-aware plot/export semantics. Ruff
+lint/format pass; mypy adds no diagnostics (341 existing). Tracked database
+fixtures were restored after test processes stopped; no migrated databases are committed.
+
+P6c2's planned consumer/comparison slices are implemented. The full CASCADE
+spike-analysis runner remains gated pending P6d integration/parity and failure
+checks. Initial audit found that `AnalysisRunner._exec_in_threadpool()` logs
+worker exceptions without propagating them; address this before enabling full
+CASCADE analysis so failed dual runs cannot appear successful. The calcium/spike
+amplitude overlay remains OASIS-only. GUI results selection stays in P8, and
+independent real-plate performance and analysis-cost gates remain pending.
 
 ## 0. TL;DR
 

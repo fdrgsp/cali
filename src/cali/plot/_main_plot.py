@@ -140,10 +140,11 @@ from ._single_wells_plots.raster._plot_inferred_spike_raster_plots import (
 from ._single_wells_plots.spikes._plot_inferred_spikes import (
     _plot_inferred_spikes,
 )
+from ._single_wells_plots.spikes._plot_spike_comparison import plot_spike_comparison
 from ._spike_data import get_stored_spike_capabilities
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Mapping
 
     from sqlalchemy.engine import Engine
 
@@ -209,6 +210,8 @@ class AnalysisProduct:
         Allowed results methods; None describes a shared calcium/general product.
     required_metrics : tuple[str, ...]
         Stored fields needed to offer this product for the selected method.
+    required_spike_methods : tuple
+        Comparison products require all these methods and their required metrics.
     category : str
         Category for grouping in the UI (e.g., "Calcium Traces", "Evoked Experiment")
     pipeline_stage : PipelineStage
@@ -231,6 +234,7 @@ class AnalysisProduct:
     compute_fn: ComputeFn | None = None
     supported_spike_methods: tuple[SpikeMethod, ...] | None = None
     required_metrics: tuple[str, ...] = ()
+    required_spike_methods: tuple[SpikeMethod, ...] = ()
 
     def __post_init__(self) -> None:
         """Register this product in the global registry."""
@@ -242,6 +246,10 @@ class AnalysisProduct:
         if self.supported_spike_methods is not None:
             self.supported_spike_methods = canonical_spike_methods(
                 self.supported_spike_methods
+            )
+        if self.required_spike_methods:
+            self.required_spike_methods = canonical_spike_methods(
+                self.required_spike_methods
             )
         ANALYSIS_PRODUCTS.append(self)
 
@@ -382,6 +390,26 @@ AnalysisProduct(
 )
 
 # Inferred Spikes Group
+AnalysisProduct(
+    product_id="single_well.spike_comparison_normalized",
+    name="OASIS / CASCADE Normalized Trace Comparison",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=plot_spike_comparison,
+    category="Spike Method Comparison",
+    pipeline_stage=PipelineStage.EXTRACTION,
+    required_spike_methods=("oasis", "cascade"),
+    required_metrics=("spike_trace",),
+)
+AnalysisProduct(
+    product_id="single_well.spike_comparison_onsets",
+    name="OASIS / CASCADE Threshold Onset Comparison",
+    group=AnalysisGroup.SINGLE_WELL,
+    analyzer=partial(plot_spike_comparison, onsets=True),
+    category="Spike Method Comparison",
+    pipeline_stage=PipelineStage.ANALYSIS,
+    required_spike_methods=("oasis", "cascade"),
+    required_metrics=("spike_trace", "threshold"),
+)
 AnalysisProduct(
     product_id="single_well.inferred_spikes",
     supported_spike_methods=("oasis", "cascade"),
@@ -1482,6 +1510,7 @@ def get_available_plots(
     stored_spike_methods: tuple[SpikeMethod, ...] | None = None,
     spike_method: SpikeMethod = "oasis",
     available_metrics: Collection[str] | None = None,
+    stored_spike_capabilities: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, list[str]]:
     """Filter available plots based on completed pipeline stages and experiment type.
 
@@ -1503,6 +1532,8 @@ def get_available_plots(
         Active results method, independent of extraction settings.
     available_metrics : Collection[str] | None
         Non-NULL fields stored for that method, from get_stored_spike_capabilities().
+    stored_spike_capabilities : Mapping | None
+        Per-method fields on the selected run; required to offer comparisons.
 
     Returns
     -------
@@ -1512,11 +1543,26 @@ def get_available_plots(
     canonical_spike_methods((spike_method,))
     if stored_spike_methods:
         canonical_spike_methods(stored_spike_methods)
+    if stored_spike_capabilities:
+        canonical_spike_methods(list(stored_spike_capabilities))
     # Group products by category, filtering by pipeline stage and experiment type
     categories: dict[str, list[str]] = {}
     for product in ANALYSIS_PRODUCTS:
         if product.group != group:
             continue
+
+        if product.required_spike_methods:
+            if stored_spike_capabilities is None or any(
+                method not in stored_spike_capabilities
+                or not set(product.required_metrics)
+                <= set(stored_spike_capabilities[method])
+                or (
+                    stored_spike_methods is not None
+                    and method not in stored_spike_methods
+                )
+                for method in product.required_spike_methods
+            ):
+                continue
 
         if product.supported_spike_methods is not None:
             if spike_method not in product.supported_spike_methods:

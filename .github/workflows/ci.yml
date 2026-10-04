@@ -70,7 +70,7 @@ jobs:
       - name: Verify installed-wheel trace codec, migration, ROI/FOV, export, and plot semantics
         env:
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py tests/test_spike_export.py tests/test_spike_plot_selection.py tests/test_spike_fov_plot_selection.py tests/test_spike_evoked_pca_selection.py
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_trace_array_codec.py tests/test_cascade_roi_analysis.py tests/test_cascade_fov_analysis.py tests/test_spike_export.py tests/test_spike_plot_selection.py tests/test_spike_fov_plot_selection.py tests/test_spike_evoked_pca_selection.py tests/test_spike_comparison.py
 
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }} ${{ matrix.backend }}
