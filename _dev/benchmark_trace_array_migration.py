@@ -1,9 +1,10 @@
-"""Verify and time schema-10 upgrades to the current schema on copied files.
+"""Verify and time schema-10/12 upgrades on copied files.
 
 Run after benchmark_cascade_storage.py, without competing measurement processes.
 All original databases/exports remain untouched. Database fingerprints replace only
 spike-array encoding with decoded float64 bytes; every original stored field is exact.
-Schema-12's added, unknown population coordinates are separately verified as NULL.
+Schema-12's added coordinates are verified as NULL for schema-10 sources; existing
+schema-12 coordinates remain part of the complete field fingerprint.
 Event exports may add threshold mode/units columns; all preexisting fields must match.
 """
 
@@ -15,8 +16,11 @@ import hashlib
 import inspect
 import json
 import sqlite3
+import sys
 import time
+from importlib.metadata import version as package_version
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 from sqlmodel import Session, select
@@ -24,15 +28,20 @@ from sqlmodel import Session, select
 from cali._constants import CASCADE_EXPECTED_SPIKES_TRACES, INFERRED_SPIKES_TRACES
 from cali.sqlmodel import SpikeTrace, create_cali_engine
 from cali.sqlmodel._engine import SCHEMA_VERSION
-from cali.sqlmodel._trace_array_codec import decode_trace_array
-from cali.sqlmodel._trace_array_migration import migrate_trace_arrays
+from cali.sqlmodel._trace_array_codec import (
+    _decode_blob,
+    decode_trace_array,
+    trace_array_storage_info,
+)
+from cali.sqlmodel._trace_array_migration import migrate_trace_array_shuffle
 from cali.util._database_to_csv import export_traces_to_csv
 
 
-def fingerprint(path: Path) -> str:
+def fingerprint(path: Path, *, ignore_population_coordinates: bool = False) -> str:
     """Hash every stored field, normalizing only the canonical array encoding."""
     digest = hashlib.sha256()
-    with sqlite3.connect(path) as connection:
+    uri = "file:" + quote(str(path.resolve()), safe="/") + "?mode=ro"
+    with sqlite3.connect(uri, uri=True) as connection:
         tables = sorted(
             name
             for (name,) in connection.execute(
@@ -44,7 +53,8 @@ def fingerprint(path: Path) -> str:
             columns = [
                 row[1]
                 for row in connection.execute(f"PRAGMA table_info({quoted})")
-                if name != "spike_fov_analysis"
+                if not ignore_population_coordinates
+                or name != "spike_fov_analysis"
                 or row[1] not in {"valid_start", "valid_stop", "frame_rate_hz"}
             ]
             selected = ",".join('"' + col.replace('"', '""') + '"' for col in columns)
@@ -119,22 +129,44 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--expected-exports", type=Path)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     destination = args.output_dir / args.source.name
     if destination.exists():
         raise FileExistsError(destination)
-    with sqlite3.connect(args.source) as original, sqlite3.connect(destination) as copy:
+    uri = "file:" + quote(str(args.source.resolve()), safe="/") + "?mode=ro"
+    with (
+        sqlite3.connect(uri, uri=True) as original,
+        sqlite3.connect(destination) as copy,
+    ):
         version = original.execute("PRAGMA user_version").fetchone()[0]
-        if version != 10:
-            raise ValueError("This measurement requires an actual schema-10 file.")
+        if version not in (10, 12):
+            raise ValueError("This measurement requires a schema-10 or schema-12 file.")
         original.backup(copy)
         run_id = copy.execute("SELECT id FROM analysis_result").fetchone()[0]
-    before = fingerprint(destination)
+    before = fingerprint(destination, ignore_population_coordinates=version < 12)
     begin = time.perf_counter()
     engine = create_cali_engine(f"sqlite:///{destination}")
     migration_s = time.perf_counter() - begin
-    assert fingerprint(destination) == before
+    assert (
+        fingerprint(destination, ignore_population_coordinates=version < 12) == before
+    )
+    if version == 12:
+        with (
+            sqlite3.connect(uri, uri=True) as original,
+            sqlite3.connect(destination) as migrated,
+        ):
+            for identifier, payload in original.execute(
+                'SELECT id,"values" FROM spike_trace'
+            ):
+                old_array, _ = _decode_blob(payload)
+                stored = migrated.execute(
+                    'SELECT "values" FROM spike_trace WHERE id=?', (identifier,)
+                ).fetchone()[0]
+                new_array, _ = _decode_blob(stored)
+                assert old_array.dtype == new_array.dtype
+                assert old_array.tobytes() == new_array.tobytes()
     begin = time.perf_counter()
     with Session(engine) as session:
         rows = session.exec(select(SpikeTrace)).all()
@@ -154,13 +186,13 @@ def main() -> None:
     export_s = time.perf_counter() - begin
     engine.dispose()
     export_comparison = compare_exports(
-        args.source.with_name(args.source.stem + "_exports"),
+        args.expected_exports or args.source.with_name(args.source.stem + "_exports"),
         destination.with_name(destination.stem + "_exports"),
     )
     before_vacuum_bytes = destination.stat().st_size
     with sqlite3.connect(destination) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-        assert (
+        assert version >= 12 or (
             connection.execute(
                 "SELECT COUNT(*) FROM spike_fov_analysis WHERE valid_start IS NOT NULL "
                 "OR valid_stop IS NOT NULL OR frame_rate_hz IS NOT NULL"
@@ -173,6 +205,23 @@ def main() -> None:
             ).fetchone()[0]
             == row_count
         )
+        payload_bytes: dict[str, int] = {}
+        encodings: dict[str, int] = {}
+        legacy_json_bytes = 0
+        for method, payload in connection.execute(
+            'SELECT i.method, s."values" FROM spike_trace s '
+            "JOIN spike_inference_run i ON i.id=s.spike_inference_run_id"
+        ):
+            metadata = trace_array_storage_info(payload)
+            assert metadata["version"] == 2
+            payload_bytes[method] = payload_bytes.get(method, 0) + len(payload)
+            key = f"{method}/{metadata['dtype']}/{metadata['compression']}"
+            encodings[key] = encodings.get(key, 0) + 1
+            if method == "oasis":
+                legacy_json_bytes += len(
+                    json.dumps(decode_trace_array(payload)).encode()
+                )
+        fov_count = connection.execute("SELECT count(*) FROM fov").fetchone()[0]
         begin = time.perf_counter()
         connection.execute("VACUUM")
         maintenance_s = time.perf_counter() - begin
@@ -180,11 +229,18 @@ def main() -> None:
         "source": str(args.source),
         "source_sha256": hashlib.sha256(args.source.read_bytes()).hexdigest(),
         "migration_source_sha256": hashlib.sha256(
-            Path(inspect.getfile(migrate_trace_arrays)).read_bytes()
+            Path(inspect.getfile(migrate_trace_array_shuffle)).read_bytes()
         ).hexdigest(),
         "rows": row_count,
         "schema_before": version,
         "schema_after": SCHEMA_VERSION,
+        "original_blob_dtype_and_bits_exact": version == 12,
+        "environment_versions": {
+            "python": sys.version,
+            "cali": package_version("cali"),
+            "numpy": package_version("numpy"),
+            "sqlalchemy": package_version("sqlalchemy"),
+        },
         "database_fingerprint": before,
         "all_decoded_arrays_and_other_fields_exact": True,
         **export_comparison,
@@ -195,6 +251,21 @@ def main() -> None:
         "orm_read_s": read_s,
         "export_s": export_s,
         "vacuum_s": maintenance_s,
+        "canonical_payload_bytes": payload_bytes,
+        "encodings": encodings,
+        "hypothetical_legacy_oasis_json_bytes": legacy_json_bytes,
+        "projected_96_fov_with_legacy_oasis_mib": (
+            (sum(payload_bytes.values()) + legacy_json_bytes) / fov_count * 96 / 1024**2
+        ),
+        "budget_mib": 512,
+        "within_storage_budget": (
+            (sum(payload_bytes.values()) + legacy_json_bytes) / fov_count * 96
+            <= 512 * 1024**2
+        ),
+        "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "codec_source_sha256": hashlib.sha256(
+            Path(inspect.getfile(decode_trace_array)).read_bytes()
+        ).hexdigest(),
     }
     (args.output_dir / "migration-report.json").write_text(
         json.dumps(report, indent=2) + "\n"

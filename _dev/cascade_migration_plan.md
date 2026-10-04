@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; earlier controlled storage budget passes but the complete-image workload exceeds it; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; lossless byte-shuffle candidate measured, production reader/migration pending; remaining P7/release evidence, real-plate performance and GUI exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; remaining P7/release evidence, real-plate performance and GUI exposure pending
 **Date**: 2026-08-14
 
 ---
@@ -442,22 +442,21 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** implement and validate a versioned lossless byte-shuffle
-reader/writer and atomic migration to repair the newly measured 512 MiB storage
-failure, before P8 GUI exposure. The 100 × 6000 complete-image workload and two-worker
-memory measurements are complete. The P7 installation audit covers both base-wheel
-absence and base-to-extra installation; remote dedicated CI, upstream packaging
-submission and distribution licensing review remain separate release follow-ups.
+**Next landing step:** collect independent uniformly timed real-plate
+performance/compressibility and define representative-image/concurrency memory
+acceptance before P8 GUI exposure. The 100 × 6000 complete-image workload, two-worker
+memory measurements and production schema-13 storage repair are complete. P7's
+installation audit covers both base-wheel absence and base-to-extra installation;
+remote dedicated CI, upstream packaging submission and distribution licensing review
+remain separate release follow-ups.
 P6d opens headless CASCADE spike analysis after full-runner parity and failure checks.
-Step 10's production codec fixed the earlier dense-JSON failure, but the new complete
-image workload projects 517.96 MiB including legacy duplication and fails the same
-512 MiB spike-payload budget. A bit-preserving v2 prototype projects 493.93 MiB;
-production decoding, migration integrity/rollback and consumer acceptance are pending.
+The complete-image workload's v1 spike projection failed at 517.96 MiB including
+legacy duplication; production v2 now measures 493.93 MiB against the unchanged
+512 MiB budget, with zero sample changes, atomic migration and exact consumer exports.
 Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
-re-analysis measurements have complete independent database audits. Independent
-real-plate performance, GPU and scoped memory acceptance remain pending. Full-graph
-memory samples do not certify the prior inference-only comparison target or promote
-the cached service.
+re-analysis have independent database audits. Independent real-plate performance,
+GPU and scoped memory acceptance remain pending. Full-graph memory samples do not
+certify the prior inference-only comparison target or promote the cached service.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction and analysis are available through the upstream reference path; the cached service
 remains an explicit experimental option.
@@ -1319,6 +1318,48 @@ milestone. Detailed settings, scope and reproducible commands are in
 [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). The next landing
 step is production codec/migration repair; real-plate performance/compressibility,
 GPU, scoped memory and remaining release evidence still gate GUI exposure.
+
+Step 10e — production byte-shuffle codec and atomic schema-13 upgrade (2026-10-04):
+
+- New canonical spike writes use v2, choosing the smaller full raw/shuffled zlib
+  payload. The reader validates v1, v2 and historical JSON at the existing ORM
+  boundary. Checksums include metadata plus original unshuffled samples. Migration
+  preserves stored BLOB dtype/raw bits, including NaN payloads and negative zero;
+  exact float32 selection and inference provenance remain unchanged.
+- Schema 13 streams and verifies spike rows in one versioned transaction. Corrupt
+  rows, interrupted writes and failed verification roll back data and version.
+  Schema 11 explicitly keeps writing v1, preventing a partially completed ordered
+  upgrade from exposing v2 to schema-11/12 applications. The prior schema-12 wheel
+  rejects a schema-13 copy without modifying its bytes.
+- The newly installed wheel migrates the original 100 × 6000 four-FOV dual source
+  (800 spike rows) in **0.776 s**. Every original database field and BLOB sample bit
+  remains exact; all 11 exports preserve CSV bytes and JSON content. ORM read is
+  **0.150 s**, export **33.233 s**, separate vacuum **0.877 s**. File sizes are
+  **195.80 MiB** source, **195.81 MiB** immediately migrated and **195.30 MiB** after
+  optional vacuum; application migration performs no automatic vacuum.
+- Production payload plus hypothetical exact legacy OASIS JSON projects to
+  **493.93 MiB** at 96 FOVs, **18.07 MiB below the unchanged 512 MiB budget**. Canonical
+  payload is 187.90 MiB; the legacy projection is 306.04 MiB. All 400 CASCADE rows
+  use float32 byte-shuffle; OASIS uses 396 raw float64 and four raw float32 rows.
+  This repairs the larger controlled storage failure without rounding; independent
+  biological-plate compressibility remains pending.
+- A fresh installed-wheel full-runner smoke covers all seven selections at
+  12 × 256 frames, one cold/two warm FOVs: **14 scientific comparisons and 14
+  independent database audits** pass. A separate audit checks the migrated large
+  database against saved extraction arrays, for **15 complete database audits**.
+  The earlier large end-to-end timing/memory table describes v1 and is not relabeled
+  as a new v2 performance measurement.
+
+Validation: **2301 passed, 15 skipped in 284.64 s** full regression; **543 passed
+in 39.59 s** installed-wheel consumer/pretrained checks. A pre-upgrade golden BLOB
+check added after full-suite collection is covered by installed tests and the final
+**110 passed in 6.55 s** focused run. Strict mypy passes the three changed source
+files; Ruff/format and commit hooks pass. Test-modified fixture databases are restored.
+[`cascade_trace_shuffle_cpu_benchmark.json`](cascade_trace_shuffle_cpu_benchmark.json)
+records source/wheel hashes, production migration, exact consumer checks and
+independent audits. The storage/numerical gate now passes for this controlled input;
+real-plate performance/compressibility, GPU, scoped memory and remaining release
+follow-ups still gate GUI exposure.
 
 ## 0. TL;DR
 

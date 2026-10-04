@@ -8,9 +8,10 @@ The upstream reference remains the default; the cached service is experimental.
 
 The short/long full-analysis measurements are in `cascade_analysis_cpu_benchmark.json`;
 the completed 100 × 6000 image workload and worker-memory comparison are in
-`cascade_large_mode_cpu_benchmark.json`. The latter fails the 512 MiB payload budget
-when projected legacy OASIS duplication is included; a lossless byte-shuffle candidate
-is measured but requires a production reader and migration.
+`cascade_large_mode_cpu_benchmark.json`. Its v1 spike-payload projection exceeds
+512 MiB including legacy OASIS duplication. Schema 13 repairs this controlled
+workload with lossless byte-shuffle storage; production migration and fresh-write
+evidence is in `cascade_trace_shuffle_cpu_benchmark.json`.
 Its database audits supersede the historical extraction benchmark's warm persistence,
 database-size and complete-wall-time figures: those archived warm databases retained
 only 8–9 of 32 requested short traces and 33 of 128 requested long traces. The separate
@@ -447,7 +448,7 @@ smaller raw/shuffled full payload, preserving float32/double choices and includi
 header/checksum overhead. On these exact arrays, the candidate plus legacy projection
 is **493.93 MiB**, leaving **18.07 MiB** of budget headroom with zero sample changes.
 Raising zlib's level alone barely improved the representative traces. The candidate
-does not write databases, and the current v1 reader rejects its proposed version;
+does not write databases, and the v1 reader at this checkpoint rejects its version;
 reader/migration, rollback/integrity and consumer acceptance must land before this
 becomes production storage evidence. No rounding or quantization is proposed.
 
@@ -474,14 +475,85 @@ same environment above and Unix `ps` access:
 ```
 
 The controlled 100 × 6000 workload and multi-worker memory measurement are now
-recorded. Production storage-budget repair, independent uniformly timed real-plate
-performance/compressibility, GPU acceptance and scoped memory acceptance remain
+recorded. The production storage repair follows below; independent uniformly timed
+real-plate performance/compressibility, GPU and scoped memory acceptance remain
 pending. The reference remains the production default, the cached service remains
 experimental, and GUI exposure remains gated.
 
+## Production v2 byte-shuffle codec and schema-13 migration
+
+[`cascade_trace_shuffle_cpu_benchmark.json`](cascade_trace_shuffle_cpu_benchmark.json)
+records the production repair of the larger v1 storage failure. The reader accepts
+v1/v2 BLOBs and historical JSON. New ORM writes use v2, selecting the smaller full
+raw/shuffled zlib payload, including its header. Checksums bind version, compression,
+dtype, shape and the original unshuffled bytes. Float32 remains conditional on exact
+round trips; migration retains existing BLOB dtype and every sample bit, including
+NaN payloads and signed zero. No quantization is introduced.
+
+Schema 13 streams canonical spike rows within one versioned transaction. A corrupt
+row, interrupted write or read-back mismatch rolls back the row changes and version
+update. The earlier schema-11 step explicitly continues writing v1, so interruption
+before schema 13 cannot leave v2 bytes under schema 11/12. Historical physical spike
+copies and inference provenance are preserved. The previous schema-12 wheel rejects
+a schema-13 copy without changing any database bytes.
+
+The installed production wheel upgrades a copy of the complete-image four-FOV dual
+database (800 spike rows) from schema 12 to 13 in **0.776 s**. Every original database
+field remains exact; existing BLOB dtype/raw bytes are checked separately. All **11**
+exported files match the prior-wheel exports (CSV bytes and JSON object contents).
+ORM reads take **0.150 s**, export **33.233 s**, and a separately requested `VACUUM`
+**0.877 s**. The file is **195.80 MiB** before migration, **195.81 MiB** immediately
+after and **195.30 MiB** after vacuum. SQLite page allocation means logical payload
+savings need not translate directly to file-size savings.
+
+All 400 CASCADE float32 rows select byte-shuffle; OASIS retains raw zlib with 396
+float64 and four exactly compact float32 rows. The projected 96-FOV canonical payload
+is **187.90 MiB** (16.33 OASIS + 171.57 CASCADE). Hypothetical exact legacy OASIS JSON
+adds **306.04 MiB**, giving **493.93 MiB**, below the unchanged **512 MiB** budget by
+**18.07 MiB**. This closes the controlled storage/numerical gate for this input;
+independent biological input compressibility remains unverified. The projection
+excludes calcium traces, analyses, indexes and SQLite space; the copied source itself
+has no physical legacy spike duplication.
+
+The independent read-only audit verifies the migrated large database against the
+saved NPZ arrays. A separate installed-wheel full-runner smoke uses 12 ROIs × 256
+frames, one cold and two warm FOVs for all seven output/backend selections. Its
+**14** deterministic scientific comparisons and **14** independent database audits
+pass with fresh v2 writes and offline reuse. These small checks establish consumer
+correctness; the larger full-analysis timing table above still describes v1 and has
+not been retimed end to end for v2.
+
+Validation: **2301 passed, 15 skipped in 284.64 s** in the full regression; **543
+passed in 39.59 s** against the installed wheel with actual pretrained models. The
+standalone pre-upgrade golden BLOB test was added after full-suite collection and
+is covered by the installed checks and final **110 passed in 6.55 s** focused run.
+Strict mypy passes all three changed source files. Codec corruption, float32/float64
+shuffle, raw-layout selection, nonfinite bits, migration ordering and rollback/retry
+checks pass. Test-modified checked-in database fixtures were restored.
+
+Reproduce with the current schema-13 wheel and the previously generated schema-12
+large database plus its prior-wheel baseline exports:
+
+```sh
+"$cascade_bench_python" _dev/benchmark_trace_array_migration.py \
+  /tmp/cali-large-full/dual-reference-warm.cali \
+  --output-dir /tmp/cali-v2-migration \
+  --expected-exports /tmp/cali-v1-baseline/dual-reference-warm_exports
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --analysis full --analysis-processes 1 --ccg-shuffles 20 \
+  --model-dir "$CALI_CASCADE_MODELS" --output-dir /tmp/cali-v2-full-smoke \
+  --rois 12 --frames 256 --fovs 2 --workers 4
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-v2-full-smoke --output /tmp/cali-v2-full-smoke-audit.json
+```
+
+Independent real-plate performance/compressibility, GPU and scoped memory acceptance
+remain pending. Reference inference remains the default, cached inference remains
+experimental, and GUI exposure remains gated by that release evidence.
+
 ## Production codec storage and migration
 
-Schema 11 now uses the production lossless codec for `SpikeTrace.values`. Its inline
+Schema 11 introduced the original production lossless codec for `SpikeTrace.values`. Its inline
 BLOB header carries version, dtype, shape and a checksum covering metadata plus raw
 array bytes, followed by zlib-compressed data. Every ORM consumer receives a numeric
 list through the same decoding boundary; portable JSON snapshots stay ordinary lists.

@@ -1,17 +1,25 @@
-"""SQLite v11: compress canonical spike arrays without changing legacy copies."""
+"""SQLite v11/v13: lossless canonical arrays without changing legacy copies."""
 
-import numpy as np
 from sqlalchemy.engine import Connection
 
 from ._trace_array_codec import (
     TraceArrayError,
-    decode_trace_array,
-    encode_trace_array,
+    _transcode_trace_array,
     trace_array_storage_info,
 )
 
 
 def migrate_trace_arrays(connection: Connection) -> None:
+    """Write v1 only, keeping interrupted schema-11/12 upgrades readable."""
+    _migrate_trace_arrays(connection, version=1)
+
+
+def migrate_trace_array_shuffle(connection: Connection) -> None:
+    """Upgrade to v2 byte-shuffle storage within the schema-13 transaction."""
+    _migrate_trace_arrays(connection, version=2)
+
+
+def _migrate_trace_arrays(connection: Connection, *, version: int) -> None:
     """Stream and verify each array within the engine's versioned transaction.
 
     Historical migrations stay JSON-only and run before this step. Existing JSON
@@ -40,11 +48,10 @@ def migrate_trace_arrays(connection: Connection) -> None:
                 payload = connection.exec_driver_sql(
                     'SELECT "values" FROM spike_trace WHERE id=?', (identifier,)
                 ).scalar_one()
-                original = decode_trace_array(payload)
-                if trace_array_storage_info(payload)["version"] == 1:
+                if trace_array_storage_info(payload)["version"] == version:
                     last_id = identifier
                     continue
-                encoded = encode_trace_array(original)
+                encoded = _transcode_trace_array(payload, version=version)
                 connection.exec_driver_sql(
                     'UPDATE spike_trace SET "values"=? WHERE id=?',
                     (encoded, identifier),
@@ -52,12 +59,11 @@ def migrate_trace_arrays(connection: Connection) -> None:
                 stored = connection.exec_driver_sql(
                     'SELECT "values" FROM spike_trace WHERE id=?', (identifier,)
                 ).scalar_one()
-                if not np.array_equal(
-                    original, decode_trace_array(stored), equal_nan=True
-                ):
+                if stored != encoded:
                     raise TraceArrayError(
                         "Migrated spike values failed exact verification."
                     )
+                trace_array_storage_info(stored)  # Validate the written representation.
             except (TypeError, TraceArrayError) as error:
                 raise ValueError(f"Spike trace {identifier}: {error}") from error
             last_id = identifier

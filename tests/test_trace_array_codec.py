@@ -50,6 +50,19 @@ def _replace_header(payload: bytes, **updates: object) -> bytes:
     return payload[:8] + struct.pack(">I", len(encoded)) + encoded + compressed
 
 
+def _raw_bytes(payload: bytes) -> bytes:
+    metadata, compressed = _parts(payload)
+    raw = zlib.decompress(compressed)
+    if metadata["compression"] == "zlib-byte-shuffle":
+        raw = (
+            np.frombuffer(raw, dtype="u1")
+            .reshape(np.dtype(metadata["dtype"]).itemsize, metadata["shape"][0])
+            .T.copy()
+            .tobytes()
+        )
+    return raw
+
+
 @pytest.mark.parametrize(
     "values",
     [
@@ -59,8 +72,9 @@ def _replace_header(payload: bytes, **updates: object) -> bytes:
         [np.finfo(float).max, np.nextafter(0.0, 1.0)],
     ],
 )
-def test_roundtrip_preserves_all_double_bits(values: list) -> None:
-    encoded = encode_trace_array(values)
+@pytest.mark.parametrize("version", [1, 2])
+def test_roundtrip_preserves_all_double_bits(values: list, version: int) -> None:
+    encoded = encode_trace_array(values, version=version)
     decoded = decode_trace_array(encoded)
     expected = np.asarray(values, dtype="<f8")
     np.testing.assert_array_equal(
@@ -77,9 +91,9 @@ def test_float32_golden_bytes_and_metrics_remain_exact() -> None:
         expected = fixture["expected_spikes"].astype("<f4")
     for row in expected:
         payload = encode_trace_array(row.tolist())
-        metadata, compressed = _parts(payload)
+        metadata, _ = _parts(payload)
         assert metadata["dtype"] == "<f4" and metadata["shape"] == [256]
-        raw = zlib.decompress(compressed)
+        raw = _raw_bytes(payload)
         assert raw == row.tobytes()
         identity = {key: value for key, value in metadata.items() if key != "sha256"}
         digest = hashlib.sha256(
@@ -127,7 +141,7 @@ def test_non_numeric_or_lossy_input_is_rejected(values: list) -> None:
 @pytest.mark.parametrize(
     "updates",
     [
-        {"version": 2},
+        {"version": 3},
         {"version": True},
         {"compression": "pickle"},
         {"dtype": "O"},
@@ -209,7 +223,72 @@ def test_encoding_limit_is_checked_before_allocation(
         encode_trace_array([0, 0, 0])
 
 
-def _version_ten(path: Path, payloads: list[str | bytes]) -> None:
+@pytest.mark.parametrize("dtype", ["<f4", "<f8"])
+def test_shuffle_is_lossless_smaller_and_checked(dtype: str) -> None:
+    values = np.linspace(0.1, 0.9, 6000, dtype=dtype)
+    old = encode_trace_array(values, version=1)
+    new = encode_trace_array(values)
+    assert trace_array_storage_info(new)["compression"] == "zlib-byte-shuffle"
+    assert len(new) < len(old)
+    assert _raw_bytes(new) == _raw_bytes(old) == values.tobytes()
+    assert decode_trace_array(new) == decode_trace_array(old)
+    with pytest.raises(TraceArrayError, match="checksum"):
+        decode_trace_array(_replace_header(new, compression="zlib"))
+    with pytest.raises(TraceArrayError):
+        decode_trace_array(_replace_header(new, version=1))
+    metadata, compressed = _parts(new)
+    raw = bytearray(zlib.decompress(compressed))
+    raw[-1] ^= 1
+    header_size = struct.unpack(">I", new[8:12])[0]
+    with pytest.raises(TraceArrayError, match="checksum"):
+        decode_trace_array(new[: 12 + header_size] + zlib.compress(raw))
+    assert metadata["version"] == 2
+
+
+def test_v2_keeps_raw_layout_when_shuffle_overhead_is_larger() -> None:
+    payload = encode_trace_array([0.0] * 6000)
+    assert trace_array_storage_info(payload)["compression"] == "zlib"
+    assert decode_trace_array(payload) == [0.0] * 6000
+
+
+@pytest.mark.parametrize("version", [0, 3, True, "2"])
+def test_encoder_rejects_unsupported_versions(version: object) -> None:
+    with pytest.raises(TraceArrayError, match="version"):
+        encode_trace_array([0.0], version=version)  # type: ignore[arg-type]
+
+
+def test_transcode_preserves_dtype_and_nonfinite_sample_bits() -> None:
+    # Existing v1 data can carry NaN payloads, negative zero or uncompact doubles.
+    bits = np.array(
+        [0x7FF8000000001234, 0x8000000000000000, 0x3FE0000000000000], dtype="<u8"
+    )
+    old = codec._encode_array(bits.view("<f8"), version=1)
+    new = codec._transcode_trace_array(old, version=2)
+    assert trace_array_storage_info(new)["dtype"] == "<f8"
+    assert _raw_bytes(new) == bits.tobytes()
+    assert _raw_bytes(codec._transcode_trace_array(new, version=1)) == bits.tobytes()
+
+
+def test_pre_upgrade_v1_golden_payload_remains_readable() -> None:
+    # Produced by the installed schema-12 wheel before this implementation.
+    old = bytes.fromhex(
+        "43414c4941525200000000887b22636f6d7072657373696f6e223a227a6c6962"
+        "222c226474797065223a223c6638222c22736861323536223a22626466306130"
+        "3462313733356330386339383434666132653330316230306530643232326166"
+        "6133653665353439626162666466303634323965373262636332222c22736861"
+        "7065223a5b345d2c2276657273696f6e223a317d789c636040010d10ea81fdac"
+        "9920b0d31e002909062f"
+    )
+    expected = np.array([0.0, -0.0, 0.5, 0.1], dtype="<f8")
+    assert (
+        np.asarray(decode_trace_array(old), dtype="<f8").tobytes() == expected.tobytes()
+    )
+    assert (
+        _raw_bytes(codec._transcode_trace_array(old, version=2)) == expected.tobytes()
+    )
+
+
+def _version_ten(path: Path, payloads: list[str | bytes], *, version: int = 10) -> None:
     engine = create_engine(f"sqlite:///{path}")
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -231,17 +310,22 @@ def _version_ten(path: Path, payloads: list[str | bytes]) -> None:
             connection.exec_driver_sql(
                 "INSERT INTO spike_trace VALUES (?,?,?)", (index - 2, payload, 0.123)
             )
-        connection.exec_driver_sql("PRAGMA user_version=10")
+        connection.exec_driver_sql(f"PRAGMA user_version={version}")
     engine.dispose()
 
 
+@pytest.mark.parametrize("version", [10, 12])
 def test_migration_streams_all_rows_and_preserves_legacy_and_unknown_provenance(
     tmp_path: Path,
+    version: int,
 ) -> None:
     path = tmp_path / "v10.cali"
     original = [[0, index / 13, 0.25] for index in range(70)]
     _version_ten(
-        path, [json.dumps(row) for row in original] + [encode_trace_array([0, 0.1, 0])]
+        path,
+        [json.dumps(row) for row in original]
+        + [encode_trace_array([0, 0.1, 0], version=1)],
+        version=version,
     )
     engine = create_cali_engine(f"sqlite:///{path}")
     try:
@@ -258,6 +342,7 @@ def test_migration_streams_all_rows_and_preserves_legacy_and_unknown_provenance(
                 [0, 0.1, 0],
             ]
             assert all(row[0] == "blob" and row[2] == 0.123 for row in rows)
+            assert all(trace_array_storage_info(row[1])["version"] == 2 for row in rows)
             assert (
                 connection.exec_driver_sql("SELECT inferred_spikes FROM trace").scalar()
                 == "[0,0.1,0]"
@@ -283,18 +368,19 @@ def test_migration_streams_all_rows_and_preserves_legacy_and_unknown_provenance(
 @pytest.mark.parametrize(
     "bad_payload", ["null", "[true]", "broken", encode_trace_array([0])[:-1]]
 )
+@pytest.mark.parametrize("version", [10, 12])
 def test_invalid_row_rolls_back_previous_arrays_and_version(
-    tmp_path: Path, bad_payload: str | bytes
+    tmp_path: Path, bad_payload: str | bytes, version: int
 ) -> None:
     path = tmp_path / "bad.cali"
-    first = "[0,0.1,0]"
-    _version_ten(path, [first, bad_payload])
+    first = "[0,0.1,0]" if version == 10 else encode_trace_array([0, 0.1, 0], version=1)
+    _version_ten(path, [first, bad_payload], version=version)
     engine = create_engine(f"sqlite:///{path}")
     try:
         with pytest.raises(ValueError, match="Spike trace -1"):
             ensure_schema_current(engine)
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 10
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == version
             assert connection.exec_driver_sql(
                 'SELECT "values" FROM spike_trace ORDER BY id'
             ).scalars().all() == [first, bad_payload]
@@ -312,10 +398,13 @@ def test_invalid_row_rolls_back_previous_arrays_and_version(
         engine.dispose()
 
 
-def test_interrupted_conversion_is_atomic_and_retryable(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [10, 12])
+def test_interrupted_conversion_is_atomic_and_retryable(
+    tmp_path: Path, version: int
+) -> None:
     path = tmp_path / "interrupted.cali"
     values = ["[0,0.1,0]", "[1,2,3]"]
-    _version_ten(path, values)
+    _version_ten(path, values, version=version)
     engine = create_engine(f"sqlite:///{path}")
 
     def interrupt(*args: object) -> None:
@@ -328,7 +417,7 @@ def test_interrupted_conversion_is_atomic_and_retryable(tmp_path: Path) -> None:
             ensure_schema_current(engine)
         event.remove(engine, "after_cursor_execute", interrupt)
         with engine.connect() as connection:
-            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 10
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == version
             assert (
                 connection.exec_driver_sql(
                     'SELECT "values" FROM spike_trace ORDER BY id'
@@ -343,6 +432,34 @@ def test_interrupted_conversion_is_atomic_and_retryable(tmp_path: Path) -> None:
                 connection.exec_driver_sql("PRAGMA user_version").scalar()
                 == _engine.SCHEMA_VERSION
             )
+    finally:
+        engine.dispose()
+
+
+def test_interrupted_upgrade_never_writes_v2_before_schema_thirteen(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ordered.cali"
+    _version_ten(path, ["[0,0.1,0]", encode_trace_array([0.25], version=1)])
+    engine = create_engine(f"sqlite:///{path}")
+
+    def interrupt(connection: object) -> None:
+        raise RuntimeError("interrupted population migration")
+
+    try:
+        migrations = (*_engine._MIGRATIONS[:11], interrupt, *_engine._MIGRATIONS[12:])
+        with patch.object(_engine, "_MIGRATIONS", migrations):
+            with pytest.raises(RuntimeError, match="population migration"):
+                ensure_schema_current(engine)
+        with engine.connect() as connection:
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 11
+            values = connection.exec_driver_sql('SELECT "values" FROM spike_trace')
+            assert all(
+                trace_array_storage_info(row[0])["version"] == 1 for row in values
+            )
+        ensure_schema_current(engine)
+        with engine.connect() as connection:
+            assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 13
     finally:
         engine.dispose()
 

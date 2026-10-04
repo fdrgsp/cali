@@ -212,7 +212,8 @@ CASCADE CSV exports leave invalid model edges empty and include stored provenanc
 Spike arrays use a versioned, checksummed, lossless compressed BLOB format while
 Python accessors and JSON snapshots continue to expose numeric lists. Opening an
 older database transactionally upgrades its canonical spike arrays to schema 11,
-then adds method-bound population coordinates in schema 12;
+then adds method-bound population coordinates in schema 12 and lossless byte-shuffle
+compression in schema 13. The codec selects the smaller raw/shuffled compressed payload;
 legacy physical copies and inference provenance remain unchanged. Existing JSON
 arrays remain readable. Older cali versions reject unsupported newer schemas.
 Migration reuses SQLite pages; reclaiming unused file space requires a separate `VACUUM` after

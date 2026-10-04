@@ -1,8 +1,8 @@
 """Versioned, lossless spike-array storage with backward-compatible JSON reads.
 
 SQLite permits BLOBs in existing JSON-affinity columns, so the public values field
-and its consumers remain unchanged. Schema 11 prevents older cali versions from
-opening the new representation. Checksums cover metadata and uncompressed bytes.
+and its consumers remain unchanged. Schema 11 gates v1 BLOBs; schema 13 gates the
+v2 byte-shuffle option. Checksums cover metadata and original uncompressed bytes.
 """
 
 from __future__ import annotations
@@ -68,8 +68,10 @@ def _checksum(metadata: dict[str, Any], raw: bytes) -> str:
     return digest.hexdigest()
 
 
-def encode_trace_array(values: Sequence[float] | np.ndarray) -> bytes:
-    """Encode v1, choosing float32 only if all values round-trip exactly.
+def encode_trace_array(
+    values: Sequence[float] | np.ndarray, *, version: int = 2
+) -> bytes:
+    """Encode losslessly, choosing float32 only for exact round trips.
 
     Existing float32 CASCADE output remains float32. OASIS/imported doubles stay
     float64 whenever float32 would change even one sample. Nonfinite historical
@@ -81,18 +83,40 @@ def encode_trace_array(values: Sequence[float] | np.ndarray) -> bytes:
             compact = array.astype("<f4")
         if np.array_equal(compact.astype("<f8"), array):
             array = compact
+    return _encode_array(array, version=version)
+
+
+def _encode_array(array: np.ndarray, *, version: int) -> bytes:
+    """Retain the original dtype/bits, selecting the smaller full v2 payload."""
+    if type(version) is not int or version not in (1, 2):
+        raise TraceArrayError("Unsupported trace-array codec version.")
     raw = array.tobytes()
-    metadata: dict[str, Any] = {
-        "version": 1,
-        "compression": "zlib",
-        "dtype": array.dtype.str,
-        "shape": [len(array)],
-    }
-    metadata["sha256"] = _checksum(metadata, raw)
-    header = _metadata_bytes(metadata)
-    return (
-        _MAGIC + struct.pack(">I", len(header)) + header + zlib.compress(raw, level=6)
-    )
+    sources = [("zlib", raw)]
+    if version == 2:
+        shuffled = (
+            np.frombuffer(raw, dtype="u1")
+            .reshape(-1, array.dtype.itemsize)
+            .T.copy()
+            .tobytes()
+        )
+        sources.append(("zlib-byte-shuffle", shuffled))
+    choices = []
+    for compression, source in sources:
+        metadata: dict[str, Any] = {
+            "version": version,
+            "compression": compression,
+            "dtype": array.dtype.str,
+            "shape": [len(array)],
+        }
+        metadata["sha256"] = _checksum(metadata, raw)
+        header = _metadata_bytes(metadata)
+        choices.append(
+            _MAGIC
+            + struct.pack(">I", len(header))
+            + header
+            + zlib.compress(source, level=6)
+        )
+    return min(choices, key=len)
 
 
 def _unique_metadata(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -125,13 +149,16 @@ def _decode_blob(payload: bytes) -> tuple[np.ndarray, dict[str, Any]]:
         "sha256",
     }:
         raise TraceArrayError("Invalid trace-array metadata fields.")
-    if type(metadata["version"]) is not int or metadata["version"] != 1:
+    if type(metadata["version"]) is not int or metadata["version"] not in (1, 2):
         raise TraceArrayError("Unsupported trace-array codec version.")
     dtype = metadata["dtype"]
     shape = metadata["shape"]
     checksum = metadata["sha256"]
     if (
-        metadata["compression"] != "zlib"
+        metadata["compression"]
+        not in (
+            ("zlib",) if metadata["version"] == 1 else ("zlib", "zlib-byte-shuffle")
+        )
         or not isinstance(dtype, str)
         or dtype not in _DTYPES
         or not isinstance(shape, list)
@@ -158,6 +185,13 @@ def _decode_blob(payload: bytes) -> tuple[np.ndarray, dict[str, Any]]:
         or decompressor.unconsumed_tail
     ):
         raise TraceArrayError("Trace-array payload length does not match its shape.")
+    if metadata["compression"] == "zlib-byte-shuffle":
+        raw = (
+            np.frombuffer(raw, dtype="u1")
+            .reshape(_DTYPES[dtype], shape[0])
+            .T.copy()
+            .tobytes()
+        )
     checked_metadata = {
         key: value for key, value in metadata.items() if key != "sha256"
     }
@@ -167,7 +201,7 @@ def _decode_blob(payload: bytes) -> tuple[np.ndarray, dict[str, Any]]:
 
 
 def decode_trace_array(payload: str | bytes | memoryview) -> list[float]:
-    """Read either a checked v1 BLOB or a historical numeric JSON array."""
+    """Read a checked v1/v2 BLOB or a historical numeric JSON array."""
     if isinstance(payload, memoryview):
         payload = payload.tobytes()
     if isinstance(payload, bytes) and payload.startswith(_MAGIC):
@@ -180,6 +214,14 @@ def decode_trace_array(payload: str | bytes | memoryview) -> list[float]:
     if not isinstance(values, list):
         raise TraceArrayError("Legacy trace JSON must contain a numeric array.")
     return list(_numeric_array(values).tolist())
+
+
+def _transcode_trace_array(payload: str | bytes, *, version: int) -> bytes:
+    """Upgrade BLOBs without converting dtype or any original sample bits."""
+    if isinstance(payload, bytes) and payload.startswith(_MAGIC):
+        array, _ = _decode_blob(payload)
+        return _encode_array(array, version=version)
+    return encode_trace_array(decode_trace_array(payload), version=version)
 
 
 def trace_array_storage_info(payload: str | bytes) -> dict[str, Any]:
@@ -201,7 +243,7 @@ class TraceArrayType(TypeDecorator[list[float]]):
     cache_ok = True
 
     def process_bind_param(self, value: Any, dialect: Dialect) -> bytes:
-        """Write new arrays using the lossless v1 BLOB representation."""
+        """Write new arrays using the lossless v2 BLOB representation."""
         if not isinstance(value, (list, tuple, np.ndarray)):
             raise TraceArrayError("Trace values must be a numeric array.")
         return encode_trace_array(value)

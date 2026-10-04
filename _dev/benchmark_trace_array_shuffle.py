@@ -1,8 +1,8 @@
-"""Evaluate a byte-shuffle candidate without modifying production databases.
+"""Independently compare byte-shuffle sizes with production v1 storage.
 
-The proposed v2 representation is NOT accepted by cali's current v1 reader.
-Measure full payloads, including proposed metadata/checksums, on saved benchmark
-NPZ samples. A versioned reader/migration is required before using these bytes.
+Measure full payloads, including metadata/checksums, on saved benchmark NPZ samples.
+Schema 13 now supports v2; this size-only experiment does not exercise the production
+reader or migration. See benchmark_trace_array_migration.py for their acceptance.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def main() -> None:
             values = arrays[method]
             original_bytes = candidate_bytes = shuffled_rows = 0
             for row in values:
-                original = encode_trace_array(row.tolist())
+                original = encode_trace_array(row.tolist(), version=1)
                 proposed, compression = candidate(original)
                 original_bytes += len(original)
                 candidate_bytes += len(proposed)
@@ -104,17 +104,13 @@ def main() -> None:
     result = {
         "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "input_sha256": hashlib.sha256(args.input.read_bytes()).hexdigest(),
-        "scope": (
-            "proposed v2 payload sizes only; current cali cannot read this candidate"
-        ),
+        "scope": "independent v2 payload sizes only; no database acceptance implied",
         "rows": sizes,
         "hypothetical_legacy_oasis_json_bytes_per_fov": legacy_json,
         "v1_with_legacy_96_fov_mib": (original + legacy_json) * 96 / 1024**2,
         "candidate_with_legacy_96_fov_mib": (proposed + legacy_json) * 96 / 1024**2,
         "budget_mib": 512,
-        "production_gate": (
-            "failed v1 workload; v2 requires reader and migration acceptance"
-        ),
+        "production_gate": "see the separate production reader/migration measurement",
     }
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
