@@ -3,24 +3,33 @@
 from __future__ import annotations
 
 import shlex
+from threading import Event
+from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QEvent, Signal
+from qtpy.QtCore import QEvent, Signal, Slot
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
-from superqt.utils import signals_blocked
+from superqt.utils import create_worker, signals_blocked
 
 from cali.sqlmodel._spike_settings import SpikeMethod, canonical_spike_methods
 
 from ._settings_tabs import guidance, settings_section
+
+if TYPE_CHECKING:
+    from superqt.utils import FunctionWorker
+
+    from cali._cascade_models import CascadeModel
 
 CASCADE_GUI_GATE = (
     "CASCADE extraction is awaiting the GUI release checks. "
@@ -64,6 +73,12 @@ class _SpikeOutputWidget(QGroupBox):
         self._cascade_enabled = cascade_enabled
         self._read_only = False
         self._frame_rate = 10.0
+        self._download_worker: FunctionWorker[CascadeModel] | None = None
+        self._download_name = ""
+        self._download_cancel = Event()
+        # This callback holds only the cancellation event, never the Qt widget.
+        cancel_event = self._download_cancel
+        self.destroyed.connect(cancel_event.set)
         self._oasis = _OasisOutputGroup("OASIS", self)
         self._cascade = QGroupBox("CASCADE", self)
         self._oasis.setCheckable(True)
@@ -95,7 +110,12 @@ class _SpikeOutputWidget(QGroupBox):
             self._device.addItem(label, device)
         self._refresh = QPushButton("Refresh models", self)
         self._verify = QPushButton("Verify model", self)
-        self._install = QPushButton("Install / download", self)
+        self._install = QPushButton("Install package...", self)
+        self._download = QPushButton("Download model", self)
+        self._download.setToolTip(
+            "Download the explicitly chosen model to the local cache and verify it. "
+            "Selecting a model alone never downloads weights."
+        )
         self._status = QLabel(self)
         self._status.setWordWrap(True)
         self._info = QLabel(self)
@@ -105,10 +125,11 @@ class _SpikeOutputWidget(QGroupBox):
         form.setContentsMargins(0, 0, 0, 0)
         form.addRow("Pretrained model:", self._model)
         form.addRow("Compute device:", self._device)
-        actions = QHBoxLayout()
-        actions.addWidget(self._refresh)
-        actions.addWidget(self._verify)
-        actions.addWidget(self._install)
+        actions = QGridLayout()
+        actions.addWidget(self._refresh, 0, 0)
+        actions.addWidget(self._verify, 0, 1)
+        actions.addWidget(self._download, 1, 0)
+        actions.addWidget(self._install, 1, 1)
         form.addRow(actions)
         cascade_layout = QVBoxLayout(self._cascade)
         cascade_layout.addWidget(
@@ -142,6 +163,27 @@ class _SpikeOutputWidget(QGroupBox):
         self._oasis.denoising = self._oasis_denoising
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 12, 10, 10)
+        self._download_feedback = QWidget(self)
+        feedback_layout = QVBoxLayout(self._download_feedback)
+        feedback_layout.setContentsMargins(0, 0, 0, 0)
+        self._download_status = guidance("", self._download_feedback)
+        feedback_layout.addWidget(self._download_status)
+        progress_layout = QHBoxLayout()
+        self._download_progress = QProgressBar(self._download_feedback)
+        self._download_progress.setRange(0, 0)
+        self._download_progress.setTextVisible(False)
+        progress_layout.addWidget(self._download_progress, 1)
+        self._cancel_download_btn = QPushButton(
+            "Cancel download", self._download_feedback
+        )
+        self._cancel_download_btn.setToolTip(
+            "Cancel without keeping an incomplete model. Cancellation waits for "
+            "the current network operation to finish."
+        )
+        progress_layout.addWidget(self._cancel_download_btn)
+        feedback_layout.addLayout(progress_layout)
+        self._download_feedback.hide()
+        layout.addWidget(self._download_feedback)
         layout.addWidget(self._cascade)
         layout.addWidget(self._oasis)
         self._oasis.toggled.connect(self._on_methods_changed)
@@ -150,6 +192,8 @@ class _SpikeOutputWidget(QGroupBox):
         self._refresh.clicked.connect(self.refresh_models)
         self._verify.clicked.connect(self._verify_model)
         self._install.clicked.connect(self._show_install_instructions)
+        self._download.clicked.connect(self._download_model)
+        self._cancel_download_btn.clicked.connect(self._cancel_model_download)
         self.reset()
 
     def methods(self) -> tuple[SpikeMethod, ...]:
@@ -203,6 +247,9 @@ class _SpikeOutputWidget(QGroupBox):
         if self._cascade.isChecked():
             self.refresh_models()
 
+    def is_downloading(self) -> bool:
+        return self._download_worker is not None
+
     def _on_methods_changed(self) -> None:
         if not self._oasis.isChecked() and not self._cascade.isChecked():
             sender = self.sender()
@@ -220,7 +267,10 @@ class _SpikeOutputWidget(QGroupBox):
         # The check controls retained spikes, while denoising remains mandatory.
         self._oasis.enable_denoising()
         enabled = (
-            self._cascade.isChecked() and self._cascade_enabled and not self._read_only
+            self._cascade.isChecked()
+            and self._cascade_enabled
+            and not self._read_only
+            and not self.is_downloading()
         )
         for widget in (
             self._model,
@@ -230,6 +280,12 @@ class _SpikeOutputWidget(QGroupBox):
             self._install,
         ):
             widget.setEnabled(enabled)
+        self._download.setEnabled(enabled and bool(self._model.currentText().strip()))
+        self._download_progress.setVisible(self.is_downloading())
+        self._cancel_download_btn.setVisible(self.is_downloading())
+        self._cancel_download_btn.setEnabled(
+            self.is_downloading() and not self._download_cancel.is_set()
+        )
         self._status.setText(
             "Stored outputs; changing them requires re-extraction."
             if self._read_only
@@ -268,6 +324,75 @@ class _SpikeOutputWidget(QGroupBox):
             if info
             else "Model availability and rate are checked before extraction."
         )
+        self._update_enabled()
+
+    def _download_model(self) -> None:
+        from cali._cascade_models import cascade_model_dir, download_cascade_model
+
+        if (
+            self.is_downloading()
+            or not self._cascade_enabled
+            or self._read_only
+            or not self._cascade.isChecked()
+            or not self.isEnabled()
+        ):
+            return
+        name = self._model.currentText().strip()
+        if not name:
+            return
+        cache = cascade_model_dir()
+        self._download_name = name
+        self._download_cancel.clear()
+        self._download_status.setText(f"Downloading and verifying {name} to {cache}...")
+        self._download_feedback.show()
+        self._download_worker = create_worker(
+            download_cascade_model,
+            name,
+            cache,
+            cancel_requested=self._download_cancel.is_set,
+            _start_thread=False,
+            _connect={
+                "returned": self._on_model_downloaded,
+                "errored": self._on_model_download_error,
+                "finished": self._on_model_download_finished,
+            },
+        )
+        self._update_enabled()
+        self._download_worker.start()
+
+    def _cancel_model_download(self) -> None:
+        if self.is_downloading():
+            self._download_cancel.set()
+            self._download_status.setText(
+                f"Cancelling {self._download_name}; waiting for the current "
+                "network read to finish..."
+            )
+            self._update_enabled()
+
+    @Slot(object)  # type: ignore[untyped-decorator]
+    def _on_model_downloaded(self, model: CascadeModel) -> None:
+        self._download_status.setText(
+            f"Verified {model.name} is cached at {model.directory}."
+        )
+        self.refresh_models()
+        # Loading another run while downloading must not replace its model choice.
+        if self._model.currentText().strip() == model.name:
+            self._show_model_details(model)
+
+    @Slot(object)  # type: ignore[untyped-decorator]
+    def _on_model_download_error(self, error: Exception) -> None:
+        from cali._cascade_models import CascadeDownloadCancelled
+
+        if isinstance(error, CascadeDownloadCancelled):
+            message = f"Cancelled {self._download_name}. No incomplete model was saved."
+        else:
+            message = f"Download failed for {self._download_name}: {error}"
+        self._download_status.setText(message)
+
+    @Slot()  # type: ignore[untyped-decorator]
+    def _on_model_download_finished(self) -> None:
+        self._download_worker = None
+        self._update_enabled()
 
     def _show_install_instructions(self) -> None:
         from cali._cascade_models import cascade_model_dir
@@ -303,6 +428,9 @@ class _SpikeOutputWidget(QGroupBox):
         except (CascadeModelError, OSError) as error:
             self._info.setText(str(error))
             return
+        self._show_model_details(model)
+
+    def _show_model_details(self, model: CascadeModel) -> None:
         kernel = "causal" if model.causal_kernel else "acausal"
         self._info.setText(
             f"Verified {model.name}: {model.sampling_rate:g} Hz, "

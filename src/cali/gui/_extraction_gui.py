@@ -340,6 +340,14 @@ class _ExtractionGUI(QWidget):
         if (
             trace_data
             and "cascade" in trace_data.spike_methods
+            and self._spike_outputs.is_downloading()
+        ):
+            raise ValueError(
+                "Wait for the CASCADE model download to finish or cancel it."
+            )
+        if (
+            trace_data
+            and "cascade" in trace_data.spike_methods
             and not self._cascade_enabled
         ):
             raise ValueError(CASCADE_GUI_GATE)

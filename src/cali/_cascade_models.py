@@ -14,13 +14,16 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 from zipfile import BadZipFile, ZipFile
 
 import yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 CATALOGUE_REVISION = "c6978d5ff33edad8792c76e040412f0636913092"
 CATALOGUE_SHA256 = "8a1545a44d5b8feec4513e119992eaa81a0b371a37dba9d56afa1addb8dc74b9"
@@ -44,6 +47,15 @@ class CascadeModelNotFound(CascadeModelError):
 
 class CascadeDownloadError(CascadeModelNotFound):
     """A model download failed without publishing an incomplete cache entry."""
+
+
+class CascadeDownloadCancelled(CascadeDownloadError):
+    """An explicitly cancelled download left no incomplete model cache entry."""
+
+
+def _check_download_cancelled(cancel_requested: Callable[[], bool] | None) -> None:
+    if cancel_requested is not None and cancel_requested():
+        raise CascadeDownloadCancelled("CASCADE model download cancelled.")
 
 
 @dataclass(frozen=True)
@@ -134,9 +146,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _fetch_url(url: str, target: Path, limit: int) -> None:
+def _fetch_url(
+    url: str,
+    target: Path,
+    limit: int,
+    *,
+    cancel_requested: Callable[[], bool] | None = None,
+) -> None:
     if urlsplit(url).scheme != "https":
         raise CascadeDownloadError("CASCADE downloads require an HTTPS URL.")
+    _check_download_cancelled(cancel_requested)
     try:
         deadline = time.monotonic() + 120
         with urlopen(url, timeout=30) as response, target.open("wb") as output:
@@ -145,7 +164,12 @@ def _fetch_url(url: str, target: Path, limit: int) -> None:
                     "The model download redirected away from HTTPS."
                 )
             total = 0
-            while block := response.read(1024 * 1024):
+            while True:
+                _check_download_cancelled(cancel_requested)
+                block = response.read(1024 * 1024)
+                _check_download_cancelled(cancel_requested)
+                if not block:
+                    break
                 if time.monotonic() > deadline:
                     raise CascadeDownloadError("CASCADE download exceeded 120 seconds.")
                 total += len(block)
@@ -155,13 +179,18 @@ def _fetch_url(url: str, target: Path, limit: int) -> None:
                     )
                 output.write(block)
     except (OSError, URLError) as error:
+        _check_download_cancelled(cancel_requested)
         raise CascadeDownloadError(f"CASCADE download failed: {error}") from error
 
 
 def get_cascade_catalogue(
-    model_dir: str | Path | None = None, *, allow_download: bool = False
+    model_dir: str | Path | None = None,
+    *,
+    allow_download: bool = False,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> tuple[CatalogueEntry, ...]:
     """Read the exact pinned catalogue, fetching it only when explicitly allowed."""
+    _check_download_cancelled(cancel_requested)
     root = cascade_model_dir(model_dir)
     path = root / f"catalogue-{CATALOGUE_REVISION}.yaml"
     if not path.is_file():
@@ -173,11 +202,14 @@ def get_cascade_catalogue(
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".catalogue-", dir=root) as temporary:
             staged = Path(temporary) / "catalogue.yaml"
-            _fetch_url(CATALOGUE_URL, staged, 1024 * 1024)
+            _fetch_url(
+                CATALOGUE_URL, staged, 1024 * 1024, cancel_requested=cancel_requested
+            )
             if _sha256(staged) != CATALOGUE_SHA256:
                 raise CascadeModelError(
                     "Downloaded catalogue differs from the pinned checksum."
                 )
+            _check_download_cancelled(cancel_requested)
             os.replace(staged, path)
     if path.stat().st_size > 1024 * 1024 or _sha256(path) != CATALOGUE_SHA256:
         raise CascadeModelError(
@@ -379,7 +411,14 @@ def load_cascade_model(
     )
 
 
-def _extract_model(archive: Path, folder: Path, name: str) -> None:
+def _extract_model(
+    archive: Path,
+    folder: Path,
+    name: str,
+    *,
+    cancel_requested: Callable[[], bool] | None = None,
+) -> None:
+    _check_download_cancelled(cancel_requested)
     with ZipFile(archive) as zipped:
         members = zipped.infolist()
         if (
@@ -389,6 +428,7 @@ def _extract_model(archive: Path, folder: Path, name: str) -> None:
             raise CascadeDownloadError("Model archive exceeds its extraction limits.")
         written = set()
         for info in members:
+            _check_download_cancelled(cancel_requested)
             path = PurePosixPath(info.filename)
             if (
                 path.is_absolute()
@@ -415,6 +455,7 @@ def _extract_model(archive: Path, folder: Path, name: str) -> None:
             written.add(path.name.casefold())
             with zipped.open(info) as source, (folder / path.name).open("wb") as output:
                 for block in iter(lambda: source.read(1024 * 1024), b""):
+                    _check_download_cancelled(cancel_requested)
                     output.write(block)
 
 
@@ -423,15 +464,25 @@ def download_cascade_model(
     model_dir: str | Path | None = None,
     *,
     expected_manifest: str | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> CascadeModel:
-    """Download and atomically publish a verified model, or reuse its offline cache."""
+    """Download and atomically publish a verified model, or reuse its offline cache.
+
+    Cancellation is checked between network reads, archive entries and before
+    publishing. An in-flight network read retains the existing 30-second timeout.
+    """
     name = _model_name(name)
+    _check_download_cancelled(cancel_requested)
     root = cascade_model_dir(model_dir)
     target = root / name
     if target.exists():
         return load_cascade_model(name, root, expected_manifest=expected_manifest)
     try:
-        catalogue = get_cascade_catalogue(root, allow_download=True)
+        catalogue = get_cascade_catalogue(
+            root, allow_download=True, cancel_requested=cancel_requested
+        )
+    except CascadeDownloadCancelled:
+        raise
     except CascadeDownloadError as error:
         raise CascadeDownloadError(
             f"{error} Retry with: {_download_command(name, root)}"
@@ -448,13 +499,20 @@ def download_cascade_model(
         folder = staging / name
         folder.mkdir()
         try:
-            _fetch_url(entry.url, archive, _MAX_DOWNLOAD_BYTES)
+            _fetch_url(
+                entry.url,
+                archive,
+                _MAX_DOWNLOAD_BYTES,
+                cancel_requested=cancel_requested,
+            )
+        except CascadeDownloadCancelled:
+            raise
         except CascadeDownloadError as error:
             raise CascadeDownloadError(
                 f"{error} Retry with: {_download_command(name, root)}"
             ) from error
         try:
-            _extract_model(archive, folder, name)
+            _extract_model(archive, folder, name, cancel_requested=cancel_requested)
             cfg = _validated_config(folder, name)
             body = _manifest_body(folder, name, cfg)
             digest = _manifest_hash(body)
@@ -464,6 +522,7 @@ def download_cascade_model(
             verified = load_cascade_model(
                 name, staging, expected_manifest=expected_manifest
             )
+            _check_download_cancelled(cancel_requested)
             try:
                 folder.rename(target)
             except OSError as error:

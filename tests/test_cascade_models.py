@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import stat
+from threading import Event
 from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 from zipfile import ZipFile, ZipInfo
@@ -17,6 +18,7 @@ from cali import _cascade_models as models
 from cali.__main__ import main
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 NAME = "Global_EXC_10Hz_smoothing200ms"
@@ -69,8 +71,15 @@ def fake_download(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         models, "CATALOGUE_SHA256", hashlib.sha256(catalogue).hexdigest()
     )
 
-    def fetch(url: str, target: Path, limit: int) -> None:
+    def fetch(
+        url: str,
+        target: Path,
+        limit: int,
+        *,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> None:
         state["calls"].append(url)
+        models._check_download_cancelled(cancel_requested)
         data = state["catalogue"] if url == models.CATALOGUE_URL else state["archive"]
         assert len(data) <= limit
         target.write_bytes(data)
@@ -123,6 +132,80 @@ def test_atomic_download_manifest_and_offline_reuse(
     assert not list(tmp_path.glob(".*"))
     with pytest.raises(models.CascadeModelError, match="required manifest"):
         models.load_cascade_model(NAME, tmp_path, expected_manifest="0" * 64)
+
+
+@pytest.mark.parametrize("stage", ["start", "transfer", "verified"])
+def test_cancelled_download_never_publishes_an_incomplete_model(
+    stage: str,
+    tmp_path: Path,
+    fake_download: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cancel = Event()
+    if stage == "start":
+        cancel.set()
+    elif stage == "transfer":
+        original_fetch = models._fetch_url
+
+        def fetch(url: str, target: Path, limit: int, **kwargs: Any) -> None:
+            if url != models.CATALOGUE_URL:
+                target.write_bytes(b"incomplete download")
+                cancel.set()
+            original_fetch(url, target, limit, **kwargs)
+
+        monkeypatch.setattr(models, "_fetch_url", fetch)
+    else:
+        original_load = models.load_cascade_model
+
+        def load(*args: Any, **kwargs: Any) -> models.CascadeModel:
+            result = original_load(*args, **kwargs)
+            cancel.set()
+            return result
+
+        monkeypatch.setattr(models, "load_cascade_model", load)
+    root = tmp_path / "models"
+    with pytest.raises(models.CascadeDownloadCancelled):
+        models.download_cascade_model(NAME, root, cancel_requested=cancel.is_set)
+    assert not (root / NAME).exists()
+    assert not list(root.glob(".*"))
+    if stage == "start":
+        assert fake_download["calls"] == []
+        assert not root.exists()
+
+
+def test_cancellation_preserves_a_completed_cache(
+    tmp_path: Path, fake_download: dict[str, Any]
+) -> None:
+    original = models.download_cascade_model(NAME, tmp_path)
+    with pytest.raises(models.CascadeDownloadCancelled):
+        models.download_cascade_model(NAME, tmp_path, cancel_requested=lambda: True)
+    assert models.load_cascade_model(NAME, tmp_path) == original
+    assert len(fake_download["calls"]) == 2
+
+
+@pytest.mark.parametrize("read_error", [False, True])
+def test_fetch_checks_cancellation_after_a_network_read(
+    read_error: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cancel = Event()
+
+    class Response(io.BytesIO):
+        def geturl(self) -> str:
+            return "https://example.test/model"
+
+        def read(self, size: int = -1) -> bytes:
+            cancel.set()
+            if read_error:
+                raise URLError("network timeout")
+            return super().read(size)
+
+    monkeypatch.setattr(models, "urlopen", lambda *a, **k: Response(b"partial"))
+    target = tmp_path / "transfer"
+    with pytest.raises(models.CascadeDownloadCancelled):
+        models._fetch_url(
+            "https://example.test/model", target, 100, cancel_requested=cancel.is_set
+        )
+    assert target.read_bytes() == b""
 
 
 def test_rate_choices_never_choose_nearest(
@@ -274,7 +357,13 @@ def test_interrupted_download_cleanup(
 ) -> None:
     models.get_cascade_catalogue(tmp_path, allow_download=True)
 
-    def fail(url: str, target: Path, limit: int) -> None:
+    def fail(
+        url: str,
+        target: Path,
+        limit: int,
+        *,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> None:
         target.write_bytes(b"partial")
         raise error("interrupted")
 

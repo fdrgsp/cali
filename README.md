@@ -174,9 +174,13 @@ The extraction panel includes output, model and device controls, and the analysi
 panel keeps separate method-labelled threshold/burst/synchrony settings. CASCADE
 extraction from the released GUI remains disabled pending the release checks in
 [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md). Selected unavailable
-models stay selected and fail clearly; the GUI supplies installation/download
-instructions and explicit offline model verification rather than downloading
-weights on selection. Analysis-only output controls are read-only because changing
+models stay selected and fail clearly. In CASCADE-enabled setups, **Download model**
+downloads and verifies the explicitly chosen model in the background, with status,
+cancellation and retry controls. Cancellation waits for the current network
+operation; incomplete models are never published. Closing the window also requests
+cancellation. **Install package...** provides dependency installation and CLI
+instructions; selecting a model never downloads weights or installs packages.
+Analysis-only output controls are read-only because changing
 retained outputs requires re-extraction.
 
 Download an explicitly chosen model with:
@@ -408,8 +412,9 @@ Choose exactly one method to define ROIs for trace extraction:
 - **Spike inference**: check the **OASIS** or **CASCADE** group box, or both where
   CASCADE extraction is enabled. Both groups and their settings are shown together.
   OASIS exposes the calcium
-  decay time; CASCADE exposes the explicit model, device, local verification and
-  installation instructions. OASIS calcium denoising always runs, including when
+  decay time; CASCADE exposes the explicit model, device, local verification,
+  background download and package installation instructions. OASIS calcium denoising
+  always runs, including when
   only CASCADE spike output is retained. Released GUI CASCADE extraction remains
   gated as described in the [migration notes](#optional-cascade-dependency-migration-branch).
 - **Processing and export**: extraction threads and optional CSV exports of traces,

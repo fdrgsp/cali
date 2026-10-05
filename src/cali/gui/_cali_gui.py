@@ -492,6 +492,7 @@ class CaliGui(QMainWindow):
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
+        self._extraction_wdg._spike_outputs._cancel_model_download()
         # Save plate map data before closing
         try:
             self._save_plate_map_to_database()

@@ -1,10 +1,47 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls and stored-results selection implemented behind the extraction release gate; remaining P7/release evidence, real-plate performance and GUI extraction exposure pending
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download and stored-results selection implemented behind the extraction release gate; remaining P7/release evidence, real-plate performance and GUI extraction exposure pending
 **Date**: 2026-08-14
 
 ---
+
+## P8 continuation — cancellable background model download (2026-10-04)
+
+- CASCADE-enabled extraction controls now provide an explicit **Download model**
+  action for the named model. It runs the existing pinned-catalogue, archive,
+  configuration, checksum and manifest verification in a background worker, with
+  status and indeterminate progress. Package installation remains a separate
+  instructions action. Construction, selection and refresh remain offline and
+  Torch-free; no default model, inference or fallback is introduced.
+- Cooperative cancellation is checked before network access, between reads,
+  during unpacking and immediately before atomic publication. Cancelled/error
+  paths remove staging files and preserve completed caches. The current network
+  operation finishes before cancellation is observed. Window closure or widget
+  destruction requests cancellation; worker callbacks are Qt slots and stop when
+  their receiving widget is destroyed.
+- Active download controls prevent duplicate jobs and conflicting model/device
+  edits. CASCADE extraction cannot start while a download is active. Success
+  refreshes the offline catalogue and displays verified metadata; failures retain
+  selection and allow retry. A result arriving after another saved run is loaded
+  does not replace the newer model, method or device settings, and read-only
+  controls remain read-only. OASIS denoising and the requested two-group-box layout
+  are preserved.
+- The normal GUI extraction release gate is unchanged. Remaining GUI work includes
+  timing-source/resolved-discard previews and release acceptance; real-plate,
+  dedicated remote CI and representative workload evidence remain pending.
+
+Validation includes background-thread execution with local pinned archives,
+verified-cache reuse, a responsive Qt event loop during a paused transfer,
+cancellation before transfer/publication and after a network read/timeout,
+error/retry behavior, newer settings, and main-window/widget lifecycle. The initial
+broader GUI run exposed an unsafe destruction callback accepting a dying QObject;
+connecting the zero-argument cancellation method fixed it. The final affected
+GUI/model/settings/reader matrix passed **203 tests in 20.69 s**. The full suite
+passed **2404 tests, 16 skipped in 288.16 s**. Repository hooks pass. Test-migrated
+database fixtures were backed up with verified checksums and restored. Downloading and
+completed-cache previews use the already cached real 30 Hz model, without network
+downloads or inference.
 
 ## P8 continuation — guided GUI and checkable settings tabs (2026-10-04)
 
