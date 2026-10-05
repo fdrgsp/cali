@@ -26,6 +26,10 @@ below, which are kept as historical records.
   real-plate performance/compressibility is not a current release gate. Run it when a
   uniformly timed recording becomes available; until then, release evidence relies on
   the controlled 100 × 6000 complete-image CPU/MPS workloads.
+- **Cached-default promotion waits for real data.** The upstream reference stays the
+  default and the cached service stays opt-in (`experimental_cascade_cache=True`). The
+  expected outcome is to promote the cached service once the deferred real-plate
+  benchmark confirms its speed and memory advantage on real recordings.
 
 Remaining release gates for GUI extraction exposure: the timing-source/resolved-discard
 GUI preview and GUI release acceptance, the first remote run of the dedicated CASCADE CI
