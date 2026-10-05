@@ -1,10 +1,36 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download and stored-results selection implemented behind the extraction release gate; remaining P7/release evidence, real-plate performance and GUI extraction exposure pending
-**Date**: 2026-08-14
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download and stored-results selection implemented behind the extraction release gate; remaining release evidence (remote dedicated CI, representative memory budget, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Date**: 2026-10-05
 
 ---
+
+## Scope decisions (2026-10-05)
+
+These decisions supersede the corresponding "pending" items in the dated log entries
+below, which are kept as historical records.
+
+- **No upstream packaging submission.** cali keeps depending on the maintained fork
+  [fdrgsp/CascadeTorch](https://github.com/fdrgsp/CascadeTorch), pinned by full commit
+  SHA. No PR to the upstream repository is planned and there is no plan to move back
+  to upstream. Fork changes stay minimal and documented; the source-hash verification
+  against the pin remains. The distribution licensing review is unaffected.
+- **CUDA validation deferred.** Development happens on macOS, so CUDA hardware tests,
+  CUDA numerical tolerances and CUDA performance measurements are out of scope for now
+  and are not release gates. Device coverage is CPU (deterministic reference) and MPS.
+  The `"cuda"` device option and its mocked device-selection unit tests remain, and an
+  explicitly requested unavailable CUDA device still fails without fallback.
+- **Real-plate benchmark deferred.** No suitable independently acquired recording is
+  available yet. `benchmark_cascade_real_plate.py` stays ready, but independent
+  real-plate performance/compressibility is not a current release gate. Run it when a
+  uniformly timed recording becomes available; until then, release evidence relies on
+  the controlled 100 × 6000 complete-image CPU/MPS workloads.
+
+Remaining release gates for GUI extraction exposure: the timing-source/resolved-discard
+GUI preview and GUI release acceptance, the first remote run of the dedicated CASCADE CI
+job, an accepted representative complete-pipeline memory budget, and the licensing review
+before distribution.
 
 ## P8 continuation — cancellable background model download (2026-10-04)
 
@@ -28,8 +54,9 @@
   controls remain read-only. OASIS denoising and the requested two-group-box layout
   are preserved.
 - The normal GUI extraction release gate is unchanged. Remaining GUI work includes
-  timing-source/resolved-discard previews and release acceptance; real-plate,
-  dedicated remote CI and representative workload evidence remain pending.
+  timing-source/resolved-discard previews and release acceptance; dedicated remote
+  CI and representative workload evidence remain pending (real-plate evidence
+  deferred; see Scope decisions).
 
 Validation includes background-thread execution with local pinned archives,
 verified-cache reuse, a responsive Qt event loop during a paused transfer,
@@ -140,9 +167,9 @@ controls, method tabs and a saved 100 × 6000 dual-output run switching between
 CASCADE spikes/frame and OASIS amplitude units. The test-migrated tracked databases
 were backed up and restored.
 
-This is GUI implementation, **not P8 release acceptance**. The real-plate workload,
-remote dedicated CI, representative complete-workload memory budget and remaining
-external release evidence are still pending. An in-GUI asynchronous downloader,
+This is GUI implementation, **not P8 release acceptance**. Remote dedicated CI,
+the representative complete-workload memory budget and remaining external release
+evidence are still pending (the real-plate workload is deferred; see Scope decisions). An in-GUI asynchronous downloader,
 timing-source/resolved-discard preview, and remaining GUI release acceptance are
 follow-up work. The verified download CLI remains the installation action supplied
 by this milestone. `_dev/TODO.md` is unchanged.
@@ -537,9 +564,9 @@ fresh Python 3.13 environment installed the built cali wheel and its pinned Git 
 passed **14 tests in 37.43 s**, including all five optional package tests and exact legacy OASIS
 traces/metrics. The package-only clean import also passes with every Python warning treated as an
 error. Ruff and TOML validation pass; mypy adds no diagnostics (354 existing). The README documents
-installation, GPL dependency separation, and the remaining execution gates. Upstream PR submission
-and project licensing review before distribution remain separate follow-ups; neither delays use of
-the pinned maintained fork for development.
+installation, GPL dependency separation, and the remaining execution gates. Project licensing
+review before distribution remains a separate follow-up. The pinned maintained fork is the
+long-term dependency; no upstream PR is planned (see Scope decisions).
 
 **When production CASCADE starts:** package code is now implemented and upstream prediction runs
 in the installation smoke test. Follow §9 next: catalogue/model manifests and download path
@@ -583,18 +610,19 @@ incomplete. The continuations above now cover those prerequisites:
 - Source offsets and explicit source/retained event indices are now included in exports and plot
   tooltips. Method-specific consumers/comparison products remain in their later P6/P8 phases.
 
-**Next landing step:** collect independent uniformly timed real-plate
-performance/compressibility and define representative-image/concurrency memory
-acceptance before P8 GUI exposure. Per-FOV method-qualified noise QC is now available
-for assessing those inputs. `benchmark_cascade_real_plate.py` now provides read-only
+**Next landing step:** define representative-image/concurrency memory acceptance
+before P8 GUI exposure. Independent uniformly timed real-plate
+performance/compressibility is deferred until a suitable recording is available (see
+Scope decisions). Per-FOV method-qualified noise QC is now available for assessing
+those inputs. `benchmark_cascade_real_plate.py` provides read-only
 recording/mask preflight, fresh-process mode comparisons, database audits, offline
-reuse checks and process-tree memory sampling for that gate; its controlled file-reader
-validation does not satisfy independent real-plate acceptance. The 100 × 6000
+reuse checks and process-tree memory sampling for that deferred check; its controlled
+file-reader validation does not satisfy independent real-plate acceptance. The 100 × 6000
 complete-image workload, two-worker memory measurements and production schema-13
 storage repair are complete. P7's
 installation audit covers both base-wheel absence and base-to-extra installation;
-remote dedicated CI, upstream packaging submission and distribution licensing review
-remain separate release follow-ups.
+remote dedicated CI and distribution licensing review remain separate release
+follow-ups. No upstream packaging submission is planned.
 P6d opens headless CASCADE spike analysis after full-runner parity and failure checks.
 The complete-image workload's v1 spike projection failed at 517.96 MiB including
 legacy duplication; production v2 now measures 493.93 MiB against the unchanged
@@ -602,8 +630,8 @@ legacy duplication; production v2 now measures 493.93 MiB against the unchanged
 Controlled cold/warm extraction, complete ROI/FOV analysis, persistence and offline
 re-analysis have independent database audits. Controlled MPS oracle/cache/cancellation,
 small image/full-runner checks and large Phase-B inference are now validated.
-Independent real-plate performance, representative complete GPU workloads, CUDA
-hardware and scoped memory acceptance remain pending. Full-graph memory samples do not
+Scoped memory acceptance remains pending; independent real-plate performance and
+CUDA hardware validation are deferred (see Scope decisions). Full-graph memory samples do not
 certify the prior inference-only comparison target or promote the cached service.
 Follow the binding sequence in §9 for method-specific analysis and CASCADE GUI exposure.
 Headless extraction and analysis are available through the upstream reference path; the cached service
@@ -1389,9 +1417,9 @@ installing Torch); pretrained reference/cache/service **7 passed, 61 deselected 
 hooks pass. No production Python source changed after Step 10c's full regression.
 
 P7's local installation evidence is complete for Python 3.13. Remote execution of
-the Python 3.11/3.13 job still requires a separately authorized push; upstream
-packaging PR submission and project licensing review before distribution remain
-follow-ups. No external publication was performed. These do not block development
+the Python 3.11/3.13 job still requires a separately authorized push; project
+licensing review before distribution remains a follow-up. No upstream packaging PR
+is planned (see Scope decisions). No external publication was performed. These do not block development
 with the pinned fork. GUI exposure remains gated by the remaining release evidence.
 
 Large-workload measurement tools — process-tree RSS and independent persistence audit (2026-10-04):
@@ -1618,9 +1646,10 @@ NumCodecs 0.15.1 deprecated `sys` shutdown callback; no application filters chan
 Explicit unavailable CUDA is rejected without a prediction. Ruff/format and commit
 hooks pass. No production source/schema/default backend changes are made. Detailed
 scope, hashes and results are in [`cascade_mps_validation.json`](cascade_mps_validation.json)
-and [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). Independent real-plate,
-representative complete GPU/memory scopes, CUDA hardware and remaining release
-evidence still gate GUI exposure and optimized-default promotion.
+and [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md). Representative
+complete GPU/memory scopes and remaining release evidence still gate GUI exposure and
+optimized-default promotion; independent real-plate and CUDA hardware checks are
+deferred (see Scope decisions).
 
 P3 GPU continuation — complete MPS image/analysis/storage validation (2026-10-04):
 
@@ -1659,9 +1688,9 @@ script hashes are recorded. Evidence is in
 [`cascade_mps_complete_validation.json`](cascade_mps_complete_validation.json) and
 [`cascade_release_benchmarks.md`](cascade_release_benchmarks.md).
 
-This closes the controlled complete-image MPS evidence gap. Independent recording,
-representative memory and remaining release evidence still gate GUI exposure and
-cached-default promotion. GUI wiring is the next implementation priority; backend,
+This closes the controlled complete-image MPS evidence gap. Representative memory and
+remaining release evidence still gate GUI exposure and cached-default promotion; the
+independent recording check is deferred (see Scope decisions). GUI wiring is the next implementation priority; backend,
 analysis, storage and export support already exist headlessly.
 
 ## 0. TL;DR
@@ -2429,7 +2458,7 @@ Non-negotiable details:
    `(n_rois, T, W)` array as float64; casting afterward does not prevent that peak. Implement a
    tested float32 chunk/window iterator (or Torch `unfold`) whose windows match upstream exactly.
 5. **Device.** `"auto"` resolves once to CUDA, then MPS, then CPU, and the resolved device is
-   persisted. Test CPU against MPS/CUDA with device-specific tolerances; do not promise bitwise
+   persisted. Test CPU against MPS (CUDA deferred; see Scope decisions) with device-specific tolerances; do not promise bitwise
    cross-device equality. Avoid changing global `torch.set_num_threads()` inside worker calls.
 6. **Diagnostics.** Log/store the per-ROI noise estimates and selected model noise levels. Surface
    out-of-range coverage as a warning/error policy rather than relying on upstream stdout.
@@ -2621,8 +2650,8 @@ CascadeTorch is not on PyPI, and the currently inspected checkout at
 `find_packages()`, but `cascade2p/` has no `__init__.py`, so `find_packages()` returns no packages.
 Do not leave this as an external wait state. Create a small maintained GPL fork, add
 `cascade2p/__init__.py`, verify the built wheel contains/imports `cascade2p`, pin that fork's full
-SHA, and submit the packaging fix upstream separately. Move back to upstream only after an immutable
-upstream commit passes the same clean-install/golden tests.
+SHA. **Decided (2026-10-05):** the fork is the long-term dependency; no upstream submission is
+planned and there is no plan to move back to upstream.
 
 Enable Hatch direct references and use the maintained fork initially:
 
@@ -2735,7 +2764,8 @@ axes/panels or clearly normalized traces; they must not imply that OASIS amplitu
 spikes/frame are directly interchangeable.
 
 The GUI option is enabled only when P1–P7, the dedicated CASCADE CI job, a clean install, and the
-end-to-end performance/storage gates in §6.5–6.6 are all green.
+end-to-end performance/storage gates in §6.5–6.6 are all green. Per the 2026-10-05 scope decisions,
+the real-plate benchmark and CUDA validation are deferred and are not part of this gate.
 
 ### Out of scope — discrete-spike post-processing
 
@@ -2936,7 +2966,8 @@ Rough expectation for one 96-well plate, ~100 ROIs/FOV, 6000 frames, CPU:
   serialized by the device-owning inference service for predictable model/device ownership.
 
 Never call either path per ROI. Benchmark reference versus cached inference on representative ROI
-counts/trace lengths and one real plate. Record wall time, model-load count, peak RSS, device, Torch
+counts/trace lengths and, once a suitable recording is available, one real plate (deferred; see
+Scope decisions). Record wall time, model-load count, peak RSS, device, Torch
 thread settings, chunk size, and numerical difference in the PR; use those measurements to decide
 which path ships as the default. Also report end-to-end cold/warm extraction for OASIS-only,
 CASCADE-only, and dual-output modes; both CASCADE-containing modes include the mandatory OASIS
@@ -2984,7 +3015,7 @@ depending directly on the SQL JSON representation.
 | Valid edges | analysis + FOV tests | effective interval uses `predict()`'s padding formula (not preprocessing's one-earlier window); stored edges are finite zero, but all consumers use only the valid intersection and create no edge at `valid_start` |
 | Model cache | same | repeated FOVs load each required ensemble once; model manifest, device/index, or dtype changes miss the cache; `clear_cache()` releases entries |
 | Chunk/cancel | same | several chunk sizes equal the reference; CASCADE cancels between chunks and batched OASIS cancels between ROIs, with no partial base or `SpikeTrace` rows committed |
-| Device coverage | dedicated CI where available | CPU deterministic; MPS/CUDA compared to CPU using measured, documented tolerances; cache never crosses devices |
+| Device coverage | dedicated CI where available | CPU deterministic; MPS compared to CPU using measured, documented tolerances; cache never crosses devices; CUDA hardware tests deferred (mocked device-selection tests only) |
 | Inference service / memory | extend `tests/test_analysis_threading.py` | one device-owning worker, bounded queue, cancellation, and cache cleanup are deterministic; blocked FOVs, Phase-A `_RoiParts`, chunks, and models stay within the RSS budget; compare global-lock fallback |
 | Extraction/re-analysis parity | new | extraction-time and analysis-only runs produce identical per-method `SpikeAnalysis` and `SpikeFOVAnalysis` rows for all three selections |
 | Pillar/method-specific activity | FOV tests | calcium-active and per-method spike-active sets are independent; `ROI.active` is only a union summary and never selects method-bound FOV inputs |
@@ -3025,7 +3056,7 @@ biologically controlled data is the scientific gate.
 | Dual results overwrite singular ROI/FOV spike fields | **high** — one backend silently wins | method-bound `SpikeAnalysis` and `SpikeFOVAnalysis` rows with uniqueness constraints; no singular internal accessor |
 | OASIS and CASCADE metrics are pooled as comparable values | **high** — scientifically misleading aggregate | results-backend selector, method-qualified exports, explicit comparison plots, reject/facet mixed-method aggregation |
 | Cached implementation drifts from upstream numerics | **high** | direct once-per-FOV oracle, real-model golden test, safe fallback |
-| Optional package currently installs no `cascade2p` package | **high** — feature unusable | maintained minimal fork now, upstream PR, immutable SHA, Hatch flag, clean-install CI |
+| Optional package currently installs no `cascade2p` package | **high** — feature unusable | maintained minimal fork as the long-term dependency (no upstream PR), immutable SHA, Hatch flag, clean-install CI |
 | Dense/dual `SpikeTrace` rows cause plate-scale DB growth | **high** — storage/I/O regression | §6.6 three-mode budget, float32/error tests, compressed versioned codec if required |
 | Any CASCADE selection pays for OASIS denoising + CASCADE | medium | report complete cold/warm three-mode wall time, not predictor-only speedup |
 | Dual mode doubles spike analysis/FOV work | medium | benchmark inference, persistence, ROI, and FOV stages separately; user opts in via OASIS comparison checkbox |
@@ -3033,7 +3064,7 @@ biologically controlled data is the scientific gate.
 | Zero-padded receptive-field edges bias analyses | medium | persist valid interval and crop/mask every spike consumer and export |
 | Startup discard leaves too few frames for DFF/OASIS/CASCADE | medium | per-FOV preflight against every enabled consumer; fail before ROI work with counts and limiting requirement |
 | Torch/thread interaction with the FOV ThreadPool | medium | bounded single-worker inference service, service-vs-lock benchmark, retained-caller RSS gate, no per-call global thread changes |
-| MPS/CUDA numerical drift vs CPU | medium | device-specific golden tolerances and cache keys; persist resolved device/dtype |
+| MPS/CUDA numerical drift vs CPU | medium | device-specific golden tolerances and cache keys; persist resolved device/dtype; CUDA tolerances deferred until CUDA hardware is in scope |
 | Model files/catalogue change under the same name | medium | config + ordered-weight manifest hash and catalogue revision |
 | Torch/CASCADE warnings fail CI unexpectedly | medium | warnings-as-errors import/inference job; fix or narrowly document/filter each warning |
 | GPL-3 CascadeTorch vs BSD-3 cali | medium | no source transplant/vendor; optional dependency documentation and licensing review |
@@ -3054,8 +3085,8 @@ biologically controlled data is the scientific gate.
    dependencies/models block explicitly and never cause silent unchecking or backend substitution.
 5. The **Inferred Spikes** checkbox is an analysis gate for all stored outputs. The editable output
    checkboxes belong to extraction—even if placed nearby—and changing them requires re-extraction.
-6. Packaging proceeds through a minimal maintained fork immediately, with an upstream PR in
-   parallel; it is not blocked waiting for an external repository change.
+6. Packaging uses a minimal maintained fork as the long-term dependency; no upstream PR is
+   planned (decided 2026-10-05), and nothing waits on an external repository change.
 7. Plot/export choices follow stored provenance. A results-backend selector chooses a method when
    both exist; method-specific metrics never mix, while explicit comparison products may show both
    with aligned intervals and honest units. OASIS `den_dff`/calcium plots remain available for all

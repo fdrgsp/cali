@@ -262,8 +262,8 @@ CASCADE values are expected spikes per frame. Expected counts sum the valid samp
 and expected rates multiply their mean by the measured frame rate. OASIS amplitudes
 and CASCADE rates have different units; compare them with aligned valid intervals
 and separate axes or normalized traces. Model padding is excluded from analysis.
-Controlled complete extraction/analysis and storage measurements, including their
-remaining real-plate and GPU limits, are in
+Controlled complete extraction/analysis and storage measurements (CPU and Apple MPS;
+real-plate and CUDA validation are currently deferred) are in
 [_dev/cascade_release_benchmarks.md](_dev/cascade_release_benchmarks.md).
 
 <br>

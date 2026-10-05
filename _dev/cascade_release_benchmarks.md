@@ -6,9 +6,15 @@ The historical JSON/prototype results are in `cascade_full_mode_cpu_benchmark.js
 `cascade_trace_codec_cpu_benchmark.json`.
 The upstream reference remains the default; the cached service is experimental.
 
-## Independent recording command
+**Scope (2026-10-05):** the independent real-plate benchmark and CUDA hardware
+validation are deferred and are not current release gates. Device coverage is
+CPU and MPS. Later "pending" notes about real-plate data or CUDA in this file
+are superseded by the Scope decisions in
+[`cascade_migration_plan.md`](cascade_migration_plan.md).
 
-`benchmark_cascade_real_plate.py` prepares the remaining real-plate gate using an
+## Independent recording command (deferred)
+
+`benchmark_cascade_real_plate.py` prepares the deferred real-plate check using an
 existing recording and matching saved detection masks. It opens the source database
 read-only, makes a consistent SQLite backup including committed WAL contents, and
 migrates only that temporary backup. It never runs detection. Measured outputs go
@@ -78,14 +84,16 @@ canonical spike bytes plus an arithmetic projection including legacy OASIS JSON 
 
 `cascade_real_plate_harness_validation.json` records a file-reader smoke test of this
 command, not independent real-plate acceptance. A suitable independently acquired
-recording and review of its performance, compressibility and memory scope are still
-required. The command never promotes cached inference or enables CASCADE in the GUI.
+recording and review of its performance, compressibility and memory scope are
+deferred until such a recording is available. The command never promotes cached
+inference or enables CASCADE in the GUI.
 
 ## Controlled workloads
 
 ### Explicit GPU validation
 
-The pretrained tests accept `CALI_CASCADE_TEST_DEVICES=cpu,mps` (or `cpu,cuda`).
+The pretrained tests accept `CALI_CASCADE_TEST_DEVICES=cpu,mps` (or `cpu,cuda`;
+CUDA hardware validation is currently deferred).
 The default remains CPU. Explicitly requested unavailable devices fail; they are
 not skipped and do not fall back. The same tests cover the bundled real trace,
 synthetic traces, chunks of 1/37/1024 windows, concurrent service calls, resolved
@@ -179,9 +187,9 @@ Reference driver snapshots retain about 1034.72 MiB after calls; snapshots do no
 reveal the transient peak. The CPU oracle's single warm FOV takes 95.155 s, with
 808.97 MiB incremental host peak; its concurrency scope differs from the GPU batch.
 No complete-pipeline CPU/GPU speedup or representative memory acceptance is claimed.
-Explicit unavailable CUDA selection fails before creating a prediction. CUDA hardware,
-independent real-plate inputs, representative complete GPU and memory scopes, and
-remaining release evidence are still pending.
+Explicit unavailable CUDA selection fails before creating a prediction. Representative
+complete GPU and memory scopes and remaining release evidence are still pending; CUDA
+hardware and independent real-plate inputs are deferred.
 
 ### Complete MPS extraction, analysis and persistence
 
@@ -256,7 +264,7 @@ comparison: four callers' retained image/trace/mask lower bound alone is
 cache cap is not a whole-pipeline memory budget. A representative image scope,
 concurrency policy and accepted complete-pipeline budget still need evaluation.
 No cached-default promotion or GUI release gate is opened by this controlled
-measurement; independent recording and remaining release checks stay pending.
+measurement; remaining release checks stay pending (independent recording deferred).
 
 The final comparator was tightened after timing to require exact FOV products
 instead of allowing tolerance in four floating-point FOV fields. Timed extraction,
@@ -609,9 +617,9 @@ exclude their worker RSS. Long full service increments are **313.81 MiB CASCADE*
 increments are 440.28/468.84 MiB and the lock alternative is 422.80/444.23 MiB. These
 complete-graph samples supersede the historical incomplete-graph RSS evidence; they
 do not isolate inference-only allocations or certify a many-process memory budget.
-The 100 × 6000 complete image workload is recorded below. Independent uniformly timed
-real-plate data, GPU acceptance, codec compressibility and scoped memory acceptance
-remain pending. The cached service stays experimental and the released GUI remains gated.
+The 100 × 6000 complete image workload is recorded below. GPU acceptance and scoped
+memory acceptance remain pending; independent uniformly timed real-plate data and its
+codec compressibility are deferred. The cached service stays experimental and the released GUI remains gated.
 
 Final regression validation is recorded in the migration plan.
 
@@ -735,9 +743,9 @@ same environment above and Unix `ps` access:
 ```
 
 The controlled 100 × 6000 workload and multi-worker memory measurement are now
-recorded. The production storage repair follows below; independent uniformly timed
-real-plate performance/compressibility, GPU and scoped memory acceptance remain
-pending. The reference remains the production default, the cached service remains
+recorded. The production storage repair follows below; GPU and scoped memory
+acceptance remain pending, while independent uniformly timed real-plate
+performance/compressibility is deferred. The reference remains the production default, the cached service remains
 experimental, and GUI exposure remains gated.
 
 ## Production v2 byte-shuffle codec and schema-13 migration
@@ -807,8 +815,8 @@ large database plus its prior-wheel baseline exports:
   --input-dir /tmp/cali-v2-full-smoke --output /tmp/cali-v2-full-smoke-audit.json
 ```
 
-Independent real-plate performance/compressibility, GPU and scoped memory acceptance
-remain pending. Reference inference remains the default, cached inference remains
+GPU and scoped memory acceptance remain pending; independent real-plate
+performance/compressibility is deferred. Reference inference remains the default, cached inference remains
 experimental, and GUI exposure remains gated by that release evidence.
 
 ## Method-qualified noise QC and schema-14 preservation
@@ -855,8 +863,8 @@ comparison on completed before/after smoke directories:
   --output /tmp/cali-noise-qc-audit.json
 ```
 
-Independent real-plate performance/compressibility, GPU, scoped memory and remaining
-release evidence remain pending. GUI exposure stays gated.
+GPU, scoped memory and remaining release evidence remain pending; independent
+real-plate performance/compressibility is deferred. GUI exposure stays gated.
 
 ## Production codec storage and migration
 
