@@ -34,6 +34,9 @@
   (**529 tests, 1 skipped** each) and macOS Python 3.13 (**2443 tests, 17 skipped**).
   The remaining platform jobs are still running. This setup-flow revision will use
   a separate macOS-scoped CI follow-up to preserve that full-platform run.
+  [Setup-flow CI run 38074091487](https://github.com/fdrgsp/cali/actions/runs/38074091487)
+  now tests `9b42cb5d71a02fbe1eb13f653c5a34295c3179eb` with `platforms=macos`;
+  its outcome remains pending.
 
 ## P8 continuation — model-rate guidance and completed full-platform CI (2026-10-10)
 

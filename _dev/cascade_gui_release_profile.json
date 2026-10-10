@@ -593,6 +593,15 @@
       "file": "/tmp/cali-cascade-install-instructions.png",
       "sha256": "ecb86f33d3404a0ac7528ecf6c98b2921bac966c36054db42500f670dfa8eb6e",
       "reviewed": true
+    },
+    "remote_ci_followup": {
+      "run_id": 38074091487,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487",
+      "tested_revision": "9b42cb5d71a02fbe1eb13f653c5a34295c3179eb",
+      "platforms": "macos",
+      "outcome_pending": true,
+      "scope": "Installed base/optional setup-dialog cases, pretrained GUI acceptance and full macOS Python 3.11/3.12/3.13 suites",
+      "preserves_full_platform_model_rate_run": 38072884020
     }
   }
 }
