@@ -1019,6 +1019,16 @@
     "wheel": "cali-0.1.dev1445+gfcd599b77.d20261010-py3-none-any.whl",
     "wheel_sha256": "ad80add55ef37830bb29b15b529f3f59841732d73c9d0cf6e8d9a47895527424",
     "wheel_reused_without_production_source_changes": true,
-    "dedicated_ci_includes_new_acceptance_cases": true
+    "dedicated_ci_includes_new_acceptance_cases": true,
+    "remote_ci_followup": {
+      "run_id": 38085698742,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38085698742",
+      "tested_revision": "3f32021352913ed9df35a36e72279caf01ed304e",
+      "platforms": "macos",
+      "status": "queued",
+      "outcome_pending": true,
+      "scope": "macOS Python 3.11/3.12/3.13, manifest and dedicated installed-wheel Python 3.11/3.13 acceptance including both fresh-cache pretrained GUI cases",
+      "ongoing_full_platform_run_preserved": 38085045144
+    }
   }
 }

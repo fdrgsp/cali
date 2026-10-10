@@ -29,6 +29,9 @@
   has passed both dedicated CASCADE Python 3.11/3.13 jobs (**551 tests, 1 skipped**
   each); its broader macOS/Windows suites remain in progress. This run precedes
   the new first-use acceptance cases.
+- [First-use CI run 38085698742](https://github.com/fdrgsp/cali/actions/runs/38085698742)
+  tests `3f32021352913ed9df35a36e72279caf01ed304e` with `platforms=macos`; outcome
+  pending. Its separate concurrency scope preserves the full-platform run above.
 
 ## P8 continuation — selected-model cache status (2026-10-10)
 
