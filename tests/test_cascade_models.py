@@ -53,7 +53,13 @@ def _archive(
                     f"test weight {noise}:{ensemble}".encode(),
                 )
         if extra:
-            archive.writestr(*extra)
+            entry, payload = extra
+            if isinstance(entry, str):
+                original = entry
+                entry = ZipInfo(original)
+                # Preserve unsafe names in the archive on Windows too.
+                entry.filename = entry.orig_filename = original
+            archive.writestr(entry, payload)
     return stream.getvalue()
 
 
@@ -288,6 +294,7 @@ def test_invalid_config_never_publishes(
         "../escape",
         "/absolute",
         "foo\\escape",
+        "config.yaml\x00ignored",
         "C:escape",
         "wrong/config.yaml",
         "config.yaml",

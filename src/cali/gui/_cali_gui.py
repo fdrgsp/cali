@@ -967,9 +967,6 @@ class CaliGui(QMainWindow):
         self._database_path = str(Path(output_path) / database_name)
         self._output_path = output_path
 
-        # PASS DATABASE PATH TO GRAPHS WIDGETS ----------------------------------------
-        self._update_graph_properties(self._database_path)
-
         # CHECK IF DATABASE EXISTS ----------------------------------------------------
         if Path(self._database_path).exists():
             # Database exists - ask user if they want to overwrite
@@ -1073,6 +1070,8 @@ class CaliGui(QMainWindow):
         self._run_cali_wdg.set_has_data(True)
 
         # FINALIZE---------------------------------------------------------------------
+        # Open graph connections only after database creation/replacement.
+        self._update_graph_properties(self._database_path)
         self._finalize_initialization(experiment)
 
     def _get_plate_plan_if_no_hcs(self) -> useq.WellPlatePlan | None:
@@ -2373,6 +2372,18 @@ class CaliGui(QMainWindow):
 
     def _clear_widget_before_initialization(self) -> None:
         """Clear the widget before initializing it with new data."""
+        # Release graph connections before an existing database can be replaced.
+        # Windows cannot unlink SQLite files with open pooled connections.
+        graphs: tuple[_SingleWellGraphWidget | _MultilWellGraphWidget, ...] = (
+            *self.SW_GRAPHS,
+            *self.MW_GRAPHS,
+        )
+        for graph in graphs:
+            if graph.engine is not None:
+                graph.engine.dispose(close=True)
+            graph.engine = None
+            graph.database_path = None
+            graph.clear_plot()
         # clear paths
         self._database_path = None
         self._data_path = None

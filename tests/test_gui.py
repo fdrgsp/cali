@@ -1072,10 +1072,30 @@ def test_initialize_from_directories_existing_db_overwrite(
 
     old_db_path = tmp_path / db_name
     assert old_db_path.exists()
+    gui._update_graph_properties(old_db_path)
+    previous_engine = gui.SW_GRAPHS[0].engine
+    assert previous_engine is not None
+    pooled = previous_engine.raw_connection()
+    old_connection = pooled.driver_connection
+    pooled.close()
+
+    def replace_after_connections_close(*args: Any, **kwargs: Any) -> None:
+        import sqlite3
+
+        assert all(graph.engine is None for graph in (*gui.SW_GRAPHS, *gui.MW_GRAPHS))
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            old_connection.execute("SELECT 1")
+        save_experiment_to_database(*args, **kwargs)
 
     # Mock user choosing "Yes" (overwrite)
-    with patch.object(
-        QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+    with (
+        patch.object(
+            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+        ),
+        patch(
+            "cali.gui._cali_gui.save_experiment_to_database",
+            side_effect=replace_after_connections_close,
+        ),
     ):
         gui._initialize_from_directories(str(data_path), str(tmp_path), db_name)
 

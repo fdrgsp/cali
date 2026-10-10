@@ -429,12 +429,16 @@ def _extract_model(
         written = set()
         for info in members:
             _check_download_cancelled(cancel_requested)
-            path = PurePosixPath(info.filename)
+            # ZipInfo normalizes Windows separators and truncates NUL bytes.
+            # Validate the archive's original name before trusting that result.
+            raw_name = info.orig_filename
+            path = PurePosixPath(raw_name)
             if (
-                path.is_absolute()
+                raw_name != info.filename
+                or path.is_absolute()
                 or ".." in path.parts
-                or "\\" in info.filename
-                or ":" in info.filename
+                or "\\" in raw_name
+                or ":" in raw_name
                 or stat.S_ISLNK(info.external_attr >> 16)
             ):
                 raise CascadeDownloadError(
