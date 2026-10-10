@@ -2,7 +2,8 @@
 
 - CaImAn
 
-- Cascade (instead of OASIS)
+- CASCADE integration: implemented in the development GUI alongside OASIS.
+    - Remaining: distribution licensing review; deferred real-plate and CUDA validation.
     - https://github.com/HelmchenLabSoftware/Cascade
     - https://www.scientifica.uk.com/learning-zone/how-to-compute-δf-f-from-calcium-imaging-data?utm_source=chatgpt.com
 

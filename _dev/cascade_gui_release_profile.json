@@ -1,6 +1,6 @@
 {
   "recorded_date": "2026-10-10",
-  "scope": "GUI default concurrency and proposed development-branch activation; distribution sign-off not completed",
+  "scope": "Accepted development GUI single-worker profile; normal launcher activation applied; distribution sign-off not completed",
   "gui_defaults": {
     "extraction_positions_at_once": 1,
     "analysis_only_positions_at_once": 1,
@@ -11,10 +11,10 @@
   },
   "memory_acceptance_proposal": {
     "host_parent_rss_budget_mib": 6144,
-    "budget_accepted": false,
+    "budget_accepted": true,
     "runtime_memory_limit": false,
     "evidence_file": "_dev/cascade_full_frame_memory_validation.json",
-    "evidence_sha256": "54e712144fe2abe4ef90609fe1cb520c43a8351eda7eff858f86521639996988",
+    "evidence_sha256": "b1b8d13e58d26f48095df3c03758729119ad23e3b3f3401982ef9b99cc8ac31d",
     "source_image_shape": [
       6000,
       512,
@@ -44,12 +44,14 @@
       "MPS allocator peaks",
       "unique physical process-tree memory",
       "biological inference accuracy"
-    ]
+    ],
+    "accepted_date": "2026-10-10",
+    "acceptance_authority": "User approved development GUI with this profile"
   },
   "gui_activation_proposal": {
     "entry_point": "cali / python -m cali",
     "constructor": "CaliGui(cascade_gui_enabled=True)",
-    "currently_applied": false,
+    "currently_applied": true,
     "scope": "development branch; project distribution licensing review remains pending",
     "model_selection_explicit": true,
     "no_automatic_dependency_install_or_model_download": true,
@@ -57,7 +59,9 @@
       "file": "src/cali/__main__.py",
       "from": "pl = CaliGui()",
       "to": "pl = CaliGui(cascade_gui_enabled=True)"
-    }
+    },
+    "accepted_date": "2026-10-10",
+    "programmatic_constructor_default_enabled": false
   },
   "license_inventory": {
     "scope": "Direct inference packages and selected model identity; factual file/metadata inventory, not project distribution approval or a transitive dependency audit",
@@ -287,6 +291,73 @@
         },
         "log_sha256": "b2ffd95735820747e3d5d7eba12d555823c8d629f7d48fc70a30bf81f150a108"
       }
+    },
+    "macos_jobs_passed": true,
+    "macos_jobs": {
+      "3.11": {
+        "job_id": 114261905313,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905313",
+        "conclusion": "success",
+        "passed": 2434,
+        "skipped": 17,
+        "duration_s": 1061.5,
+        "log_sha256": "75ca23f8c87e23c04bc0d778f22efb979351afb05838a25fb912c887028fe42b"
+      },
+      "3.12": {
+        "job_id": 114261905371,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905371",
+        "conclusion": "success",
+        "passed": 2434,
+        "skipped": 17,
+        "duration_s": 961.55,
+        "log_sha256": "ada9b659f7121c716afc1a0269294ce7ad2dc1886260ff4d477a5a8887dc63b8"
+      },
+      "3.13": {
+        "job_id": 114261905374,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905374",
+        "conclusion": "success",
+        "passed": 2434,
+        "skipped": 17,
+        "duration_s": 826.73,
+        "log_sha256": "cc053fd3fc04cbd8118c019612526f739d111dda96f88c5605b11f5ccb459a9f"
+      }
+    },
+    "windows_jobs_pending": true
+  },
+  "development_activation_validation": {
+    "launcher_regression": {
+      "passed": 94,
+      "duration_s": 8.28,
+      "scope": "CLI, CASCADE GUI settings, GUI exports and persisted method-specific CSV export"
+    },
+    "normal_launch_smoke": {
+      "real_gui": true,
+      "default_methods": [
+        "cascade"
+      ],
+      "explicit_model_selection": true,
+      "explicit_oasis_selection": true,
+      "extraction_workers": 1,
+      "analysis_workers": 1,
+      "ccg_processes": 1
+    },
+    "raw_measurement_reports_unchanged": true,
+    "fixtures_restored_sha256_verified": true,
+    "installed_wheel": {
+      "wheel": "cali-0.1.dev1433+gd1f88e51b.d20261010-py3-none-any.whl",
+      "sha256": "ca8b7d783053d0ef20192e1388b35db7b27fcfecf499c7808aefdd8d6a542b08",
+      "source_sha256": {
+        "src/cali/__main__.py": "b68d85ff8a9cdeb8f77aff36a71482ef0ea3a84c30a0bc97a0dc4060aac3334d",
+        "src/cali/gui/_extraction_gui.py": "eb3b140c5cc9e6f64c186a198c8f5923ffbc79961b68228e8efaaa187648f5be",
+        "src/cali/gui/_analysis_gui.py": "aa92d856d674ef274ee09cfcbf82669aae40f4ea121a84691508b8e44bea7158",
+        "src/cali/gui/_cali_gui.py": "1d9f6020ffd629f17de6e71c0925d725916dc0861fea0c3b655851d25e2b4723"
+      },
+      "source_files_match": true,
+      "passed": 8,
+      "deselected": 9,
+      "duration_s": 10.0,
+      "scope": "Actual normal launcher plus 7 pretrained GUI/lifecycle/persistence/offline reuse tests",
+      "log_sha256": "e8943386a55298aedd35587132c942111722741f28d19bb2212868eebebe0cff"
     }
   }
 }

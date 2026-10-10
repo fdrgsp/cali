@@ -172,10 +172,14 @@ OASIS; single-output runs hide it. Plot availability follows the stored run, whi
 OASIS denoised calcium plots remain available for either backend.
 
 The extraction panel includes output, model and device controls, and the analysis
-panel keeps separate method-labelled threshold/burst/synchrony settings. CASCADE
-extraction from the released GUI remains disabled pending the release checks in
-[_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md). Selected unavailable
-models stay selected and fail clearly. In CASCADE-enabled setups, **Download model**
+panel keeps separate method-labelled threshold/burst/synchrony settings. On this
+development branch, `cali` and `python -m cali` enable CASCADE extraction with one
+position worker and one CCG process by default. A new setup selects CASCADE; check
+OASIS as well for comparison, or select OASIS alone. Install the optional dependency
+with `uv sync --extra cascade`, select a compatible model explicitly, and verify
+the acquisition frame rate before running. Distribution licensing review remains
+pending in [_dev/cascade_migration_plan.md](_dev/cascade_migration_plan.md). Selected
+unavailable models stay selected and fail clearly. **Download model**
 downloads and verifies the explicitly chosen model in the background, with status,
 cancellation and retry controls. Cancellation waits for the current network
 operation; incomplete models are never published. Closing the window also requests
@@ -413,13 +417,15 @@ Choose exactly one method to define ROIs for trace extraction:
   a FOV previews its timing source, discarded/retained frame counts and first retained
   source frame. The preview updates as timing and discard settings change.
 - **Spike inference**: check the **OASIS** or **CASCADE** group box, or both where
-  CASCADE extraction is enabled. Both groups and their settings are shown together.
+  CASCADE extraction is enabled (including the normal launcher on this development
+  branch). Both groups and their settings are shown together.
   OASIS exposes the calcium
   decay time; CASCADE exposes the explicit model, device, local verification,
   background download and package installation instructions. OASIS calcium denoising
   always runs, including when
-  only CASCADE spike output is retained. Released GUI CASCADE extraction remains
-  gated as described in the [migration notes](#optional-cascade-dependency-migration-branch).
+  only CASCADE spike output is retained. New development GUI setups select CASCADE
+  and require an explicit compatible model; see the
+  [migration notes](#optional-cascade-dependency-migration-branch).
 - **Processing and export**: **Positions at once** controls concurrent extraction,
   alongside optional CSV exports of traces, inferred spikes and related products.
   Each worker holds a position's image stack. New and reset GUI configurations

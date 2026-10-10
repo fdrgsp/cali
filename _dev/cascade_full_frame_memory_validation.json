@@ -10,7 +10,7 @@
   "rois_per_fov": 100,
   "extraction_workers": 1,
   "analysis_processes": 1,
-  "budget_accepted": false,
+  "budget_accepted": true,
   "mps_report_sha256": "46941b4770394ad76ff80174b9f6963fe25062ff37a65c7e0805ae88fafb6496",
   "mps_report": {
     "mode": "dual",
@@ -530,7 +530,7 @@
     "Four concurrent source stacks alone require 11.72 GiB before traces, masks and inference",
     "No complete-pipeline host-RSS budget has been accepted. Remote CI and licensing review before distribution remain pending."
   ],
-  "host_rss_comparison_budget_mib": null,
+  "host_rss_comparison_budget_mib": 6144,
   "budget_note": "Measurements are recorded without a user-accepted complete-pipeline limit; no memory gate is promoted.",
   "benchmark_script_sha256": "fe121cb13305f6445a9ad43d516f6aceecf1233f5e75257865d035217e89af4a",
   "installed_wheel_sha256": "e7b1d9da0c350b3e0f104aec47f3c2c488184a0fa05b542212748b80a8477cfa",
@@ -1645,5 +1645,12 @@
       "duration_s": 305.55,
       "note": "Before the final clipping assertions were added to an existing geometry test; that updated test passed in the focused matrix."
     }
+  },
+  "budget_acceptance": {
+    "date": "2026-10-10",
+    "authority": "User approved development GUI with the prepared single-worker profile",
+    "profile_file": "_dev/cascade_gui_release_profile.json",
+    "scope": "Measured 100 ROIs \u00d7 6000 frames, 512\u00d7512 uint16, reference CPU/MPS, one extraction worker and one analysis process; excludes detection and GUI rendering",
+    "runtime_memory_limit": false
   }
 }

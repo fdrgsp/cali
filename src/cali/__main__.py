@@ -216,7 +216,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     app = QApplication([])
     app.setWindowIcon(QIconifyIcon("mdi:view-comfy", color="#00FF00"))
-    pl = CaliGui()
+    pl = CaliGui(cascade_gui_enabled=True)
     pl.show()
     sys.excepthook = _our_excepthook
     app.exec()

@@ -132,10 +132,13 @@ The original 40 × 40 images remain useful for trace-level parity, but do not co
 retaining larger frames. One 512 × 512 uint16 stack alone is **2.93 GiB**; four
 concurrent stacks require **11.72 GiB** before masks, trace arrays, analysis or
 inference. This new evidence covers **one extraction worker and one analysis
-process only**. It is not a many-worker memory allowance. No complete-pipeline
-budget has been accepted, and GUI release exposure remains gated by that acceptance,
-remote dedicated CI and licensing review before distribution. The reference stays
-default and cached inference stays opt-in pending real-data evidence.
+process only**. It is not a many-worker memory allowance. On 2026-10-10 the user
+accepted **6 GiB parent RSS** for this measured scope and approved normal development
+GUI activation using the single-worker profile. Detection and GUI rendering remain
+excluded; the target is not a runtime memory limit or physical-RAM minimum. Dedicated
+CASCADE CI and installed-wheel GUI checks passed. Distribution licensing review
+remains pending. The reference stays default and cached inference stays opt-in
+pending real-data evidence. See `cascade_gui_release_profile.json` for the decision.
 
 Reproduce sequentially in an installed `cali[cascade]` environment with fresh
 output directories and a verified model cache:

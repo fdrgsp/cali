@@ -3,13 +3,61 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from cali.__main__ import _str_to_bool, main
 
+if TYPE_CHECKING:
+    from pytestqt.qtbot import QtBot
+
 TEST_DB = Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_db.cali"
+
+
+def test_gui_launch_enables_cascade_single_worker_profile(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from qtpy.QtGui import QIcon
+    from qtpy.QtWidgets import QApplication
+
+    from cali.gui import CaliGui
+
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    monkeypatch.setattr("qtpy.QtWidgets.QApplication", lambda _: app)
+    monkeypatch.setattr(app, "exec", lambda: 0)
+    monkeypatch.setattr("superqt.QIconifyIcon", lambda *args, **kwargs: QIcon())
+    monkeypatch.setattr(sys, "excepthook", sys.excepthook)
+    launched = []
+
+    def create_gui(*, cascade_gui_enabled: bool) -> CaliGui:
+        assert cascade_gui_enabled is True
+        gui = CaliGui(cascade_gui_enabled=cascade_gui_enabled)
+        qtbot.addWidget(gui)
+        launched.append(gui)
+        return gui
+
+    monkeypatch.setattr("cali.gui.CaliGui", create_gui)
+    main([])
+    assert len(launched) == 1
+    gui = launched[0]
+    extraction = gui._extraction_wdg
+    assert extraction._spike_outputs.methods() == ("cascade",)
+    assert extraction.value().trace_extraction_data.cascade_model is None
+    assert extraction.value().threads == 1
+    assert gui._analysis_wdg.value().threads == 1
+    assert gui._analysis_wdg.value().n_processes == 1
+    assert tuple(s.method for s in gui._analysis_wdg.value().spike_settings) == (
+        "cascade",
+    )
+
+    # OASIS remains an explicit user choice without a CASCADE model requirement.
+    extraction._spike_outputs._oasis.setChecked(True)
+    extraction._spike_outputs._cascade.setChecked(False)
+    assert extraction.to_model_settings().spike_methods == ("oasis",)
 
 
 # ── _str_to_bool helper ──────────────────────────────────────────────────────

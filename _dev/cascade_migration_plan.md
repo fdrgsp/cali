@@ -1,10 +1,42 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; remaining release evidence (memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
 **Date**: 2026-10-10
 
 ---
+
+## P8 continuation — normal development launcher enabled (2026-10-10)
+
+The user approved enabling CASCADE in the development GUI with the prepared
+single-worker profile. `cali` / `python -m cali` now launch
+`CaliGui(cascade_gui_enabled=True)`. New setups select CASCADE; the two checkable
+OASIS/CASCADE groups allow either or both outputs. A compatible model and verified
+acquisition timing remain explicit. Selecting CASCADE never installs its optional
+package, downloads a model or falls back to OASIS automatically. Users can choose
+OASIS alone. Programmatic `CaliGui()` keeps its existing gated default.
+
+The accepted benchmark target is **6 GiB parent RSS** for the measured **100 ROIs ×
+6,000 frames, 512 × 512 uint16, reference CPU/MPS, one extraction worker and one
+analysis process** profile. Measured CPU/MPS parent peaks are **4.39/3.61 GiB**.
+Detection and GUI rendering are excluded. This is a benchmark acceptance criterion,
+not an app memory setting or minimum physical RAM requirement. The measurement
+artifact records the decision without changing raw reports or audits.
+
+Distribution licensing review remains pending. Real-plate/CUDA validation and
+cached-default promotion retain the prior scope decisions. Earlier entries below
+are historical evidence and proposals, superseded by this accepted development
+activation. Distribution release is not marked complete.
+
+Validation: **94 CLI/GUI/export tests passed in 8.28 s**; the freshly built and
+installed wheel passed **8 tests in 10.00 s**, including the real normal launcher
+and 7 pretrained GUI/lifecycle/persistence/offline reuse cases. The launcher and
+three GUI module bytes in the wheel match source. Original database fixtures were
+restored with SHA-256 verification; raw memory reports/audits are unchanged.
+The preceding full follow-up CI revision `208d1e2` passed all three macOS suites
+(**2434 passed, 17 skipped** each) and both dedicated CASCADE jobs
+(**527 passed, 1 skipped** each); Windows suites are still running. The activation
+revision will receive a separate macOS-scoped CI run without cancelling Windows.
 
 ## P8 continuation — GUI spike-export ownership (2026-10-10)
 
@@ -267,12 +299,14 @@ below, which are kept as historical records.
   expected outcome is to promote the cached service once the deferred real-plate
   benchmark confirms its speed and memory advantage on real recordings.
 
-Remaining release gates for GUI extraction exposure: an accepted representative
-complete-pipeline memory budget and the licensing review before distribution.
-The dedicated remote CASCADE CI job and local GUI technical run acceptance are
-recorded in the 2026-10-10 continuation above. Camera-sized CPU/MPS memory measurements
-are also complete for one extraction worker and one analysis process; budget acceptance
-remains pending.
+Development GUI activation approved on 2026-10-10: the normal `cali` /
+`python -m cali` launcher enables CASCADE with one position worker and one CCG
+process. The user accepted the 6 GiB parent-RSS benchmark target for the measured
+100 ROI × 6,000 frame, 512 × 512 uint16 reference CPU/MPS scope, excluding detection
+and GUI rendering. It is not a runtime memory limit or physical-RAM minimum.
+Distribution licensing review remains pending; this development activation does
+not complete distribution release. Programmatic `CaliGui()` remains gated unless
+its caller explicitly enables CASCADE.
 
 ## P8 continuation — cancellable background model download (2026-10-04)
 
@@ -3005,9 +3039,10 @@ chooses its method-bound data. Comparison products must use aligned valid interv
 axes/panels or clearly normalized traces; they must not imply that OASIS amplitudes and CASCADE
 spikes/frame are directly interchangeable.
 
-The GUI option is enabled only when P1–P7, the dedicated CASCADE CI job, a clean install, and the
-end-to-end performance/storage gates in §6.5–6.6 are all green. Per the 2026-10-05 scope decisions,
-the real-plate benchmark and CUDA validation are deferred and are not part of this gate.
+The development GUI was enabled with the user-accepted scope on 2026-10-10 after
+P1–P7 technical checks, dedicated CASCADE CI, clean-install and controlled
+performance/storage validation. Distribution licensing review remains pending.
+Per the 2026-10-05 scope decisions, real-plate and CUDA validation are deferred.
 
 ### Out of scope — discrete-spike post-processing
 
