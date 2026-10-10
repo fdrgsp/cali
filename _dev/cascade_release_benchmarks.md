@@ -90,6 +90,93 @@ inference or enables CASCADE in the GUI.
 
 ## Controlled workloads
 
+### Full-frame CPU/MPS memory scope (2026-10-10)
+
+`cascade_full_frame_memory_validation.json` records new installed-wheel reference
+measurements using **6,000 × 512 × 512 uint16 images**, 100 known ROI masks, dual
+OASIS/CASCADE output, one extraction worker and one analysis process. Each device
+runs one cold and one warm FOV, with full calcium/spike analysis, 20 CCG shuffles,
+normal SQLite persistence, and separately timed inference-free offline re-analysis.
+The Apple M2 Pro/16 GiB host, package pin and verified model are the same as the
+GUI installed-wheel acceptance. CPU threads are fixed at one. Synthetic pixel
+generation is included in image loading; these are controlled measurements with
+known masks, not independently acquired data or disk-reader throughput tests.
+
+| Device | Cold complete s | Warm complete s | Warm offline s | Parent peak MiB | Sampled summed RSS peak MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CPU reference | 141.348 | 140.451 | 36.520 | 4498.48 | 4081.30 |
+| MPS reference | 80.254 | 80.696 | 37.549 | 3693.77 | 3686.44 |
+
+Complete time includes preparation, extraction, online analysis and persistence;
+it excludes validation and the separately timed offline analysis. Parent lifetime
+RSS includes those later stages. The one-second sampler sums simultaneous parent
+and descendant RSS, may miss brief peaks, and counts shared pages in each process.
+Neither figure certifies unique physical memory or MPS allocator/driver peaks.
+Detection and GUI rendering are excluded. These are single cold/warm measurements,
+not a repeated performance distribution.
+
+Independent read-only audits verify all four complete databases, each with 100
+calcium traces, 200 method-owned spike traces, complete ROI/FOV analyses, and exact
+saved samples. CPU/MPS raw/DFF/denoised/time arrays, noise inputs, calcium/OASIS
+products, binary spike decisions and deterministic FOV products are exact. CASCADE
+sample deviation is at most **2.38 × 10⁻⁷**, within `rtol=1e-5, atol=1e-6`.
+The historical device auditor excludes seven additive noise-QC fields; an additional
+same-schema check compares all **218** such values exactly. Four stochastic CCG
+significance fields remain excluded from scientific parity, as in prior benchmarks.
+29/100 controlled ROI noise estimates fall outside the model's [2, 9] coverage and
+use the nearest ensembles; this evidence does not establish biological accuracy.
+Each phase stores a 42.51 MiB database and reference inference loads 40 checkpoints.
+Offline re-analysis makes zero image-loading, inference or checkpoint-loading calls.
+
+The original 40 × 40 images remain useful for trace-level parity, but do not cover
+retaining larger frames. One 512 × 512 uint16 stack alone is **2.93 GiB**; four
+concurrent stacks require **11.72 GiB** before masks, trace arrays, analysis or
+inference. This new evidence covers **one extraction worker and one analysis
+process only**. It is not a many-worker memory allowance. No complete-pipeline
+budget has been accepted, and GUI release exposure remains gated by that acceptance,
+remote dedicated CI and licensing review before distribution. The reference stays
+default and cached inference stays opt-in pending real-data evidence.
+
+Reproduce sequentially in an installed `cali[cascade]` environment with fresh
+output directories and a verified model cache:
+
+```sh
+export PYTEST_RUNNING=1 QT_QPA_PLATFORM=offscreen
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+cascade_bench_python=/path/to/cali-cascade/bin/python
+
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --mode dual --backend reference --device cpu \
+  --model-dir /path/to/verified-model-cache \
+  --output-dir /tmp/cali-full-frame-cpu-new \
+  --image-side 512 --image-dtype uint16 --rois 100 --frames 6000 \
+  --fovs 1 --workers 1 --analysis full --analysis-processes 1 \
+  --ccg-shuffles 20 --sample-memory
+
+"$cascade_bench_python" _dev/benchmark_cascade_extraction.py \
+  --mode dual --backend reference --device mps \
+  --model-dir /path/to/verified-model-cache \
+  --output-dir /tmp/cali-full-frame-mps-new \
+  --image-side 512 --image-dtype uint16 --rois 100 --frames 6000 \
+  --fovs 1 --workers 1 --analysis full --analysis-processes 1 \
+  --ccg-shuffles 20 --sample-memory
+
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-full-frame-cpu-new \
+  --output /tmp/cali-full-frame-cpu-new-audit.json
+"$cascade_bench_python" _dev/audit_cascade_extraction.py \
+  --input-dir /tmp/cali-full-frame-mps-new \
+  --output /tmp/cali-full-frame-mps-new-audit.json
+```
+
+The recorded device comparison used temporary `report.json` files that wrapped
+each completed `dual-reference.json` in a `results` list with its device in
+`comparison_policy`, so the existing device auditor could consume the single-case
+outputs. The wrappers are metadata, not extra runs. The durable evidence binds
+the original single-case reports, installed wheel and production source hashes.
+Default small-image float64 samples remain exact when the new flags are omitted.
+
 ### Explicit GPU validation
 
 The pretrained tests accept `CALI_CASCADE_TEST_DEVICES=cpu,mps` (or `cpu,cuda`;

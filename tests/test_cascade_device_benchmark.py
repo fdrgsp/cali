@@ -193,3 +193,65 @@ def test_source_audit_rejects_wrong_inputs_or_provenance(
         connection.commit()
     with pytest.raises(AssertionError):
         module.compare_sources(cpu, gpu, device="mps")
+
+
+def test_full_frame_uint16_geometry_is_deterministic_and_masks_match(
+    benchmark: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = benchmark.ControlledReader(4, 96, image_side=32, image_dtype="uint16")
+    pixels, metadata = reader.isel()
+    repeated, _ = reader.isel()
+    assert pixels.shape == (96, 32, 32)
+    assert pixels.dtype == np.uint16
+    np.testing.assert_array_equal(pixels, repeated)
+    assert len(metadata) == 96
+    fov = benchmark.make_fov(0, 4, image_side=32)
+    assert all(
+        roi.roi_mask.height == 32 and roi.roi_mask.width == 32 for roi in fov.rois
+    )
+    assert all(
+        max(roi.roi_mask.coords_y) < 32 and max(roi.roi_mask.coords_x) < 32
+        for roi in fov.rois
+    )
+
+    class ExtremePixels:
+        def normal(
+            self, location: float, scale: float, size: int | tuple
+        ) -> np.ndarray:
+            if isinstance(size, tuple):
+                return np.full(size, 1000.0)
+            return np.full(size, -100000.0 if scale == 120 else 100000.0)
+
+    monkeypatch.setattr(benchmark.np.random, "default_rng", lambda *a: ExtremePixels())
+    clipped, _ = reader.isel()
+    assert clipped[0, 0, 0] == 0
+    assert clipped[0, 0, 4] == 65535
+
+
+def test_legacy_image_geometry_and_float64_samples_remain_exact(
+    benchmark: object,
+) -> None:
+    rois, frames = 4, 96
+    rng = np.random.default_rng(9183)
+    expected = rng.normal(1000, 2, (frames, 8, 8))
+    for index in range(rois):
+        row, col = divmod(index, 2)
+        signal = rng.normal(0, 120 + 280 * index / rois, frames)
+        signal[75:] += 350 * np.exp(-np.arange(frames - 75) / 12)
+        expected[:, row * 4 : row * 4 + 2, col * 4 : col * 4 + 2] += signal[
+            :, None, None
+        ]
+    actual, _ = benchmark.ControlledReader(rois, frames).isel()
+    np.testing.assert_array_equal(actual, expected)
+    assert actual.dtype == np.float64
+
+
+@pytest.mark.parametrize("side", [0, 7])
+def test_benchmark_rejects_images_that_cannot_fit_masks(
+    benchmark: object, side: int
+) -> None:
+    with pytest.raises(ValueError, match="fit all ROI masks"):
+        benchmark.ControlledReader(4, 96, image_side=side)
+    with pytest.raises(ValueError, match="fit all ROI masks"):
+        benchmark.make_fov(0, 4, image_side=side)

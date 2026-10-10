@@ -1,10 +1,45 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; remaining release evidence (remote dedicated CI, representative memory budget, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; remaining release evidence (remote dedicated CI, memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
 **Date**: 2026-10-10
 
 ---
+
+## P8 continuation — full-frame CPU/MPS memory evidence (2026-10-10)
+
+- The controlled extraction harness now accepts an explicit image side and dtype.
+  Its existing 40 × 40 float64 workload is preserved exactly. The new camera-sized
+  input is **6,000 × 512 × 512 uint16**, with 100 known ROI masks; generation fills
+  bounded blocks without first allocating a complete float64 image stack.
+- Fresh installed-wheel CPU and MPS reference runs each cover one cold and one
+  warm position, dual OASIS/CASCADE output, one extraction worker, one analysis
+  process, full calcium/spike analysis with 20 CCG shuffles, normal persistence,
+  and inference-free offline re-analysis. Peak parent RSS was **4,498.48 MiB CPU**
+  and **3,693.77 MiB MPS**. Simultaneously sampled parent/descendant peaks were
+  **4,081.30 MiB CPU** and **3,686.44 MiB MPS**; sampling can miss short peaks.
+- Independent read-only audits passed for all four complete databases. CPU/MPS
+  calcium/OASIS arrays, binary spike decisions and deterministic FOV products
+  match exactly; CASCADE prediction deviation is at most **2.38 × 10⁻⁷**, within
+  the existing tolerance. An additional same-schema comparison checks all 218
+  additive noise-QC fields exactly, which the historical device auditor excludes.
+- The larger frames test source-image retention, rather than improving CASCADE's
+  trace-level numerical test. One raw stack alone is **2.93 GiB**; four concurrent
+  stacks would be **11.72 GiB** before masks, traces or inference. These measurements
+  cover one extraction worker and one analysis process, exclude detection and GUI
+  rendering, and do not certify MPS allocator peaks or unique physical memory.
+  The reference remains default; cached-default promotion still waits for real data.
+- Results, identities, audits and scope limits are in
+  `cascade_full_frame_memory_validation.json`, with reproducible commands in
+  `cascade_release_benchmarks.md`. No numerical memory budget has been accepted;
+  recording these results does not open the GUI extraction release gate. Remote
+  dedicated CI and the licensing review before distribution remain pending.
+
+Validation: the shared full suite passed **2427 tests, 17 skipped in 305.55 s**.
+The final focused geometry/device matrix passed **23 tests in 1.80 s**, including
+determinism, camera-value clipping, mask dimensions, invalid geometry and exact
+legacy float64 input preservation. The README explains image retention per thread.
+Repository hooks and the explicit harness Ruff checks pass.
 
 ## P8 continuation — GUI run acceptance and installed-wheel CI (2026-10-10)
 
@@ -106,7 +141,9 @@ below, which are kept as historical records.
 Remaining release gates for GUI extraction exposure: the first remote run of the
 dedicated CASCADE CI job, an accepted representative complete-pipeline memory budget,
 and the licensing review before distribution. Local GUI technical run acceptance is
-recorded in the 2026-10-10 continuation above.
+recorded in the 2026-10-10 continuation above. Camera-sized CPU/MPS memory measurements
+are also complete for one extraction worker and one analysis process; budget acceptance
+remains pending.
 
 ## P8 continuation — cancellable background model download (2026-10-04)
 

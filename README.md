@@ -420,7 +420,9 @@ Choose exactly one method to define ROIs for trace extraction:
   only CASCADE spike output is retained. Released GUI CASCADE extraction remains
   gated as described in the [migration notes](#optional-cascade-dependency-migration-branch).
 - **Processing and export**: extraction threads and optional CSV exports of traces,
-  inferred spikes and related products. More concurrent positions use more memory.
+  inferred spikes and related products. Each extraction thread holds a position's
+  image stack, so more concurrent positions use more memory. Start with one thread
+  for large recordings.
 
 <img width="800" alt="Screenshot 2026-03-09 at 10 11 33 PM" src="https://github.com/user-attachments/assets/d6a6bcd0-137d-441c-a3f5-0e7b9c292e82" />
 

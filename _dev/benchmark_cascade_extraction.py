@@ -316,34 +316,63 @@ class ProcessMemorySampler:
 class ControlledReader(TensorstoreZarrReader):
     """Deterministic synthetic images; each caller retains its own image buffer."""
 
-    def __init__(self, rois: int, frames: int) -> None:
+    def __init__(
+        self,
+        rois: int,
+        frames: int,
+        *,
+        image_side: int | None = None,
+        image_dtype: str = "float64",
+    ) -> None:
         self.rois, self.frames = rois, frames
-        self.side = math.ceil(math.sqrt(rois)) * 4
+        self.grid_side = math.ceil(math.sqrt(rois)) * 4
+        self.side = self.grid_side if image_side is None else image_side
+        if self.side < self.grid_side:
+            raise ValueError("Image side must fit all ROI masks.")
+        if image_dtype not in {"float64", "uint16"}:
+            raise ValueError("Image dtype must be float64 or uint16.")
+        self.image_dtype = image_dtype
         self._path = Path("controlled-images.zarr")
 
     def isel(self, **_: object) -> tuple[np.ndarray, list[dict]]:
         """Generate pixels and uniform acquisition timestamps."""
         rng = np.random.default_rng(9183)
-        image = rng.normal(1000, 2, (self.frames, self.side, self.side))
+        shape = (self.frames, self.side, self.side)
+        if self.image_dtype == "float64":
+            image = rng.normal(1000, 2, shape)
+        else:
+            # Model reader-resident uint16 pixels without allocating an entire
+            # float64 stack first: that transient would distort the RSS scope.
+            image = np.empty(shape, dtype=np.uint16)
+            for start in range(0, self.frames, 32):
+                stop = min(start + 32, self.frames)
+                block = rng.normal(1000, 2, (stop - start, self.side, self.side))
+                image[start:stop] = np.clip(np.rint(block), 0, 65535).astype(np.uint16)
         for index in range(self.rois):
-            row, col = divmod(index, self.side // 4)
+            row, col = divmod(index, self.grid_side // 4)
             signal = rng.normal(0, 120 + 280 * index / self.rois, self.frames)
             for onset in range(75, self.frames, 200):
                 signal[onset:] += 350 * np.exp(-np.arange(self.frames - onset) / 12)
-            image[:, row * 4 : row * 4 + 2, col * 4 : col * 4 + 2] += signal[
-                :, None, None
-            ]
+            patch = image[:, row * 4 : row * 4 + 2, col * 4 : col * 4 + 2]
+            if self.image_dtype == "float64":
+                patch += signal[:, None, None]
+            else:
+                values = patch.astype(np.float64) + signal[:, None, None]
+                patch[:] = np.clip(np.rint(values), 0, 65535).astype(np.uint16)
         return image, [
             {"runner_time_ms": 500 + frame * 1000 / 30} for frame in range(self.frames)
         ]
 
 
-def make_fov(position: int, rois: int) -> FOV:
+def make_fov(position: int, rois: int, *, image_side: int | None = None) -> FOV:
     """Create nonoverlapping known masks without running detection."""
-    side = math.ceil(math.sqrt(rois)) * 4
+    grid_side = math.ceil(math.sqrt(rois)) * 4
+    side = grid_side if image_side is None else image_side
+    if side < grid_side:
+        raise ValueError("Image side must fit all ROI masks.")
     cells = []
     for index in range(rois):
-        row, col = divmod(index, side // 4)
+        row, col = divmod(index, grid_side // 4)
         cells.append(
             ROI(
                 label_value=index + 1,
@@ -502,7 +531,12 @@ def run_case(args: argparse.Namespace) -> dict:
     )
     settings_data = settings.model_dump(exclude={"id"})
     analysis_data = analysis.model_dump(mode="json", exclude={"id", "created_at"})
-    reader = ControlledReader(args.rois, args.frames)
+    reader = ControlledReader(
+        args.rois,
+        args.frames,
+        image_side=args.image_side,
+        image_dtype=args.image_dtype,
+    )
     runner = BenchmarkRunner(args, measurements)
     stop = threading.Event()
     memory = ProcessMemorySampler() if args.sample_memory else None
@@ -601,7 +635,10 @@ def run_case(args: argparse.Namespace) -> dict:
                     raise FileExistsError(database)
                 engine = create_cali_engine(f"sqlite:///{database}")
                 create_database_and_tables(engine)
-                fovs = [make_fov(index, args.rois) for index in range(count)]
+                fovs = [
+                    make_fov(index, args.rois, image_side=args.image_side)
+                    for index in range(count)
+                ]
                 experiment = Experiment(
                     name="controlled benchmark",
                     plate=Plate(
@@ -917,6 +954,8 @@ def run_case(args: argparse.Namespace) -> dict:
         ),
         "rois_per_fov": args.rois,
         "frames": args.frames,
+        "source_image_shape": [args.frames, reader.side, reader.side],
+        "source_image_dtype": reader.image_dtype,
         "workers": args.workers,
         "analysis": args.analysis,
         "analysis_settings": analysis_data,
@@ -941,7 +980,7 @@ def run_case(args: argparse.Namespace) -> dict:
         },
         "oasis_decay_constant_s": 1.0,
         "retained_payload_bytes_per_cascade_caller_lower_bound": (
-            args.frames * reader.side**2 * 8
+            args.frames * reader.side**2 * np.dtype(reader.image_dtype).itemsize
             + args.rois * args.frames * 8 * 5
             + args.rois * reader.side**2
         ),
@@ -978,6 +1017,10 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rois", type=int, default=32)
     parser.add_argument("--frames", type=int, default=2048)
+    parser.add_argument("--image-side", type=int, default=None)
+    parser.add_argument(
+        "--image-dtype", choices=("float64", "uint16"), default="float64"
+    )
     parser.add_argument("--fovs", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--chunk", type=int, default=1024)
@@ -1002,6 +1045,11 @@ def main() -> None:
         parser.error("Counts must be positive and traces need at least 65 frames.")
     if args.rois < 2:
         parser.error("Analysis comparisons need at least two ROIs.")
+    if (
+        args.image_side is not None
+        and args.image_side < math.ceil(math.sqrt(args.rois)) * 4
+    ):
+        parser.error("Image side must fit all ROI masks.")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.mode != "all":
         report = run_case(args)
@@ -1028,6 +1076,13 @@ def main() -> None:
             str(args.rois),
             "--frames",
             str(args.frames),
+            *(
+                ["--image-side", str(args.image_side)]
+                if args.image_side is not None
+                else []
+            ),
+            "--image-dtype",
+            args.image_dtype,
             "--fovs",
             str(args.fovs),
             "--workers",

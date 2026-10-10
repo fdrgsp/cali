@@ -1,0 +1,1649 @@
+{
+  "recorded_date": "2026-10-10",
+  "scope": "Controlled full-frame extraction, full analysis, persistence and offline reuse; known masks",
+  "source_image_shape": [
+    6000,
+    512,
+    512
+  ],
+  "source_image_dtype": "uint16",
+  "rois_per_fov": 100,
+  "extraction_workers": 1,
+  "analysis_processes": 1,
+  "budget_accepted": false,
+  "mps_report_sha256": "46941b4770394ad76ff80174b9f6963fe25062ff37a65c7e0805ae88fafb6496",
+  "mps_report": {
+    "mode": "dual",
+    "backend": "reference",
+    "package_initialization_s": 0.5767179999966174,
+    "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+    "excluded": [
+      "detection",
+      "offline persistence and database-load time",
+      "GUI rendering",
+      "representative real plate"
+    ],
+    "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+    "rois_per_fov": 100,
+    "frames": 6000,
+    "source_image_shape": [
+      6000,
+      512,
+      512
+    ],
+    "source_image_dtype": "uint16",
+    "workers": 1,
+    "analysis": "full",
+    "analysis_settings": {
+      "enable_calcium": true,
+      "enable_spikes": true,
+      "peaks_height_value": 0.1,
+      "peaks_prominence_multiplier": 0.5,
+      "frame_rate": 30.0,
+      "n_processes": 1,
+      "peaks_height_mode": "multiplier",
+      "peaks_distance": 200.0,
+      "calcium_burst_threshold": 25.0,
+      "calcium_burst_min_duration": 500.0,
+      "calcium_burst_gaussian_sigma": 0.3,
+      "cluster_method": "hierarchical",
+      "cluster_n_clusters": 0,
+      "cluster_max_k": 10,
+      "experiment_type": "Spontaneous Activity",
+      "stimulation_mask_path": null,
+      "led_power_equation": null,
+      "led_pulse_duration": null,
+      "led_pulse_powers": null,
+      "led_pulse_on_frames": null,
+      "threads": 1,
+      "stimulation_mask_id": null,
+      "spike_settings": [
+        {
+          "method": "oasis",
+          "ccg_n_shuffles": 20,
+          "enable_rising_edge_analysis": false,
+          "id": null,
+          "analysis_settings_id": null,
+          "threshold_mode": "multiplier",
+          "threshold_value": 3.0,
+          "cascade_ap_threshold_fraction": null,
+          "burst_threshold": 65.0,
+          "burst_min_duration": 500.0,
+          "burst_gaussian_sigma": 0.3,
+          "spikes_sync_cross_corr_lag": 500.0,
+          "spikes_sync_jitter_window": 200.0
+        },
+        {
+          "method": "cascade",
+          "ccg_n_shuffles": 20,
+          "enable_rising_edge_analysis": false,
+          "id": null,
+          "analysis_settings_id": null,
+          "threshold_mode": "cascade_ap",
+          "threshold_value": null,
+          "cascade_ap_threshold_fraction": 0.36787944117144233,
+          "burst_threshold": 65.0,
+          "burst_min_duration": 500.0,
+          "burst_gaussian_sigma": 0.3,
+          "spikes_sync_cross_corr_lag": 500.0,
+          "spikes_sync_jitter_window": 200.0
+        }
+      ]
+    },
+    "comparison_excludes": [
+      "fraction_significant_ccg_pairs",
+      "fraction_significant_ccg_pairs_rising_edges",
+      "spike_ccg_zscore_matrix",
+      "spike_ccg_zscore_matrix_rising_edges"
+    ],
+    "seed": 9183,
+    "frame_rate_hz": 30,
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "device": "mps",
+    "torch": "2.14.1",
+    "torch_threads": 1,
+    "inference_torch_thread_counts": [
+      1
+    ],
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMBA_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "oasis_decay_constant_s": 1.0,
+    "retained_payload_bytes_per_cascade_caller_lower_bound": 3195942400,
+    "chunk_windows": null,
+    "queue_capacity": null,
+    "python": "3.13.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "peak_active_cascade_callers": 1,
+    "peak_queue_depth": 0,
+    "model_loader_threads": 1,
+    "total_model_loads": 80,
+    "cache_stats": null,
+    "baseline_peak_rss_mib": 471.59375,
+    "peak_rss_mib": 3693.765625,
+    "incremental_peak_rss_mib": 3222.171875,
+    "process_tree_memory": {
+      "interval_s": 1.0,
+      "scope": "simultaneous parent + descendant RSS, including resource trackers",
+      "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+      "samples": 229,
+      "combined_peak_mib": 3686.4375,
+      "max_descendant_processes": 1,
+      "stages": {
+        "preparation": {
+          "samples": 1,
+          "parent_peak_mib": 475.1875,
+          "descendants_peak_mib": 0.0,
+          "combined_peak_mib": 475.1875,
+          "max_descendant_processes": 0,
+          "combined_peak_snapshot": {
+            "parent_mib": 475.1875,
+            "descendants_mib": []
+          }
+        },
+        "cold/extraction_analysis": {
+          "samples": 75,
+          "parent_peak_mib": 2866.546875,
+          "descendants_peak_mib": 20.703125,
+          "combined_peak_mib": 2866.546875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 2866.546875,
+            "descendants_mib": []
+          }
+        },
+        "cold/persistence": {
+          "samples": 2,
+          "parent_peak_mib": 517.84375,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 526.515625,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 517.84375,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "cold/offline_analysis": {
+          "samples": 36,
+          "parent_peak_mib": 684.421875,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 693.09375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 684.421875,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "warm/extraction_analysis": {
+          "samples": 76,
+          "parent_peak_mib": 3677.765625,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 3686.4375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 3677.765625,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "warm/persistence": {
+          "samples": 1,
+          "parent_peak_mib": 677.015625,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 685.6875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 677.015625,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "warm/database_validation": {
+          "samples": 1,
+          "parent_peak_mib": 682.4375,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 691.109375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 682.4375,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "warm/offline_analysis": {
+          "samples": 36,
+          "parent_peak_mib": 820.625,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 829.296875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 820.625,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        },
+        "between_phases": {
+          "samples": 1,
+          "parent_peak_mib": 751.75,
+          "descendants_peak_mib": 8.671875,
+          "combined_peak_mib": 760.421875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 751.75,
+            "descendants_mib": [
+              8.671875
+            ]
+          }
+        }
+      }
+    },
+    "phases": [
+      {
+        "phase": "cold",
+        "fovs": 1,
+        "preparation_s": 0.019796874839812517,
+        "preparation_model_loads": 0,
+        "extraction_with_analysis_s": 78.78585137496702,
+        "persistence_s": 1.4480166248977184,
+        "complete_s": 80.25366487470455,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 2.8015412043314427,
+          "oasis_inference": 0.14080374990589917,
+          "cascade_compute": 27.266814542002976,
+          "cascade_caller": 27.294044041074812,
+          "roi_calcium_analysis": 0.03951786854304373,
+          "roi_spike_analysis_oasis": 0.04192096251063049,
+          "roi_spike_analysis_cascade": 0.03667546319775283,
+          "trace_finalization": 0.19287362811155617,
+          "fov_calcium_analysis": 0.052809332963079214,
+          "fov_spike_analysis_oasis": 19.124332583043724,
+          "fov_spike_analysis_cascade": 18.940823208075017,
+          "fov_analysis_total": 38.29392520803958
+        },
+        "stage_calls": {
+          "image_roi_extraction": 100,
+          "oasis_inference": 1,
+          "cascade_compute": 1,
+          "cascade_caller": 1,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 100,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "offline_reanalysis_s": 37.74280224996619,
+        "offline_stage_aggregate_s": {
+          "image_roi_extraction": 0.0,
+          "oasis_inference": 0.0,
+          "cascade_compute": 0.0,
+          "cascade_caller": 0.0,
+          "roi_calcium_analysis": 0.04079916630871594,
+          "roi_spike_analysis_oasis": 0.03895529150031507,
+          "roi_spike_analysis_cascade": 0.034696161514148116,
+          "trace_finalization": 0.0,
+          "fov_calcium_analysis": 0.0402771660592407,
+          "fov_spike_analysis_oasis": 18.58668029215187,
+          "fov_spike_analysis_cascade": 18.778378209099174,
+          "fov_analysis_total": 37.61758695798926
+        },
+        "offline_stage_calls": {
+          "image_roi_extraction": 0,
+          "oasis_inference": 0,
+          "cascade_compute": 0,
+          "cascade_caller": 0,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 0,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "calcium_products_sha256": "d37984f858e5fc6aaca728535000649bfbc118032bac41d4a678a82e8cd5ea94",
+        "method_products_sha256": {
+          "oasis": "850e8c189b6acef9d7449208a8d8fabf97ca646301024e1d27b4878b4ec66bc8",
+          "cascade": "986f880fe755641e49f76c0b8dc0d8d9de0b1d9d0b6407671dda3b106585ec59"
+        },
+        "populations": {
+          "oasis": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 0,
+            "valid_stop": 6000
+          },
+          "cascade": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 32,
+            "valid_stop": 5968
+          }
+        },
+        "model_loads": 40,
+        "database_bytes": 44572672,
+        "persistence_audit": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2,
+            "spike_inference_run": 2
+          },
+          "all_stored_arrays_equal_extraction": true,
+          "canonical_inference_ids": {
+            "oasis": 1,
+            "cascade": 2
+          }
+        }
+      },
+      {
+        "phase": "warm",
+        "fovs": 1,
+        "preparation_s": 0,
+        "preparation_model_loads": 0,
+        "extraction_with_analysis_s": 79.28538424987346,
+        "persistence_s": 1.4107176659163088,
+        "complete_s": 80.69610191578977,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 2.7119543792214245,
+          "oasis_inference": 0.16121091693639755,
+          "cascade_compute": 28.16373904189095,
+          "cascade_caller": 28.191238041967154,
+          "roi_calcium_analysis": 0.031224708538502455,
+          "roi_spike_analysis_oasis": 0.03897779271937907,
+          "roi_spike_analysis_cascade": 0.03411313146352768,
+          "trace_finalization": 0.1660951708909124,
+          "fov_calcium_analysis": 0.04163708398118615,
+          "fov_spike_analysis_oasis": 18.782003415981308,
+          "fov_spike_analysis_cascade": 18.821311167208478,
+          "fov_analysis_total": 37.81613058410585
+        },
+        "stage_calls": {
+          "image_roi_extraction": 100,
+          "oasis_inference": 1,
+          "cascade_compute": 1,
+          "cascade_caller": 1,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 100,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "offline_reanalysis_s": 37.548632707912475,
+        "offline_stage_aggregate_s": {
+          "image_roi_extraction": 0.0,
+          "oasis_inference": 0.0,
+          "cascade_compute": 0.0,
+          "cascade_caller": 0.0,
+          "roi_calcium_analysis": 0.03640824882313609,
+          "roi_spike_analysis_oasis": 0.03885975247249007,
+          "roi_spike_analysis_cascade": 0.034536253893747926,
+          "trace_finalization": 0.0,
+          "fov_calcium_analysis": 0.038932207971811295,
+          "fov_spike_analysis_oasis": 18.55711529101245,
+          "fov_spike_analysis_cascade": 18.64181633410044,
+          "fov_analysis_total": 37.405875083990395
+        },
+        "offline_stage_calls": {
+          "image_roi_extraction": 0,
+          "oasis_inference": 0,
+          "cascade_compute": 0,
+          "cascade_caller": 0,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 0,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "calcium_products_sha256": "d37984f858e5fc6aaca728535000649bfbc118032bac41d4a678a82e8cd5ea94",
+        "method_products_sha256": {
+          "oasis": "850e8c189b6acef9d7449208a8d8fabf97ca646301024e1d27b4878b4ec66bc8",
+          "cascade": "986f880fe755641e49f76c0b8dc0d8d9de0b1d9d0b6407671dda3b106585ec59"
+        },
+        "populations": {
+          "oasis": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 0,
+            "valid_stop": 6000
+          },
+          "cascade": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 32,
+            "valid_stop": 5968
+          }
+        },
+        "model_loads": 40,
+        "database_bytes": 44572672,
+        "persistence_audit": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2,
+            "spike_inference_run": 2
+          },
+          "all_stored_arrays_equal_extraction": true,
+          "canonical_inference_ids": {
+            "oasis": 1,
+            "cascade": 2
+          }
+        }
+      }
+    ]
+  },
+  "mps_independent_database_audit": {
+    "audit_script_sha256": "afa75154be8c4546584047fb52cc9dad031fb849e50b9e89b834ad77ecc796f5",
+    "scope": "read-only SQLite row/ownership checks and every stored array sample",
+    "databases": {
+      "dual-reference-cold": {
+        "rows": {
+          "fov": 1,
+          "roi": 100,
+          "trace": 100,
+          "data_analysis": 100,
+          "fov_analysis": 1,
+          "spike_trace": 200,
+          "spike_inference_run": 2,
+          "spike_analysis": 200,
+          "spike_fov_analysis": 2
+        },
+        "schema_version": 14,
+        "database_bytes": 44572672,
+        "database_sha256": "879e615d0f58155a540a0c8eb0e740f69f35d6108c4955153960ce8d39f5a70c",
+        "canonical_spike_payload_bytes": {
+          "cascade": 1873392,
+          "oasis": 171134
+        },
+        "hypothetical_legacy_oasis_json_bytes": 3357704,
+        "projected_96_fov_spike_payload_mib": 187.18194580078125,
+        "projected_96_fov_with_legacy_oasis_mib": 494.58892822265625,
+        "all_arrays_exact": true,
+        "canonical_run_ownership": true
+      },
+      "dual-reference-warm": {
+        "rows": {
+          "fov": 1,
+          "roi": 100,
+          "trace": 100,
+          "data_analysis": 100,
+          "fov_analysis": 1,
+          "spike_trace": 200,
+          "spike_inference_run": 2,
+          "spike_analysis": 200,
+          "spike_fov_analysis": 2
+        },
+        "schema_version": 14,
+        "database_bytes": 44572672,
+        "database_sha256": "4ac90e20ecc02756da3fb710f35e74b20ff351a4076b9a633be4527f9ea5d194",
+        "canonical_spike_payload_bytes": {
+          "cascade": 1873392,
+          "oasis": 171134
+        },
+        "hypothetical_legacy_oasis_json_bytes": 3357704,
+        "projected_96_fov_spike_payload_mib": 187.18194580078125,
+        "projected_96_fov_with_legacy_oasis_mib": 494.58892822265625,
+        "all_arrays_exact": true,
+        "canonical_run_ownership": true
+      }
+    }
+  },
+  "mps_post_measurement_formatting_note": "Measurement script was formatted while the process was running; the formatting changed no execution semantics. The CPU repeat runs the formatted source.",
+  "limits": [
+    "One controlled cold FOV and one controlled warm FOV; no independent biological recording",
+    "One extraction worker and one analysis process only",
+    "Parent peak includes validation/offline stages; tree RSS is sampled at one-second intervals and may miss brief peaks",
+    "Summed RSS double-counts shared pages and is not unique physical memory",
+    "Host RSS does not certify MPS driver/allocator peak memory",
+    "Detection and GUI rendering are excluded",
+    "Four concurrent source stacks alone require 11.72 GiB before traces, masks and inference",
+    "No complete-pipeline host-RSS budget has been accepted. Remote CI and licensing review before distribution remain pending."
+  ],
+  "host_rss_comparison_budget_mib": null,
+  "budget_note": "Measurements are recorded without a user-accepted complete-pipeline limit; no memory gate is promoted.",
+  "benchmark_script_sha256": "fe121cb13305f6445a9ad43d516f6aceecf1233f5e75257865d035217e89af4a",
+  "installed_wheel_sha256": "e7b1d9da0c350b3e0f104aec47f3c2c488184a0fa05b542212748b80a8477cfa",
+  "runtime_source_sha256": {
+    "extraction/_extraction_runner.py": "522829ca02d3d1d437f4edff845d917f4aae3736b91b7681bbc7ba46321ba4e8",
+    "analysis/_fov_analysis_parallel.py": "16aff3a4b8751f10d6293aec2dbe73d5fee0eafa23d3378743a1b09986a0f1dd",
+    "analysis/_fov_analysis.py": "9c507911dc24daf97875fa757c8e1ac3f7c01716b29120fce509018d3d7c30d3",
+    "analysis/_roi_analysis.py": "f26df2fc149bb18017a074e83fe9370d4e28678ab13ad073061d353ff265ea47",
+    "analysis/_analysis_runner.py": "30ed8f6d6a526c9b97deb00af2644762f7afbaef53492f94690b5e08efeef96f"
+  },
+  "cpu_report_sha256": "cb400b28f6fda38e1c6ab059c8135996c7cfe036a3a4f8ee0e58f7a4db983405",
+  "cpu_report": {
+    "mode": "dual",
+    "backend": "reference",
+    "package_initialization_s": 0.8508347910828888,
+    "scope": "controlled images, known ROI masks, actual FOV pool, full analysis, SQLite persistence and offline re-analysis",
+    "excluded": [
+      "detection",
+      "offline persistence and database-load time",
+      "GUI rendering",
+      "representative real plate"
+    ],
+    "stage_note": "Aggregate stage times can overlap across FOV threads; cascade_caller includes queue/lock waiting; ROI helpers are subsets of trace_finalization; FOV population timers are subsets of fov_analysis_total.",
+    "rois_per_fov": 100,
+    "frames": 6000,
+    "source_image_shape": [
+      6000,
+      512,
+      512
+    ],
+    "source_image_dtype": "uint16",
+    "workers": 1,
+    "analysis": "full",
+    "analysis_settings": {
+      "enable_calcium": true,
+      "enable_spikes": true,
+      "peaks_height_value": 0.1,
+      "peaks_prominence_multiplier": 0.5,
+      "frame_rate": 30.0,
+      "n_processes": 1,
+      "peaks_height_mode": "multiplier",
+      "peaks_distance": 200.0,
+      "calcium_burst_threshold": 25.0,
+      "calcium_burst_min_duration": 500.0,
+      "calcium_burst_gaussian_sigma": 0.3,
+      "cluster_method": "hierarchical",
+      "cluster_n_clusters": 0,
+      "cluster_max_k": 10,
+      "experiment_type": "Spontaneous Activity",
+      "stimulation_mask_path": null,
+      "led_power_equation": null,
+      "led_pulse_duration": null,
+      "led_pulse_powers": null,
+      "led_pulse_on_frames": null,
+      "threads": 1,
+      "stimulation_mask_id": null,
+      "spike_settings": [
+        {
+          "method": "oasis",
+          "ccg_n_shuffles": 20,
+          "enable_rising_edge_analysis": false,
+          "id": null,
+          "analysis_settings_id": null,
+          "threshold_mode": "multiplier",
+          "threshold_value": 3.0,
+          "cascade_ap_threshold_fraction": null,
+          "burst_threshold": 65.0,
+          "burst_min_duration": 500.0,
+          "burst_gaussian_sigma": 0.3,
+          "spikes_sync_cross_corr_lag": 500.0,
+          "spikes_sync_jitter_window": 200.0
+        },
+        {
+          "method": "cascade",
+          "ccg_n_shuffles": 20,
+          "enable_rising_edge_analysis": false,
+          "id": null,
+          "analysis_settings_id": null,
+          "threshold_mode": "cascade_ap",
+          "threshold_value": null,
+          "cascade_ap_threshold_fraction": 0.36787944117144233,
+          "burst_threshold": 65.0,
+          "burst_min_duration": 500.0,
+          "burst_gaussian_sigma": 0.3,
+          "spikes_sync_cross_corr_lag": 500.0,
+          "spikes_sync_jitter_window": 200.0
+        }
+      ]
+    },
+    "comparison_excludes": [
+      "fraction_significant_ccg_pairs",
+      "fraction_significant_ccg_pairs_rising_edges",
+      "spike_ccg_zscore_matrix",
+      "spike_ccg_zscore_matrix_rising_edges"
+    ],
+    "seed": 9183,
+    "frame_rate_hz": 30,
+    "model": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "device": "cpu",
+    "torch": "2.14.1",
+    "torch_threads": 1,
+    "inference_torch_thread_counts": [
+      1
+    ],
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMBA_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "oasis_decay_constant_s": 1.0,
+    "retained_payload_bytes_per_cascade_caller_lower_bound": 3195942400,
+    "chunk_windows": null,
+    "queue_capacity": null,
+    "python": "3.13.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "peak_active_cascade_callers": 1,
+    "peak_queue_depth": 0,
+    "model_loader_threads": 1,
+    "total_model_loads": 80,
+    "cache_stats": null,
+    "baseline_peak_rss_mib": 472.15625,
+    "peak_rss_mib": 4498.484375,
+    "incremental_peak_rss_mib": 4026.328125,
+    "process_tree_memory": {
+      "interval_s": 1.0,
+      "scope": "simultaneous parent + descendant RSS, including resource trackers",
+      "note": "Sampling can miss short peaks; shared pages count in each process. This is a summed-RSS comparison, not unique physical memory. The ps sampler is excluded. Stage transitions are approximate.",
+      "samples": 347,
+      "combined_peak_mib": 4081.296875,
+      "max_descendant_processes": 1,
+      "stages": {
+        "preparation": {
+          "samples": 1,
+          "parent_peak_mib": 475.765625,
+          "descendants_peak_mib": 0.0,
+          "combined_peak_mib": 475.765625,
+          "max_descendant_processes": 0,
+          "combined_peak_snapshot": {
+            "parent_mib": 475.765625,
+            "descendants_mib": []
+          }
+        },
+        "cold/extraction_analysis": {
+          "samples": 135,
+          "parent_peak_mib": 3855.171875,
+          "descendants_peak_mib": 20.9375,
+          "combined_peak_mib": 3876.109375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 3855.171875,
+            "descendants_mib": [
+              20.9375
+            ]
+          }
+        },
+        "cold/extraction_validation": {
+          "samples": 1,
+          "parent_peak_mib": 691.625,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 704.640625,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 691.625,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "cold/persistence": {
+          "samples": 1,
+          "parent_peak_mib": 700.609375,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 713.625,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 700.609375,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "cold/database_validation": {
+          "samples": 1,
+          "parent_peak_mib": 705.21875,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 718.234375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 705.21875,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "cold/offline_analysis": {
+          "samples": 35,
+          "parent_peak_mib": 822.203125,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 835.21875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 822.203125,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "warm/extraction_analysis": {
+          "samples": 134,
+          "parent_peak_mib": 4068.28125,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 4081.296875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 4068.28125,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "warm/extraction_validation": {
+          "samples": 1,
+          "parent_peak_mib": 907.90625,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 920.921875,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 907.90625,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "warm/persistence": {
+          "samples": 1,
+          "parent_peak_mib": 912.296875,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 925.3125,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 912.296875,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "warm/database_validation": {
+          "samples": 1,
+          "parent_peak_mib": 917.484375,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 930.5,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 917.484375,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "warm/offline_analysis": {
+          "samples": 35,
+          "parent_peak_mib": 1022.0,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 1035.015625,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 1022.0,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        },
+        "between_phases": {
+          "samples": 1,
+          "parent_peak_mib": 953.71875,
+          "descendants_peak_mib": 13.015625,
+          "combined_peak_mib": 966.734375,
+          "max_descendant_processes": 1,
+          "combined_peak_snapshot": {
+            "parent_mib": 953.71875,
+            "descendants_mib": [
+              13.015625
+            ]
+          }
+        }
+      }
+    },
+    "phases": [
+      {
+        "phase": "cold",
+        "fovs": 1,
+        "preparation_s": 0.014309792080894113,
+        "preparation_model_loads": 0,
+        "extraction_with_analysis_s": 139.96910029207356,
+        "persistence_s": 1.3648141669109464,
+        "complete_s": 141.3482242510654,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 2.7885159561410546,
+          "oasis_inference": 0.13614233303815126,
+          "cascade_compute": 90.40703520784155,
+          "cascade_caller": 90.43057850003242,
+          "roi_calcium_analysis": 0.03204983030445874,
+          "roi_spike_analysis_oasis": 0.03891591681167483,
+          "roi_spike_analysis_cascade": 0.03420996223576367,
+          "trace_finalization": 0.16184312803670764,
+          "fov_calcium_analysis": 0.0484140410553664,
+          "fov_spike_analysis_oasis": 18.344095250125974,
+          "fov_spike_analysis_cascade": 18.076098083052784,
+          "fov_analysis_total": 36.62870766711421
+        },
+        "stage_calls": {
+          "image_roi_extraction": 100,
+          "oasis_inference": 1,
+          "cascade_compute": 1,
+          "cascade_caller": 1,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 100,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "offline_reanalysis_s": 36.32365008420311,
+        "offline_stage_aggregate_s": {
+          "image_roi_extraction": 0.0,
+          "oasis_inference": 0.0,
+          "cascade_compute": 0.0,
+          "cascade_caller": 0.0,
+          "roi_calcium_analysis": 0.036178834503516555,
+          "roi_spike_analysis_oasis": 0.038481872994452715,
+          "roi_spike_analysis_cascade": 0.03414974617771804,
+          "trace_finalization": 0.0,
+          "fov_calcium_analysis": 0.03696516598574817,
+          "fov_spike_analysis_oasis": 17.9226029580459,
+          "fov_spike_analysis_cascade": 18.08599333302118,
+          "fov_analysis_total": 36.20428604190238
+        },
+        "offline_stage_calls": {
+          "image_roi_extraction": 0,
+          "oasis_inference": 0,
+          "cascade_compute": 0,
+          "cascade_caller": 0,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 0,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "calcium_products_sha256": "d37984f858e5fc6aaca728535000649bfbc118032bac41d4a678a82e8cd5ea94",
+        "method_products_sha256": {
+          "oasis": "850e8c189b6acef9d7449208a8d8fabf97ca646301024e1d27b4878b4ec66bc8",
+          "cascade": "1d8e6523e89ca7593c2e5f1a901c0de655c7bf77f2690b56d76c9f0a5cfbe69e"
+        },
+        "populations": {
+          "oasis": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 0,
+            "valid_stop": 6000
+          },
+          "cascade": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 32,
+            "valid_stop": 5968
+          }
+        },
+        "model_loads": 40,
+        "database_bytes": 44572672,
+        "persistence_audit": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2,
+            "spike_inference_run": 2
+          },
+          "all_stored_arrays_equal_extraction": true,
+          "canonical_inference_ids": {
+            "oasis": 1,
+            "cascade": 2
+          }
+        }
+      },
+      {
+        "phase": "warm",
+        "fovs": 1,
+        "preparation_s": 0,
+        "preparation_model_loads": 0,
+        "extraction_with_analysis_s": 139.08658095798455,
+        "persistence_s": 1.3647582908160985,
+        "complete_s": 140.45133924880065,
+        "stage_aggregate_s": {
+          "image_roi_extraction": 2.59092904208228,
+          "oasis_inference": 0.14953649998642504,
+          "cascade_compute": 90.02231083298102,
+          "cascade_caller": 90.04587249993347,
+          "roi_calcium_analysis": 0.031335751758888364,
+          "roi_spike_analysis_oasis": 0.038809454534202814,
+          "roi_spike_analysis_cascade": 0.034295499324798584,
+          "trace_finalization": 0.1581726719159633,
+          "fov_calcium_analysis": 0.03776779095642269,
+          "fov_spike_analysis_oasis": 18.20224416605197,
+          "fov_spike_analysis_cascade": 18.15873858309351,
+          "fov_analysis_total": 36.55639591580257
+        },
+        "stage_calls": {
+          "image_roi_extraction": 100,
+          "oasis_inference": 1,
+          "cascade_compute": 1,
+          "cascade_caller": 1,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 100,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "offline_reanalysis_s": 36.52044529118575,
+        "offline_stage_aggregate_s": {
+          "image_roi_extraction": 0.0,
+          "oasis_inference": 0.0,
+          "cascade_compute": 0.0,
+          "cascade_caller": 0.0,
+          "roi_calcium_analysis": 0.03897711867466569,
+          "roi_spike_analysis_oasis": 0.03864729474298656,
+          "roi_spike_analysis_cascade": 0.034538289066404104,
+          "trace_finalization": 0.0,
+          "fov_calcium_analysis": 0.04644779092632234,
+          "fov_spike_analysis_oasis": 17.88106433278881,
+          "fov_spike_analysis_cascade": 18.294978959020227,
+          "fov_analysis_total": 36.380609082989395
+        },
+        "offline_stage_calls": {
+          "image_roi_extraction": 0,
+          "oasis_inference": 0,
+          "cascade_compute": 0,
+          "cascade_caller": 0,
+          "roi_calcium_analysis": 100,
+          "roi_spike_analysis_oasis": 100,
+          "roi_spike_analysis_cascade": 100,
+          "trace_finalization": 0,
+          "fov_calcium_analysis": 1,
+          "fov_spike_analysis_oasis": 1,
+          "fov_spike_analysis_cascade": 1,
+          "fov_analysis_total": 1
+        },
+        "calcium_products_sha256": "d37984f858e5fc6aaca728535000649bfbc118032bac41d4a678a82e8cd5ea94",
+        "method_products_sha256": {
+          "oasis": "850e8c189b6acef9d7449208a8d8fabf97ca646301024e1d27b4878b4ec66bc8",
+          "cascade": "1d8e6523e89ca7593c2e5f1a901c0de655c7bf77f2690b56d76c9f0a5cfbe69e"
+        },
+        "populations": {
+          "oasis": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 0,
+            "valid_stop": 6000
+          },
+          "cascade": {
+            "active_rois": 100,
+            "pairs": 4950,
+            "valid_start": 32,
+            "valid_stop": 5968
+          }
+        },
+        "model_loads": 40,
+        "database_bytes": 44572672,
+        "persistence_audit": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2,
+            "spike_inference_run": 2
+          },
+          "all_stored_arrays_equal_extraction": true,
+          "canonical_inference_ids": {
+            "oasis": 1,
+            "cascade": 2
+          }
+        }
+      }
+    ]
+  },
+  "cpu_independent_database_audit": {
+    "audit_script_sha256": "afa75154be8c4546584047fb52cc9dad031fb849e50b9e89b834ad77ecc796f5",
+    "scope": "read-only SQLite row/ownership checks and every stored array sample",
+    "databases": {
+      "dual-reference-cold": {
+        "rows": {
+          "fov": 1,
+          "roi": 100,
+          "trace": 100,
+          "data_analysis": 100,
+          "fov_analysis": 1,
+          "spike_trace": 200,
+          "spike_inference_run": 2,
+          "spike_analysis": 200,
+          "spike_fov_analysis": 2
+        },
+        "schema_version": 14,
+        "database_bytes": 44572672,
+        "database_sha256": "4fd119d71d56c09fc57954386f2dbc7669289df18373d11a283cc5d2f60297ff",
+        "canonical_spike_payload_bytes": {
+          "cascade": 1873381,
+          "oasis": 171134
+        },
+        "hypothetical_legacy_oasis_json_bytes": 3357704,
+        "projected_96_fov_spike_payload_mib": 187.18093872070312,
+        "projected_96_fov_with_legacy_oasis_mib": 494.5879211425781,
+        "all_arrays_exact": true,
+        "canonical_run_ownership": true
+      },
+      "dual-reference-warm": {
+        "rows": {
+          "fov": 1,
+          "roi": 100,
+          "trace": 100,
+          "data_analysis": 100,
+          "fov_analysis": 1,
+          "spike_trace": 200,
+          "spike_inference_run": 2,
+          "spike_analysis": 200,
+          "spike_fov_analysis": 2
+        },
+        "schema_version": 14,
+        "database_bytes": 44572672,
+        "database_sha256": "245cb2869b61163c3273e512a3061035138bce7021c182e59b1b678387cf831a",
+        "canonical_spike_payload_bytes": {
+          "cascade": 1873381,
+          "oasis": 171134
+        },
+        "hypothetical_legacy_oasis_json_bytes": 3357704,
+        "projected_96_fov_spike_payload_mib": 187.18093872070312,
+        "projected_96_fov_with_legacy_oasis_mib": 494.5879211425781,
+        "all_arrays_exact": true,
+        "canonical_run_ownership": true
+      }
+    }
+  },
+  "cpu_mps_device_audit": {
+    "audit_script_sha256": "681f41c5beb3697cb7b8e324168ce20c7cb2d2550986ae468092f18041678623",
+    "cpu_report_sha256": "03ffb79d4524c680c84ee08ce932dbe3c94fe114c3eb46cbd3cea3299117d5f3",
+    "gpu_report_sha256": "9125a42db785fe2f5c740fa4eb309f35c3b427f35f2c9e87ad6899d766915ece",
+    "cross_version_additive_qc_fields_excluded": [
+      "calcium_noise",
+      "calcium_noise_iqr",
+      "calcium_noise_median",
+      "calcium_noise_roi_count",
+      "model_noise_iqr",
+      "model_noise_median",
+      "model_noise_roi_count"
+    ],
+    "scope": "controlled GPU complete workload vs stored CPU oracle; no CPU/GPU timing equivalence claim across schema versions",
+    "comparisons": {
+      "dual-reference-cold": {
+        "cpu_case_sha256": "cb400b28f6fda38e1c6ab059c8135996c7cfe036a3a4f8ee0e58f7a4db983405",
+        "cpu_arrays_sha256": "a6bc20e4c73b7ad4fd05c9e74fca85f413f5203a6e3e87753606a15e941c43ad",
+        "cpu_database_sha256": "4fd119d71d56c09fc57954386f2dbc7669289df18373d11a283cc5d2f60297ff",
+        "gpu_arrays_sha256": "2c40b625235ddb9b691918246b935f6b215cdb1babe81d161ec4f59504499706",
+        "max_abs_array_differences": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 2.384185791015625e-07
+        },
+        "continuous_roi_max_abs_differences": {
+          "oasis": {},
+          "cascade": {
+            "roi/0/expected_spike_rate_hz": 2.0241307074897463e-08,
+            "roi/0/expected_spike_count": 4.0050799725577235e-06,
+            "roi/1/expected_spike_rate_hz": 1.369978464005328e-08,
+            "roi/1/expected_spike_count": 2.710730768740177e-06,
+            "roi/2/expected_spike_rate_hz": 9.110048271310234e-09,
+            "roi/2/expected_spike_count": 1.8025748431682587e-06,
+            "roi/3/expected_spike_rate_hz": 1.6055547780169377e-08,
+            "roi/3/expected_spike_count": 3.176857717335224e-06,
+            "roi/4/expected_spike_rate_hz": 1.1348140205313939e-08,
+            "roi/4/expected_spike_count": 2.2454187273979187e-06,
+            "roi/5/expected_spike_rate_hz": 1.266634419572199e-08,
+            "roi/5/expected_spike_count": 2.506247255951166e-06,
+            "roi/6/expected_spike_rate_hz": 2.0068699146946756e-08,
+            "roi/6/expected_spike_count": 3.9709266275167465e-06,
+            "roi/7/expected_spike_rate_hz": 1.1929432774948623e-08,
+            "roi/7/expected_spike_count": 2.3604370653629303e-06,
+            "roi/8/expected_spike_rate_hz": 1.7868555524103158e-08,
+            "roi/8/expected_spike_count": 3.5355915315449238e-06,
+            "roi/9/expected_spike_rate_hz": 3.172543050489196e-08,
+            "roi/9/expected_spike_count": 6.2774051912128925e-06,
+            "roi/10/expected_spike_rate_hz": 1.6823935578003102e-09,
+            "roi/10/expected_spike_count": 3.328896127641201e-07,
+            "roi/11/expected_spike_rate_hz": 5.648170819938514e-11,
+            "roi/11/expected_spike_count": 1.1175870895385742e-08,
+            "roi/12/expected_spike_rate_hz": 2.9935367518163503e-09,
+            "roi/12/expected_spike_count": 5.923211574554443e-07,
+            "roi/13/expected_spike_rate_hz": 1.623440692988254e-08,
+            "roi/13/expected_spike_count": 3.2122479751706123e-06,
+            "roi/14/expected_spike_rate_hz": 1.4955181537601447e-09,
+            "roi/14/expected_spike_count": 2.9591319616883993e-07,
+            "roi/15/expected_spike_rate_hz": 1.658271142623846e-08,
+            "roi/15/expected_spike_count": 3.2811658456921577e-06,
+            "roi/16/expected_spike_rate_hz": 5.988250384447724e-08,
+            "roi/16/expected_spike_count": 1.1848751455545425e-05,
+            "roi/17/expected_spike_rate_hz": 5.578757145130453e-08,
+            "roi/17/expected_spike_count": 1.1038500815629959e-05,
+            "roi/18/expected_spike_rate_hz": 3.871358567053562e-08,
+            "roi/18/expected_spike_count": 7.66012817621231e-06,
+            "roi/19/expected_spike_rate_hz": 2.8864567180875156e-08,
+            "roi/19/expected_spike_count": 5.711335688829422e-06,
+            "roi/20/expected_spike_rate_hz": 5.093719446236378e-08,
+            "roi/20/expected_spike_count": 1.0078772902488708e-05,
+            "roi/21/expected_spike_rate_hz": 5.113017431668254e-08,
+            "roi/21/expected_spike_count": 1.0116957128047943e-05,
+            "roi/22/expected_spike_rate_hz": 4.8035440514127004e-08,
+            "roi/22/expected_spike_count": 9.504612535238266e-06,
+            "roi/23/expected_spike_rate_hz": 4.702112121890423e-08,
+            "roi/23/expected_spike_count": 9.30391252040863e-06,
+            "roi/24/expected_spike_rate_hz": 5.229275856777349e-08,
+            "roi/24/expected_spike_count": 1.0346993803977966e-05,
+            "roi/25/expected_spike_rate_hz": 3.840587758929814e-08,
+            "roi/25/expected_spike_count": 7.599242962896824e-06,
+            "roi/26/expected_spike_rate_hz": 4.3295673712862026e-08,
+            "roi/26/expected_spike_count": 8.566770702600479e-06,
+            "roi/27/expected_spike_rate_hz": 5.821040671705191e-08,
+            "roi/27/expected_spike_count": 1.1517899110913277e-05,
+            "roi/28/expected_spike_rate_hz": 6.086152204431983e-08,
+            "roi/28/expected_spike_count": 1.2042466551065445e-05,
+            "roi/29/expected_spike_rate_hz": 1.8356591802159983e-09,
+            "roi/29/expected_spike_count": 3.632158041000366e-07,
+            "roi/30/expected_spike_rate_hz": 6.951971442958893e-09,
+            "roi/30/expected_spike_count": 1.3755634427070618e-06,
+            "roi/31/expected_spike_rate_hz": 9.084160090822024e-09,
+            "roi/31/expected_spike_count": 1.7974525690078735e-06,
+            "roi/32/expected_spike_rate_hz": 9.641918374825309e-09,
+            "roi/32/expected_spike_count": 1.9078142940998077e-06,
+            "roi/33/expected_spike_rate_hz": 3.831350348093565e-09,
+            "roi/33/expected_spike_count": 7.580965757369995e-07,
+            "roi/34/expected_spike_rate_hz": 6.283604747636673e-10,
+            "roi/34/expected_spike_count": 1.2433156371116638e-07,
+            "roi/35/expected_spike_rate_hz": 1.5956115984039343e-08,
+            "roi/35/expected_spike_count": 3.157183527946472e-06,
+            "roi/36/expected_spike_rate_hz": 3.1535662969872646e-10,
+            "roi/36/expected_spike_count": 6.239861249923706e-08,
+            "roi/37/expected_spike_rate_hz": 2.2456233317313945e-08,
+            "roi/37/expected_spike_count": 4.443340003490448e-06,
+            "roi/38/expected_spike_rate_hz": 8.622892178067332e-09,
+            "roi/38/expected_spike_count": 1.7061829566955566e-06,
+            "roi/39/expected_spike_rate_hz": 7.248499578338397e-10,
+            "roi/39/expected_spike_count": 1.434236764907837e-07,
+            "roi/40/expected_spike_rate_hz": 4.706457445990964e-12,
+            "roi/40/expected_spike_count": 9.313225746154785e-10,
+            "roi/41/expected_spike_rate_hz": 6.914316674766496e-09,
+            "roi/41/expected_spike_count": 1.368112862110138e-06,
+            "roi/42/expected_spike_rate_hz": 2.1434853447743762e-08,
+            "roi/42/expected_spike_count": 4.241243004798889e-06,
+            "roi/43/expected_spike_rate_hz": 5.930589352942661e-10,
+            "roi/43/expected_spike_count": 1.1734664440155029e-07,
+            "roi/44/expected_spike_rate_hz": 5.864696284163529e-09,
+            "roi/44/expected_spike_count": 1.1604279279708862e-06,
+            "roi/45/expected_spike_rate_hz": 1.744347066789942e-08,
+            "roi/45/expected_spike_count": 3.4514814615249634e-06,
+            "roi/46/expected_spike_rate_hz": 3.087673228208132e-08,
+            "roi/46/expected_spike_count": 6.109476089477539e-06,
+            "roi/47/expected_spike_rate_hz": 9.59485024765172e-09,
+            "roi/47/expected_spike_count": 1.898501068353653e-06,
+            "roi/48/expected_spike_rate_hz": 1.3124964226562952e-08,
+            "roi/48/expected_spike_count": 2.596992999315262e-06,
+            "roi/49/expected_spike_rate_hz": 5.7418484633586786e-08,
+            "roi/49/expected_spike_count": 1.1361204087734222e-05,
+            "roi/50/expected_spike_rate_hz": 4.999583103071359e-08,
+            "roi/50/expected_spike_count": 9.892508387565613e-06,
+            "roi/51/expected_spike_rate_hz": 6.235593774661652e-08,
+            "roi/51/expected_spike_count": 1.233816146850586e-05,
+            "roi/52/expected_spike_rate_hz": 6.555657394713421e-08,
+            "roi/52/expected_spike_count": 1.2971460819244385e-05,
+            "roi/53/expected_spike_rate_hz": 7.079055652781108e-08,
+            "roi/53/expected_spike_count": 1.4007091522216797e-05,
+            "roi/54/expected_spike_rate_hz": 6.599901469783731e-08,
+            "roi/54/expected_spike_count": 1.305900514125824e-05,
+            "roi/55/expected_spike_rate_hz": 7.037635674222997e-08,
+            "roi/55/expected_spike_count": 1.3925135135650635e-05,
+            "roi/56/expected_spike_rate_hz": 5.901409583231043e-08,
+            "roi/56/expected_spike_count": 1.167692244052887e-05,
+            "roi/57/expected_spike_rate_hz": 5.6201771680974844e-08,
+            "roi/57/expected_spike_count": 1.1120457202196121e-05,
+            "roi/58/expected_spike_rate_hz": 6.552362652456623e-08,
+            "roi/58/expected_spike_count": 1.2964941561222076e-05,
+            "roi/59/expected_spike_rate_hz": 4.944469145229391e-08,
+            "roi/59/expected_spike_count": 9.783456334844232e-06,
+            "roi/60/expected_spike_rate_hz": 5.334473218709945e-08,
+            "roi/60/expected_spike_count": 1.0555144399404526e-05,
+            "roi/61/expected_spike_rate_hz": 4.013975196670572e-08,
+            "roi/61/expected_spike_count": 7.9423189163208e-06,
+            "roi/62/expected_spike_rate_hz": 5.100309019567817e-08,
+            "roi/62/expected_spike_count": 1.0091811418533325e-05,
+            "roi/63/expected_spike_rate_hz": 4.3255666160035844e-08,
+            "roi/63/expected_spike_count": 8.558854460716248e-06,
+            "roi/64/expected_spike_rate_hz": 5.028765315273631e-08,
+            "roi/64/expected_spike_count": 9.950250387191772e-06,
+            "roi/65/expected_spike_rate_hz": 3.2919491577132476e-08,
+            "roi/65/expected_spike_count": 6.513670086860657e-06,
+            "roi/66/expected_spike_rate_hz": 3.2015782469585474e-08,
+            "roi/66/expected_spike_count": 6.334856152534485e-06,
+            "roi/67/expected_spike_rate_hz": 2.4428390421604718e-08,
+            "roi/67/expected_spike_count": 4.8335641622543335e-06,
+            "roi/68/expected_spike_rate_hz": 9.809010936834284e-09,
+            "roi/68/expected_spike_count": 1.9408762454986572e-06,
+            "roi/69/expected_spike_rate_hz": 6.213000780519451e-09,
+            "roi/69/expected_spike_count": 1.2293457984924316e-06,
+            "roi/70/expected_spike_rate_hz": 1.995690723788357e-09,
+            "roi/70/expected_spike_count": 3.948807716369629e-07,
+            "roi/71/expected_spike_rate_hz": 1.2943752736305214e-08,
+            "roi/71/expected_spike_count": 2.561137080192566e-06,
+            "roi/72/expected_spike_rate_hz": 4.311446311078271e-09,
+            "roi/72/expected_spike_count": 8.530914783477783e-07,
+            "roi/73/expected_spike_rate_hz": 1.6426793258972339e-09,
+            "roi/73/expected_spike_count": 3.25031578540802e-07,
+            "roi/74/expected_spike_rate_hz": 5.70466429650196e-09,
+            "roi/74/expected_spike_count": 1.12876296043396e-06,
+            "roi/75/expected_spike_rate_hz": 7.587392492069966e-09,
+            "roi/75/expected_spike_count": 1.5012919902801514e-06,
+            "roi/76/expected_spike_rate_hz": 7.690942105398335e-09,
+            "roi/76/expected_spike_count": 1.521781086921692e-06,
+            "roi/77/expected_spike_rate_hz": 1.8827275738431126e-08,
+            "roi/77/expected_spike_count": 3.725290298461914e-06,
+            "roi/78/expected_spike_rate_hz": 3.0952041818466114e-08,
+            "roi/78/expected_spike_count": 6.124377250671387e-06,
+            "roi/79/expected_spike_rate_hz": 1.242600689010942e-09,
+            "roi/79/expected_spike_count": 2.4586915969848633e-07,
+            "roi/80/expected_spike_rate_hz": 8.495808501152169e-09,
+            "roi/80/expected_spike_count": 1.6810372471809387e-06,
+            "roi/81/expected_spike_rate_hz": 1.2727237930221236e-08,
+            "roi/81/expected_spike_count": 2.518296241760254e-06,
+            "roi/82/expected_spike_rate_hz": 1.5438361700148562e-09,
+            "roi/82/expected_spike_count": 3.0547380447387695e-07,
+            "roi/83/expected_spike_rate_hz": 2.7629019072605843e-09,
+            "roi/83/expected_spike_count": 5.466863512992859e-07,
+            "roi/84/expected_spike_rate_hz": 2.8711593103025734e-09,
+            "roi/84/expected_spike_count": 5.681067705154419e-07,
+            "roi/85/expected_spike_rate_hz": 2.3002224125434623e-08,
+            "roi/85/expected_spike_count": 4.5513734221458435e-06,
+            "roi/86/expected_spike_rate_hz": 1.3583878910594649e-08,
+            "roi/86/expected_spike_count": 2.687796950340271e-06,
+            "roi/87/expected_spike_rate_hz": 4.000799691539214e-10,
+            "roi/87/expected_spike_count": 7.916241884231567e-08,
+            "roi/88/expected_spike_rate_hz": 1.0957474927408839e-08,
+            "roi/88/expected_spike_count": 2.168118953704834e-06,
+            "roi/89/expected_spike_rate_hz": 2.2074981842479247e-09,
+            "roi/89/expected_spike_count": 4.367902874946594e-07,
+            "roi/90/expected_spike_rate_hz": 2.0710002601731503e-09,
+            "roi/90/expected_spike_count": 4.0978193283081055e-07,
+            "roi/91/expected_spike_rate_hz": 8.133382856101434e-09,
+            "roi/91/expected_spike_count": 1.6093254089355469e-06,
+            "roi/92/expected_spike_rate_hz": 3.953728011651947e-09,
+            "roi/92/expected_spike_count": 7.82310962677002e-07,
+            "roi/93/expected_spike_rate_hz": 2.5440360928996597e-09,
+            "roi/93/expected_spike_count": 5.033798515796661e-07,
+            "roi/94/expected_spike_rate_hz": 4.464417280303223e-09,
+            "roi/94/expected_spike_count": 8.833594620227814e-07,
+            "roi/95/expected_spike_rate_hz": 6.678976482987764e-09,
+            "roi/95/expected_spike_count": 1.321546733379364e-06,
+            "roi/96/expected_spike_rate_hz": 2.7440751892982007e-09,
+            "roi/96/expected_spike_count": 5.42961061000824e-07,
+            "roi/97/expected_spike_rate_hz": 1.2275384264626155e-08,
+            "roi/97/expected_spike_count": 2.428889274597168e-06,
+            "roi/98/expected_spike_rate_hz": 5.163379057648854e-09,
+            "roi/98/expected_spike_count": 1.02166086435318e-06,
+            "roi/99/expected_spike_rate_hz": 2.0898278663139536e-09,
+            "roi/99/expected_spike_count": 4.1350722312927246e-07
+          }
+        },
+        "calcium_oasis_and_all_deterministic_fov_products_exact": true,
+        "trace_method_rows": 200,
+        "source_arrays_noise_windows_thresholds_activity_exact": true,
+        "all_stored_model_provenance_except_device_exact": true,
+        "compared_source_arrays": [
+          "raw_trace",
+          "dff",
+          "den_dff",
+          "x_axis"
+        ],
+        "cascade_finite_nonnegative_and_padding_exact": true
+      },
+      "dual-reference-warm": {
+        "cpu_case_sha256": "cb400b28f6fda38e1c6ab059c8135996c7cfe036a3a4f8ee0e58f7a4db983405",
+        "cpu_arrays_sha256": "a6bc20e4c73b7ad4fd05c9e74fca85f413f5203a6e3e87753606a15e941c43ad",
+        "cpu_database_sha256": "245cb2869b61163c3273e512a3061035138bce7021c182e59b1b678387cf831a",
+        "gpu_arrays_sha256": "2c40b625235ddb9b691918246b935f6b215cdb1babe81d161ec4f59504499706",
+        "max_abs_array_differences": {
+          "den_dff": 0.0,
+          "calcium_noise": 0.0,
+          "oasis": 0.0,
+          "cascade": 2.384185791015625e-07
+        },
+        "continuous_roi_max_abs_differences": {
+          "oasis": {},
+          "cascade": {
+            "roi/0/expected_spike_rate_hz": 2.0241307074897463e-08,
+            "roi/0/expected_spike_count": 4.0050799725577235e-06,
+            "roi/1/expected_spike_rate_hz": 1.369978464005328e-08,
+            "roi/1/expected_spike_count": 2.710730768740177e-06,
+            "roi/2/expected_spike_rate_hz": 9.110048271310234e-09,
+            "roi/2/expected_spike_count": 1.8025748431682587e-06,
+            "roi/3/expected_spike_rate_hz": 1.6055547780169377e-08,
+            "roi/3/expected_spike_count": 3.176857717335224e-06,
+            "roi/4/expected_spike_rate_hz": 1.1348140205313939e-08,
+            "roi/4/expected_spike_count": 2.2454187273979187e-06,
+            "roi/5/expected_spike_rate_hz": 1.266634419572199e-08,
+            "roi/5/expected_spike_count": 2.506247255951166e-06,
+            "roi/6/expected_spike_rate_hz": 2.0068699146946756e-08,
+            "roi/6/expected_spike_count": 3.9709266275167465e-06,
+            "roi/7/expected_spike_rate_hz": 1.1929432774948623e-08,
+            "roi/7/expected_spike_count": 2.3604370653629303e-06,
+            "roi/8/expected_spike_rate_hz": 1.7868555524103158e-08,
+            "roi/8/expected_spike_count": 3.5355915315449238e-06,
+            "roi/9/expected_spike_rate_hz": 3.172543050489196e-08,
+            "roi/9/expected_spike_count": 6.2774051912128925e-06,
+            "roi/10/expected_spike_rate_hz": 1.6823935578003102e-09,
+            "roi/10/expected_spike_count": 3.328896127641201e-07,
+            "roi/11/expected_spike_rate_hz": 5.648170819938514e-11,
+            "roi/11/expected_spike_count": 1.1175870895385742e-08,
+            "roi/12/expected_spike_rate_hz": 2.9935367518163503e-09,
+            "roi/12/expected_spike_count": 5.923211574554443e-07,
+            "roi/13/expected_spike_rate_hz": 1.623440692988254e-08,
+            "roi/13/expected_spike_count": 3.2122479751706123e-06,
+            "roi/14/expected_spike_rate_hz": 1.4955181537601447e-09,
+            "roi/14/expected_spike_count": 2.9591319616883993e-07,
+            "roi/15/expected_spike_rate_hz": 1.658271142623846e-08,
+            "roi/15/expected_spike_count": 3.2811658456921577e-06,
+            "roi/16/expected_spike_rate_hz": 5.988250384447724e-08,
+            "roi/16/expected_spike_count": 1.1848751455545425e-05,
+            "roi/17/expected_spike_rate_hz": 5.578757145130453e-08,
+            "roi/17/expected_spike_count": 1.1038500815629959e-05,
+            "roi/18/expected_spike_rate_hz": 3.871358567053562e-08,
+            "roi/18/expected_spike_count": 7.66012817621231e-06,
+            "roi/19/expected_spike_rate_hz": 2.8864567180875156e-08,
+            "roi/19/expected_spike_count": 5.711335688829422e-06,
+            "roi/20/expected_spike_rate_hz": 5.093719446236378e-08,
+            "roi/20/expected_spike_count": 1.0078772902488708e-05,
+            "roi/21/expected_spike_rate_hz": 5.113017431668254e-08,
+            "roi/21/expected_spike_count": 1.0116957128047943e-05,
+            "roi/22/expected_spike_rate_hz": 4.8035440514127004e-08,
+            "roi/22/expected_spike_count": 9.504612535238266e-06,
+            "roi/23/expected_spike_rate_hz": 4.702112121890423e-08,
+            "roi/23/expected_spike_count": 9.30391252040863e-06,
+            "roi/24/expected_spike_rate_hz": 5.229275856777349e-08,
+            "roi/24/expected_spike_count": 1.0346993803977966e-05,
+            "roi/25/expected_spike_rate_hz": 3.840587758929814e-08,
+            "roi/25/expected_spike_count": 7.599242962896824e-06,
+            "roi/26/expected_spike_rate_hz": 4.3295673712862026e-08,
+            "roi/26/expected_spike_count": 8.566770702600479e-06,
+            "roi/27/expected_spike_rate_hz": 5.821040671705191e-08,
+            "roi/27/expected_spike_count": 1.1517899110913277e-05,
+            "roi/28/expected_spike_rate_hz": 6.086152204431983e-08,
+            "roi/28/expected_spike_count": 1.2042466551065445e-05,
+            "roi/29/expected_spike_rate_hz": 1.8356591802159983e-09,
+            "roi/29/expected_spike_count": 3.632158041000366e-07,
+            "roi/30/expected_spike_rate_hz": 6.951971442958893e-09,
+            "roi/30/expected_spike_count": 1.3755634427070618e-06,
+            "roi/31/expected_spike_rate_hz": 9.084160090822024e-09,
+            "roi/31/expected_spike_count": 1.7974525690078735e-06,
+            "roi/32/expected_spike_rate_hz": 9.641918374825309e-09,
+            "roi/32/expected_spike_count": 1.9078142940998077e-06,
+            "roi/33/expected_spike_rate_hz": 3.831350348093565e-09,
+            "roi/33/expected_spike_count": 7.580965757369995e-07,
+            "roi/34/expected_spike_rate_hz": 6.283604747636673e-10,
+            "roi/34/expected_spike_count": 1.2433156371116638e-07,
+            "roi/35/expected_spike_rate_hz": 1.5956115984039343e-08,
+            "roi/35/expected_spike_count": 3.157183527946472e-06,
+            "roi/36/expected_spike_rate_hz": 3.1535662969872646e-10,
+            "roi/36/expected_spike_count": 6.239861249923706e-08,
+            "roi/37/expected_spike_rate_hz": 2.2456233317313945e-08,
+            "roi/37/expected_spike_count": 4.443340003490448e-06,
+            "roi/38/expected_spike_rate_hz": 8.622892178067332e-09,
+            "roi/38/expected_spike_count": 1.7061829566955566e-06,
+            "roi/39/expected_spike_rate_hz": 7.248499578338397e-10,
+            "roi/39/expected_spike_count": 1.434236764907837e-07,
+            "roi/40/expected_spike_rate_hz": 4.706457445990964e-12,
+            "roi/40/expected_spike_count": 9.313225746154785e-10,
+            "roi/41/expected_spike_rate_hz": 6.914316674766496e-09,
+            "roi/41/expected_spike_count": 1.368112862110138e-06,
+            "roi/42/expected_spike_rate_hz": 2.1434853447743762e-08,
+            "roi/42/expected_spike_count": 4.241243004798889e-06,
+            "roi/43/expected_spike_rate_hz": 5.930589352942661e-10,
+            "roi/43/expected_spike_count": 1.1734664440155029e-07,
+            "roi/44/expected_spike_rate_hz": 5.864696284163529e-09,
+            "roi/44/expected_spike_count": 1.1604279279708862e-06,
+            "roi/45/expected_spike_rate_hz": 1.744347066789942e-08,
+            "roi/45/expected_spike_count": 3.4514814615249634e-06,
+            "roi/46/expected_spike_rate_hz": 3.087673228208132e-08,
+            "roi/46/expected_spike_count": 6.109476089477539e-06,
+            "roi/47/expected_spike_rate_hz": 9.59485024765172e-09,
+            "roi/47/expected_spike_count": 1.898501068353653e-06,
+            "roi/48/expected_spike_rate_hz": 1.3124964226562952e-08,
+            "roi/48/expected_spike_count": 2.596992999315262e-06,
+            "roi/49/expected_spike_rate_hz": 5.7418484633586786e-08,
+            "roi/49/expected_spike_count": 1.1361204087734222e-05,
+            "roi/50/expected_spike_rate_hz": 4.999583103071359e-08,
+            "roi/50/expected_spike_count": 9.892508387565613e-06,
+            "roi/51/expected_spike_rate_hz": 6.235593774661652e-08,
+            "roi/51/expected_spike_count": 1.233816146850586e-05,
+            "roi/52/expected_spike_rate_hz": 6.555657394713421e-08,
+            "roi/52/expected_spike_count": 1.2971460819244385e-05,
+            "roi/53/expected_spike_rate_hz": 7.079055652781108e-08,
+            "roi/53/expected_spike_count": 1.4007091522216797e-05,
+            "roi/54/expected_spike_rate_hz": 6.599901469783731e-08,
+            "roi/54/expected_spike_count": 1.305900514125824e-05,
+            "roi/55/expected_spike_rate_hz": 7.037635674222997e-08,
+            "roi/55/expected_spike_count": 1.3925135135650635e-05,
+            "roi/56/expected_spike_rate_hz": 5.901409583231043e-08,
+            "roi/56/expected_spike_count": 1.167692244052887e-05,
+            "roi/57/expected_spike_rate_hz": 5.6201771680974844e-08,
+            "roi/57/expected_spike_count": 1.1120457202196121e-05,
+            "roi/58/expected_spike_rate_hz": 6.552362652456623e-08,
+            "roi/58/expected_spike_count": 1.2964941561222076e-05,
+            "roi/59/expected_spike_rate_hz": 4.944469145229391e-08,
+            "roi/59/expected_spike_count": 9.783456334844232e-06,
+            "roi/60/expected_spike_rate_hz": 5.334473218709945e-08,
+            "roi/60/expected_spike_count": 1.0555144399404526e-05,
+            "roi/61/expected_spike_rate_hz": 4.013975196670572e-08,
+            "roi/61/expected_spike_count": 7.9423189163208e-06,
+            "roi/62/expected_spike_rate_hz": 5.100309019567817e-08,
+            "roi/62/expected_spike_count": 1.0091811418533325e-05,
+            "roi/63/expected_spike_rate_hz": 4.3255666160035844e-08,
+            "roi/63/expected_spike_count": 8.558854460716248e-06,
+            "roi/64/expected_spike_rate_hz": 5.028765315273631e-08,
+            "roi/64/expected_spike_count": 9.950250387191772e-06,
+            "roi/65/expected_spike_rate_hz": 3.2919491577132476e-08,
+            "roi/65/expected_spike_count": 6.513670086860657e-06,
+            "roi/66/expected_spike_rate_hz": 3.2015782469585474e-08,
+            "roi/66/expected_spike_count": 6.334856152534485e-06,
+            "roi/67/expected_spike_rate_hz": 2.4428390421604718e-08,
+            "roi/67/expected_spike_count": 4.8335641622543335e-06,
+            "roi/68/expected_spike_rate_hz": 9.809010936834284e-09,
+            "roi/68/expected_spike_count": 1.9408762454986572e-06,
+            "roi/69/expected_spike_rate_hz": 6.213000780519451e-09,
+            "roi/69/expected_spike_count": 1.2293457984924316e-06,
+            "roi/70/expected_spike_rate_hz": 1.995690723788357e-09,
+            "roi/70/expected_spike_count": 3.948807716369629e-07,
+            "roi/71/expected_spike_rate_hz": 1.2943752736305214e-08,
+            "roi/71/expected_spike_count": 2.561137080192566e-06,
+            "roi/72/expected_spike_rate_hz": 4.311446311078271e-09,
+            "roi/72/expected_spike_count": 8.530914783477783e-07,
+            "roi/73/expected_spike_rate_hz": 1.6426793258972339e-09,
+            "roi/73/expected_spike_count": 3.25031578540802e-07,
+            "roi/74/expected_spike_rate_hz": 5.70466429650196e-09,
+            "roi/74/expected_spike_count": 1.12876296043396e-06,
+            "roi/75/expected_spike_rate_hz": 7.587392492069966e-09,
+            "roi/75/expected_spike_count": 1.5012919902801514e-06,
+            "roi/76/expected_spike_rate_hz": 7.690942105398335e-09,
+            "roi/76/expected_spike_count": 1.521781086921692e-06,
+            "roi/77/expected_spike_rate_hz": 1.8827275738431126e-08,
+            "roi/77/expected_spike_count": 3.725290298461914e-06,
+            "roi/78/expected_spike_rate_hz": 3.0952041818466114e-08,
+            "roi/78/expected_spike_count": 6.124377250671387e-06,
+            "roi/79/expected_spike_rate_hz": 1.242600689010942e-09,
+            "roi/79/expected_spike_count": 2.4586915969848633e-07,
+            "roi/80/expected_spike_rate_hz": 8.495808501152169e-09,
+            "roi/80/expected_spike_count": 1.6810372471809387e-06,
+            "roi/81/expected_spike_rate_hz": 1.2727237930221236e-08,
+            "roi/81/expected_spike_count": 2.518296241760254e-06,
+            "roi/82/expected_spike_rate_hz": 1.5438361700148562e-09,
+            "roi/82/expected_spike_count": 3.0547380447387695e-07,
+            "roi/83/expected_spike_rate_hz": 2.7629019072605843e-09,
+            "roi/83/expected_spike_count": 5.466863512992859e-07,
+            "roi/84/expected_spike_rate_hz": 2.8711593103025734e-09,
+            "roi/84/expected_spike_count": 5.681067705154419e-07,
+            "roi/85/expected_spike_rate_hz": 2.3002224125434623e-08,
+            "roi/85/expected_spike_count": 4.5513734221458435e-06,
+            "roi/86/expected_spike_rate_hz": 1.3583878910594649e-08,
+            "roi/86/expected_spike_count": 2.687796950340271e-06,
+            "roi/87/expected_spike_rate_hz": 4.000799691539214e-10,
+            "roi/87/expected_spike_count": 7.916241884231567e-08,
+            "roi/88/expected_spike_rate_hz": 1.0957474927408839e-08,
+            "roi/88/expected_spike_count": 2.168118953704834e-06,
+            "roi/89/expected_spike_rate_hz": 2.2074981842479247e-09,
+            "roi/89/expected_spike_count": 4.367902874946594e-07,
+            "roi/90/expected_spike_rate_hz": 2.0710002601731503e-09,
+            "roi/90/expected_spike_count": 4.0978193283081055e-07,
+            "roi/91/expected_spike_rate_hz": 8.133382856101434e-09,
+            "roi/91/expected_spike_count": 1.6093254089355469e-06,
+            "roi/92/expected_spike_rate_hz": 3.953728011651947e-09,
+            "roi/92/expected_spike_count": 7.82310962677002e-07,
+            "roi/93/expected_spike_rate_hz": 2.5440360928996597e-09,
+            "roi/93/expected_spike_count": 5.033798515796661e-07,
+            "roi/94/expected_spike_rate_hz": 4.464417280303223e-09,
+            "roi/94/expected_spike_count": 8.833594620227814e-07,
+            "roi/95/expected_spike_rate_hz": 6.678976482987764e-09,
+            "roi/95/expected_spike_count": 1.321546733379364e-06,
+            "roi/96/expected_spike_rate_hz": 2.7440751892982007e-09,
+            "roi/96/expected_spike_count": 5.42961061000824e-07,
+            "roi/97/expected_spike_rate_hz": 1.2275384264626155e-08,
+            "roi/97/expected_spike_count": 2.428889274597168e-06,
+            "roi/98/expected_spike_rate_hz": 5.163379057648854e-09,
+            "roi/98/expected_spike_count": 1.02166086435318e-06,
+            "roi/99/expected_spike_rate_hz": 2.0898278663139536e-09,
+            "roi/99/expected_spike_count": 4.1350722312927246e-07
+          }
+        },
+        "calcium_oasis_and_all_deterministic_fov_products_exact": true,
+        "trace_method_rows": 200,
+        "source_arrays_noise_windows_thresholds_activity_exact": true,
+        "all_stored_model_provenance_except_device_exact": true,
+        "compared_source_arrays": [
+          "raw_trace",
+          "dff",
+          "den_dff",
+          "x_axis"
+        ],
+        "cascade_finite_nonnegative_and_padding_exact": true
+      }
+    },
+    "gpu_database_audit": {
+      "audit_script_sha256": "afa75154be8c4546584047fb52cc9dad031fb849e50b9e89b834ad77ecc796f5",
+      "scope": "read-only SQLite row/ownership checks and every stored array sample",
+      "databases": {
+        "dual-reference-cold": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_inference_run": 2,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 44572672,
+          "database_sha256": "879e615d0f58155a540a0c8eb0e740f69f35d6108c4955153960ce8d39f5a70c",
+          "canonical_spike_payload_bytes": {
+            "cascade": 1873392,
+            "oasis": 171134
+          },
+          "hypothetical_legacy_oasis_json_bytes": 3357704,
+          "projected_96_fov_spike_payload_mib": 187.18194580078125,
+          "projected_96_fov_with_legacy_oasis_mib": 494.58892822265625,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        },
+        "dual-reference-warm": {
+          "rows": {
+            "fov": 1,
+            "roi": 100,
+            "trace": 100,
+            "data_analysis": 100,
+            "fov_analysis": 1,
+            "spike_trace": 200,
+            "spike_inference_run": 2,
+            "spike_analysis": 200,
+            "spike_fov_analysis": 2
+          },
+          "schema_version": 14,
+          "database_bytes": 44572672,
+          "database_sha256": "4ac90e20ecc02756da3fb710f35e74b20ff351a4076b9a633be4527f9ea5d194",
+          "canonical_spike_payload_bytes": {
+            "cascade": 1873392,
+            "oasis": 171134
+          },
+          "hypothetical_legacy_oasis_json_bytes": 3357704,
+          "projected_96_fov_spike_payload_mib": 187.18194580078125,
+          "projected_96_fov_with_legacy_oasis_mib": 494.58892822265625,
+          "all_arrays_exact": true,
+          "canonical_run_ownership": true
+        }
+      }
+    }
+  },
+  "same_schema_noise_qc_comparison": {
+    "cold": {
+      "qc_fields_compared": 109,
+      "all_qc_values_exact": true,
+      "cpu_metrics_sha256": "9db448bafc63f0260e3ffae82198f5b5d95b5dd56a7247ac20e7bfd95392e8c0",
+      "mps_metrics_sha256": "d9c42266b14dc0d2b5470a6040ad6d4b13a052d4f624dff804b832f9fc179809"
+    },
+    "warm": {
+      "qc_fields_compared": 109,
+      "all_qc_values_exact": true,
+      "cpu_metrics_sha256": "9db448bafc63f0260e3ffae82198f5b5d95b5dd56a7247ac20e7bfd95392e8c0",
+      "mps_metrics_sha256": "d9c42266b14dc0d2b5470a6040ad6d4b13a052d4f624dff804b832f9fc179809"
+    }
+  },
+  "aggregate_report_note": "Temporary report.json files only wrap the single-case measurement to run the existing auditor; no new measurements were made.",
+  "validation": {
+    "geometry_tests": {
+      "passed": 23,
+      "duration_s": 1.8
+    },
+    "shared_full_suite": {
+      "passed": 2427,
+      "skipped": 17,
+      "duration_s": 305.55,
+      "note": "Before the final clipping assertions were added to an existing geometry test; that updated test passed in the focused matrix."
+    }
+  }
+}
