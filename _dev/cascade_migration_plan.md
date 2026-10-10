@@ -34,6 +34,12 @@ wheel passed **7 pretrained GUI/lifecycle cases in 9.21 s** plus **7 worker/expo
 compatibility cases in 3.10 s**, including actual persisted CSV selections.
 Test-modified fixtures were backed up and restored with verified bytes. Hooks pass.
 
+Remote follow-up [CI run 38068833375](https://github.com/fdrgsp/cali/actions/runs/38068833375)
+tests `208d1e228249badc3cfeb46319759c8bd79f7062`. Both dedicated CASCADE wheel jobs
+passed **527 tests, 1 optional case skipped** on Python 3.11/3.13, including the
+new GUI-to-CSV cases. Full macOS/Windows jobs remain in progress. Normal-launch
+activation awaits the development/release scope decision for the prepared profile.
+
 ## P8 continuation — GUI worker profile and distribution review evidence (2026-10-10)
 
 - New/reset extraction and analysis GUI configurations now start with one position

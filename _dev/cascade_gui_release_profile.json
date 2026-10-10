@@ -186,5 +186,107 @@
   "visual_review": {
     "processing_controls_and_cascade_only_exports_reviewed": true,
     "snapshot_sha256": "f5841a89410e6e5281ac3eaa05b328112698dbea9f7e91ae85d36acb8249e32e"
+  },
+  "remote_ci_followup": {
+    "run_id": 38068833375,
+    "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375",
+    "tested_revision": "208d1e228249badc3cfeb46319759c8bd79f7062",
+    "scope": "All-platform follow-up on the GUI worker and method-export changes; normal launcher activation remains unapplied.",
+    "dedicated_cascade_jobs_passed": true,
+    "full_platform_jobs_pending": true,
+    "jobs": {
+      "3.11": {
+        "job_id": 114261905549,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905549",
+        "conclusion": "success",
+        "passed": 527,
+        "skipped": 1,
+        "checks": {
+          "base_wheel_without_optional_dependencies": {
+            "passed": 11,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 1.83
+          },
+          "package_pin_and_exact_native_oasis": {
+            "passed": 14,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 10.36
+          },
+          "pretrained_reference_cached_and_service": {
+            "passed": 8,
+            "skipped": 0,
+            "deselected": 61,
+            "duration_s": 5.22
+          },
+          "pretrained_extraction_and_offline_reanalysis": {
+            "passed": 3,
+            "skipped": 0,
+            "deselected": 40,
+            "duration_s": 12.03
+          },
+          "gui_run_lifecycle_and_pretrained_reanalysis": {
+            "passed": 7,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 9.37
+          },
+          "codec_analysis_export_and_plot_semantics": {
+            "passed": 484,
+            "skipped": 1,
+            "deselected": 0,
+            "duration_s": 67.67
+          }
+        },
+        "log_sha256": "e26b96cd19a7ac25eee148fa91458505d4ec8a190fc8e1530c57929a39a8c7ce"
+      },
+      "3.13": {
+        "job_id": 114261905329,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905329",
+        "conclusion": "success",
+        "passed": 527,
+        "skipped": 1,
+        "checks": {
+          "base_wheel_without_optional_dependencies": {
+            "passed": 11,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 1.95
+          },
+          "package_pin_and_exact_native_oasis": {
+            "passed": 14,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 9.81
+          },
+          "pretrained_reference_cached_and_service": {
+            "passed": 8,
+            "skipped": 0,
+            "deselected": 61,
+            "duration_s": 4.89
+          },
+          "pretrained_extraction_and_offline_reanalysis": {
+            "passed": 3,
+            "skipped": 0,
+            "deselected": 40,
+            "duration_s": 10.07
+          },
+          "gui_run_lifecycle_and_pretrained_reanalysis": {
+            "passed": 7,
+            "skipped": 0,
+            "deselected": 0,
+            "duration_s": 9.47
+          },
+          "codec_analysis_export_and_plot_semantics": {
+            "passed": 484,
+            "skipped": 1,
+            "deselected": 0,
+            "duration_s": 62.13
+          }
+        },
+        "log_sha256": "b2ffd95735820747e3d5d7eba12d555823c8d629f7d48fc70a30bf81f150a108"
+      }
+    }
   }
 }
