@@ -104,6 +104,8 @@ class _SpikeOutputWidget(QGroupBox):
         )
         self._model.setMinimumContentsLength(20)
         self._model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        if editor := self._model.lineEdit():
+            editor.setPlaceholderText("Choose a model for your acquisition rate")
         self._model.setToolTip(
             "Choose a model explicitly. The offline catalogue is filtered by the "
             "configured acquisition rate; cached model configuration is verified "
@@ -152,6 +154,7 @@ class _SpikeOutputWidget(QGroupBox):
                 "Choose a model that matches your acquisition rate and indicator; use "
                 "Verify model to inspect its smoothing, noise range and "
                 "trace requirements."
+                " Model weights are downloaded separately after you choose a model."
             )
         )
         cascade_layout.addWidget(self._cascade_parameters)
@@ -294,7 +297,13 @@ class _SpikeOutputWidget(QGroupBox):
             self._install,
         ):
             widget.setEnabled(enabled)
-        self._download.setEnabled(enabled and bool(self._model.currentText().strip()))
+        selected = bool(self._model.currentText().strip())
+        self._download.setEnabled(enabled and selected)
+        self._download.setToolTip(
+            "Download the chosen model weights to the local cache and verify them."
+            if selected
+            else "Choose a pretrained model first to enable downloading its weights."
+        )
         self._download_progress.setVisible(self.is_downloading())
         self._cancel_download_btn.setVisible(self.is_downloading())
         self._cancel_download_btn.setEnabled(
@@ -316,7 +325,7 @@ class _SpikeOutputWidget(QGroupBox):
         selected = self._model.currentText()
         try:
             entries = compatible_cascade_models(
-                get_cascade_catalogue(), self._frame_rate
+                get_cascade_catalogue(allow_bundled=True), self._frame_rate
             )
         except (CascadeModelError, OSError) as error:
             if (
@@ -340,6 +349,19 @@ class _SpikeOutputWidget(QGroupBox):
         self._update_info()
 
     def _update_info(self) -> None:
+        if not self._model.currentText().strip():
+            self._verified_model = None
+            self._info.setText(
+                f"Choose a model for the configured {self._frame_rate:g} Hz "
+                "acquisition rate, then click Download model. Installing CASCADE "
+                "does not install model weights."
+                if self._model.count() > 1
+                else f"No pretrained model matches {self._frame_rate:g} Hz. "
+                "Check the recording's acquisition rate in Prepare traces. "
+                "A compatible model must be selected before downloading weights."
+            )
+            self._update_enabled()
+            return
         if (
             self._verified_model is not None
             and self._model.currentText().strip() == self._verified_model.name

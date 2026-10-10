@@ -157,6 +157,14 @@ to an immutable commit. The fork fixes package discovery and warning-producing i
 its inference algorithm and declared runtime dependencies remain unchanged. cali loads
 the optional package only on use and verifies its source files against that pin.
 
+Installing the extra installs inference code, not pretrained model weights. cali
+includes the small [pinned model catalogue](https://github.com/PTRRupprecht/CascadeTorch/blob/c6978d5ff33edad8792c76e040412f0636913092/Pretrained_models/available_models_CascadeTorch.yaml)
+so a fresh install can show model choices offline. In **Extract traces → Spike
+inference**, check CASCADE and choose a model matching the acquisition rate in
+**Prepare traces**. **Download model** becomes enabled after a model is selected;
+click it to download and verify the weights. If no models match the configured
+rate, the GUI explains that instead of offering an incompatible model.
+
 The GUI's **Setup instructions...** action shows the checkout command above and an
 alternative for an installed wheel. The wheel command uses `uv pip install --python`
 with the running GUI's Python executable and the exact pinned CascadeTorch source.

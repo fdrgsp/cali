@@ -187,33 +187,48 @@ def get_cascade_catalogue(
     model_dir: str | Path | None = None,
     *,
     allow_download: bool = False,
+    allow_bundled: bool = False,
     cancel_requested: Callable[[], bool] | None = None,
 ) -> tuple[CatalogueEntry, ...]:
-    """Read the exact pinned catalogue, fetching it only when explicitly allowed."""
+    """Read pinned metadata, optionally using the offline bundled model list.
+
+    The bundled fallback creates no cache and downloads no model weights. Existing
+    cache entries remain authoritative and must pass the same checksum check.
+    """
     _check_download_cancelled(cancel_requested)
     root = cascade_model_dir(model_dir)
     path = root / f"catalogue-{CATALOGUE_REVISION}.yaml"
+    source = "Cached"
     if not path.is_file():
-        if not allow_download:
+        if allow_bundled and not allow_download:
+            path = Path(__file__).parent / "resources" / "cascade_catalogue.yaml"
+            source = "Bundled"
+        elif not allow_download:
             raise CascadeModelNotFound(
                 "Pinned CASCADE catalogue is not cached. Fetch a model with "
                 "cali cascade-download <name>."
             )
-        root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".catalogue-", dir=root) as temporary:
-            staged = Path(temporary) / "catalogue.yaml"
-            _fetch_url(
-                CATALOGUE_URL, staged, 1024 * 1024, cancel_requested=cancel_requested
-            )
-            if _sha256(staged) != CATALOGUE_SHA256:
-                raise CascadeModelError(
-                    "Downloaded catalogue differs from the pinned checksum."
+        else:
+            root.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(
+                prefix=".catalogue-", dir=root
+            ) as temporary:
+                staged = Path(temporary) / "catalogue.yaml"
+                _fetch_url(
+                    CATALOGUE_URL,
+                    staged,
+                    1024 * 1024,
+                    cancel_requested=cancel_requested,
                 )
-            _check_download_cancelled(cancel_requested)
-            os.replace(staged, path)
+                if _sha256(staged) != CATALOGUE_SHA256:
+                    raise CascadeModelError(
+                        "Downloaded catalogue differs from the pinned checksum."
+                    )
+                _check_download_cancelled(cancel_requested)
+                os.replace(staged, path)
     if path.stat().st_size > 1024 * 1024 or _sha256(path) != CATALOGUE_SHA256:
         raise CascadeModelError(
-            "Cached CASCADE catalogue differs from the pinned checksum."
+            f"{source} CASCADE catalogue differs from the pinned checksum."
         )
     try:
         data = yaml.safe_load(path.read_bytes())

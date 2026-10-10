@@ -6,6 +6,29 @@
 
 ---
 
+## P8 fix — model choices on a fresh install (2026-10-10)
+
+- Installing the CASCADE extra does not install pretrained weights. The GUI used
+  only the cached catalogue, so a fresh install had no model choices and Download
+  model stayed disabled until the user manually entered a model name. This broke
+  the intended first-install GUI workflow.
+- The GUI now uses an offline bundled copy of the exact pinned catalogue when
+  no cached catalogue exists. It shows rate-compatible choices without network
+  access, cache writes, Torch imports or weight downloads. Existing cached copies
+  still require their checksum; headless catalogue/download defaults are unchanged.
+  Empty-selection guidance explains the separate weights and download action;
+  an unsupported rate identifies Prepare traces as the place to check timing.
+- Upstream catalogue bytes and model names are preserved exactly. The immutable
+  metadata is excluded from spelling fixes and Git line-ending conversion; source,
+  wheel and both installed copies match the existing catalogue checksum. This adds
+  metadata only, with no inference source or model weights bundled.
+- Source model/GUI/download regression: **105 passed in 6.38 s**. Installed base
+  wheel: **20 passed**, Torch/CASCADE absent. Installed optional wheel: **16 passed
+  in 11.59 s**, including actual pretrained extraction/offline reuse. Hooks pass.
+  Rendered fresh-install panels show eight choices at 10 Hz, keep selection
+  explicit, and enable Download model when a choice is made. Dedicated wheel CI
+  now covers empty-cache 10/30 Hz choices and unsupported-rate guidance.
+
 ## Checkout recovery — stale macOS SDK in Python 3.13.0 (2026-10-10)
 
 - The reported `uv sync` failure compiled OASIS but failed to link it: the

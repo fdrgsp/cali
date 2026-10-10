@@ -735,5 +735,43 @@
       "outcome_pending": true,
       "scope": "Installed base/optional missing-model recovery, pretrained GUI acceptance and full macOS/Windows Python 3.11/3.12/3.13 suites"
     }
+  },
+  "fresh_install_catalogue_validation": {
+    "scope": "Offline first-install GUI model choices with no model cache; explicit model choice enables Download model; no automatic weight download",
+    "catalogue_revision": "c6978d5ff33edad8792c76e040412f0636913092",
+    "catalogue_sha256": "8a1545a44d5b8feec4513e119992eaa81a0b371a37dba9d56afa1addb8dc74b9",
+    "catalogue_bytes": 19641,
+    "catalogue_entries": 156,
+    "resource": "cali/resources/cascade_catalogue.yaml",
+    "upstream_bytes_preserved_through_hooks_and_git": true,
+    "model_weights_bundled": false,
+    "network_used_to_list_models": false,
+    "cache_created_to_list_models": false,
+    "existing_cache_checksum_enforced": true,
+    "headless_default_catalogue_behavior_changed": false,
+    "tests": {
+      "source": {
+        "passed": 105,
+        "duration_s": 6.38
+      },
+      "base": {
+        "passed": 20,
+        "duration_s": 5.09
+      },
+      "optional": {
+        "passed": 16,
+        "duration_s": 11.59
+      }
+    },
+    "installed_base_torch_and_cascade_absent": true,
+    "installed_optional_includes_pretrained_gui_run": true,
+    "wheel": "cali-0.1.dev1443+gcb866b73c.d20261010-py3-none-any.whl",
+    "wheel_sha256": "a70c4354c1e2745fa65fd82ada845248023dd0ce8d5e401d0c7ac3eca8279f4e",
+    "source_wheel_and_both_installed_modules_equal": true,
+    "visual_snapshots": {
+      "empty": "/tmp/cali-fresh-catalogue-gui.png",
+      "selected": "/tmp/cali-fresh-catalogue-gui-selected.png",
+      "reviewed": true
+    }
   }
 }

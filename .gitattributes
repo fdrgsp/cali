@@ -1,0 +1,2 @@
+# Preserve the pinned catalogue bytes, including upstream CRLF line endings.
+src/cali/resources/cascade_catalogue.yaml -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

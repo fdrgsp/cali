@@ -181,6 +181,40 @@ def test_model_catalogue_is_offline_rate_filtered_and_keeps_missing_selection(
         widget.to_model_settings()
 
 
+@pytest.mark.parametrize("rate", [10, 30, 12])
+def test_fresh_install_offers_models_and_explains_download_state(
+    qtbot: QtBot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rate: int,
+) -> None:
+    root = tmp_path / "no-model-cache"
+    monkeypatch.setenv("CALI_CASCADE_MODELS", str(root))
+    fetch = Mock(side_effect=AssertionError("Model listing must stay offline"))
+    monkeypatch.setattr("cali._cascade_models._fetch_url", fetch)
+    widget = _ExtractionGUI(cascade_enabled=True)
+    qtbot.addWidget(widget)
+    widget._spike_outputs.set_frame_rate(rate)
+    outputs = widget._spike_outputs
+    assert outputs._model.currentText() == ""
+    assert not outputs._download.isEnabled()
+    assert "Choose a pretrained model first" in outputs._download.toolTip()
+    if rate == 12:
+        assert outputs._model.count() == 1
+        assert "No pretrained model matches 12 Hz" in outputs._info.text()
+        assert "Prepare traces" in outputs._info.text()
+    else:
+        assert outputs._model.count() > 1
+        assert "does not install model weights" in outputs._info.text()
+        for index in range(1, outputs._model.count()):
+            assert f"_{rate}Hz_" in outputs._model.itemText(index)
+        outputs._model.setCurrentIndex(1)
+        assert outputs._download.isEnabled()
+        assert outputs.value()[1] == outputs._model.currentText()
+    assert not root.exists()
+    fetch.assert_not_called()
+
+
 @pytest.mark.parametrize("platform", ["darwin", "win32"])
 def test_install_instructions_target_current_environment_and_pin(
     qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str

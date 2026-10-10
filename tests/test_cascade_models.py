@@ -140,6 +140,25 @@ def test_atomic_download_manifest_and_offline_reuse(
         models.load_cascade_model(NAME, tmp_path, expected_manifest="0" * 64)
 
 
+def test_bundled_catalogue_is_offline_and_rejects_a_damaged_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "fresh-cache"
+    monkeypatch.setattr(
+        models,
+        "_fetch_url",
+        lambda *a, **k: pytest.fail("Bundled model listing must stay offline"),
+    )
+    entries = models.get_cascade_catalogue(root, allow_bundled=True)
+    assert NAME in {entry.name for entry in entries}
+    assert models.compatible_cascade_models(entries, 30)
+    assert not root.exists()
+    root.mkdir()
+    (root / f"catalogue-{models.CATALOGUE_REVISION}.yaml").write_text("damaged")
+    with pytest.raises(models.CascadeModelError, match=r"Cached.*checksum"):
+        models.get_cascade_catalogue(root, allow_bundled=True)
+
+
 @pytest.mark.parametrize("stage", ["start", "transfer", "verified"])
 def test_cancelled_download_never_publishes_an_incomplete_model(
     stage: str,

@@ -63,7 +63,7 @@ jobs:
         env:
           CALI_CASCADE_BASE_TESTS: '1'
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin tests/test_cascade_gui_acceptance.py::test_run_button_routes_missing_model_to_selector
+        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin tests/test_cascade_gui_acceptance.py::test_run_button_routes_missing_model_to_selector tests/test_cascade_gui.py::test_fresh_install_offers_models_and_explains_download_state tests/test_cascade_models.py::test_bundled_catalogue_is_offline_and_rejects_a_damaged_cache
       - name: Install optional CASCADE dependency into the isolated wheel environment
         run: |
           uv pip install --python .cascade-smoke/bin/python torch --index https://download.pytorch.org/whl/cpu
@@ -94,7 +94,7 @@ jobs:
           CALI_CASCADE_REFERENCE_TESTS: '1'
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_gui_acceptance.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_gui_acceptance.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin tests/test_cascade_gui.py::test_fresh_install_offers_models_and_explains_download_state tests/test_cascade_models.py::test_bundled_catalogue_is_offline_and_rejects_a_damaged_cache
       - name: Verify installed-wheel trace codec, migration, ROI/FOV, noise QC, export, and plot semantics
         env:
           QT_QPA_PLATFORM: offscreen

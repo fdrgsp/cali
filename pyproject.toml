@@ -210,7 +210,8 @@ ignore = [
 ]
 
 [tool.typos.files]
-extend-exclude = ["*.ipynb"]
+# The pinned upstream catalogue must retain exact model names and checksum bytes.
+extend-exclude = ["*.ipynb", "src/cali/resources/cascade_catalogue.yaml"]
 
 [tool.typos.default] 
 extend-ignore-identifiers-re = ["(?i)nd2?.*", "(?i)ome", "(?i)fovs?", "sems", "selectin", "pn", "id", "ser_json_inf_nan"]
