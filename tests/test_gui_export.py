@@ -201,15 +201,13 @@ def test_analysis_gui_reset(qtbot: QtBot) -> None:
 
     # Change some values
     widget._threads.setValue(10)
+    widget._n_processes.setValue(7)
 
     # Reset
     widget.reset()
 
-    # Check that thread count was reset to default (cpu_count - 2, min 1)
-    import os
-
-    expected_threads = max((os.cpu_count() or 1) - 2, 1)
-    assert widget._threads.value() == expected_threads
+    assert widget._threads.value() == 1
+    assert widget._n_processes.value() == 1
 
 
 def test_analysis_gui_rising_edge_options_false_by_default(qtbot: QtBot) -> None:

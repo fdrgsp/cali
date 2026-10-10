@@ -6,6 +6,40 @@
 
 ---
 
+## P8 continuation — GUI worker profile and distribution review evidence (2026-10-10)
+
+- New/reset extraction and analysis GUI configurations now start with one position
+  worker and one CCG process, matching the measured memory scope. Settings files
+  retain explicitly saved counts; old files missing these fields use one.
+  Headless model defaults are unchanged. **Positions at once** identifies the FOV
+  concurrency control. Its guidance explains retained image/trace memory, the
+  separate CCG pair-comparison processes, and which count applies to saved-trace
+  analysis versus positions needing extraction.
+- `cascade_gui_release_profile.json` records the tested wheel/source identities,
+  GUI defaults and a **proposed 6 GiB parent-RSS acceptance target** for the measured
+  single-worker 100 ROI × 6,000 frame, 512 × 512 uint16 reference workload. This gives
+  approximately 37% headroom above the CPU parent peak. It is a benchmark target,
+  not a runtime memory setting, a physical-RAM requirement or a certification of
+  larger inputs/concurrency. The budget is **not yet accepted**; the original
+  measurement artifact remains unchanged.
+- The direct inference dependency inventory verifies the exact installed
+  CascadeTorch GPL-v3 license against its immutable source pin, and the installed
+  OASIS GPL-v3 license against its checksum-verified 0.2.0 PyPI source distribution.
+  The tested cali wheel contains neither dependency's package tree nor model
+  checkpoints. These file/metadata facts do not complete the project's distribution
+  review. Its combined installation/packaging and separately downloaded model
+  terms remain for that review; existing OASIS use is not CASCADE sign-off.
+- The processing controls were rendered and reviewed. That review also exposed a
+  remaining extraction-export issue: the CASCADE-enabled panel offers only the
+  OASIS raw spike checkbox. A method-bound CASCADE export control is the next GUI
+  correction before normal extraction exposure.
+
+Validation: the affected source GUI matrix passed **66 tests, 1 optional case
+skipped in 8.81 s**. A newly built, isolated installed wheel passed all **7 real
+pretrained GUI/lifecycle/offline-reuse tests in 9.68 s** and **2 saved-worker-count
+compatibility cases in 2.65 s**. The tested GUI source bytes match the working tree.
+Repository hooks, including mypy, pass. Normal GUI CASCADE extraction remains gated.
+
 ## P8 continuation — dedicated remote CI acceptance (2026-10-10)
 
 - With the user's authorization, the completed `cascade` commits were pushed and

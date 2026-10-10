@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
@@ -91,8 +90,8 @@ class AnalysisSettingsData:
     spike_settings: tuple[SpikeData, ...] | None = None
     experiment_type_data: ExperimentTypeData | None = None
     frame_rate: float = DEFAULT_FRAME_RATE
-    threads: int = max((os.cpu_count() or 1) - 2, 1)
-    n_processes: int = max((os.cpu_count() or 1) - 2, 1)
+    threads: int = 1
+    n_processes: int = 1
     export_options: dict[str, tuple[bool, int, int]] | None = None
     export_enabled: bool = False
 
@@ -179,26 +178,21 @@ class _AnalysisGUI(QWidget):
         super().__init__(parent)
 
         # THREADS WIDGET -------------------------------------------------------------
-        cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
         threads_wdg = QWidget()
         threads_wdg.setToolTip(
-            "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
-            "By default, the value is set to the number of CPUs - 2 "
-            f"(in your system: {cpu_to_use}).\n\n"
-            "Using the number of CPUs as reference because:\n"
-            "• This analysis is CPU-intensive (math calculations, image processing)\n"
-            "• More threads beyond CPU count creates context switching overhead\n"
-            "• Each thread processes memory-intensive data\n"
-            "• Optimal performance occurs when threads match available CPU cores.\n"
-            "By default using CPU count - 2 to reserve some of the CPUs for the "
-            "operating system and GUI responsiveness.\n"
-            "If your system becomes unresponsive, consider reducing this number."
+            "Number of positions whose saved ROI traces are analysed at the same "
+            "time. This applies to analysis-only work; positions needing new traces "
+            "use the extraction worker count instead. More positions retain more "
+            "trace and analysis data in memory. "
+            "New and reset configurations start with one.\n\n"
+            "Population analysis follows this stage one position at a time. "
+            "CCG worker processes control its parallel ROI-pair comparisons."
         )
-        threads_lbl = QLabel("Number of Threads:", threads_wdg)
+        threads_lbl = QLabel("Positions at once:", threads_wdg)
         threads_lbl.setSizePolicy(*FIXED)
         self._threads = QSpinBox(threads_wdg)
         self._threads.setRange(1, 100)
-        self._threads.setValue(cpu_to_use)
+        self._threads.setValue(1)
         threads_layout = QHBoxLayout(threads_wdg)
         threads_layout.setContentsMargins(0, 0, 0, 0)
         threads_layout.setSpacing(5)
@@ -208,21 +202,16 @@ class _AnalysisGUI(QWidget):
         # N_PROCESSES WIDGET ---------------------------------------------------------
         self._n_processes_wdg = QWidget()
         self._n_processes_wdg.setToolTip(
-            "Number of worker processes for parallel CCG computation.\n\n"
-            "By default, the value is set to the number of CPUs - 2 "
-            f"(in your system: {cpu_to_use}).\n\n"
-            "CCG (Cross-Correlogram) computation is the slowest part of FOV analysis.\n"
-            "It uses multiprocessing to parallelize across ROI pairs.\n\n"
-            f"• Your system: {cpu_to_use} processes (auto)\n"
-            "• Higher values: Faster but more memory usage\n"
-            "• Lower values: Slower but less resource intensive\n\n"
-            "Note: This is separate from 'threads' which controls ROI extraction."
+            "Number of processes comparing spike timing between ROI pairs within "
+            "one position's cross-correlogram (CCG) analysis. Start with one; "
+            "additional processes can speed up comparisons but use more memory.\n\n"
+            "This does not change how many positions are analysed at once."
         )
         n_processes_lbl = QLabel("CCG Worker Processes:", self._n_processes_wdg)
         n_processes_lbl.setSizePolicy(*FIXED)
         self._n_processes = QSpinBox(self._n_processes_wdg)
         self._n_processes.setRange(1, 100)
-        self._n_processes.setValue(cpu_to_use)
+        self._n_processes.setValue(1)
         n_processes_layout = QHBoxLayout(self._n_processes_wdg)
         n_processes_layout.setContentsMargins(0, 0, 0, 10)
         n_processes_layout.setSpacing(5)
@@ -341,8 +330,9 @@ class _AnalysisGUI(QWidget):
             "here; exporting does not change the analysis.",
             settings_section(
                 "Processing",
-                "Threads process ROIs. CCG worker processes compare "
-                "spike timing between ROI pairs; more workers use more memory.",
+                "Start with one position and one CCG process. Position workers "
+                "compute ROI measurements; CCG processes compare spike timing "
+                "between ROI pairs within one position. More workers use more memory.",
                 threads_wdg,
                 self._n_processes_wdg,
             ),
@@ -438,8 +428,8 @@ class _AnalysisGUI(QWidget):
         self._spike_wdg.reset()
         self._cascade_spike_wdg.reset()
         self._metadata_wdg.reset()
-        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
-        self._n_processes.setValue(max((os.cpu_count() or 1) - 2, 1))
+        self._threads.setValue(1)
+        self._n_processes.setValue(1)
 
     def get_export_options(self) -> dict[CorrelationDataType, bool] | None:
         """Return export options selected as dict[CorrelationDataType, bool]."""

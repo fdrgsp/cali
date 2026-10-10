@@ -1,0 +1,122 @@
+{
+  "recorded_date": "2026-10-10",
+  "scope": "GUI default concurrency and proposed development-branch activation; distribution sign-off not completed",
+  "gui_defaults": {
+    "extraction_positions_at_once": 1,
+    "analysis_only_positions_at_once": 1,
+    "ccg_processes": 1,
+    "explicit_saved_counts_preserved": true,
+    "missing_legacy_counts": 1,
+    "headless_model_defaults_changed": false
+  },
+  "memory_acceptance_proposal": {
+    "host_parent_rss_budget_mib": 6144,
+    "budget_accepted": false,
+    "runtime_memory_limit": false,
+    "evidence_file": "_dev/cascade_full_frame_memory_validation.json",
+    "evidence_sha256": "54e712144fe2abe4ef90609fe1cb520c43a8351eda7eff858f86521639996988",
+    "source_image_shape": [
+      6000,
+      512,
+      512
+    ],
+    "source_image_dtype": "uint16",
+    "rois": 100,
+    "extraction_workers": 1,
+    "analysis_only_workers": 1,
+    "analysis_processes": 1,
+    "backend": "reference",
+    "devices": [
+      "cpu",
+      "mps"
+    ],
+    "cpu_measured_parent_peak_mib": 4498.484375,
+    "mps_measured_parent_peak_mib": 3693.765625,
+    "cpu_margin_to_proposed_budget_mib": 1645.515625,
+    "mps_margin_to_proposed_budget_mib": 2450.234375,
+    "rationale": "6 GiB gives approximately 37% headroom over the measured CPU parent peak; acceptance applies only to the measured controlled workload and worker counts.",
+    "not_certified": [
+      "larger images or ROI populations",
+      "multiple concurrent extraction positions",
+      "additional CCG processes",
+      "detection",
+      "GUI rendering",
+      "MPS allocator peaks",
+      "unique physical process-tree memory",
+      "biological inference accuracy"
+    ]
+  },
+  "gui_activation_proposal": {
+    "entry_point": "cali / python -m cali",
+    "constructor": "CaliGui(cascade_gui_enabled=True)",
+    "currently_applied": false,
+    "scope": "development branch; project distribution licensing review remains pending",
+    "model_selection_explicit": true,
+    "no_automatic_dependency_install_or_model_download": true
+  },
+  "license_inventory": {
+    "scope": "Direct inference packages and selected model identity; factual file/metadata inventory, not project distribution approval or a transitive dependency audit",
+    "cali": {
+      "declared_license": "BSD-3-Clause",
+      "file": "LICENSE",
+      "sha256": "89ee6d91724becdbe56757ea24e17eee75f062c8737f1b150454f2c0052b726d"
+    },
+    "CascadeTorch": {
+      "version": "2.0",
+      "required": false,
+      "git_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+      "file_license": "GNU GPL version 3",
+      "source": "https://github.com/fdrgsp/CascadeTorch/blob/95ea3cac2d5719583f4a9eb03d68c78bcbc20d08/LICENSE",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "installed_license_matches_pinned_source": true,
+      "distribution_metadata_license_field": null
+    },
+    "oasis-deconv": {
+      "version": "0.2.0",
+      "required": true,
+      "declared_license": "GPL-3",
+      "source": "https://pypi.org/project/oasis-deconv/0.2.0/",
+      "sdist_sha256": "bf5e061498927a52dd58e9a1c6416ff175a42591b8ef16cd2d0f76dbf832b825",
+      "license_sha256": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2",
+      "installed_license_matches_pypi_sdist": true
+    },
+    "selected_pretrained_model": {
+      "name": "Global_EXC_30Hz_smoothing25ms",
+      "catalogue_revision": "c6978d5ff33edad8792c76e040412f0636913092",
+      "manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+      "download_url_from_pinned_catalogue": "https://drive.switch.ch/index.php/s/WVWtEQXAaiDaEKP/download",
+      "downloaded_separately": true,
+      "model_specific_terms_reviewed": false
+    },
+    "project_distribution_review_complete": false,
+    "review_scope": "Project owner review of the intended combined installation/distribution, notices and source availability, optional dependency packaging, and separately downloaded model terms. Existing OASIS use does not constitute a new CASCADE distribution sign-off."
+  },
+  "installed_wheel_validation": {
+    "wheel": "cali-0.1.dev1430+g9ab2dedcc.d20261010-py3-none-any.whl",
+    "sha256": "fa5e9e6a032b394a8decbfce3098fdd4bf335c75cc543cb2f0dd550fcf4a478d",
+    "gui_source_sha256": {
+      "src/cali/gui/_analysis_gui.py": "2ef1e6dba0caa86cd50309bfbad945fa4e070c159d8ea2f8e5dc228d3e3b1067",
+      "src/cali/gui/_extraction_gui.py": "17ec1991777ddc589437163f63c9627b0bbb915b4752360d6e681df97cef4b52",
+      "src/cali/gui/_cali_gui.py": "1d9f6020ffd629f17de6e71c0925d725916dc0861fea0c3b655851d25e2b4723"
+    },
+    "all_gui_source_files_match_working_tree": true,
+    "contains_cascade2p_or_oasis_package_tree": false,
+    "contains_model_checkpoints": false,
+    "package_manifest_entries": 133,
+    "pretrained_gui_acceptance": {
+      "passed": 7,
+      "duration_s": 9.68
+    },
+    "saved_worker_count_compatibility": {
+      "passed": 2,
+      "duration_s": 2.65
+    },
+    "log_sha256": "11b10a16beb3bf48477f43ded194623c461f7abde653c5a73d4daf978436880f"
+  },
+  "source_validation": {
+    "passed": 66,
+    "skipped": 1,
+    "duration_s": 8.81,
+    "log_sha256": "fbeb7548c80d3de148cc422c094aac7e58959ffbc097ac5d5105ebf0371424f6"
+  }
+}

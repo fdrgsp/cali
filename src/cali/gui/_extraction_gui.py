@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
@@ -72,7 +71,7 @@ class ExtractionSettingsData:
 
     trace_extraction_data: TraceExtractionData | None = None
     metadata_data: MetadataData | None = None
-    threads: int = max((os.cpu_count() or 1) - 2, 1)
+    threads: int = 1
     export_options: dict[str, tuple[bool, int, int]] | None = None
     export_enabled: bool = True
 
@@ -153,26 +152,22 @@ class _ExtractionGUI(QWidget):
         )
 
         # THREADS WIDGET -------------------------------------------------------------
-        cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
         threads_wdg = QWidget(self)
         threads_wdg.setToolTip(
-            "Specify number of threads to use in the Thread Pool for the analysis.\n\n"
-            "By default, the value is set to the number of CPUs - 2 "
-            f"(in your system: {cpu_to_use}).\n\n"
-            "Using the number of CPUs as reference because:\n"
-            "• This analysis is CPU-intensive (math calculations, image processing)\n"
-            "• More threads beyond CPU count creates context switching overhead\n"
-            "• Each thread processes memory-intensive data\n"
-            "• Optimal performance occurs when threads match available CPU cores.\n"
-            "By default using CPU count - 2 to reserve some of the CPUs for the "
-            "operating system and GUI responsiveness.\n"
-            "If your system becomes unresponsive, consider reducing this number."
+            "Number of positions extracted at the same time. Each worker retains "
+            "a position's image stack, masks and traces. Start with one for large "
+            "recordings; increase only when enough memory is available.\n\n"
+            "For example, 6,000 frames of 512 by 512 pixels stored as 16-bit "
+            "images need about "
+            "2.93 GiB per image stack before extraction and analysis data. "
+            "CASCADE inference processes one position at a time; other positions "
+            "can wait while still retaining their images."
         )
-        self._threads_lbl = QLabel("Number of Threads:", threads_wdg)
+        self._threads_lbl = QLabel("Positions at once:", threads_wdg)
         self._threads_lbl.setSizePolicy(*FIXED)
         self._threads = QSpinBox(threads_wdg)
         self._threads.setRange(1, 100)
-        self._threads.setValue(cpu_to_use)
+        self._threads.setValue(1)
         threads_layout = QHBoxLayout(threads_wdg)
         threads_layout.setContentsMargins(0, 0, 0, 10)
         threads_layout.setSpacing(5)
@@ -264,9 +259,8 @@ class _ExtractionGUI(QWidget):
             "optional and does not change which outputs are computed.",
             settings_section(
                 "Processing",
-                "More extraction threads process more positions at "
-                "once and use more memory. Reduce this value if the computer "
-                "slows down.",
+                "Start with one position at a time. Each additional position "
+                "retains another image stack and uses more memory.",
                 threads_wdg,
             ),
             self._export_group,
@@ -339,7 +333,7 @@ class _ExtractionGUI(QWidget):
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
         self._spike_outputs.reset()
-        self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+        self._threads.setValue(1)
 
     def set_source_metadata(
         self,

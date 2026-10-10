@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from threading import Event
@@ -610,7 +609,7 @@ class CaliGui(QMainWindow):
                     detection.pop("method", None)
                     self._detection_wdg.setValue(CellposeSettingsData(**detection))
 
-            _default_threads = max((os.cpu_count() or 1) - 2, 1)
+            _default_threads = 1
 
             # extraction
             extraction = settings.get("extraction", {})

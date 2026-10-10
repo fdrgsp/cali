@@ -163,7 +163,8 @@ Headless extraction now supports OASIS, CASCADE, or both, while OASIS always pro
 the denoised calcium trace and its noise diagnostic. The default CASCADE path uses
 the verified upstream reference adapter. The cached service is available through
 `ExtractionRunner(experimental_cascade_cache=True)` or the same option on `CaliRunner`;
-its complete-workload memory/performance release gates remain pending. Headless
+it remains experimental until an independent real-plate benchmark supports
+promotion to the default. Headless
 CASCADE ROI/FOV spike analysis and offline re-analysis are enabled. The GUI can
 load CASCADE-only and dual-output run settings and display stored results. For dual
 runs, the **Spike Backend** selector switches the shared plots between CASCADE and
@@ -419,10 +420,12 @@ Choose exactly one method to define ROIs for trace extraction:
   always runs, including when
   only CASCADE spike output is retained. Released GUI CASCADE extraction remains
   gated as described in the [migration notes](#optional-cascade-dependency-migration-branch).
-- **Processing and export**: extraction threads and optional CSV exports of traces,
-  inferred spikes and related products. Each extraction thread holds a position's
-  image stack, so more concurrent positions use more memory. Start with one thread
-  for large recordings.
+- **Processing and export**: **Positions at once** controls concurrent extraction,
+  alongside optional CSV exports of traces, inferred spikes and related products.
+  Each worker holds a position's image stack. New and reset GUI configurations
+  start with one position; explicitly saved counts are restored. For scale,
+  6,000 frames of 512 × 512 uint16 pixels need 2.93 GiB per image stack, before
+  masks, traces and inference. Increase concurrency only when memory permits.
 
 <img width="800" alt="Screenshot 2026-03-09 at 10 11 33 PM" src="https://github.com/user-attachments/assets/d6a6bcd0-137d-441c-a3f5-0e7b9c292e82" />
 
@@ -443,8 +446,14 @@ must remain checked. Parameters include:
   analysis for all these outputs; changing the retained outputs requires extraction.
 - **Cluster Analysis**: groups ROIs into functional clusters based on their pairwise denoised ΔF/F correlation patterns using Hierarchical clustering (average/UPGMA linkage), with automatic or fixed number of clusters.
 - **Metadata**: additional experiment metadata (e.g. frame rate). The frame rate here is linked to the one in the Extraction tab; changing one will update the other.
-- **Number of Threads**: number of threads for running the analysis across wells/FOVs. Keep this low if you experience memory issues.
-- **CCG Worker Processes**: number of worker processes for parallel CCG (Cross-Correlogram) computation. CCG computation is the most time-consuming part of FOV analysis and uses multiprocessing to parallelize across ROI pairs. Default is CPU count - 2. Higher values speed up computation but use more memory.
+- **Positions at once**: concurrent ROI analysis across positions using saved
+  traces. Positions needing new traces use the extraction worker count instead.
+  Population analysis follows one position at a time. New/reset GUI configurations
+  start with one position; saved counts are preserved.
+- **CCG Worker Processes**: processes comparing spike timing between ROI pairs
+  within one position's cross-correlogram. New/reset GUI configurations start with
+  one process. More processes can speed up comparisons but use more memory;
+  this does not change the number of positions processed at once.
 - **CSV Export**:
   - Pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
   - Multi-well aggregated data: exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.

@@ -297,8 +297,12 @@ def test_gui_rejects_unknown_legacy_threshold_mode(qtbot: QtBot) -> None:
         )
 
 
+@pytest.mark.parametrize("worker_counts", [None, (3, 4, 2)])
 def test_cali_gui_settings_file_restores_children_and_outputs(
-    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    worker_counts: tuple[int, int, int] | None,
 ) -> None:
     gui = CaliGui(cascade_gui_enabled=True)
     qtbot.addWidget(gui)
@@ -317,6 +321,10 @@ def test_cali_gui_settings_file_restores_children_and_outputs(
         )
     )
     gui._analysis_wdg.setValue(AnalysisSettingsData(spike_settings=(child,)))
+    if worker_counts is not None:
+        gui._extraction_wdg._threads.setValue(worker_counts[0])
+        gui._analysis_wdg._threads.setValue(worker_counts[1])
+        gui._analysis_wdg._n_processes.setValue(worker_counts[2])
     path = tmp_path / "settings.json"
     monkeypatch.setattr(
         "cali.gui._cali_gui.QFileDialog.getSaveFileName", lambda *a: (str(path), "")
@@ -327,8 +335,24 @@ def test_cali_gui_settings_file_restores_children_and_outputs(
         "cascade"
     ]
     assert "spike_method" not in written["extraction"]["trace_extraction_data"]
+    expected_workers = worker_counts or (1, 1, 1)
+    assert (
+        written["extraction"]["threads"],
+        written["analysis"]["threads"],
+        written["analysis"]["n_processes"],
+    ) == expected_workers
+    if worker_counts is None:
+        # Old files can omit worker counts; loading them must replace prior edits.
+        written["extraction"].pop("threads")
+        written["analysis"].pop("threads")
+        written["analysis"].pop("n_processes")
+        path.write_text(json.dumps(written))
     gui._extraction_wdg.reset()
     gui._analysis_wdg.reset()
+    if worker_counts is None:
+        gui._extraction_wdg._threads.setValue(3)
+        gui._analysis_wdg._threads.setValue(4)
+        gui._analysis_wdg._n_processes.setValue(2)
     errors = Mock()
     monkeypatch.setattr("cali.gui._cali_gui.show_error_dialog", errors)
     monkeypatch.setattr(
@@ -338,6 +362,11 @@ def test_cali_gui_settings_file_restores_children_and_outputs(
     errors.assert_not_called()
     assert gui._extraction_wdg.value().trace_extraction_data.cascade_device == "mps"
     assert gui._analysis_wdg.value().spike_settings == (child,)
+    assert (
+        gui._extraction_wdg.to_model_settings().threads,
+        gui._analysis_wdg.to_model_settings().threads,
+        gui._analysis_wdg.to_model_settings().n_processes,
+    ) == expected_workers
 
 
 def test_stored_run_loading_and_analysis_only_output_ownership(
