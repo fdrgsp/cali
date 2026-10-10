@@ -1,18 +1,23 @@
 """Exports preserve method meaning, population membership and valid coordinates."""
 
+from __future__ import annotations
+
 import json
-from collections.abc import Iterator
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import pytest
-from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from cali._constants import INFERRED_SPIKES_SYNCHRONY
+from cali._constants import (
+    CASCADE_EXPECTED_SPIKES_TRACES,
+    INFERRED_SPIKES_SYNCHRONY,
+    INFERRED_SPIKES_TRACES,
+)
 from cali.analysis._fov_analysis import compute_fov_analysis
 from cali.analysis._roi_analysis import analyze_spike_trace
+from cali.gui._extraction_gui import _ExtractionGUI
 from cali.sqlmodel import (
     CaliResult,
     Experiment,
@@ -27,9 +32,39 @@ from cali.util import (
     export_inferred_spikes_thresholded_to_csv,
     export_spike_results_to_csv,
 )
-from cali.util._database_to_csv import export_correlations_to_csv
+from cali.util._database_to_csv import export_correlations_to_csv, export_traces_to_csv
 
 from .test_cascade_fov_analysis import _fov, _settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+    from pytestqt.qtbot import QtBot
+    from sqlalchemy.engine import Engine
+
+
+def test_gui_raw_export_selection_writes_only_retained_methods(
+    qtbot: QtBot, spike_database: tuple
+) -> None:
+    engine, path, run_id, methods = spike_database
+    widget = _ExtractionGUI(cascade_enabled=True)
+    qtbot.addWidget(widget)
+    widget._spike_outputs.setValue(
+        methods, "explicit-model" if "cascade" in methods else None, "cpu"
+    )
+    keys = {"oasis": INFERRED_SPIKES_TRACES, "cascade": CASCADE_EXPECTED_SPIKES_TRACES}
+    for key, (checkbox, _, _) in widget._export_group._checkboxes.items():
+        checkbox.setChecked(key in keys.values())
+    options = widget.get_export_options()
+    assert options == {keys[method]: True for method in methods}
+    export_traces_to_csv(engine, options, run_id, path)
+    target = path.parent / f"{path.stem}_exports" / f"run_{run_id}"
+    assert bool(list(target.rglob("cascade_expected_spikes.csv"))) == (
+        "cascade" in methods
+    )
+    oasis_files = list(target.rglob("*inferred_spikes_raw.csv"))
+    assert bool(oasis_files) == ("oasis" in methods)
 
 
 @pytest.fixture(params=[("oasis",), ("cascade",), ("oasis", "cascade")])

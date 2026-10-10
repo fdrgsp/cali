@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from cali._constants import (
     CALCIUM_DEN_DFF_CORRELATION,
     CALCIUM_DFF_CORRELATION,
+    CASCADE_EXPECTED_SPIKES_TRACES,
     DFF_TRACES,
     INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES,
     INFERRED_SPIKES_CROSS_CORRELATION,
@@ -16,13 +17,18 @@ from cali._constants import (
     INFERRED_SPIKES_SYNCHRONY,
     INFERRED_SPIKES_SYNCHRONY_RISING_EDGES,
     INFERRED_SPIKES_THRESHOLDED_BINARY,
+    INFERRED_SPIKES_TRACES,
     MULTI_WELL_AGGREGATED_DATA,
     NEUROPIL_CORRECTED_TRACES,
     NEUROPIL_TRACES,
     RAW_CALCIUM_TRACES,
 )
 from cali.gui._analysis_gui import _AnalysisGUI
-from cali.gui._extraction_gui import _ExtractionGUI
+from cali.gui._extraction_gui import (
+    ExtractionSettingsData,
+    TraceExtractionData,
+    _ExtractionGUI,
+)
 
 if TYPE_CHECKING:
     from pytestqt.qtbot import QtBot
@@ -71,6 +77,44 @@ def test_extraction_gui_export_disabled(qtbot: QtBot) -> None:
 
     # Should return None when group is disabled
     assert widget.get_export_options() is None
+
+
+def test_loaded_export_choices_do_not_enable_a_new_method_export(qtbot: QtBot) -> None:
+    widget = _ExtractionGUI(cascade_enabled=True)
+    qtbot.addWidget(widget)
+    widget.setValue(
+        ExtractionSettingsData(
+            trace_extraction_data=TraceExtractionData(
+                spike_methods=("cascade",), cascade_model="explicit-model"
+            ),
+            export_options={INFERRED_SPIKES_TRACES: (True, 5, 0)},
+        )
+    )
+    assert widget.get_export_options() == {}
+    checkbox = widget._export_group._checkboxes[CASCADE_EXPECTED_SPIKES_TRACES][0]
+    assert not checkbox.isChecked() and not checkbox.isHidden()
+    checkbox.setChecked(True)
+    assert widget.get_export_options() == {CASCADE_EXPECTED_SPIKES_TRACES: True}
+    widget._spike_outputs.setValue(("oasis", "cascade"), "explicit-model", "cpu")
+    assert widget.get_export_options() == {
+        CASCADE_EXPECTED_SPIKES_TRACES: True,
+        INFERRED_SPIKES_TRACES: True,
+    }
+
+
+def test_analysis_oasis_binary_export_tracks_retained_methods(qtbot: QtBot) -> None:
+    widget = _AnalysisGUI()
+    qtbot.addWidget(widget)
+    checkbox = widget._export_group._checkboxes[INFERRED_SPIKES_THRESHOLDED_BINARY][0]
+    checkbox.setChecked(True)
+    widget.set_spike_methods(("cascade",))
+    assert checkbox.isHidden()
+    options = widget.get_export_options()
+    assert options is not None and INFERRED_SPIKES_THRESHOLDED_BINARY not in options
+    widget.set_spike_methods(("oasis", "cascade"))
+    assert not checkbox.isHidden() and checkbox.isChecked()
+    options = widget.get_export_options()
+    assert options is not None and INFERRED_SPIKES_THRESHOLDED_BINARY in options
 
 
 def test_analysis_gui_get_export_options_filters_unchecked(qtbot: QtBot) -> None:

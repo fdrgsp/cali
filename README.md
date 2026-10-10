@@ -426,6 +426,9 @@ Choose exactly one method to define ROIs for trace extraction:
   start with one position; explicitly saved counts are restored. For scale,
   6,000 frames of 512 × 512 uint16 pixels need 2.93 GiB per image stack, before
   masks, traces and inference. Increase concurrency only when memory permits.
+  Raw spike CSV options are labelled **OASIS** or **CASCADE** and appear only for
+  retained outputs. Each choice is independent; loading an older settings file
+  does not turn on a newly added export option.
 
 <img width="800" alt="Screenshot 2026-03-09 at 10 11 33 PM" src="https://github.com/user-attachments/assets/d6a6bcd0-137d-441c-a3f5-0e7b9c292e82" />
 
@@ -454,6 +457,9 @@ must remain checked. Parameters include:
   within one position's cross-correlogram. New/reset GUI configurations start with
   one process. More processes can speed up comparisons but use more memory;
   this does not change the number of positions processed at once.
+- The legacy **OASIS Thresholded Inferred Spikes (Binary)** export appears only
+  when OASIS output is retained. Shared spike products remain method-qualified in
+  the exported result bundle.
 - **CSV Export**:
   - Pairwise correlation matrices (calcium ΔF/F, denoised ΔF/F, spike synchrony, spike cross-correlation, and cross-correlation lags).
   - Multi-well aggregated data: exports all multi-well bar plot data to CSV files in a `multi_well/` subdirectory. Each CSV contains condition means, SEMs, and individual FOV values for every available metric.

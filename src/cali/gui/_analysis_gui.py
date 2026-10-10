@@ -300,6 +300,7 @@ class _AnalysisGUI(QWidget):
             INFERRED_SPIKES_CCG_ZSCORE_RISING_EDGES, 17, 0, checked=False
         )
         self._export_group.add_stretch("horizontal")
+        self._update_spike_export_options()
 
         self._settings_tabs = _SettingsTabs(self)
         self._settings_tabs.add_page(
@@ -412,6 +413,7 @@ class _AnalysisGUI(QWidget):
         self._n_processes.setValue(value.n_processes)
         if value.export_options is not None:
             self._export_group.setValue(value.export_options)
+        self._update_spike_export_options()
         if value.export_enabled is not None:
             self._export_group.setChecked(value.export_enabled)
 
@@ -435,9 +437,10 @@ class _AnalysisGUI(QWidget):
         """Return export options selected as dict[CorrelationDataType, bool]."""
         if not self._export_group.isChecked():
             return None
-        return cast(
-            "dict[CorrelationDataType, bool]", self._export_group.get_export_options()
-        )
+        selected = self._export_group.get_export_options()
+        if "oasis" not in self._spike_methods:
+            selected.pop(INFERRED_SPIKES_THRESHOLDED_BINARY, None)
+        return cast("dict[CorrelationDataType, bool]", selected)
 
     # PRIVATE METHODS -----------------------------------------------------------------
 
@@ -469,6 +472,17 @@ class _AnalysisGUI(QWidget):
         for method in ("cascade", "oasis"):
             if method in self._spike_methods:
                 self._spike_tabs.addTab(self._method_pages[method], method.upper())
+        if hasattr(self, "_export_group"):
+            self._update_spike_export_options()
+
+    def _update_spike_export_options(self) -> None:
+        """Show the legacy OASIS binary export only for retained OASIS output."""
+        self._export_group.add_option(
+            INFERRED_SPIKES_THRESHOLDED_BINARY, 8, 0, checked=False
+        )
+        self._export_group._checkboxes[INFERRED_SPIKES_THRESHOLDED_BINARY][
+            0
+        ].setVisible("oasis" in self._spike_methods)
 
     def to_model_settings(
         self, spike_methods: tuple[SpikeMethod, ...] | None = None

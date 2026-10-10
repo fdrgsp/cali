@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
 from superqt import QIconifyIcon
 
 from cali._constants import (
+    CASCADE_EXPECTED_SPIKES_TRACES,
     DEFAULT_DFF_PERCENTILE,
     DEFAULT_DFF_WINDOW,
     DEFAULT_FRAME_RATE,
@@ -204,7 +205,10 @@ class _ExtractionGUI(QWidget):
         self._export_group.add_option(DFF_TRACES, 3, 0)
         self._export_group.add_option(DEN_DFF_TRACES, 4, 0)
         self._export_group.add_option(INFERRED_SPIKES_TRACES, 5, 0)
+        self._export_group.add_option(CASCADE_EXPECTED_SPIKES_TRACES, 6, 0)
         self._export_group.add_stretch("horizontal")
+        self._spike_outputs.methodsChanged.connect(self._update_spike_export_options)
+        self._update_spike_export_options()
 
         self._settings_tabs = _SettingsTabs(self)
         self._settings_tabs.add_page(
@@ -325,6 +329,7 @@ class _ExtractionGUI(QWidget):
         if value.export_options is not None:
             self._export_group.setValue(value.export_options)
             self._export_group.setChecked(value.export_enabled)
+        self._update_spike_export_options()
 
     def reset(self) -> None:
         """Reset the widget to default values."""
@@ -417,9 +422,30 @@ class _ExtractionGUI(QWidget):
         """Return export options selected as dict[TraceDataType, bool]."""
         if not self._export_group.isChecked():
             return None
-        return cast(
-            "dict[TraceDataType, bool]", self._export_group.get_export_options()
-        )
+        selected = self._export_group.get_export_options()
+        for method, key in (
+            ("oasis", INFERRED_SPIKES_TRACES),
+            ("cascade", CASCADE_EXPECTED_SPIKES_TRACES),
+        ):
+            if method not in self._spike_outputs.methods():
+                selected.pop(key, None)
+        return cast("dict[TraceDataType, bool]", selected)
+
+    def _update_spike_export_options(self) -> None:
+        """Keep method-specific choices without exporting absent spike outputs."""
+        for method, key, row in (
+            ("oasis", INFERRED_SPIKES_TRACES, 5),
+            ("cascade", CASCADE_EXPECTED_SPIKES_TRACES, 6),
+        ):
+            # Missing choices in an old/custom file must not enable a new export.
+            self._export_group.add_option(key, row, 0, checked=False)
+            checkbox = self._export_group._checkboxes[key][0]
+            checkbox.setVisible(method in self._spike_outputs.methods())
+            checkbox.setToolTip(
+                "Export calibrated expected spikes per frame for CASCADE."
+                if method == "cascade"
+                else "Export the OASIS deconvolution amplitude trace."
+            )
 
     def to_model_settings(self) -> ExtractionSettings:
         """Convert current GUI settings to ExtractionSettings model.

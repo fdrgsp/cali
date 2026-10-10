@@ -6,6 +6,34 @@
 
 ---
 
+## P8 continuation — GUI spike-export ownership (2026-10-10)
+
+- Extraction now offers independent OASIS amplitude and CASCADE expected-spike
+  raw CSV choices, shown only for retained methods. Switching methods preserves
+  each choice, while `get_export_options()` excludes inactive methods. Loading an
+  old/custom file adds missing choices unchecked, so it cannot enable an unrequested
+  new export. Analysis hides and excludes the legacy OASIS binary CSV option when
+  only CASCADE is retained. Shared method-qualified result bundles are unchanged.
+- New integration cases feed the actual GUI selection into database CSV export
+  for OASIS-only, CASCADE-only and dual runs, checking which raw files are written.
+  The CASCADE-only processing/export panels were rendered and reviewed again.
+- The wider GUI matrix exposed an existing test-order dependency: the run-widget
+  fixture read an old database through raw `create_engine`, expecting an earlier
+  test to migrate it. It now copies and migrates the fixture privately once per
+  module. It passes independently; no production migration algorithm was changed.
+- `cascade_gui_release_profile.json` now records the final GUI source/wheel hashes,
+  export ownership, wider regressions and the concrete normal-launch activation
+  proposal (`CaliGui(cascade_gui_enabled=True)` in `__main__.py`). The proposed
+  6 GiB benchmark budget is still unaccepted, and distribution review is still
+  pending; the activation proposal has not been applied.
+
+Validation: **96 passed, 1 optional case skipped in 10.15 s** in the focused
+GUI/export matrix; **276 passed, 1 skipped in 28.29 s** in the wider GUI matrix;
+**19 run-widget tests passed independently in 2.06 s**. The isolated installed
+wheel passed **7 pretrained GUI/lifecycle cases in 9.21 s** plus **7 worker/export
+compatibility cases in 3.10 s**, including actual persisted CSV selections.
+Test-modified fixtures were backed up and restored with verified bytes. Hooks pass.
+
 ## P8 continuation — GUI worker profile and distribution review evidence (2026-10-10)
 
 - New/reset extraction and analysis GUI configurations now start with one position

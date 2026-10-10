@@ -52,7 +52,12 @@
     "currently_applied": false,
     "scope": "development branch; project distribution licensing review remains pending",
     "model_selection_explicit": true,
-    "no_automatic_dependency_install_or_model_download": true
+    "no_automatic_dependency_install_or_model_download": true,
+    "change": {
+      "file": "src/cali/__main__.py",
+      "from": "pl = CaliGui()",
+      "to": "pl = CaliGui(cascade_gui_enabled=True)"
+    }
   },
   "license_inventory": {
     "scope": "Direct inference packages and selected model identity; factual file/metadata inventory, not project distribution approval or a transitive dependency audit",
@@ -92,31 +97,94 @@
     "review_scope": "Project owner review of the intended combined installation/distribution, notices and source availability, optional dependency packaging, and separately downloaded model terms. Existing OASIS use does not constitute a new CASCADE distribution sign-off."
   },
   "installed_wheel_validation": {
-    "wheel": "cali-0.1.dev1430+g9ab2dedcc.d20261010-py3-none-any.whl",
-    "sha256": "fa5e9e6a032b394a8decbfce3098fdd4bf335c75cc543cb2f0dd550fcf4a478d",
+    "wheel": "cali-0.1.dev1431+g5a8454666.d20261010-py3-none-any.whl",
+    "sha256": "e5fe7f67a8a22f1d95bad334a50817702ad38a8d771ef5e0c586b0f4af51c350",
     "gui_source_sha256": {
-      "src/cali/gui/_analysis_gui.py": "2ef1e6dba0caa86cd50309bfbad945fa4e070c159d8ea2f8e5dc228d3e3b1067",
-      "src/cali/gui/_extraction_gui.py": "17ec1991777ddc589437163f63c9627b0bbb915b4752360d6e681df97cef4b52",
+      "src/cali/gui/_analysis_gui.py": "aa92d856d674ef274ee09cfcbf82669aae40f4ea121a84691508b8e44bea7158",
+      "src/cali/gui/_extraction_gui.py": "eb3b140c5cc9e6f64c186a198c8f5923ffbc79961b68228e8efaaa187648f5be",
       "src/cali/gui/_cali_gui.py": "1d9f6020ffd629f17de6e71c0925d725916dc0861fea0c3b655851d25e2b4723"
     },
-    "all_gui_source_files_match_working_tree": true,
+    "all_gui_source_files_match_working_tree_at_validation": true,
     "contains_cascade2p_or_oasis_package_tree": false,
     "contains_model_checkpoints": false,
     "package_manifest_entries": 133,
     "pretrained_gui_acceptance": {
       "passed": 7,
-      "duration_s": 9.68
+      "duration_s": 9.21
     },
-    "saved_worker_count_compatibility": {
-      "passed": 2,
-      "duration_s": 2.65
+    "saved_worker_counts_and_export_compatibility": {
+      "passed": 7,
+      "duration_s": 3.1
     },
-    "log_sha256": "11b10a16beb3bf48477f43ded194623c461f7abde653c5a73d4daf978436880f"
+    "log_sha256": "873221207cee45bc1b96ec77437f81dbcdef63dd5f28aa207497d3c42c9bafb6"
   },
   "source_validation": {
-    "passed": 66,
-    "skipped": 1,
-    "duration_s": 8.81,
-    "log_sha256": "fbeb7548c80d3de148cc422c094aac7e58959ffbc097ac5d5105ebf0371424f6"
+    "focused_gui_and_method_exports": {
+      "passed": 96,
+      "skipped": 1,
+      "duration_s": 10.15,
+      "log_sha256": "fc6146dd4de831facc8b9e97a1422c89e1e2ed8fc909462abdeb97372c20ad1e"
+    },
+    "wider_gui_matrix": {
+      "passed": 276,
+      "skipped": 1,
+      "duration_s": 28.29,
+      "log_sha256": "19b925eb02221925cbfacf770740b420f1d0a2da512355fc99be813b5e9da754"
+    },
+    "isolated_run_widget": {
+      "passed": 19,
+      "duration_s": 2.06,
+      "log_sha256": "4c6d5fd2ee6c11ae165abbecfdf47de687a4f47a50c072bbb930b3e0d391ac41"
+    },
+    "initial_wider_matrix_fixture_diagnosis": {
+      "passed": 260,
+      "skipped": 1,
+      "setup_errors": 16,
+      "cause": "Run-widget fixture read legacy analysis_result schema with raw create_engine; standalone run depended on an earlier test migrating that fixture.",
+      "fix": "Migrate a temporary copy once per module; checked-in fixture remains unchanged.",
+      "production_migration_code_changed": false
+    },
+    "modified_fixtures_restored_with_verified_bytes": true
+  },
+  "initial_worker_profile_validation": {
+    "installed_wheel": {
+      "wheel": "cali-0.1.dev1430+g9ab2dedcc.d20261010-py3-none-any.whl",
+      "sha256": "fa5e9e6a032b394a8decbfce3098fdd4bf335c75cc543cb2f0dd550fcf4a478d",
+      "gui_source_sha256": {
+        "src/cali/gui/_analysis_gui.py": "2ef1e6dba0caa86cd50309bfbad945fa4e070c159d8ea2f8e5dc228d3e3b1067",
+        "src/cali/gui/_extraction_gui.py": "17ec1991777ddc589437163f63c9627b0bbb915b4752360d6e681df97cef4b52",
+        "src/cali/gui/_cali_gui.py": "1d9f6020ffd629f17de6e71c0925d725916dc0861fea0c3b655851d25e2b4723"
+      },
+      "all_gui_source_files_match_working_tree": true,
+      "contains_cascade2p_or_oasis_package_tree": false,
+      "contains_model_checkpoints": false,
+      "package_manifest_entries": 133,
+      "pretrained_gui_acceptance": {
+        "passed": 7,
+        "duration_s": 9.68
+      },
+      "saved_worker_count_compatibility": {
+        "passed": 2,
+        "duration_s": 2.65
+      },
+      "log_sha256": "11b10a16beb3bf48477f43ded194623c461f7abde653c5a73d4daf978436880f"
+    },
+    "source": {
+      "passed": 66,
+      "skipped": 1,
+      "duration_s": 8.81,
+      "log_sha256": "fbeb7548c80d3de148cc422c094aac7e58959ffbc097ac5d5105ebf0371424f6"
+    }
+  },
+  "gui_export_controls": {
+    "raw_trace_choices_follow_retained_methods": true,
+    "hidden_method_choices_preserved_but_not_requested": true,
+    "legacy_missing_export_choice_defaults_to_unchecked": true,
+    "oasis_binary_choice_hidden_for_cascade_only_analysis": true,
+    "gui_selections_verified_against_persisted_oasis_cascade_and_dual_csv_files": true
+  },
+  "visual_review": {
+    "processing_controls_and_cascade_only_exports_reviewed": true,
+    "snapshot_sha256": "f5841a89410e6e5281ac3eaa05b328112698dbea9f7e91ae85d36acb8249e32e"
   }
 }

@@ -1,19 +1,25 @@
 """Comprehensive tests for _RunCaliWidget using real test database."""
 
 from pathlib import Path
+from shutil import copy2
 
 import pytest
 from pytestqt.qtbot import QtBot
 from sqlmodel import Session, create_engine, select
 
 from cali.gui._run_widget import _RunCaliWidget
+from cali.sqlmodel import create_cali_engine
 from cali.sqlmodel._model import CaliResult, DetectionSettings, ExtractionSettings
 
 
-@pytest.fixture
-def test_db_path() -> Path:
-    """Return path to real test database."""
-    return Path("tests/test_data/data_and_db_for_tests/test_db.cali")
+@pytest.fixture(scope="module")
+def test_db_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Migrate a private fixture copy without depending on earlier tests."""
+    path = tmp_path_factory.mktemp("run-widget") / "test_db.cali"
+    copy2(Path(__file__).parent / "test_data/data_and_db_for_tests/test_db.cali", path)
+    engine = create_cali_engine(f"sqlite:///{path}")
+    engine.dispose()
+    return path
 
 
 @pytest.fixture
