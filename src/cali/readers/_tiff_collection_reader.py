@@ -133,7 +133,7 @@ class TiffCollectionReader:
         # Inspect first TIFF to determine structure (time, channel, z dimensions)
         first_file = Path(next(iter(next(iter(file_map.values())))))
         with tifffile.TiffFile(first_file) as tif:
-            shape = tif.asarray().shape
+            shape = tif.series[0].shape
             # Assume shape is (T, Y, X), (T, C, Y, X), or (T, Z, Y, X), etc.
             # For now, handle (T, Y, X) - multi-frame time series
             if len(shape) == 3:
@@ -157,6 +157,7 @@ class TiffCollectionReader:
         # Convert to Path objects and build position mapping
         self._file_mapping: dict[tuple[int, ...], Path] = {}
         self._well_to_position: dict[str, list[int]] = {}
+        self._position_frame_counts: dict[int, int] = {}
 
         position_idx = 0
         for well_name, tiff_files in file_map.items():
@@ -166,7 +167,17 @@ class TiffCollectionReader:
                 # Store mapping from (p, t, c, z) to file path
                 # File contains all timepoints, map each t to same file
                 tiff_path = Path(tiff_file)
-                for t in range(self._max_t):
+                with tifffile.TiffFile(tiff_path) as tif:
+                    shape = tif.series[0].shape
+                if len(shape) not in {2, 3}:
+                    raise NotImplementedError(
+                        f"TIFF shape {shape} not yet supported. "
+                        "Only (T, Y, X) and (Y, X) formats are currently supported."
+                    )
+                count = shape[0] if len(shape) == 3 else 1
+                self._position_frame_counts[position_idx] = count
+                self._max_t = max(self._max_t, count)
+                for t in range(count):
                     self._file_mapping[(position_idx, t, 0, 0)] = tiff_path
                 position_indices.append(position_idx)
                 position_idx += 1
@@ -275,6 +286,13 @@ class TiffCollectionReader:
             meta = self._get_metadata_from_index(indexers)
             return data, meta
         return data
+
+    def position_metadata(self, position: int) -> tuple[int, list[dict]]:
+        """Return this file's frame count and metadata without reading pixels."""
+        return (
+            self._position_frame_counts[position],
+            self._get_metadata_from_index({"p": position}),
+        )
 
     def write_tiff(
         self,

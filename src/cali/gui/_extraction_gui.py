@@ -36,6 +36,12 @@ from cali._constants import (
     RAW_CALCIUM_TRACES,
     TraceDataType,
 )
+from cali.extraction._frame_window import (
+    build_timing_descriptor,
+    preflight_retained_timing,
+    resolve_initial_frame_window,
+    validate_model_timing,
+)
 from cali.sqlmodel import ExtractionSettings
 from cali.sqlmodel._spike_settings import (
     ExtractionOutputSettings,
@@ -43,7 +49,7 @@ from cali.sqlmodel._spike_settings import (
     canonical_spike_methods,
 )
 
-from ._settings_tabs import _SettingsTabs, settings_section
+from ._settings_tabs import _SettingsTabs, guidance, settings_section
 from ._spike_output_widget import CASCADE_GUI_GATE, _SpikeOutputWidget
 from ._util import (
     _ExportGroup,
@@ -141,6 +147,10 @@ class _ExtractionGUI(QWidget):
     ) -> None:
         super().__init__(parent)
         self._cascade_enabled = cascade_enabled
+        self._source_metadata: tuple[str, int, list[dict]] | None = None
+        self._timing_preview = guidance(
+            "Select a source FOV to preview timing and discarded frames.", self
+        )
 
         # THREADS WIDGET -------------------------------------------------------------
         cpu_to_use = max((os.cpu_count() or 1) - 2, 1)
@@ -214,6 +224,7 @@ class _ExtractionGUI(QWidget):
                 self._metadata_wdg,
                 self._trace_extraction_wdg._discard_initial_wdg,
                 self._trace_extraction_wdg._frame_rate_verified,
+                self._timing_preview,
             ),
             settings_section(
                 "Background correction",
@@ -234,6 +245,19 @@ class _ExtractionGUI(QWidget):
             "for comparison. Each group contains its method's settings.",
             self._spike_outputs,
         )
+        self._metadata_wdg._frame_rate_spin.valueChanged.connect(
+            self._update_timing_preview
+        )
+        self._trace_extraction_wdg._discard_initial_spin.valueChanged.connect(
+            self._update_timing_preview
+        )
+        self._trace_extraction_wdg._discard_frames_radio.toggled.connect(
+            self._update_timing_preview
+        )
+        self._trace_extraction_wdg._frame_rate_verified.toggled.connect(
+            self._update_timing_preview
+        )
+        self._spike_outputs.methodsChanged.connect(self._update_timing_preview)
         self._settings_tabs.add_page(
             "Processing and export",
             "Results are always saved in the experiment database. CSV export is "
@@ -310,11 +334,90 @@ class _ExtractionGUI(QWidget):
 
     def reset(self) -> None:
         """Reset the widget to default values."""
+        self.set_source_metadata(None)
         self._metadata_wdg.reset()
         self._neuropil_wdg.reset()
         self._trace_extraction_wdg.reset()
         self._spike_outputs.reset()
         self._threads.setValue(max((os.cpu_count() or 1) - 2, 1))
+
+    def set_source_metadata(
+        self,
+        source: tuple[str, int, list[dict]] | None,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """Update the selected source preview without accessing image pixels."""
+        self._source_metadata = source
+        self._update_timing_preview()
+        if error:
+            self._timing_preview.setText(f"Timing preview unavailable: {error}")
+
+    def _update_timing_preview(self) -> None:
+        if self._source_metadata is None:
+            self._timing_preview.setText(
+                "Select a source FOV to preview timing and discarded frames."
+            )
+            return
+        name, count, meta = self._source_metadata
+        trace = self._trace_extraction_wdg
+        rate = self._metadata_wdg._frame_rate_spin.value()
+        verified = trace._frame_rate_verified.isChecked()
+        lines = [f"{name}: {count} source frames."]
+        try:
+            timing = build_timing_descriptor(
+                meta, count, frame_rate=rate, frame_rate_verified=verified
+            )
+            source_label = {
+                "runner_time": "acquisition timestamps",
+                "metadata_frame_period": "metadata frame period",
+                "user_verified": "user-verified frame rate",
+                "exposure": "exposure only (unverified)",
+            }[timing.source]
+            lines.append(f"Timing source: {source_label}.")
+            if timing.frame_rate_hz is not None:
+                lines.append(f"Acquisition rate: {timing.frame_rate_hz:.6g} fps.")
+            else:
+                lines.append("Exposure alone does not establish the acquisition rate.")
+            window = resolve_initial_frame_window(
+                discard_value=trace._discard_initial_spin.value(),
+                discard_unit=(
+                    "frames" if trace._discard_frames_radio.isChecked() else "seconds"
+                ),
+                frame_rate=rate,
+                frame_rate_verified=verified,
+                timing=timing,
+            )
+            lines.append(
+                f"Discard {window.source_start_frame} frames; retain "
+                f"{window.retained_frame_count}. First retained source frame: "
+                f"{window.source_start_frame + 1} (1-based)."
+            )
+            if timing.trusted:
+                lines.append(
+                    f"Resolved start: {window.discarded_duration_ms / 1000:.6g} s "
+                    "after recording begins."
+                )
+            retained = preflight_retained_timing(
+                timing,
+                window,
+                frame_rate=rate,
+                minimum_frames={"OASIS noise estimation": 5},
+            )
+            if "cascade" in self._spike_outputs.methods():
+                # Validate only the retained intervals, as the extraction runner does.
+                validate_model_timing(
+                    retained,
+                    settings_frame_rate=rate,
+                    model_frame_rate=retained.frame_rate_hz or rate,
+                )
+        except ValueError as error:
+            lines.append(str(error))
+        lines.append(
+            "Preview applies to this FOV. Every position and the selected model "
+            "are checked before extraction."
+        )
+        self._timing_preview.setText("\n".join(lines))
 
     def get_export_options(self) -> dict[TraceDataType, bool] | None:
         """Return export options selected as dict[TraceDataType, bool]."""

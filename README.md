@@ -408,7 +408,9 @@ Choose exactly one method to define ROIs for trace extraction:
 **2. Extract traces** organizes parameters into three pages:
 
 - **Prepare traces**: acquisition rate, pixel size, startup exclusion in frames or
-  seconds, neuropil correction and the ΔF/F₀ baseline window/percentile.
+  seconds, neuropil correction and the ΔF/F₀ baseline window/percentile. Selecting
+  a FOV previews its timing source, discarded/retained frame counts and first retained
+  source frame. The preview updates as timing and discard settings change.
 - **Spike inference**: check the **OASIS** or **CASCADE** group box, or both where
   CASCADE extraction is enabled. Both groups and their settings are shown together.
   OASIS exposes the calcium
@@ -553,6 +555,12 @@ exact number of samples or **Seconds** to resolve the cutoff from per-frame acqu
 timestamps or explicit frame-period metadata. If these are unavailable, seconds mode
 requires confirmation that the
 configured frame rate is the actual acquisition rate.
+
+The **Prepare traces** preview resolves the cutoff for the selected FOV without reading
+its image stack. Each position is checked again during extraction, including the
+selected CASCADE model's rate and minimum recording length. **Load From Metadata** in
+extraction and analysis uses the selected FOV's acquisition timestamps or explicit frame
+period; exposure-only metadata keeps the configured rate and asks you to verify it.
 
 The cutoff is applied before raw and neuropil traces, ΔF/F, OASIS, analysis, plots, and
 CSV export. ROI detection and masks are unchanged. Stored trace times are rebased to the

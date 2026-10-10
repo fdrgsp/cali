@@ -190,6 +190,16 @@ class TensorstoreZarrReader:
             return data, meta
         return data
 
+    def position_metadata(self, position: int) -> tuple[int, list[dict]]:
+        """Return source frame count and metadata without reading image pixels."""
+        self._get_axis_index({"p": position})
+        assert self.sequence is not None
+        axes = self.sequence.axis_order
+        if position < 0 or position >= self.store.shape[axes.index("p")]:
+            raise IndexError(f"Position {position} is outside the recording.")
+        count = self.store.shape[axes.index("t")] if "t" in axes else 1
+        return count, self._get_metadata_from_index({"p": position})
+
     def write_tiff(
         self,
         path: str | Path,

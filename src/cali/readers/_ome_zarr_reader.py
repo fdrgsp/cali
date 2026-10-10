@@ -164,6 +164,15 @@ class OMEZarrReader:
             return data, meta
         return data
 
+    def position_metadata(self, position: int) -> tuple[int, list[dict]]:
+        """Return source frame count and metadata without reading image pixels."""
+        array = self.store[f"p{position}"]
+        axes = array.attrs.get(ARRAY_DIMS, [])
+        if not axes:
+            raise ValueError("Cannot preview timing without array dimension metadata.")
+        count = array.shape[axes.index("t")] if "t" in axes else 1
+        return count, self._get_metadata_from_index({"p": position}, f"p{position}")
+
     def write_tiff(
         self,
         path: str | Path,

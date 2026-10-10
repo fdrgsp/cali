@@ -1,10 +1,44 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download and stored-results selection implemented behind the extraction release gate; remaining release evidence (remote dedicated CI, representative memory budget, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
-**Date**: 2026-10-05
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; remaining release evidence (remote dedicated CI, representative memory budget, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Date**: 2026-10-10
 
 ---
+
+## P8 continuation — source timing and startup-discard preview (2026-10-10)
+
+- **Prepare traces** now previews the selected FOV's original frame count, timing
+  source, measured/verified acquisition rate, discarded and retained counts,
+  first retained source frame (explicitly 1-based), and trusted resolved start
+  time. Changing discard units/value, acquisition rate, verification, or spike
+  outputs updates the preview. It uses the same timing descriptor, frame-window
+  resolver and retained-timing checks as extraction, including CASCADE's retained
+  interval/rate checks. Model-specific length/rate and every other position are
+  still validated at extraction; the selected-FOV preview does not certify a batch.
+- The extraction and analysis **Load From Metadata** buttons use the selected
+  position's complete acquisition timestamps or explicit frame-period metadata.
+  Exposure-only metadata preserves the configured rate and explains the missing
+  acquisition timing. Loading metadata clears the user-verification checkbox so
+  a previous confirmation cannot silently authorize a new metadata-derived rate.
+- All three readers expose position metadata and source counts without reading
+  image pixels. TIFF headers now provide each file's actual frame count; ragged
+  TIFF collections receive matching per-position metadata instead of reusing the
+  first file's length. No weights, model inference, or package downloads are
+  triggered by the preview. Unavailable sources and malformed timing are explained
+  inline; clearing/resetting the source removes the previous preview.
+- The normal GUI extraction release gate is unchanged. This completes the pending
+  timing-preview implementation; GUI release acceptance, remote dedicated CI,
+  representative complete-pipeline memory-budget acceptance, and distribution
+  licensing review remain as specified in the updated scope decisions below.
+
+Validation: **101 focused tests passed in 15.13 s**, covering GUI settings/download
+regressions, selected-position metadata loading, exposure rejection, verified-rate
+fallback, timestamp cutoff boundaries, retained irregularity/rate mismatch, malformed
+and short recordings, and header-only ragged TIFF metadata. The full suite passed
+**2417 tests, 16 skipped in 337.94 s**. Repository hooks pass. Trusted and unverified
+timing layouts were rendered and reviewed. Test-generated database changes were
+backed up with verified checksums and restored.
 
 ## Scope decisions (2026-10-05)
 
@@ -31,9 +65,8 @@ below, which are kept as historical records.
   expected outcome is to promote the cached service once the deferred real-plate
   benchmark confirms its speed and memory advantage on real recordings.
 
-Remaining release gates for GUI extraction exposure: the timing-source/resolved-discard
-GUI preview and GUI release acceptance, the first remote run of the dedicated CASCADE CI
-job, an accepted representative complete-pipeline memory budget, and the licensing review
+Remaining release gates for GUI extraction exposure: GUI release acceptance, the first
+remote run of the dedicated CASCADE CI job, an accepted representative complete-pipeline memory budget, and the licensing review
 before distribution.
 
 ## P8 continuation — cancellable background model download (2026-10-04)

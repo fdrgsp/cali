@@ -622,3 +622,54 @@ def test_find_tiff_no_t(temp_tiff_files: dict[str, list[Path]], tmp_path: Path) 
     path, frame_idx = result
     assert path == temp_tiff_files["A1"][0]
     assert frame_idx is None
+
+
+def test_position_metadata_does_not_read_zarr_pixels(
+    mock_tensorstore_zarr: Path, mock_ome_zarr: Path
+) -> None:
+    for reader in (
+        TensorstoreZarrReader(mock_tensorstore_zarr),
+        OMEZarrReader(mock_ome_zarr),
+    ):
+        with patch.object(reader, "isel", side_effect=AssertionError("No pixel reads")):
+            count, meta = reader.position_metadata(1)
+        assert count == 5
+        assert len(meta) == 5
+        assert all(item["mda_event"]["index"]["p"] == 1 for item in meta)
+        reader.close()
+
+
+def test_tiff_position_metadata_uses_each_files_header(tmp_path: Path) -> None:
+    files = []
+    for count in (8, 13):
+        path = tmp_path / f"recording_{count}.tif"
+        tifffile.imwrite(
+            path, np.zeros((count, 10, 10), dtype=np.uint16), photometric="minisblack"
+        )
+        files.append(path)
+    with patch.object(
+        tifffile.TiffFile, "asarray", side_effect=AssertionError("No pixel reads")
+    ):
+        reader = TiffCollectionReader(
+            TiffCollectionSettings(
+                file_map={"A1": files},
+                plate="96-well",
+                metadata={
+                    "exposure_ms": 5,
+                    "pixel_size_um": 0.5,
+                    "frame_period_ms": 100,
+                },
+                tiff_folder_path=tmp_path,
+            )
+        )
+        for position, count in enumerate((8, 13)):
+            actual, meta = reader.position_metadata(position)
+            assert actual == count
+            assert len(meta) == count
+            assert [item["mda_event"]["index"]["t"] for item in meta] == list(
+                range(count)
+            )
+    for position, count in enumerate((8, 13)):
+        pixels, meta = reader.isel(p=position, metadata=True)
+        assert pixels.shape[0] == count == len(meta)
+    reader.close()

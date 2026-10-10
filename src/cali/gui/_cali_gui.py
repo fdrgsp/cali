@@ -2691,90 +2691,66 @@ class CaliGui(QMainWindow):
             cali_logger.error(msg)
             return
 
-    def _on_extraction_meta_clicked(self) -> None:
-        """Load pixel size and frame rate from metadata."""
+    def _selected_position_metadata(self) -> tuple[str, int, list[dict]]:
+        """Read the selected source's timing metadata without loading pixels."""
         if self._data is None:
-            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
-            return
+            raise ValueError("Data not loaded. Open a source recording first.")
+        value = self._fov_table.value() if self._fov_table.selectedItems() else None
+        position = value.pos_idx if value is not None else 0
+        name = (value.fov.name if value is not None else None) or f"Position {position}"
+        count, meta = self._data.position_metadata(position)
+        return name, count, meta
 
-        try:
-            if not (meta := self._data.metadata):
-                msg = "❌ No metadata found! Cannot retrieve pixel size or frame rate!"
-                show_error_dialog(self, msg)
-                cali_logger.error(msg)
-                return
-            if isinstance(meta, dict):
-                meta = [meta]
-            elif callable(meta):  # ome zarr reader
-                meta = meta()
-            pixel_size = meta[0].get("pixel_size_um", None)
-            exposure_ms = meta[0].get("exposure_ms", None)
-            frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
-            self._extraction_wdg._metadata_wdg.setValue(
-                MetadataData(pixel_size, frame_rate)
-            )
-
-            final_msg = ""
-            if pixel_size is None:
-                final_msg += (
-                    "⚠️ No pixel size found in metadata! Using pixels as units.\n"
-                )
-            else:
-                cali_logger.info(f"🗒️ Loaded pixel size from metadata: {pixel_size} µm")
-
-            if exposure_ms is None:
-                final_msg += (
-                    "⚠️ No exposure time found in metadata! Using default frame rate "
-                    "of 10 fps."
-                )
-            else:
-                cali_logger.info(f"🗒️ Loaded frame rate from metadata: {frame_rate} fps")
-
-            if final_msg:
-                show_error_dialog(self, final_msg, type="warning")
-                cali_logger.warning(final_msg)
-
-        except Exception as e:
-            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            return
+    def _on_extraction_meta_clicked(self) -> None:
+        """Load pixel size and trusted acquisition rate for the selected source."""
+        self._load_acquisition_metadata(for_extraction=True)
 
     def _on_analysis_meta_clicked(self) -> None:
-        """Load frame rate from metadata for analysis settings."""
-        if self._data is None:
-            show_error_dialog(self, "❌ Data not loaded! Cannot find metadata!")
-            return
+        """Load trusted acquisition rate for the selected source."""
+        self._load_acquisition_metadata(for_extraction=False)
+
+    def _load_acquisition_metadata(self, *, for_extraction: bool) -> None:
+        from cali.extraction._frame_window import build_timing_descriptor
 
         try:
-            if not (meta := self._data.metadata):
-                msg = "❌ No metadata found! Cannot retrieve frame rate!"
-                show_error_dialog(self, msg)
-                cali_logger.error(msg)
-                return
-            if isinstance(meta, dict):
-                meta = [meta]
-            elif callable(meta):  # ome zarr reader
-                meta = meta()
-            exposure_ms = meta[0].get("exposure_ms", None)
-            frame_rate = 1000.0 / exposure_ms if exposure_ms else 10
-            self._analysis_wdg._metadata_wdg.setValue(frame_rate)
-
-            if exposure_ms is None:
-                msg = (
-                    "⚠️ No exposure time found in metadata! Using default frame rate "
-                    "of 10 fps.\n"
+            name, count, meta = self._selected_position_metadata()
+            # A previous verification checkbox must not authorize a metadata rate.
+            timing = build_timing_descriptor(meta, count)
+            current = self._extraction_wdg._metadata_wdg.value()
+            warnings = []
+            rate = timing.frame_rate_hz
+            if not timing.trusted or rate is None:
+                rate = current.frame_rate
+                warnings.append(
+                    "No acquisition rate found in timestamps or frame-period metadata. "
+                    "The configured frame rate was kept. Exposure duration alone is "
+                    "insufficient; enter and verify the actual acquisition rate."
                 )
-                cali_logger.warning(msg)
-                show_error_dialog(self, msg, type="warning")
+            if for_extraction:
+                pixel_size = meta[0].get("pixel_size_um") if meta else None
+                self._extraction_wdg._metadata_wdg.setValue(
+                    MetadataData(pixel_size, rate)
+                )
+                if pixel_size is None:
+                    warnings.append("No pixel size found. Using pixels as units.")
             else:
-                cali_logger.info(f"🗒️ Loaded frame rate from metadata: {frame_rate} fps")
-
-        except Exception as e:
-            msg = f"❌ Failed to load metadata from datastore!\n\nError: {e}"
-            show_error_dialog(self, msg)
-            cali_logger.error(msg)
-            return
+                self._analysis_wdg._metadata_wdg.setValue(rate)
+            self._extraction_wdg._trace_extraction_wdg._frame_rate_verified.setChecked(
+                False
+            )
+            self._extraction_wdg.set_source_metadata((name, count, meta))
+            if warnings:
+                message = "\n".join(warnings)
+                show_error_dialog(self, message, type="warning")
+                cali_logger.warning(message)
+            else:
+                cali_logger.info(
+                    f"Loaded acquisition frame rate: {rate:.6g} fps ({name})"
+                )
+        except Exception as error:
+            message = f"Failed to load acquisition metadata: {error}"
+            show_error_dialog(self, message)
+            cali_logger.error(message)
 
     def _hide_loading_bar(self) -> None:
         """Hide the loading bar if it exists."""
@@ -2943,9 +2919,17 @@ class CaliGui(QMainWindow):
             value = self._fov_table.value() if self._fov_table.selectedItems() else None
 
             if value is None:
+                self._extraction_wdg.set_source_metadata(None)
                 self._image_viewer.setData(None, None, None)
                 self._update_single_wells_graphs_combo(clear=True)
                 return
+
+            try:
+                self._extraction_wdg.set_source_metadata(
+                    self._selected_position_metadata()
+                )
+            except Exception as error:
+                self._extraction_wdg.set_source_metadata(None, error=str(error))
 
             # Database-only mode: no image data, but still show labels and graphs
             if self._data is None or not self._data.sequence:
