@@ -726,6 +726,14 @@
       "routes to Extract traces / Spike inference and focuses model selector",
       "retains selected methods",
       "does not start worker or write traces"
-    ]
+    ],
+    "remote_ci_followup": {
+      "run_id": 38077573810,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38077573810",
+      "tested_revision": "effa9a69862c93e480232eeb39c7982c0715f3cf",
+      "platforms": "all",
+      "outcome_pending": true,
+      "scope": "Installed base/optional missing-model recovery, pretrained GUI acceptance and full macOS/Windows Python 3.11/3.12/3.13 suites"
+    }
   }
 }

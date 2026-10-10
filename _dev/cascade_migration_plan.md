@@ -26,6 +26,9 @@
   also completed successfully: all three macOS suites passed **2445 tests,
   17 skipped**, and both dedicated jobs passed **533 tests, 1 skipped**. These
   results cover their respective recorded revisions, before this recovery change.
+- Recovery follow-up [CI run 38077573810](https://github.com/fdrgsp/cali/actions/runs/38077573810)
+  tests `effa9a69862c93e480232eeb39c7982c0715f3cf` with `platforms=all`; its
+  outcome remains pending. Both prior runs completed before dispatch.
 
 ## P8 continuation — actionable setup instructions (2026-10-10)
 
